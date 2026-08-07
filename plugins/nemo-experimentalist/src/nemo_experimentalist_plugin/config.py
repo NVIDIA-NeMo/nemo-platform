@@ -19,7 +19,7 @@ longer does.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Self
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
@@ -48,6 +48,35 @@ class CandidateStorageConfig(BaseModel):
     pr_title: str | None = None
     pr_body: str | None = None
     pr_labels: list[str] = Field(default_factory=list)
+
+
+class MetricTarget(BaseModel):
+    """One evaluator-produced metric and the desired direction of change."""
+
+    name: str = Field(min_length=1, description="Exact metric name emitted by the evaluator.")
+    direction: Literal["maximize", "minimize"] = Field(
+        description="Whether higher or lower values are better for this target."
+    )
+
+
+def pareto_objectives(metrics: dict[str, float], objective_function: list[MetricTarget]) -> dict[str, float]:
+    """Project evaluator metrics onto the configured objectives for Pareto ranking.
+
+    The generic Pareto utility maximizes every dimension. Minimized objective
+    values are sign-inverted here; regression metrics are intentionally absent.
+    """
+    objectives: dict[str, float] = {}
+    for target in objective_function:
+        value = metrics.get(target.name)
+        if value is None:
+            return {}
+        objectives[target.name] = float(value) if target.direction == "maximize" else -float(value)
+    return objectives
+
+
+def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
+    """Return whether an evaluator result contains every required metric target."""
+    return all(target.name in metrics for target in targets)
 
 
 class EvolutionaryOptimizerConfig(BaseModel):
@@ -93,6 +122,15 @@ class EvolutionaryOptimizerConfig(BaseModel):
     disable_convergence_check: bool = Field(
         default=False, description="Stop only on max_rounds, never on the terminator's convergence judgement."
     )
+    objective_function: list[MetricTarget] = Field(
+        default_factory=lambda: [MetricTarget(name="reward", direction="maximize")],
+        min_length=1,
+        description="Ordered evaluator metric targets this run should improve.",
+    )
+    regression_metrics: list[MetricTarget] = Field(
+        default_factory=list,
+        description="Metric target(s) that must not regress while the objective improves.",
+    )
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
     goal_config: GoalTreeConfig = Field(default_factory=GoalTreeConfig)
@@ -101,3 +139,32 @@ class EvolutionaryOptimizerConfig(BaseModel):
     proposer: ProposerConfig = Field(default_factory=ProposerConfig)
     evaluator: dict[str, Any] = Field(default_factory=dict)
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
+
+    @model_validator(mode="after")
+    def validate_metric_contract(self) -> Self:
+        objective_names = [target.name for target in self.objective_function]
+        if len(objective_names) != len(set(objective_names)):
+            raise ValueError("objective_function target names must be unique")
+        regression_names = [target.name for target in self.regression_metrics]
+        if len(regression_names) != len(set(regression_names)):
+            raise ValueError("regression_metrics target names must be unique")
+        overlap = set(objective_names).intersection(regression_names)
+        if overlap:
+            raise ValueError(
+                "A metric cannot be both an objective and a regression target: " + ", ".join(sorted(overlap))
+            )
+        return self
+
+    def optimization_policy(self) -> str:
+        """Render the declared metric contract for optimizer-facing reasoning prompts."""
+
+        def render(target: MetricTarget) -> str:
+            return f"{target.name} ({target.direction})"
+
+        objectives = ", ".join(render(target) for target in self.objective_function)
+        regressions = ", ".join(render(target) for target in self.regression_metrics) or "none"
+        return (
+            f"Optimize these objective metric(s): {objectives}. "
+            f"Do not regress these metric(s): {regressions}. "
+            "Metric values, including aggregates, are produced by the evaluator; do not invent formulas or weights."
+        )

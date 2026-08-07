@@ -30,7 +30,7 @@ _SHARED_LAYER_A = {
 #
 #   client                  -> make_client, the platform client factory
 #   ...components           -> the cache module, for run artifacts
-#   ...dataset_staging      -> stage_task_template
+#   ...dataset_staging      -> stage_eval_author_inputs
 #   ...evaluator.base       -> EvaluatorType
 #   ...evaluator.factory    -> DatasetFactory
 #   ...evaluator.harbor     -> HarborDataset

@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""The orchestration boundary accepts only authoring inputs."""
+
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,8 +11,9 @@ from unittest.mock import MagicMock
 
 import pytest
 from nemo_eval_author_plugin.eval_author import run as eval_author_run
+from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, ResourceRef, Task
 from nemo_insights_plugin.entities import Insight
 
 
@@ -48,71 +52,42 @@ def model_clients(monkeypatch: pytest.MonkeyPatch) -> ClosingModelClients:
     return clients
 
 
-@dataclass
-class BackendFactoryCall:
-    client: ClosingClient
-    experiments_output: str
-
-
-@dataclass
-class AgentCodeCall:
-    workspace: str
-    agent: str | Path
-    dest: Path
-
-
-@dataclass
-class EvalAuthorFactoryCall:
-    experiment_dir: Path
-    config: EvalAuthorConfig
-
-
-@dataclass
-class EvalAuthorCall:
-    insight: Insight
-    agent_path: Path
-    task_template: Task
-    train_dataset: Dataset
-    validation_dataset: Dataset
-    client: ClosingClient
-
-
 class FakeBackend:
     def __init__(self, insight: Insight) -> None:
         self.insight = insight
-        self.insight_calls: list[dict[str, str]] = []
-        self.agent_code_calls: list[AgentCodeCall] = []
+        self.insight_calls: list[tuple[str, str]] = []
+        self.agent_calls: list[tuple[str, str | Path, Path]] = []
 
     async def get_insight(self, *, workspace: str, insight_id: str) -> Insight:
-        self.insight_calls.append({"workspace": workspace, "insight_id": insight_id})
+        self.insight_calls.append((workspace, insight_id))
         return self.insight
 
     async def get_agent_code(self, *, workspace: str, agent: str | Path, dest: Path) -> None:
-        self.agent_code_calls.append(AgentCodeCall(workspace=workspace, agent=agent, dest=dest))
+        self.agent_calls.append((workspace, agent, dest))
 
 
 class FakeDatasetFactory:
     def __init__(self) -> None:
-        self.train = Dataset(id="train")
-        self.validation = Dataset(id="validation")
-        self.template = Task(id="template-task", uri="file:///template")
-        self.dataset_refs: list[tuple[str, DatasetRef]] = []
-        self.template_refs: list[tuple[str, DatasetRef]] = []
-
-    def build_dataset(self, evaluator_type: str, dataset_ref: DatasetRef) -> Dataset:
-        self.dataset_refs.append((evaluator_type, dataset_ref))
-        if dataset_ref.metadata.get("id") == "validation":
-            return self.validation
-        return self.train
+        self.template = Task(id="template", uri="file:///template")
+        self.template_calls: list[tuple[str, DatasetRef]] = []
+        self.dataset_calls: list[tuple[str, DatasetRef]] = []
+        self.datasets: list[Dataset] = []
 
     def build_task_template(self, evaluator_type: str, template_ref: DatasetRef) -> Task:
-        self.template_refs.append((evaluator_type, template_ref))
+        self.template_calls.append((evaluator_type, template_ref))
         return self.template
+
+    def build_dataset(self, evaluator_type: str, dataset_ref: DatasetRef) -> Dataset:
+        self.dataset_calls.append((evaluator_type, dataset_ref))
+        dataset = Dataset(id=Path(dataset_ref.uri).name, source=ResourceRef(uri=Path(dataset_ref.uri).as_uri()))
+        self.datasets.append(dataset)
+        return dataset
 
 
 class FakeEvalAuthor:
     def __init__(self) -> None:
-        self.call: EvalAuthorCall | None = None
+        self.call: tuple[Insight, Path, Task, Dataset, Dataset, ClosingClient] | None = None
+        self.insight_suite = Dataset(id="insight-suite")
 
     async def run(
         self,
@@ -124,18 +99,14 @@ class FakeEvalAuthor:
         *,
         client: ClosingClient,
     ) -> EvalAuthorResult:
-        self.call = EvalAuthorCall(
-            insight=insight,
-            agent_path=agent_path,
-            task_template=task_template,
-            train_dataset=train_dataset,
-            validation_dataset=validation_dataset,
-            client=client,
-        )
+        self.call = (insight, agent_path, task_template, train_dataset, validation_dataset, client)
         return EvalAuthorResult(
             train_dataset=train_dataset,
             validation_dataset=validation_dataset,
-            summary="Eval Author complete",
+            insight_suite=self.insight_suite,
+            insight_suite_identity=f"sha256:{'a' * 64}",
+            metric_keys=("uses_correct_tool",),
+            summary="Eval Author complete.",
         )
 
 
@@ -170,7 +141,7 @@ async def test_run_eval_author_fails_before_side_effects_when_model_configuratio
 
 
 @pytest.mark.asyncio
-async def test_run_eval_author_builds_and_runs_complete_contract(
+async def test_run_eval_author_resolves_inputs_and_returns_datasets(
     monkeypatch: pytest.MonkeyPatch,
     model_clients: ClosingModelClients,
     tmp_path: Path,
@@ -180,83 +151,77 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         workspace="workspace-a",
         title="failure",
         description="description",
-        agent=str(tmp_path / "agent-src"),
+        agent="insight-agent",
         trace_refs=["trace-1"],
     )
     backend = FakeBackend(insight)
     dataset_factory = FakeDatasetFactory()
     eval_author = FakeEvalAuthor()
-    backend_calls: list[BackendFactoryCall] = []
-    eval_author_calls: list[EvalAuthorFactoryCall] = []
-
-    def make_backend(
-        *,
-        client: ClosingClient,
-        experiments_output: str,
-    ) -> FakeBackend:
-        backend_calls.append(BackendFactoryCall(client=client, experiments_output=experiments_output))
-        return backend
-
-    def build_eval_author_agent(*, experiment_dir: Path, config: EvalAuthorConfig) -> FakeEvalAuthor:
-        eval_author_calls.append(EvalAuthorFactoryCall(experiment_dir=experiment_dir, config=config))
-        return eval_author
-
-    monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", make_backend)
+    monkeypatch.setattr(eval_author_run, "make_client", lambda _: client)
+    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
-    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", build_eval_author_agent)
-
-    config = EvalAuthorConfig(max_traces=2)
-    train_ref = DatasetRef(uri=str(tmp_path / "train"), metadata={"id": "train"})
-    validation_ref = DatasetRef(uri=str(tmp_path / "validation"), metadata={"id": "validation"})
-    template_path = tmp_path / "template"
-    template_path.mkdir()
-    template_ref = DatasetRef(uri=str(template_path), metadata={"id": "task-template"})
+    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
+    template = tmp_path / "template"
+    template.mkdir()
+    (template / "task.toml").write_text("template\n", encoding="utf-8")
+    train = tmp_path / "train"
+    validation = tmp_path / "validation"
+    train.mkdir()
+    validation.mkdir()
 
     result = await eval_author_run.run_eval_author(
-        insight="insight-remote-123",
-        train_dataset=train_ref,
-        validation_dataset=validation_ref,
-        task_template=template_ref,
-        experiment_dir=tmp_path / "eval_author",
+        insight="insight-123",
+        train_dataset=DatasetRef(uri=str(train)),
+        validation_dataset=DatasetRef(uri=str(validation)),
+        task_template=DatasetRef(uri=str(template)),
+        experiment_dir=tmp_path / "experiment",
         workspace="workspace-a",
         base_url="http://platform.test",
-        config=config,
+        config=EvalAuthorConfig(),
     )
 
-    experiment_dir = (tmp_path / "eval_author").resolve()
-    assert result.summary == "Eval Author complete"
-    assert result.train_dataset is dataset_factory.train
-    assert result.validation_dataset is dataset_factory.validation
-    assert backend_calls == [
-        BackendFactoryCall(client=client, experiments_output=str(experiment_dir)),
+    experiment_dir = (tmp_path / "experiment").resolve()
+    assert result.train_dataset is dataset_factory.datasets[0]
+    assert result.validation_dataset is dataset_factory.datasets[1]
+    assert result.insight_suite is eval_author.insight_suite
+    assert result.insight_suite_identity == f"sha256:{'a' * 64}"
+    assert result.metric_keys == ("uses_correct_tool",)
+    assert backend.insight_calls == [("workspace-a", "insight-123")]
+    assert backend.agent_calls == [
+        ("workspace-a", "insight-agent", experiment_dir / "eval_author" / "source-agent"),
     ]
-    assert backend.insight_calls == [{"workspace": "workspace-a", "insight_id": "insight-remote-123"}]
-    assert backend.agent_code_calls == [
-        AgentCodeCall(
-            workspace="workspace-a",
-            agent=insight.agent,
-            dest=experiment_dir / "eval_author" / "source-agent",
-        )
-    ]
-    assert dataset_factory.dataset_refs == [("harbor", train_ref), ("harbor", validation_ref)]
-    assert dataset_factory.template_refs == [
-        (
-            "harbor",
-            template_ref.model_copy(update={"uri": str(experiment_dir / "dataset" / "task-template")}),
-        )
-    ]
-    assert eval_author_calls == [EvalAuthorFactoryCall(experiment_dir=experiment_dir, config=config)]
-    assert eval_author.call == EvalAuthorCall(
-        insight=insight,
-        agent_path=experiment_dir / "eval_author" / "source-agent",
-        task_template=dataset_factory.template,
-        train_dataset=dataset_factory.train,
-        validation_dataset=dataset_factory.validation,
-        client=client,
+    assert [call[0] for call in dataset_factory.dataset_calls] == ["harbor", "harbor"]
+    assert dataset_factory.template_calls[0][0] == "harbor"
+    assert eval_author.call == (
+        insight,
+        experiment_dir / "eval_author" / "source-agent",
+        dataset_factory.template,
+        dataset_factory.datasets[0],
+        dataset_factory.datasets[1],
+        client,
     )
     assert client.closed
     assert model_clients.closed
+
+
+def test_public_apis_accept_train_validation_and_generated_task_inputs() -> None:
+    orchestration = inspect.signature(eval_author_run.run_eval_author).parameters
+    agent_run = inspect.signature(EvalAuthor.run).parameters
+    agent_private_run = inspect.signature(EvalAuthor._run).parameters
+
+    assert {"insight", "task_template", "train_dataset", "validation_dataset"} <= set(orchestration)
+    assert {"request", "reference_task_sets"}.isdisjoint(orchestration)
+    expected = {
+        "self",
+        "insight",
+        "agent_path",
+        "task_template",
+        "train_dataset",
+        "validation_dataset",
+        "client",
+    }
+    assert set(agent_run) == expected
+    assert set(agent_private_run) == expected
 
 
 @pytest.mark.asyncio
@@ -265,48 +230,45 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
-    download_calls: list[dict[str, str]] = []
+    downloads: list[tuple[str, str, str]] = []
 
     class FakeFiles:
         async def download(self, *, remote_path: str, local_path: str, workspace: str) -> None:
-            download_calls.append({"remote_path": remote_path, "local_path": local_path, "workspace": workspace})
+            downloads.append((remote_path, local_path, workspace))
             destination = Path(local_path)
             destination.mkdir(parents=True)
-            (destination / "task.toml").write_text("template", encoding="utf-8")
+            (destination / "task.toml").write_text("template\n", encoding="utf-8")
 
     client = ClosingClient(files=FakeFiles())
-    insight = Insight(workspace="workspace-a", title="failure", description="description", agent="insight-agent")
-    backend = FakeBackend(insight)
+    backend = FakeBackend(
+        Insight(workspace="workspace-a", title="failure", description="description", agent="insight-agent")
+    )
     dataset_factory = FakeDatasetFactory()
-    eval_author = FakeEvalAuthor()
-
-    monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
+    monkeypatch.setattr(eval_author_run, "make_client", lambda _: client)
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
-    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
+    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: FakeEvalAuthor())
+    template_ref = DatasetRef(uri="fileset://workspace-a/template")
+    train = tmp_path / "train"
+    validation = tmp_path / "validation"
+    train.mkdir()
+    validation.mkdir()
 
-    template_ref = DatasetRef(uri="fileset://workspace-a/task-template", metadata={"id": "task-template"})
-    experiment_dir = (tmp_path / "eval_author").resolve()
     await eval_author_run.run_eval_author(
-        insight="insight-remote-123",
-        train_dataset=DatasetRef(uri="train", metadata={"id": "train"}),
-        validation_dataset=DatasetRef(uri="validation", metadata={"id": "validation"}),
+        insight="insight-123",
+        train_dataset=DatasetRef(uri=str(train)),
+        validation_dataset=DatasetRef(uri=str(validation)),
         task_template=template_ref,
-        experiment_dir=experiment_dir,
+        experiment_dir=tmp_path / "experiment",
         workspace="workspace-a",
-        base_url="http://platform.test",
+        base_url=None,
         config=EvalAuthorConfig(),
     )
 
-    staged_path = experiment_dir / "dataset" / "task-template"
-    assert download_calls == [
-        {
-            "remote_path": template_ref.uri,
-            "local_path": str(staged_path),
-            "workspace": "workspace-a",
-        }
-    ]
-    assert dataset_factory.template_refs == [("harbor", template_ref.model_copy(update={"uri": str(staged_path)}))]
+    staged = (tmp_path / "experiment").resolve() / "dataset" / "task-template"
+    assert downloads == [(template_ref.uri, str(staged), "workspace-a")]
+    assert dataset_factory.template_calls == [("harbor", template_ref.model_copy(update={"uri": str(staged)}))]
+    assert [Path(ref.uri).name for _, ref in dataset_factory.dataset_calls] == ["train", "validation"]
     assert client.closed
     assert model_clients.closed
 
@@ -318,59 +280,61 @@ async def test_run_eval_author_uses_agent_override(
     tmp_path: Path,
 ) -> None:
     client = ClosingClient()
-    insight = Insight(workspace="workspace-a", title="failure", description="description", agent="insight-agent")
-    backend = FakeBackend(insight)
-    dataset_factory = FakeDatasetFactory()
-    eval_author = FakeEvalAuthor()
-
-    monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
+    backend = FakeBackend(
+        Insight(workspace="workspace-a", title="failure", description="description", agent="insight-agent")
+    )
+    monkeypatch.setattr(eval_author_run, "make_client", lambda _: client)
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
-    monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
-    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
-
-    override = tmp_path / "override-agent"
+    monkeypatch.setattr(eval_author_run, "DatasetFactory", FakeDatasetFactory)
+    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: FakeEvalAuthor())
     template = tmp_path / "template"
+    train = tmp_path / "train"
+    validation = tmp_path / "validation"
     template.mkdir()
+    train.mkdir()
+    validation.mkdir()
+    override = tmp_path / "override-agent"
+
     await eval_author_run.run_eval_author(
-        insight="insight-remote-123",
+        insight="insight-123",
         agent=override,
-        train_dataset=DatasetRef(uri="train", metadata={"id": "train"}),
-        validation_dataset=DatasetRef(uri="validation", metadata={"id": "validation"}),
+        train_dataset=DatasetRef(uri=str(train)),
+        validation_dataset=DatasetRef(uri=str(validation)),
         task_template=DatasetRef(uri=str(template)),
-        experiment_dir=tmp_path / "eval_author",
+        experiment_dir=tmp_path / "experiment",
         workspace="workspace-a",
         base_url="http://platform.test",
         config=EvalAuthorConfig(),
     )
 
-    assert backend.agent_code_calls[0].agent == override
+    assert backend.agent_calls[0][1] == override
     assert client.closed
     assert model_clients.closed
 
 
 @pytest.mark.asyncio
-async def test_run_eval_author_closes_client_when_backend_creation_fails(
+async def test_run_eval_author_closes_clients_on_failure(
     monkeypatch: pytest.MonkeyPatch,
     model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     client = ClosingClient()
+    monkeypatch.setattr(eval_author_run, "make_client", lambda _: client)
+    monkeypatch.setattr(
+        eval_author_run,
+        "make_experimentalist_backend",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("backend failed")),
+    )
 
-    def fail_backend_creation(**_: object) -> object:
-        raise RuntimeError("backend creation failed")
-
-    monkeypatch.setattr(eval_author_run, "make_client", lambda base_url: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", fail_backend_creation)
-
-    with pytest.raises(RuntimeError, match="backend creation failed"):
+    with pytest.raises(RuntimeError, match="backend failed"):
         await eval_author_run.run_eval_author(
-            insight="insight-remote-123",
+            insight="insight-123",
             train_dataset=DatasetRef(uri="train"),
             validation_dataset=DatasetRef(uri="validation"),
             task_template=DatasetRef(uri="template"),
-            experiment_dir=tmp_path / "eval_author",
+            experiment_dir=tmp_path,
             workspace="workspace-a",
-            base_url="http://platform.test",
+            base_url=None,
             config=EvalAuthorConfig(),
         )
 

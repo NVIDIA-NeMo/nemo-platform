@@ -6,6 +6,7 @@
 import asyncio
 import json
 import os
+import shlex
 from pathlib import Path
 
 import pytest
@@ -70,6 +71,44 @@ _KNOWN_FAILING_TRACE = {
                                 },
                             ],
                         }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+_KNOWN_COMPLIANT_TRACE = {
+    "resourceSpans": [
+        {
+            "scopeSpans": [
+                {
+                    "spans": [
+                        {
+                            "name": "inventory_lookup",
+                            "attributes": [
+                                {
+                                    "key": "openinference.span.kind",
+                                    "value": {"stringValue": "TOOL"},
+                                },
+                                {
+                                    "key": "output.value",
+                                    "value": {"stringValue": '{"warehouse":"Denver","available_units":8}'},
+                                },
+                            ],
+                        },
+                        {
+                            "name": "generate_response",
+                            "attributes": [
+                                {
+                                    "key": "openinference.span.kind",
+                                    "value": {"stringValue": "CHAIN"},
+                                },
+                                {
+                                    "key": "output.value",
+                                    "value": {"stringValue": "The Denver warehouse has eight units available."},
+                                },
+                            ],
+                        },
                     ]
                 }
             ]
@@ -165,14 +204,31 @@ printf '{"reward": 1.0}\n' > /logs/verifier/reward.json
 
 
 def _write_known_failing_agent(agent_dir: Path) -> None:
+    _write_harbor_trace_agent(
+        agent_dir,
+        agent_name="known-failing-baseline",
+        trace_payload=_KNOWN_FAILING_TRACE,
+    )
+
+
+def _write_harbor_trace_agent(
+    agent_dir: Path,
+    *,
+    agent_name: str,
+    trace_payload: object | None,
+) -> None:
     agent_dir.mkdir()
-    trace_payload = json.dumps(_KNOWN_FAILING_TRACE, separators=(",", ":"))
+    serialized_trace = json.dumps(trace_payload, separators=(",", ":")) if trace_payload is not None else None
+    trace_command = (
+        "mkdir -p /logs/artifacts/traces && "
+        f"printf '%s\\n' {shlex.quote(serialized_trace)} > /logs/artifacts/traces/trace.jsonl"
+        if serialized_trace is not None
+        else "true"
+    )
     (agent_dir / "harbor_wrapper.py").write_text(
         f"""\
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-
-import shlex
 
 from harbor import AgentContext, BaseAgent, BaseEnvironment
 
@@ -180,7 +236,7 @@ from harbor import AgentContext, BaseAgent, BaseEnvironment
 class WrappedAgent(BaseAgent):
     @staticmethod
     def name() -> str:
-        return "known-failing-baseline"
+        return {agent_name!r}
 
     def version(self) -> str:
         return "1.0.0"
@@ -194,12 +250,7 @@ class WrappedAgent(BaseAgent):
         environment: BaseEnvironment,
         context: AgentContext,
     ) -> None:
-        trace_payload = {trace_payload!r}
-        command = (
-            "mkdir -p /logs/artifacts/traces && "
-            f"printf '%s\\\\n' {{shlex.quote(trace_payload)}} "
-            "> /logs/artifacts/traces/trace.jsonl"
-        )
+        command = {trace_command!r}
         process = await environment.exec(command)
         context.metadata = {{
             "instruction": instruction,
@@ -256,11 +307,12 @@ async def test_configured_fast_model_repairs_malformed_harbor_verifiers(
         "Python verifier files are statically checked by await dataset.validate(); test.sh is checked as Bash. "
         "Preserve the existing verifier's intended behavior and repair every validation error."
     )
-
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [],
+            insight_suite,
+            insight_suite,
             insight_suite,
             runner_conventions,
             validation_feedback=validation_feedback,
@@ -268,7 +320,7 @@ async def test_configured_fast_model_repairs_malformed_harbor_verifiers(
         timeout=300,
     )
 
-    assert summary
+    assert summary.summary
     await insight_suite.validate()
     for verifier_path in (
         insight_suite_dir / "task-a" / "tests" / "check_tool_hallucination.py",
@@ -333,18 +385,19 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
         "insight_suite.validate() once after editing, then return the metric summary as soon as validation passes; "
         "do not inspect unrelated files."
     )
-
     summary = await asyncio.wait_for(
         eval_author.author_insight_metrics(
             insight,
             [("known-failing-trace", diagnostic)],
+            insight_suite,
+            insight_suite,
             insight_suite,
             runner_conventions,
         ),
         timeout=600,
     )
 
-    assert summary
+    assert summary.summary
     await insight_suite.validate()
     evaluator = HarborEvaluator(experiment_dir=tmp_path)
     result = await asyncio.wait_for(
@@ -381,12 +434,163 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
     assert all(0.0 <= value <= 1.0 for value in insight_metric_values.values())
     assert min(insight_metric_values.values()) <= 0.25
     assert insight_metric_names <= set(trial.metrics)
+    assert set(summary.metric_keys) == insight_metric_names
     print(
         json.dumps(
             {
-                "authored_summary": summary,
+                "authored_summary": summary.model_dump(mode="json"),
                 "reward_json": reward_payload,
             },
             sort_keys=True,
         )
     )
+
+
+@pytest.mark.skipif(
+    not (_RUN_EVAL_AUTHOR_HARBOR_E2E and _HAS_MODELS),
+    reason=f"Set RUN_EVAL_AUTHOR_HARBOR_E2E=1 and {_MODELS_HINT} to run the live Harbor metric canary.",
+)
+async def test_eval_author_metric_discriminates_controlled_harbor_tool_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An authored metric distinguishes measurable violations from compliant tool evidence."""
+    insight_suite_dir = tmp_path / "insight-suite"
+    violating_agent_dir = tmp_path / "violating-agent"
+    compliant_agent_dir = tmp_path / "compliant-agent"
+    unmeasurable_agent_dir = tmp_path / "unmeasurable-agent"
+    _write_known_failing_task(insight_suite_dir)
+    _write_harbor_trace_agent(
+        violating_agent_dir,
+        agent_name="controlled-tool-violation",
+        trace_payload=_KNOWN_FAILING_TRACE,
+    )
+    _write_harbor_trace_agent(
+        compliant_agent_dir,
+        agent_name="controlled-tool-compliance",
+        trace_payload=_KNOWN_COMPLIANT_TRACE,
+    )
+    _write_harbor_trace_agent(
+        unmeasurable_agent_dir,
+        agent_name="controlled-unmeasurable-trace",
+        trace_payload=None,
+    )
+    insight_suite = HarborDataset.from_path(insight_suite_dir)
+    await insight_suite.validate()
+
+    llm = get_fast_model()
+    llm.config["temperature"] = 0.0
+    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
+    eval_author = EvalAuthor(
+        experiment_dir=tmp_path,
+        config=EvalAuthorConfig(),
+        llm=llm,
+    )
+    eval_author.context.pop("trace_documentation", None)
+    insight = Insight(
+        workspace="local",
+        title="Agent must use inventory_lookup before reporting availability",
+        description=(
+            "The agent must call inventory_lookup before reporting the Denver warehouse availability. "
+            "Measure current execution evidence of that tool call, not answer text or static task files."
+        ),
+        agent="controlled-tool-evidence",
+    )
+    diagnostic = Diagnostic(
+        outcome="FAILURE",
+        summary=(
+            "The violating trace has a response span but no inventory_lookup tool span, so the absence "
+            "of the required call is measurable."
+        ),
+        failure_point=1,
+        root_cause="The agent answered from memory without calling inventory_lookup.",
+    )
+    runner_conventions = (
+        "This is a Harbor dataset. Preserve the existing reward metric and add a numeric root-cause metric to "
+        "/logs/verifier/reward.json. Higher values are better and values are bounded to [0.0, 1.0]. A readable "
+        "trace with no inventory_lookup tool span is measurable failing evidence and should score low. A readable "
+        "trace with an inventory_lookup tool span before the answer is compliant evidence and should score high. "
+        "A missing, unreadable, or malformed trace is not measurable evidence: fail the verifier with a clear "
+        "error instead of writing a fabricated 0.0 metric. Use a Python standard-library checker, avoid "
+        "unguarded grep under set -e, make the minimal verifier-only edit, validate the dataset once, then stop."
+    )
+    summary = await asyncio.wait_for(
+        eval_author.author_insight_metrics(
+            insight,
+            [("controlled-tool-violation", diagnostic)],
+            insight_suite,
+            insight_suite,
+            insight_suite,
+            runner_conventions,
+        ),
+        timeout=600,
+    )
+
+    assert summary.summary
+    await insight_suite.validate()
+    evaluator = HarborEvaluator(experiment_dir=tmp_path)
+
+    async def run_agent(agent_dir: Path, job_name: str):
+        return await asyncio.wait_for(
+            evaluator.run(
+                agent=agent_dir,
+                dataset=insight_suite,
+                options=HarborEvaluatorConfig(
+                    force_rerun=True,
+                    job_name=job_name,
+                    jobs_dir=Path("harbor-jobs"),
+                    n_concurrent_trials=1,
+                    quiet=True,
+                ),
+            ),
+            timeout=600,
+        )
+
+    violating_result = await run_agent(violating_agent_dir, "controlled-tool-violation")
+    compliant_result = await run_agent(compliant_agent_dir, "controlled-tool-compliance")
+    unmeasurable_result = await run_agent(unmeasurable_agent_dir, "controlled-unmeasurable-trace")
+
+    def reward_payload(result) -> dict[str, object]:
+        assert len(result.trials) == 1
+        trial = result.trials[0]
+        assert trial.status == "completed", trial.error
+        reward_ref = trial.resources["log:verifier/reward.json"]
+        reward_path = local_path_from_uri(reward_ref.uri, context="Harbor verifier reward")
+        return json.loads(reward_path.read_text(encoding="utf-8"))
+
+    violating_payload = reward_payload(violating_result)
+    compliant_payload = reward_payload(compliant_result)
+    assert violating_payload["reward"] == pytest.approx(1.0)
+    assert compliant_payload["reward"] == pytest.approx(1.0)
+    violating_metric_names = set(violating_payload) - {"reward"}
+    compliant_metric_names = set(compliant_payload) - {"reward"}
+    assert violating_metric_names
+    assert compliant_metric_names == violating_metric_names
+    assert set(summary.metric_keys) == violating_metric_names
+    for metric_name in sorted(violating_metric_names):
+        violating_score = violating_payload[metric_name]
+        compliant_score = compliant_payload[metric_name]
+        assert isinstance(violating_score, int | float) and not isinstance(violating_score, bool)
+        assert isinstance(compliant_score, int | float) and not isinstance(compliant_score, bool)
+        assert 0.0 <= violating_score <= 1.0
+        assert 0.0 <= compliant_score <= 1.0
+        assert compliant_score > violating_score
+
+    assert len(unmeasurable_result.trials) == 1
+    unmeasurable_trial = unmeasurable_result.trials[0]
+    assert unmeasurable_trial.status != "completed"
+    verifier_stderr_ref = unmeasurable_trial.resources["log:verifier/test-stderr.txt"]
+    verifier_stderr_path = local_path_from_uri(
+        verifier_stderr_ref.uri,
+        context="Harbor verifier stderr for unmeasurable trace",
+    )
+    assert "trace" in verifier_stderr_path.read_text(encoding="utf-8").lower()
+    assert set(unmeasurable_trial.metrics) - {"reward"} == set()
+    unmeasurable_reward_ref = unmeasurable_trial.resources.get("log:verifier/reward.json")
+    if unmeasurable_reward_ref is not None:
+        unmeasurable_reward_path = local_path_from_uri(
+            unmeasurable_reward_ref.uri,
+            context="Harbor verifier reward for unmeasurable trace",
+        )
+        unmeasurable_payload = json.loads(unmeasurable_reward_path.read_text(encoding="utf-8"))
+        assert set(unmeasurable_payload) == {"reward"}

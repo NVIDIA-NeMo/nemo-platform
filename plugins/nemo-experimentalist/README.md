@@ -163,9 +163,43 @@ The `--config` YAML is the other kind of configuration: it holds what *one exper
 does (`max_rounds`, `max_survivors`, per-component tuning) and takes no environment
 override, so the file is an accurate record of the run.
 
+### Objective function and regression metrics
+
+Declare what the optimizer should improve separately from what it must preserve.
+`objective_function` is one ordered list: each item may be a raw evaluator
+metric or an aggregate metric produced by the evaluator. The optimizer only receives
+reported metric values and the declared policy; it does not evaluate expressions,
+invent weights, or encode a selection algorithm.
+
+A single evaluator-produced aggregate metric:
+
+```yaml
+objective_function:
+  - name: quality
+    direction: maximize
+```
+
+Several metrics, for example lower token use and cost, with a guardrail:
+
+```yaml
+objective_function:
+  - name: tokens
+    direction: minimize
+  - name: cost
+    direction: minimize
+regression_metrics:
+  - name: success_rate
+    direction: maximize
+```
+
+For an insight-driven run, Eval Author's authored insight metrics replace the
+run-level objective metrics. The configured objective targets move to
+`regression_metrics`, alongside the existing guardrails, so the insight is
+improved without giving up the run's original priorities.
+
 The agent under test remains separate. The Tau3 example reads `AUT_MODEL_NAME`
-plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`; those values are forwarded into its
-evaluation container and are not used by the Experimentalist agents.
+plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`; those are the only variables forwarded
+into its evaluation container and are not used by the Experimentalist agents.
 
 ### Insight-driven optimization
 
