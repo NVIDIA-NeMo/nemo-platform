@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ToastProvider } from '@nemo/common/src/providers/toast/ToastProvider';
 import type { Meta, StoryObj } from '@storybook/react';
 import { http, HttpResponse } from 'msw';
 import { CustomizationDetailsPanel } from '@studio/components/CustomizationDetailsPanel';
@@ -124,6 +125,13 @@ const handlers = [
 const meta = {
   component: CustomizationDetailsPanel,
   title: 'Components/CustomizationDetailsPanel',
+  decorators: [
+    (Story) => (
+      <ToastProvider>
+        <Story />
+      </ToastProvider>
+    ),
+  ],
   parameters: {
     layout: 'padded',
     router: { initialPath: `/workspaces/${WORKSPACE}/customizations/${JOB_NAME}` },
