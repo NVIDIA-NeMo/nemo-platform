@@ -31,6 +31,10 @@ class IntakePublicationSpec(BaseModel):
         min_length=1,
         description="Name of the existing Evaluation to publish under. Must already exist; the job does not create it.",
     )
+    # Both are `min_length=1` because an empty string is worse than omitting them: `agent_name=""`
+    # is not None, so it satisfies the identity validator and skips the derivation it exists to
+    # require, then resolves back to "" at publish time — the empty agent name the validator was
+    # written to prevent. Omit the field to get derivation; there is no use for a blank one.
     agent_name: str | None = Field(
         default=None,
         min_length=1,
