@@ -75,6 +75,78 @@ def _split_name(path: str) -> str:
     return _SHARD_SUFFIX.sub("", parts[-1].split(".")[0])
 
 
+def _glob_matches(pattern: str, path: str) -> bool:
+    """Match ``path`` against ``pattern`` where ``*`` spans any run of characters except ``/``.
+
+    Deliberately the narrowest dialect rather than the most expressive one. This single reading of
+    ``*`` is shared by shell globs, Python's :mod:`glob`, fsspec and HF ``data_files``, so a pattern
+    emitted here means the same thing wherever a consumer pastes it. ``**`` is not produced at all:
+    its semantics differ between those tools, and a pattern that silently selects a different set of
+    files in the reader than it did in the profiler is worse than no pattern.
+    """
+    return re.fullmatch("[^/]*".join(re.escape(part) for part in pattern.split("*")), path) is not None
+
+
+def infer_data_files(split_name: str, entries: list[FileEntry], all_paths: list[str]) -> str | None:
+    """A glob selecting exactly ``entries`` out of ``all_paths``, or None if no single one does.
+
+    This is the inverse of the split resolution above: splits are read *off* the paths, so the
+    pattern is rebuilt from the same evidence — the directory the files share, and the split name
+    their filenames start with. It restores addressability of a split's files without restoring the
+    per-file manifest that was removed for scaling: one pattern per split, whatever the shard count.
+
+    Candidates run most specific first, because the general ones over-match. In ``helpsteer2/`` a
+    ``train`` split wants ``helpsteer2/train*.parquet``; ``helpsteer2/*.parquet`` would swallow the
+    validation shards too, and only the ordering distinguishes them. The ``data/train/0000.parquet``
+    layout is the other way round — no filename starts with "train", so the name-anchored candidates
+    are skipped and the directory-wide one is exactly right.
+
+    Every candidate is matched back against *every* file the source listed, not just this split's or
+    even just this partition's, and the first that reproduces the split exactly wins. Nothing is
+    emitted on a near miss. A glob is an instruction to go read files, so an approximate one is not
+    a smaller version of the right answer -- it quietly pulls a README, or another split's shards,
+    into a training set. None says "these files are not expressible as one pattern", which is a
+    thing a consumer can handle; a wrong pattern is not.
+    """
+    paths = [entry.path for entry in entries]
+    directories = {PurePosixPath(path).parent.as_posix() for path in paths}
+    if len(directories) != 1:
+        # Shards spread across subdirectories. Covering them needs `**`, whose meaning is not shared
+        # across glob implementations, so this reports no pattern rather than an ambiguous one.
+        return None
+    directory = directories.pop()
+    prefix = "" if directory == "." else f"{directory}/"
+    names = [PurePosixPath(path).name for path in paths]
+    suffixes = {PurePosixPath(path).suffix for path in paths}
+    # A partition may hold more than one format; only a single shared suffix can go in the pattern.
+    suffix = suffixes.pop() if len(suffixes) == 1 else None
+
+    # Stems to anchor on: the bare split name first, then the same name keeping the separator that
+    # follows it. Plain `train*` is what a person would write and is tried first for that reason;
+    # the separator variants exist only for the sibling collision, where `train` sits beside
+    # `train_prefs` in one directory and `train*` swallows both. Verification is what demotes the
+    # simple form there, so the narrower `train-*` is reached only when it is actually needed. Each
+    # stem is offered only when every filename in the split carries it, so one can never exclude a
+    # file it ought to match.
+    stems = [split_name] + [f"{split_name}{sep}" for sep in ("-", ".", "_")] if split_name else []
+    candidates: list[str] = []
+    for stem in stems:
+        if not all(name.startswith(stem) for name in names):
+            continue
+        if suffix:
+            candidates.append(f"{prefix}{stem}*{suffix}")
+        candidates.append(f"{prefix}{stem}*")
+    if suffix:
+        candidates.append(f"{prefix}*{suffix}")
+    candidates.append(f"{prefix}*")
+
+    target = set(paths)
+    for candidate in candidates:
+        if {path for path in all_paths if _glob_matches(candidate, path)} == target:
+            return candidate
+    return None
+
+
 def resolve_splits(entries: list[FileEntry]) -> list[ResolvedSplit]:
     """Group files into splits by path inference.
 

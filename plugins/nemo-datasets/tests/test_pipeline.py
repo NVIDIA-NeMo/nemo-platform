@@ -5,13 +5,15 @@
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.pipeline import _measure, profile
-from nemo_datasets_plugin.profiler.splits import resolve_splits
+from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 
 FIXED_TIME = datetime(2026, 7, 13, 12, 0, 0, tzinfo=timezone.utc)
@@ -61,6 +63,99 @@ def test_resolve_splits_falls_back_to_single_default():
     assert splits[0].name == "default"
     assert splits[0].canonical is None
     assert len(splits[0].entries) == 2
+
+
+# --- data_files glob inference --------------------------------------------------------------------
+
+
+def _globs(*paths):
+    """Infer a glob per split over ``paths``, verifying against the full listing (README included)."""
+    data = [e for e in _entries(*paths) if e.path.endswith((".parquet", ".jsonl"))]
+    return {s.name: infer_data_files(s.name, s.entries, list(paths)) for s in resolve_splits(data)}
+
+
+@pytest.mark.parametrize(
+    "label,paths,expected",
+    [
+        (
+            "shards in one directory",
+            (
+                "data/train-00000-of-00002.parquet",
+                "data/train-00001-of-00002.parquet",
+                "data/test-00000-of-00001.parquet",
+            ),
+            {"train": "data/train*.parquet", "test": "data/test*.parquet"},
+        ),
+        (
+            "a directory per split",
+            ("default/train/0000.parquet", "default/train/0001.parquet", "default/test/0000.parquet"),
+            {"train": "default/train/*.parquet", "test": "default/test/*.parquet"},
+        ),
+        (
+            "files at the fileset root",
+            ("train.jsonl", "validation.jsonl"),
+            {"train": "train*.jsonl", "validation": "validation*.jsonl"},
+        ),
+        (
+            "no split detected: the glob covers the partition",
+            ("shard-00000.parquet", "shard-00001.parquet"),
+            {"default": "*.parquet"},
+        ),
+        (
+            "mixed formats drop the suffix rather than losing a file",
+            ("train-00000-of-00002.parquet", "train-00001-of-00002.jsonl"),
+            {"train": "train*"},
+        ),
+    ],
+)
+def test_data_files_glob_per_layout(label, paths, expected):
+    assert _globs(*paths) == expected, label
+
+
+def test_data_files_glob_excludes_a_readme_beside_the_shards():
+    # `data/*` would sweep the card into the split. The suffix-qualified candidate is what survives
+    # verification, and verification runs against every listed file, not just the data ones.
+    assert _globs("data/train-00000-of-00001.parquet", "data/README.md") == {"train": "data/train*.parquet"}
+
+
+def test_data_files_glob_keeps_a_separator_to_beat_a_sibling_split():
+    # `train*` would also match train_prefs, so the simple form loses verification and the narrower
+    # `train-*` is reached. Both splits still get a pattern; neither over-matches the other.
+    assert _globs(
+        "train-00000-of-00002.parquet", "train-00001-of-00002.parquet", "train_prefs-00000-of-00001.parquet"
+    ) == {"train": "train-*.parquet", "train_prefs": "train_prefs*.parquet"}
+
+
+def test_data_files_glob_refuses_rather_than_sweep_in_a_non_data_file():
+    # Mixed suffixes leave no suffix to qualify with, and an unsplit-named set leaves no stem to
+    # anchor on, so the only candidate left is `data/*` -- which would hand a reader the README as
+    # if it were a shard. Verification is the whole of what stops that, and None is the answer.
+    assert _globs("data/shard-00000.parquet", "data/shard-00001.jsonl", "data/README.md") == {"default": None}
+
+
+def test_data_files_glob_is_none_when_shards_span_subdirectories():
+    # Expressing this needs `**`, whose meaning differs between glob implementations. None is the
+    # honest answer; a pattern that selects a different set in the reader than here would not be.
+    assert _globs("train/part-a/0000.parquet", "train/part-b/0000.parquet") == {"train": None}
+
+
+def test_data_files_glob_means_the_same_thing_to_pythons_own_glob(tmp_path):
+    """The dialect claim, checked against an independent implementation rather than our matcher.
+
+    A pattern is only worth emitting if a consumer resolves it to the files we said it selects.
+    """
+    for rel in (
+        "data/train-00000-of-00002.parquet",
+        "data/train-00001-of-00002.parquet",
+        "data/test-00000-of-00001.parquet",
+    ):
+        _write_parquet(tmp_path / rel, [{"a": 1}])
+    (tmp_path / "data" / "README.md").write_text("card")
+
+    for split in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0].splits:
+        resolved = sorted(p.relative_to(tmp_path).as_posix() for p in Path(tmp_path).glob(split.data_files))
+        assert len(resolved) == split.num_files, f"{split.name}: {split.data_files} -> {resolved}"
+        assert all(name.startswith(f"data/{split.name}") for name in resolved)
 
 
 # --- partition grouping --------------------------------------------------------------------------

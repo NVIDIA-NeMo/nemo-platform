@@ -42,8 +42,10 @@ partitions:
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 3200861, num_files: 32, size_bytes: 31819412254}
-      - {name: test, canonical: test, num_examples: 200, num_files: 1, size_bytes: 2077928}
+      - {name: train, canonical: train, num_examples: 3200861, num_files: 32,
+         size_bytes: 31819412254, data_files: 'train*.parquet'}
+      - {name: test, canonical: test, num_examples: 200, num_files: 1,
+         size_bytes: 2077928, data_files: 'test*.parquet'}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -81,8 +83,10 @@ partitions:
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 43835, num_files: 1, size_bytes: 25670988}
-      - {name: test, canonical: test, num_examples: 2354, num_files: 1, size_bytes: 1384207}
+      - {name: train, canonical: train, num_examples: 43835, num_files: 1,
+         size_bytes: 25670988, data_files: 'train*.parquet'}
+      - {name: test, canonical: test, num_examples: 2354, num_files: 1,
+         size_bytes: 1384207, data_files: 'test*.parquet'}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -120,8 +124,10 @@ partitions:
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 20324, num_files: 1, size_bytes: 18495985}
-      - {name: validation, canonical: validation, num_examples: 1038, num_files: 1, size_bytes: 963692}
+      - {name: train, canonical: train, num_examples: 20324, num_files: 1,
+         size_bytes: 18495985, data_files: 'train*.parquet'}
+      - {name: validation, canonical: validation, num_examples: 1038, num_files: 1,
+         size_bytes: 963692, data_files: 'validation*.parquet'}
     features:
       - {name: prompt,      dtype: string, semantic_role: prompt, semantic_role_source: detected}
       - {name: response,    dtype: string, semantic_role: completion, semantic_role_source: detected}
@@ -259,6 +265,25 @@ def test_split_sizes_account_for_the_whole_fileset(name):
     assert not profile.file_errors
     from_splits = sum(split.size_bytes for part in profile.partitions for split in part.splits)
     assert from_splits == profile.sampling.bytes_present
+
+
+@pytest.mark.parametrize("name", sorted(FIXTURES))
+def test_split_globs_are_one_pattern_each_and_never_cross_a_directory(name):
+    """`data_files` is a single pattern, not a manifest, so it cannot reintroduce the per-file growth
+    the split-level counts exist to avoid. `**` is never emitted, because its meaning is not shared
+    across glob implementations."""
+    profile = DatasetProfile.model_validate(yaml.safe_load(FIXTURES[name]))
+    for part in profile.partitions:
+        for split in part.splits:
+            assert isinstance(split.data_files, str)
+            assert "**" not in split.data_files
+
+
+def test_a_split_with_no_expressible_pattern_says_so():
+    """None is a first-class answer: shards spread across subdirectories need `**` to cover, and a
+    pattern that resolves differently in the reader than in the profiler is worse than none."""
+    split = SplitProfile(name="train", num_files=2)
+    assert split.data_files is None
 
 
 def test_a_split_weighs_something_even_when_its_row_count_does_not():
