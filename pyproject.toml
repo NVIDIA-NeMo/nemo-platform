@@ -214,6 +214,11 @@ core-services = [
 # Includes core services plus all application services
 functional-services = [
   { include-group = "core-services" },
+  # Ship the openshell deployment SDK in the nmp-api image only. The extra carries
+  # platform-restricted wheels (manylinux_2_39 / macOS 13 arm64) and is deliberately
+  # kept out of `enabled-plugins` so bare `uv sync` on unsupported hosts (older glibc,
+  # older macOS) does not hard-fail. The api image runs on a compatible base.
+  "nemo-deployments-plugin[openshell]",
   "nmp-studio",
   "nmp-guardrails",
   "nemo-data-designer-plugin",
