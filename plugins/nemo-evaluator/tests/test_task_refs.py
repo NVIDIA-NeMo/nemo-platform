@@ -18,7 +18,7 @@ from nemo_evaluator.api.schemas import (
 )
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity, TasksetEntity, TasksetRevisionEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
-from nemo_evaluator.revisions import apply_tag, head_digest, is_digest, publish_revision
+from nemo_evaluator.revisions import apply_tag, get_revision, head_digest, is_digest, publish_revision
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks, resolve_taskset_ref
 from nemo_platform_plugin.entities import EntityBase
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
@@ -56,6 +56,11 @@ async def _pin_members(client, taskset: TasksetEntity) -> list[TaskRef]:
     anything less. Doing the resolution here keeps the fixtures readable without letting them
     describe a taskset the service could not have produced. A ref the test already pinned by hand is
     left alone — that is the case under test.
+
+    Non-digest fragments go through ``get_revision`` rather than ``head_digest``, matching what
+    ``resolve_revision`` does on the write path. The two agree for a bare ref, whose fragment is
+    ``latest`` — but a member named ``task#blessed`` must pin the revision that tag points at, which
+    is not the head once the tag has been left behind.
     """
     pinned: list[TaskRef] = []
     for ref in taskset.tasks:
@@ -65,7 +70,7 @@ async def _pin_members(client, taskset: TasksetEntity) -> list[TaskRef]:
             continue
         try:
             task = await client.get(TaskEntity, name=member_name, workspace=member_workspace)
-            digest = head_digest(task)
+            digest = (await get_revision(client, TaskRevisionEntity, task, fragment)).content_hash
         except NemoEntityNotFoundError:
             digest = _ABSENT_MEMBER_DIGEST
         pinned.append(TaskRef(f"{member_workspace}/{member_name}#{digest}"))
@@ -193,6 +198,37 @@ async def test_expansion_uses_the_pinned_revision_not_current_content(entity_sto
     tasks = await resolve_taskset_ref(TasksetRef("default/geo"), workspace="default", entity_client=client)
 
     assert tasks[0].intent == "Do capital-of-france.", "expansion must return the pinned content"
+
+
+async def test_a_tag_pinned_member_stores_the_tagged_revision_not_the_head(entity_store) -> None:
+    """A member named ``task#blessed`` resolves through the tag at write time, like any other pin.
+
+    Resolution happens once, on write: the stored ref carries the digest the tag pointed at then, so
+    moving the tag afterwards cannot re-point published membership. Pinning to the *head* instead
+    would look right whenever the tag happens to name the newest revision and be wrong exactly when
+    it does not.
+    """
+    task = _task("capital-of-france")
+    client = await _store(entity_store, task)
+    blessed_digest = head_digest(task)
+
+    # 'blessed' stays on revision 1 while the task moves on to revision 2. Work from the head
+    # ``apply_tag`` hands back — tagging bumps the record's version, so the original object is stale.
+    stored_task = await client.get(TaskEntity, name="capital-of-france", workspace="default")
+    tagged = await apply_tag(client, client, TaskRevisionEntity, stored_task, "blessed", "latest")
+    tagged.intent = "Something else entirely."
+    await client.update(tagged)
+    await publish_revision(client, client, tagged, TaskRevisionEntity)
+
+    await _create_published(client, _taskset("geo", ["default/capital-of-france#blessed"]))
+
+    stored_taskset = await client.get(TasksetEntity, name="geo", workspace="default")
+    assert stored_taskset.tasks[0].root == f"default/capital-of-france#{blessed_digest}", (
+        "membership must pin the revision the tag named, not the head"
+    )
+
+    tasks = await resolve_taskset_ref(TasksetRef("default/geo"), workspace="default", entity_client=client)
+    assert tasks[0].intent == "Do capital-of-france."
 
 
 async def _republish_with(client, taskset: TasksetEntity, task_refs: list[str]) -> None:

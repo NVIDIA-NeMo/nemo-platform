@@ -235,9 +235,14 @@ class TasksetRef(RootModel[str]):
     of an inline task list; the taskset's member tasks are loaded and expanded during spec resolution.
 
     An optional ``#`` fragment pins the taskset revision to expand — a tag or a full content digest,
-    with an absent fragment meaning ``latest``. Membership is digest-pinned within a revision, so a
-    bare ref already grades identical task *content* across re-runs; pinning the taskset as well is
-    what fixes the *membership* too, across a ``replace`` that adds or drops a member.
+    with an absent fragment meaning ``latest``.
+
+    What each form guarantees, precisely. A taskset revision pins its members by digest, so a member
+    task publishing new content never changes what *any* ref expands to. A **bare** ref still tracks
+    the taskset's own revisions, and republishing the taskset re-resolves its members on write — so a
+    ``replace`` can change both which members are named and the content they resolve to, even if the
+    submitted member names were identical. A **pinned** ref is fixed against that too, and is what an
+    evaluation needs to stay comparable across a ``replace``.
     """
 
     root: str = Field(

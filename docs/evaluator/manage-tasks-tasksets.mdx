@@ -325,34 +325,37 @@ The inline form remains available for one-off tasks — swap `tasks=TasksetRef(.
 
 ### Pin the taskset itself
 
-A bare `TasksetRef` expands the taskset's current revision, so it follows the suite forward as
-members are added or removed. Add a `#<tag-or-digest>` fragment to pin the grouping too:
+A bare `TasksetRef` expands the taskset's current revision, so it follows the suite forward every
+time the taskset is republished. Add a `#<tag-or-digest>` fragment to pin the grouping too:
 
 ```python
 # The digest lives on the revision, not on the taskset record — revisions come back newest first.
 current = tasksets.list_revisions("geography-suite").data[0]
 
-# Follows the suite forward — new members are picked up on the next run.
+# Follows the suite forward — the next `replace` is picked up on the next run.
 tracking = TasksetRef("default/geography-suite")
 
-# Frozen: this exact membership, regardless of later `replace` calls.
+# Frozen: this exact membership and content, regardless of later `replace` calls.
 pinned = TasksetRef(f"default/geography-suite#{current.content_hash}")
 
 # A tag works the same way, and can be moved deliberately when you bless a new suite.
 blessed = TasksetRef("default/geography-suite#blessed")
 ```
 
-The two pins compose, and they cover different things:
+What each form is stable against:
 
-| | Member content | Which members |
+| | A member task republishes | The taskset is replaced |
 |---|---|---|
-| `TasksetRef("suite")` | pinned | current revision |
-| `TasksetRef("suite#<digest>")` | pinned | pinned |
+| `TasksetRef("suite")` | unaffected | follows the new revision |
+| `TasksetRef("suite#<digest>")` | unaffected | unaffected |
 
-Member content is digest-pinned inside every revision, so even a bare ref grades the same task
-content across re-runs. Pinning the taskset is what additionally holds *membership* still across a
-`replace` that adds or drops a task — which is what you want when a benchmark number has to stay
-comparable.
+Every taskset revision pins its members by digest, so **neither** form is disturbed when a member
+task publishes new content on its own — that is the guarantee stored membership buys you.
+
+The two differ on `replace`. A bare ref tracks the taskset's own revisions, and members are
+re-resolved on every write — so a `replace` can change *both* which tasks are named *and* the
+content they resolve to, even when the submitted member names were identical. Pin the taskset when a
+benchmark number has to stay comparable across that.
 
 A fragment that no longer resolves fails the evaluation rather than falling back to the current
 revision.

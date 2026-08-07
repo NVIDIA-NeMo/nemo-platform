@@ -93,9 +93,10 @@ async def resolve_taskset_ref(
             "or pass an inline task list instead."
         ) from exc
 
-    # Expand the *pinned* taskset revision. Membership is digest-pinned within a revision, so a bare
-    # ref already grades identical task content — but a ``replace`` that adds or drops a member
-    # changes the head, and only pinning the taskset itself holds membership steady across that.
+    # Expand the taskset revision the ref names. Members are digest-pinned inside a revision, so a
+    # member republishing on its own never moves this. A bare ref still follows the taskset's own
+    # revisions, and a ``replace`` re-resolves members on write — so it can change both which members
+    # are named and what they resolve to. Only a pinned ref holds both steady.
     try:
         taskset_revision = await get_revision(taskset_revision_store, TasksetRevisionEntity, taskset, taskset_fragment)
     except RevisionNotFoundError as exc:
