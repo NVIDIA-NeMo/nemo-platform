@@ -95,6 +95,31 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 `make clean` removes the venv; `make clean-python` is the venv-only variant.
 
+### Node.js and pnpm
+
+`mise.toml` pins the Node.js and pnpm versions that satisfy `web/package.json` engines, and `make bootstrap-studio` installs mise on first run and invokes both through `mise exec --`. Nothing is written to your shell rc.
+
+That covers the `make` targets only. To run `pnpm` directly in `web/` — the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then either prefix commands:
+
+```bash
+mise exec -- pnpm dev
+```
+
+or activate mise once so every shell picks up the pinned versions:
+
+```bash
+eval "$(mise activate bash)"   # ~/.bashrc
+eval "$(mise activate zsh)"    # ~/.zshrc
+```
+
+Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`. To bootstrap against your own toolchain instead of mise, use `make bootstrap-studio NMP_SKIP_MISE=1`.
+
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 
 ### Default model selection (under `--auto`)

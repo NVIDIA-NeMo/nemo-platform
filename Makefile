@@ -67,8 +67,8 @@ stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SD
 	SDK_RELEASE_TIER=ga ./sdk/stainless.sh sync
 
 .PHONY: update-web-sdk
-update-web-sdk: ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
-	cd web && pnpm gen
+update-web-sdk: verify-mise ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
+	cd web && $(MISE_EXEC) pnpm gen
 
 .PHONY: update-sdk
 update-sdk: build-policy refresh-openapi stainless update-web-sdk update-cli ## Update the SDK by regenerating the OpenAPI spec and syncing it with Stainless
@@ -195,18 +195,55 @@ bootstrap-python: ## Bootstrap Python dependencies.
 		$(BOOTSTRAP_ACTIVATION_REMINDER); \
 	fi
 
+# Set NMP_SKIP_MISE=1 to bootstrap against the node/pnpm already on PATH
+# instead of the mise-managed ones (offline installs, nix shells, distro
+# toolchains). web/package.json engines are still enforced either way.
+NMP_SKIP_MISE ?=
+MISE_VERSION ?= v2026.5.7
+MISE := $(shell command -v mise 2>/dev/null || echo $(HOME)/.local/bin/mise)
+MISE_EXEC := $(if $(NMP_SKIP_MISE),,"$(MISE)" exec --)
+
+.PHONY: verify-mise
+verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
+	@if [ -n "$(NMP_SKIP_MISE)" ]; then \
+		echo "NMP_SKIP_MISE set, using node/pnpm from PATH"; \
+		exit 0; \
+	fi; \
+	if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
+		curl -fsSL https://mise.run | MISE_VERSION=$(MISE_VERSION) sh; \
+	fi; \
+	if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
+		echo "mise not on PATH. Add $$HOME/.local/bin to PATH and re-run,"; \
+		echo "or re-run with NMP_SKIP_MISE=1 to use your own node/pnpm."; \
+		exit 1; \
+	fi; \
+	"$(MISE)" install --yes
+
+.PHONY: verify-pnpm
+verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
+	@$(MISE_EXEC) pnpm --version || { \
+		echo "pnpm not found."; \
+		if [ -n "$(NMP_SKIP_MISE)" ]; then \
+			echo "NMP_SKIP_MISE is set, so pnpm has to come from your PATH."; \
+			echo "Install pnpm, or re-run without NMP_SKIP_MISE to use the mise-managed one."; \
+		else \
+			echo "Run 'make verify-mise' to install the pinned toolchain."; \
+		fi; \
+		exit 1; \
+	}
+
 .PHONY: verify-node-version
-verify-node-version: ## Verify pnpm and Node.js satisfy Studio's package engine
+verify-node-version: verify-pnpm ## Verify pnpm and Node.js satisfy Studio's package engine
 	@echo "~~~~~~"
 	@echo "verifying Node.js version from web/package.json engines"
-	@script/verify-node-version.sh
+	@$(MISE_EXEC) script/verify-node-version.sh
 
 .PHONY: bootstrap-studio
 bootstrap-studio: verify-node-version ## Install web dependencies and build Studio assets for FastAPI
 	@echo "~~~~~~"
 	@echo "installing Studio web dependencies and building FastAPI assets"
-	cd web && CI=true pnpm install --frozen-lockfile
-	cd web && pnpm --filter nemo-studio-ui build:fastapi
+	cd web && CI=true $(MISE_EXEC) pnpm install --frozen-lockfile
+	cd web && $(MISE_EXEC) pnpm --filter nemo-studio-ui build:fastapi
 
 .PHONY: bootstrap-plugins
 bootstrap-plugins: .venv ## Install editable plugin packages not covered by the root uv workspace
@@ -232,8 +269,7 @@ bootstrap: bootstrap-python ## Bootstrap the local dev environment, including St
 		echo ""; \
 		echo "warning: optional Studio asset bootstrap did not complete."; \
 		echo "Studio will be unavailable at http://localhost:8080/studio/ until assets are built."; \
-		echo "Install Node.js matching web/package.json with pnpm, then rerun:"; \
-		echo "  pnpm env use --global 22.23.2"; \
+		echo "Check the output above, then rerun:"; \
 		echo "  make bootstrap-studio"; \
 	fi
 	@echo "bootstrap completed"

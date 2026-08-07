@@ -13,7 +13,7 @@ import asyncio
 import json
 import traceback
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -353,3 +353,69 @@ async def test_persist_result_preserves_generated_optimization_report(tmp_path: 
     await backend.persist_result(workspace="w", result=result)
 
     assert report_path.read_text() == "# Full optimization report\n\nInsight Suite Metrics"
+
+
+# ---------------------------------------------------------------------------
+# ATIF upload
+# ---------------------------------------------------------------------------
+
+
+class _RecordingClient:
+    """Captures posts so the payload and URL can be asserted directly."""
+
+    def __init__(self) -> None:
+        self.posts: list[dict] = []
+
+    async def post(self, url, *, cast_to, body=None, content=None, options=None):
+        self.posts.append({"url": url, "body": body, "content": content, "options": options})
+        return {}
+
+
+def _atif_ref(tmp_path, session_id="sess-1"):
+    from nemo_experimentalist_plugin.entities import ResourceRef
+
+    path = tmp_path / f"trajectory-{session_id}.atif.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "ATIF-v1.7",
+                "session_id": session_id,
+                "agent": {"name": "Codeact", "version": "0.0.0"},
+                "steps": [{"step_id": 1, "source": "user", "message": "hi"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return ResourceRef(uri=f"file://{path}", description="", metadata={"trace_format": "atif"})
+
+
+async def test_upload_trace_atif_posts_to_the_atif_ingest_endpoint(tmp_path):
+    from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_atif
+
+    client = _RecordingClient()
+    await _upload_trace_atif(
+        cast(Any, client),
+        "ws-1",
+        _atif_ref(tmp_path),
+        experiment_id="exp-1",
+        task_id="case-a",
+        extra_attrs={"gen_ai.request.model": "gpt-5-mini"},
+    )
+
+    assert len(client.posts) == 1
+    post = client.posts[0]
+    assert post["url"] == "/apis/intake/v2/workspaces/ws-1/ingest/atif"
+    assert post["body"]["evaluation_context"] == {
+        "evaluation_id": "exp-1",
+        "test_case_id": "case-a",
+    }
+    assert post["body"]["agent"]["model_name"] == "gpt-5-mini"
+
+
+async def test_upload_trace_atif_sends_json_not_protobuf(tmp_path):
+    from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_atif
+
+    client = _RecordingClient()
+    await _upload_trace_atif(cast(Any, client), "ws-1", _atif_ref(tmp_path), experiment_id="exp-1", task_id="case-a")
+    assert client.posts[0]["content"] is None
+    assert client.posts[0]["body"] is not None
