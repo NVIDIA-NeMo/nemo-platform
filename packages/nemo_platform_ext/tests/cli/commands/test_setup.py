@@ -391,7 +391,7 @@ class TestCreateProvider:
         return client
 
     def test_anthropic_provider_kwargs(self):
-        """auth_header_format must be mapped to required_extra_headers, not passed raw."""
+        """Provider creation keeps auth templating in the dedicated field."""
         client = self._make_client()
         _create_provider(
             client,
@@ -403,12 +403,13 @@ class TestCreateProvider:
             default_extra_headers={"anthropic-version": "2023-06-01"},
         )
         call_kwargs = client.inference.providers.create.call_args.kwargs
-        assert "auth_header_format" not in call_kwargs
-        assert call_kwargs["required_extra_headers"]["X-Api-Key"] == "{{ auth_secret }}"
+        assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
+        assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
+        assert "required_extra_headers" not in call_kwargs
         assert call_kwargs["default_extra_headers"] == {"anthropic-version": "2023-06-01"}
 
-    def test_no_auth_header_format_skips_required_extra_headers(self):
-        """When auth_header_format is None, required_extra_headers should not be added."""
+    def test_no_auth_header_format_skips_auth_fields(self):
+        """Providers using default Bearer auth do not send auth overrides."""
         client = self._make_client()
         _create_provider(
             client,
@@ -526,15 +527,18 @@ class TestAutoSetup:
         assert create_kwargs.kwargs["name"] == "anthropic"
 
     def test_anthropic_auto_setup_maps_auth_header(self):
-        """Auto-setup with ANTHROPIC_API_KEY must map auth_header_format to required_extra_headers."""
+        """Auto-setup persists the Anthropic auth template without exposing the key."""
         client = _make_mock_client()
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=True):
+        api_key = "sk-ant-test"
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": api_key}, clear=True):
             result = _auto_setup(client, "default")
         assert result is True
         call_kwargs = client.inference.providers.create.call_args.kwargs
         assert call_kwargs["name"] == "anthropic"
-        assert "auth_header_format" not in call_kwargs
-        assert "X-Api-Key" in call_kwargs["required_extra_headers"]
+        assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
+        assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
+        assert "required_extra_headers" not in call_kwargs
+        assert api_key not in str(call_kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -1690,20 +1694,37 @@ class TestProviderIdempotency:
         client.inference.providers.update.assert_not_called()
 
     def test_existing_provider_updated_with_extra_headers(self):
-        """Provider update passes through default_extra_headers (auth_header_format is create-only)."""
+        """Provider update repairs Anthropic auth without exposing the API key."""
         client = _make_mock_client(secret_exists=False, provider_exists=True)
+        api_key = "sk-ant-test"
         _register_provider_interactive(
             client,
             provider_name="anthropic",
             host_url="https://api.anthropic.com",
-            api_key="sk-ant-test",
+            api_key=api_key,
             workspace="default",
             auth_header_format="X-Api-Key: {{ auth_secret }}",
             default_extra_headers={"anthropic-version": "2023-06-01"},
         )
         call_kwargs = client.inference.providers.update.call_args.kwargs
-        assert "auth_header_format" not in call_kwargs
+        assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
+        assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
+        assert call_kwargs["required_extra_headers"] is None
+        assert api_key not in str(call_kwargs)
         assert call_kwargs["default_extra_headers"] == {"anthropic-version": "2023-06-01"}
+
+    def test_auto_setup_updates_existing_anthropic_auth(self):
+        """Auto setup repairs an existing Anthropic provider's auth template."""
+        client = _make_mock_client(provider_exists=True, secret_exists=True)
+        api_key = "sk-ant-updated"
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": api_key}, clear=True):
+            result = _auto_setup(client, "default")
+        assert result is True
+        call_kwargs = client.inference.providers.update.call_args.kwargs
+        assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
+        assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
+        assert call_kwargs["required_extra_headers"] is None
+        assert api_key not in str(call_kwargs)
 
     # -- auto path --
 
