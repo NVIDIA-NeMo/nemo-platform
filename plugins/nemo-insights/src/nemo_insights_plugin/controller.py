@@ -125,6 +125,16 @@ class InsightsAnalysisController(NemoController):
     async def _reconcile_config(self, config: AnalysisConfig) -> None:
         if not config.enabled:
             return
+        if not config.default_model:
+            logger.error(
+                "Analysis config for agent '%s' in workspace '%s' has no model selection; "
+                "run `nemo insights analysis enable --agent %s --workspace %s` again",
+                config.agent,
+                config.workspace,
+                config.agent,
+                config.workspace,
+            )
+            return
         if await self._has_active_job(config):
             return
         status = await self._get_run_status(config)
@@ -232,7 +242,8 @@ class InsightsAnalysisController(NemoController):
             agent=config.agent,
             base_url=self.insights_config.analyst.base_url,
             since=status.last_successful_run_at if status is not None else None,
-            inference_api_key_secret_name=(self.insights_config.analyst.inference_api_key_secret_name),
+            default_model=config.default_model,
+            fast_model=config.fast_model or config.default_model,
         )
         job_name = _job_name(config, submitted_at)
         platform_spec = await self._compile_job_spec(

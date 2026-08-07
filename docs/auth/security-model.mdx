@@ -4,7 +4,7 @@ description: ""
 ---
 This page describes the security architecture of NeMo Platform authentication and authorization — how requests are authenticated, how access decisions are made, and where trust boundaries lie. It is intended for platform operators and security reviewers evaluating NeMo Platform for production deployment.
 
-For hands-on setup, see [Auth Configuration](/documentation/access-control/deployment/configuration). For the authorization model, see [Concepts](/documentation/access-control/concepts).
+For hands-on setup, see [Auth Configuration](/documentation/access-control/deployment). For the authorization model, see [Concepts](/documentation/access-control/concepts).
 
 ## Architecture Overview
 
@@ -39,7 +39,7 @@ The request flow:
 
 <Note>
 
-In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](/documentation/access-control/overview).
+In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](/documentation/access-control).
 
 </Note>
 ## Authentication Modes
@@ -170,6 +170,6 @@ The following are explicitly out of scope for the current implementation:
 ## Related
 
 - [Authorization Concepts](/documentation/access-control/concepts) — Workspaces, roles, bindings, and the RBAC model.
-- [Auth Configuration](/documentation/access-control/deployment/configuration) — Enabling auth, PDP provider, OIDC settings.
+- [Auth Configuration](/documentation/access-control/deployment) — Enabling auth, PDP provider, OIDC settings.
 - [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Gateway-level auth and header configuration.
 - [Production Hardening](/documentation/access-control/deployment/production-hardening) — Security checklist for production deployments.

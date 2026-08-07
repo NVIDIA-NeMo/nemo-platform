@@ -14,6 +14,7 @@ from nemo_insights_plugin.entities import (
 from nemo_insights_plugin.schema import (
     AnalysisConfigPage,
     AnalysisRunStatusPage,
+    EnableAnalysisConfigRequest,
     UpdateAnalysisConfigRequest,
     UpdateAnalysisRunStatusRequest,
 )
@@ -47,6 +48,11 @@ def _build_update_body(
 ) -> dict[str, Any]:
     body = UpdateAnalysisConfigRequest(enabled=enabled)
     return body.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+
+
+def _build_enable_body(*, default_model: str, fast_model: str) -> dict[str, Any]:
+    body = EnableAnalysisConfigRequest(default_model=default_model, fast_model=fast_model)
+    return body.model_dump(mode="json")
 
 
 def _build_status_update_body(
@@ -87,9 +93,10 @@ class _AnalysisConfigResource:
     def __init__(self, parent: _ResourceParent) -> None:
         self._parent = parent
 
-    def enable(self, *, workspace: str, agent: str) -> AnalysisConfig:
+    def enable(self, *, workspace: str, agent: str, default_model: str, fast_model: str) -> AnalysisConfig:
         response = self._parent._http_client.post(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/enable")
+            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/enable"),
+            json=_build_enable_body(default_model=default_model, fast_model=fast_model),
         )
         response.raise_for_status()
         return entity_from_response(AnalysisConfig, response.json())
@@ -145,9 +152,10 @@ class _AsyncAnalysisConfigResource:
     def __init__(self, parent: _ResourceParent) -> None:
         self._parent = parent
 
-    async def enable(self, *, workspace: str, agent: str) -> AnalysisConfig:
+    async def enable(self, *, workspace: str, agent: str, default_model: str, fast_model: str) -> AnalysisConfig:
         response = await self._parent._http_client.post(
-            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/enable")
+            self._parent._url(f"/v2/workspaces/{workspace}/analysis-configs/{agent}/enable"),
+            json=_build_enable_body(default_model=default_model, fast_model=fast_model),
         )
         response.raise_for_status()
         return entity_from_response(AnalysisConfig, response.json())

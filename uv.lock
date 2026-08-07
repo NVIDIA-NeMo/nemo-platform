@@ -80,9 +80,10 @@ constraints = [
     { name = "black", specifier = ">=26.3.1" },
     { name = "bleach", specifier = ">=6.4.0" },
     { name = "cryptography", specifier = ">=50.0.0,<51" },
+    { name = "datamodel-code-generator", specifier = ">=0.71.0" },
     { name = "diffusers", specifier = ">=0.38.0" },
     { name = "filelock", specifier = ">=3.20.3" },
-    { name = "gitpython", specifier = ">=3.1.49" },
+    { name = "gitpython", specifier = ">=3.1.57" },
     { name = "joserfc", specifier = ">=1.7.2" },
     { name = "json-repair", specifier = ">=0.60.1" },
     { name = "jupyter-server", specifier = ">=2.20.0" },
@@ -103,7 +104,7 @@ constraints = [
     { name = "nltk", specifier = ">=3.10.0" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "postcss", specifier = ">=8.5.10" },
-    { name = "pyasn1", specifier = ">=0.6.3" },
+    { name = "pyasn1", specifier = ">=0.6.4" },
     { name = "pydantic-monty", specifier = "==0.0.18" },
     { name = "pygments", specifier = ">=2.20.0" },
     { name = "python-multipart", specifier = ">=0.0.27" },
@@ -112,7 +113,7 @@ constraints = [
     { name = "sqlfluff", specifier = ">=4.2.2" },
     { name = "starlette", specifier = ">=1.3.1" },
     { name = "urllib3", specifier = ">=2.7.0" },
-    { name = "uv", specifier = ">=0.9.14,<0.10.0" },
+    { name = "uv", specifier = ">=0.9.14" },
 ]
 overrides = [
     { name = "aiodns", specifier = "==3.5.0" },
@@ -133,7 +134,7 @@ overrides = [
     { name = "jsonpath-ng", specifier = ">=1.6.1" },
     { name = "litellm", specifier = ">=1.83.10" },
     { name = "openai", specifier = ">=2.26.0" },
-    { name = "pyasn1", specifier = ">=0.6.3" },
+    { name = "pyasn1", specifier = ">=0.6.4" },
     { name = "pycares", specifier = "==4.11.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -3422,15 +3423,6 @@ wheels = [
 ]
 
 [[package]]
-name = "logfire-api"
-version = "4.40.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9b/5f/f4d0fb5c29d876c533daf415c0d961e1c4d0284167ed0834644a28581230/logfire_api-4.40.0.tar.gz", hash = "sha256:f4631d5ca6af95e9d4dadc4f63619ebb8f2300eecfca0ca99c84403d6ea605de", size = 90781, upload-time = "2026-08-05T11:27:00.947Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/be/ebe35d94e7d567b58d79bd7e1085fe85195ad4b8c8df8882a5a46caa4984/logfire_api-4.40.0-py3-none-any.whl", hash = "sha256:f8b7309235a942368b927f00e0a1869ff0820833f264a30e77a35f1da829c130", size = 140593, upload-time = "2026-08-05T11:26:58.395Z" },
-]
-
-[[package]]
 name = "loguru"
 version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
@@ -5855,6 +5847,7 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'all'", specifier = ">=2.9.2,<3.0.0" },
     { name = "pydantic", marker = "extra == 'all'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'all'", specifier = ">=2.10.6" },
+    { name = "pydantic", marker = "extra == 'all'", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'auth-service'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'core-service'", specifier = ">=2.0.0" },
     { name = "pydantic", marker = "extra == 'core-service'", specifier = ">=2.10.3" },
@@ -5874,10 +5867,12 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'nemo-platform-sdk'", specifier = ">=2.0.0,<3" },
     { name = "pydantic", marker = "extra == 'nmp-common'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'plugins'", specifier = ">=2.10.6" },
+    { name = "pydantic", marker = "extra == 'plugins'", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'services'", specifier = ">=2.0.0" },
     { name = "pydantic", marker = "extra == 'services'", specifier = ">=2.9.2,<3.0.0" },
     { name = "pydantic", marker = "extra == 'services'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'services'", specifier = ">=2.10.6" },
+    { name = "pydantic", marker = "extra == 'services'", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'switchyard-vendored'", specifier = ">=2.13.3,<3.0" },
     { name = "pydantic", extras = ["email"], marker = "extra == 'all'", specifier = ">=2.9.2" },
     { name = "pydantic", extras = ["email"], marker = "extra == 'nemo-safe-synthesizer-plugin'", specifier = ">=2.9.2" },
@@ -6765,7 +6760,7 @@ functional-services = [
     { name = "nemo-automodel-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-customizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-data-designer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nemo-deployments-plugin", extra = ["docker", "k8s"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-deployments-plugin", extra = ["docker", "k8s", "openshell"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-eval-author-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-experimentalist-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6989,6 +6984,7 @@ functional-services = [
     { name = "nemo-customizer-plugin", editable = "plugins/nemo-customizer" },
     { name = "nemo-data-designer-plugin", editable = "plugins/nemo-data-designer" },
     { name = "nemo-deployments-plugin", extras = ["docker", "k8s"], editable = "plugins/nemo-deployments" },
+    { name = "nemo-deployments-plugin", extras = ["openshell"], editable = "plugins/nemo-deployments" },
     { name = "nemo-eval-author-plugin", marker = "python_full_version < '3.14'", editable = "plugins/nemo-eval-author" },
     { name = "nemo-evaluator-plugin", editable = "plugins/nemo-evaluator" },
     { name = "nemo-experimentalist-plugin", marker = "python_full_version < '3.14'", editable = "plugins/nemo-experimentalist" },
@@ -7820,7 +7816,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = ">=0.20.0" },
-    { name = "datamodel-code-generator", specifier = ">=0.35.0" },
+    { name = "datamodel-code-generator", specifier = ">=0.71.0" },
     { name = "models", editable = "packages/models" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=8.3.4" },
@@ -9615,48 +9611,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/71/dba38ee2651f84f7842206adbd2233d8bbdb59fb85e9fa14232486a8c471/pydantic_extra_types-2.11.1.tar.gz", hash = "sha256:46792d2307383859e923d8fcefa82108b1a141f8a9c0198982b3832ab5ef1049", size = 172002, upload-time = "2026-03-16T08:08:03.92Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/17/c1/3226e6d7f5a4f736f38ac11a6fbb262d701889802595cdb0f53a885ac2e0/pydantic_extra_types-2.11.1-py3-none-any.whl", hash = "sha256:1722ea2bddae5628ace25f2aa685b69978ef533123e5638cfbddb999e0100ec1", size = 79526, upload-time = "2026-03-16T08:08:02.533Z" },
-]
-
-[[package]]
-name = "pydantic-graph"
-version = "1.105.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "logfire-api", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "typing-inspection", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/33/98/0361e1eb28f8d107e4e12dcd2d14eabef55f4a8ca18b1a6f185df74934c0/pydantic_graph-1.105.0.tar.gz", hash = "sha256:3f5cf97d544b900098d3cc2dbd6a8cdd79ea59dac610d7651f86c9228d33c0b9", size = 62570, upload-time = "2026-06-02T06:20:05.158Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/1b/13882fd4d70299dc2995bee20f21599cb8d453b27f44e239f82384d4ea3f/pydantic_graph-1.105.0-py3-none-any.whl", hash = "sha256:ba76d77ad21a13f2961fbda9d988f3d5a3d9ffc1817ee912e0ea59b0b5a9e825", size = 80099, upload-time = "2026-06-02T06:19:57.098Z" },
-]
-
-[[package]]
-name = "pydantic-monty"
-version = "0.0.18"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/14/5b/bb6a8bfdf13eb9808c966bdac064a40ce9ac881ec6d64dba3e055888f22b/pydantic_monty-0.0.18.tar.gz", hash = "sha256:c43794c7c4664fa1403d4841459d0e23f01b4f552283db638f5b40ced4dac6a1", size = 1197105, upload-time = "2026-05-29T08:31:41.077Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/83/8ccf04b2f9642153702c6eb22d0a0abad57014fd85879ab1f6341b5a1946/pydantic_monty-0.0.18-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:2988d3e511131680d9de60647bfe5c697b1e4e4cad474fecf1451c53314e8520", size = 8688756, upload-time = "2026-05-29T08:30:24.677Z" },
-    { url = "https://files.pythonhosted.org/packages/de/b8/c7881620a812850772ae0924863d1399cbecb3e4c8c455a9c7a9c20b06f8/pydantic_monty-0.0.18-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b5c688dc7c7b28a2f389a61217bae1d50658e28f960abe33a254328cadc8a17a", size = 8171342, upload-time = "2026-05-29T08:29:44.773Z" },
-    { url = "https://files.pythonhosted.org/packages/d3/ea/6d10ea1657e303295a75a3854f6dd6b378cbd501dcd1782844107b932acd/pydantic_monty-0.0.18-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:f469293f5a776231b9617787a5dd6c58048c6568833ee6848338be6391f15449", size = 8591152, upload-time = "2026-05-29T08:31:29.944Z" },
-    { url = "https://files.pythonhosted.org/packages/93/fb/ab85c4676ccffd0f3b7f509a4c8b396b07c7860577def2f58a22b3fe8aef/pydantic_monty-0.0.18-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:e6e0cd4991947b8a47210985836f94c14139bc3ea06253d2f38d0d752b165517", size = 9183064, upload-time = "2026-05-29T08:31:12.776Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/12/11292178b487052f9e0a1ea7b3d17e1e3bfcba598fefce8cb9ed8712021e/pydantic_monty-0.0.18-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:58b4b96863abbc0ffa5baf64779b3fbb6376cc763488b027ecaddb5052d5ff17", size = 9285440, upload-time = "2026-05-29T08:29:35.642Z" },
-    { url = "https://files.pythonhosted.org/packages/79/42/7afb8dde4414d84c042f2cc1b0870a7351cae2e4fbf3fef89b3aa683eca9/pydantic_monty-0.0.18-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c1208bd5976c1254b2705559836511c86ea3cc51d9c6f688b1e3e22984715dbc", size = 9233438, upload-time = "2026-05-29T08:31:39.177Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/46/89124cf146725e354b44685b477da6b0b5dc07a8a3af2aec309e88c55405/pydantic_monty-0.0.18-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:977168253d8f6b49bb64f128d02c4b62ee8b435fd62876268377e1f2b00cc00f", size = 8351900, upload-time = "2026-05-29T08:31:08.348Z" },
-    { url = "https://files.pythonhosted.org/packages/00/c5/dda512f5a9c68242faea368844aacefb54c2a13f9b40bee5ab48ccdc78c5/pydantic_monty-0.0.18-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:c21319a091dc1ff1fccb8647dae5bb543b3f528c556319ed15c7992dfa9b5e87", size = 8901559, upload-time = "2026-05-29T08:29:26.047Z" },
-    { url = "https://files.pythonhosted.org/packages/c6/9c/7628423f955efb669d2cc1d3a8909bf8271b543ce27036e18229ad0e51e8/pydantic_monty-0.0.18-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:d47976a18e3e3da0e86f8cf6068fc8a125930422dc10d3d3bf0b5410a9e9282e", size = 8689116, upload-time = "2026-05-29T08:29:30.906Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/9c/51f8ffa4340bc1986eb9240b0756724f5fdf3c463d6d66c8cc8450e1446d/pydantic_monty-0.0.18-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:eb84fe51e3f6e00a0cc9628e0acf5904d982c8cc85d4db42b7532d071602f703", size = 8178458, upload-time = "2026-05-29T08:30:09.015Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/ec/7eb84aeb86631571f9acffc91552217dc2b524b00db37b8d10517df467d1/pydantic_monty-0.0.18-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:a2e86f3ba67b094d498bc8b071d5e3b8b034bb9f3006216a357c5f71d49d6132", size = 8591295, upload-time = "2026-05-29T08:29:23.357Z" },
-    { url = "https://files.pythonhosted.org/packages/da/69/d5210208fa116593bd81789e2e5abb6222d38087c9c1879e18f7e7620275/pydantic_monty-0.0.18-cp313-cp313-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:eb8a412aa0336d4e0334a4e05a54b391d91fa334020bd295a280285ba17ab5ca", size = 9184647, upload-time = "2026-05-29T08:29:51.852Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/74/4d95c8f65072964c4cb798dbe87d2e1c1349607ab5905874bfa8a0b94de1/pydantic_monty-0.0.18-cp313-cp313-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:1056ce3acef60ab880314caf97775c5ea41b30f9306d0dd28cefeffd42dda366", size = 9291637, upload-time = "2026-05-29T08:31:19.966Z" },
-    { url = "https://files.pythonhosted.org/packages/d0/40/5817780313a3e089ca6f860fbdc836d3aa33790eb72c2e8fe2edc877820e/pydantic_monty-0.0.18-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9593caa45b68fd07ac67bea9974effbe2a1c5453d8a106b913596b0dff6d8471", size = 9233863, upload-time = "2026-05-29T08:31:42.838Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/55/f77565c5797502c7ba995dc23a26759cb33023590f9f2926bc4e8ab87afe/pydantic_monty-0.0.18-cp313-cp313-musllinux_1_1_aarch64.whl", hash = "sha256:e15e18ed27a17ee607ad3bcbf82f25a9ec4d496ff493ff64cdabb83ca2174cec", size = 8358264, upload-time = "2026-05-29T08:31:32.531Z" },
-    { url = "https://files.pythonhosted.org/packages/1b/1f/c700eb800868d1be4078a99cb00e23fb7e5d8760c8e83b729bba27b5bf92/pydantic_monty-0.0.18-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:96d75a418d96640ff0c7f354a78fc4470a2d0f40ba69e886c2f32756d594d9a0", size = 8906664, upload-time = "2026-05-29T08:30:04.055Z" },
 ]
 
 [[package]]

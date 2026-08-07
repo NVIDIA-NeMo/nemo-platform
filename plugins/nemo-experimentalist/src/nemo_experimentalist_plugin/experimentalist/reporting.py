@@ -17,6 +17,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TextIO
 
+from nemo_experimentalist_plugin.config import MetricTarget
+
 _RULE = "═" * 62
 _THIN = "─" * 62
 
@@ -33,11 +35,6 @@ class Verbosity(str, Enum):
     NORMAL = "normal"
 
 
-def reward_scalar(aggregate_metrics: dict[str, float | int]) -> float:
-    """Extract the scalar reward from an evaluation's aggregate metrics."""
-    return float(aggregate_metrics.get("reward", 0.0))
-
-
 class RunReporter:
     """Formats run-progress narration to a sink. Never raises into the run."""
 
@@ -49,7 +46,8 @@ class RunReporter:
     ) -> None:
         self._sink: TextIO = sink if sink is not None else sys.stderr
         self._verbosity = verbosity
-        self._baseline_val: float | None = None
+        self._baseline_metrics: dict[str, float] | None = None
+        self._objective_metrics: list[MetricTarget] = []
 
     def _emit(self, line: str) -> None:
         try:
@@ -58,7 +56,7 @@ class RunReporter:
         except Exception:  # noqa: BLE001 - narration must never break the run
             pass
 
-    def seed_baseline(self, reward: float) -> None:
+    def seed_baseline(self, metrics: dict[str, float | int]) -> None:
         """Set the validation delta reference without emitting a line.
 
         Used on resume, where agent-0 is not re-evaluated: without this, the
@@ -67,8 +65,8 @@ class RunReporter:
         baseline is already set.
         """
         try:
-            if self._baseline_val is None:
-                self._baseline_val = reward
+            if self._baseline_metrics is None:
+                self._baseline_metrics = {name: float(value) for name, value in metrics.items()}
         except Exception:  # noqa: BLE001
             pass
 
@@ -109,32 +107,65 @@ class RunReporter:
         except Exception:  # noqa: BLE001
             pass
 
-    def candidate_evaluated(self, *, label: str, split: str, reward: float, artifacts: Path) -> None:
+    def candidate_evaluated(
+        self,
+        *,
+        label: str,
+        split: str,
+        metrics: dict[str, float | int],
+        objective_metrics: list[MetricTarget],
+        artifacts: Path,
+    ) -> None:
+        """Narrate an evaluation using all configured objective metrics.
+
+        Objective directions determine whether validation deltas are displayed
+        as improvements or declines. Regression metrics are guardrails and are
+        intentionally not presented as progress dimensions.
+        """
         if self._verbosity is Verbosity.QUIET:
             return
         try:
-            delta = ""
+            self._objective_metrics = objective_metrics
+            has_baseline = self._baseline_metrics is not None
             if split == "validation":
-                if self._baseline_val is None:
-                    self._baseline_val = reward
-                else:
-                    d = reward - self._baseline_val
-                    delta = f"  {'▲' if d >= 0 else '▼'}{d:+.3f}"
-            self._emit(f"   {label} · {split:<10} · reward {reward:.3f}{delta}   → {artifacts}")
+                self.seed_baseline(metrics)
+            rendered_metrics: list[str] = []
+            for target in objective_metrics:
+                value = metrics.get(target.name)
+                if value is None:
+                    rendered_metrics.append(f"{target.name} n/a")
+                    continue
+                rendered = f"{target.name} {float(value):.3f}"
+                baseline_value = (self._baseline_metrics or {}).get(target.name)
+                if split == "validation" and has_baseline and baseline_value is not None:
+                    delta = float(value) - baseline_value
+                    improved = delta >= 0 if target.direction == "maximize" else delta <= 0
+                    rendered += f" {'▲' if improved else '▼'}{delta:+.3f}"
+                rendered_metrics.append(rendered)
+            self._emit(f"   {label} · {split:<10} · {', '.join(rendered_metrics)}   → {artifacts}")
         except Exception:  # noqa: BLE001
             pass
 
-    def run_finished(self, *, winner: str | None, scores: dict[str, float], report_path: Path | None) -> None:
+    def run_finished(
+        self,
+        *,
+        winner: str | None,
+        scores: dict[str, float],
+        report_path: Path | None,
+    ) -> None:
         try:
             self._emit(_THIN)
             if winner is None:
                 self._emit(" Finished · no winner (no scored candidates)")
             else:
                 head = f" Finished · winner={winner}"
-                val = scores.get("reward")
-                if val is not None:
-                    base = f" (baseline {self._baseline_val:.3f})" if self._baseline_val is not None else ""
-                    head += f" · validation {val:.3f}{base}"
+                rendered_metrics = [
+                    f"{target.name} {float(scores[target.name]):.3f}"
+                    for target in self._objective_metrics
+                    if target.name in scores
+                ]
+                if rendered_metrics:
+                    head += f" · validation {', '.join(rendered_metrics)}"
                 self._emit(head)
             if report_path is not None:
                 self._emit(f" report:  {report_path}")

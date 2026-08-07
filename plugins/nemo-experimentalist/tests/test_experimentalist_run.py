@@ -15,6 +15,7 @@ from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 
 
 @dataclass
@@ -23,6 +24,28 @@ class ClosingClient:
 
     async def close(self) -> None:
         self.closed = True
+
+
+@dataclass
+class ClosingModelClients:
+    default: object = "default"
+    fast: object = "fast"
+    refs: ConfiguredModelRefs = ConfiguredModelRefs(default="default/quality", fast="default/fast")
+    closed: bool = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def model_clients(monkeypatch: pytest.MonkeyPatch) -> ClosingModelClients:
+    clients = ClosingModelClients()
+
+    async def resolve(*_: object) -> ClosingModelClients:
+        return clients
+
+    monkeypatch.setattr(experimentalist_run, "resolve_model_clients", resolve)
+    return clients
 
 
 @dataclass
@@ -83,6 +106,7 @@ def _make_run_paths(tmp_path: Path) -> ExperimentRunPaths:
 @pytest.mark.asyncio
 async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     paths = _make_run_paths(tmp_path)
@@ -92,7 +116,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     experimentalist = FakeExperimentalist()
     backend_calls: list[BackendFactoryCall] = []
     agent_calls: list[AgentFactoryCall] = []
-    litellm_calls: list[bool] = []
 
     def make_backend(
         *,
@@ -117,7 +140,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
 
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", make_backend)
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", build_agent)
-    monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: litellm_calls.append(True))
 
     train_dataset = DatasetRef(uri=str(paths.train))
     validation_dataset = DatasetRef(uri=str(paths.validation))
@@ -142,8 +164,8 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         )
     ]
     assert agent_calls == [AgentFactoryCall(working_dir=paths.experiment.resolve(), config=optimizer_config)]
-    assert litellm_calls == [True]
     assert not client.closed
+    assert model_clients.closed
     assert experimentalist.deps is not None
     assert experimentalist.deps.workspace == "workspace-a"
     # ``agent`` is forwarded verbatim (it may be a git url@ref); the loop resolves it.
@@ -159,6 +181,7 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
 @pytest.mark.asyncio
 async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     paths = _make_run_paths(tmp_path)
@@ -176,7 +199,6 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
         "build_experimentalist_agent",
         lambda **_: experimentalist,
     )
-    monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: None)
 
     await experimentalist_run.run_experimentalist(
         insight="insight-remote-123",
@@ -192,20 +214,22 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
     assert experimentalist.deps is not None
     # A str id is not resolved to a Path — it flows through untouched to the backend.
     assert experimentalist.deps.insight == "insight-remote-123"
+    assert model_clients.closed
 
 
 @pytest.mark.asyncio
 async def test_run_experimentalist_forwards_agent_spec_uri_to_deps(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     paths = _make_run_paths(tmp_path)
     backend = LocalExperimentalistBackend(path=tmp_path / "backend")
     experimentalist = FakeExperimentalist()
+    client = ClosingClient()
 
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: experimentalist)
-    monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: None)
 
     spec_uri = "/path/to/AGENT-SPEC.md"
     await experimentalist_run.run_experimentalist(
@@ -216,17 +240,19 @@ async def test_run_experimentalist_forwards_agent_spec_uri_to_deps(
         validation_dataset=DatasetRef(uri=str(paths.validation)),
         experiment_dir=paths.experiment,
         workspace="default",
-        client=None,
+        client=cast(AsyncNeMoPlatform, client),
         config=EvolutionaryOptimizerConfig(),
     )
 
     assert experimentalist.deps is not None
     assert experimentalist.deps.agent_spec == spec_uri
+    assert model_clients.closed
 
 
 @pytest.mark.asyncio
 async def test_run_experimentalist_does_not_close_caller_client_when_backend_creation_fails(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     paths = _make_run_paths(tmp_path)
@@ -250,3 +276,4 @@ async def test_run_experimentalist_does_not_close_caller_client_when_backend_cre
         )
 
     assert not client.closed
+    assert not model_clients.closed

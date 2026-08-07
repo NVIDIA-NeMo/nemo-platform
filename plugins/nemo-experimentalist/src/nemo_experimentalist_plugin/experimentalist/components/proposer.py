@@ -9,6 +9,7 @@ from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
 )
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -18,7 +19,6 @@ from nooa.skill_registry import SkillRegistry
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import get_fast_model, get_smart_model
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -76,7 +76,7 @@ class Proposer(Agent):
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ):
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or ProposerConfig()
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)
@@ -101,6 +101,8 @@ class Proposer(Agent):
         round_num: int,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> list[Improvement]:
         """Return up to max_candidates targeted improvement proposals.
 
@@ -111,6 +113,8 @@ class Proposer(Agent):
             round_num: current optimization round number; used to filter survivors.
             phase: "exploration" for novel directions, "exploitation" to refine the best.
             max_candidates: maximum number of Improvement objects to return.
+            objective_metrics: Evaluator metric dimensions this round must improve.
+            regression_metrics: Evaluator metric dimensions this round must preserve.
 
         Returns:
             list[Improvement]: up to max_candidates targeted improvement proposals.
@@ -143,7 +147,7 @@ class Proposer(Agent):
             survivor_context.append(
                 {
                     "id": s.label,
-                    "reward": s.reward("validation").metrics or {},
+                    "metrics": s.reward("validation").metrics or {},
                     "trajectory_reward": s.reward("validation-trajectory").metrics or {},
                     "metadata": meta,
                     "architecture": arch_text,
@@ -159,6 +163,8 @@ class Proposer(Agent):
             cards_index=doc(self.optimize),
             phase=phase,
             max_candidates=max_candidates,
+            objective_metrics=objective_metrics,
+            regression_metrics=regression_metrics,
         )
         # allowed_types is every type, not just the untried ones. available_types
         # still reaches the prompt, so novelty stays a *preference*: a type that
@@ -236,6 +242,8 @@ class Proposer(Agent):
         cards_index: str,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> list[Improvement]:
         """Pick up to `max_candidates` targeted improvements grounded in root causes.
 
@@ -244,13 +252,15 @@ class Proposer(Agent):
         - evolution_history (str): markdown table of prior rounds, for context
         - tried_types (list[str]): optimization_types already attempted
         - available_types (list[str]): types not yet tried — PREFER THESE
-        - survivors (list[dict]): each {id, reward, trajectory_reward, metadata,
+        - survivors (list[dict]): each {id, metrics, trajectory_reward, metadata,
           architecture}; these are your branching candidates with their architecture.md
           already loaded
         - cards_index (str): pre-rendered `doc(self.optimize)` showing the card index.
           Load a specific card on demand via `print(doc(self.optimize.<name>))`.
         - phase (Literal): "exploration" = novel directions; "exploitation" = improve current best
         - max_candidates (int): max number of Improvements to return (typically 3)
+        - objective_metrics (list[dict]): evaluator dimensions to improve
+        - regression_metrics (list[dict]): evaluator dimensions to preserve
 
         Returns:
         - list[Improvement]: up to `max_candidates` Improvements.
@@ -263,7 +273,8 @@ class Proposer(Agent):
 
         ## Per-improvement requirements
         For each Improvement you propose:
-        1. Identify ONE root cause from the analysis: the specific reason the agent
+        1. Identify ONE root cause from the analysis that limits an active objective:
+           the specific reason the agent
            underperforms, stated as a diagnosis ("The agent fails because X is absent /
            misconfigured / too vague"). Do NOT include the proposed remedy here — that
            belongs in `optimization`. If you cannot articulate the failure cause
@@ -284,6 +295,17 @@ class Proposer(Agent):
            caused by this `root_cause` — the concrete tasks the coder should use to
            validate the fix. Pick 2-3 tasks the ancestor actually fails (or barely
            passes) for this reason; do not pad with unrelated passing tasks.
+
+        ## Metric contract
+        - Optimize these objective metrics: `objective_metrics`. Every proposed
+          change must have a concrete, evidence-based path to improving at least one
+          of these dimensions.
+        - Preserve these regression metrics: `regression_metrics`. They are
+          guardrails, not proposal targets: do not choose a root cause or frame an
+          optimization solely around improving a regression metric. Instead, ensure
+          the proposed objective improvement does not sacrifice them.
+        - Evaluator metric values are authoritative. Do not invent an aggregate,
+          scalarization, weighting, or threshold.
 
         ## Branching rules
         - Branch from any survivor — usually the top scorer, but a lower-scoring

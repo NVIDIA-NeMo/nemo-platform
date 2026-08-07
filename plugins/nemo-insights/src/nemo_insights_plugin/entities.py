@@ -72,15 +72,25 @@ class Insight(NemoEntity, entity_type="insights_insight"):
 class AnalysisConfig(NemoEntity, entity_type="insights_analysis_config"):
     """Per-agent opt-in state for framework-managed periodic analysis.
 
-    The cadence is intentionally global insights configuration. This entity is
-    only the per-agent switch. Machine-written run state lives on
-    :class:`AnalysisRunStatus` so the controller never races the running job.
+    The cadence is intentionally global insights configuration. The model pair
+    is captured when analysis is enabled because the controller runs in the
+    Platform process and cannot read the operator's local CLI configuration.
+    Machine-written run state lives on :class:`AnalysisRunStatus` so the
+    controller never races the running job.
     """
 
     agent: str = Field(description="Name of the agent this analysis config targets.")
     enabled: bool = Field(
         default=True,
         description="Whether the periodic insights controller should analyze this agent.",
+    )
+    default_model: str = Field(
+        default="",
+        description="Workspace-qualified Model Entity used for quality-critical analysis work.",
+    )
+    fast_model: str = Field(
+        default="",
+        description="Workspace-qualified Model Entity used for latency-sensitive analysis work.",
     )
 
 

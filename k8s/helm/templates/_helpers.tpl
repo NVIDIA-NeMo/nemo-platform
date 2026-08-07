@@ -142,6 +142,27 @@ local process instead of the cluster Service.
 {{- end -}}
 
 {{/*
+Validate that Envoy retires idle upstream API connections before Uvicorn closes
+them. This avoids reusing a backend connection that the API already dropped.
+*/}}
+{{- define "nemo-platform.validateEnvoyKeepAliveTimeouts" -}}
+{{- if and .Values.api.enabled (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled -}}
+{{- $apiKeepAliveSeconds := .Values.api.server.keepAliveTimeoutSeconds | int -}}
+{{- if lt $apiKeepAliveSeconds 1 -}}
+{{- fail "api.server.keepAliveTimeoutSeconds must be greater than 0" -}}
+{{- end -}}
+{{- $upstreamIdle := .Values.envoyProxy.timeouts.upstreamIdle | toString -}}
+{{- if not (regexMatch "^[1-9][0-9]*s$" $upstreamIdle) -}}
+{{- fail "envoyProxy.timeouts.upstreamIdle must be a positive whole-second duration like \"4s\"" -}}
+{{- end -}}
+{{- $upstreamIdleSeconds := trimSuffix "s" $upstreamIdle | int -}}
+{{- if ge $upstreamIdleSeconds $apiKeepAliveSeconds -}}
+{{- fail (printf "envoyProxy.timeouts.upstreamIdle (%s) must be less than api.server.keepAliveTimeoutSeconds (%ds)" $upstreamIdle $apiKeepAliveSeconds) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Pod annotations
 */}}
 {{- define "nemo-platform.podAnnotations" -}}

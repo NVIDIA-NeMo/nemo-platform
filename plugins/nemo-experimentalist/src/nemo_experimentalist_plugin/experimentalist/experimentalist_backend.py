@@ -507,8 +507,8 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             if sib.label == _BASELINE_AGENT_LABEL:
                 continue
             marker = " (winner)" if sib.label == candidate.label else ""
-            reward = sib.reward("validation").metrics or sib.reward("train").metrics or {}
-            lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — reward={reward}")
+            metrics = sib.reward("validation").metrics or sib.reward("train").metrics or {}
+            lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — metrics={metrics}")
         return summary + "\n" + "\n".join(lines) + "\n"
 
     # -- Agent reads ---------------------------------------------------------

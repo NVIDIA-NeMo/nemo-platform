@@ -36,7 +36,7 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `nemo-status`: read-only health dashboard.
 - `nemo-teardown`: guided shutdown with confirmation.
 
-Plugin-owned skills under `plugins/*/src/*/skills/` handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, auditor, and Experimentalist source/harness improvement.
+Plugin-owned skills under `plugins/*/src/*/skills/` handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, auditor, Experimentalist source/harness improvement, and Analyst telemetry analysis.
 
 ### Working in a sandboxed environment
 
@@ -208,7 +208,7 @@ Pre-commit hooks run automatically before commits and pushes to ensure code qual
 - **Ruff linter** - Automatically fixes linting issues in Python code (excludes SDK)
 - **Ruff formatter** - Formats Python code (excludes SDK)
 - **Type checking (ty)** - Runs type checks on Python code (may need manual fixes)
-- **uv lock** - Automatically updates `uv.lock` when `pyproject.toml` changes
+- **uv lock** - Automatically updates `uv.lock` with the platform uv version when `pyproject.toml` changes
 - **uv lock check** - Verifies `uv.lock` is in sync with `pyproject.toml`
 - **Helm Docs Container** - Runs `helm-docs` container to regenerate Helm documentation in `k8s/helm/README.md`
 - **Check merge conflicts** - Detects merge conflict markers
@@ -245,10 +245,10 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 
 ### Bootstrap prerequisites
 
-- **uv version pin:** Root `pyproject.toml` requires `uv>=0.9.14,<0.10.0`. Newer uv releases (e.g. 0.11.x) fail `uv sync` with a version mismatch. Install the pinned range before bootstrapping: `pip install 'uv>=0.9.14,<0.10.0'`.
+- **uv version:** Root `pyproject.toml` requires and supports `uv>=0.9.14` for source checkout bootstrap. `uv.lock` updates must use uv `0.9.14`, matching the platform containers and CI lock check. CI separately validates latest uv compatibility.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
-- **Studio (optional):** `make bootstrap-studio` installs mise and resolves the Node.js/pnpm versions pinned in `mise.toml`, so a VM shipping an older Node doesn't need upgrading. API services still run without Studio assets. Pass `NMP_SKIP_MISE=1` to bootstrap against the toolchain already on PATH.
+- **Studio (optional):** `make bootstrap-studio` resolves the Node.js/pnpm versions pinned in `mise.toml`, so a VM shipping an older Node doesn't need upgrading. API services still run without Studio assets. Pass `NMP_SKIP_MISE=1` to bootstrap against the toolchain already on PATH.
 
 ### Running the platform
 

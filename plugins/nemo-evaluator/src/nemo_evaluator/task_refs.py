@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from nemo_evaluator.api.schemas import TasksetRef, parse_entity_ref, parse_subentity_ref
-from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity, TasksetEntity
+from nemo_evaluator.api.schemas import TasksetRef, parse_subentity_ref
+from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity, TasksetEntity, TasksetRevisionEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
 from nemo_evaluator.revisions import RevisionNotFoundError, get_revision
 from nemo_platform_plugin.entities import EntityClientProtocol
@@ -49,10 +49,11 @@ def _entity_to_task_input(entity: TaskEntity, revision: TaskRevisionEntity) -> A
     )
 
 
-#: Expanding a taskset reads three entity types through one client — the taskset head, each member
-#: task's head, and the pinned revision of each member. Python has no intersection types, so the
-#: parameter is annotated at one of them and the other two are taken as typed views of the same
-#: object; the concrete client's methods are generic over the entity type and satisfy all three.
+#: Expanding a taskset reads four entity types through one client — the taskset head, its pinned
+#: revision, each member task's head, and the pinned revision of each member. Python has no
+#: intersection types, so the parameter is annotated at one of them and the rest are taken as typed
+#: views of the same object; the concrete client's methods are generic over the entity type and
+#: satisfy all four.
 TasksetStoreProtocol = EntityClientProtocol[TasksetEntity]
 
 
@@ -66,6 +67,12 @@ async def resolve_taskset_ref(
 
     Loading needs only the entity store (metrics stay as refs, resolved downstream), so unlike
     metric-ref resolution this does not require an async SDK / file I/O.
+
+    The ref may pin a taskset revision (``suite#<tag-or-digest>``); an absent fragment means
+    ``latest``. Both paths go through :func:`get_revision` rather than reading the head's own
+    ``tasks``, because a head and its ``latest`` revision are guaranteed to agree and resolving one
+    way for pinned refs and another way for bare ones would make the two drift apart on the next
+    bug. It also buys content verification for the bare case for free.
     """
     if entity_client is None:
         raise ValueError(
@@ -74,8 +81,9 @@ async def resolve_taskset_ref(
         )
     task_store = cast(EntityClientProtocol[TaskEntity], entity_client)
     revision_store = cast(EntityClientProtocol[TaskRevisionEntity], entity_client)
+    taskset_revision_store = cast(EntityClientProtocol[TasksetRevisionEntity], entity_client)
 
-    ref_workspace, name = parse_entity_ref(ref.root, workspace)
+    ref_workspace, name, taskset_fragment = parse_subentity_ref(ref.root, workspace)
     try:
         taskset = await entity_client.get(TasksetEntity, name=name, workspace=ref_workspace)
     except NemoEntityNotFoundError as exc:
@@ -85,12 +93,21 @@ async def resolve_taskset_ref(
             "or pass an inline task list instead."
         ) from exc
 
-    if not taskset.tasks:
+    # Expand the taskset revision the ref names. Members are digest-pinned inside a revision, so a
+    # member republishing on its own never moves this. A bare ref still follows the taskset's own
+    # revisions, and a ``replace`` re-resolves members on write — so it can change both which members
+    # are named and what they resolve to. Only a pinned ref holds both steady.
+    try:
+        taskset_revision = await get_revision(taskset_revision_store, TasksetRevisionEntity, taskset, taskset_fragment)
+    except RevisionNotFoundError as exc:
+        raise ValueError(f"Taskset reference '{ref.root}' names a revision that does not resolve: {exc}") from exc
+
+    if not taskset_revision.tasks:
         raise ValueError(f"Taskset '{ref.root}' has no member tasks; an agent evaluation needs at least one task.")
 
     tasks: list[AgentEvalTaskInput] = []
     seen_ids: set[str] = set()
-    for task_ref in taskset.tasks:
+    for task_ref in taskset_revision.tasks:
         task_workspace, task_name, fragment = parse_subentity_ref(task_ref.root, ref_workspace)
         try:
             entity = await task_store.get(TaskEntity, name=task_name, workspace=task_workspace)

@@ -295,7 +295,7 @@ class AggregateScoreBase(BaseModel):
     name: str = Field(description="Name of the score.")
     count: int | None = Field(
         default=None,
-        description="Number of samples evaluated (excluding NaN). None when the sample size is unknown "
+        description="Number of samples evaluated (excluding NaN). Serialized as null when the sample size is unknown "
         "— e.g. a figure imported from a backend that reports statistics without the n behind them. "
         "Distinct from 0, which asserts that nothing was evaluated.",
     )
@@ -322,11 +322,11 @@ class AggregateScoreBase(BaseModel):
         default=None,
         description="Sample standard deviation of the scores (Bessel-corrected, divides by n-1). Estimates "
         "the spread of the process the values were drawn from — the right choice when repeated trials "
-        "sample a stochastic system. None when fewer than two values (undefined, not zero).",
+        "sample a stochastic system. Omitted when fewer than two values (undefined, not zero).",
     )
     sample_variance: float | None = Field(
         default=None,
-        description="Sample variance of the scores (Bessel-corrected, divides by n-1). None when fewer "
+        description="Sample variance of the scores (Bessel-corrected, divides by n-1). Omitted when fewer "
         "than two values.",
     )
 

@@ -10,13 +10,14 @@
  * its affiliates is strictly prohibited.
  */
 
-import { ControlledCombobox } from '@nemo/common/src/components/form/ControlledCombobox';
-import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
+import { MappingRow } from '@nemo/common/src/components/form/MappingFields/MappingRow';
+import type {
+  KeyValueComboboxPassthrough,
+  KeyValueTextInputPassthrough,
+} from '@nemo/common/src/components/form/MappingFields/types';
 import { isDefined } from '@nemo/common/src/utils/isDefined';
-import { Banner, Button, Flex, Stack } from '@nvidia/foundations-react-core';
-import cn from 'classnames';
-import { Trash } from 'lucide-react';
-import { type ComponentProps, useEffect, useMemo } from 'react';
+import { Banner, Stack } from '@nvidia/foundations-react-core';
+import { useEffect, useMemo } from 'react';
 import {
   Control,
   FieldArrayPath,
@@ -62,15 +63,8 @@ function firstKeyValueRowMessage(arrayErrors: unknown): string | undefined {
   return undefined;
 }
 
-type KeyValueComboboxPassthrough = Omit<
-  ComponentProps<typeof ControlledCombobox>,
-  'useControllerProps' | 'items' | 'label'
->;
-
-type KeyValueTextInputPassthrough = Omit<
-  ComponentProps<typeof ControlledTextInput>,
-  'useControllerProps' | 'label'
->;
+/** Stable identity so memoized rows are not invalidated when no overrides are passed. */
+const NO_OVERRIDES = {};
 
 export interface MappingFieldsProps<
   TFieldValues extends FieldValues,
@@ -197,164 +191,40 @@ export const MappingFields = <
     [valueSuggestionsProp, schema, schemaValueForKey]
   );
 
-  const useKeyCombobox = keyOpts.length > 0;
-  const useValueCombobox = valueOpts.length > 0;
-
-  const {
-    formFieldProps: keyComboboxFormFieldProps,
-    className: keyComboboxClassName,
-    attributes: keyComboboxAttributes,
-    ...keyComboboxRest
-  } = attributes?.keyCombobox ?? {};
-
-  const {
-    formFieldProps: valueComboboxFormFieldProps,
-    className: valueComboboxClassName,
-    attributes: valueComboboxAttributes,
-    ...valueComboboxRest
-  } = attributes?.valueCombobox ?? {};
-
-  const {
-    formFieldProps: keyTextFormFieldProps,
-    className: keyTextClassName,
-    hideError: keyTextHideError,
-    attributes: keyTextAttributes,
-    ...keyTextRest
-  } = attributes?.keyTextInput ?? {};
-
-  const {
-    formFieldProps: valueTextFormFieldProps,
-    className: valueTextClassName,
-    hideError: valueTextHideError,
-    attributes: valueTextAttributes,
-    ...valueTextRest
-  } = attributes?.valueTextInput ?? {};
+  const keyComboboxProps = (attributes?.keyCombobox ??
+    NO_OVERRIDES) as Partial<KeyValueComboboxPassthrough>;
+  const valueComboboxProps = (attributes?.valueCombobox ??
+    NO_OVERRIDES) as Partial<KeyValueComboboxPassthrough>;
+  const keyTextInputProps = (attributes?.keyTextInput ??
+    NO_OVERRIDES) as Partial<KeyValueTextInputPassthrough>;
+  const valueTextInputProps = (attributes?.valueTextInput ??
+    NO_OVERRIDES) as Partial<KeyValueTextInputPassthrough>;
 
   const firstFieldError = firstKeyValueRowMessage(arrayErrors);
 
-  const renderedRows = useMemo(() => {
-    return rows.map((row, index) => (
-      <Flex key={row.id} gap="density-lg" align="end" justify="between">
-        {useKeyCombobox ? (
-          <ControlledCombobox
-            {...keyComboboxRest}
-            disabled={isDisabled}
-            freeForm
-            dismissible={false}
-            hideError
-            className={cn('font-normal', keyComboboxClassName)}
-            attributes={keyComboboxAttributes}
-            formFieldProps={{
-              className: 'min-w-0 flex-1 font-bold',
-              ...keyComboboxFormFieldProps,
-            }}
-            useControllerProps={{ control, name: `${nameStr}.${index}.key`, disabled: isDisabled }}
-            items={keyOpts}
-            label={index === 0 ? keyColumnLabel : ''}
-          />
-        ) : (
-          <ControlledTextInput
-            {...keyTextRest}
-            disabled={isDisabled}
-            hideError={keyTextHideError ?? true}
-            className={keyTextClassName}
-            attributes={keyTextAttributes}
-            formFieldProps={{
-              className: 'min-w-0 flex-1',
-              ...keyTextFormFieldProps,
-            }}
-            useControllerProps={{ control, name: `${nameStr}.${index}.key`, disabled: isDisabled }}
-            label={index === 0 ? keyColumnLabel : ''}
-          />
-        )}
-        {useValueCombobox ? (
-          <ControlledCombobox
-            {...valueComboboxRest}
-            disabled={isDisabled}
-            freeForm
-            dismissible={false}
-            hideError
-            className={cn('font-normal', valueComboboxClassName)}
-            attributes={valueComboboxAttributes}
-            formFieldProps={{
-              className: 'min-w-0 flex-1 font-bold',
-              ...valueComboboxFormFieldProps,
-            }}
-            useControllerProps={{
-              control,
-              name: `${nameStr}.${index}.value`,
-              disabled: isDisabled,
-            }}
-            items={valueOpts}
-            label={index === 0 ? valueColumnLabel : ''}
-          />
-        ) : (
-          <ControlledTextInput
-            {...valueTextRest}
-            disabled={isDisabled}
-            hideError={valueTextHideError ?? true}
-            className={valueTextClassName}
-            attributes={valueTextAttributes}
-            formFieldProps={{
-              className: 'min-w-0 flex-1',
-              ...valueTextFormFieldProps,
-            }}
-            useControllerProps={{
-              control,
-              name: `${nameStr}.${index}.value`,
-              disabled: isDisabled,
-            }}
-            label={index === 0 ? valueColumnLabel : ''}
-          />
-        )}
-        <Button
-          type="button"
-          kind="tertiary"
-          aria-label="Remove row"
-          disabled={isDisabled || index === rows.length - 1}
-          onClick={() => {
-            remove(index);
-          }}
-        >
-          <Trash />
-        </Button>
-      </Flex>
-    ));
-  }, [
-    rows,
-    control,
-    remove,
-    keyOpts,
-    valueOpts,
-    nameStr,
-    keyColumnLabel,
-    valueColumnLabel,
-    useKeyCombobox,
-    useValueCombobox,
-    keyComboboxRest,
-    keyComboboxClassName,
-    keyComboboxFormFieldProps,
-    keyComboboxAttributes,
-    valueComboboxRest,
-    valueComboboxClassName,
-    valueComboboxFormFieldProps,
-    valueComboboxAttributes,
-    keyTextRest,
-    keyTextClassName,
-    keyTextFormFieldProps,
-    keyTextAttributes,
-    keyTextHideError,
-    valueTextRest,
-    valueTextClassName,
-    valueTextFormFieldProps,
-    valueTextAttributes,
-    valueTextHideError,
-    isDisabled,
-  ]);
-
   return (
     <Stack gap="density-lg">
-      <Stack gap="density-lg">{renderedRows}</Stack>
+      <Stack gap="density-lg">
+        {rows.map((row, index) => (
+          <MappingRow
+            key={row.id}
+            control={control}
+            name={nameStr}
+            index={index}
+            isLastRow={index === rows.length - 1}
+            isDisabled={isDisabled}
+            keyOpts={keyOpts}
+            valueOpts={valueOpts}
+            keyColumnLabel={keyColumnLabel}
+            valueColumnLabel={valueColumnLabel}
+            keyCombobox={keyComboboxProps}
+            valueCombobox={valueComboboxProps}
+            keyTextInput={keyTextInputProps}
+            valueTextInput={valueTextInputProps}
+            onRemove={remove}
+          />
+        ))}
+      </Stack>
       {fieldArrayHasErrors(arrayErrors) ? (
         <Banner
           kind="inline"

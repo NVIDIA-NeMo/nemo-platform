@@ -145,13 +145,20 @@ def run_platform(
                 reload_app_factory or "nmp.platform_runner.server:create_default_app",
                 host=resolved.host,
                 port=resolved.port,
+                keep_alive_timeout_seconds=resolved.keep_alive_timeout_seconds,
             )
         else:
             if controller_run_funcs:
                 controller_threads.extend(run_controllers_in_threads(controller_run_funcs, controller_stop_signal))
             if sidecar_run_funcs:
                 controller_threads.extend(run_controllers_in_threads(sidecar_run_funcs, controller_stop_signal))
-            run_server(service_instances, host=resolved.host, port=resolved.port, socket_path=resolved.socket_path)
+            run_server(
+                service_instances,
+                host=resolved.host,
+                port=resolved.port,
+                socket_path=resolved.socket_path,
+                keep_alive_timeout_seconds=resolved.keep_alive_timeout_seconds,
+            )
     except ValueError as error:
         logger.error("Configuration error: %s", error)
         raise SystemExit(1) from error

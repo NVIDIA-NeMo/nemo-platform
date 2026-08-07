@@ -75,7 +75,7 @@ def lora_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConfig
             Container(
                 name="lora-adapters",
                 image="my-registry/nmp-api:local",
-                command=["nemo", "services", "run", "--sidecars", "adapters"],
+                command=["python", "-m", "nmp.core.models.sidecars.adapters.main"],
                 volumeMounts=[
                     VolumeMount(name="weights", mountPath="/model-store", readOnly=True),
                     VolumeMount(name="scratch", mountPath="/scratch"),

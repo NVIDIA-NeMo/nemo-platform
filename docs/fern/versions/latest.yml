@@ -263,13 +263,12 @@ navigation:
             path: ../../agents/deploy-agents.mdx
           - page: Observe Agents
             path: ../../agents/observability.mdx
-          - page: Optimize Agents
-            path: ../../agents/optimization.mdx
-          # Gated until Insight-Driven Optimization ships. Uncomment the two
-          # lines below to publish it here, then drop the matching Agents block
-          # from gated-nav.yml and re-add inbound links from Optimize Agents.
-          # - page: Insight-Driven Optimization
-          #   path: ../../agents/insight-driven-optimization.mdx
+          - section: Optimize Agents
+            contents:
+              - page: Run the Agent Optimizer
+                path: ../../agents/optimization.mdx
+              - page: Insight-Driven Optimization
+                path: ../../agents/insight-driven-optimization.mdx
           - page: Secure Agents
             path: ../../agents/security.mdx
           - page: Plugins and Skills
@@ -489,6 +488,8 @@ navigation:
           - section: CLI Reference
             path: ../../cli/index.mdx
             contents:
+              - page: Connect to Deployments
+                path: ../../cli/connect-to-deployments.mdx
               - page: Configuration
                 path: ../../cli/configuration.mdx
               - page: Working with Resources

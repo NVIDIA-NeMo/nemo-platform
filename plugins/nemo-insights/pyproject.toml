@@ -35,6 +35,9 @@ insights-analysis = "nemo_insights_plugin.controller:InsightsAnalysisController"
 [project.entry-points."nemo.sdk"]
 insights = "nemo_insights_plugin.sdk:insights_sdk_resources"
 
+[project.entry-points."nemo.skills"]
+insights = "nemo_insights_plugin.skills:skills_dir"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

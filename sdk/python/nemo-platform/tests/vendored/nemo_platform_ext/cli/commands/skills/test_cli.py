@@ -4,6 +4,7 @@
 """Tests for the skills CLI commands."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from nemo_platform.cli.app import app
@@ -21,7 +22,11 @@ runner = CliRunner()
 
 
 def _example_plugin_skills_root() -> Path:
-    return Path(__file__).resolve().parents[6] / "plugins" / "example-plugin" / "src" / "nemo_example_plugin" / "skills"
+    relative_path = Path("plugins/example-plugin/src/nemo_example_plugin/skills")
+    for parent in Path(__file__).resolve().parents:
+        if (parent / relative_path).is_dir():
+            return parent / relative_path
+    raise FileNotFoundError(f"Could not find {relative_path} from {__file__}")
 
 
 def _platform_skill_names() -> set[str]:
@@ -99,6 +104,14 @@ class TestList:
         result = runner.invoke(app, "skills list")
         assert_exit_code(result, 1)
         assert "Error: duplicate skill" in result.output
+
+    def test_stream_requires_json_output_before_loading_skills(self):
+        with patch("nemo_platform.cli.commands.skills.cli.load_skills") as mock_load_skills:
+            result = runner.invoke(app, "skills list --output table --stream")
+
+        assert_exit_code(result, 2)
+        assert "--stream requires --output json or --output raw" in result.stderr
+        mock_load_skills.assert_not_called()
 
     def test_list_source_column_shows_distribution_names(self, example_plugin_skills):
         """JSON output is stable and easy to assert against the new ``Source`` semantics.

@@ -188,6 +188,8 @@ nemo-platform:
       - name: workload-token-tls
         secret:
           secretName: *workloadTokenTlsSecretName
+    timeouts:
+      upstreamIdle: "4s"
     configOverride: '{{ include "nemo-platform-authentik.envoyConfig" . }}'
   platformConfig:
     auth:

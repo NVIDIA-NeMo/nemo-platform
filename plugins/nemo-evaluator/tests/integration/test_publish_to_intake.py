@@ -12,7 +12,10 @@ Run directly::
 
     uv run pytest plugins/nemo-evaluator/tests/integration/test_publish_to_intake.py -v
 
-Requires Docker (Intake is ClickHouse-backed) and a free :8080 / :8123.
+Requires Docker (Intake is ClickHouse-backed) and a free :8123. The platform binds the port from
+``NMP_BASE_URL`` (default :8080), so set it to run alongside a local dev platform::
+
+    NMP_BASE_URL=http://localhost:8096 uv run pytest ...
 """
 
 from __future__ import annotations
@@ -24,12 +27,14 @@ import subprocess
 import time
 import urllib.request
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from importlib.util import find_spec
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
-from nemo_evaluator.intake.publish import publish_to_intake
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
+from nemo_evaluator.intake.publish import PublishReport, publish_to_intake
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
@@ -46,6 +51,11 @@ EXPERIMENT_NAME = "intake-it-exp"
 RUN_ID = "intake-it-run"
 NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
 NAN_RUN_ID = "intake-it-nan-run"
+IDEMPOTENCY_EXPERIMENT_NAME = "intake-it-idempotency-exp"
+IDEMPOTENCY_RUN_ID = "intake-it-idempotency-run"
+#: Recent, not fixed: a trajectory's start_time is a real timestamp, and Intake's trace queries
+#: only look back a bounded window — a hardcoded past date ingests fine but reads back empty.
+STARTED_AT = datetime.now(UTC) - timedelta(minutes=5)
 
 
 def _docker_available() -> bool:
@@ -118,8 +128,13 @@ def _clickhouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
 
 @pytest.fixture(scope="session")
 def platform_base_url(_clickhouse: None) -> Iterator[str]:
+    # Bind the port from BASE_URL rather than letting `services run` fall back to its 8080 default:
+    # NMP_BASE_URL is client-side only, so without this the suite silently requires 8080 to be free
+    # and cannot run alongside a local dev platform. Mirrors the sibling fixtures in conftest, which
+    # each take their own port for the same reason.
+    port = urlsplit(BASE_URL).port or 8080
     process = subprocess.Popen(
-        ["uv", "run", "nemo", "services", "run", "--services", "auth,entities,intake"],
+        ["uv", "run", "nemo", "services", "run", "--services", "auth,entities,intake", "--port", str(port)],
         cwd=REPO_ROOT,
         env={
             **os.environ,
@@ -182,7 +197,14 @@ def _result() -> AgentEvalResult:
             outputs=[MetricOutput(name="score", value=0.0), MetricOutput(name="passed", value=False)],
         ),
     ]
-    return AgentEvalResult(run_id=RUN_ID, tasks=[], trials=trials, scores=scores, summary=AgentEvalSummary())
+    return AgentEvalResult(
+        run_id=RUN_ID,
+        tasks=[],
+        trials=trials,
+        scores=scores,
+        summary=AgentEvalSummary(),
+        metadata=RunMetadata(started_at=STARTED_AT),
+    )
 
 
 async def test_publish_to_intake_round_trip(platform_base_url: str) -> None:
@@ -280,7 +302,14 @@ def _nan_result() -> AgentEvalResult:
             outputs=[MetricOutput(name="verdict", value=math.nan)],
         ),
     ]
-    return AgentEvalResult(run_id=NAN_RUN_ID, tasks=[], trials=[trial], scores=scores, summary=AgentEvalSummary())
+    return AgentEvalResult(
+        run_id=NAN_RUN_ID,
+        tasks=[],
+        trials=[trial],
+        scores=scores,
+        summary=AgentEvalSummary(),
+        metadata=RunMetadata(started_at=STARTED_AT),
+    )
 
 
 async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> None:
@@ -315,3 +344,74 @@ async def test_publish_skips_nan_and_failed_scores(platform_base_url: str) -> No
             ("accuracy.broken", "non-finite value"),
             ("judge.verdict", "scoring failed"),
         }
+
+
+def _idempotency_result() -> AgentEvalResult:
+    """One trial with one score — the smallest result that exercises both write paths."""
+    return AgentEvalResult(
+        run_id=IDEMPOTENCY_RUN_ID,
+        tasks=[],
+        trials=[
+            AgentEvalTrial(
+                id="trial-1",
+                task_id="task-1",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="answer"),
+            )
+        ],
+        scores=[
+            AgentEvalTaskScore(
+                id="score-1",
+                run_id=IDEMPOTENCY_RUN_ID,
+                task_id="task-1",
+                trial_id="trial-1",
+                metric_type="accuracy",
+                status=AgentEvalScoreStatus.COMPLETED,
+                outputs=[MetricOutput(name="score", value=1.0)],
+            )
+        ],
+        summary=AgentEvalSummary(),
+        metadata=RunMetadata(started_at=STARTED_AT),
+    )
+
+
+async def test_republishing_the_same_result_is_idempotent(platform_base_url: str) -> None:
+    # A job worker can publish successfully and die before recording completion, so a retry must not
+    # double-count. Intake's spans table is a ReplacingMergeTree keyed on start_time, which is only
+    # stable because the trajectory carries the run's started_at (see mapping.trial_to_atif_ingest);
+    # without it each publish lands a second, uncollapsible row per trial.
+    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+        group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
+        await client.evaluations.create(
+            workspace=WORKSPACE,
+            name=IDEMPOTENCY_EXPERIMENT_NAME,
+            experiment_ids=[group.id],
+            dataset_name="intake-it-idempotency-dataset",
+            dataset_version="v1",
+            exist_ok=True,
+        )
+
+        async def publish() -> PublishReport:
+            return await publish_to_intake(
+                _idempotency_result(),
+                platform=client,
+                experiment_id=IDEMPOTENCY_EXPERIMENT_NAME,
+                workspace=WORKSPACE,
+                agent_name="intake-it-agent",
+            )
+
+        first = await publish()
+        second = await publish()
+
+        # Same identities both times — nothing is minted per-publish.
+        assert first.trial_count == second.trial_count == 1
+        assert first.published_trials[0].session_id == second.published_trials[0].session_id
+        assert first.published_trials[0].span_id == second.published_trials[0].span_id
+
+        session_id = second.published_trials[0].session_id
+        trace_filter: TraceFilterParam = {"session_id": session_id}
+        traces = [trace async for trace in client.intake.traces.list(workspace=WORKSPACE, filter=trace_filter)]
+        assert len(traces) == 1, "re-publish duplicated the trajectory instead of replacing it"
+
+        rows = await client.intake.spans.evaluator_results.list(second.published_trials[0].span_id, workspace=WORKSPACE)
+        assert [row.name for row in rows] == ["accuracy.score"]

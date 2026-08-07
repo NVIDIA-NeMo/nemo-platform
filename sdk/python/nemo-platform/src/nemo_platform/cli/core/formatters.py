@@ -10,9 +10,11 @@ import io
 import json
 import re
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
+import click
 import yaml
 from rich.console import Console
 from rich.syntax import Syntax
@@ -86,17 +88,29 @@ def _extract_items_from_response(data: Any) -> list[Any]:
     if isinstance(data, list):
         return data
 
+    return list(_iter_items_from_response(data))
+
+
+def _iter_items_from_response(data: Any) -> Iterator[Any]:
+    """Iterate list items from an API response without materializing callables."""
+    if isinstance(data, list):
+        yield from data
+        return
+
     for field in LIST_ITEM_FIELDS:
         if isinstance(data, dict):
             if field in data:
-                return data[field]
-        else:
-            value = getattr(data, field, None)
-            if value is None:
+                items = data[field]
+            else:
                 continue
-            return list(value()) if callable(value) else value
+        else:
+            items = getattr(data, field, None)
+            if items is None:
+                continue
+            items = items() if callable(items) else items
 
-    return []
+        yield from items
+        return
 
 
 def _to_dict_items(items: list[Any]) -> list[dict[str, Any]]:
@@ -261,6 +275,19 @@ def format_json(
         return capture.get()
     else:
         return json_str
+
+
+def iter_json_lines(data: Any, *, is_list: bool = False) -> Iterator[str]:
+    """Return newline-delimited JSON records for streaming-style output."""
+    records = _iter_items_from_response(data) if is_list else iter((data,))
+    for record in records:
+        yield json.dumps(model_to_dict(record), ensure_ascii=False, separators=(",", ":"))
+
+
+def validate_stream_output_format(output_format: str | None, stream: bool) -> None:
+    """Validate output format compatibility before streaming data acquisition starts."""
+    if stream and output_format not in {"json", "raw"}:
+        raise click.UsageError("--stream requires --output json or --output raw.")
 
 
 def format_yaml(
@@ -571,12 +598,13 @@ def format_output(
     *,
     is_list: bool = False,
     output_format: str | None = None,
-    output_columns: Literal["all"] | list[Column] | None = None,
+    output_columns: str | list[Column] | None = None,
     indent: int = 2,
     no_truncate: bool | None = None,
     timestamp_format: str | None = None,
     wrap: bool = False,
     wrap_max_width: int | None = 90,
+    stream: bool = False,
 ) -> None:
     """
     Format and print output to stdout.
@@ -601,8 +629,19 @@ def format_output(
                 uses the full terminal width.
         wrap_max_width: Per-column character cap for wrapped columns when
                 `wrap=True` and `no_truncate=False`. Defaults to 90.
+        stream: Emit newline-delimited JSON records. List responses emit one
+                record per item; entity responses emit one record.
     """
     from nemo_platform.cli.core.table_config import resolve_and_validate_columns, validate_output_columns
+
+    timestamp_format = timestamp_format or "iso"
+
+    if stream:
+        validate_stream_output_format(output_format, stream)
+        for line in iter_json_lines(data, is_list=is_list):
+            click.echo(line)
+            sys.stdout.flush()
+        return
 
     if not is_list and output_format in {"table", "markdown", "csv"}:
         output_format = "json"  # Fallback to JSON for single items in these formats
@@ -634,7 +673,7 @@ def format_output(
     if (
         output_format == "table"
         and not truncate
-        and output_columns
+        and isinstance(output_columns, list)
         and len(output_columns) > MAX_TABLE_COLUMNS_WITHOUT_TRUNCATE
     ):
         print(
@@ -653,6 +692,7 @@ def format_output(
         output = format_yaml(data, syntax_highlight=True, background=False)
         print(output)
     elif output_format == "table":
+        assert isinstance(output_columns, list)
         # Table format. When wrapping is on and --no-truncate is set, drop the
         # per-column cap so wrapping uses the full terminal width.
         effective_wrap_max_width = None if (wrap and not truncate) else wrap_max_width
@@ -666,12 +706,14 @@ def format_output(
         )
         print(output)
     elif output_format == "markdown":
+        assert isinstance(output_columns, list)
         # Markdown table format
         output = format_markdown_table(
             data, columns=output_columns, truncate=truncate, timestamp_format=timestamp_format
         )
         print(output)
     elif output_format == "csv":
+        assert isinstance(output_columns, list)
         # CSV format
         output = format_csv(data, columns=output_columns, truncate=truncate, timestamp_format=timestamp_format)
         print(output, end="")  # CSV already includes newlines

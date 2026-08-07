@@ -90,10 +90,21 @@ def test_task_ref_rejects_malformed_fragments(ref: str) -> None:
         TaskRef(ref)
 
 
-@pytest.mark.parametrize("ref_type", [MetricRef, TasksetRef])
-def test_sibling_ref_types_still_reject_fragments(ref_type: type) -> None:
-    """The fragment pattern is a sibling, not a widening of the shared constant: metrics and
-    tasksets have no revisions yet, so admitting a fragment would accept input nothing resolves.
-    They move onto it when they gain revisions — deliberately, at that point."""
+def test_metric_ref_still_rejects_fragments() -> None:
+    """The fragment pattern is a sibling, not a widening of the shared constant: metrics have no
+    revisions, so admitting a fragment would accept input nothing resolves. ``MetricRef`` moves onto
+    it when metrics gain revisions — deliberately, at that point."""
     with pytest.raises(ValidationError):
-        ref_type(f"other/thing#{_DIGEST}")
+        MetricRef(f"other/thing#{_DIGEST}")
+
+
+@pytest.mark.parametrize("ref", ["suite", "other/suite", "suite#latest", "suite#blessed", f"other/suite#{_DIGEST}"])
+def test_taskset_ref_accepts_fragments(ref: str) -> None:
+    """Tasksets are revisioned, so a ref may pin the revision to expand — same shape as ``TaskRef``."""
+    assert TasksetRef(ref).root == ref
+
+
+@pytest.mark.parametrize("ref", ["suite#one#two", "suite#bad/frag", "#latest", "suite name#latest"])
+def test_taskset_ref_rejects_malformed_fragments(ref: str) -> None:
+    with pytest.raises(ValidationError):
+        TasksetRef(ref)

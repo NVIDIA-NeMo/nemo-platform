@@ -134,7 +134,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
       ? buildDataDesignerConfig(columns, models, servedModelNames)
       : undefined;
   }, [builder, servedModelNames]);
-  const { previewLogs, isPreviewing, runPreview } = usePreview({
+  const { previewLogs, isPreviewing, runPreview, stopPreview } = usePreview({
     workspace,
     accessToken: user?.access_token ?? undefined,
     getCurrentConfig,
@@ -196,6 +196,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             onViewModeChange={setViewMode}
             onPreview={handlePreview}
             isPreviewing={isPreviewing}
+            onStopPreview={stopPreview}
             onSubmit={handleSubmit}
             isSubmitting={createJob.isPending}
           />

@@ -16,9 +16,19 @@ from nemo_platform_ext.cli.commands.skills.registry import (
     load_skills,
 )
 from nemo_platform_ext.cli.core.context import CLIContext
-from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform_ext.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
-from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
+from nemo_platform_ext.cli.core.types import (
+    ListOutputFormatOption,
+    NoTruncateOption,
+    OutputColumnsOption,
+    StreamOutputOption,
+)
 
 _AGENT_NAMES = ", ".join(list_agent_names())
 
@@ -125,6 +135,7 @@ def list_skills(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     source: Annotated[
         list[str] | None,
         typer.Option(
@@ -154,6 +165,7 @@ def list_skills(
     state: CLIContext = ctx.obj
     columns_explicit = columns is not None and str(columns).strip() != "default"
     output_format = state.get_output_format(output_format, apply_non_tty_default=not columns_explicit)
+    validate_stream_output_format(output_format, stream)
     check_output_columns_with_format(columns, output_format)
 
     default_columns = [
@@ -162,8 +174,9 @@ def list_skills(
         Column("source", "Source"),
         Column("description", "Description"),
     ]
+    output_columns: str | list[Column] | None = columns
     if not columns_explicit:
-        columns = default_columns
+        output_columns = default_columns
 
     try:
         skills = load_skills()
@@ -195,10 +208,11 @@ def list_skills(
         items,
         is_list=True,
         output_format=output_format,
-        output_columns=columns,
+        output_columns=output_columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
         wrap=True,
+        stream=stream,
     )
 
 
