@@ -580,6 +580,7 @@ def _update_provider(
         kwargs["api_key_secret_name"] = secret_name
     if auth_header_format:
         kwargs["auth_header_format"] = auth_header_format
+        kwargs["required_extra_headers"] = None
     if default_extra_headers:
         kwargs["default_extra_headers"] = default_extra_headers
     provider_type = _provider_type_for_connection(name, host_url)

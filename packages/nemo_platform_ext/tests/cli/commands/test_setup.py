@@ -1709,7 +1709,7 @@ class TestProviderIdempotency:
         call_kwargs = client.inference.providers.update.call_args.kwargs
         assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
         assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
-        assert "required_extra_headers" not in call_kwargs
+        assert call_kwargs["required_extra_headers"] is None
         assert api_key not in str(call_kwargs)
         assert call_kwargs["default_extra_headers"] == {"anthropic-version": "2023-06-01"}
 
@@ -1723,7 +1723,7 @@ class TestProviderIdempotency:
         call_kwargs = client.inference.providers.update.call_args.kwargs
         assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
         assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
-        assert "required_extra_headers" not in call_kwargs
+        assert call_kwargs["required_extra_headers"] is None
         assert api_key not in str(call_kwargs)
 
     # -- auto path --
