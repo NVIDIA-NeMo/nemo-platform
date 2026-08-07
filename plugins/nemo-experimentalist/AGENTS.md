@@ -109,11 +109,14 @@ instead of restoring Curator imports, configuration, or aliases. The obsolete
   Configure Platform services, trace storage, and Insights analysis according
   to the Platform documentation; this repository does not own a service,
   scheduler, or testbed setup.
-- `nooa` is pinned to an immutable public GitHub revision in `pyproject.toml`,
-  currently a commit rather than a tag because the MCP transport-timeout fix
-  landed after `v0.0.6`. Update the revision, the matching pin in
-  `examples/tau3-nooa-agent/pyproject.toml`, and both lock files together. Keep
-  the Platform-supplied Insights plugin separate.
+- `nooa` is pinned to an immutable public GitHub revision in the workspace root
+  `pyproject.toml` under `[tool.uv.sources]`; this plugin's `pyproject.toml` only
+  declares the dependency. It is a commit rather than a tag because the callable
+  `@strategy(llm=...)` support this plugin depends on landed after `v0.0.8`.
+  Update the root pin, the matching pin in
+  `examples/tau3-nooa-agent/pyproject.toml`, the revision quoted in
+  `framework-skills/nooa/SKILL.md`, and both lock files together. Keep the
+  Platform-supplied Insights plugin separate.
 - This branch uses merged Platform PR 718 contracts only. After the Platform
   handoff lands, rebase and repin before adopting any new Platform testbed or
   installer interfaces.
