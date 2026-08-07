@@ -112,6 +112,19 @@ describe('fetchAndConvertDataset', () => {
     );
   });
 
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'not-a-row'],
+    ['an array', [1, 2]],
+  ])('throws when a 200 carries %s in place of a row object', async (_label, row) => {
+    server.use(http.get(HF_DATASETS_API, () => HttpResponse.json({ rows: [{ row }] })));
+
+    await expect(fetchAndConvertDataset(queryClient, dataset(), () => {})).rejects.toThrow(
+      /unexpected response shape/
+    );
+  });
+
   it('throws when no rows survive conversion', async () => {
     server.use(rowsHandler());
 

@@ -13,12 +13,16 @@ export interface HfRowsPage {
   rows: Array<{ row: Record<string, unknown> }>;
 }
 
+const isRowRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 const isHfRowsPage = (value: unknown): value is HfRowsPage =>
   typeof value === 'object' &&
   value !== null &&
   Array.isArray((value as { rows?: unknown }).rows) &&
   (value as { rows: unknown[] }).rows.every(
-    (entry) => typeof entry === 'object' && entry !== null && 'row' in entry
+    (entry) =>
+      typeof entry === 'object' && entry !== null && isRowRecord((entry as { row?: unknown }).row)
   );
 
 export interface HuggingFaceRowsSource {
