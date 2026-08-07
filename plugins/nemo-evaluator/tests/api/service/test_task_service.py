@@ -250,8 +250,8 @@ async def test_rollback_failure_does_not_mask_the_original_error(
         await service.create_task("task-1", _task_input(), workspace="default")
 
 
-async def test_resolve_revision_returns_the_digest_for_a_tag(service: TaskService) -> None:
-    """The hook taskset publishing uses to turn a member's tag into an exact digest."""
+async def test_resolve_revision_defaults_to_the_current_revision(service: TaskService) -> None:
+    """No fragment means ``latest`` — the bare-member case taskset publishing hits most often."""
     await service.create_task("task-1", _task_input(), workspace="default")
 
     digest = await service.resolve_revision("default", "task-1")
@@ -259,6 +259,40 @@ async def test_resolve_revision_returns_the_digest_for_a_tag(service: TaskServic
     revisions = await service.list_revisions("default", "task-1")
     assert revisions is not None
     assert digest == revisions.data[0].content_hash
+
+
+async def test_resolve_revision_honours_a_tag_naming_an_older_revision(service: TaskService) -> None:
+    """The hook taskset publishing uses to turn a member's tag into an exact digest.
+
+    Needs a task with *more than one* revision and a tag left behind on the older one: against a
+    single-revision task every fragment resolves to the same digest, so the test would pass even if
+    the fragment were ignored entirely.
+    """
+    await service.create_task("task-1", _task_input(), workspace="default")
+    first = (await service.list_revisions("default", "task-1")).data[0].content_hash
+    await service.tag_revision("default", "task-1", "blessed", "latest")
+
+    revised = _task_input()
+    revised.intent = "Answer differently."
+    await service.replace_task("task-1", revised, workspace="default")
+
+    latest = await service.resolve_revision("default", "task-1")
+    blessed = await service.resolve_revision("default", "task-1", "blessed")
+
+    assert latest != first, "the task must actually have moved on, or this proves nothing"
+    assert blessed == first, "a tag must resolve to the revision it names, not the current one"
+
+
+async def test_resolve_revision_round_trips_a_digest_fragment(service: TaskService) -> None:
+    """A member submitted already-pinned must resolve to itself rather than to the head."""
+    await service.create_task("task-1", _task_input(), workspace="default")
+    first = (await service.list_revisions("default", "task-1")).data[0].content_hash
+
+    revised = _task_input()
+    revised.intent = "Answer differently."
+    await service.replace_task("task-1", revised, workspace="default")
+
+    assert await service.resolve_revision("default", "task-1", first) == first
 
 
 async def test_resolve_revision_raises_for_a_missing_task(service: TaskService) -> None:
