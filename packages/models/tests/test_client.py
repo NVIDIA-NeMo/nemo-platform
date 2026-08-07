@@ -5,7 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform, NotFoundError
+from nemo_platform import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncNeMoPlatform,
+    NeMoPlatform,
+    NotFoundError,
+)
 from nemo_platform.types.inference import ModelDeployment, ModelProvider
 from nemo_platform.types.inference.gateway.openai.v1 import OpenAIModelResp
 from nemo_platform.types.models import ModelEntity
@@ -49,6 +56,12 @@ def _not_found_error() -> NotFoundError:
     request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
     response = httpx.Response(404, request=request)
     return NotFoundError("not found", response=response, body={"detail": "not found"})
+
+
+def _api_status_error(status_code: int) -> APIStatusError:
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+    response = httpx.Response(status_code, request=request)
+    return APIStatusError("gateway not ready", response=response, body={"detail": "gateway not ready"})
 
 
 class _FakeClock:
@@ -383,6 +396,37 @@ def test_wait_for_openai_model_retries_unexpected_model_id(sdk):
     assert mock_get.call_count == 2
 
 
+def test_wait_for_openai_model_retries_transient_gateway_errors(sdk):
+    """Test that transient gateway and connection failures keep polling."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=[
+            APIConnectionError(request=request),
+            _api_status_error(503),
+            model_response,
+        ],
+    ) as mock_get:
+        result = sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.call_count == 3
+
+
+def test_wait_for_openai_model_reraises_non_transient_status_error(sdk):
+    """Test that non-readiness HTTP errors are not hidden until timeout."""
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=_api_status_error(401),
+    ):
+        with pytest.raises(APIStatusError):
+            sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+
 def test_wait_for_openai_model_times_out(sdk):
     """Test that timeout includes the expected model id in the error."""
     with patch.object(
@@ -525,6 +569,56 @@ async def test_async_wait_for_openai_model_retries_until_visible(async_sdk_with_
         {"name": "model-a", "workspace": "client-ws"},
         {"name": "model-a", "workspace": "client-ws"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_accepts_qualified_name_and_retries(async_sdk):
+    """Test that async workspace-qualified names are normalized while polling."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    mock_get = AsyncMock(side_effect=[_not_found_error(), model_response])
+
+    with patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk.models.wait_for_openai_model("ws/model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert [call.kwargs for call in mock_get.call_args_list] == [
+        {"name": "model-a", "workspace": "ws"},
+        {"name": "model-a", "workspace": "ws"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_retries_unexpected_model_id(async_sdk):
+    """Test that an async stale or mismatched route response is not treated as ready."""
+    stale_response = OpenAIModelResp(id="ws/other-model", owned_by="test")
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    mock_get = AsyncMock(side_effect=[stale_response, model_response])
+
+    with patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_retries_transient_gateway_errors(async_sdk):
+    """Test that async polling retries transient gateway and timeout failures."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+    mock_get = AsyncMock(
+        side_effect=[
+            APITimeoutError(request=request),
+            _api_status_error(502),
+            model_response,
+        ]
+    )
+
+    with patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.await_count == 3
 
 
 @pytest.mark.asyncio
