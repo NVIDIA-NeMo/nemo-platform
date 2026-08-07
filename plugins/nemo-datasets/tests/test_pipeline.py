@@ -12,7 +12,8 @@ import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.pipeline import _measure, profile
+from nemo_datasets_plugin.profiler.pipeline import _expected_rows, _measure, _peek_files, profile
+from nemo_datasets_plugin.profiler.readers.base import FilePreview
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
 
@@ -156,6 +157,66 @@ def test_data_files_glob_means_the_same_thing_to_pythons_own_glob(tmp_path):
         resolved = sorted(p.relative_to(tmp_path).as_posix() for p in Path(tmp_path).glob(split.data_files))
         assert len(resolved) == split.num_files, f"{split.name}: {split.data_files} -> {resolved}"
         assert all(name.startswith(f"data/{split.name}") for name in resolved)
+
+
+# --- the fold ------------------------------------------------------------------------------------
+
+
+def test_a_parquet_footer_declares_enough_to_fold_without_reading_rows(tmp_path):
+    # The footer is what makes a fold possible at all: the schema, so accumulators can exist before
+    # the first batch, and the exact row count, so the quality stride can be placed before the column
+    # it strides has been seen. A line-delimited file declares neither, which is why it materialises.
+    _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(7)])
+    (tmp_path / "extra.jsonl").write_text('{"a": 1}\n')
+    source = LocalFileSource(tmp_path)
+
+    previews = _peek_files(source, source.list_files())
+
+    assert previews["train.parquet"].num_rows == 7
+    assert previews["train.parquet"].arrow_schema is not None
+    assert previews["extra.jsonl"] == FilePreview()  # declares nothing, so the partition cannot fold
+
+
+def test_expected_rows_counts_what_the_read_will_actually_scan():
+    # The stride has to be placed over the rows that will be *scanned*, not the rows the dataset
+    # holds, or a budgeted run would stride far too coarsely and sample almost nothing.
+    previews = {"a": FilePreview(num_rows=100), "b": FilePreview(num_rows=100)}
+    assert _expected_rows(previews, None) == 200
+    assert _expected_rows(previews, 30) == 60  # capped per file, exactly as the read will be
+    assert _expected_rows({"a": FilePreview(num_rows=100), "b": FilePreview()}, None) is None
+
+
+def test_the_folded_and_materialised_paths_measure_the_same_thing(tmp_path):
+    # Parquet declares a schema and is folded batch by batch; jsonl declares none and is
+    # materialised. The same rows have to measure the same either way, or the batch size -- an
+    # implementation detail no reader of a profile can see -- would be visible in the numbers.
+    rows = [{"prompt": f"question {i}", "completion": "answer " * (i % 7 + 1), "score": i % 5} for i in range(200)]
+    _write_parquet(tmp_path / "pq" / "train.parquet", rows)
+    (tmp_path / "jl").mkdir()
+    (tmp_path / "jl" / "train.jsonl").write_text("\n".join(json.dumps(row) for row in rows))
+
+    folded = profile(LocalFileSource(tmp_path / "pq"), created_at=FIXED_TIME).partitions[0]
+    materialised = profile(LocalFileSource(tmp_path / "jl"), created_at=FIXED_TIME).partitions[0]
+
+    assert folded.stats == materialised.stats
+    assert folded.classification == materialised.classification
+    assert [f.model_dump() for f in folded.features] == [f.model_dump() for f in materialised.features]
+
+
+def test_an_exhaustive_fold_does_not_cost_more_than_a_budgeted_one(tmp_path):
+    # The point of the whole exercise: reading every row costs what reading some of them costs, so
+    # the budget stops being a memory guard. Same measurements, and `stats_complete` finally true.
+    _write_parquet(tmp_path / "train.parquet", [{"t": f"row {i}" * (i % 5 + 1)} for i in range(5000)])
+
+    budgeted = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=500)
+    exhaustive = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME, row_budget=None)
+
+    assert budgeted.sampling.rows_scanned == 500
+    assert exhaustive.sampling.rows_scanned == 5000
+    assert budgeted.partitions[0].stats_complete is False
+    assert exhaustive.partitions[0].stats_complete is True
+    # Exact where it claims to be exact: the longest row is found by reading all of them.
+    assert exhaustive.partitions[0].stats["t"].text.chars.max >= budgeted.partitions[0].stats["t"].text.chars.max
 
 
 # --- partition grouping --------------------------------------------------------------------------
@@ -529,7 +590,7 @@ def test_profile_degrades_one_partition_when_measurement_fails(tmp_path, monkeyp
     from nemo_datasets_plugin.profiler import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}, {"a": 2}])
-    monkeypatch.setattr(pipeline_module, "measure_columns", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(pipeline_module, "classify", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)  # must not raise
 
@@ -561,7 +622,7 @@ def test_a_measurement_failure_does_not_look_like_a_read_failure(tmp_path, monke
     from nemo_datasets_plugin.profiler import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
-    monkeypatch.setattr(pipeline_module, "measure_columns", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(pipeline_module, "classify", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
 
@@ -587,7 +648,9 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
     monkeypatch.setattr(
         stats_module,
         "_accumulator_for",
-        lambda feature: Boom() if feature.name == "completion" else real_accumulator_for(feature),
+        lambda feature, expected_rows=None: (
+            Boom() if feature.name == "completion" else real_accumulator_for(feature, expected_rows)
+        ),
     )
     _write_parquet(tmp_path / "train.parquet", [{"prompt": "q", "completion": "a"}])
 
@@ -603,16 +666,16 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
 def test_a_measurement_failure_is_scoped_to_its_own_partition(tmp_path, monkeypatch):
     from nemo_datasets_plugin.profiler import pipeline as pipeline_module
 
-    real_measure_columns = pipeline_module.measure_columns
+    real_classify = pipeline_module.classify
 
-    def poison_one_partition(features, rows):
+    def poison_one_partition(features, stats, **kwargs):
         if any(feature.name == "poison" for feature in features):
             raise RuntimeError("boom")
-        return real_measure_columns(features, rows)
+        return real_classify(features, stats, **kwargs)
 
     _write_parquet(tmp_path / "good" / "train.parquet", [{"prompt": "q", "completion": "a"}])
     _write_parquet(tmp_path / "bad" / "train.parquet", [{"poison": 1}])
-    monkeypatch.setattr(pipeline_module, "measure_columns", poison_one_partition)
+    monkeypatch.setattr(pipeline_module, "classify", poison_one_partition)
 
     partitions = {p.name: p for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions}
 

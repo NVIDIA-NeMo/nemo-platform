@@ -117,7 +117,9 @@ def test_one_bad_column_costs_only_itself(monkeypatch):
     monkeypatch.setattr(
         stats_module,
         "_accumulator_for",
-        lambda feature: Boom() if feature.name == "bad" else real_accumulator_for(feature),
+        lambda feature, expected_rows=None: (
+            Boom() if feature.name == "bad" else real_accumulator_for(feature, expected_rows)
+        ),
     )
 
     features = [_feature("good", "string"), _feature("bad", "string")]

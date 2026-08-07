@@ -12,6 +12,7 @@ pyarrow until a reader is actually needed.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Protocol
@@ -34,13 +35,37 @@ class ReadResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class FilePreview:
+    """What a reader can learn about a file without reading a single row.
+
+    A parquet footer carries both; a line-delimited format carries neither. The pipeline asks every
+    file this before it reads any of them, because knowing the schema up front is what lets a
+    partition be measured without first being materialised, and knowing the row count up front is
+    what lets a quality sample be strided across a column the fold has not finished seeing.
+    """
+
+    arrow_schema: pa.Schema | None = None
+    num_rows: int | None = None
+
+
 class FormatReader(Protocol):
     """Reads schema and rows for one file format."""
 
     file_format: ClassVar[str]
 
+    def peek(self, source: FileSource, entry: FileEntry) -> FilePreview:
+        """What the file declares about itself, without reading its rows."""
+        ...
+
     def read(self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None) -> ReadResult:
         """Read up to ``row_cap`` rows (all rows when None) plus whatever the format declares cheaply."""
+        ...
+
+    def batches(
+        self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None
+    ) -> Iterator[list[dict[str, Any]]]:
+        """The same rows :meth:`read` would return, handed over in chunks and never all at once."""
         ...
 
 

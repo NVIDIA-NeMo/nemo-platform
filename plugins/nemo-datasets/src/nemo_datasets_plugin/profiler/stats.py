@@ -85,58 +85,96 @@ class ColumnMeasurements:
     errors: list[Evidence]
 
 
-def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
-    """Measure every top-level column: its statistics and its content probes, in one pass each.
+class ColumnFold:
+    """The per-column accumulators for one partition, fed batch by batch.
 
     Each column is isolated. A value no detector anticipated -- a chat message whose ``role`` is a
     number, a float where a string was declared -- costs that column its measurements and nothing
     else, where previously it cost the partition every measurement it had. The failure is reported
     as an ``error`` evidence rather than left as a silent gap, because a column absent from ``stats``
-    is otherwise indistinguishable from one that simply had nothing worth measuring.
+    is otherwise indistinguishable from one that simply had nothing worth measuring. It is caught per
+    column *per batch*, so a bad row in the middle of a file cannot take the rest of the file with it.
 
     This is the narrow half of the two guards the profiler runs. The wide one still wraps the whole
     measure stage, and still catches anything structural -- schema derivation, classification -- that
     is not attributable to a single column.
 
-    Statistics and probes are measured together because they read the same values, and extracting a
-    column out of the rows costs more than either measurement. Neither fills in
+    Statistics and probes are folded together because they read the same values, and extracting a
+    column out of a batch costs more than either measurement. Neither fills in
     ``categorical.values``: that needs the roles, which classification has not assigned yet, so
-    :func:`quote_enumerations` adds them afterwards.
+    :func:`quote_enumerations` adds them afterwards, from the vocabulary this kept.
     """
-    stats: dict[str, ColumnStats] = {}
-    probes: dict[str, ColumnProbes] = {}
-    vocabularies: dict[str, set[Any]] = {}
-    errors: list[Evidence] = []
-    for feature in features:
-        # Parquet permits duplicate field names, and both maps are keyed by name. Measuring the
-        # first and skipping the rest makes which one wins deterministic instead of "whichever came
-        # last", and keeps stats and probes agreeing on the same one.
-        if feature.name in probes:
-            continue
-        accumulator = _accumulator_for(feature)
-        try:
-            # One batch, being every row this partition holds. The accumulator does not care: fed in
-            # pieces it gives the same answer, which is what lets the caller stop materialising the
-            # partition first.
-            accumulator.update([row.get(feature.name) for row in rows])
-            column, probe = accumulator.finalize()
-            probes[feature.name] = probe
-            vocabulary = accumulator.vocabulary()
-            if vocabulary is not None:
-                vocabularies[feature.name] = vocabulary
-        except Exception as exc:
-            errors.append(
-                Evidence(
+
+    def __init__(self, features: list[FeatureSchema], expected_rows: int | None = None) -> None:
+        self._accumulators: dict[str, ColumnAccumulator] = {}
+        self._features: list[FeatureSchema] = []
+        self._failed: dict[str, Evidence] = {}
+        for feature in features:
+            # Parquet permits duplicate field names, and every map here is keyed by name. Measuring
+            # the first and skipping the rest makes which one wins deterministic instead of
+            # "whichever came last", and keeps stats and probes agreeing on the same one.
+            if feature.name in self._accumulators:
+                continue
+            self._accumulators[feature.name] = _accumulator_for(feature, expected_rows)
+            self._features.append(feature)
+
+    def update(self, rows: list[dict[str, Any]]) -> None:
+        """Fold one batch of rows into every column's accumulator."""
+        for feature in self._features:
+            if feature.name in self._failed:
+                continue
+            try:
+                self._accumulators[feature.name].update([row.get(feature.name) for row in rows])
+            except Exception as exc:
+                self._failed[feature.name] = Evidence(
                     kind="error",
                     detail=(
                         f"column {feature.name!r} ({feature.dtype}) could not be measured: {type(exc).__name__}: {exc}"
                     ),
                 )
-            )
-            continue
-        if column is not None:
-            stats[feature.name] = column
-    return ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+
+    def finalize(self) -> ColumnMeasurements:
+        stats: dict[str, ColumnStats] = {}
+        probes: dict[str, ColumnProbes] = {}
+        vocabularies: dict[str, set[Any]] = {}
+        errors: list[Evidence] = []
+        for feature in self._features:
+            failure = self._failed.get(feature.name)
+            if failure is not None:
+                errors.append(failure)
+                continue
+            accumulator = self._accumulators[feature.name]
+            try:
+                column, probe = accumulator.finalize()
+            except Exception as exc:
+                errors.append(
+                    Evidence(
+                        kind="error",
+                        detail=(
+                            f"column {feature.name!r} ({feature.dtype}) could not be summarised: "
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                    )
+                )
+                continue
+            probes[feature.name] = probe
+            vocabulary = accumulator.vocabulary()
+            if vocabulary is not None:
+                vocabularies[feature.name] = vocabulary
+            if column is not None:
+                stats[feature.name] = column
+        return ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+
+
+def measure_columns(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> ColumnMeasurements:
+    """Measure every top-level column over rows already in hand.
+
+    The whole partition as a single batch. :class:`ColumnFold` is the same measurement taken as the
+    rows arrive; this is the shape for a caller that has them all anyway.
+    """
+    fold = ColumnFold(features)
+    fold.update(rows)
+    return fold.finalize()
 
 
 def quote_enumerations(
@@ -301,29 +339,36 @@ class _Vocabulary:
 class StringAccumulator(ColumnAccumulator):
     """A ``string`` column: length quantiles, corruption ratios, and a vocabulary if it has one."""
 
-    def __init__(self) -> None:
+    def __init__(self, expected_rows: int | None = None) -> None:
         super().__init__()
-        self._strings: list[str] = []
         self._lengths = _LengthHistogram()
         self._vocabulary = _Vocabulary()
+        # With the row count known -- parquet footers give it before a row is read -- the quality
+        # stride can be placed now and each string measured or skipped as it goes by, retaining
+        # nothing. Without it there is no stride to compute yet, so the strings are held and strided
+        # at the end. That is the one term here still sized by the column, and it is exactly the
+        # partitions that have no footer to read.
+        self._stride = _quality_stride(expected_rows) if expected_rows is not None else None
+        self._quality = _TextQualityCounters()
+        self._strings: list[str] = []
+        self._seen = 0
 
     def _observe(self, present: list[Any]) -> None:
         for value in present:
             if isinstance(value, str):
-                # The length folds away; the string itself is retained only because the quality
-                # stride needs the column's row count to place its sample, and that is not known
-                # until the last batch. Bounding that is the parquet footer sum's job -- it is the
-                # one term here still sized by the column, and it costs what materialising the
-                # column already cost.
-                self._strings.append(value)
                 self._lengths.add(len(value))
+                if self._stride is None:
+                    self._strings.append(value)
+                elif self._seen % self._stride == 0:
+                    self._quality.add(value)
+                self._seen += 1
         self._vocabulary.update(present)
 
     def _blocks(self) -> dict[str, Any]:
         text = quality = None
-        if self._strings:
+        if self._seen:
             text = TextStats(chars=self._lengths.quantiles())
-            quality = _text_quality(self._strings)
+            quality = _text_quality(self._strings) if self._stride is None else self._quality.finalize()
         return {"text": text, "quality": quality, "categorical": self._vocabulary.finalize()}
 
     def vocabulary(self) -> set[Any] | None:
@@ -440,10 +485,14 @@ class MessageAccumulator(ColumnAccumulator):
         }
 
 
-def _accumulator_for(feature: FeatureSchema) -> ColumnAccumulator:
-    """The accumulator that knows how to measure this column, dispatched once on its dtype."""
+def _accumulator_for(feature: FeatureSchema, expected_rows: int | None = None) -> ColumnAccumulator:
+    """The accumulator that knows how to measure this column, dispatched once on its dtype.
+
+    ``expected_rows`` is the partition's row count when it is known before reading -- only a string
+    column uses it, to place its quality stride without retaining the column.
+    """
     if feature.dtype == "string":
-        return StringAccumulator()
+        return StringAccumulator(expected_rows)
     if feature.dtype == "bool":
         return BoolAccumulator()
     if feature.dtype == "messages":
@@ -605,6 +654,40 @@ def _non_ascii_count(text: str) -> int:
     if text.isascii():
         return 0
     return _count_matches(_NON_ASCII_RUN, text)
+
+
+class _TextQualityCounters:
+    """The three corruption ratios as running sums, so a strided sample needs no storage.
+
+    Every denominator is the sample's own, never the column's: each ratio is an estimate over the
+    rows actually scanned, which is what keeps it unbiased rather than diluted.
+    """
+
+    def __init__(self) -> None:
+        self._chars = 0
+        self._whitespace = 0
+        self._non_ascii = 0
+        self._repetition = 0.0
+        self._rows = 0
+
+    def add(self, text: str) -> None:
+        self._chars += len(text)
+        self._whitespace += _whitespace_count(text)
+        self._non_ascii += _non_ascii_count(text)
+        self._repetition += _repetition_score(text)
+        self._rows += 1
+
+    def finalize(self) -> TextQuality:
+        return TextQuality(
+            whitespace_ratio=self._whitespace / self._chars if self._chars else 0.0,
+            non_ascii_ratio=self._non_ascii / self._chars if self._chars else 0.0,
+            repetition_score=self._repetition / self._rows if self._rows else 0.0,
+        )
+
+
+def _quality_stride(rows: int) -> int:
+    """How many rows to step between quality samples, given the column's length."""
+    return max(1, rows // _QUALITY_SAMPLE_ROWS)
 
 
 def _text_quality(strings: list[str]) -> TextQuality:
