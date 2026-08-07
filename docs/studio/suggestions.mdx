@@ -1,0 +1,41 @@
+---
+title: "NeMo Studio Suggestions"
+description: ""
+---
+Use NeMo Studio **Agents > Suggestions** to review optimizer suggestions for agents in the selected workspace.
+
+## What NeMo Studio Shows
+
+NeMo Studio loads the latest optimizer snapshot and suggestions from the platform files service. Suggestions can be scoped to a workspace or to a specific agent.
+
+The Suggestions page summarizes:
+
+- The number of agents and models observed in the latest optimizer snapshot.
+- Suggestion counts by priority.
+- Workspace-wide suggestions.
+- Agent-specific suggestions grouped by agent.
+
+## Filter Suggestions
+
+Use the table filters to narrow suggestions by:
+
+| Filter | Purpose |
+|--------|---------|
+| Type | Focus on model optimization, guardrail, data safety, or new-model suggestions. |
+| Priority | Show high-, medium-, or low-priority suggestions. |
+| Scope | Separate workspace-wide suggestions from agent-specific suggestions. |
+| Agent | Review suggestions for one agent at a time. |
+
+## Run an Optimization Pass
+
+If there are no suggestions, or if the latest snapshot is stale, NeMo Studio starts a new optimizer pass for the workspace. The optimizer analyzes deployed agents and writes updated suggestions back to the platform files service.
+
+## Apply Suggestions
+
+NeMo Studio can apply supported suggestions from the Suggestions page. Model optimization suggestions may ask you to choose an evaluation config before applying the change.
+
+## Next Steps
+
+- [NeMo Studio Agents](/documentation/studio/agents): review, deploy, chat with, and delete agents from NeMo Studio.
+- [NeMo Studio Monitor](/documentation/studio/monitor): inspect recent agent telemetry, token usage, and inference logs.
+- [Optimize Agents](/documentation/agents/optimize-agents): run CLI-driven optimization and review the underlying checks.
