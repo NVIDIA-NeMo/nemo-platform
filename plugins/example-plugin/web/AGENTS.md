@@ -31,14 +31,15 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 
 Studio injects everything a plugin needs through a **single `host` prop**
 (`host.workspaceId`, `host.auth`, `host.sdk`, `host.navigation`,
-`host.notifications`, `host.telemetry`) — grouped so new capabilities extend the
+`host.notifications`, `host.telemetry`, `host.breadcrumbs`) — grouped so new capabilities extend the
 handle without changing `Root`'s signature. Destructure what you use. All are
 backed by Studio's own singletons: `notifications` fires into Studio's shared
 toaster, `telemetry` logs to Studio's OTEL pipeline (auto-scoped to the plugin),
 `navigation` drives Studio's shared router, and `breadcrumbs` writes Studio's
 breadcrumb bar — which lives in GlobalNav, *outside* the plugin's subtree, so a
 plugin cannot render it itself. Studio clears the trail when the plugin
-unmounts, so don't hand-roll cleanup. See `src/SharedUiPage.tsx`.
+unmounts, but **not between pages within the plugin**: return a cleanup that
+clears it, or the trail follows you to the next page. See `src/SharedUiPage.tsx`.
 
 `@tanstack/react-query` **is** shared — call `useQuery`/`useMutation` and it reads
 Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the

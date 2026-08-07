@@ -24,12 +24,10 @@ function x({ host: e }) {
 		page: 1,
 		page_size: 100
 	}), o = t?.data ?? [], { set: s } = e.breadcrumbs, { workspaceId: c } = e;
-	h(() => {
-		s([{
-			label: "Example Plugin",
-			href: v(c, "overview")
-		}, { label: "Shared UI" }]);
-	}, [s, c]);
+	h(() => (s([{
+		label: "Example Plugin",
+		href: v(c, "overview")
+	}, { label: "Shared UI" }]), () => s([])), [s, c]);
 	let y = p(), b = m((e) => [
 		e.accessor("name", {
 			header: "Name",

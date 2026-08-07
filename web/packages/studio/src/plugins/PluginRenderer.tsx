@@ -53,8 +53,10 @@ export const PluginRenderer = (): ReactElement => {
       setBreadcrumbs(trail.map(({ label, href }) => ({ slotLabel: label, href }))),
     [setBreadcrumbs]
   );
-  // Studio owns the cleanup so a plugin can't leave a stale trail behind.
-  useEffect(() => () => setBreadcrumbs([]), [setBreadcrumbs]);
+  // Studio owns the cleanup so a plugin can't leave a stale trail behind. Keyed
+  // on pluginName too: the router reuses this component across plugins, and the
+  // outgoing plugin's trail would otherwise persist until the next one sets its own.
+  useEffect(() => () => setBreadcrumbs([]), [setBreadcrumbs, pluginName]);
 
   const host = useMemo<PluginHost>(
     () => ({

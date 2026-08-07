@@ -23,7 +23,8 @@ export function SharedUiPage({ host }: { host: PluginHost }) {
     });
   const workspaces = data?.data ?? [];
 
-  // Renders in Studio's chrome, outside this subtree. Studio clears it on unmount.
+  // Renders in Studio's chrome, outside this subtree. Studio clears the trail
+  // when the plugin unmounts, but not between pages — so clear it here too.
   const { set: setBreadcrumbs } = host.breadcrumbs;
   const { workspaceId } = host;
   useEffect(() => {
@@ -31,6 +32,7 @@ export function SharedUiPage({ host }: { host: PluginHost }) {
       { label: "Example Plugin", href: pluginPath(workspaceId, "overview") },
       { label: "Shared UI" },
     ]);
+    return () => setBreadcrumbs([]);
   }, [setBreadcrumbs, workspaceId]);
 
   // Syncs to URL search params — one DataView per route or they fight.

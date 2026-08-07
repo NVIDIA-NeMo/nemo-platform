@@ -202,4 +202,36 @@ describe('PluginRenderer', () => {
     // Studio clears the trail itself; a plugin that forgets cannot leave one behind.
     expect(seen.at(-1)).toEqual([]);
   });
+
+  it('clears the trail when the router swaps one plugin for another', () => {
+    const seen: BreadcrumbsItemProps[][] = [];
+    function BreadcrumbSpy() {
+      seen.push(useBreadcrumbs().breadcrumbs);
+      return null;
+    }
+    vi.mocked(usePlugins).mockReturnValue([makePlugin('plugin-a'), makePlugin('plugin-b')]);
+
+    render(
+      <BreadcrumbsProvider>
+        <BreadcrumbSpy />
+        <MemoryRouter initialEntries={['/workspaces/ws1/plugin/plugin-a/']}>
+          <Routes>
+            <Route
+              path="/workspaces/:workspace/plugin/:pluginName/*"
+              element={<PluginRenderer />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </BreadcrumbsProvider>
+    );
+
+    act(() => capturedProps?.host.breadcrumbs.set([{ label: 'From plugin A' }]));
+    expect(seen.at(-1)).toEqual([{ slotLabel: 'From plugin A', href: undefined }]);
+
+    // Navigate for real: MemoryRouter only reads initialEntries once, and the
+    // point is that PluginRenderer stays mounted while :pluginName changes, so
+    // only the effect's deps can force the reset.
+    act(() => capturedProps?.host.navigation.navigate('/workspaces/ws1/plugin/plugin-b/'));
+    expect(seen.at(-1)).toEqual([]);
+  });
 });
