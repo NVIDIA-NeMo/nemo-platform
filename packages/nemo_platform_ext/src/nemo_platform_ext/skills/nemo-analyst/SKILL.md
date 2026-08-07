@@ -24,8 +24,8 @@ not-for:
   - nemo-evaluator (use to author evaluations and metrics; this skill analyzes production behavior)
 compatibility: >-
   nemo-platform >= 0.1.0; requires the Insights plugin, a reachable platform
-  with Intake telemetry for the target agent, and INFERENCE_API_KEY for NVIDIA
-  Inference Gateway access. No Docker or datasets needed.
+  with Intake telemetry for the target agent, and a model the platform can call
+  on the Analyst's behalf. No Docker or datasets needed.
 maturity: beta
 license: Apache-2.0
 user-invocable: true
@@ -34,8 +34,8 @@ allowed-tools: [Bash, Read]
 
 # NeMo Analyst
 
-Find what an agent keeps getting wrong, from its own telemetry, and record it as
-an Insight.
+Analyze an agent's behavior from its own telemetry and record what recurs as
+Insights.
 
 ## What it produces
 
@@ -60,15 +60,16 @@ worth more than ten vague ones, so a run that files nothing is a valid outcome.
 The Analyst reads telemetry; it cannot create it. Confirm all three:
 
 - The target agent already has traces in Intake. No traces means no Insights.
-- `INFERENCE_API_KEY` is set. The Analyst runs on Claude Opus 4.8 through the
-  NVIDIA Inference Gateway and reads **only** this variable. It does not use the
-  `NEMO_EXPERIMENTALIST_MODELS_*` tiers the Experimentalist needs, so do not
-  copy that configuration here.
 - The platform is reachable at `NMP_BASE_URL`.
+- The Analyst has a model to run on. It is an LLM agent itself, and it uses the
+  models the platform is configured with rather than any credential of its own.
+  Don't hand it the Experimentalist's configuration. Pre-flight is the authority
+  on whether this is satisfied, and says how to fix it if not.
 
-An `AGENT-SPEC.md` is optional but makes the Analyst materially better: given
-the agent's intended behavior it can flag divergence from that contract, not
-just outright errors.
+An `AGENT-SPEC.md` is optional but makes the Analyst materially better. It
+carries the intent behind the agent — what it is for, its constraints, what
+counts as success — none of which is recoverable from code or traces, so
+without it the Analyst can only judge an agent against itself.
 
 ## Pre-flight
 
@@ -76,7 +77,7 @@ just outright errors.
 nemo agents analyst doctor
 ```
 
-Only two results block a run: an unset `INFERENCE_API_KEY`, and an
+Only two results block a run: no usable model configured, and an
 `optimizer.yaml` that is missing or unparseable — the second only if you intend
 to run without `--agent`. Doctor takes no `--agent` flag, so it always checks
 for a profile and always reports a red line when there is none; when you pass
@@ -86,15 +87,12 @@ only ever warn.
 ## Run it
 
 ```bash
-nemo agents analyst run \
-  --agent <agent-name> \
-  --workspace <workspace> \
-  --base-url "$NMP_BASE_URL"
+nemo agents analyst run --agent <agent-name> --workspace <workspace>
 ```
 
-Add `--agent-spec AGENT-SPEC.md` for divergence checking, and `--verbose` to
-stream the Analyst's tool calls and reasoning to stderr. Expect several minutes;
-it surveys many sessions before drilling into any of them.
+Add `--agent-spec AGENT-SPEC.md` to tell it what the agent is supposed to do,
+and `--verbose` to stream its tool calls and reasoning to stderr. Expect several
+minutes; it surveys many sessions before drilling into any of them.
 
 From an agent directory, an `optimizer.yaml` profile supplies `agent`,
 `workspace`, and `agent_spec`, so the flags above become optional:
