@@ -627,7 +627,6 @@ class AuditJob(NemoJob):
                 if has_reports
                 else {}
             )
-
             n_failed = len(list(failed_dir.iterdir()))
             status = "completed" if n_failed == 0 else "partial"
             self.report_progress(

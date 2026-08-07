@@ -312,6 +312,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/auditor/v2/workspaces/{workspace}/jobs/audit/{job}/results/artifacts/download:
+    get:
+      tags:
+      - Auditor Jobs
+      summary: Download Audit Artifacts
+      description: Stream an aggregate tar.gz of all garak report artifacts for an
+        audit job.
+      operationId: download_audit_artifacts_apis_auditor_v2_workspaces__workspace__jobs_audit__job__results_artifacts_download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/auditor/v2/workspaces/{workspace}/jobs/audit/{job}/results/{name}:
     get:
       tags:
