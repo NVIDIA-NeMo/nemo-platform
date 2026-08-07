@@ -476,10 +476,10 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                         framework_skills_dirs=self._framework_skills_dirs,
                     ),
                 )
-                for candidate, record in (
-                    await scorer.run(ctx, candidates=candidates, round_num=round_num, analysis=analysis)
-                ).items():
-                    await ctx.record_reward(candidate, channel="validation-trajectory", result=record)
+                scored = await scorer.run(ctx, candidates=candidates, round_num=round_num, analysis=analysis)
+                for candidate in candidates:
+                    if (record := scored.get(candidate.id)) is not None:
+                        await ctx.record_reward(candidate, channel="validation-trajectory", result=record)
 
             for candidate in new_candidates:
                 await ctx.archive_candidate(candidate)

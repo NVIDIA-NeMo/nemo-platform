@@ -11,7 +11,7 @@ constructed with an injected ``FakeLLMClient`` so the tests need no
 
 import json
 
-from doubles import make_candidate
+from doubles import make_candidate, seed_reward
 from nemo_experimentalist_plugin.entities import Candidate, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.terminator import (
     TerminationDecision,
@@ -22,10 +22,9 @@ from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 def _candidate(label: str, generation: int, val_reward: dict[str, float] | None = None) -> Candidate:
     """A committed candidate carrying only what convergence reads."""
-    c = make_candidate(label=label, candidate_id=label)
-    c.generation = generation
+    c = make_candidate(label=label, candidate_id=label, generation=generation)
     if val_reward:
-        c.rewards["validation"] = RewardRecord(metrics=val_reward)
+        seed_reward(c, "validation", RewardRecord(metrics=val_reward))
     return c
 
 

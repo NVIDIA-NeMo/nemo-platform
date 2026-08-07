@@ -167,8 +167,11 @@ class TrajectoryScorer(Component):
         candidates: list[Candidate],
         round_num: int = 0,
         analysis: str | None = None,
-    ) -> dict[Candidate, RewardRecord]:
-        """One reward record per candidate, measuring *how* it got there.
+    ) -> dict[str, RewardRecord]:
+        """One reward record per candidate **id**, measuring *how* it got there.
+
+        Keyed by id rather than by the Candidate: a Candidate is a pydantic model and so
+        unhashable, and identity is the id in any case.
 
         Whatever a scorer needs to decompose a trajectory — the built-in ranks against a
         goal tree it builds and refines itself — is its own state, kept wherever it likes

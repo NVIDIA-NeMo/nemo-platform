@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
-from doubles import FakeBackend, FakeEvaluator, fake_client, make_candidate
+from doubles import FakeBackend, FakeEvaluator, fake_client, make_candidate, seed_reward
 from nemo_experimentalist_plugin.config import CandidateStorageConfig, EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
     Candidate,
@@ -420,8 +420,10 @@ async def test_an_insight_suite_mismatch_does_not_fail_a_completed_run(monkeypat
     baseline = _insight_candidate("agent-0", round_num=0, insight=0.0, validation=0.5)
     winner = _insight_candidate("agent-1", round_num=1, insight=1.0, validation=0.75)
     # The winner was scored against a different suite than the run ended up with.
-    winner.rewards["insight"] = RewardRecord(
-        metadata={**winner.rewards["insight"].metadata, "suite_identity": "sha256:" + "e" * 64}
+    seed_reward(
+        winner,
+        "insight",
+        RewardRecord(metadata={**winner.rewards["insight"].metadata, "suite_identity": "sha256:" + "e" * 64}),
     )
 
     with caplog.at_level("WARNING"):

@@ -10,7 +10,7 @@ crashed in `to_markdown_table`. `EvolutionNode` is not a `Candidate`: it exposes
 """
 
 import pytest
-from doubles import make_candidate
+from doubles import make_candidate, seed_reward
 from nemo_experimentalist_plugin.entities import RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionNode, EvolutionTree
 
@@ -62,7 +62,7 @@ def test_node_reward_str_renders_every_measured_channel() -> None:
 def test_rendering_picks_up_an_unknown_channel_without_code_changes() -> None:
     """The point of the channel map: a new channel reaches the report unaided."""
     node = _node("agent-0", round_num=0, train={"reward": 0.25}, val={"reward": 0.5})
-    node.candidate.rewards["some-new-channel"] = RewardRecord(metrics={"score": 0.9})
+    seed_reward(node.candidate, "some-new-channel", RewardRecord(metrics={"score": 0.9}))
     tree = EvolutionTree()
     tree.nodes = {"agent-0": node}
 

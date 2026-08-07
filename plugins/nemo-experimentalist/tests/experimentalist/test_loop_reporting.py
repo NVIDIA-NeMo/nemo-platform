@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 
 import pytest
-from doubles import make_candidate
+from doubles import make_candidate, seed_reward
 from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
@@ -41,7 +41,7 @@ def _measure(candidate: Candidate, channel: str, **fields: object) -> None:
     tests depend on. A channel is written once in production — Builder commits, strategy
     records — so this shape is the test's, not the loop's.
     """
-    candidate.rewards[channel] = candidate.rewards[channel].model_copy(update=fields)
+    seed_reward(candidate, channel, candidate.rewards[channel].model_copy(update=fields))
 
 
 def _selector() -> object:

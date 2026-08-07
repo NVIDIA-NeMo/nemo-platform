@@ -18,7 +18,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.entities import Candidate, Proposal
+from nemo_experimentalist_plugin.entities import Candidate, Proposal, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.registry import (
     Component,
     get_component,
@@ -445,9 +445,11 @@ async def test_naming_a_trajectory_scorer_reaches_it(tmp_path, isolated_registry
         def __init__(self, **kwargs: Any) -> None:
             pass
 
-        async def run(self, ctx: Any, *, candidates: list[Candidate], **kwargs: Any) -> dict[Candidate, Any]:
+        async def run(self, ctx: Any, *, candidates: list[Candidate], **kwargs: Any) -> dict[str, RewardRecord]:
             reached.append("acme-steps")
-            return {}
+            # A real record, not an empty dict: returning {} never exercises the key type,
+            # which is how `dict[Candidate, ...]` shipped despite Candidate being unhashable.
+            return {c.id: RewardRecord(metrics={"aggregate": 0.5}) for c in candidates}
 
     config = EvolutionaryOptimizerConfig(max_rounds=1, analyzer=None, terminator=None, trajectory_scorer="acme-steps")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
@@ -459,9 +461,12 @@ async def test_naming_a_trajectory_scorer_reaches_it(tmp_path, isolated_registry
     loop._generate_initial_goal_tree = _no_results
     loop._propose_improvements = _no_proposals
 
-    await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    await loop._run(ctx)
 
     assert reached == ["acme-steps"]
+    scored = [c for c in await ctx.candidates() if c.rewards["validation-trajectory"].metrics]
+    assert scored, "the scorer's records never reached the candidates"
 
 
 @pytest.mark.asyncio
@@ -592,3 +597,27 @@ async def test_the_analyzer_is_built_with_the_runs_platform_handles(tmp_path, is
 async def _one(ctx: Any) -> Any:
     proposal = Proposal(ancestor=None, description="baseline", kind="import", payload={})
     return await ctx.component("builder", "import").build(ctx, proposal, generation=0)
+
+
+@pytest.mark.asyncio
+async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(tmp_path, isolated_registry: None) -> None:
+    """`Candidate` is a pydantic model and unhashable, so a dict keyed by one raises at
+    the moment of return — after the round has already paid for the scoring."""
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import GroupLeafScorer
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    baseline = await _one(ctx)
+    scorer = GroupLeafScorer(workspace=tmp_path)
+
+    async def scored(**_: Any) -> dict[str, Any]:
+        return {baseline.label: {"details": {"n1": {}}, "reward": {"aggregate": 0.5}}}
+
+    scorer._ensure_goal_tree = _no_results
+    scorer._update_goal_tree = _no_results
+    scorer._reward_trajectories = scored
+
+    result = await scorer.run(ctx, candidates=[baseline], round_num=0, analysis="x")
+
+    assert list(result) == [baseline.id], "records must be keyed by candidate id, not by the Candidate"
+    assert baseline.trajectory_detail == {"n1": {}}

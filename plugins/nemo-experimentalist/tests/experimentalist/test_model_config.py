@@ -7,6 +7,7 @@ import sys
 import textwrap
 
 import pytest
+from doubles import seed_reward
 from nemo_experimentalist_plugin.entities import RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.model_config import (
     _client,
@@ -221,8 +222,8 @@ def test_writing_a_channel_replaces_it() -> None:
     from doubles import make_candidate
 
     candidate = make_candidate(label="agent-0", description="baseline")
-    candidate.rewards["insight"] = RewardRecord(metrics={"reward": 0.5})
-    candidate.rewards["insight"] = RewardRecord(metadata={"suite_identity": "sha256:abc"})
+    seed_reward(candidate, "insight", RewardRecord(metrics={"reward": 0.5}))
+    seed_reward(candidate, "insight", RewardRecord(metadata={"suite_identity": "sha256:abc"}))
 
     record = candidate.rewards["insight"]
     assert record.metrics == {}, "replaced, not merged"

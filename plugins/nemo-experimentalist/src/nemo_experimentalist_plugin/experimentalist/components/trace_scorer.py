@@ -181,7 +181,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         candidates: list[Candidate],
         round_num: int = 0,
         analysis: str | None = None,
-    ) -> dict[Candidate, RewardRecord]:
+    ) -> dict[str, RewardRecord]:
         """Score how each candidate got to its result, as one reward record each.
 
         The goal tree this scorer ranks against is its own: built on first use from the
@@ -197,13 +197,13 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
             )
         results = await self._reward_trajectories(dataset=ctx.datasets[PRIMARY_SPLIT], candidates=candidates)
         by_label = {c.label: c for c in candidates}
-        scored: dict[Candidate, RewardRecord] = {}
+        scored: dict[str, RewardRecord] = {}
         for label, payload in results.items():
             candidate = by_label.get(label)
             if candidate is None:
                 continue
             candidate.trajectory_detail = payload["details"]
-            scored[candidate] = RewardRecord(metrics=payload["reward"])
+            scored[candidate.id] = RewardRecord(metrics=payload["reward"])
         return scored
 
     def _goal_tree_path(self, round_num: int) -> Path:

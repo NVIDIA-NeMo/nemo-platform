@@ -459,6 +459,18 @@ class RewardMap(dict[str, RewardRecord]):
     def __missing__(self, channel: str) -> RewardRecord:
         return RewardRecord()
 
+    def __setitem__(self, channel: str, record: RewardRecord) -> None:
+        """Refuse a direct write: it mutates memory and is never persisted.
+
+        A measurement reaches the store through ``ctx.record_reward``, which also
+        persists the evaluation's traces and updates the candidate. Assigning here
+        instead leaves a candidate that looks measured until the next reload.
+        """
+        raise TypeError(
+            f"cannot set rewards[{channel!r}] directly; record a measurement with "
+            "ctx.record_reward(candidate, channel=..., result=...) so it is persisted"
+        )
+
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
         """Validate as a plain channel map, then re-wrap so ``__missing__`` survives.
@@ -532,22 +544,26 @@ class Candidate(NemoEntity, entity_type="candidate"):
     )
     run_id: str = Field(
         ...,
+        frozen=True,
         description="ExperimentRun entity id that this candidate belongs to.",
     )
     label: str = Field(
         ...,
+        frozen=True,
         description=(
             "Display handle for this candidate (e.g. 'agent-0'), used in reports and the "
             "evolution tree. Unique within a run, not globally, and not identity."
         ),
     )
     ancestor: str | None = Field(
+        frozen=True,
         default=None,
         description=(
             "Parent Candidate id. None means this is the baseline, and is the only place that distinction is encoded."
         ),
     )
     generation: int = Field(
+        frozen=True,
         default=0,
         description=(
             "Strategy-supplied grouping index. Our loop sets the round and HPO sets the "
@@ -555,6 +571,7 @@ class Candidate(NemoEntity, entity_type="candidate"):
         ),
     )
     generated_from: Proposal = Field(
+        frozen=True,
         description=(
             "Immutable snapshot of the Proposal this candidate was built from, so a Proposer "
             "can read the history of what worked. Every candidate has one, including the "
@@ -562,10 +579,12 @@ class Candidate(NemoEntity, entity_type="candidate"):
         ),
     )
     description: str = Field(
+        frozen=True,
         description="Human-readable explanation of this candidate; derived from the Proposal when there is one.",
     )
     artifact: ResourceRef = Field(
         ...,
+        frozen=True,
         description="The completed resource that defines this candidate, written by its Builder.",
     )
     rewards: RewardMap = Field(

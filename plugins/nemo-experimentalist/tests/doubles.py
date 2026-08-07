@@ -257,3 +257,12 @@ def make_context(
         resuming=resuming,
         reporter=reporter,
     )
+
+
+def seed_reward(candidate: Candidate, channel: str, record: RewardRecord) -> None:
+    """Put a measurement on a candidate for a fixture, without persisting it.
+
+    Production writes go through ``ctx.record_reward``; this exists so a test can build
+    a candidate that is already scored without standing up a store.
+    """
+    dict.__setitem__(candidate.rewards, channel, record)

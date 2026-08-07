@@ -398,7 +398,9 @@ class ExperimentContext:
             )
         else:
             record = result if metadata is None else result.model_copy(update={"metadata": dict(metadata)})
-        candidate.rewards[channel] = record
+        # The one sanctioned write: RewardMap refuses __setitem__ so an in-memory-only
+        # measurement cannot masquerade as a recorded one. Persisting is the next line.
+        dict.__setitem__(candidate.rewards, channel, record)
         await self.update_candidate(candidate)
 
     async def evaluate(
