@@ -13,6 +13,7 @@ import { ControlledDatasetFileSelect } from '@nemo/common/src/components/Dataset
 import type { VariableDef } from '@nemo/common/src/components/form/VariableTextArea';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type { EvaluateJobRequest, MetricInline, Model } from '@nemo/sdk/generated/evaluator/schema';
 import {
@@ -43,7 +44,6 @@ import { DEFAULT_INFERENCE_PARAMS_FORM_VALUES } from '@studio/hooks/evaluation/u
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { buildModelPayload } from '@studio/util/evaluations';
-import { logger } from '@studio/util/logger';
 import { Plus } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {

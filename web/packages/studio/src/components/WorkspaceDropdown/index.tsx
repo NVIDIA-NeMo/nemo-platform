@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { useEntitiesListWorkspaces } from '@nemo/sdk/generated/platform/api';
 import { Workspace } from '@nemo/sdk/generated/platform/schema';
 import {
@@ -23,7 +24,6 @@ import { useRecentWorkspaces } from '@studio/components/WorkspaceDropdown/useRec
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useBoolean } from '@studio/util/hooks/useBoolean';
-import { logger } from '@studio/util/logger';
 import cn from 'classnames';
 import { Plus, Filter } from 'lucide-react';
 import { ChangeEvent, FC, lazy, useMemo, useState } from 'react';

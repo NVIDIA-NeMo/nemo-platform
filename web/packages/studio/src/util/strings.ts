@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { Row } from '@studio/util/files';
-import { logger } from '@studio/util/logger';
 import Papa from 'papaparse';
 
 export { getTextWithCount } from '@nemo/common/src/utils/formatters';

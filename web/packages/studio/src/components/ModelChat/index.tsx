@@ -7,12 +7,12 @@ import {
   type AssistantChatProps,
 } from '@nemo/common/src/components/AssistantChat';
 import type { AssistantMessageCompletion } from '@nemo/common/src/components/AssistantChat/types';
+import { handleGenericError } from '@nemo/common/src/utils/logger';
 import type { ModelChatStatus } from '@nemo/common/src/utils/models';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import { StatsBadge, type ChatMetrics } from '@studio/components/chat/StatsBadge';
 import type { ComposerSeed } from '@studio/routes/ModelCompareRoute/types';
-import { handleGenericError } from '@studio/util/logger';
 import { type ReactNode, useEffect, useRef, useState, type FC } from 'react';
 
 interface ModelChatProps extends Pick<

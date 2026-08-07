@@ -4,6 +4,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
 import { FormModal } from '@nemo/common/src/components/FormModal';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { Anchor, Button, Flex, Stack, Switch, Text } from '@nvidia/foundations-react-core';
 import { DetailRow } from '@studio/components/DetailRow';
 import { AddToolForm } from '@studio/components/PromptTuningForm/ToolsSection/components/AddToolForm';
@@ -15,7 +16,6 @@ import {
 import { TOOL_JSON_EXAMPLE } from '@studio/components/PromptTuningForm/ToolsSection/constants';
 import { useSubmitSingleTool } from '@studio/components/PromptTuningForm/ToolsSection/hooks/useSubmitSingleTool';
 import { PromptTuningFormFields } from '@studio/routes/PromptTuningFormRoute/utils';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { Plus, ExternalLink, Toolbox } from 'lucide-react';
 import { FC, useState } from 'react';
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form';

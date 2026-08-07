@@ -12,22 +12,26 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
-import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import { FC, MouseEvent, useState } from 'react';
 
 interface CancelJobButtonProps {
+  workspace: string;
   jobName: string;
   jobStatus?: PlatformJobStatus;
   compact?: boolean;
 }
 
-export const CancelJobButton: FC<CancelJobButtonProps> = ({ jobName, jobStatus, compact }) => {
+export const CancelJobButton: FC<CancelJobButtonProps> = ({
+  workspace,
+  jobName,
+  jobStatus,
+  compact,
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const toast = useToast();
   const queryClient = useQueryClient();
-  const workspace = useWorkspaceFromPath();
 
   const { mutateAsync, isPending } = useJobsCancelJob({
     mutation: {

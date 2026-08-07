@@ -3,11 +3,11 @@
 
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { Banner, Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { DatasetFileSelect } from '@studio/components/DatasetFileSelect';
 import { DatasetSelect } from '@studio/components/DatasetSelect';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC } from 'react';
 import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
 

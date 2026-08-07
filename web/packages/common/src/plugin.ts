@@ -6,6 +6,8 @@
 
 export { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 export { AccordionSection } from '@nemo/common/src/components/AccordionSection';
+export { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
+export { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 export type { AccordionSectionProps } from '@nemo/common/src/components/AccordionSection';
 export { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
 export { FileTag } from '@nemo/common/src/components/FileTag';
@@ -57,6 +59,10 @@ export {
   getSortParamWithWhitelist,
 } from '@nemo/common/src/utils/query';
 export { triggerDownload } from '@nemo/common/src/utils/file';
+
+export { getErrorMessage } from '@nemo/common/src/utils/error';
+export { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
+export { logger, toError } from '@nemo/common/src/utils/logger';
 
 export { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 export {

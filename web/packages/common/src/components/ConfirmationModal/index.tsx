@@ -5,9 +5,9 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { getErrorMessage } from '@nemo/common/src/utils/error';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/components/NewDataDesignerJobForm/utils';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { type ComponentProps, type FC, useState } from 'react';
 import { useForm } from 'react-hook-form';
 

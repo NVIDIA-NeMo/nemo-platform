@@ -11,6 +11,7 @@
  */
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import {
   getGuardrailsGetGuardrailConfigQueryKey,
   useGuardrailsDeleteConfig,
@@ -18,7 +19,6 @@ import {
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataView';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateGuardrailModal } from '@studio/routes/guardrails/CreateGuardrailModal';

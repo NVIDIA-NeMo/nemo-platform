@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import {
   QuickActionsMenuRoot,
   type QuickActionItem,
@@ -9,7 +10,6 @@ import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useDatasetDirectoryDelete } from '@studio/api/datasets/useDatasetDirectoryDelete';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { FileSystemDirectory } from '@studio/components/FilesTable/utils';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';

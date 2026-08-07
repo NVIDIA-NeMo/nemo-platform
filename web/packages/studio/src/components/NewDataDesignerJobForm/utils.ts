@@ -12,13 +12,6 @@ import type { ModelEntity, ModelProvider } from '@nemo/sdk/generated/platform/sc
 /** Model option for the form: entity plus display name used in job requests */
 export type DataDesignerModelOption = ModelEntity & { served_model_name: string };
 
-/** Get a display message from an unknown error; use default when not an Error instance */
-export function getErrorMessage(error: unknown, defaultMessage?: string): string {
-  return error instanceof Error
-    ? error.message
-    : (defaultMessage ?? 'Something went wrong. Please try again.');
-}
-
 /**
  * Resolve workspace and model name for chat/completion calls.
  * If modelRef contains "/", parses as "workspace/name"; otherwise uses fallbackWorkspace and modelRef as name.

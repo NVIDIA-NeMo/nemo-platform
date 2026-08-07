@@ -3,9 +3,15 @@
 
 /* eslint-disable no-console */
 import { Logger, logs, SeverityNumber } from '@opentelemetry/api-logs';
-import { OTEL_SERVICE_NAME, VERSION_SHA } from '@studio/constants/environment';
 
-const otelLogger: Logger = logs.getLogger(OTEL_SERVICE_NAME);
+// The service name lives in Studio's env config, which a shared library must not
+// import. Studio calls configureLogger() at bootstrap; until then, logs still go
+// to the console and OTEL receives them under a placeholder name.
+let otelLogger: Logger = logs.getLogger('nemo-studio');
+
+export const configureLogger = (serviceName: string): void => {
+  otelLogger = logs.getLogger(serviceName);
+};
 
 /**
  * Wrapper class around the global OpenTelemetry Logger. Logs will be transported to:
@@ -18,8 +24,8 @@ const otelLogger: Logger = logs.getLogger(OTEL_SERVICE_NAME);
  * Example usage:
  *
  * ```
- * import { websiteLogger } from '@studio/util/logger';
- * websiteLogger.info('Some message to log');
+ * import { logger } from '@nemo/common/src/utils/logger';
+ * logger.info('Some message to log');
  * ```
  */
 class WebsiteLogger {
@@ -80,14 +86,5 @@ export const handleGenericError = (error: Error | string) => {
     logger.error(error.message, error);
   } else {
     logger.error(error);
-  }
-};
-
-/**
- * Logs the version of the app to the website logger.
- */
-export const logVersion = async () => {
-  if (VERSION_SHA) {
-    logger.info(`Version: ${VERSION_SHA}`);
   }
 };

@@ -12,6 +12,7 @@
 
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   filesDeleteFileset,
   getFilesListFilesetsQueryKey,
@@ -37,7 +38,6 @@ import {
   HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
   huggingFaceSourceFilesetName,
 } from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
-import { logger } from '@studio/util/logger';
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 

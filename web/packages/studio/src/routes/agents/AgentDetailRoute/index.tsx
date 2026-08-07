@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import {
@@ -16,7 +17,6 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

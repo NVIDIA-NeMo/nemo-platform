@@ -3,8 +3,8 @@
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { logger } from '@nemo/common/src/utils/logger';
 import { Flex, PageHeader, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { logger } from '@studio/util/logger';
 import { FileX } from 'lucide-react';
 import { ComponentProps, FC, ReactNode, useEffect } from 'react';
 import { useRouteError, isRouteErrorResponse } from 'react-router';

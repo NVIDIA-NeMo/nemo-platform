@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
-import { logger } from '@studio/util/logger';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
+import { logger } from '@nemo/common/src/utils/logger';
 import { FieldErrors } from 'react-hook-form';
 
 // Mock the websiteLogger
-vi.mock('@studio/util/logger', () => ({
+vi.mock('@nemo/common/src/utils/logger', () => ({
   logger: {
     error: vi.fn(),
   },

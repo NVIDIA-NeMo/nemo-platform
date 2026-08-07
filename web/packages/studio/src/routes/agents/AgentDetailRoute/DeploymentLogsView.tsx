@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { LogViewer } from '@nemo/common/src/components/LogViewer';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   getAgentsStreamDeploymentLogsQueryKey,
   useAgentsGetDeploymentLogs,
@@ -10,7 +11,6 @@ import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
 import { Block, Select, Stack, Text } from '@nvidia/foundations-react-core';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
-import { logger } from '@studio/util/logger';
 import { streamSse } from '@studio/util/sseStream';
 import { type FC, useEffect, useMemo, useState } from 'react';
 import { useAuth } from 'react-oidc-context';

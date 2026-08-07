@@ -8,6 +8,7 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { toValidFilesetName } from '@nemo/common/src/utils/filesetName';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getFilesListFilesetsQueryKey,
   useFilesCreateFileset,
@@ -26,7 +27,6 @@ import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import { getFilesetDetailRoute } from '@studio/routes/utils';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import {
   isHuggingFaceUrl,
   isNgcUrl,

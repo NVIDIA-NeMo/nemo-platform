@@ -7,12 +7,12 @@ import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Flex, PageHeader, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { type InsightListItem, useOptimizerListInsights } from '@studio/api/optimizer';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';

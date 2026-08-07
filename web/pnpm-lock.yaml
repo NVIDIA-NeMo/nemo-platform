@@ -319,6 +319,9 @@ importers:
       '@nvidia/foundations-react-core':
         specifier: 'catalog:'
         version: 1.7.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@opentelemetry/api-logs':
+        specifier: ^0.219.0
+        version: 0.219.0
       '@tanstack/match-sorter-utils':
         specifier: ^8.19.4
         version: 8.19.4

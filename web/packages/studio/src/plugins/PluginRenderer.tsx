@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import * as platformSdk from '@nemo/sdk/generated/platform/api';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
@@ -13,7 +14,6 @@ import type {
   PluginTelemetry,
 } from '@studio/plugins/types';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { logger } from '@studio/util/logger';
 import { useCallback, useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate, useParams } from 'react-router';
