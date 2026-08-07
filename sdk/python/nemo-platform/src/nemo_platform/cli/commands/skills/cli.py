@@ -3,32 +3,31 @@
 
 """CLI commands for installing AI agent skill files."""
 
-from typing import Annotated
 from pathlib import Path
+from typing import Annotated
 
 import typer
-
-from nemo_platform.cli.core.types import (
-    NoTruncateOption,
-    StreamOutputOption,
-    OutputColumnsOption,
-    ListOutputFormatOption,
-)
-from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.formatters import (
-    Column,
-    format_output,
-    validate_stream_output_format,
-    check_output_columns_with_format,
-)
-from nemo_platform.cli.core.help_formatter import create_typer_app
 from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import (
     DuplicateSkillError,
     UnsupportedAgentError,
-    load_skills,
     get_installer,
     list_agent_names,
+    load_skills,
+)
+from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
+from nemo_platform.cli.core.help_formatter import create_typer_app
+from nemo_platform.cli.core.types import (
+    ListOutputFormatOption,
+    NoTruncateOption,
+    OutputColumnsOption,
+    StreamOutputOption,
 )
 
 _AGENT_NAMES = ", ".join(list_agent_names())

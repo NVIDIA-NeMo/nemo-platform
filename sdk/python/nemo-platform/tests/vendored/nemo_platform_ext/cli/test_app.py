@@ -6,24 +6,23 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import click
-import typer
-import pytest
-from click.testing import CliRunner as ClickCliRunner
-from typer.testing import CliRunner
-from nemo_platform_plugin.cli import NemoCLI
-
 import nemo_platform
+import pytest
+import typer
+from click.testing import CliRunner as ClickCliRunner
 from nemo_platform.cli.app import app
-from nemo_platform.cli.manifest import TopLevelEntry, build_top_level_entries
-from nemo_platform.quickstart.config import QuickstartConfig
+from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
 from nemo_platform.cli.core.lazy_load import (
     ManifestBackedNmpGroup,
-    lazy_group_loader,
-    lazy_plugin_loader,
     attach_lazy_entries,
     lazy_command_loader,
+    lazy_group_loader,
+    lazy_plugin_loader,
 )
-from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
+from nemo_platform.cli.manifest import TopLevelEntry, build_top_level_entries
+from nemo_platform.quickstart.config import QuickstartConfig
+from nemo_platform_plugin.cli import NemoCLI
+from typer.testing import CliRunner
 
 
 @pytest.mark.parametrize("flag", ["--version", "-V"])

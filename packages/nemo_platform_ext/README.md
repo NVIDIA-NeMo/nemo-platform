@@ -198,7 +198,7 @@ nemo workspaces get my-workspace --output-format code
 
 ## Output Formats
 
-Supports multiple output formats via `--output-format` / `-f`:
+Supports multiple output formats via `--output-format` / `--output` / `-f`:
 
 - **table** (default) - Rich-formatted table with borders and colors
 - **json** - Syntax-highlighted JSON
@@ -207,6 +207,8 @@ Supports multiple output formats via `--output-format` / `-f`:
 - **csv** - Standard CSV (for Excel/spreadsheets)
 - **code** - Python SDK code equivalent
 - **raw** - Compact JSON without formatting
+
+For list commands, combine `--stream` with `--output json` or `--output raw` to emit one newline-delimited JSON record per item.
 
 ## Output Columns
 

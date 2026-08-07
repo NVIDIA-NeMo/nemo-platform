@@ -5,25 +5,25 @@
 
 from __future__ import annotations
 
-import io
-import re
 import csv
-import sys
+import io
 import json
-from typing import Any
-from dataclasses import dataclass
+import re
+import sys
 from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any
 
-import yaml
 import click
-from rich.table import Table
-from rich.syntax import Syntax
+import yaml
 from rich.console import Console
+from rich.syntax import Syntax
+from rich.table import Table
 
 from nemo_platform.cli.core.api import is_tty
-from nemo_platform.cli.core.types import ListOutputFormat
 from nemo_platform.cli.core.help_formatter import add_warning
 from nemo_platform.cli.core.timestamp_formatter import format_timestamp
+from nemo_platform.cli.core.types import ListOutputFormat
 
 # Maximum number of columns to display in table format with --no-truncate
 # before automatically switching to markdown format for better readability
@@ -88,17 +88,29 @@ def _extract_items_from_response(data: Any) -> list[Any]:
     if isinstance(data, list):
         return data
 
+    return list(_iter_items_from_response(data))
+
+
+def _iter_items_from_response(data: Any) -> Iterator[Any]:
+    """Iterate list items from an API response without materializing callables."""
+    if isinstance(data, list):
+        yield from data
+        return
+
     for field in LIST_ITEM_FIELDS:
         if isinstance(data, dict):
             if field in data:
-                return data[field]
-        else:
-            value = getattr(data, field, None)
-            if value is None:
+                items = data[field]
+            else:
                 continue
-            return list(value()) if callable(value) else value
+        else:
+            items = getattr(data, field, None)
+            if items is None:
+                continue
+            items = items() if callable(items) else items
 
-    return []
+        yield from items
+        return
 
 
 def _to_dict_items(items: list[Any]) -> list[dict[str, Any]]:
@@ -267,7 +279,7 @@ def format_json(
 
 def iter_json_lines(data: Any, *, is_list: bool = False) -> Iterator[str]:
     """Return newline-delimited JSON records for streaming-style output."""
-    records = _extract_items_from_response(data) if is_list else [data]
+    records = _iter_items_from_response(data) if is_list else iter((data,))
     for record in records:
         yield json.dumps(model_to_dict(record), ensure_ascii=False, separators=(",", ":"))
 
@@ -620,7 +632,7 @@ def format_output(
         stream: Emit newline-delimited JSON records. List responses emit one
                 record per item; entity responses emit one record.
     """
-    from nemo_platform.cli.core.table_config import validate_output_columns, resolve_and_validate_columns
+    from nemo_platform.cli.core.table_config import resolve_and_validate_columns, validate_output_columns
 
     timestamp_format = timestamp_format or "iso"
 

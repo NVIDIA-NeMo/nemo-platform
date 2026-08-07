@@ -7,15 +7,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from typer.testing import CliRunner
-
-from nemo_platform.skills import skills_dir as platform_skills_dir
 from nemo_platform.cli.app import app
 from nemo_platform.cli.commands.skills.registry import (
-    SkillProvider,
     DuplicateSkillError,
+    SkillProvider,
     _load_skills_cached,
 )
+from nemo_platform.skills import skills_dir as platform_skills_dir
+from typer.testing import CliRunner
 
 from ...utils import assert_exit_code
 

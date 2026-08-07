@@ -117,6 +117,30 @@ def test_iter_json_lines_extracts_list_items():
     ]
 
 
+def test_iter_json_lines_keeps_callable_items_lazy():
+    """Callable response item sources should stream without list materialization."""
+
+    class LazyResponse:
+        def __init__(self) -> None:
+            self.yielded = 0
+
+        def items(self):
+            for item in [{"id": "1"}, {"id": "2"}]:
+                self.yielded += 1
+                yield item
+
+    response = LazyResponse()
+    lines = iter_json_lines(response, is_list=True)
+
+    assert response.yielded == 0
+    assert next(lines) == '{"id":"1"}'
+    assert response.yielded == 1
+    assert next(lines) == '{"id":"2"}'
+    assert response.yielded == 2
+    with pytest.raises(StopIteration):
+        next(lines)
+
+
 def test_format_output_streams_json_lines(capsys):
     """format_output should print list items as newline-delimited JSON when streaming."""
     mock_response = Mock()

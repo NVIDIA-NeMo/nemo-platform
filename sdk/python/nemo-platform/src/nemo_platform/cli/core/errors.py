@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-import sys
-import typing
-import logging
 import functools
+import logging
+import sys
 import traceback
+import typing
 
 import click
 import httpx
@@ -158,19 +158,18 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
     console = Console(stderr=True)
 
     import click.exceptions
-
     from nemo_platform import (
-        APIError,
-        ConflictError,
-        NotFoundError,
-        APIStatusError,
-        RateLimitError,
-        APITimeoutError,
-        BadRequestError,
         APIConnectionError,
+        APIError,
+        APIStatusError,
+        APITimeoutError,
         AuthenticationError,
+        BadRequestError,
+        ConflictError,
         InternalServerError,
+        NotFoundError,
         PermissionDeniedError,
+        RateLimitError,
     )
 
     prog = "nemo"

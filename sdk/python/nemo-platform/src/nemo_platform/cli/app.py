@@ -6,30 +6,30 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Annotated, cast
 from importlib.metadata import EntryPoint
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 
+from nemo_platform.cli.commands.api import API_TOP_LEVEL_ENTRIES
+from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
+from nemo_platform.cli.core.help_formatter import HELP_OPTION_NAMES
+from nemo_platform.cli.core.lazy_load import (
+    ManifestBackedNmpGroup,
+    attach_lazy_entries,
+)
+from nemo_platform.cli.core.logging import configure_logging
+from nemo_platform.cli.core.types import ListOutputFormat, TimestampFormat
 from nemo_platform.cli.manifest import (
     TopLevelEntry,
     build_top_level_entries,
 )
 from nemo_platform.config.types import OutputFormat as ConfigOutputFormat
-from nemo_platform.cli.core.types import TimestampFormat, ListOutputFormat
-from nemo_platform.cli.commands.api import API_TOP_LEVEL_ENTRIES
-from nemo_platform.cli.core.logging import configure_logging
-from nemo_platform.cli.core.lazy_load import (
-    ManifestBackedNmpGroup,
-    attach_lazy_entries,
-)
-from nemo_platform.cli.core.help_formatter import HELP_OPTION_NAMES
-from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
 
 if TYPE_CHECKING:
     from nemo_platform_plugin.cli import NemoCLI
-    from nemo_platform_plugin.job import NemoJob
     from nemo_platform_plugin.function import NemoFunction
+    from nemo_platform_plugin.job import NemoJob
 
     from nemo_platform.config.models import ConfigParams
 
@@ -252,8 +252,8 @@ def main(
     - 3: Remote/API error
     """
     # Lazy imports for performance (avoid loading pydantic_settings for --help)
-    from nemo_platform.quickstart import QuickstartConfig
     from nemo_platform.cli.core.context import CLIContext
+    from nemo_platform.quickstart import QuickstartConfig
 
     # Configure logging (always call to silence httpx in non-verbose mode)
     configure_logging(1 if verbose else 0)

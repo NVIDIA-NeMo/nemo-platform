@@ -7,11 +7,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from typer.testing import CliRunner
-from nemo_platform_plugin.interface import PluginManifest
-
 from nemo_platform.cli.app import app
 from nemo_platform.quickstart.config import QuickstartConfig
+from nemo_platform_plugin.interface import PluginManifest
+from typer.testing import CliRunner
 
 from ..utils import assert_exit_code
 

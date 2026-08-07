@@ -88,17 +88,29 @@ def _extract_items_from_response(data: Any) -> list[Any]:
     if isinstance(data, list):
         return data
 
+    return list(_iter_items_from_response(data))
+
+
+def _iter_items_from_response(data: Any) -> Iterator[Any]:
+    """Iterate list items from an API response without materializing callables."""
+    if isinstance(data, list):
+        yield from data
+        return
+
     for field in LIST_ITEM_FIELDS:
         if isinstance(data, dict):
             if field in data:
-                return data[field]
-        else:
-            value = getattr(data, field, None)
-            if value is None:
+                items = data[field]
+            else:
                 continue
-            return list(value()) if callable(value) else value
+        else:
+            items = getattr(data, field, None)
+            if items is None:
+                continue
+            items = items() if callable(items) else items
 
-    return []
+        yield from items
+        return
 
 
 def _to_dict_items(items: list[Any]) -> list[dict[str, Any]]:
@@ -267,7 +279,7 @@ def format_json(
 
 def iter_json_lines(data: Any, *, is_list: bool = False) -> Iterator[str]:
     """Return newline-delimited JSON records for streaming-style output."""
-    records = _extract_items_from_response(data) if is_list else [data]
+    records = _iter_items_from_response(data) if is_list else iter((data,))
     for record in records:
         yield json.dumps(model_to_dict(record), ensure_ascii=False, separators=(",", ":"))
 

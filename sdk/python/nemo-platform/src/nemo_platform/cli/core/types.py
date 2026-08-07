@@ -5,12 +5,13 @@
 
 from __future__ import annotations
 
-from typing import Literal, Annotated
+from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform.config.types import OutputFormat as SDKOutputFormat, TimestampFormat as SDKTimestampFormat
 from nemo_platform.cli.core.autocomplete import autocomplete_workspace
+from nemo_platform.config.types import OutputFormat as SDKOutputFormat
+from nemo_platform.config.types import TimestampFormat as SDKTimestampFormat
 
 # Output format type
 ListOutputFormat = Literal[SDKOutputFormat, "code"]

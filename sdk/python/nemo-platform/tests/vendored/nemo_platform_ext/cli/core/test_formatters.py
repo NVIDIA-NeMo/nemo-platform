@@ -3,26 +3,25 @@
 
 """Tests for output formatters."""
 
-import re
 import json
+import re
 from unittest.mock import Mock, patch
 
-import yaml
 import click
 import pytest
-
+import yaml
 from nemo_platform.cli.core.formatters import (
     Column,
+    _extract_items_from_response,
     format_csv,
     format_json,
-    format_yaml,
-    format_table,
-    format_output,
-    model_to_dict,
-    iter_json_lines,
-    format_stream_event,
     format_markdown_table,
-    _extract_items_from_response,
+    format_output,
+    format_stream_event,
+    format_table,
+    format_yaml,
+    iter_json_lines,
+    model_to_dict,
     validate_stream_output_format,
 )
 
@@ -116,6 +115,30 @@ def test_iter_json_lines_extracts_list_items():
         '{"id":"1","name":"Alice"}',
         '{"id":"2","name":"Bob"}',
     ]
+
+
+def test_iter_json_lines_keeps_callable_items_lazy():
+    """Callable response item sources should stream without list materialization."""
+
+    class LazyResponse:
+        def __init__(self) -> None:
+            self.yielded = 0
+
+        def items(self):
+            for item in [{"id": "1"}, {"id": "2"}]:
+                self.yielded += 1
+                yield item
+
+    response = LazyResponse()
+    lines = iter_json_lines(response, is_list=True)
+
+    assert response.yielded == 0
+    assert next(lines) == '{"id":"1"}'
+    assert response.yielded == 1
+    assert next(lines) == '{"id":"2"}'
+    assert response.yielded == 2
+    with pytest.raises(StopIteration):
+        next(lines)
 
 
 def test_format_output_streams_json_lines(capsys):

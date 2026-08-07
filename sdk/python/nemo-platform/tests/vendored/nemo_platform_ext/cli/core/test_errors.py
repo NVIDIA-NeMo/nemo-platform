@@ -3,33 +3,32 @@
 
 """Tests for error handling in the CLI."""
 
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import click
 import httpx
-import typer
 import pytest
-from typer.testing import CliRunner
-
-from nemo_platform.cli.app import app
+import typer
 from nemo_platform._exceptions import (
-    APIError,
-    ConflictError,
-    NotFoundError,
-    APIStatusError,
-    RateLimitError,
-    APITimeoutError,
-    BadRequestError,
     APIConnectionError,
+    APIError,
+    APIStatusError,
+    APITimeoutError,
     AuthenticationError,
+    BadRequestError,
+    ConflictError,
     InternalServerError,
+    NotFoundError,
     PermissionDeniedError,
+    RateLimitError,
 )
+from nemo_platform.cli.app import app
 from nemo_platform.cli.core.errors import (
     InvalidSearchPatternError,
-    handle_exception,
     _format_api_error,
+    handle_exception,
 )
+from typer.testing import CliRunner
 
 DOCUMENTED_REMOTE_ERROR_EXIT_CODE = 3
 

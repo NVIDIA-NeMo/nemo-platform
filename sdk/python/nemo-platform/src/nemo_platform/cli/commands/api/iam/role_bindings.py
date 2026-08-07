@@ -9,25 +9,25 @@ from typing import Annotated
 import typer
 
 from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
-from nemo_platform.cli.core.types import (
-    NoTruncateOption,
-    StreamOutputOption,
-    OutputColumnsOption,
-    ListOutputFormatOption,
-    EntityOutputFormatOption,
-)
-from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
+from nemo_platform.cli.core.errors import handle_errors
 from nemo_platform.cli.core.formatters import (
     Column,
+    check_output_columns_with_format,
     format_output,
     validate_stream_output_format,
-    check_output_columns_with_format,
 )
-from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
-from nemo_platform.cli.core.stdin_utils import validate_required_fields, read_data_input_with_flags
-from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
+from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
+from nemo_platform.cli.core.stdin_utils import read_data_input_with_flags, validate_required_fields
+from nemo_platform.cli.core.types import (
+    EntityOutputFormatOption,
+    ListOutputFormatOption,
+    NoTruncateOption,
+    OutputColumnsOption,
+    StreamOutputOption,
+)
 
 app = create_typer_app(name="role_bindings", help="Manage role_bindings")
 
