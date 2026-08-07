@@ -109,13 +109,10 @@ deployment with authentication disabled, omit the `Authorization` header and the
 
 <Accordion title="Running from source (local development)">
 
-If you are bringing the pieces up yourself from a repository checkout, start them in this order.
-
-1. **ClickHouse** (the telemetry datastore):
-
-   ```bash
-   services/intake/scripts/spans/run_clickhouse.sh
-   ```
+If you are bringing the pieces up yourself from a repository checkout, make sure Docker Desktop or
+the Docker daemon is running, then start the backend. Intake automatically provisions and reuses a
+local ClickHouse container for the resolved NeMo data directory unless `NMP_INTAKE_CLICKHOUSE_URL`
+explicitly points to an external instance.
 
 1. **Backend services**: `intake` plus its `auth` (access checks) and `entities` (entity store)
    dependencies. `--port` defaults to `8080`; omit `uv run` if you installed the `nemo`

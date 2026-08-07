@@ -51,7 +51,9 @@ Verify:
 nemo services status
 ```
 
-To permanently reset the database state: `rm -rf ~/.local/share/nemo`.
+To permanently reset local state, follow the explicitly confirmed, guarded
+sequence in [SETUP.md](SETUP.md#question-3--wipe-local-platform-data). It removes
+the managed ClickHouse container before deleting any bind-mounted data.
 
 <details>
 <summary>Useful CLI commands once setup completes</summary>

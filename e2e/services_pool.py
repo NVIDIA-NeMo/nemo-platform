@@ -553,8 +553,8 @@ def _load_effective_e2e_config_from_layers(
 
 
 def e2e_services_data_dir(log_dir: Path, config_hash: str) -> Path:
-    """Return the persistent data directory for one pooled services instance."""
-    return log_dir / f"data-{config_hash}"
+    """Return persistent state outside the directory collected as test logs."""
+    return log_dir.parent / f"{log_dir.name}-data" / f"data-{config_hash}"
 
 
 def with_e2e_instance_paths(
