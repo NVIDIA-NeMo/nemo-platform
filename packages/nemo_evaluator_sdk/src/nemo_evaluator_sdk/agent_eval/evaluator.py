@@ -29,6 +29,7 @@ from nemo_evaluator_sdk.agent_eval.scores import (
     AgentEvalDiagnosticSeverity,
     AgentEvalScoreStatus,
     AgentEvalTaskScore,
+    TRIAL_STATUS_DETAIL,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
@@ -37,6 +38,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrialStatus,
     AgentOutput,
     AgentTaskRunner,
+    RunAggregationsProvider,
     RunnerInfo,
 )
 from nemo_evaluator_sdk.agent_inference import (
@@ -60,6 +62,7 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.values.results import AggregateScore
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_JSON,
     EVIDENCE_TRACE,
@@ -176,6 +179,7 @@ class AgentEvaluator:
             config=runtime_config,
             run_id=run_id,
         )
+        runner_scores = _collect_runner_aggregate_scores(target) if target is not None else []
         finished_at = datetime.now(UTC)
         metadata = RunMetadata(
             labels=dict(runtime_config.labels),
@@ -190,7 +194,7 @@ class AgentEvaluator:
             tasks=task_list,
             trials=trial_list,
             scores=scores,
-            summary=AgentEvalSummary.from_scores(scores, tasks=task_list),
+            summary=AgentEvalSummary.from_scores(scores, tasks=task_list, extra_scores=runner_scores),
             metadata=metadata,
         )
 
@@ -252,7 +256,9 @@ class AgentEvaluator:
                             severity=AgentEvalDiagnosticSeverity.ERROR,
                             message=f"trial {trial.id!r} is failed",
                             source=metric_type_name(metric),
-                            details={"trial_status": trial.status.value},
+                            # The key pass@k reads to tell "the agent produced nothing" (a failed
+                            # attempt) from "the metric raised" (an unusable measurement).
+                            details={TRIAL_STATUS_DETAIL: trial.status.value},
                         ),
                     )
                 try:
@@ -730,6 +736,38 @@ def _describe_target(
             config["params"] = params.model_dump(mode="json", exclude_none=True)
         return RunnerInfo(name=target.name, kind="model" if isinstance(target, Model) else "agent", config=config)
     return target.runner_info()
+
+
+def _collect_runner_aggregate_scores(target: object) -> list[AggregateScore]:
+    """The typed subset of a runner's own aggregations, for merging into ``summary.scores``.
+
+    A runner that maps its numbers onto aggregate scores namespaces them under ``runner.<name>.``, so
+    they sit alongside the SDK's own without being mistaken for them. That namespace is *enforced*, not
+    merely documented: ``RunAggregationsProvider`` is a public extension point, ``summary.scores`` is a
+    flat list, and a third-party runner returning ``gym_reward.reward`` would not overwrite the SDK's
+    own aggregate but sit next to it under the same name, leaving any lookup to pick one arbitrarily.
+
+    Offending entries are dropped with a warning rather than raised on. This runs *after* ``run_tasks``,
+    so raising would sink a completed run — potentially hours of collection — over a naming bug, while
+    the numbers themselves remain in the runner's own files inside the bundle.
+    """
+    if not isinstance(target, RunAggregationsProvider):
+        return []
+    runner_info = getattr(target, "runner_info", None)  # structurally optional: the protocol is a companion
+    runner_name = runner_info().name if callable(runner_info) else None
+    prefix = f"runner.{runner_name}." if runner_name else "runner."
+    collected: list[AggregateScore] = []
+    for score in target.run_aggregate_scores():
+        if not score.name.startswith(prefix):
+            log.warning(
+                "Dropping runner-contributed aggregate %r: RunAggregationsProvider names must be "
+                "namespaced %r so an imported figure is never mistaken for one the SDK computed.",
+                score.name,
+                prefix,
+            )
+            continue
+        collected.append(score)
+    return collected
 
 
 def _persist_with_optional_dashboard(

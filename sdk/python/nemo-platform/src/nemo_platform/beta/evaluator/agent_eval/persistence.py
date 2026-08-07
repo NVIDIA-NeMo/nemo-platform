@@ -32,17 +32,18 @@ def persist_run(result: AgentEvalResult, output_dir: str | Path) -> AgentEvalRes
 
 
 def _run_manifest(result: AgentEvalResult) -> dict[str, Any]:
+    artifacts = {
+        "metadata": "metadata.json",
+        "tasks": "tasks.jsonl",
+        "trials": "trials.jsonl",
+        "scores": "scores.jsonl",
+        "summary": "summary.json",
+    }
     return {
         "run_id": result.run_id,
         "output_dir": str(result.output_dir) if result.output_dir is not None else None,
         "dashboard_path": str(result.dashboard_path) if result.dashboard_path is not None else None,
-        "artifacts": {
-            "metadata": "metadata.json",
-            "tasks": "tasks.jsonl",
-            "trials": "trials.jsonl",
-            "scores": "scores.jsonl",
-            "summary": "summary.json",
-        },
+        "artifacts": artifacts,
     }
 
 
