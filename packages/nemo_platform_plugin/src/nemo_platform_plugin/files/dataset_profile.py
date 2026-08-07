@@ -181,8 +181,18 @@ class NumericStats(BaseModel):
 
 
 class TextQuality(BaseModel):
-    """Cheap, single-pass corruption signals for a text column. Flags training-wrecking data, not
-    toxicity / PII.
+    """Corruption signals for a text column. Flags training-wrecking data, not toxicity / PII.
+
+    **Estimates, not counts**, and the only measurements in the profile that are. These three are
+    all the per-character work there is — every other statistic is O(1) per row, and the content
+    probes are literal searches costing a fraction of these — so scanning every row of a large
+    column costs more than the entire rest of the profile. They are also ratios, which a sample of
+    tens of thousands of rows pins down far past the precision anyone reads them to. Bounding them
+    is what makes reading every row of a dataset affordable.
+
+    The sample is evenly strided: deterministic, so two runs over the same bytes agree, and spread
+    across the column rather than taken from its head, so a sorted shard does not decide the answer.
+    A column smaller than the bound is measured in full.
     """
 
     whitespace_ratio: float = Field(ge=0.0, le=1.0, description="Padding / bad scraping.")
@@ -448,7 +458,10 @@ class PartitionProfile(BaseModel):
             "True => `features`, `stats` and `classification` were computed over every row of every "
             "file in THIS partition: proven facts, not estimates. Only then can a consumer assert "
             "enum / required in a bridged JSON Schema, or read a verifiability coverage of 1.0 as "
-            "literal. Scoped to the partition because that is where it is decided — a corrupt shard "
+            "literal. `TextQuality` is the one exception and is always an estimate — it is bounded "
+            "independently of how much was read, for cost reasons its own docstring gives — though "
+            "the two only diverge on an unbounded read of a column larger than that bound. "
+            "Scoped to the partition because that is where it is decided — a corrupt shard "
             "in one partition says nothing about the measurements in another, and a fileset-wide "
             "flag quietly downgraded every partition to the worst one."
         ),

@@ -212,22 +212,82 @@ _NON_ASCII_RUN = re.compile(r"[^\x00-\x7f]")
 # passes over every character of every string and dominated total profiling time.
 _REPEAT_RUN = re.compile(r"(.)\1{3,}", re.DOTALL)
 
+# What `\s` matches within ASCII, in the order `str.count` will be asked for them.
+_ASCII_WHITESPACE = " \t\n\r\f\v"
+
+# Rows a column's quality ratios are measured over. These three are the only per-character work left
+# in the profiler -- measured at 37x the cost of every content probe combined, and roughly fifteen
+# times everything else in a column's measurement put together -- while every other statistic is
+# O(1) per row. They are also ratios, which a sample of tens of thousands of rows pins down far past
+# the precision anyone reads them to. Bounding them is what makes reading every row affordable.
+_QUALITY_SAMPLE_ROWS = 50_000
+
+
+def _quality_sample(strings: list[str]) -> list[str]:
+    """The rows to measure quality over: all of them, or an evenly strided subset.
+
+    Strided rather than random, because two runs over the same bytes must agree. Randomness is what
+    ``SamplingInfo.seed`` existed to make reproducible, and that field was deleted on the grounds
+    that the profiler makes no random choices and a seed would be theatre -- which should stay true.
+
+    Strided rather than the head, because shards arrive sorted often enough that the first rows of a
+    large column are not a sample of it. A stride costs the same, needs no state, and spreads the
+    sample across the whole column.
+
+    A stride can in principle alias against periodic data: a set with two rows per prompt, sampled
+    at stride two, sees one phase of every pair. Measured on exactly that shape -- HelpSteer2 rates
+    two responses per prompt -- the two phases agree to 0.35% on `whitespace_ratio` and differ by at
+    most 8% on the other two, whose values there are 0.0003 and 0.0025. That is well inside the band
+    these estimates already carry near zero, and does not buy a block-sampling scheme to avoid.
+    """
+    if len(strings) <= _QUALITY_SAMPLE_ROWS:
+        return strings
+    return strings[:: len(strings) // _QUALITY_SAMPLE_ROWS]
+
+
+def _whitespace_count(text: str) -> int:
+    """Whitespace characters, matching ``\\s`` exactly.
+
+    The ASCII branch is not merely faster, it is the only one that may take the shortcut: within
+    ASCII ``\\s`` is precisely :data:`_ASCII_WHITESPACE`, so counting those six literals in C is the
+    same measurement. Outside it, ``\\s`` also matches U+00A0 and the rest of Unicode's spaces, which
+    the literal count would silently miss -- so the regex is a correctness fallback, not a slow path
+    kept for tidiness.
+    """
+    if text.isascii():
+        return sum(text.count(char) for char in _ASCII_WHITESPACE)
+    return _count_matches(_WHITESPACE_RUN, text)
+
+
+def _non_ascii_count(text: str) -> int:
+    """Characters outside ASCII. ``str.isascii`` settles the common case in C without a scan.
+
+    Deliberately not ``len(text.encode()) - len(text)``, which is faster still and answers a
+    different question: that counts *bytes* of encoding overhead, so a three-byte codepoint would
+    contribute two where this contributes one.
+    """
+    if text.isascii():
+        return 0
+    return _count_matches(_NON_ASCII_RUN, text)
+
 
 def _text_quality(strings: list[str]) -> TextQuality:
+    sample = _quality_sample(strings)
     total_chars = 0
     whitespace = 0
     non_ascii = 0
     repetition_sum = 0.0
-    for value in strings:
+    for value in sample:
         total_chars += len(value)
-        # str.count-style scanning in C rather than a per-character generator in Python.
-        whitespace += _count_matches(_WHITESPACE_RUN, value)
-        non_ascii += _count_matches(_NON_ASCII_RUN, value)
+        whitespace += _whitespace_count(value)
+        non_ascii += _non_ascii_count(value)
         repetition_sum += _repetition_score(value)
     return TextQuality(
         whitespace_ratio=whitespace / total_chars if total_chars else 0.0,
         non_ascii_ratio=non_ascii / total_chars if total_chars else 0.0,
-        repetition_score=repetition_sum / len(strings) if strings else 0.0,
+        # Every denominator is the sample's own, never the column's: each ratio is an estimate over
+        # the rows that were actually scanned, which is what keeps it unbiased rather than diluted.
+        repetition_score=repetition_sum / len(sample) if sample else 0.0,
     )
 
 

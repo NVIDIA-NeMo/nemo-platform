@@ -3,10 +3,18 @@
 
 """Tests for per-column statistics."""
 
+import pytest
+from nemo_datasets_plugin.profiler import stats
 from nemo_datasets_plugin.profiler.stats import (
     _MAX_VOCABULARY_BYTES,
     _MAX_VOCABULARY_VALUE_CHARS,
     _MAX_VOCABULARY_VALUES,
+    _NON_ASCII_RUN,
+    _QUALITY_SAMPLE_ROWS,
+    _WHITESPACE_RUN,
+    _non_ascii_count,
+    _quality_sample,
+    _whitespace_count,
     derive_probes,
     derive_stats,
     quote_enumerations,
@@ -38,6 +46,55 @@ def test_text_quality_flags_repetition_and_non_ascii():
     stats = derive_stats([_feature("t", "string")], _rows("t", ["aaaaaaaa", "héllo wörld"]))["t"]
     assert stats.quality.repetition_score > 0.0  # the "aaaaaaaa" run
     assert stats.quality.non_ascii_ratio > 0.0  # accented characters
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "plain ascii",
+        "tabs\tand\nnewlines\r\f\v",
+        "café naïve",  # non-ascii letters, ascii spaces
+        "a b",  # NO-BREAK SPACE: \s matches it, counting six ascii literals would not
+        "　  ",  # ideographic space, line separator, paragraph separator
+        "\U0001f600 emoji beyond the BMP",  # 4-byte codepoint: byte overhead != character count
+        "mixed   café\tend",
+    ],
+)
+def test_quality_fast_paths_are_the_same_measurement_as_the_regexes(text):
+    # The whole risk in this change. `str.count` over six ascii literals is not `\s`, and
+    # `len(encode) - len` is not a character count -- either would be faster while quietly
+    # measuring something else. The fast path is only allowed where it is provably identical.
+    assert _whitespace_count(text) == sum(1 for _ in _WHITESPACE_RUN.finditer(text))
+    assert _non_ascii_count(text) == sum(1 for _ in _NON_ASCII_RUN.finditer(text))
+
+
+def test_quality_sample_is_bounded_strided_and_deterministic():
+    under = [f"r{i}" for i in range(_QUALITY_SAMPLE_ROWS)]
+    assert _quality_sample(under) is under  # nothing to sample: measured in full
+
+    over = [f"r{i}" for i in range(_QUALITY_SAMPLE_ROWS * 3)]
+    sample = _quality_sample(over)
+    assert len(sample) <= _QUALITY_SAMPLE_ROWS + 1
+    assert _quality_sample(over) == sample  # no RNG, so no seed to record and no run-to-run drift
+    # Spans the column rather than its head: the last sampled row is near the end.
+    assert over.index(sample[-1]) >= len(over) - 3
+
+
+def test_quality_is_measured_across_the_column_not_its_head(monkeypatch):
+    # Corruption confined to the second half. A head sample would report a clean column; a stride
+    # sees it. This is why the sample is strided and not simply the first N rows.
+    monkeypatch.setattr(stats, "_QUALITY_SAMPLE_ROWS", 4)
+    values = ["ordinary sentence"] * 8 + ["aaaaaaaaaaaa"] * 8
+    quality = derive_stats([_feature("t", "string")], _rows("t", values))["t"].quality
+    assert quality.repetition_score > 0.4
+
+
+def test_a_column_under_the_bound_is_measured_exactly(monkeypatch):
+    monkeypatch.setattr(stats, "_QUALITY_SAMPLE_ROWS", 100)
+    values = ["ordinary sentence"] * 9 + ["aaaaaaaaaaaa"]
+    quality = derive_stats([_feature("t", "string")], _rows("t", values))["t"].quality
+    assert quality.repetition_score == pytest.approx(0.1)  # exactly one corrupt row in ten
 
 
 def test_cardinality_is_counted_while_the_column_is_a_vocabulary():
