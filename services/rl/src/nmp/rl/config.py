@@ -71,7 +71,7 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]
         default=False,
         description=(
             "When false and sandboxed_gym_default is true, GRPO jobs with environment "
-            "filesets fail at compile time (fail closed until OpenSandbox is ready)."
+            "filesets fail at compile time unless the cluster has OpenSandbox available."
         ),
     )
 

@@ -35,16 +35,18 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
 
 def _maybe_bootstrap_environment(config: MasterConfig) -> None:
-    """Validate (+ offline-install) environment FileSet when present (Mode A/B)."""
+    """Install or refresh the environment FileSet before GRPO setup.
+
+    Sandboxed jobs only need live egress endpoints (vLLM + broker). Colocated
+    jobs validate the package on the PVC and offline-install wheels when needed.
+    """
     nemo_gym = config.env.get("nemo_gym") if isinstance(config.env, dict) else None
     if not isinstance(nemo_gym, dict):
         return
 
-    # Prefer PVC path for colocated Mode A; sandboxed Mode B bootstraps inside the job host.
     env_path = nemo_gym.get("environment_path")
     sandboxed = bool(nemo_gym.get("sandboxed"))
     if sandboxed:
-        # Master-time egress fill (WS3b): replace compile placeholders with live endpoints.
         sandbox = nemo_gym.get("sandbox")
         if isinstance(sandbox, dict):
             policy = sandbox.setdefault("network_policy", {})

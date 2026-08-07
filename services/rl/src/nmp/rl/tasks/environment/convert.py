@@ -45,8 +45,7 @@ class ConvertEnvironmentSpec:
     validation_fraction: float = 0.0
     verifiers_spec: str = DEFAULT_VERIFIERS_SPEC
     extra_wheels: tuple[str, ...] = ()
-    # Pre-vendored wheels (tests / air-gapped hosts). Must contain ≥1 *.whl —
-    # adapter-wheels-v1 always requires a real wheel closure.
+    # Pre-vendored wheels for air-gapped hosts; must contain at least one *.whl.
     wheels_dir: Path | None = None
 
 
@@ -200,7 +199,7 @@ def convert_prime_environment(spec: ConvertEnvironmentSpec) -> ConvertedPackage:
             wheels_src=wheels_dir,
         )
 
-    # dataset_size==0 is layout-only (unit tests); otherwise require a real Gym JSONL.
+    # dataset_size == 0 skips JSONL generation (package layout only).
     if spec.dataset_size == 0:
         all_rows: list[dict[str, Any]] = []
     else:

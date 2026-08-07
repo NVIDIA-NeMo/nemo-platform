@@ -26,7 +26,7 @@ DEFAULT_VALIDATION_DATASET_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_VALIDATI
 DEFAULT_ENVIRONMENT_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_ENVIRONMENT_OUTPUT_DIR_NAME}"
 DEFAULT_OUTPUT_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_OUTPUT_MODEL_DIR_NAME}"
 
-# Sandbox-visible mount paths inside the job sandbox (Day-0 contract).
+# Paths visible inside the job sandbox (OpenSandbox mount layout).
 SANDBOX_ENVIRONMENT_PATH = "/job/environment"
 SANDBOX_DATASET_PATH = "/job/dataset"
 SANDBOX_WORK_PATH = "/job/work"

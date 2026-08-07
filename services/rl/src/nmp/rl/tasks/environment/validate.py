@@ -37,7 +37,7 @@ def load_manifest(env_root: Path) -> EnvironmentManifest:
 
 
 def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> None:
-    """RFC §3.1 + adapter-wheels-v1 rules before any user code executes."""
+    """Validate on-disk layout for the declared environment format."""
     if not env_root.is_dir():
         raise EnvironmentPackageValidationError(f"Environment root is not a directory: {env_root}")
 
