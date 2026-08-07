@@ -41,8 +41,12 @@ Converts exceptions into standardized error responses with automatic logging.
 ```python
 {
     "success": False,
-    "error": "Connection refused to localhost:8080",
-    "error_type": "ConnectionError"
+    "error": {
+        "code": "ConnectionError",
+        "message": "Connection refused to localhost:8080",
+        "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state.",
+        "retryable": True
+    }
 }
 ```
 
@@ -68,9 +72,9 @@ async def deploy_model(model_id: str) -> dict[str, Any]:
 **Why Use This Pattern**:
 
 - AI agents can reliably check `success` field
-- Consistent error structure across all tools
+- Consistent structured `error.code`, `error.message`, `error.hint`, and `error.retryable` across all tools
 - Automatic error logging with stack traces
-- Easy to add error codes, retry hints, or sanitization
+- Easy to add richer retry hints or sanitization
 - Success responses manually constructed with explicit fields
 
 ---
@@ -190,19 +194,14 @@ See `packages/nmp_common/src/nmp/common/sdk_factory.py` for SDK factory implemen
 def format_error_response(error: Exception) -> dict[str, Any]:
     logger.error(f"Error in MCP tool: {error}", exc_info=True)
 
-    # Map exception types to codes
-    error_codes = {
-        "ConnectionError": "PLATFORM_UNAVAILABLE",
-        "TimeoutError": "PLATFORM_TIMEOUT",
-        "HTTPStatusError": "API_ERROR",
-    }
-
     return {
         "success": False,
-        "error": str(error),
-        "error_type": type(error).__name__,
-        "error_code": error_codes.get(type(error).__name__, "UNKNOWN_ERROR"),
-        "retryable": isinstance(error, (ConnectionError, TimeoutError))
+        "error": {
+            "code": type(error).__name__,
+            "message": str(error),
+            "hint": "Check the MCP server logs for details, then retry after fixing the request or platform state.",
+            "retryable": isinstance(error, (ConnectionError, TimeoutError)),
+        }
     }
 ```
 

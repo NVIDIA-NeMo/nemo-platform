@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import type { RailsStatus } from '@studio/api/guardrail-checks/types';
 import {
   detectorMeta,
@@ -59,7 +59,7 @@ export const describeRailKey = (key: string): string => {
  * Every flow configured on a guardrail config, across the flow-bearing stages.
  * Dialog and action rails are excluded — the SDK schema gives them no `flows`.
  */
-const collectConfigFlows = (data: RailsConfigOutput | undefined): string[] => {
+const collectConfigFlows = (data: RailsConfig | undefined): string[] => {
   const rails = data?.rails;
   if (!rails) return [];
   return [
@@ -108,7 +108,7 @@ const guardrailId = (flow: string): string => {
  * run-only view cannot.
  */
 export const getActivatedGuardrails = (
-  data: RailsConfigOutput | undefined,
+  data: RailsConfig | undefined,
   railsStatus: RailsStatus | undefined
 ): ActivatedGuardrail[] => {
   const ran = new Set(

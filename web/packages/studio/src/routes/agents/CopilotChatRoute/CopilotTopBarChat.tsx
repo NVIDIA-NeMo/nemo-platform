@@ -1,22 +1,47 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, Popover, Stack, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Flex, Popover, Spinner, Stack, Tooltip } from '@nvidia/foundations-react-core';
 import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
+import { ChatThreadErrorBoundary } from '@studio/routes/agents/CopilotChatRoute/ChatThreadErrorBoundary';
 import { useCopilotChatContext } from '@studio/routes/agents/CopilotChatRoute/context/useCopilotChatContext';
-import { CopilotChatThread } from '@studio/routes/agents/CopilotChatRoute/CopilotChatThread';
 import { getCopilotChatRouteForSession } from '@studio/routes/agents/CopilotChatRoute/util';
 import { getCopilotChatRoute } from '@studio/routes/utils';
 import { Maximize2, Plus, Terminal, X } from 'lucide-react';
-import { type FC, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  type FC,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
+
+// Static import would pull the whole chat surface into the entry chunk, since
+// the trigger renders in the global nav on every route.
+const importChatThread = () => import('@studio/routes/agents/CopilotChatRoute/CopilotChatThread');
+
+// lazy() caches a rejected import forever, so a retry needs a fresh component.
+const createChatThread = () =>
+  lazy(() => importChatThread().then((m) => ({ default: m.CopilotChatThread })));
+
+const preloadChatThread = () => void importChatThread().catch(() => undefined);
 
 const OPEN_LABEL = 'Open NeMo Copilot chat';
 const CLOSE_LABEL = 'Close NeMo Copilot chat';
 
 const TopBarChatIcon = () => <Terminal size={16} />;
+
+const chatThreadFallback = (
+  <Flex align="center" justify="center" className="h-full">
+    <Spinner size="medium" aria-label="Loading chat..." />
+  </Flex>
+);
 
 /**
  * The top-bar pop-out is a thin view of the shared chat runtime (owned by
@@ -30,6 +55,10 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [hasUnreadResponse, setHasUnreadResponse] = useState(false);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
+  const [hasOpened, setHasOpened] = useState(false);
+  const [ChatThread, setChatThread] = useState(createChatThread);
+
+  const retryChatThread = useCallback(() => setChatThread(() => createChatThread()), []);
 
   // While the agent is blocked on a permission/input request the stream stays
   // open (isRunning is still true), but it is waiting on the user rather than
@@ -71,6 +100,7 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
         return;
       }
       setIsOpen(true);
+      setHasOpened(true);
       setScrollToBottomSignal((signal) => signal + 1);
     },
     [isOpen]
@@ -149,11 +179,17 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
               </Flex>
             </Flex>
             <Stack className="min-h-0 flex-1 overflow-hidden">
-              <CopilotChatThread
-                chat={chat}
-                mode="compact"
-                scrollToBottomSignal={scrollToBottomSignal}
-              />
+              {hasOpened ? (
+                <ChatThreadErrorBoundary onRetry={retryChatThread}>
+                  <Suspense fallback={chatThreadFallback}>
+                    <ChatThread
+                      chat={chat}
+                      mode="compact"
+                      scrollToBottomSignal={scrollToBottomSignal}
+                    />
+                  </Suspense>
+                </ChatThreadErrorBoundary>
+              ) : null}
             </Stack>
           </Stack>
         }
@@ -164,6 +200,7 @@ const CopilotTopBarChatPopout: FC<{ workspace: string }> = ({ workspace }) => {
           aria-label={isOpen ? CLOSE_LABEL : OPEN_LABEL}
           className="relative"
           title={isOpen ? CLOSE_LABEL : OPEN_LABEL}
+          onMouseEnter={preloadChatThread}
           onPointerDown={handleTriggerPointerDown}
           onClick={handleTriggerClick}
         >

@@ -11,7 +11,6 @@ from nemo_platform.types import (
     DeleteResponse,
     FileStorageType,
     FilesetMetadata,
-    FilesetMetadataParam,
     FinetuningType,
     GenericSortField,
     HTTPValidationError,

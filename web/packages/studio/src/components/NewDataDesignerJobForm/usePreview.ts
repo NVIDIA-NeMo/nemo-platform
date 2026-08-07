@@ -22,6 +22,8 @@ export interface UsePreviewResult {
   previewLogs: string;
   isPreviewing: boolean;
   runPreview: () => Promise<void>;
+  /** Aborts the in-flight preview. A no-op when nothing is running. */
+  stopPreview: () => void;
 }
 
 /**
@@ -36,6 +38,12 @@ export function usePreview({
   const [previewLogs, setPreviewLogs] = useState('');
   const [isPreviewing, setIsPreviewing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  /** Identifies the newest run, so a superseded one can't clear state that isn't its own. */
+  const runIdRef = useRef(0);
+
+  const stopPreview = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const appendLogLine = useCallback((line: string) => {
     setPreviewLogs((prev) => (prev ? `${prev}\n${line}` : line));
@@ -58,6 +66,7 @@ export function usePreview({
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
+    const runId = ++runIdRef.current;
     setIsPreviewing(true);
 
     try {
@@ -69,13 +78,18 @@ export function usePreview({
         appendLogLine
       );
     } catch (err) {
-      if (isAbortError(err)) return;
+      if (isAbortError(err)) {
+        if (runIdRef.current === runId) appendLogLine('Preview stopped.');
+        return;
+      }
       appendLogLine(getErrorMessage(err, 'Preview request failed.'));
     } finally {
-      setIsPreviewing(false);
-      abortRef.current = null;
+      if (runIdRef.current === runId) {
+        setIsPreviewing(false);
+        abortRef.current = null;
+      }
     }
   }, [workspace, accessToken, getCurrentConfig, appendLogLine]);
 
-  return { previewLogs, isPreviewing, runPreview };
+  return { previewLogs, isPreviewing, runPreview, stopPreview };
 }

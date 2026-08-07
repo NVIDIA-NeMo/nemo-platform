@@ -18,14 +18,15 @@ uv sync
 export NEMO="$PWD/.venv/bin/nemo"
 ```
 
-Requires `uv >=0.9.14,<0.10.0`.
+Requires `uv >=0.9.14`.
 
 **To verify an end-to-end run, follow
 [Get started with an example agent](../../docs/get-started/example-agent.mdx).**
 
-The source dependencies are pinned to tagged or immutable revisions in
-`pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to a public GitHub
-commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
+The source dependencies are pinned to tagged or immutable revisions in the
+workspace root `pyproject.toml` under `[tool.uv.sources]`. NVIDIA-labs OO Agents
+(NOOA) is pinned to a public GitHub commit past `v0.0.8` that carries the
+callable `@strategy(llm=...)` support this plugin depends on.
 
 ## Insight-to-experiment flow
 
@@ -51,6 +52,41 @@ effective inputs:
 $NEMO agents experimentalist doctor
 ```
 
+## Agent trace formats
+
+The agent under test can emit traces as OTLP or ATIF. **OTLP is the default** —
+skip this section unless your agent emits ATIF.
+
+To use an ATIF-emitting agent:
+
+1. Have the agent write its trajectory under its trace directory (`/app/traces`
+   in the Harbor task container) with a `.atif.json` suffix.
+2. Select the format on the evaluator, in the profile's `experiment_config`:
+
+   ```yaml
+   experiment_config:
+     evaluator:
+       trace_format: atif   # otlp (default) | atif
+   ```
+
+3. Run against a platform, which ATIF requires:
+
+   ```bash
+   $NEMO agents experimentalist run --base-url https://<platform-host> ...
+   ```
+
+Experiment grouping, run counts, and evaluator scores in Studio behave the same
+as for OTLP. ATIF traces do not carry per-step timing, so individual step
+durations show as zero.
+
+### Troubleshooting
+
+- *"configured `trace_format='otlp'` matched no trace artifact, but atif
+  artifacts are present"* — set `trace_format: atif`.
+- *"Cannot read ATIF trajectory from disk … this trace was never uploaded"* — the
+  run had no reachable platform, so the trace was never ingested. Supply
+  `--base-url` and a workspace.
+
 ## Run the Experimentalist locally
 
 `nemo agents experimentalist run` runs the local Experimentalist loop. It evaluates
@@ -75,12 +111,8 @@ repo="$(git rev-parse --show-toplevel)"
 sbx create --clone --name nemo-experimentalist shell "$repo"
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env INFERENCE_API_KEY \
-  --env NEMO_EXPERIMENTALIST_API_BASE \
-  --env NEMO_EXPERIMENTALIST_API_KEY \
-  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
-  --env NEMO_EXPERIMENTALIST_MODELS_MID \
-  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  --env NEMO_DEFAULT_MODEL \
+  --env NEMO_FAST_MODEL \
   nemo-experimentalist \
   uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
   nemo agents experimentalist run
@@ -106,49 +138,69 @@ Harbor tasks that publish only `linux/amd64` images do not run in the
 `linux/arm64` sandbox. This currently includes the Terminal-Bench `fix-git`
 task; use an x86_64 machine or VM for that suite.
 
-### Endpoint and model settings
+### Platform models
 
-Which endpoint the Experimentalist talks to, and with which models, is a *deployment*
-setting: one per install, not per experiment. Like every other NeMo plugin it is a
-`NemoConfig`, so it can be set either in the `experimentalist:` section of the platform
-config file or through the environment, and **the environment wins**.
-`nemo experimentalist doctor` reports what is unset.
+Run `nemo setup` once for the active Platform context. Setup registers an inference
+provider, stores its credential as a Platform Secret, and asks for two
+workspace-qualified Model Entities:
 
-| Variable | Config key | Default | Used by |
-|---|---|---|---|
-| `NEMO_EXPERIMENTALIST_API_BASE` | `api_base` | `https://inference-api.nvidia.com/v1` | all optimizer agents |
-| `NEMO_EXPERIMENTALIST_API_KEY` | `api_key` | — (required) | all optimizer agents |
-| `NEMO_EXPERIMENTALIST_MODELS_SMART` | `models.smart` | — (required) | Coder, Analyzer, Proposer, Rationalizer, TraceAnalyzer |
-| `NEMO_EXPERIMENTALIST_MODELS_MID` | `models.mid` | — (required) | trajectory scorer, architecture doc |
-| `NEMO_EXPERIMENTALIST_MODELS_FAST` | `models.fast` | — (required) | Terminator, goal tree, summarizers |
+- the default model for quality-critical analysis, proposing, and coding;
+- the fast model for latency-sensitive scoring, summarization, and control steps.
 
-The tiers exist to buy capability where it changes the result and speed where it does not,
-so give them different models — smart writes the code, fast runs the high-volume judging:
+The default model is also the compatibility value for existing single-model
+contexts. Press Enter at the fast-model prompt to reuse it. The Experimentalist
+resolves both entities through Platform and lets the entity's backend format route
+the Nooa completion request through any registered provider exposed as OpenAI Chat
+Completions or Anthropic Messages. It does not read a separate optimizer endpoint,
+provider key, or provider model name.
 
-```bash
-export NEMO_EXPERIMENTALIST_API_KEY=sk-...
-export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.6-sol
-export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5.6-terra
-export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5.6-luna
-```
-
-Model names have no default: a name is only meaningful against a specific endpoint, so
-an unset tier fails before the run starts rather than at the first LLM call. Name them
-as *your* endpoint does — `openai/openai/openai/gpt-5.6-sol` on the NVIDIA gateway,
-`gpt-5.6-sol` against OpenAI directly. The
-[example agent's `.env.example`](examples/tau3-nooa-agent/.env.example) is a working set.
-
-Credentials are the one place a default applies: when the API base is the NVIDIA gateway,
-a set `INFERENCE_API_KEY` fills `NEMO_EXPERIMENTALIST_API_KEY`. A custom base never
-inherits it, so a key scoped to the gateway is not forwarded elsewhere.
+`nemo agents experimentalist doctor` reports the effective pair. For
+non-interactive or isolated environments, `NEMO_DEFAULT_MODEL` and
+`NEMO_FAST_MODEL` override the stored selections; both values remain Platform
+Model Entity IDs in `workspace/model-name` form. The sandbox examples pass these
+overrides because the host's `~/.config/nmp/config.yaml` is not part of the clone.
 
 The `--config` YAML is the other kind of configuration: it holds what *one experiment*
 does (`max_rounds`, `max_survivors`, per-component tuning) and takes no environment
 override, so the file is an accurate record of the run.
 
-The agent under test is separate: it reads `AUT_MODEL_NAME`
-plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`, which are the only variables forwarded
-into the evaluation container.
+### Objective function and regression metrics
+
+Declare what the optimizer should improve separately from what it must preserve.
+`objective_function` is one ordered list: each item may be a raw evaluator
+metric or an aggregate metric produced by the evaluator. The optimizer only receives
+reported metric values and the declared policy; it does not evaluate expressions,
+invent weights, or encode a selection algorithm.
+
+A single evaluator-produced aggregate metric:
+
+```yaml
+objective_function:
+  - name: quality
+    direction: maximize
+```
+
+Several metrics, for example lower token use and cost, with a guardrail:
+
+```yaml
+objective_function:
+  - name: tokens
+    direction: minimize
+  - name: cost
+    direction: minimize
+regression_metrics:
+  - name: success_rate
+    direction: maximize
+```
+
+For an insight-driven run, Eval Author's authored insight metrics replace the
+run-level objective metrics. The configured objective targets move to
+`regression_metrics`, alongside the existing guardrails, so the insight is
+improved without giving up the run's original priorities.
+
+The agent under test remains separate. The Tau3 example reads `AUT_MODEL_NAME`
+plus `OPENAI_API_KEY` / `OPENAI_BASE_URL`; those are the only variables forwarded
+into its evaluation container and are not used by the Experimentalist agents.
 
 ### Insight-driven optimization
 

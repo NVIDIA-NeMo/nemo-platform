@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
 
 describe('countRails', () => {
@@ -14,19 +14,19 @@ describe('countRails', () => {
   });
 
   it('returns 0 when rails object is present but empty', () => {
-    const data: RailsConfigOutput = { rails: {} };
+    const data: RailsConfig = { rails: {} };
     expect(countRails(data)).toBe(0);
   });
 
   it('counts input flows', () => {
-    const data: RailsConfigOutput = {
+    const data: RailsConfig = {
       rails: { input: { flows: ['check pii', 'check toxicity'] } },
     };
     expect(countRails(data)).toBe(2);
   });
 
   it('sums flows across input, output, and retrieval', () => {
-    const data: RailsConfigOutput = {
+    const data: RailsConfig = {
       rails: {
         input: { flows: ['a', 'b'] },
         output: { flows: ['c'] },
@@ -37,7 +37,7 @@ describe('countRails', () => {
   });
 
   it('handles partial rails (some sections undefined) without throwing', () => {
-    const data: RailsConfigOutput = {
+    const data: RailsConfig = {
       rails: {
         input: { flows: ['a'] },
         output: undefined,

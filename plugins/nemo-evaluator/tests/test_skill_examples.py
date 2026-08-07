@@ -404,15 +404,25 @@ def test_metric_selection_lists_exactly_the_supported_metric_names() -> None:
     `metric-types` prints RAGAS names the skill does not support, and neither
     hyphens nor underscores separate the two groups (`bleu` is supported,
     `faithfulness` is not), so the skill enumerates the supported names.
+
+    `tunable-rag-evaluator` is registered for optimize / NAT-style judge flows but
+    is intentionally omitted from this curated skill list until skill docs cover it.
     """
     from nemo_evaluator.cli import _is_ragas_metric, _metric_type_models
+
+    # Registry metrics the skill may omit without failing this contract.
+    skill_omitted = frozenset({"tunable-rag-evaluator"})
 
     reference = (_repo_root() / "skills/nemo-evaluator-plugin/references/metric-selection.md").read_text(
         encoding="utf-8"
     )
     sentence = " ".join(reference.split()).split("The supported set is exactly:", 1)[1].split(".", 1)[0]
     listed = set(re.findall(r"`([a-z0-9-]+)`", sentence))
-    expected = {name for name, model in _metric_type_models().items() if not _is_ragas_metric(model)}
+    expected = {
+        name
+        for name, model in _metric_type_models().items()
+        if not _is_ragas_metric(model) and name not in skill_omitted
+    }
 
     assert listed == expected
 

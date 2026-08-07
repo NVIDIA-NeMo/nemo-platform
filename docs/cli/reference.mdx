@@ -47,8 +47,8 @@ Set up NeMo Platform: connect or start services, configure a provider, install s
 
 Uses an already-running platform, starts local services, or connects the
 CLI to an existing remote deployment. Then selects and registers an
-inference provider, picks a default model, installs coding agent skills,
-and optionally deploys a demo agent.
+inference provider, picks default and fast agent models, installs coding
+agent skills, and optionally deploys a demo agent.
 
 The active config context remembers the Platform URL. When a remote
 deployment is already reachable, setup asks whether to continue with it,
@@ -66,7 +66,7 @@ Requires an interactive terminal (TTY). In non-interactive contexts
 Use --auto for non-interactive setup from environment variables
 (NEMO_DEFAULT_INFERENCE_KEY, NVIDIA_API_KEY, OPENAI_API_KEY,
 ANTHROPIC_API_KEY, GEMINI_API_KEY).
-Override the default model with NEMO_DEFAULT_MODEL.
+Override the selected pair with NEMO_DEFAULT_MODEL and NEMO_FAST_MODEL.
 
 **Examples:**
 
@@ -110,7 +110,7 @@ Manage authentication for NeMo Platform.
 **Usage:**
 
 ```shell
-nemo auth [OPTIONS] COMMAND [ARGS]...
+nemo auth [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -140,7 +140,7 @@ For quickstart, use **`--unsigned-token`** to generate an unsigned JWT.
 # Set base URL and log in
 nemo auth login --base-url https://nemo.example.com
 # Context-specific login
-nemo auth login --context dev --base-url https://nemo.dev.example.com
+nemo auth login --context staging --base-url https://nmp.staging.example.com
 # Device flow, open browser
 nemo auth login
 # Device flow, show code only
@@ -297,7 +297,7 @@ Run platform services locally.
 **Usage:**
 
 ```shell
-nemo services [OPTIONS] COMMAND [ARGS]...
+nemo services [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -607,7 +607,7 @@ nemo skills install --agent claude --skill inference
 **Usage:**
 
 ```shell
-nemo skills [OPTIONS] COMMAND [ARGS]...
+nemo skills [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -954,7 +954,7 @@ nemo agent commands
 **Usage:**
 
 ```shell
-nemo agent [OPTIONS] COMMAND [ARGS]...
+nemo agent [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**
@@ -1027,7 +1027,7 @@ nemo plugins list
 **Usage:**
 
 ```shell
-nemo plugins [OPTIONS] COMMAND [ARGS]...
+nemo plugins [OPTIONS] [COMMAND] [ARGS]...
 ```
 
 **Help:**

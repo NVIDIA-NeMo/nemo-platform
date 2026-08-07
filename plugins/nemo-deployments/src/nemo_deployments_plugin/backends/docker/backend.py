@@ -474,11 +474,18 @@ class DockerDeploymentBackend(DeploymentBackend):
             run_kwargs["volumes"] = volume_bindings
 
         # When joining another container's network namespace, docker forbids
-        # publishing ports (they belong to the primary). Only the primary maps
-        # host ports.
+        # publishing ports (they belong to the primary) and also forbids
+        # ExtraHosts. Only the primary maps host ports / host.docker.internal.
+        # Drop the image HEALTHCHECK on netns-joined sidecars: nmp-api ships a
+        # probe for localhost:8080/health/ready, which fails forever for LoRA
+        # adapters (``python -m ...adapters.main`` has no HTTP listener).
         if network is not None and network.startswith("container:"):
             run_kwargs["network"] = network
+            run_kwargs["healthcheck"] = {"test": ["NONE"]}
         else:
+            # Linux Docker Engine does not define host.docker.internal by default;
+            # jobs/agents rewrite loopback platform URLs to that hostname.
+            run_kwargs["extra_hosts"] = {"host.docker.internal": "host-gateway"}
             if container.ports:
                 run_kwargs["ports"] = build_port_bindings(container, host_ports)
             if network:

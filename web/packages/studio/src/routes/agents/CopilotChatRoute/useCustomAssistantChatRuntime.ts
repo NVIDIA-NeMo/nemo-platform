@@ -232,7 +232,16 @@ export const useCustomAssistantChatRuntime = ({
       };
 
       const ensureAssistantMessage = () => {
-        if (assistantMessageId) return;
+        if (assistantMessageId) {
+          if (messagesRef.current.at(-1)?.id === assistantMessageId) return;
+          // Answering a blocking picker appends a user message mid-run. The active
+          // assistant message now sits above it, so continuing to write into it would
+          // render later tool calls before the answer that triggered them. Close it
+          // and open a new one underneath instead.
+          completeActiveAssistantMessage(COMPLETE_STATUS, getCurrentResponseContent(), {
+            collapseCopilotContent: false,
+          });
+        }
         if (resumeLastAssistantMessage()) return;
         createAssistantMessage();
       };
@@ -339,6 +348,12 @@ export const useCustomAssistantChatRuntime = ({
           return;
         }
 
+        if (result?.content !== undefined || result?.text !== undefined) {
+          // Answering a picker completes the active message, so there may be none to
+          // write into and the returned result would be dropped. The error path below
+          // calls this for the same reason.
+          ensureAssistantMessage();
+        }
         completeActiveAssistantMessage(
           result?.status ?? COMPLETE_STATUS,
           result?.content ??

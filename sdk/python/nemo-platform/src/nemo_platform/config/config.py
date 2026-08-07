@@ -10,6 +10,7 @@ import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Generic, TypeVar
 
 import yaml
 from pydantic import BaseModel, Field, HttpUrl, PrivateAttr, SecretStr
@@ -63,6 +64,13 @@ class _RuntimeAccessTokenSource:
     label: str
 
 
+def _resolve_model_pair(default_model: str | None, fast_model: str | None) -> tuple[str | None, str | None]:
+    """Apply environment overrides and the fast-to-default fallback consistently."""
+    effective_default = os.environ.get("NEMO_DEFAULT_MODEL") or default_model
+    effective_fast = os.environ.get("NEMO_FAST_MODEL") or fast_model or effective_default
+    return effective_default, effective_fast
+
+
 class Config(BaseModel):
     """
     Configuration manager for nemo_platform.
@@ -72,10 +80,10 @@ class Config(BaseModel):
     2. Runtime overrides (from env vars, CLI, or code)
     3. Resolution of effective configuration
 
-    Environment variables (prefix NMP_):
+    Environment variables:
     NMP_CURRENT_CONTEXT, NMP_WORKSPACE, NMP_OUTPUT_FORMAT,
     NMP_TIMESTAMP_FORMAT, NMP_PAGE_SIZE, NMP_COLOR_OUTPUT,
-        NMP_BASE_URL, NMP_ACCESS_TOKEN
+    NMP_BASE_URL, NMP_ACCESS_TOKEN, NEMO_DEFAULT_MODEL, NEMO_FAST_MODEL
     """
 
     # Runtime overrides - can be set via env vars
@@ -315,31 +323,66 @@ class Config(BaseModel):
         config_path: Path | None = None,
         *,
         set_current_on_create: bool = False,
+        set_current_if_unset: bool = True,
     ) -> Self:
+        """Write configuration settings and return the updated configuration."""
+        return cls.write_with_result(
+            params,
+            context_name=context_name,
+            config_path=config_path,
+            set_current_on_create=set_current_on_create,
+            set_current_if_unset=set_current_if_unset,
+        ).config
+
+    @classmethod
+    def write_with_result(
+        cls,
+        params: ConfigParams,
+        context_name: str | None = None,
+        config_path: Path | None = None,
+        *,
+        set_current_on_create: bool = False,
+        set_current_if_unset: bool = True,
+    ) -> ConfigWriteResult[Self]:
         """
-        Write configuration settings. Creates the config file if it doesn't exist.
-        If this context doesn't exist, it will be created with its own cluster and user.
+        Write configuration settings and describe the affected context.
+
+        Creates the config file if it doesn't exist. If the context doesn't exist,
+        it will be created with its own cluster and user.
 
         Args:
             params: Config params to apply
-            context_name: Name for context to write, if not provided the active context will be used or "default"
+            context_name: Context to write; uses the current context or "default" when omitted
             config_path: Optional path override
-            set_current_on_create: If True, automatically switch to the context when it is newly created
+            set_current_on_create: If True, automatically switch to the context when it is newly created.
+                Superseded by set_current_if_unset for most callers; kept for backward compatibility.
+            set_current_if_unset: If True, use the written context when no current context is configured
 
         Returns:
-            Config instance with applied settings
+            Updated config, resolved context name, and whether the context was created
         """
         # 1. Determine path
         path = config_path or cls.get_default_config_path()
+        context_name_was_explicit = context_name is not None
 
         # 2. Load existing or create empty
         if path.exists():
             config = cls.load(config_path=path)
-            # Use resolve() so env var overrides (e.g., NMP_CURRENT_CONTEXT) are respected
-            context_name = context_name or config.resolve().context_name
+            if not context_name_was_explicit and config.current_context is not None:
+                available_contexts = [context.name for context in config.get_config_file().contexts]
+                if config.current_context not in available_contexts:
+                    raise ValueError(
+                        f"Context '{config.current_context}' not found. "
+                        f"Available contexts: {', '.join(available_contexts)}"
+                    )
+            # Respect NMP_CURRENT_CONTEXT (config.current_context) before the stored value.
+            # Avoid config.resolve() here: it raises when contexts exist but current_context is None.
+            context_name = (
+                context_name or config.current_context or config.get_config_file().current_context or DEFAULT_CONTEXT
+            )
         else:
             config = cls.create(path, ConfigFile())
-            context_name = context_name or DEFAULT_CONTEXT
+            context_name = context_name or config.current_context or DEFAULT_CONTEXT
 
         config_file = config._config_file
 
@@ -352,13 +395,13 @@ class Config(BaseModel):
         # 5. Set current_context
         if "current_context" in params:
             config_file.current_context = params["current_context"]
-        elif config_file.current_context is None or (set_current_on_create and is_new):
+        elif (set_current_if_unset and config_file.current_context is None) or (set_current_on_create and is_new):
             config_file.current_context = context_name
 
         # 6. Save
         config.save()
 
-        return config
+        return ConfigWriteResult(config=config, context_name=context_name, created=is_new)
 
     def set_current_context(self, context_name: str) -> None:
         """
@@ -486,8 +529,12 @@ class Config(BaseModel):
         if effective_workspace is None:
             effective_workspace = DEFAULT_WORKSPACE
 
-        # Resolve default model: env var > config file
-        effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context.default_model
+        # The default model is the quality-oriented model for agent workloads.
+        # Existing single-model contexts also supply the fast role.
+        effective_default_model, effective_fast_model = _resolve_model_pair(
+            context.default_model,
+            context.fast_model,
+        )
 
         # Create the resolved Context (runtime model) from the ContextDefinition (config file model)
         return Context(
@@ -496,6 +543,7 @@ class Config(BaseModel):
             user=user,  # Fully resolved User with authentication credentials
             workspace=effective_workspace,
             default_model=effective_default_model,
+            fast_model=effective_fast_model,
             preferences=prefs,
         )
 
@@ -545,14 +593,31 @@ class Config(BaseModel):
             prefs.color_output = self.color_output
 
         # Return resolved Context (runtime model)
+        effective_default_model, effective_fast_model = _resolve_model_pair(
+            context_def.default_model,
+            context_def.fast_model,
+        )
         return Context(
             context_name=context_name,
             cluster=cluster,
             user=user,
             workspace=context_def.workspace or DEFAULT_WORKSPACE,
-            default_model=os.environ.get("NEMO_DEFAULT_MODEL") or context_def.default_model,
+            default_model=effective_default_model,
+            fast_model=effective_fast_model,
             preferences=prefs,
         )
+
+
+_T = TypeVar("_T", bound=Config)
+
+
+@dataclass(frozen=True)
+class ConfigWriteResult(Generic[_T]):
+    """Result metadata for a configuration write."""
+
+    config: _T
+    context_name: str
+    created: bool
 
 
 def get_context(

@@ -202,8 +202,10 @@ async def iter_with_inactivity_timeout(
     surfacing errors before the caller commits to a StreamingResponse. This allows
     callers to catch connection errors and return proper HTTP error responses.
 
-    Uses an optimized single CancelScope for chunks, updating the deadline before
-    each read rather than creating new scopes per chunk (~2.5x faster).
+    Uses a CancelScope around each source read (not across ``yield``), so the
+    inactivity deadline applies only while waiting on the upstream iterator.
+    Yielding inside a CancelScope is unsafe: closing the async generator on
+    early consumer exit can exit the scope from another task.
 
     Args:
         content: The async iterator to wrap
@@ -225,41 +227,31 @@ async def iter_with_inactivity_timeout(
 
     if preflight:
         # Read first chunk NOW (during the await) to surface errors early
-        # fail_after(None) creates a scope with no timeout
         try:
             with anyio.fail_after(timeout_seconds):
                 first_chunk = await anext(content, None)
         except TimeoutError as e:
             raise InactivityTimeoutError(f"No data received within {timeout_seconds} seconds") from e
         # If first_chunk is None (empty iterator), _stream() handles it naturally:
-        # the optimized loop will immediately get StopAsyncIteration and exit
+        # the loop will immediately get StopAsyncIteration and exit
 
     async def _stream() -> AsyncIterator[T]:
         # Yield preflight chunk if we have one
         if first_chunk is not None:
             yield first_chunk
 
-        # Stream remaining with optimized timeout (single scope, deadline updates)
-        # Set deadline before each await, clear it after - only timeout on source, not consumer
-        #
-        # Why fail_after(None)? Creating a new CancelScope per chunk is expensive,
-        # and we're doing this for every chunk in the file (potentially thousands).
-        # Instead, we create ONE scope and update its deadline before each anext().
-        # We start with None (no timeout) because the first thing in the loop is
-        # setting the deadline anyway.
-        try:
-            with anyio.fail_after(None) as scope:
-                while True:
-                    try:
-                        if timeout_seconds is not None:
-                            scope.deadline = anyio.current_time() + timeout_seconds
-                        item = await anext(content)
-                        scope.deadline = float("inf")
-                        yield item
-                    except StopAsyncIteration:
-                        break
-        except TimeoutError as e:
-            raise InactivityTimeoutError(f"No data received within {timeout_seconds} seconds") from e
+        # Await under fail_after, then yield outside the CancelScope. Spanning a
+        # yield with a CancelScope breaks when the consumer exits early and the
+        # async generator is aclosed from another task.
+        while True:
+            try:
+                with anyio.fail_after(timeout_seconds):
+                    item = await anext(content)
+            except StopAsyncIteration:
+                break
+            except TimeoutError as e:
+                raise InactivityTimeoutError(f"No data received within {timeout_seconds} seconds") from e
+            yield item
 
     return _stream()
 

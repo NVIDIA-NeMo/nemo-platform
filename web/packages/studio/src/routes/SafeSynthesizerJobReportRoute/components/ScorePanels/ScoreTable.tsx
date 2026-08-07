@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Dial } from '@nemo/common/src/components/Dial';
+import { ScoreGauge } from '@nemo/common/src/components/ScoreGauge';
 import { Flex, Table, Tooltip } from '@nvidia/foundations-react-core';
 import { tooltipClassName } from '@studio/styles/common';
 import { Info } from 'lucide-react';
@@ -14,9 +14,8 @@ interface ScoreTableProps {
     displayValue?: string;
     description?: string;
   }[];
-  color: string;
 }
-export const ScoreTable: FC<ScoreTableProps> = ({ scores, color }) => {
+export const ScoreTable: FC<ScoreTableProps> = ({ scores }) => {
   return (
     <Table
       data-testid="score-table"
@@ -58,14 +57,7 @@ export const ScoreTable: FC<ScoreTableProps> = ({ scores, color }) => {
             },
           },
           {
-            children: (
-              <Dial
-                value={(score.value / 10) * 100}
-                displayValue={score.displayValue || score.value.toFixed(1)}
-                color={color}
-                size="s"
-              />
-            ),
+            children: <ScoreGauge score={score.value} size="sm" />,
             attributes: {
               TableDataCell: {
                 style: { width: '0px' },

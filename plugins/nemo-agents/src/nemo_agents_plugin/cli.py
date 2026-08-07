@@ -14,10 +14,11 @@ instance.
 - ``invoke``   — single invocation
 - ``run``      — start a persistent local FastAPI server
 
-The ``evaluate`` and ``optimize`` commands are auto-generated from the
-``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
-``nemo.jobs`` entry-point group — the platform injects them into this CLI
-group at startup.
+The ``evaluate`` command is auto-generated from the
+``EvaluateAgentJob`` registered under the
+``nemo.jobs`` entry-point group — the platform injects it into this CLI
+group at startup. Numeric optimize is likewise auto-injected from
+``agents.optimize`` (``OptimizeJob`` in ``nemo-optimization``).
 
 **Agent Resources commands (require a running cluster):**
 
@@ -266,10 +267,8 @@ def _register_local_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
 
-# Note: ``evaluate`` and ``optimize`` commands are auto-generated from the
-# ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
-# ``nemo.jobs`` entry-point group.  The platform's CLI loader injects them
-# into this group at startup (see ``nemo_platform_ext.cli.app``).
+# Note: ``evaluate`` and ``optimize`` (run/submit/explain) are auto-generated
+# from ``nemo.jobs`` entry points.
 
 
 # ---------------------------------------------------------------------------

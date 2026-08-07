@@ -191,16 +191,24 @@ def test_analyze_unknown_subject_exits(monkeypatch):
         cli.main()
 
 
-def test_analyze_without_key_exits(monkeypatch):
-    # Neutralize .env loading so a developer's local testbed/.env can't supply the key.
-    # The key guard must fire before any state resolution/download (bare analyze = pinned mode).
+def test_analyze_does_not_require_plugin_inference_key(monkeypatch, tmp_path, capsys):
+    # Analyst credentials belong to the configured Platform Model provider, not
+    # a plugin-owned environment variable.
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
     monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
-    monkeypatch.setattr(sys, "argv", ["testbed", "analyze", "nvq"])
-    with pytest.raises(SystemExit) as exc:
-        cli.main()
-    # Must exit for the key guard, not (e.g.) an "Unknown testbed" reason.
-    assert "INFERENCE_API_KEY" in str(exc.value)
+    monkeypatch.setattr(cli, "TMP", tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["testbed", "analyze", "nvq", "--live", "--no-baseline-update"],
+    )
+
+    async def fake_analyze(self, *, record, since, verbose, out_path):
+        return "REPORT-OK"
+
+    monkeypatch.setattr("testbed.adapters.IntakeAdapter.analyze", fake_analyze)
+    cli.main()
+    assert "REPORT-OK" in capsys.readouterr().out
 
 
 def test_analyze_live_happy_path(monkeypatch, tmp_path, capsys):
@@ -382,7 +390,7 @@ def _write_analyst_lock(
     *,
     unrelated_version: str = "1",
     transitive_version: str = "1",
-    anthropic_version: str = "1",
+    litellm_version: str = "1",
 ) -> None:
     path.write_text(
         f"""
@@ -396,29 +404,21 @@ version = "{unrelated_version}"
 name = "nemo-insights-plugin"
 version = "1"
 dependencies = [
-    {{ name = "pydantic-ai-harness" }},
-    {{ name = "pydantic-ai-slim", extra = ["anthropic"] }},
+    {{ name = "nooa" }},
 ]
 
 [[package]]
-name = "pydantic-ai-harness"
+name = "nooa"
 version = "2"
-dependencies = [{{ name = "transitive" }}]
-
-[[package]]
-name = "pydantic-ai-slim"
-version = "3"
-
-[package.optional-dependencies]
-anthropic = [{{ name = "anthropic" }}]
+dependencies = [{{ name = "transitive" }}, {{ name = "litellm" }}]
 
 [[package]]
 name = "transitive"
 version = "{transitive_version}"
 
 [[package]]
-name = "anthropic"
-version = "{anthropic_version}"
+name = "litellm"
+version = "{litellm_version}"
 """,
         encoding="utf-8",
     )
@@ -464,7 +464,7 @@ def test_analyst_hash_tracks_resolved_dependency_closure(tmp_path):
         lockfile,
         unrelated_version="changed",
         transitive_version="changed",
-        anthropic_version="changed",
+        litellm_version="changed",
     )
     assert cli._analyst_sha256(plugin_root, lockfile) != transitive_changed
 
@@ -874,7 +874,6 @@ def test_load_dotenv_missing_file_is_noop(tmp_path, monkeypatch):
 
 def test_doctor_ready(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
-    monkeypatch.setenv("INFERENCE_API_KEY", "sk")
     monkeypatch.setattr("testbed.adapters.IntakeAdapter.check", lambda self: [])
     monkeypatch.setattr(cli.shutil, "which", lambda _name: "/usr/bin/gh")  # deterministic: gh "installed"
     monkeypatch.setattr(sys, "argv", ["testbed", "doctor", "nvq"])
@@ -889,7 +888,6 @@ def test_doctor_ready(monkeypatch, capsys):
 def test_doctor_flags_missing_gh(monkeypatch, capsys):
     """Pinned/--state analyze shells out to gh; doctor must flag its absence up front."""
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
-    monkeypatch.setenv("INFERENCE_API_KEY", "sk")
     monkeypatch.setattr("testbed.adapters.IntakeAdapter.check", lambda self: [])
     monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
     monkeypatch.setattr(sys, "argv", ["testbed", "doctor", "nvq"])
@@ -900,13 +898,14 @@ def test_doctor_flags_missing_gh(monkeypatch, capsys):
 
 
 def test_doctor_lists_unmet(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)  # don't let .env supply the key
+    monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
     monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
     monkeypatch.setattr("testbed.adapters.IntakeAdapter.check", lambda self: ["config key 'agent'"])
     monkeypatch.setattr(sys, "argv", ["testbed", "doctor", "nvq"])
     cli.main()
     out = capsys.readouterr().out
-    assert "✗" in out and "INFERENCE_API_KEY" in out and "config key 'agent'" in out
+    assert "✗" in out and "config key 'agent'" in out
+    assert "INFERENCE_API_KEY" not in out
 
 
 def test_run_records_and_prints(monkeypatch, tmp_path, capsys):
@@ -931,7 +930,9 @@ def test_run_records_and_prints(monkeypatch, tmp_path, capsys):
     assert "analyze tau2-airline --live" in out
     from testbed.runstore import load_run
 
-    assert load_run(tmp_path / "tau2-airline.run.json")["agent"] == "tau2-airline-xyz"
+    recorded_run = load_run(tmp_path / "tau2-airline.run.json")
+    assert recorded_run is not None
+    assert recorded_run["agent"] == "tau2-airline-xyz"
 
 
 def test_analyze_live_passes_record_to_analyze(monkeypatch, tmp_path):
@@ -2335,7 +2336,9 @@ def test_analyze_single_backup_dir_per_invocation(monkeypatch, tmp_path, stub_re
     (backup,) = tmp_path.glob("backup-*")  # exactly one dir carries both parked files
     assert json.loads((backup / "tau2-airline.run.json").read_text(encoding="utf-8"))["experiment_id"] == "stale"
     assert (backup / "insights_tau2-airline.yaml").read_text(encoding="utf-8") == "prior"
-    assert load_run(tmp_path / "tau2-airline.run.json")["experiment_id"] == "run-1"  # bundle record seeded
+    restored_run = load_run(tmp_path / "tau2-airline.run.json")
+    assert restored_run is not None
+    assert restored_run["experiment_id"] == "run-1"  # bundle record seeded
 
 
 def test_analyze_bundle_without_run_record_exits(monkeypatch, tmp_path, stub_reingest):

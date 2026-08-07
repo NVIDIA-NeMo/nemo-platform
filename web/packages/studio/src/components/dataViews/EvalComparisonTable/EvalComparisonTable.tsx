@@ -17,7 +17,7 @@ import {
   metricNamesForComparisons,
   scoreForMetric,
 } from '@studio/components/dataViews/EvalComparisonTable/utils';
-import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
+import { formatScore } from '@studio/components/evaluation/utils';
 import { useMemo, type ComponentProps, type FC } from 'react';
 
 const METRIC_COLUMN_ID = 'metric';

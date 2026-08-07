@@ -3,16 +3,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 from nemo_evaluator.api.schemas import MetadataItem, MetricInline, MetricRef, Task, TaskInput, TaskInputs
 from nemo_evaluator.api.service.task_service import MetricRefNotFoundError, TaskService
-from nemo_evaluator.entities import TaskEntity
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_platform_plugin.entities import ListResponse, PaginationInfo
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
 
 
@@ -39,68 +35,6 @@ def _inline_metric() -> MetricInline:
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
 
 
-class _FakeEntityClient:
-    def __init__(self) -> None:
-        self.entities: dict[tuple[str, str, str], TaskEntity] = {}
-
-    async def create(self, entity: TaskEntity) -> TaskEntity:
-        key = (entity.__entity_type__, entity.workspace, entity.name)
-        if key in self.entities:
-            raise NemoEntityConflictError(f"{key} exists")
-        now = datetime.now(timezone.utc)
-        entity._id = f"{entity.__entity_type__}-{entity.name}"
-        entity._created_at = now
-        entity._updated_at = now
-        self.entities[key] = entity
-        return entity
-
-    async def get(
-        self, entity_type: type[TaskEntity], *, workspace: str, name: str, parent: str | None = None
-    ) -> TaskEntity:
-        key = (entity_type.__entity_type__, workspace, name)
-        if key not in self.entities:
-            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
-        return self.entities[key]
-
-    async def delete(
-        self,
-        entity_type: type[TaskEntity],
-        name: str,
-        *,
-        workspace: str,
-        parent: str | None = None,
-        expected_db_version: int | None = None,
-    ) -> None:
-        key = (entity_type.__entity_type__, workspace, name)
-        if key not in self.entities:
-            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
-        del self.entities[key]
-
-    async def list(
-        self,
-        entity_type: type[TaskEntity],
-        *,
-        workspace: str,
-        filter_operation: object | None = None,
-        sort: str | None = None,
-        page: int = 1,
-        page_size: int = 100,
-    ) -> ListResponse[TaskEntity]:
-        items = [
-            e for (etype, ws, _), e in self.entities.items() if etype == entity_type.__entity_type__ and ws == workspace
-        ]
-        return ListResponse(
-            data=items,
-            pagination=PaginationInfo(
-                page=page,
-                page_size=page_size,
-                current_page_size=len(items),
-                total_pages=1,
-                total_results=len(items),
-            ),
-        )
-
-
 def _task_input() -> TaskInput:
     return TaskInput(
         intent="Answer the question.",
@@ -116,12 +50,12 @@ def metric_service() -> _FakeMetricService:
 
 
 @pytest.fixture
-def service(metric_service: _FakeMetricService) -> TaskService:
-    return TaskService(_FakeEntityClient(), metric_service)
+def service(metric_service: _FakeMetricService, entity_store) -> TaskService:
+    return TaskService(entity_store, metric_service)
 
 
 async def test_create_then_get(service: TaskService) -> None:
-    created = await service.create_task("task-1", _task_input(), workspace="default")
+    created, _ = await service.create_task("task-1", _task_input(), workspace="default")
 
     assert isinstance(created, Task)
     assert created.name == "task-1"
@@ -144,7 +78,7 @@ async def test_create_normalizes_inline_metrics_to_refs(
         metrics=[MetricRef("default/stored-metric"), inline],
     )
 
-    created = await service.create_task("task-1", task_input, workspace="default")
+    created, _ = await service.create_task("task-1", task_input, workspace="default")
 
     # The inline metric was offloaded to the metric service (stored as a derived metric)...
     assert metric_service.stored == [inline]
@@ -163,7 +97,7 @@ async def test_create_rejects_missing_metric_ref(service: TaskService) -> None:
 async def test_create_canonicalizes_bare_metric_ref(service: TaskService) -> None:
     # A bare "stored-metric" ref resolves against the task workspace and is persisted as "default/stored-metric".
     task_input = TaskInput(intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("stored-metric")])
-    created = await service.create_task("task-1", task_input, workspace="default")
+    created, _ = await service.create_task("task-1", task_input, workspace="default")
     assert created.metrics[0].root == "default/stored-metric"
 
 
@@ -195,3 +129,174 @@ async def test_delete(service: TaskService) -> None:
 
 async def test_delete_returns_false_when_missing(service: TaskService) -> None:
     assert await service.delete_task("default", "nope") is False
+
+
+# --- Failure handling ---------------------------------------------------------
+
+
+async def test_create_rolls_back_the_head_when_publishing_fails(
+    metric_service: _FakeMetricService, entity_store
+) -> None:
+    """A head with no revision would break the invariant every consumer relies on — `#latest`
+    always resolves and `revision` is never 0. There is no cross-entity transaction, so create
+    must undo itself rather than leave a half-created task behind."""
+    service = TaskService(entity_store, metric_service)
+
+    real_create = type(entity_store).create
+
+    async def _boom(entity):
+        if entity.__entity_type__ == "task_revision":
+            raise RuntimeError("store unavailable")
+        return await real_create(entity_store, entity)
+
+    entity_store.create = _boom
+
+    with pytest.raises(RuntimeError):
+        await service.create_task("task-1", _task_input(), workspace="default")
+
+    entity_store.create = real_create.__get__(entity_store)
+    assert await service.get_task("default", "task-1") is None, "the orphaned head must not survive"
+
+
+async def test_replace_propagates_a_concurrent_write_conflict(metric_service: _FakeMetricService, entity_store) -> None:
+    """Losing the optimistic lock is a client-retryable conflict, not a server fault — the route
+    maps this to 409, so the service must let it through rather than swallowing it."""
+    service = TaskService(entity_store, metric_service)
+    await service.create_task("task-1", _task_input(), workspace="default")
+
+    async def _stale(entity, *, original_name=None):
+        raise NemoEntityConflictError("modified by another request")
+
+    entity_store.update = _stale
+
+    with pytest.raises(NemoEntityConflictError):
+        await service.replace_task("task-1", _task_input(), workspace="default")
+
+
+async def test_replace_leaves_no_uncovered_head_content_when_publishing_fails(
+    metric_service: _FakeMetricService, entity_store
+) -> None:
+    """A failed publish must not leave the head serving content no revision covers.
+
+    Replace stages content in memory and lets publishing commit it, so a publish that never
+    happens leaves nothing behind. Committing the head first would instead make a plain GET —
+    which reads the head — return content that `#latest` does not resolve to.
+    """
+    service = TaskService(entity_store, metric_service)
+    await service.create_task("task-1", _task_input(), workspace="default")
+
+    real_create = type(entity_store).create
+
+    async def _boom(entity):
+        if entity.__entity_type__ == "task_revision":
+            raise RuntimeError("store unavailable")
+        return await real_create(entity_store, entity)
+
+    entity_store.create = _boom
+
+    changed = TaskInput(
+        intent="Rewritten.", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/stored-metric")]
+    )
+    with pytest.raises(RuntimeError):
+        await service.replace_task("task-1", changed, workspace="default")
+
+    entity_store.create = real_create.__get__(entity_store)
+    head = await service.get_task("default", "task-1")
+    assert head is not None
+    assert head.intent == "Answer the question.", "the head must still hold the last published content"
+
+
+async def test_tag_revision_returns_none_for_a_missing_task(service: TaskService) -> None:
+    assert await service.tag_revision("default", "nope", "blessed", "latest") is None
+
+
+async def test_list_revisions_returns_none_for_a_missing_task(service: TaskService) -> None:
+    assert await service.list_revisions("default", "nope") is None
+
+
+async def test_replace_applies_project(service: TaskService) -> None:
+    """`project` used to be accepted on replace and silently discarded."""
+    await service.create_task("task-1", _task_input(), workspace="default", project="proj-a")
+    replaced, _ = await service.replace_task("task-1", _task_input(), workspace="default", project="proj-b")
+    assert replaced.project == "proj-b"
+
+
+async def test_replace_without_project_leaves_it_unchanged(service: TaskService) -> None:
+    """An omitted query parameter means "leave it alone", not "clear it"."""
+    await service.create_task("task-1", _task_input(), workspace="default", project="proj-a")
+    replaced, _ = await service.replace_task("task-1", _task_input(), workspace="default")
+    assert replaced.project == "proj-a"
+
+
+async def test_rollback_failure_does_not_mask_the_original_error(
+    metric_service: _FakeMetricService, entity_store
+) -> None:
+    """If cleanup also fails, the caller must still see *why* the publish failed."""
+    service = TaskService(entity_store, metric_service)
+    real_create = type(entity_store).create
+
+    async def _boom(entity):
+        if entity.__entity_type__ == "task_revision":
+            raise RuntimeError("the original failure")
+        return await real_create(entity_store, entity)
+
+    async def _delete_also_fails(*args, **kwargs):
+        raise RuntimeError("rollback failed too")
+
+    entity_store.create = _boom
+    entity_store.delete = _delete_also_fails
+
+    with pytest.raises(RuntimeError, match="the original failure"):
+        await service.create_task("task-1", _task_input(), workspace="default")
+
+
+async def test_resolve_revision_defaults_to_the_current_revision(service: TaskService) -> None:
+    """No fragment means ``latest`` — the bare-member case taskset publishing hits most often."""
+    await service.create_task("task-1", _task_input(), workspace="default")
+
+    digest = await service.resolve_revision("default", "task-1")
+
+    revisions = await service.list_revisions("default", "task-1")
+    assert revisions is not None
+    assert digest == revisions.data[0].content_hash
+
+
+async def test_resolve_revision_honours_a_tag_naming_an_older_revision(service: TaskService) -> None:
+    """The hook taskset publishing uses to turn a member's tag into an exact digest.
+
+    Needs a task with *more than one* revision and a tag left behind on the older one: against a
+    single-revision task every fragment resolves to the same digest, so the test would pass even if
+    the fragment were ignored entirely.
+    """
+    await service.create_task("task-1", _task_input(), workspace="default")
+    first = (await service.list_revisions("default", "task-1")).data[0].content_hash
+    await service.tag_revision("default", "task-1", "blessed", "latest")
+
+    revised = _task_input()
+    revised.intent = "Answer differently."
+    await service.replace_task("task-1", revised, workspace="default")
+
+    latest = await service.resolve_revision("default", "task-1")
+    blessed = await service.resolve_revision("default", "task-1", "blessed")
+
+    assert latest != first, "the task must actually have moved on, or this proves nothing"
+    assert blessed == first, "a tag must resolve to the revision it names, not the current one"
+
+
+async def test_resolve_revision_round_trips_a_digest_fragment(service: TaskService) -> None:
+    """A member submitted already-pinned must resolve to itself rather than to the head."""
+    await service.create_task("task-1", _task_input(), workspace="default")
+    first = (await service.list_revisions("default", "task-1")).data[0].content_hash
+
+    revised = _task_input()
+    revised.intent = "Answer differently."
+    await service.replace_task("task-1", revised, workspace="default")
+
+    assert await service.resolve_revision("default", "task-1", first) == first
+
+
+async def test_resolve_revision_raises_for_a_missing_task(service: TaskService) -> None:
+    """Existence surfaces from resolution itself — taskset publishing relies on this to reject a
+    member that does not exist, now that the separate existence check is gone."""
+    with pytest.raises(NemoEntityNotFoundError):
+        await service.resolve_revision("default", "nope")

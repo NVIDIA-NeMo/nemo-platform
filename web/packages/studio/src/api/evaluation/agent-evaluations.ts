@@ -44,7 +44,9 @@ export const agentNameForJob = (job: AgentEvaluateJob): string | null => {
 };
 
 export const evalConfigName = (job: AgentEvaluateJob): string | null => {
-  const name = job.spec?.benchmark?.eval_config_fileset;
+  // Formerly ``spec.benchmark.eval_config_fileset``; AgentEvalSpec now carries
+  // free-form ``labels`` (string map) after the evaluator OpenAPI regen.
+  const name = job.spec?.labels?.eval_config_fileset;
   return typeof name === 'string' && name.length > 0 ? name : null;
 };
 
