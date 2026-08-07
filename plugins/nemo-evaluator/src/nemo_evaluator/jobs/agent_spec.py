@@ -194,11 +194,13 @@ class IntakePublicationSpec(BaseModel):
     )
     agent_name: str | None = Field(
         default=None,
+        min_length=1,
         description="Agent name recorded on each published trajectory. Derived from the target when "
         "it names one; required otherwise.",
     )
     agent_version: str = Field(
         default=DEFAULT_AGENT_VERSION,
+        min_length=1,
         description="Agent version recorded on each published trajectory. Neither a Model nor an "
         "Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.",
     )

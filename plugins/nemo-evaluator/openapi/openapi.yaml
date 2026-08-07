@@ -3899,8 +3899,10 @@ components:
           description: Agent name recorded on each published trajectory. Derived from
             the target when it names one; required otherwise.
           type: string
+          minLength: 1
         agent_version:
           type: string
+          minLength: 1
           title: Agent Version
           description: Agent version recorded on each published trajectory. Neither
             a Model nor an Agent carries a version, so this defaults to 'unknown'

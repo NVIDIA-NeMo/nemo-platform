@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSumm
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values import Model
 from nemo_evaluator_sdk.values.agents import NemoAgentToolkitAgent
@@ -92,8 +94,10 @@ class _FakeIngest:
     def __init__(self, calls: list[dict[str, Any]], *, error: Exception | None = None) -> None:
         self._calls = calls
         self._error = error
+        self.loop: asyncio.AbstractEventLoop | None = None
 
     async def create(self, **kwargs: Any) -> None:
+        self.loop = asyncio.get_running_loop()
         if self._error is not None:
             raise self._error
         self._calls.append(kwargs)
@@ -236,6 +240,15 @@ def test_undeducible_agent_name_is_rejected_at_submit(target: Target | None) -> 
         _input_spec(target, PublicationSpec(intake=IntakePublicationSpec(evaluation_id="eval-1")))
 
 
+def test_blank_identity_fields_are_rejected() -> None:
+    # An empty `agent_name` satisfies `is not None` in the identity validator, so it would skip the
+    # derivation that validator exists to require and resolve back to "" at publish time.
+    with pytest.raises(ValidationError):
+        IntakePublicationSpec(evaluation_id="eval-1", agent_name="")
+    with pytest.raises(ValidationError):
+        IntakePublicationSpec(evaluation_id="eval-1", agent_version="")
+
+
 @pytest.mark.parametrize(
     "target",
     [ModelTarget(model=Model(name="gpt-4o", url="http://model")), CodexRunnerTarget(model="gpt-5.5"), None],
@@ -341,8 +354,15 @@ class _FakeEvaluator:
 
     def __init__(self, *, started_at: datetime | None = STARTED_AT) -> None:
         self._started_at = started_at
+        self.loop: asyncio.AbstractEventLoop | None = None
 
     def run_sync(self, *, tasks: Sequence[AgentEvalTask], **kwargs: Any) -> AgentEvalResult:
+        # Drives a real loop to completion the way `AgentEvaluator.run_sync` does, so publication
+        # afterwards runs against an already-closed loop.
+        return run_sync(lambda: self._run(tasks))
+
+    async def _run(self, tasks: Sequence[AgentEvalTask]) -> AgentEvalResult:
+        self.loop = asyncio.get_running_loop()
         return AgentEvalResult(
             run_id="run-1",
             tasks=list(tasks),
@@ -396,15 +416,22 @@ def test_job_does_not_publish_without_a_publication_spec(tmp_path: Path, mocker:
 
 
 def test_job_publishes_through_the_real_sync_bridge(tmp_path: Path, mocker: MockerFixture) -> None:
-    # `run` is synchronous and has already driven one event loop to completion via
-    # `evaluator.run_sync` by the time publication starts. Publication then drives another through
-    # `run_sync` on the *same* injected async SDK. Nothing is patched out here, so a regression to
-    # `asyncio.run` or to a loop-bound client surfaces as "Event loop is closed" (cf. nmp-1hr.2).
-    mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=_FakeEvaluator())
+    evaluator = _FakeEvaluator()
+    mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=evaluator)
     client = _FakeClient()
     ctx = _job_context(tmp_path)
 
     result = AgentEvalJob().run(_job_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNeMoPlatform, client))
+
+    # The evaluator drove a loop to completion first; publication then ran on a different one,
+    # reusing the same injected SDK. That crossing is what raises "Event loop is closed" when the
+    # client is bound to a dead loop (cf. nmp-1hr.2). It does not distinguish `run_sync` from a bare
+    # `asyncio.run` — no loop is running at this point, so both behave the same here.
+    ingest_loop = client.intake.ingest.atif.loop
+    assert evaluator.loop is not None
+    assert evaluator.loop.is_closed()
+    assert ingest_loop is not None
+    assert ingest_loop is not evaluator.loop
 
     assert result["status"] == PlatformJobStatus.COMPLETED
     assert result["publication"] == {
