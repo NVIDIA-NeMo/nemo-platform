@@ -35,8 +35,6 @@ from nmp.testing import (
     unique_email,
 )
 
-pytestmark = pytest.mark.xdist_group("inference_gateway_auth")
-
 
 @pytest.fixture(scope="module")
 def ctx() -> Generator[ClientContext, None, None]:
