@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType, TracebackType
-from typing import Any, TypeAlias, TypedDict
+from typing import Any, Literal, TypeAlias, TypedDict
 from uuid import uuid4
 
 from harbor.constants import MAIN_SERVICE_NAME
@@ -112,6 +112,7 @@ _TASK_TREE_RESOURCES: tuple[TreeResourceSpec, ...] = (
 )
 _TRACE_ARTIFACT_SOURCE = "/app/traces"
 _TRACE_ARTIFACT_DESTINATION = "traces"
+_ATIF_TRACE_SUFFIX = ".atif.json"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
 _AGENT_IMPORT_ROOT = "_nemo_experimentalist_eval_agents"
 _IDENTIFIER_RE = re.compile(r"\W+")
@@ -188,6 +189,13 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
     import_path: str = Field(default="harbor_wrapper:WrappedAgent")
     trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
+    trace_format: Literal["otlp", "atif"] = Field(
+        default="otlp",
+        description=(
+            "Which trace artifact becomes the trial's trace. Both are still collected and "
+            "exposed in resources; this only selects the one that gets uploaded and analysed."
+        ),
+    )
 
 
 class HarborDependencyRuntime(DependencyRuntime):
@@ -646,7 +654,9 @@ def _trial_metrics(trial_dir: Path, trial_data: dict[str, Any], spec: MetricSpec
     return metrics
 
 
-def _trial_resources(trial_dir: Path) -> tuple[dict[str, ResourceRef], ResourceRef | None]:
+def _trial_resources(
+    trial_dir: Path, *, trace_format: str = "otlp"
+) -> tuple[dict[str, ResourceRef], ResourceRef | None]:
     resources: dict[str, ResourceRef] = {
         "trial_dir": ResourceRef(
             uri=trial_dir.resolve().as_uri(),
@@ -656,7 +666,8 @@ def _trial_resources(trial_dir: Path) -> tuple[dict[str, ResourceRef], ResourceR
             ),
         )
     }
-    trace_ref = None
+    otlp_trace_ref: ResourceRef | None = None
+    atif_trace_ref: ResourceRef | None = None
 
     for path in sorted(candidate for candidate in trial_dir.rglob("*") if candidate.is_file()):
         relative_path = path.relative_to(trial_dir).as_posix()
@@ -680,8 +691,15 @@ def _trial_resources(trial_dir: Path) -> tuple[dict[str, ResourceRef], ResourceR
         elif path.suffix == ".jsonl" and "traces" in Path(relative_path).parts[:-1]:
             trace_relative_path = relative_path.removeprefix("artifacts/")
             description = f"Agent execution trace JSONL for {trace_relative_path}."
-            trace_ref = trace_ref or ResourceRef(uri=uri, description=description)
-            resources[f"trace:{trace_relative_path}"] = ResourceRef(uri=uri, description=description)
+            ref = ResourceRef(uri=uri, description=description, metadata={"trace_format": "otlp"})
+            otlp_trace_ref = otlp_trace_ref or ref
+            resources[f"trace:{trace_relative_path}"] = ref
+        elif relative_path.endswith(_ATIF_TRACE_SUFFIX) and "traces" in Path(relative_path).parts[:-1]:
+            trace_relative_path = relative_path.removeprefix("artifacts/")
+            description = f"Agent execution ATIF trajectory for {trace_relative_path}."
+            ref = ResourceRef(uri=uri, description=description, metadata={"trace_format": "atif"})
+            atif_trace_ref = atif_trace_ref or ref
+            resources[f"trace:{trace_relative_path}"] = ref
         elif _is_trial_log_path(relative_path):
             description = _TRIAL_LOG_DESCRIPTIONS.get(relative_path)
             if description is None and relative_path.startswith("agent/command-"):
@@ -709,7 +727,16 @@ def _trial_resources(trial_dir: Path) -> tuple[dict[str, ResourceRef], ResourceR
                 description=f"Collected Harbor artifact {relative_path}.",
             )
 
-    return resources, trace_ref
+    selected = atif_trace_ref if trace_format == "atif" else otlp_trace_ref
+    other = otlp_trace_ref if trace_format == "atif" else atif_trace_ref
+    if selected is None and other is not None:
+        found = "otlp" if trace_format == "atif" else "atif"
+        logger.warning(
+            f"Trial {trial_dir.name}: configured trace_format='{trace_format}' matched no trace "
+            f"artifact, but {found} artifacts are present. This trial will have no trace — set "
+            f"trace_format='{found}' if the agent under test emits {found.upper()}."
+        )
+    return resources, selected
 
 
 class HarborDataset(Dataset):
@@ -1261,6 +1288,8 @@ class HarborEvaluator(Evaluator):
         options_dict["job_name"] = options.job_name or f"{agent.name}-{dataset.id}"
         import_path: str = options_dict.pop("import_path")
         trace_dir: str = options_dict.pop("trace_dir", _TRACE_ARTIFACT_SOURCE)
+        # Harbor's JobConfig forbids unknown keys, so this must not survive into it.
+        trace_format: str = options_dict.pop("trace_format", "otlp")
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
         force_rerun: bool = options_dict.pop("force_rerun", False)
 
@@ -1286,10 +1315,12 @@ class HarborEvaluator(Evaluator):
         finally:
             _cleanup_scoped_imports(scoped_package)
 
-        trials = await self._trials_from_dir(job.job_dir, dataset.tasks)
+        trials = await self._trials_from_dir(job.job_dir, dataset.tasks, trace_format=trace_format)
         return trials
 
-    async def _trials_from_dir(self, job_dir: Path, tasks: Sequence[Task]) -> Sequence[TrialResult]:
+    async def _trials_from_dir(
+        self, job_dir: Path, tasks: Sequence[Task], *, trace_format: str = "otlp"
+    ) -> Sequence[TrialResult]:
         task_map = {task.id: task for task in tasks}
         trials: list[TrialResult] = []
         for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
@@ -1310,7 +1341,7 @@ class HarborEvaluator(Evaluator):
             metric_spec = metric_spec or _trial_metric_spec(trial_dir, trial_data)
 
             exception_info = trial_data.get("exception_info")
-            resources, trace = _trial_resources(trial_dir)
+            resources, trace = _trial_resources(trial_dir, trace_format=trace_format)
 
             trials.append(
                 TrialResult(

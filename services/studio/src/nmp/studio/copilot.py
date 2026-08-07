@@ -1522,6 +1522,72 @@ def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
 _TOOL_INPUT_INTERNAL_KEYS = frozenset({"studio_session_id"})
 
 
+_REASONING_STEP_PREFIX = "Reasoning: "
+
+
+def _parse_reasoning_step_output(payload: Any) -> str:
+    """Pull the chain of thought out of a NAT step payload.
+
+    NAT renders steps as markdown with an ``**Input:**`` block and, once the step
+    completes, an ``**Output:**`` block holding the reasoning.
+    """
+    if not isinstance(payload, str):
+        return ""
+    marker = "**Output:**"
+    index = payload.find(marker)
+    if index == -1:
+        return ""
+    return payload[index + len(marker) :].strip()
+
+
+def _reasoning_stream_event(reasoning: str) -> tuple[str, str]:
+    return (
+        "agent",
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"nemo-copilot-reasoning-{uuid.uuid4()}",
+                    "model": _studio_copilot_name(),
+                    "content": [{"type": "reasoning", "text": reasoning}],
+                },
+            }
+        ),
+    )
+
+
+def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
+    """Best-effort extract the tool input dict from a NAT step markdown payload.
+
+    Payloads look like ``**Input:**\\n```json\\n{'resource': 'secrets'}...``; the
+    dict is a Python repr (single quotes), so parse the first balanced ``{...}``
+    with ``ast.literal_eval`` and fall back to an empty dict.
+    """
+    if not isinstance(payload, str):
+        return {}
+    start = payload.find("{")
+    if start == -1:
+        return {}
+    depth = 0
+    for index in range(start, len(payload)):
+        if payload[index] == "{":
+            depth += 1
+        elif payload[index] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = ast.literal_eval(payload[start : index + 1])
+                except (ValueError, SyntaxError):
+                    return {}
+                return value if isinstance(value, dict) else {}
+    return {}
+
+
+# Framework-injected tool arguments that must never be surfaced in the browser
+# tool-use event (they are internal plumbing, not user-facing input).
+_TOOL_INPUT_INTERNAL_KEYS = frozenset({"studio_session_id"})
+
+
 def _tool_use_stream_event(tool_name: str, tool_input: dict[str, Any]) -> tuple[str, str]:
     safe_input = {key: value for key, value in tool_input.items() if key not in _TOOL_INPUT_INTERNAL_KEYS}
     return (
@@ -1562,6 +1628,7 @@ async def _invoke_copilot(
     content_parts: list[str] = []
     model = _studio_copilot_name()
     seen_tool_ids: set[str] = set()
+    seen_reasoning_ids: set[str] = set()
     async with httpx.AsyncClient(timeout=timeout) as client:
         # The origin and agent name are server-configured; the workspace path segment is
         # an Entity-Store-confirmed name resolved by _authorized_workspace before this call.
@@ -1596,7 +1663,25 @@ async def _invoke_copilot(
                     except json.JSONDecodeError:
                         continue
                     name = step.get("name") if isinstance(step, dict) else None
-                    if not isinstance(name, str) or not name.startswith(_TOOL_STEP_PREFIX):
+                    if not isinstance(name, str):
+                        continue
+                    if name.startswith(_REASONING_STEP_PREFIX):
+                        # Published as a start/end pair sharing one id, so this cannot use
+                        # the tool dedup below: the start would claim the id and the end,
+                        # which carries the trace, would be dropped. Only the end has an
+                        # Output block, so record the id only once one is parsed -- that
+                        # skips a repeated end without ever marking the start as seen.
+                        reasoning = _parse_reasoning_step_output(step.get("payload"))
+                        if not reasoning:
+                            continue
+                        step_id = step.get("id")
+                        if isinstance(step_id, str):
+                            if step_id in seen_reasoning_ids:
+                                continue
+                            seen_reasoning_ids.add(step_id)
+                        await queue.put(_reasoning_stream_event(reasoning))
+                        continue
+                    if not name.startswith(_TOOL_STEP_PREFIX):
                         continue
                     step_id = step.get("id")
                     if isinstance(step_id, str):
