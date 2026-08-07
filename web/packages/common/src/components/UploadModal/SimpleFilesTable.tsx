@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as DataView from '@nemo/common/src/components/DataView/internal';
+import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { LeftOverflow } from '@nemo/common/src/components/LeftOverflow';
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import { useInlinePickerSlot } from '@nemo/common/src/components/UploadModal/InlinePickerSlot';
 import { UploadFile } from '@nemo/common/src/components/UploadModal/types';
@@ -83,17 +85,33 @@ export const SimpleFilesTable = () => {
     [visibleFiles, invalidFileMode, allowedExtensions]
   );
 
-  const dataViewState = DataView.useDataViewState();
+  const dataViewState = DataView.useDataViewState({ pagination: { pageSize: 10 } });
+
+  const searchTerm = dataViewState.searchBar.state.trim().toLowerCase();
+  const matchingRows = useMemo(
+    () =>
+      searchTerm ? fileRows.filter((row) => row.name.toLowerCase().includes(searchTerm)) : fileRows,
+    [fileRows, searchTerm]
+  );
+  const { pageIndex, pageSize } = dataViewState.pagination.state;
+  const safePageIndex = Math.min(
+    pageIndex,
+    Math.max(0, Math.ceil(matchingRows.length / pageSize) - 1)
+  );
+  const pageRows = useMemo(
+    () => matchingRows.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize),
+    [matchingRows, safePageIndex, pageSize]
+  );
 
   const makeColumns = useCallback<ComponentProps<typeof DataView.Root<FileRow>>['makeColumns']>(
     (col) => [
       col.display({
-        id: 'select',
+        id: 'row-selection',
         header: () => null,
-        size: 40,
-        maxSize: 40,
-        minSize: 40,
-        meta: { alignment: 'center' as const },
+        size: 48,
+        maxSize: 48,
+        minSize: 48,
+        meta: { alignment: 'center' as const, _isPrebuiltColumn: true, _isSizeInitialized: true },
         cell: ({ row }) =>
           allowMultipleFileSelection ? (
             <Checkbox
@@ -110,10 +128,16 @@ export const SimpleFilesTable = () => {
             </RadioGroupItem>
           ),
       }),
-      col.accessor('name', { header: 'Name' }),
+      col.accessor('name', {
+        header: 'Name',
+        cell: (ctx) => <LeftOverflow>{ctx.getValue()}</LeftOverflow>,
+      }),
       col.accessor('size', {
         header: 'Size',
         size: 120,
+        maxSize: 120,
+        minSize: 120,
+        meta: { _isSizeInitialized: true },
         cell: (ctx) => formatFileSize(ctx.getValue()),
       }),
     ],
@@ -132,26 +156,36 @@ export const SimpleFilesTable = () => {
 
   return (
     <Stack className="min-h-0 flex-1 w-full" gap="density-md">
-      {/* Name column fills the row; Size (col 3) is pinned to 120px. */}
-      <div className="border border-base rounded-md overflow-hidden [&_tr>*:nth-child(2)]:w-full! [&_tr>*:nth-child(2)]:max-w-none! [&_tr>*:nth-child(3)]:w-[120px]! [&_tr>*:nth-child(3)]:min-w-[120px]! [&_tr>*:nth-child(3)]:max-w-[120px]!">
-        <RadioGroupRoot
-          name="simple-files-table"
-          value={selectedFiles[0]?.id ?? ''}
-          onValueChange={(id) => {
-            const file = fileRows.find((r) => r.id === id);
-            if (file) dispatch({ type: 'TOGGLE_FILE_SELECTION', payload: file.uploadFile });
+      <RadioGroupRoot
+        className="min-h-0 max-h-[60dvh] flex"
+        name="simple-files-table"
+        value={selectedFiles[0]?.id ?? ''}
+        onValueChange={(id) => {
+          const file = fileRows.find((r) => r.id === id);
+          if (file) dispatch({ type: 'TOGGLE_FILE_SELECTION', payload: file.uploadFile });
+        }}
+      >
+        <StudioDataView<FileRow>
+          dataViewState={dataViewState}
+          makeColumns={makeColumns}
+          searchField="name"
+          maxTwoLines={false}
+          onRowClick={(row) => {
+            if (!row.isDisabled) {
+              dispatch({ type: 'TOGGLE_FILE_SELECTION', payload: row.uploadFile });
+            }
           }}
-        >
-          <DataView.Root
-            data={fileRows}
-            state={dataViewState}
-            makeColumns={makeColumns}
-            reactTableOptions={{ getRowId: (row) => row.id }}
-          >
-            <DataView.VirtualizedTableContent maxHeight="45dvh" />
-          </DataView.Root>
-        </RadioGroupRoot>
-      </div>
+          attributes={{
+            DataViewRoot: {
+              data: pageRows,
+              totalCount: matchingRows.length,
+              reactTableOptions: { getRowId: (row) => row.id },
+            },
+            DataViewSearchBar: { placeholder: 'Search files…' },
+            DataViewPagination: { pageSizeOptions: [10, 25, 50] },
+          }}
+        />
+      </RadioGroupRoot>
       {disabledFilesMessage ? (
         <Flex gap="density-sm" align="center">
           <CircleAlert className="text-feedback-warning shrink-0" />
