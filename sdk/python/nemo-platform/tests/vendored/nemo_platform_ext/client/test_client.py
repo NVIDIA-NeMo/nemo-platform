@@ -205,8 +205,14 @@ class TestCreateClientOAuthUserAuthDisabledCluster:
         "nemo_platform.client.factory.discover_nmp_config",
         return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
     )
+    @patch(
+        "nemo_platform.client.factory.discover_nmp_config",
+        return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
+    )
     @patch("nemo_platform.auth.token_provider.httpx.post")
-    def test_expired_token_on_auth_disabled_cluster_does_not_attempt_refresh(self, mock_post, _mock_discover, tmp_path):
+    def test_expired_token_on_auth_disabled_cluster_does_not_attempt_refresh(
+        self, mock_post, _mock_ext_discover, _mock_sdk_discover, tmp_path
+    ):
         expired_token = _make_jwt({"exp": int(time.time()) - 100, "sub": "user1"})
         config_path = _write_config(
             tmp_path,
@@ -224,7 +230,13 @@ class TestCreateClientOAuthUserAuthDisabledCluster:
         "nemo_platform.client.factory.discover_nmp_config",
         return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
     )
-    def test_valid_token_on_auth_disabled_cluster_skips_token_provider(self, _mock_discover, tmp_path):
+    @patch(
+        "nemo_platform.client.factory.discover_nmp_config",
+        return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
+    )
+    def test_valid_token_on_auth_disabled_cluster_skips_token_provider(
+        self, _mock_ext_discover, _mock_sdk_discover, tmp_path
+    ):
         token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
         config_path = _write_config(
             tmp_path,
