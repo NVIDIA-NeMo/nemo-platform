@@ -16,7 +16,9 @@ vi.mock('@studio/components/NewDataDesignerJobForm/previewApi', async () => {
 const CONFIG = { columns: [] } as unknown as DataDesignerConfig;
 
 describe('usePreview', () => {
-  beforeEach(() => streamPreviewMock.mockReset());
+  beforeEach(() => {
+    streamPreviewMock.mockReset();
+  });
 
   it('surfaces an error when building the config throws (e.g. invalid JSON field)', async () => {
     const { result } = renderHook(() =>
@@ -58,5 +60,79 @@ describe('usePreview', () => {
     expect(streamPreviewMock).toHaveBeenCalled();
     expect(result.current.previewLogs).toContain('a log line');
     expect(result.current.isPreviewing).toBe(false);
+  });
+
+  describe('stopPreview', () => {
+    /**
+     * Hangs until the caller's signal aborts, standing in for a long-running stream.
+     * The signal is taken positionally (streamPreview's 4th argument) — an `instanceof`
+     * check can miss it when the hook's AbortController comes from another realm.
+     */
+    const mockHangingStream = () =>
+      streamPreviewMock.mockImplementation(
+        (...args: unknown[]) =>
+          new Promise((_resolve, reject) => {
+            const signal = args[3] as AbortSignal | undefined;
+            signal?.addEventListener('abort', () => {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              reject(err);
+            });
+          })
+      );
+
+    const renderPreview = () =>
+      renderHook(() =>
+        usePreview({ workspace: 'ws', accessToken: 'token', getCurrentConfig: () => CONFIG })
+      );
+
+    it('aborts the in-flight run and reports the stop', async () => {
+      mockHangingStream();
+      const { result } = renderPreview();
+
+      let running!: Promise<void>;
+      await act(async () => {
+        running = result.current.runPreview();
+      });
+      expect(result.current.isPreviewing).toBe(true);
+
+      await act(async () => {
+        result.current.stopPreview();
+        await running;
+      });
+
+      expect(result.current.isPreviewing).toBe(false);
+      expect(result.current.previewLogs).toContain('Preview stopped.');
+    });
+
+    it('is a no-op when no preview is running', () => {
+      const { result } = renderPreview();
+      expect(() => result.current.stopPreview()).not.toThrow();
+      expect(result.current.isPreviewing).toBe(false);
+    });
+
+    it('keeps running when an older superseded run unwinds', async () => {
+      mockHangingStream();
+      const { result } = renderPreview();
+
+      let first!: Promise<void>;
+      await act(async () => {
+        first = result.current.runPreview();
+      });
+
+      let second!: Promise<void>;
+      await act(async () => {
+        second = result.current.runPreview();
+        await first;
+      });
+
+      expect(result.current.isPreviewing).toBe(true);
+      expect(result.current.previewLogs).not.toContain('Preview stopped.');
+
+      await act(async () => {
+        result.current.stopPreview();
+        await second;
+      });
+    });
   });
 });
