@@ -16,6 +16,7 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+import anyio.to_thread
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from nemo_auditor.authz import scope
@@ -84,9 +85,13 @@ async def download_audit_artifacts(
             )
 
         tar_path = tmp / "artifacts.tar.gz"
-        with tarfile.open(tar_path, "w:gz") as tar:
-            for artifact_tmp in artifact_tmps:
-                tar.add(artifact_tmp.path, arcname=artifact_tmp.path.name)
+
+        def _create_archive() -> None:
+            with tarfile.open(tar_path, "w:gz") as tar:
+                for artifact_tmp in artifact_tmps:
+                    tar.add(artifact_tmp.path, arcname=artifact_tmp.path.name)
+
+        await anyio.to_thread.run_sync(_create_archive)
 
         def _cleanup():
             for t in artifact_tmps:
