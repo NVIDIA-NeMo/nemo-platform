@@ -23,7 +23,8 @@ allowed-tools: [Read, Write, Edit, Bash]
 # NeMo Platform agent spec
 
 Turn the answers from `nemo-explore` into a durable artifact. The spec is
-the contract `nemo-build-agent` reads to scaffold the NAT workflow YAML and
+the contract `nemo-build-agent` reads before producing the Platform-managed
+`agent.yaml` or preserving an existing NAT compatibility workflow, and
 the `AGENT-SPEC.md` that downstream optimization agents read as
 their primary context. Without it, downstream skills have to re-ask
 everything and the optimization loop has no contract for what the agent is
@@ -34,12 +35,13 @@ supposed to do or what may be changed.
 Two copies of the spec exist intentionally:
 
 * **Canonical**: a NeMo Filesets fileset named `<agent-name>-spec` in the
-  active workspace, holding a single file `AGENT-SPEC.md`. Downstream
-  optimization services read this copy server-side; the platform stores it
-  durably.
-* **Local cache**: `agents/<name>-spec/AGENT-SPEC.md` in the developer's
-  working directory. Hand-editable, version-controlled with the agent's repo,
-  used by this skill and by `nemo-build-agent`.
+  active workspace. It holds `AGENT-SPEC.md` and may also hold `agent.yaml`
+  plus relative artifacts used by the executable agent package. Downstream
+  services derive the relevant file ref from workspace and agent name.
+* **Local cache**: `agents/<name>-spec/` in the developer's working directory.
+  `AGENT-SPEC.md` is the human-readable contract; `agent.yaml` is the optional
+  machine-readable Platform config created by `nemo-agent-config` during the
+  build path.
 
 The Fileset wins on conflict. If a developer edits the local file, this
 skill re-uploads to refresh the Fileset. If the platform copy has drifted
@@ -64,10 +66,10 @@ default.
 1. **Role** — one concrete sentence describing the role this agent plays. Vague
    answers ("help with stuff", "answer questions") are rejected at write
    time by the `AgentSpec` validator and will fail the file write.
-2. **Framework** — temporary NeMo Platform compatibility status, resolved to
-   one of `langgraph-nat` or `needs-wrapper` (with source-framework context
-   when `needs-wrapper`). The lightweight parser refuses unresolved framework
-   sections.
+2. **Framework** — NeMo Platform execution compatibility, resolved to one of
+   `supported-harness`, `nat-workflow`, or `needs-adapter`. Include source
+   framework context when known. The lightweight parser refuses an empty or
+   unresolved framework section.
 
 The AGENTSpec parser (`nemo_agents_plugin.spec_parse.parse_spec`) enforces
 both at validation time; this skill enforces them upstream so the user sees a
@@ -114,9 +116,10 @@ clear gap-question rather than a parser error.
      capability/source when they share credentials, side effects, freshness,
      and failure modes. Keep only details that change how downstream agents
      evaluate behavior.
-   - `Framework` should be binary: `langgraph-nat` or `needs-wrapper`, with
-     source-framework context only for `needs-wrapper`. Do not expand it into a
-     platform compatibility essay.
+   - `Framework` should use `supported-harness`, `nat-workflow`, or
+     `needs-adapter`. Record the source framework separately when known. Do not
+     infer execution compatibility from a framework import alone or expand the
+     section into a platform compatibility essay.
    - Avoid public shorthand like `AUT` or "agent under test." Use "this agent"
      for the agent being specified. Use "target agent" only when this agent's
      job is explicitly to inspect or modify another agent.
@@ -169,9 +172,11 @@ clear gap-question rather than a parser error.
 
 10. **Hand off.** Once confirmed, tell the user the next skill:
 
-    - `nemo-build-agent` will read `agents/<name>-spec/AGENT-SPEC.md`, produce the
-      workflow YAML, and call `nemo agents create`. It does not need a
-      `--spec-file-ref` flag — the spec's location is derivable.
+    - `nemo-build-agent` will read `agents/<name>-spec/AGENT-SPEC.md`, use
+      `nemo-agent-config` to produce `agent.yaml` by default, and call
+      `nemo agents create`. Existing NAT workflow YAML may remain on the
+      compatibility path. No `--spec-file-ref` flag is needed because the
+      spec's location is derivable.
     - The `eval-setup` skill (M2) will fill in the `Evaluation Setup`
       section when ready.
     - The insights plugin reads the same canonical fileset server-side once
@@ -213,10 +218,10 @@ all print, and the user has confirmed the contents.
 
 ## What this skill is not
 
-This skill does not produce NAT workflow YAML. The spec is the
-human-readable design; the YAML is generated downstream by
-`nemo-build-agent`. It also does not create the `Agent` entity on the
-platform — that happens in `nemo-build-agent` via `nemo agents create`.
+This skill does not produce `agent.yaml`, migrate NAT workflow YAML, or create
+the `Agent` entity. The spec is the human-readable design. Machine-readable
+config authoring belongs to `nemo-agent-config`, while registration and
+deployment belong to `nemo-build-agent`.
 
 ## Gotchas
 
@@ -224,9 +229,9 @@ platform — that happens in `nemo-build-agent` via `nemo agents create`.
   section headings intact. The parser in `nemo_agents_plugin.spec_parse`
   rejects missing or duplicate required sections, but section bodies remain
   markdown for humans and agents to read directly.
-- **Spec lives next to the workflow YAML.** Local copies of both files end
-  up in `agents/`. Keep them adjacent so a future read of the directory
-  shows design and implementation together.
+- **Spec lives next to the implementation config.** Keep `AGENT-SPEC.md`,
+  Platform `agent.yaml`, and their relative artifacts under
+  `agents/<name>-spec/` so local and Filesets consumers share one package root.
 - **The Fileset is canonical, not the local file.** If the two disagree,
   the Fileset wins. Re-pull before editing if you suspect server-side
   drift.
@@ -239,6 +244,10 @@ platform — that happens in `nemo-build-agent` via `nemo agents create`.
   `[a-z][a-z0-9-]*`.
 - **Role and Framework are hard requirements.** Do not write the spec with
   either missing. Route back to `nemo-explore` for the missing field only.
+- **Framework is execution readiness, not a library label.** Use
+  `supported-harness` only when a supported harness can own the lifecycle,
+  `nat-workflow` for the existing NAT compatibility path, and `needs-adapter`
+  when no supported lifecycle contract exists.
 - **Purpose cannot be implementation-only by accident.** If goal context was
   not found in the codebase and the user did not provide outside context, make
   that provenance clear instead of letting implementation details masquerade as

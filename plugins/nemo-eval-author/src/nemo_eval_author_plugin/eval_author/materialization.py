@@ -18,12 +18,13 @@ from uuid import uuid4
 
 import tomlkit
 from harbor.models.task.task import Task as HarborTask
+from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, Task, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task, local_path_from_uri
 
 _MANIFEST_SCHEMA_VERSION = 3
 _CONTENT_HASH_SCHEMA_VERSION = 1
 _METRIC_CONTRACT_VERSION = 1
+_METRIC_CONTRACT_FILENAME = "metric-contract.json"
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -65,6 +66,61 @@ def _verifier_dir(task_dir: Path) -> Path:
         if path.is_dir():
             return path
     raise ValueError(f"Materialized task has no verifier directory: {task_dir}")
+
+
+def validate_metric_contracts(
+    datasets: dict[str, Dataset],
+    *,
+    metric_keys: tuple[str, ...],
+) -> None:
+    """Require every task to declare the same newly authored metric keys."""
+    expected = set(metric_keys)
+    failures: list[str] = []
+    for dataset_name, dataset in datasets.items():
+        for task in dataset.list_tasks():
+            if not task.uri:
+                failures.append(f"{dataset_name}/{task.id}: task URI is missing")
+                continue
+            try:
+                task_dir = local_path_from_uri(
+                    task.uri,
+                    context=f"{dataset_name} dataset task {task.id!r}",
+                ).resolve()
+                verifier_dir = _verifier_dir(task_dir)
+            except (FileNotFoundError, ValueError, tomllib.TOMLDecodeError) as exc:
+                failures.append(f"{dataset_name}/{task.id}: {exc}")
+                continue
+
+            contract_path = verifier_dir / _METRIC_CONTRACT_FILENAME
+            if not contract_path.is_file():
+                failures.append(f"{dataset_name}/{task.id}: missing {contract_path}")
+                continue
+            try:
+                payload = json.loads(contract_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as exc:
+                failures.append(f"{dataset_name}/{task.id}: invalid JSON in {contract_path}: {exc}")
+                continue
+            if not isinstance(payload, dict) or set(payload) != {"metric_keys"}:
+                failures.append(f"{dataset_name}/{task.id}: {contract_path} must contain only a metric_keys list")
+                continue
+            raw_keys = payload["metric_keys"]
+            if (
+                not isinstance(raw_keys, list)
+                or any(not isinstance(key, str) or not key.strip() for key in raw_keys)
+                or len(raw_keys) != len(set(raw_keys))
+            ):
+                failures.append(
+                    f"{dataset_name}/{task.id}: {contract_path} metric_keys must be unique non-empty strings"
+                )
+                continue
+            actual = set(raw_keys)
+            if actual != expected:
+                failures.append(
+                    f"{dataset_name}/{task.id}: {contract_path} declares {sorted(actual)}, expected {sorted(expected)}"
+                )
+    if failures:
+        details = "\n".join(f"- {failure}" for failure in failures)
+        raise DatasetValidationError(f"Authored metric contract validation failed:\n{details}")
 
 
 def _content_provenance(suite_dir: Path, manifest: dict[str, object]) -> tuple[list[dict[str, object]], str, str]:

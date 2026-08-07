@@ -13,7 +13,7 @@ import {
 import type { NavItem as NavItemData } from '@studio/components/Layouts/NavigationDrawer/types';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { type FC } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 
 interface NavItemProps {
   item: NavItemData;

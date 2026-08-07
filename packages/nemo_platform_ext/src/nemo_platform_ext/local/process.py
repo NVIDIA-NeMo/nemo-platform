@@ -59,6 +59,8 @@ SUGGESTED_ALT_PORT = 9090
 
 _SIGTERM_POLL_INTERVAL = 0.25
 _SIGKILL_WAIT_TIMEOUT = 5.0
+_LOCK_RELEASE_WAIT_TIMEOUT = 5.0
+_REAP_PID_TIMEOUT = 2.0
 _DEFAULT_STOP_TIMEOUT = 30.0
 # How long ``stop_instance`` waits for the flock to be released after the last process it
 # signaled has exited.  The kernel drops the lock as part of closing the fd during process
@@ -700,8 +702,25 @@ def stop_instance(
             _LOCK_RELEASE_TIMEOUT,
             pid,
         )
+    _reap_stopped_pid(pid, timeout=min(_REAP_PID_TIMEOUT, timeout))
+    lock_released = _wait_until_instance_lock_released(
+        scope,
+        base_dir=base_dir,
+        timeout=min(_LOCK_RELEASE_WAIT_TIMEOUT, timeout),
+    )
+    if not lock_released:
+        # A descendant may still hold the inherited flock, or a replacement
+        # instance may have acquired it. Preserve its descriptor.
+        return StopResult(stopped_pids=[pid], swept_children=swept)
 
-    remove_descriptor(scope, base_dir=base_dir)
+    current_desc = read_descriptor(scope, base_dir=base_dir)
+    if current_desc is not None and (current_desc.pid != desc.pid or current_desc.create_time != desc.create_time):
+        logger.warning(
+            "Instance %r descriptor changed during stop; preserving replacement descriptor",
+            scope,
+        )
+    else:
+        remove_descriptor(scope, base_dir=base_dir)
     return StopResult(stopped_pids=[pid], swept_children=swept)
 
 
@@ -722,6 +741,45 @@ def _wait_for_pid_exit(pid: int, *, timeout: float) -> bool:
             return True
         _pause(_SIGTERM_POLL_INTERVAL)
     return not _pid_alive(pid)
+
+
+def _reap_stopped_pid(pid: int, *, timeout: float) -> None:
+    """Reap *pid* when this process is its parent so the kernel drops zombie state."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            wpid, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if wpid == pid:
+            return
+        if wpid == 0:
+            _pause(min(_SIGTERM_POLL_INTERVAL, max(0.0, deadline - time.monotonic())))
+            continue
+    with contextlib.suppress(ChildProcessError):
+        os.waitpid(pid, os.WNOHANG)
+
+
+def _wait_until_instance_lock_released(
+    scope: str,
+    *,
+    base_dir: Path | None,
+    timeout: float,
+) -> bool:
+    """Wait until the scope flock is free (graceful shutdown may lag process exit)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not is_instance_alive(scope, base_dir=base_dir):
+            return True
+        _pause(_SIGTERM_POLL_INTERVAL)
+    if not is_instance_alive(scope, base_dir=base_dir):
+        return True
+    logger.warning(
+        "Instance %r lock still held after stop (waited %.1fs); preserving descriptor",
+        scope,
+        timeout,
+    )
+    return False
 
 
 def _pid_alive(pid: int) -> bool:

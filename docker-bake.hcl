@@ -100,7 +100,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "14c0e020aa0c2c8ab55f4c57e7cea645ae6eb373" # soluwalana/RL nmp/customizer
+  default = "ace40313d474f33cabc9a8fdf13d8dd4dda218c8" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""
@@ -426,14 +426,10 @@ target "rl-platform-workspace" {
 
 # Heavy base: cuda-dl-base + NeMo-RL (with its Gym/Automodel/Megatron-Bridge submodules) built FROM
 # SOURCE (Python 3.13, CUDA 13). RL is pinned via NEMO_RL_REF; Gym rides in as RL's own submodule
-# (no separate pin). The ffmpeg-vlm wheels are reused for the cp313 av/opencv/decord2 CVE swap.
 target "nmp-rl-base-builder" {
   target     = "nmp-rl-base"
   context    = "."
   dockerfile = "docker/rl/Dockerfile.nmp-rl-base"
-  contexts = {
-    ffmpeg-vlm-wheel-image = ffmpeg_vlm_wheel_context()
-  }
   args = {
     NEMO_RL_REPO = NEMO_RL_REPO
     NEMO_RL_REF  = NEMO_RL_REF

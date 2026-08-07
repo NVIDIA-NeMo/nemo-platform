@@ -58,7 +58,7 @@ class AgentEvalPipeline:
         tasks: Sequence[AgentEvalTask],
         *,
         target: AgentEvalTarget,
-        benchmark: dict[str, object] | None = None,
+        labels: dict[str, str] | None = None,
         output_dir: Path | None = None,
         run_id: str | None = None,
         prepare_task: Callable[[AgentEvalTask], None] | None = None,
@@ -72,7 +72,7 @@ class AgentEvalPipeline:
         result = await AgentEvaluator().run(
             tasks=prepared,
             target=target,
-            config=self._run_config(output_dir=output_dir, run_id=run_id, benchmark=benchmark),
+            config=self._run_config(output_dir=output_dir, run_id=run_id, labels=labels),
         )
         self._maybe_write_gate(result)
         return result
@@ -82,7 +82,7 @@ class AgentEvalPipeline:
         tasks: Sequence[AgentEvalTask],
         *,
         trials: Sequence[AgentEvalTrial],
-        benchmark: dict[str, object] | None = None,
+        labels: dict[str, str] | None = None,
         output_dir: Path | None = None,
         run_id: str | None = None,
     ) -> AgentEvalResult:
@@ -91,7 +91,7 @@ class AgentEvalPipeline:
         result = await AgentEvaluator().run(
             tasks=prepared,
             trials=list(trials),
-            config=self._run_config(output_dir=output_dir, run_id=run_id, benchmark=benchmark),
+            config=self._run_config(output_dir=output_dir, run_id=run_id, labels=labels),
         )
         self._maybe_write_gate(result)
         return result
@@ -101,14 +101,14 @@ class AgentEvalPipeline:
         *,
         output_dir: Path | None,
         run_id: str | None,
-        benchmark: dict[str, object] | None,
+        labels: dict[str, str] | None,
     ) -> AgentEvalRunConfig:
         return AgentEvalRunConfig(
             output_dir=output_dir,
             run_id=run_id,
             parallelism=self.config.parallelism,
             write_dashboard=self.config.write_dashboard,
-            benchmark=dict(benchmark or {}),
+            labels=dict(labels or {}),
         )
 
     def _with_extra_metrics(self, task: AgentEvalTask) -> AgentEvalTask:

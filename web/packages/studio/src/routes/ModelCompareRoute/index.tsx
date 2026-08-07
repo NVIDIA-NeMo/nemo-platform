@@ -17,7 +17,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { ComposerSeed, SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 import { MessageSquareShare, MessagesSquare } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 
 type CompareView = 'compare' | 'prompts';
 

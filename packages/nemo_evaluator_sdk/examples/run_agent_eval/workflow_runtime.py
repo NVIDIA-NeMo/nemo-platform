@@ -30,6 +30,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrial,
     AgentEvalTrialStatus,
     AgentOutput,
+    RunnerInfo,
     resolve_trial_status,
     standard_evidence_descriptors,
 )
@@ -76,6 +77,18 @@ class WorkflowAgentRuntime:
 
     def __init__(self, config: WorkflowRuntimeConfig | None = None) -> None:
         self.config = config or WorkflowRuntimeConfig()
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runtime and the settings that shape its results (the AgentTaskRunner contract)."""
+        return RunnerInfo(
+            name="example_workflow",
+            kind="runner",
+            config={
+                "command": list(self.config.command),
+                "timeout_s": self.config.timeout_s,
+                "agent_model": self.config.agent_model,
+            },
+        )
 
     async def run_tasks(
         self,

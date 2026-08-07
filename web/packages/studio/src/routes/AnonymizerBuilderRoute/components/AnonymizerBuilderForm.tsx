@@ -5,7 +5,7 @@ import {
   useAnonymizerCreateRunJob,
   useAnonymizerListEntityLabels,
 } from '@nemo/sdk/generated/anonymizer/api';
-import type { RunJob } from '@nemo/sdk/generated/anonymizer/schema';
+import type { PreviewRequest, RunJob } from '@nemo/sdk/generated/anonymizer/schema';
 import {
   Banner,
   Button,
@@ -14,7 +14,6 @@ import {
   Panel,
   SegmentedControl,
   Stack,
-  Text,
 } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -24,28 +23,37 @@ import { DataSourceSection } from '@studio/routes/AnonymizerBuilderRoute/compone
 import { EntitiesSection } from '@studio/routes/AnonymizerBuilderRoute/components/EntitiesSection';
 import { GenerationSection } from '@studio/routes/AnonymizerBuilderRoute/components/GenerationSection';
 import { ModelSettingsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ModelSettingsSection';
+import { PreviewPanel } from '@studio/routes/AnonymizerBuilderRoute/components/PreviewPanel';
+import {
+  PANEL_TABS,
+  TAB_MODEL_SETTINGS,
+  TAB_SOURCE,
+} from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
   buildAnonymizerJobRequest,
+  buildAnonymizerPreviewRequest,
   type AnonymizerFormData,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
+import { useAnonymizerPreview } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerPreview';
 import { useDefaultRoleModels } from '@studio/routes/AnonymizerBuilderRoute/useDefaultRoleModels';
+import {
+  outputHeadingForStrategy,
+  tabForValidationErrors,
+} from '@studio/routes/AnonymizerBuilderRoute/utils';
 import { getWorkspaceAnonymizerRoute, getWorkspaceJobDetailRoute } from '@studio/routes/utils';
-import { useState, type FC } from 'react';
-import { useFormContext } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useState, type FC } from 'react';
+import { useFormContext, useWatch, type FieldErrors } from 'react-hook-form';
+import { useAuth } from 'react-oidc-context';
+import { useNavigate } from 'react-router';
 
-const TAB_SOURCE = 'source';
-const TAB_MODEL_SETTINGS = 'model-settings';
-
-const PANEL_TABS = [
-  { value: TAB_SOURCE, children: 'Source' },
-  { value: TAB_MODEL_SETTINGS, children: 'Model Settings' },
-];
+const INCOMPLETE_FORM_MESSAGE = 'Please complete the required fields highlighted below.';
 
 export const AnonymizerBuilderForm: FC = () => {
   const navigate = useNavigate();
   const workspace = useWorkspaceFromPath();
+  const { user } = useAuth();
   const form = useFormContext<AnonymizerFormData>();
+  const strategy = useWatch({ control: form.control, name: 'strategy' });
   const [activeTab, setActiveTab] = useState<string>(TAB_SOURCE);
   const [submitError, setSubmitError] = useState<string | undefined>(undefined);
 
@@ -78,22 +86,50 @@ export const AnonymizerBuilderForm: FC = () => {
     },
   });
 
-  const onSubmit = form.handleSubmit(
-    (values) => {
-      setSubmitError(undefined);
-      createJob.mutate({
-        workspace,
-        data: buildAnonymizerJobRequest(values, defaultEntityLabels?.data ?? []),
-      });
-    },
-    (errors) => {
-      const onlyModelErrors = Object.keys(errors).every((key) => key === 'roleModels');
-      setActiveTab(onlyModelErrors ? TAB_MODEL_SETTINGS : TAB_SOURCE);
-      setSubmitError('Please complete the required fields highlighted below.');
-    }
+  const showValidationErrors = useCallback((errors: FieldErrors<AnonymizerFormData>) => {
+    setActiveTab(tabForValidationErrors(Object.keys(errors)));
+    setSubmitError(INCOMPLETE_FORM_MESSAGE);
+  }, []);
+
+  // Not `trigger`: `formState` is a proxy tracking what the render body reads, so its `errors`
+  // are empty here. Only `handleSubmit` hands back a populated set.
+  const getPreviewRequest = useCallback(
+    () =>
+      new Promise<PreviewRequest | undefined>((resolve) => {
+        form
+          .handleSubmit(
+            (values) => {
+              setSubmitError(undefined);
+              resolve(buildAnonymizerPreviewRequest(values, defaultEntityLabels?.data ?? []));
+            },
+            (errors) => {
+              showValidationErrors(errors);
+              resolve(undefined);
+            }
+          )()
+          .catch(() => {
+            setSubmitError(INCOMPLETE_FORM_MESSAGE);
+            resolve(undefined);
+          });
+      }),
+    [form, defaultEntityLabels, showValidationErrors]
   );
 
-  const handleCancel = () => navigate(getWorkspaceAnonymizerRoute(workspace));
+  const preview = useAnonymizerPreview({
+    workspace,
+    accessToken: user?.access_token ?? undefined,
+    getRequest: getPreviewRequest,
+  });
+
+  const onSubmit = form.handleSubmit((values) => {
+    setSubmitError(undefined);
+    createJob.mutate({
+      workspace,
+      data: buildAnonymizerJobRequest(values, defaultEntityLabels?.data ?? []),
+    });
+  }, showValidationErrors);
+
+  const isBusy = createJob.isPending || isLoadingModels || isLoadingEntityLabels;
 
   return (
     <form className="h-full" noValidate onSubmit={onSubmit}>
@@ -103,40 +139,37 @@ export const AnonymizerBuilderForm: FC = () => {
           elevation="high"
           density="standard"
           attributes={{ PanelContent: { className: 'flex-1 min-h-0 overflow-auto' } }}
-          slotFooter={
-            <Flex gap="density-md" justify="end">
-              <Button
-                kind="tertiary"
-                type="button"
-                disabled={createJob.isPending}
-                onClick={handleCancel}
-              >
-                Cancel
-              </Button>
-              <Button
-                kind="primary"
-                color="brand"
-                type="submit"
-                disabled={createJob.isPending || isLoadingModels || isLoadingEntityLabels}
-              >
-                Full Run
-              </Button>
-            </Flex>
-          }
         >
           <Stack gap="density-2xl">
-            <SegmentedControl
-              className="w-full"
-              value={activeTab}
-              onValueChange={setActiveTab}
-              items={PANEL_TABS}
-            />
+            <Flex align="center" gap="density-md">
+              <SegmentedControl
+                className="flex-1"
+                value={activeTab}
+                onValueChange={setActiveTab}
+                items={PANEL_TABS}
+              />
+              {preview.isPreviewing ? (
+                <Button kind="secondary" onClick={preview.stopPreview} type="button">
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  color="brand"
+                  disabled={isBusy}
+                  kind="primary"
+                  onClick={() => void preview.runPreview()}
+                  type="button"
+                >
+                  Preview
+                </Button>
+              )}
+            </Flex>
 
-            {submitError && (
+            {submitError ? (
               <Banner kind="inline" status="error">
                 {submitError}
               </Banner>
-            )}
+            ) : null}
 
             <div className={activeTab === TAB_SOURCE ? undefined : 'hidden'}>
               <Stack gap="density-2xl">
@@ -155,9 +188,15 @@ export const AnonymizerBuilderForm: FC = () => {
           </Stack>
         </Panel>
 
-        <Flex className="flex-1 h-full" align="center" justify="center">
-          <Text kind="body/regular/md">Your records preview will appear here</Text>
-        </Flex>
+        <PreviewPanel
+          pendingOutputHeading={outputHeadingForStrategy(strategy)}
+          preview={preview}
+          slotActions={
+            <Button color="brand" disabled={isBusy} kind="primary" type="submit">
+              Full Run
+            </Button>
+          }
+        />
       </Flex>
     </form>
   );

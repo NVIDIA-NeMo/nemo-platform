@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Fine-tuning is now run through the Code Agent (guided); prompt-tuning uses the in-app form.
+// Fine-tuning is now run through the NeMo Copilot (guided); prompt-tuning uses the in-app form.
 export type CustomizationMethod = 'fine-tuned' | 'prompt-tuned';
 
 export interface CustomizationMethodOption {
@@ -20,7 +20,7 @@ export const CUSTOMIZATION_METHODS: CustomizationMethodOption[] = [
     tags: ['SFT', 'LoRA'],
     tagColor: 'purple',
     description:
-      'Highest accuracy. Opens the Code Agent to guide you through configuring and launching a fine-tuning job.',
+      'Highest accuracy. Opens the NeMo Copilot to guide you through configuring and launching a fine-tuning job.',
     bestFor: 'Domain adaptation, strict output control, or minimizing error rates.',
   },
   {

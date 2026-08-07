@@ -1,6 +1,6 @@
 ---
 name: nemo-setup
-description: Set up a local NeMo Platform (`make bootstrap` + `nemo setup`) — services, providers, plugins, default model, and an optional demo agent. Use when the user asks to install, bootstrap, set up, run, or start a local NeMo Platform.
+description: Set up a local NeMo Platform (`make bootstrap` + `nemo setup`) — services, providers, plugins, default/fast models, and an optional demo agent. Use when the user asks to install, bootstrap, set up, run, or start a local NeMo Platform.
 version: "0.1"
 ---
 
@@ -33,7 +33,7 @@ If port 8080 is in use **or** a `nemo services run` process exists, do not silen
   - The user may already have the workspace / secret / provider seeded — check with `nemo workspaces list`, `nemo secrets list --workspace …`, and `nemo inference providers list --workspace …` before re-creating anything (creates may 409).
 - **(c) Abort and let the user investigate.**
 
-> ⚠️ **macOS unlinked-inode gotcha:** running `rm -rf ~/.local/share/nemo` while a `nemo services run` process is still alive does **not** reset state. The files get unlinked from the directory tree but the running process keeps writing to its open inode, and a freshly-spawned platform will see the on-disk file (a new, empty inode) while the old process still owns the data. Always kill the platform process **first**, then wipe the DB.
+> ⚠️ **macOS unlinked-inode gotcha:** running `rm -rf ~/.local/share/nemo` while a `nemo services run` process or its managed ClickHouse container is still alive does **not** reset state safely. A process can keep writing to the unlinked inode. Always stop the platform and remove its managed ClickHouse container **before** wiping the data directory.
 
 ## Question 2 — Local data directory?
 
@@ -55,28 +55,45 @@ export NMP_DATA_DIR=/custom/path/to/state
 
 `nemo setup` persists the choice to `~/.config/nmp/config.yaml` under `local_services.data_dir` and re-uses it on subsequent runs. If you're running services manually (not via `nemo setup`), set `NMP_DATA_DIR` yourself each session.
 
-## Question 3 — Wipe the local DB?
+## Question 3 — Wipe local platform data?
 
-Ask whether the user wants to wipe the local entity-store database before platform startup. Warn clearly that this deletes local platform state, including secret metadata and the local encryption key. Providers/secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **The wipe only works if no `nemo services run` process is currently holding the file open** (see the macOS gotcha under Question 1). If the user confirms, run this before `nemo services run`:
+Ask whether the user wants to wipe local platform data before startup. This is a destructive operation that requires explicit confirmation. Warn clearly that it deletes the entity-store database, encryption key, files, job history, secrets, and Intake ClickHouse traces stored under the selected platform data directory. An explicitly configured ClickHouse data directory outside it is preserved. Providers and secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **Stop every `nemo services run` process before wiping** (see the macOS gotcha under Question 1), and remove the managed ClickHouse container before deleting its bind-mounted data. If the user confirms, run this before `nemo services run`:
 
 ```bash
-rm -rf ~/.local/share/nemo
+DATA_DIR="${NMP_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/nemo}"
+case "$DATA_DIR" in
+  ""|"/"|"$HOME"|"$HOME/"|"."|"./"|"$PWD"|"$PWD/")
+    echo "REFUSING_UNSAFE_DATA_DIR: '$DATA_DIR' — abort"; exit 1 ;;
+esac
+lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && { echo "PLATFORM_STILL_RUNNING — abort before wipe"; exit 1; }
+CLICKHOUSE_DATA_DIR="${NMP_INTAKE_CLICKHOUSE_DATA_DIR:-$DATA_DIR/intake-clickhouse}"
+if [ -f "$CLICKHOUSE_DATA_DIR/.nmp-clickhouse-identity" ]; then
+  NMP_DATA_DIR="$DATA_DIR" uv run python -m nmp.intake.local_clickhouse --remove || {
+    echo "CLICKHOUSE_CONTAINER_CLEANUP_FAILED — start Docker and retry; data was not deleted"
+    exit 1
+  }
+fi
+rm -rf "$DATA_DIR"
 ```
 
-Replace the path with whatever was chosen in Q2 (`$NMP_DATA_DIR`, `$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`).
+Replace the path with whatever was chosen in Q2 (`$NMP_DATA_DIR`,
+`$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`). The cleanup command
+validates and removes only the managed container, restoring host ownership when
+its data lives under the platform data directory. If cleanup fails because Docker
+is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 ---
 
 ## Bootstrap and start
 
-The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default-model selection, and demo agent deployment in one shot:
+The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot:
 
 === "Interactive"
 
 ```bash
 make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
 source .venv/bin/activate
-nemo setup               # interactive: prompts for provider, picks default model, optionally deploys calculator-agent
+nemo setup               # interactive: prompts for provider, picks default/fast models, optionally deploys calculator-agent
 ```
 
 === "Non-interactive (CI)"
@@ -95,20 +112,57 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 `make clean` removes the venv; `make clean-python` is the venv-only variant.
 
+### Toolchain: uv, Node.js, pnpm
+
+`mise.toml` pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js and pnpm to satisfy `web/package.json` engines. `make bootstrap` installs mise on first run and invokes each through `mise exec --`, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
+
+**Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through mise but don't install mise themselves. On a machine that doesn't have it yet, they fail like this:
+
+```text
+/bin/sh: /Users/you/.local/bin/mise: No such file or directory
+make: *** [test-unit] Error 127
+```
+
+`make bootstrap` fixes it, as does `make verify-mise` on its own. To use the toolchain you already have instead, pass `NMP_SKIP_MISE=1` — it works on every target.
+
+That covers the `make` targets only. To run `uv` or `pnpm` directly — `uv sync`, the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then either prefix commands:
+
+```bash
+mise exec -- pnpm dev
+mise exec -- uv sync
+```
+
+or activate mise once so every shell picks up the pinned versions:
+
+```bash
+eval "$(mise activate bash)"   # ~/.bashrc
+eval "$(mise activate zsh)"    # ~/.zshrc
+```
+
+Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`, and a globally installed uv outside `required-version` fails `uv sync` with a version mismatch. To bootstrap against your own toolchain instead of mise, use `make bootstrap NMP_SKIP_MISE=1`.
+
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 
-### Default model selection (under `--auto`)
+### Default and fast model selection
 
-`$NEMO_DEFAULT_MODEL` **must be a hyphenated entity ID** from `nemo models list` (e.g. `nvidia-llama-3-3-nemotron-super-49b-v1-5` or `default/nvidia-llama-3-3-nemotron-super-49b-v1-5`). The slash-with-dots form (`nvidia/llama-3.3-nemotron-super-49b-v1-5`) is the upstream catalog's `served_model_name` — it's shown for human display but the gateway rejects it as a request input.
+`$NEMO_DEFAULT_MODEL` and `$NEMO_FAST_MODEL` **must be hyphenated entity IDs** from `nemo models list` (e.g. `nvidia-llama-3-3-nemotron-super-49b-v1-5` or `default/nvidia-llama-3-3-nemotron-super-49b-v1-5`). The slash-with-dots form (`nvidia/llama-3.3-nemotron-super-49b-v1-5`) is the upstream catalog's `served_model_name` — it's shown for human display but the gateway rejects it as a request input.
 
 `nemo setup --auto` picks the default model in this order:
 
 1. `$NEMO_DEFAULT_MODEL` (if set) — used as-is. The user may have exported this from a previous session; it takes precedence over anything discovered from the registered provider.
 2. Otherwise, the first model entity returned by provider discovery.
 
-If the user is surprised by which model got picked, check `echo $NEMO_DEFAULT_MODEL` first — that's the most common cause.
+The fast model uses `$NEMO_FAST_MODEL` when set and otherwise reuses the effective default. Interactive setup prompts for both and defaults the fast choice to the selected default. Existing contexts without `fast_model` also reuse `default_model`.
 
-The first-discovered fallback is intentionally simple — providers like NVIDIA Build expose dozens of models and "first one" rarely matches the user's intent. If the user wants a specific model as the default (or wants to compare options before committing), don't rely on the `--auto` fallback. After setup finishes, the `inference` skill's "Step 2 — Discover available models" enumerates entity IDs and shows the jq filters for picking one out by vendor or family. The user can then pin their choice via `export NEMO_DEFAULT_MODEL=<workspace>/<entity-id>` or by overriding `body["model"]` per request.
+If the user is surprised by which model got picked, check `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL` first — that's the most common cause.
+
+The first-discovered fallback is intentionally simple — providers like NVIDIA Build expose dozens of models and "first one" rarely matches the user's intent. If the user wants specific models (or wants to compare options before committing), don't rely on the `--auto` fallback. After setup finishes, the `inference` skill's "Step 2 — Discover available models" enumerates entity IDs and shows the jq filters for picking one out by vendor or family. The user can then pin the pair via `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL`, or override `body["model"]` per request.
 
 If `nemo agents invoke …` fails with HTTP 422 in under a second on the first call, the cause is almost always a slash-with-dots model name reaching the gateway (e.g. via a stale `NEMO_DEFAULT_MODEL` or an agent config that hardcoded the upstream catalog form). The `inference` skill's "Common failure: HTTP 422 from chat completion" subsection has the diagnose-and-recover steps — don't conclude the platform is broken.
 
@@ -135,6 +189,22 @@ LOG_LEVEL=DEBUG uv run nemo services run \
 
 `nemo-switchyard` is auto-discovered via its `nemo.inference_middleware` entry point once dependencies are installed.
 
+### Local ClickHouse for Intake
+
+When the `intake` service is selected and `NMP_INTAKE_CLICKHOUSE_URL` is unset, Intake automatically
+provisions a ClickHouse container owned by the resolved NeMo data directory, with a Docker-assigned
+loopback port. A platform process reuses the container for that data directory; graceful shutdown
+stops it without removing it, while hard process termination can leave it running. Only the explicitly
+confirmed reset in Question 3 or teardown options 2/3 delete its
+default data under the NeMo data directory, after removing the managed container. A separately
+configured `NMP_INTAKE_CLICKHOUSE_DATA_DIR` is preserved. Run only one active local platform instance
+per data directory; stopping it also stops that directory's managed ClickHouse container.
+
+Docker must already be running. If startup logs report `Docker daemon is unavailable`, start Docker
+Desktop on macOS/Windows or the Docker service on Linux, then rerun `nemo setup` or restart
+`nemo services run`. To use an external ClickHouse and bypass local Docker provisioning, export
+`NMP_INTAKE_CLICKHOUSE_URL` before starting the platform.
+
 ### Demo agent
 
 `make bootstrap` installs the NeMo agents plugin and the calculator-agent example through the root workspace, so no separate `uv pip install` is needed. After services start, `nemo setup` (or `nemo setup --auto --deploy-agent`) will deploy a demo `calculator-agent` in the default workspace. Verify with:
@@ -148,7 +218,8 @@ nemo agents invoke --agent calculator-agent --input "What is 12 * 8?"
 
 - **Port**: `8080` (CLI default — do NOT pass a custom `--base-url`).
 - **`export NMP_BASE_URL=http://localhost:8080` — required when targeting a local platform.** If your `~/.config/nmp/config.yaml` already points at a remote cluster, the CLI uses that base URL and ignores the local platform entirely. Setting this env var overrides the config file for the current shell session.
-- **Reset state:** `rm -rf ~/.local/share/nemo` (only with platform stopped — see the gotcha above).
+- **Reset state:** follow Question 3 above; it requires explicit confirmation and removes the managed
+  ClickHouse container before deleting platform data.
 
 ---
 
@@ -169,7 +240,7 @@ The platform is running. Don't leave the user with "you're good to go" — offer
 
 If the user's prompt doesn't already pin one down, ask: *"The platform is up. What would you like to do next — optimize an agent, deploy one, run inference, evaluate, generate data, or something else?"*
 
-If the user wants to **pick or swap the default model** (e.g. they didn't like the one `--auto` selected, or they want to compare options), don't guess — hand off to the `inference` skill. Step 2 there enumerates `served_models[].model_entity_id` and shows jq filters for picking by vendor / family. To pin the choice for subsequent runs, export `NEMO_DEFAULT_MODEL=<workspace>/<entity-id>` before the next `nemo setup --auto`. For one-off commands, pass the entity ID positionally: `nemo chat <entity-id>`.
+If the user wants to **pick or swap the default/fast model pair**, don't guess — hand off to the `inference` skill. Step 2 there enumerates `served_models[].model_entity_id` and shows jq filters for picking by vendor / family. To pin the choices for subsequent runs, export `NEMO_DEFAULT_MODEL=<workspace>/<entity-id>` and `NEMO_FAST_MODEL=<workspace>/<entity-id>` before the next `nemo setup --auto`; fast falls back to default when omitted. For one-off commands, pass the entity ID positionally: `nemo chat <entity-id>`.
 
 ### Available skills
 

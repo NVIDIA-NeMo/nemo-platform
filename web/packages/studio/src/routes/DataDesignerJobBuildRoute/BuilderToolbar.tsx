@@ -6,8 +6,8 @@ import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { Button, Flex, SegmentedControl, Tag, Text } from '@nvidia/foundations-react-core';
 import type { StartOptionTag } from '@studio/components/CreateFilesetStart/types';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
-import { FileJson, ListTree, Pencil, SplinePointer } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { CircleStop, FileJson, ListTree, Pencil, SplinePointer } from 'lucide-react';
+import { type FC, memo, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 /** Which renderer the center pane shows: the flat schema list or the DAG canvas. */
@@ -22,20 +22,23 @@ export interface BuilderToolbarProps {
   onViewModeChange: (mode: BuilderViewMode) => void;
   onPreview: () => void;
   isPreviewing: boolean;
+  /** Aborts the in-flight preview; shown in place of Preview while one is running. */
+  onStopPreview: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
 }
 
-export const BuilderToolbar: FC<BuilderToolbarProps> = ({
+export const BuilderToolbar: FC<BuilderToolbarProps> = memo(function BuilderToolbar({
   templateTag,
   columnCount,
   viewMode,
   onViewModeChange,
   onPreview,
   isPreviewing,
+  onStopPreview,
   onSubmit,
   isSubmitting,
-}) => {
+}) {
   const [isEditingName, setIsEditingName] = useState(false);
   const { control } = useFormContext<JobBuilderFormValues>();
   const name = useWatch({ control, name: 'name' }) ?? '';
@@ -120,10 +123,16 @@ export const BuilderToolbar: FC<BuilderToolbarProps> = ({
           loading={isPreviewing}
           onClick={onPreview}
         >{`Preview ${previewRows} rows`}</LoadingButton>
+        {isPreviewing && (
+          <Button kind="tertiary" color="danger" aria-label="Stop preview" onClick={onStopPreview}>
+            <CircleStop size={16} aria-hidden />
+            Stop
+          </Button>
+        )}
         <LoadingButton kind="primary" color="brand" loading={isSubmitting} onClick={onSubmit}>
           Create fileset
         </LoadingButton>
       </Flex>
     </Flex>
   );
-};
+});

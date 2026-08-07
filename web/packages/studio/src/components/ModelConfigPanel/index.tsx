@@ -4,9 +4,15 @@
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import { WorkspaceModelSelect } from '@nemo/common/src/components/ModelSelectV2/WorkspaceModelSelect';
+import { SliderWithTextInput } from '@nemo/common/src/components/SliderWithTextInput';
 import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, FormField, Stack, Text } from '@nvidia/foundations-react-core';
 import { CardIconBadge } from '@studio/components/common/SelectableCard';
+import {
+  DEFAULT_MAX_PARALLEL_REQUESTS,
+  MAX_PARALLEL_REQUESTS_MAX,
+  MAX_PARALLEL_REQUESTS_MIN,
+} from '@studio/constants/constants';
 import {
   providerForSelection,
   validateModelAlias,
@@ -32,7 +38,7 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   onRemove,
   onClose,
 }) => {
-  const { control, getValues } = useFormContext<JobBuilderFormValues>();
+  const { control, getValues, setValue } = useFormContext<JobBuilderFormValues>();
   const modelIndex = getValues('models').findIndex((model) => model.id === modelId);
   const aliasPath = `models.${modelIndex}.alias` as const;
   const { field: modelField } = useController({ control, name: `models.${modelIndex}.model` });
@@ -56,9 +62,25 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
   );
   const modelValue: ModelSelection | null = modelField.value ? { model: modelField.value } : null;
 
+  const { field: aliasField } = useController({ control, name: aliasPath });
+
   const handleModelChange = (selection: ModelSelection) => {
+    const oldAlias = aliasField.value as string;
+    const newAlias = selection.model.split('/').pop()?.split('@')[0] ?? selection.model;
+
     modelField.onChange(selection.model);
     providerField.onChange(providerForSelection(selection));
+
+    if (newAlias && newAlias !== oldAlias) {
+      aliasField.onChange(newAlias);
+      const columns = getValues('columns');
+      const updated = columns.map((col) =>
+        col.values?.model_alias === oldAlias
+          ? { ...col, values: { ...col.values, model_alias: newAlias } }
+          : col
+      );
+      setValue('columns', updated);
+    }
   };
 
   return (
@@ -124,6 +146,32 @@ export const ModelConfigPanel: FC<ModelConfigPanelProps> = ({
             aria-label="Model selector"
           />
         </FormField>
+
+        <SliderWithTextInput
+          id="max-parallel-requests-slider"
+          field={{
+            name: 'max_parallel_requests',
+            value:
+              (inferenceParamsField.value?.max_parallel_requests as number | undefined) ??
+              DEFAULT_MAX_PARALLEL_REQUESTS,
+            onChange: (value: number) =>
+              inferenceParamsField.onChange({
+                ...(inferenceParamsField.value ?? EMPTY_INFERENCE_PARAMS),
+                max_parallel_requests: Math.round(value),
+              }),
+          }}
+          defaultValue={DEFAULT_MAX_PARALLEL_REQUESTS}
+          min={MAX_PARALLEL_REQUESTS_MIN}
+          max={MAX_PARALLEL_REQUESTS_MAX}
+          step={1}
+          size="compact"
+          showReset
+          formFieldProps={{
+            slotLabel: 'Max parallel requests',
+            slotInfo:
+              'How many generation requests this model may have in flight at once. Lower it if your inference provider rate-limits the job.',
+          }}
+        />
       </Stack>
 
       <Flex align="center" justify="start" className="shrink-0 border-t border-base p-density-lg">

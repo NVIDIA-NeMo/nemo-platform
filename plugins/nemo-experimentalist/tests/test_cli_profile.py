@@ -7,9 +7,11 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
-from nemo_experimentalist_plugin import cli
+from nemo_experimentalist_plugin import cli, preflight
 from nemo_experimentalist_plugin.preflight import Probes
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
 from typer.testing import CliRunner
@@ -17,16 +19,10 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 
-def quiet_probes(env: dict | None = None) -> Probes:
+def quiet_probes() -> Probes:
     return Probes(
         run_cmd=lambda argv: (0, "ok"),
         http_ok=lambda url: True,
-        env=env
-        or {
-            "EXPERIMENTALIST_API_BASE": "http://llm",
-            "EXPERIMENTALIST_API_KEY": "k",
-            "INFERENCE_API_KEY": "k",
-        },
     )
 
 
@@ -75,7 +71,12 @@ def profile_tree(tmp_path: Path) -> Path:
 
 class RunRecorder:
     def __init__(self) -> None:
-        self.kwargs: dict | None = None
+        self.kwargs: dict[str, Any] | None = None
+
+    @property
+    def call_kwargs(self) -> dict[str, Any]:
+        assert self.kwargs is not None
+        return self.kwargs
 
     async def __call__(self, **kwargs) -> str:
         self.kwargs = kwargs
@@ -90,9 +91,9 @@ def test_experiment_insight_only_with_profile(app, profile_tree: Path, monkeypat
     monkeypatch.chdir(profile_tree)
     result = runner.invoke(app, ["run", "--insight", "ins-1", "-o", str(profile_tree / "out")])
     assert result.exit_code == 0, result.output
-    assert recorder.kwargs["insight"] == "ins-1"
-    assert recorder.kwargs["train_dataset"].uri == str((profile_tree / "evals" / "train").resolve())
-    assert recorder.kwargs["agent"] == str(profile_tree.resolve())
+    assert recorder.call_kwargs["insight"] == "ins-1"
+    assert recorder.call_kwargs["train_dataset"].uri == str((profile_tree / "evals" / "train").resolve())
+    assert recorder.call_kwargs["agent"] == str(profile_tree.resolve())
 
 
 def test_experiment_explicit_profile_flag(app, profile_tree: Path, monkeypatch, tmp_path: Path) -> None:
@@ -116,7 +117,7 @@ def test_experiment_explicit_profile_flag(app, profile_tree: Path, monkeypatch, 
         ],
     )
     assert result.exit_code == 0, result.output
-    assert recorder.kwargs["workspace"] == "default"
+    assert recorder.call_kwargs["workspace"] == "default"
 
 
 def test_experiment_no_profile_missing_flags_errors_with_skeleton(app, tmp_path: Path, monkeypatch) -> None:
@@ -149,7 +150,7 @@ def test_experiment_all_flags_no_profile_still_works(app, tmp_path: Path, monkey
         ],
     )
     assert result.exit_code == 0, result.output
-    assert recorder.kwargs["insight"] is None
+    assert recorder.call_kwargs["insight"] is None
 
 
 def test_profileless_experiment_blocks_missing_effective_agent_path(app, tmp_path: Path, monkeypatch) -> None:
@@ -257,9 +258,9 @@ def test_profileless_implicit_experiment_dirs_retry_collisions_and_stay_unique(
     ]
 
     first_result = runner.invoke(app, args)
-    first_dir = Path(recorder.kwargs["experiment_dir"])
+    first_dir = Path(recorder.call_kwargs["experiment_dir"])
     second_result = runner.invoke(app, args)
-    second_dir = Path(recorder.kwargs["experiment_dir"])
+    second_dir = Path(recorder.call_kwargs["experiment_dir"])
 
     expected_first = Path("tmp") / f"20260714-123456-{first_hex}"
     expected_second = Path("tmp") / f"20260714-123456-{second_hex}"
@@ -291,7 +292,7 @@ def test_experiment_insight_id_selects_from_analyst_file(app, profile_tree: Path
         ["run", "--insight", str(insights), "--insight-id", "i-b", "-o", str(profile_tree / "o")],
     )
     assert result.exit_code == 0, result.output
-    selected = json.loads(Path(recorder.kwargs["insight"]).read_text(encoding="utf-8"))
+    selected = json.loads(Path(recorder.call_kwargs["insight"]).read_text(encoding="utf-8"))
     assert selected["id"] == "i-b"
 
 
@@ -302,6 +303,41 @@ def test_doctor_healthy_exits_zero(app, profile_tree: Path, monkeypatch) -> None
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert "✓" in result.output
+
+
+def test_doctor_fails_when_run_client_bootstrap_fails(app, profile_tree: Path, monkeypatch) -> None:
+    write_task_toml(profile_tree)
+
+    def fail_client(_base_url: str) -> FakePlatformClient:
+        raise httpx.UnsupportedProtocol("invalid cached auth context")
+
+    monkeypatch.setattr(cli, "make_client", fail_client)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://platform.example"])
+
+    assert result.exit_code == 1
+    assert "Platform client initialization failed (UnsupportedProtocol)" in result.output
+    assert "invalid cached auth context" not in result.output
+
+
+def test_doctor_bootstraps_and_closes_run_client(app, profile_tree: Path, monkeypatch) -> None:
+    write_task_toml(profile_tree)
+    clients: list[FakePlatformClient] = []
+
+    def record_client(base_url: str) -> FakePlatformClient:
+        client = FakePlatformClient(base_url)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(cli, "make_client", record_client)
+    monkeypatch.chdir(profile_tree)
+
+    result = runner.invoke(app, ["doctor", "--base-url", "https://platform.example"])
+
+    assert result.exit_code == 0, result.output
+    assert clients == [FakePlatformClient("https://platform.example", closed=True)]
+    assert "Platform client initialized with the effective authentication path" in result.output
 
 
 def test_doctor_no_profile_exits_one_with_skeleton(app, tmp_path: Path, monkeypatch) -> None:
@@ -371,25 +407,16 @@ def test_doctor_invalid_git_agent_path_is_structured_without_traceback(
     assert "Traceback" not in result.output
 
 
-def test_doctor_redacts_model_and_platform_display_urls(app, profile_tree: Path, monkeypatch) -> None:
+def test_doctor_redacts_platform_display_url(app, profile_tree: Path, monkeypatch) -> None:
     write_task_toml(profile_tree)
-    model_base = "https://model-user:model-secret@models.example:8443/v1"  # trufflehog:ignore
     platform_base = "https://platform-user:platform-secret@platform.example:9443/api"  # trufflehog:ignore
-    monkeypatch.setattr(
-        cli,
-        "_PREFLIGHT_PROBES",
-        quiet_probes(env={"EXPERIMENTALIST_API_BASE": model_base, "EXPERIMENTALIST_API_KEY": "k"}),
-    )
     monkeypatch.chdir(profile_tree)
 
     result = runner.invoke(app, ["doctor", "--base-url", platform_base])
 
     assert result.exit_code == 0, result.output
-    assert "https://***@models.example:8443/v1/models reachable" in result.output
     assert "https://***@platform.example:9443/api reachable" in result.output
-    assert not any(
-        secret in result.output for secret in ("model-user", "model-secret", "platform-user", "platform-secret")
-    )
+    assert not any(secret in result.output for secret in ("platform-user", "platform-secret"))
 
 
 def test_experiment_hard_fails_on_required_check(app, profile_tree: Path, monkeypatch) -> None:
@@ -401,7 +428,6 @@ def test_experiment_hard_fails_on_required_check(app, profile_tree: Path, monkey
         Probes(
             run_cmd=lambda argv: (1, "docker down"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -421,7 +447,6 @@ def test_experiment_advisory_warns_but_runs(app, profile_tree: Path, monkeypatch
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: False,  # platform unreachable → advisory
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -449,7 +474,6 @@ def test_experiment_effective_storage_requires_git_before_runner(
         Probes(
             run_cmd=missing_git,
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     config = profile_tree / "experiment.yaml"
@@ -500,23 +524,27 @@ def test_explicit_profile_is_not_announced(app, profile_tree: Path, monkeypatch,
     assert "Using profile:" not in result.output
 
 
-def test_missing_creds_reported_before_any_resolution(app, profile_tree: Path, monkeypatch) -> None:
-    # Phase-1 ordering: the grouped credentials report must surface even though
-    # resolution (whose loop import would raise a bare ValueError) never runs.
+def test_missing_models_reported_before_any_resolution(app, profile_tree: Path, monkeypatch) -> None:
+    # Phase-1 ordering: the grouped model report must surface before resolution.
     write_task_toml(profile_tree)
     recorder = RunRecorder()
     monkeypatch.setattr(cli, "run_experimentalist", recorder)
     monkeypatch.setattr(
         cli,
         "_PREFLIGHT_PROBES",
-        Probes(run_cmd=lambda argv: (0, "ok"), http_ok=lambda url: True, env={}),
+        Probes(run_cmd=lambda argv: (0, "ok"), http_ok=lambda url: True),
+    )
+    monkeypatch.setattr(
+        preflight,
+        "configured_model_refs",
+        lambda: (_ for _ in ()).throw(ValueError("No default model is configured")),
     )
     monkeypatch.chdir(profile_tree)
     result = runner.invoke(app, ["run", "--insight", "ins-1", "-o", str(profile_tree / "o")])
     assert result.exit_code == 1
     assert recorder.kwargs is None
-    assert "EXPERIMENTALIST_API_BASE" in result.output
-    assert "export EXPERIMENTALIST_API_BASE" in result.output  # the hint, not a bare ValueError
+    assert "No default model is configured" in result.output
+    assert "nemo setup" in result.output
 
 
 def test_insightless_run_skips_template_checks(app, profile_tree: Path, monkeypatch) -> None:
@@ -528,7 +556,7 @@ def test_insightless_run_skips_template_checks(app, profile_tree: Path, monkeypa
     result = runner.invoke(app, ["run", "-o", str(profile_tree / "o")])
     assert result.exit_code == 0, result.output
     assert recorder.kwargs is not None
-    assert recorder.kwargs["insight"] is None
+    assert recorder.call_kwargs["insight"] is None
 
 
 def test_empty_config_flag_is_an_error_not_silent_fallback(app, profile_tree: Path, monkeypatch) -> None:
@@ -601,7 +629,7 @@ def test_experiment_loads_nmp_base_url_from_profile_env(app, profile_tree: Path,
     )
 
     assert result.exit_code == 0, result.output
-    client = recorder.kwargs["client"]
+    client = recorder.call_kwargs["client"]
     assert client.base_url == "https://platform.example"
     assert client.closed
 
@@ -620,7 +648,6 @@ def test_doctor_loads_nmp_base_url_from_profile_env(app, profile_tree: Path, mon
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=record_http,
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.delenv("NMP_BASE_URL", raising=False)
@@ -644,7 +671,7 @@ def test_default_experiment_dir_is_profile_scoped_and_announced(app, profile_tre
     result = runner.invoke(app, ["run", "--insight", "ins-1"])
     assert result.exit_code == 0, result.output
     assert "Experiment dir:" in result.output
-    experiment_dir = Path(recorder.kwargs["experiment_dir"])
+    experiment_dir = Path(recorder.call_kwargs["experiment_dir"])
     assert experiment_dir.is_relative_to(profile_tree / ".nemo-optimizer" / "experiments")
 
 
@@ -681,7 +708,7 @@ def test_default_experiment_dir_retries_collision_and_reserves(app, profile_tree
 
     expected = experiments_root / f"20260714-123456-{unique_hex}"
     assert result.exit_code == 0, result.output
-    assert Path(recorder.kwargs["experiment_dir"]) == expected
+    assert Path(recorder.call_kwargs["experiment_dir"]) == expected
     assert expected.is_dir()
     assert colliding_dir.is_dir()
 
@@ -695,7 +722,6 @@ def test_default_experiment_dir_is_not_reserved_before_required_preflight(app, p
         Probes(
             run_cmd=lambda argv: (1, "docker down"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "b", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.chdir(profile_tree)
@@ -715,48 +741,7 @@ def test_explicit_experiment_dir_still_wins(app, profile_tree: Path, monkeypatch
     result = runner.invoke(app, ["run", "--insight", "ins-1", "-o", str(profile_tree / "custom")])
     assert result.exit_code == 0, result.output
     assert "Experiment dir:" not in result.output
-    assert Path(recorder.kwargs["experiment_dir"]) == profile_tree / "custom"
-
-
-def test_credential_defaults_inference_key_powers_gateway_experiment() -> None:
-    env = {"INFERENCE_API_KEY": "sk-gateway"}
-    applied = cli._apply_credential_defaults(env)
-    assert env["EXPERIMENTALIST_API_BASE"] == "https://inference-api.nvidia.com/v1"
-    assert env["EXPERIMENTALIST_API_KEY"] == "sk-gateway"
-    assert len(applied) == 2
-
-
-def test_credential_defaults_never_fill_analyst_key() -> None:
-    env = {"EXPERIMENTALIST_API_KEY": "sk-gateway"}
-    cli._apply_credential_defaults(env)
-    assert "INFERENCE_API_KEY" not in env
-
-
-def test_credential_defaults_custom_base_never_inherits_gateway_key() -> None:
-    custom = {"EXPERIMENTALIST_API_BASE": "https://api.openai.com/v1", "INFERENCE_API_KEY": "sk-gateway"}
-    cli._apply_credential_defaults(custom)
-    assert "EXPERIMENTALIST_API_KEY" not in custom
-
-
-def test_credential_defaults_reject_gateway_lookalike_hosts() -> None:
-    for base in (
-        "https://inference-api.nvidia.com.attacker.example/v1",
-        "https://evil-inference-api.nvidia.com/v1",
-        "http://inference-api.nvidia.com/v1",
-    ):
-        env = {"EXPERIMENTALIST_API_BASE": base, "INFERENCE_API_KEY": "sk-secret"}
-        cli._apply_credential_defaults(env)
-        assert "EXPERIMENTALIST_API_KEY" not in env
-
-
-def test_credential_defaults_never_override() -> None:
-    env = {
-        "INFERENCE_API_KEY": "sk-a",
-        "EXPERIMENTALIST_API_BASE": "https://inference-api.nvidia.com/v1",
-        "EXPERIMENTALIST_API_KEY": "sk-b",
-    }
-    assert cli._apply_credential_defaults(env) == []
-    assert env["EXPERIMENTALIST_API_KEY"] == "sk-b"
+    assert Path(recorder.call_kwargs["experiment_dir"]) == profile_tree / "custom"
 
 
 def test_experiment_defaults_to_shared_insights_file(app, profile_tree: Path, monkeypatch) -> None:
@@ -773,7 +758,7 @@ def test_experiment_defaults_to_shared_insights_file(app, profile_tree: Path, mo
     result = runner.invoke(app, ["run", "-o", str(profile_tree / "o")])
     assert result.exit_code == 0, result.output
     assert "Insight file:" in result.output
-    selected = json.loads(Path(recorder.kwargs["insight"]).read_text(encoding="utf-8"))
+    selected = json.loads(Path(recorder.call_kwargs["insight"]).read_text(encoding="utf-8"))
     assert selected["id"] == "i-1"
 
 
@@ -802,7 +787,7 @@ def test_experiment_selected_insight_uses_shared_default_without_stale_warning(
         ["run", "--insight-id", "1", "-o", str(profile_tree / "o")],
     )
     assert result.exit_code == 0, result.output
-    selected = json.loads(Path(recorder.kwargs["insight"]).read_text(encoding="utf-8"))
+    selected = json.loads(Path(recorder.call_kwargs["insight"]).read_text(encoding="utf-8"))
     assert selected["id"] == "i-b"
     assert "will require --insight-id" not in result.output
 
@@ -866,7 +851,7 @@ def test_experiment_insight_id_matching_single_local_insight_passes(app, profile
         ],
     )
     assert result.exit_code == 0, result.output
-    selected = json.loads(Path(recorder.kwargs["insight"]).read_text(encoding="utf-8"))
+    selected = json.loads(Path(recorder.call_kwargs["insight"]).read_text(encoding="utf-8"))
     assert selected["id"] == "i-1"
 
 
@@ -885,7 +870,7 @@ def test_experiment_no_insight_skips_existing_shared_default(app, profile_tree: 
         ["run", "--no-insight", "-o", str(profile_tree / "o")],
     )
     assert result.exit_code == 0, result.output
-    assert recorder.kwargs["insight"] is None
+    assert recorder.call_kwargs["insight"] is None
     assert "Insight disabled" in result.output
     assert "Insight file:" not in result.output
 
@@ -1092,10 +1077,10 @@ def test_doctor_env_file_permission_failure_is_required_and_actionable(
     env_file.write_text("NMP_BASE_URL=https://profile.example\n", encoding="utf-8")
     original_read_text = Path.read_text
 
-    def deny_env_file(path: Path, *args: object, **kwargs: object) -> str:
+    def deny_env_file(path: Path, encoding: str | None = None, errors: str | None = None) -> str:
         if path == env_file:
             raise PermissionError("permission denied by test")
-        return original_read_text(path, *args, **kwargs)
+        return original_read_text(path, encoding=encoding, errors=errors)
 
     monkeypatch.setattr(Path, "read_text", deny_env_file)
     monkeypatch.chdir(profile_tree)
@@ -1145,7 +1130,7 @@ def test_experiment_nmp_base_url_precedence_and_ignores_nemo_base_url(
     result = runner.invoke(app, args)
 
     assert result.exit_code == 0, result.output
-    client = recorder.kwargs["client"]
+    client = recorder.call_kwargs["client"]
     assert client.base_url == expected
     assert client.closed
 
@@ -1177,7 +1162,6 @@ def test_doctor_nmp_base_url_precedence_and_ignores_nemo_base_url(
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: not urls.append(url),
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
     monkeypatch.setenv("NEMO_BASE_URL", "https://legacy-must-be-ignored.example")
@@ -1195,7 +1179,7 @@ def test_doctor_nmp_base_url_precedence_and_ignores_nemo_base_url(
     result = runner.invoke(app, args)
 
     assert result.exit_code == 0, result.output
-    assert urls == ["http://llm/models", f"{expected}/health/ready"]
+    assert urls == [f"{expected}/health/ready"]
 
 
 def test_experiment_help_names_insights_writer(app) -> None:
@@ -1203,5 +1187,5 @@ def test_experiment_help_names_insights_writer(app) -> None:
 
     assert result.exit_code == 0, result.output
     help_text = " ".join(result.output.replace("│", " ").split())
-    assert "nemo insights analyze" in help_text
+    assert "nemo agents analyst run" in help_text
     assert "writes by default" in help_text

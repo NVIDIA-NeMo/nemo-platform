@@ -34,9 +34,9 @@ RAY_VENVS = Path("/opt/ray_venvs")
 
 # Actor FQN -> packages that must import inside that actor's venv.
 #
-# MUST list every venv the build prefetches (the four filters in docker/rl/Dockerfile.nmp-rl-base
-# resolve to FIVE actors, because `vllm.vllm_worker` matches the sync and async workers alike).
-# Listing all five is what makes a broken prefetch filter fail here instead of silently shipping an
+# MUST list every venv the build prefetches (the six filters in docker/rl/Dockerfile.nmp-rl-base
+# resolve to SEVEN actors, because `vllm.vllm_worker` matches the sync and async workers alike).
+# Listing all seven is what makes a broken prefetch filter fail here instead of silently shipping an
 # image whose workers rebuild their venv on the node at job start.
 WORKER_VENV_IMPORTS = {
     # DPO + GRPO policy training (--extra fsdp)
@@ -66,10 +66,26 @@ WORKER_VENV_IMPORTS = {
         "torch",
         "vllm",
     ],
-    # NeMo-Gym environment actor (--extra nemo_gym); opensandbox is the sandbox client SDK
+    # NeMo-Gym environment actor (--extra nemo_gym). opensandbox is the sandbox client SDK; it
+    # reaches this venv only through RL's `nemo_gym = ["nemo_gym[sandbox]"]`, so this assertion is
+    # what proves the extra really carries it.
     "nemo_rl.environments.nemo_gym.NemoGym": [
         "nemo_gym",
         "opensandbox",
+    ],
+    # Sandboxed-Gym mode B: the trusted proxy actor in the training pod. Shares the nemo_gym extra
+    # with NemoGym, but venvs are named per ACTOR, so it gets its own and needs its own filter.
+    "nemo_rl.environments.sandbox.nemo_gym_actor.SandboxedGymActor": [
+        "nemo_gym",
+        "opensandbox",
+        "nemo_rl.environments.sandbox.nemo_gym_actor",
+    ],
+    # Trusted episode broker: creates per-episode sandboxes so the untrusted job sandbox never
+    # holds the OpenSandbox credential.
+    "nemo_rl.environments.sandbox.broker_actor.SandboxEpisodeBrokerActor": [
+        "nemo_gym",
+        "opensandbox",
+        "nemo_rl.environments.sandbox.broker_actor",
     ],
 }
 

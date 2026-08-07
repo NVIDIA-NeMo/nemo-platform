@@ -9,7 +9,6 @@ flow hard-errors on them); environment probes that can false-negative are
 """
 
 import importlib.util
-import os
 import subprocess
 import tomllib
 from collections.abc import Callable, Mapping
@@ -33,6 +32,7 @@ from nemo_experimentalist_plugin.resolve import (
 )
 from nemo_insights_plugin.contracts.checks import CheckResult, make_check_result
 from nemo_insights_plugin.contracts.profile import resolve_profile_path
+from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from pydantic import BaseModel
 
 _SKELETON_HINT = (
@@ -62,13 +62,12 @@ def _default_http_ok(url: str) -> bool:
 
 
 class Probes(BaseModel):
-    """Injectable environment probes; defaults hit the real system."""
+    """Injectable system probes; defaults hit the real system."""
 
     model_config = {"arbitrary_types_allowed": True}
 
     run_cmd: Callable[[list[str]], tuple[int, str]] = _default_run_cmd
     http_ok: Callable[[str], bool] = _default_http_ok
-    env: Mapping[str, str] = os.environ
 
 
 def check_profile(profile: AgentProfile | None, profile_error: str | None) -> list[CheckResult]:
@@ -119,34 +118,14 @@ def check_environment(
 ) -> list[CheckResult]:
     """Environment checks for Experiment and Doctor.
 
-    Checks the experimentalist credentials and model endpoint, platform
-    reachability, an optional insight file, Docker, and Harbor.
+    Checks configured agent models, platform reachability, an optional insight
+    file, Docker, and Harbor.
 
     ``enforce_insight_agent=False`` skips the local-insight agent match (an
     explicit ``--agent`` overrides the insight's agent).
     """
     p = probes or Probes()
-    results: list[CheckResult] = []
-    profile_dir = profile.profile_dir if profile is not None else None
-    results += _check_env(
-        p, "credentials-experiment", ("EXPERIMENTALIST_API_BASE", "EXPERIMENTALIST_API_KEY"), profile_dir
-    )
-    base = p.env.get("EXPERIMENTALIST_API_BASE")
-    if base:
-        model_url = f"{base.rstrip('/')}/models"
-        ok = p.http_ok(model_url)
-        display_model_url = f"{_redact_url(base).rstrip('/')}/models"
-        results.append(
-            make_check_result(
-                "model-endpoint",
-                "credentials-experiment",
-                ok,
-                "advisory",
-                f"{display_model_url} reachable",
-                "model endpoint unreachable",
-                hint="check EXPERIMENTALIST_API_BASE and network",
-            )
-        )
+    results = check_models()
     ok = p.http_ok(f"{base_url.rstrip('/')}/health/ready")
     display_base_url = _redact_url(base_url)
     results.append(
@@ -187,6 +166,32 @@ def check_environment(
         )
     )
     return results
+
+
+def check_models() -> list[CheckResult]:
+    """Check that the active Platform context has a complete model pair."""
+    try:
+        refs = configured_model_refs()
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        return [
+            CheckResult(
+                name="agent-models",
+                group="models",
+                status="fail",
+                severity="required",
+                message=str(exc),
+                hint="run `nemo setup` and select default and fast agent models",
+            )
+        ]
+    return [
+        CheckResult(
+            name="agent-models",
+            group="models",
+            status="pass",
+            severity="required",
+            message=f"default={refs.default}; fast={refs.fast}",
+        )
+    ]
 
 
 def check_artifacts(
@@ -444,37 +449,6 @@ def _check_agent_source(
                 )
             )
     return results
-
-
-# Where each credential comes from — surfaced in the missing-var hint so the
-# fix is actionable without hunting through the README.
-_ENV_SOURCES = {
-    "EXPERIMENTALIST_API_BASE": (
-        "OpenAI-compatible LLM endpoint for the experimentalist (defaults to https://inference-api.nvidia.com/v1)"
-    ),
-    "EXPERIMENTALIST_API_KEY": "API key for EXPERIMENTALIST_API_BASE (on the gateway, INFERENCE_API_KEY fills this)",
-}
-
-_ENV_EXAMPLE_POINTER = "see examples/tau2-nemo-oo-agent/.env.example"
-
-
-def _check_env(p: Probes, group: str, names: tuple[str, ...], profile_dir: Path | None) -> list[CheckResult]:
-    env_location = str(profile_dir / ".env") if profile_dir else ".env next to your optimizer.yaml"
-    return [
-        make_check_result(
-            name,
-            group,
-            bool(p.env.get(name, "").strip()),
-            "required",
-            f"{name} set",
-            f"{name} not set",
-            hint=(
-                f"{_ENV_SOURCES.get(name, 'required credential')}. "
-                f"Save it in {env_location} (auto-loaded; {_ENV_EXAMPLE_POINTER}) or export {name}=..."
-            ),
-        )
-        for name in names
-    ]
 
 
 def _check_insight_file(

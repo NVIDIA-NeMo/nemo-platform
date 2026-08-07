@@ -657,8 +657,7 @@ def make_profile_tree(tmp_path: Path) -> Path:
     (tmp_path / "optimizer.yaml").write_text(
         "agent: flight-planner\n"
         "task_template: ./evals/task_template\n"
-        "datasets:\n  train: ./evals/train\n  validation: ./evals/val\n"
-        "experiment_config:\n  storage:\n    publish_winner: true\n",
+        "datasets:\n  train: ./evals/train\n  validation: ./evals/val\n",
         encoding="utf-8",
     )
     return tmp_path / "optimizer.yaml"
@@ -704,6 +703,7 @@ def test_full_resolution_from_profile(tmp_path: Path) -> None:
     assert inputs.agent_spec == str((tmp_path / "AGENT-SPEC.md").resolve())  # auto-pick
     assert inputs.train_dataset.uri == str((tmp_path / "evals" / "train").resolve())
     assert inputs.train_dataset.metadata == {"id": "train"}
+    assert inputs.task_template is not None
     assert inputs.task_template.uri == str((tmp_path / "evals" / "task_template").resolve())
     assert inputs.workspace == "default"
     assert inputs.config.storage.publish_winner is True
@@ -806,7 +806,7 @@ def test_config_unknown_top_level_key_is_tolerated(tmp_path: Path) -> None:
         )
     )
     assert inputs.config.max_rounds == 2
-    assert inputs.config.storage.publish_winner is False
+    assert inputs.config.storage.publish_winner is True
 
 
 @pytest.mark.parametrize(
@@ -889,8 +889,8 @@ def test_profile_agent_spec_must_be_readable_utf8(tmp_path: Path) -> None:
 
 
 def test_profile_storage_flags_reads_inline_and_path_forms(tmp_path: Path) -> None:
-    profile = load_profile(make_profile_tree(tmp_path))  # inline dict with publish_winner: true
-    assert profile_storage_flags(profile) == {"publish_winner": True}
+    profile = load_profile(make_profile_tree(tmp_path))
+    assert profile_storage_flags(profile) == {}
 
     (tmp_path / "exp.yaml").write_text("storage:\n  archive_candidates: true\n", encoding="utf-8")
     (tmp_path / "optimizer.yaml").write_text(
@@ -902,3 +902,46 @@ def test_profile_storage_flags_reads_inline_and_path_forms(tmp_path: Path) -> No
     )
     path_profile = load_profile(tmp_path / "optimizer.yaml")
     assert profile_storage_flags(path_profile) == {"archive_candidates": True}
+
+
+def test_run_config_rejects_a_models_block() -> None:
+    """Model tiers are a deployment setting, not a per-run one.
+
+    Silently ignoring the key would be worse than failing: a run config that names models
+    reads as though it chose them, while the run would actually use whatever the install
+    is configured with.
+    """
+    import pytest
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    with pytest.raises(ValueError, match="nemo setup"):
+        EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b"}})
+
+
+def test_run_config_takes_no_environment_override(monkeypatch) -> None:
+    """``--config`` is the whole story for run parameters.
+
+    An ambient variable truncating a run whose config file says otherwise would make
+    ``config_snapshot`` a dishonest record of what ran, so the run config deliberately has
+    no environment binding at all.
+    """
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    monkeypatch.setenv("NEMO_EXPERIMENTALIST_MAX_ROUNDS", "1")
+
+    assert EvolutionaryOptimizerConfig.model_validate({"max_rounds": 15}).max_rounds == 15
+
+
+def test_component_configs_are_the_component_owned_classes() -> None:
+    """The tree must hold the components' own classes, not re-declared twins."""
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
+    from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
+    from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+
+    cfg = EvolutionaryOptimizerConfig()
+    assert type(cfg.coder) is CoderConfig
+    assert type(cfg.analyzer) is AnalyzerConfig
+    assert type(cfg.proposer) is ProposerConfig
+    assert type(cfg.goal_config) is GoalTreeConfig

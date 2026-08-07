@@ -12,20 +12,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
-# Populates EXPERIMENTALIST_* from AUTHOR_*, which the Experimentalist agent imports below
-# read when their class bodies execute. Must stay ahead of them; isort keeps it there.
-import nemo_eval_author_plugin._env_bridge  # noqa: F401
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
-from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.model_config import get_fast_model, get_smart_model
-from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
+from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
+from nemo_experimentalist_plugin.entities import (
     Dataset,
     DatasetValidationError,
+    ResourceRef,
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -39,8 +35,10 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_explorer impor
     TraceExplorer,
     TurnInfo,
 )
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc
 from nooa.agents import TokenBudgetSummarizer
@@ -51,23 +49,32 @@ from nooa.tools import TodoManager
 logger = logging.getLogger(__name__)
 
 
-class EvalAuthor(Agent, llm=get_smart_model()):
+class EvalAuthor(Agent):
     """Insights are failure modes of an agent in production.
 
     The role of the Eval Author is to create or augment the evaluation suite in such a way that it can be used to detect the failure mode.
     This suite will be used for optimization and regression testing.
     """
 
-    def __init__(self, experiment_dir: Path, config: EvalAuthorConfig | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        experiment_dir: Path,
+        config: EvalAuthorConfig | None = None,
+        reporter: RunReporter | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize the Eval Author for the given experiment directory.
 
         Args:
             experiment_dir: Absolute path to the experiment root.
             config: Tuning parameters; defaults to ``EvalAuthorConfig()``.
+            reporter: Optional parent run narrator (Experimentalist insight mode).
+                When set, emits mid-run progress lines; never owns header/footer.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or EvalAuthorConfig()
+        self._reporter = reporter
         self.experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)
         self.todos = TodoManager()
@@ -106,15 +113,19 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         self,
         insight: Insight,
         diagnostics: list[tuple[str, Diagnostic]],
+        train_dataset: Dataset,
+        validation_dataset: Dataset,
         insight_suite: Dataset,
         runner_conventions: str,
         validation_feedback: str | None = None,
-    ) -> str:
+    ) -> MetricAuthoringResult:
         """Author verifier metrics for the materialized tasks that capture the insight.
 
         Args:
             insight: The insight whose failure mode the tasks should detect.
             diagnostics: Per-trace ``(trace_ref, Diagnostic)`` pairs for concrete evidence.
+            train_dataset: Staged training tasks to augment for optimization feedback.
+            validation_dataset: Staged validation tasks to augment for scoring.
             insight_suite: The materialized tasks recreated from the Insight's production traces.
             runner_conventions: Summary of how this dataset's runner works (from ``discover_runner``).
                 Use this as the authoritative reference for what artifacts exist at
@@ -126,33 +137,34 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         Refer to ``self.context["dataset_documentation"]`` for the dataset-specific API
         and metric authoring conventions (file layout, how to add/remove/modify a metric).
 
-        **Scope: new grades on the materialized Insight tasks**
+        **Scope: every task in all three datasets**
 
-        Add at least one new Insight-specific metric key to every task in ``insight_suite``.
-        Use the same new metric key set and shared scoring semantics across the entire
-        suite. Preserve every existing verifier metric, including the task's ordinary
-        ``reward`` or ``score``; append the Insight signal instead of replacing the
-        task's original notion of success.
+        Add at least one new Insight-specific metric key to every task in
+        ``train_dataset``, ``validation_dataset``, and ``insight_suite``. Use the same
+        new metric key set and scoring semantics everywhere. Preserve every existing
+        verifier metric, including ordinary ``reward`` or ``score`` values.
 
-        Only edit verifier files in the materialized Insight suite. Do not modify the
-        user's train or validation datasets, and do not change task instructions,
-        environments, solutions, or other agent-visible inputs. This work adds new
-        grades to the new rows; it does not add new agent output to old benchmark rows.
+        Task-specific verifier edits are allowed and expected when existing verifier
+        layouts differ. Only edit verifier files. Do not modify task instructions,
+        environments, solutions, or other agent-visible inputs.
 
         Name each new metric after the root-cause behavior, not a trace id or surface
         symptom. Measure the current Harbor run from runtime artifacts such as OTLP
         traces or agent outputs. Do not hard-code scores for the production traces that
         motivated the Insight.
 
+        In every task's configured verifier directory, write ``metric-contract.json``
+        containing exactly ``{"metric_keys": ["key_one", "key_two"]}``. The list must
+        contain the same newly authored keys for every task and must exactly match the
+        ``metric_keys`` returned in ``MetricAuthoringResult``.
+
         **Validate while authoring**
 
-        After every verifier edit, call ``await insight_suite.validate()``. This performs
-        evaluator-specific static checks without launching trials or executing verifier
-        code. If it raises ``DatasetValidationError``, use its task, path, and source
-        location diagnostics to repair the files, then call it again. Do not return until
-        the suite passes validation. If ``validation_feedback`` is provided, the caller's
-        mandatory validation found errors in the previous attempt; fix every reported
-        failure and revalidate the suite.
+        After verifier edits, call ``await train_dataset.validate()``,
+        ``await validation_dataset.validate()``, and ``await insight_suite.validate()``.
+        These perform evaluator-specific static checks without launching trials. If one
+        raises ``DatasetValidationError``, repair its diagnostics and revalidate all three.
+        If ``validation_feedback`` is provided, fix every reported failure before returning.
 
         **Metric quality**
 
@@ -178,9 +190,9 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         objects for Y, so X is missing from its context.  Measure whether the agent retrieves
         all required objects, not merely whether X appears in the final answer.
 
-        Return a concise summary naming the new metric key(s), what they measure, and
-        which runtime evidence they score. The caller retains the materialized suite and
-        the user's unchanged train and validation datasets.
+        Return ``MetricAuthoringResult`` with the unique, non-empty ``metric_keys`` added
+        by the verifier edits plus a concise summary. Include at least one
+        Insight-specific key beyond generic ``reward`` or ``score``.
         """  # noqa: D413
         ...
 
@@ -273,10 +285,14 @@ class EvalAuthor(Agent, llm=get_smart_model()):
             insight: The Insight to investigate with relevant traces.
             agent_path: Agent root, relative to ``experiment_dir`` or absolute.
             task_template: Parsed evaluator task containing explicit placeholders.
-            train_dataset: The train dataset, returned unchanged.
-            validation_dataset: The validation dataset, returned unchanged.
+            train_dataset: Staged training dataset to augment in place.
+            validation_dataset: Staged validation dataset to augment in place.
             client: Existing NeMo Platform client used for Intake requests.
         """
+        reporter = self._reporter
+        if reporter is not None:
+            reporter.progress(phase="eval author · starting")
+
         resolved_agent = self.experiment_dir / agent_path
         insight_id = insight.id
         if not insight_id:
@@ -284,6 +300,9 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         refs = insight.trace_refs[: self._config.max_traces]
 
         if not refs:
+            if reporter is not None:
+                reporter.note("no trace refs — nothing to analyze")
+                reporter.progress(phase="eval author · complete")
             return EvalAuthorResult(
                 train_dataset=train_dataset,
                 validation_dataset=validation_dataset,
@@ -297,9 +316,24 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         )
         try:
             staged_tasks = insight_suite.stage(refs)
-            for staged in staged_tasks:
+            total_tasks = len(staged_tasks)
+            if reporter is not None:
+                reporter.progress(
+                    phase="eval author · materializing tasks",
+                    completed=0,
+                    total=total_tasks,
+                    unit="task",
+                )
+            for completed, staged in enumerate(staged_tasks, start=1):
                 await self.fill_task_template(staged.trace_ref, staged.task, client, insight.workspace)
                 insight_suite.validate(staged)
+                if reporter is not None:
+                    reporter.progress(
+                        phase="eval author · materializing tasks",
+                        completed=completed,
+                        total=total_tasks,
+                        unit="task",
+                    )
             materialized_dataset = insight_suite.promote_local(refs, staged_tasks)
         except BaseException:
             insight_suite.discard()
@@ -312,6 +346,13 @@ class EvalAuthor(Agent, llm=get_smart_model()):
         diagnostics: list[tuple[str, Diagnostic]] = []
         analyzer_config = TraceAnalyzerConfig(max_summary_tokens=self._config.max_summary_tokens)
         analyzers = [TraceAnalyzer(experiment_dir=self.experiment_dir, config=analyzer_config) for _ in trials]
+        if reporter is not None:
+            reporter.progress(
+                phase="eval author · analyzing traces",
+                completed=0,
+                total=len(trials),
+                unit="trace",
+            )
         raw_diagnostics: list[Diagnostic | BaseException] = list(
             await asyncio.gather(
                 *[
@@ -334,24 +375,61 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                 raise result
             if isinstance(result, BaseException):
                 logger.warning("Trace analysis failed for %s: %s", ref, result)
+                if reporter is not None:
+                    reporter.note(f"trace analysis failed for {ref}: {result}")
                 analysis_statuses[task.id] = ("failed", str(result))
                 continue
             cache.store(self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result)
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)
+        if reporter is not None:
+            reporter.progress(
+                phase="eval author · analyzing traces",
+                completed=len(diagnostics),
+                total=len(trials),
+                unit="trace",
+            )
 
         self.context["dataset_documentation"] = doc(type(materialized_dataset), inline_depth=1)
-        runner_conventions = await self.discover_runner(materialized_dataset)
-        summary = await self.author_insight_metrics(
-            insight,
-            diagnostics,
-            materialized_dataset,
-            runner_conventions,
-        )
+        if reporter is not None:
+            reporter.progress(phase="eval author · discovering runner")
+        runner_conventions = await self.discover_runner(train_dataset)
+        if reporter is not None:
+            reporter.progress(phase="eval author · authoring metrics")
+
+        validation_feedback: str | None = None
         for repair_attempt in range(self._config.max_validation_repair_attempts + 1):
+            authoring_result = await self.author_insight_metrics(
+                insight,
+                diagnostics,
+                train_dataset,
+                validation_dataset,
+                materialized_dataset,
+                runner_conventions,
+                validation_feedback=validation_feedback,
+            )
             try:
-                await materialized_dataset.validate()
+                validation_errors: list[str] = []
+                for label, dataset in (
+                    ("train", train_dataset),
+                    ("validation", validation_dataset),
+                    ("insight", materialized_dataset),
+                ):
+                    try:
+                        await dataset.validate()
+                    except DatasetValidationError as exc:
+                        validation_errors.append(f"{label} dataset:\n{exc}")
+                if validation_errors:
+                    raise DatasetValidationError("\n".join(validation_errors))
+                validate_metric_contracts(
+                    {
+                        "train": train_dataset,
+                        "validation": validation_dataset,
+                        "insight": materialized_dataset,
+                    },
+                    metric_keys=authoring_result.metric_keys,
+                )
             except DatasetValidationError as exc:
                 if repair_attempt >= self._config.max_validation_repair_attempts:
                     raise
@@ -361,22 +439,27 @@ class EvalAuthor(Agent, llm=get_smart_model()):
                     self._config.max_validation_repair_attempts,
                     exc,
                 )
-                summary = await self.author_insight_metrics(
-                    insight,
-                    diagnostics,
-                    materialized_dataset,
-                    runner_conventions,
-                    validation_feedback=str(exc),
-                )
-            else:
-                finalized_suite = insight_suite.finalize()
-                return EvalAuthorResult(
-                    train_dataset=train_dataset,
-                    validation_dataset=validation_dataset,
-                    insight_suite=finalized_suite.dataset,
-                    insight_suite_identity=finalized_suite.identity,
-                    summary=summary,
-                )
+                if reporter is not None:
+                    reporter.progress(
+                        phase="eval author · repairing metrics",
+                        completed=repair_attempt + 1,
+                        total=self._config.max_validation_repair_attempts,
+                        unit="attempt",
+                    )
+                validation_feedback = str(exc)
+                continue
+
+            finalized_suite = insight_suite.finalize()
+            if reporter is not None:
+                reporter.progress(phase="eval author · complete")
+            return EvalAuthorResult(
+                train_dataset=train_dataset,
+                validation_dataset=validation_dataset,
+                insight_suite=finalized_suite.dataset,
+                insight_suite_identity=finalized_suite.identity,
+                metric_keys=authoring_result.metric_keys,
+                summary=authoring_result.summary,
+            )
 
         raise AssertionError("unreachable")
 
@@ -384,6 +467,7 @@ class EvalAuthor(Agent, llm=get_smart_model()):
 def build_eval_author_agent(
     experiment_dir: Path,
     config: EvalAuthorConfig | None = None,
+    reporter: RunReporter | None = None,
 ) -> EvalAuthor:
     """Build and return a configured top-level Eval Author agent."""
-    return EvalAuthor(experiment_dir=experiment_dir, config=config)
+    return EvalAuthor(experiment_dir=experiment_dir, config=config, reporter=reporter)

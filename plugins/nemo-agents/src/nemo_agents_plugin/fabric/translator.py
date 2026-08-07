@@ -10,6 +10,10 @@ from typing import Any
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
 import nemo_fabric as fabric  # ty: ignore[unresolved-import]
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
+from nemo_agents_plugin.fabric.gateway_credentials import (
+    bind_platform_gateway_model_credential,
+    platform_gateway_credential_env,
+)
 
 HARNESS_ADAPTER_IDS = {
     "claude": "nvidia.fabric.claude",
@@ -27,6 +31,8 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
+    model_payload = bind_platform_gateway_model_credential(_model_payload(model))
+    runtime_env = platform_gateway_credential_env({"models": {"default": model_payload}})
     _validate_untranslated_shared_fields(config)
 
     fabric_config = fabric.FabricConfig(
@@ -37,13 +43,14 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             settings=harness.settings,
         ),
         models={
-            "default": fabric.ModelConfig(**_model_payload(model)),
+            "default": fabric.ModelConfig(**model_payload),
         },
         instructions=_instructions_config(config),
         environment=fabric.EnvironmentConfig(
             provider=config.environment.provider,
             workspace=config.environment.workspace,
             artifacts=config.environment.artifacts,
+            env=runtime_env,
             settings=config.environment.settings,
         ),
         skills=_skills_config(config),

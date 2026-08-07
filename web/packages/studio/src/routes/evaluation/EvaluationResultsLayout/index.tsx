@@ -6,7 +6,7 @@ import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { FC, Suspense, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 export const EvaluationResultsLayout: FC = () => {
   const { setBreadcrumbs } = useBreadcrumbs();

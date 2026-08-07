@@ -19,6 +19,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class PortEnumerationError(RuntimeError):
+    """Raised when the set of ports currently in use could not be determined.
+
+    Distinct from an exhausted range: here we don't know what is free, so the caller must not
+    report the range as full (the previous behaviour, which sent operators looking at
+    ``port_range_*`` config for what is usually a transient daemon-query failure).
+    """
+
+
 def is_remote_docker_host() -> bool:
     docker_host = os.environ.get("DOCKER_HOST", "")
     return docker_host.startswith("tcp://")
@@ -65,10 +74,15 @@ async def find_available_port(
         # Every container on the daemon competes for host ports, not just the ones
         # this platform manages. ``resource_scope`` scopes ownership and cleanup;
         # port safety has to consider foreign containers too.
-        containers = await asyncio.to_thread(client.containers.list, all=True)
-    except Exception:
-        logger.exception("Failed to list containers for port allocation")
-        return None
+        #
+        # ignore_removed=True is load-bearing: docker-py enumerates containers and then inspects
+        # each one individually, so a container removed between those two calls makes the inspect
+        # 404 and aborts the entire listing. That is routine whenever containers are being torn
+        # down concurrently, and a container that no longer exists holds no host ports.
+        containers = await asyncio.to_thread(client.containers.list, all=True, ignore_removed=True)
+    except Exception as exc:
+        # We do not know which ports are in use, so we cannot claim the range is full.
+        raise PortEnumerationError(f"could not list containers to determine ports in use: {exc}") from exc
 
     used_ports = collect_used_host_ports(containers)
     if exclude_ports:

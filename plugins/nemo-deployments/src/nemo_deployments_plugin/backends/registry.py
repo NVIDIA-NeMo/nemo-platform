@@ -31,6 +31,14 @@ class ExecutorSpec:
     config: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class UnavailableExecutor:
+    """A configured executor that was skipped because its backend is unavailable."""
+
+    backend: str
+    reason: str
+
+
 class ExecutorNotFoundError(KeyError):
     """Raised when no executor matches the requested name."""
 
@@ -42,9 +50,16 @@ class UnknownBackendTypeError(KeyError):
 class ExecutorRegistry:
     """Maps executor names to configured DeploymentBackend singletons."""
 
-    def __init__(self, executors: dict[str, DeploymentBackend], *, default_executor: str | None) -> None:
+    def __init__(
+        self,
+        executors: dict[str, DeploymentBackend],
+        *,
+        default_executor: str | None,
+        unavailable: dict[str, UnavailableExecutor] | None = None,
+    ) -> None:
         self._executors = executors
         self._default_executor = default_executor
+        self._unavailable = unavailable or {}
 
     @classmethod
     def from_config(
@@ -59,6 +74,7 @@ class ExecutorRegistry:
         if len({spec.name for spec in specs}) != len(specs):
             raise ValueError("Duplicate executor names are not allowed.")
         executors: dict[str, DeploymentBackend] = {}
+        unavailable: dict[str, UnavailableExecutor] = {}
         try:
             for spec in specs:
                 if spec.backend not in classes:
@@ -66,11 +82,13 @@ class ExecutorRegistry:
                 try:
                     executors[spec.name] = classes[spec.backend](sdk, spec.config)
                 except MissingBackendDependencyError as exc:
-                    # An opt-in backend whose optional extra isn't installed (e.g.
-                    # 'openshell') must not take down the whole deployments service:
-                    # skip just that executor. Resolving it later raises
-                    # ExecutorNotFoundError, and a `default_executor` that can't be
-                    # built still fails fast via the check below.
+                    # Capability missing (optional packaging extra, unreachable Docker
+                    # daemon, etc.): skip just that executor so the deployments service
+                    # can still boot. Remember it so resolving the name later explains
+                    # the missing backend instead of looking like a typo. A configured
+                    # default_executor that failed to register still fails fast below;
+                    # silent clearing hid config mistakes and made debugging harder.
+                    unavailable[spec.name] = UnavailableExecutor(backend=spec.backend, reason=str(exc))
                     logger.warning(
                         "Skipping executor '%s': backend '%s' is unavailable (%s)",
                         spec.name,
@@ -78,12 +96,15 @@ class ExecutorRegistry:
                         exc,
                     )
             if default_executor and default_executor not in executors:
-                raise ExecutorNotFoundError(f"default_executor '{default_executor}' is not registered.")
+                raise ExecutorNotFoundError(
+                    f"default_executor '{default_executor}' is not registered "
+                    "(unavailable backend or missing from executor config)."
+                )
         except Exception:
             for backend in executors.values():
                 backend.shutdown()
             raise
-        return cls(executors, default_executor=default_executor)
+        return cls(executors, default_executor=default_executor, unavailable=unavailable)
 
     @classmethod
     def empty(cls) -> Self:
@@ -95,6 +116,12 @@ class ExecutorRegistry:
         if executor_name is None:
             raise ExecutorNotFoundError("No executor specified and no default_executor configured.")
         if executor_name not in self._executors:
+            skipped = self._unavailable.get(executor_name)
+            if skipped is not None:
+                raise ExecutorNotFoundError(
+                    f"Executor '{executor_name}' is configured but its backend "
+                    f"'{skipped.backend}' is unavailable: {skipped.reason}"
+                )
             raise ExecutorNotFoundError(f"Executor '{executor_name}' is not registered.")
         return self._executors[executor_name]
 

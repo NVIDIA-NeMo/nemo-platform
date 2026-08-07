@@ -232,7 +232,10 @@ class _AgentEvalSpecCommon(BaseModel):
         "`params.parallelism`, which bounds concurrent inference requests *within* trial generation.",
     )
     fail_fast: bool = Field(default=False, description="Stop the run on the first scoring failure when True.")
-    benchmark: dict[str, Any] = Field(default_factory=dict, description="Benchmark metadata recorded with the run.")
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Caller-supplied tags recorded on the run's metadata (e.g. benchmark, mode, backend).",
+    )
 
     @model_validator(mode="after")
     def _require_exactly_one_trial_source(self) -> Self:

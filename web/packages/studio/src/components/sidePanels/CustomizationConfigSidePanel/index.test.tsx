@@ -12,7 +12,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { getBaseModel, getFormattedTrainingType } from '@studio/util/customizations';
 import { render, screen } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 const GENERIC_JOB_URL = `${PLATFORM_BASE_URL}/apis/jobs/v2/workspaces/:workspace/jobs/:name`;
 

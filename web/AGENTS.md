@@ -32,6 +32,7 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 
 - Use **pnpm** exclusively — never npm or yarn
 - Run frontend commands from `web/`, not from repo root
+- Node.js and pnpm come from mise (`mise.toml` at the repo root). Run `make verify-mise` from the repo root to install the pinned versions; mise lands in `~/.local/bin`, so use `~/.local/bin/mise exec -- <cmd>` if that directory isn't on PATH and mise isn't activated in the shell
 - Install dependencies: `pnpm add <package>`
 - Run scripts: `pnpm <script-name>`
 
@@ -89,8 +90,15 @@ If a package defines these scripts, CI will pick them up automatically. No addit
 ### Imports and Exports
 
 - Use named exports over default exports
-- Group imports: external libraries, internal modules, relative imports
 - Use absolute imports via tsconfig path mapping (never relative)
+- **Never hand-sort imports — run `pnpm lint:fix` from `web/` and leave the result alone.**
+  `import/order` runs as an _error_ (`eslint.config.js`) with
+  `groups: [['builtin', 'external'], 'internal', ['parent', 'sibling', 'index']]`
+  and `alphabetize: { order: 'asc' }`. The `@nemo` / `@nvidia` / `@studio` aliases
+  resolve as **external**, so they share a single alphabetized group with `react`,
+  `lucide-react` and friends — which sorts `react` near the end. That reads
+  backwards if you expect "third-party first, ours second", but it is the rule's
+  output, and reordering fails CI's `--max-warnings 0`.
 
 ### React Patterns
 

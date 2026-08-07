@@ -22,6 +22,7 @@ services:
       NMP_CONFIG_FILE_PATH: /etc/nmp/config.yaml
       NMP_CONFIG_WARNINGS_DISABLED: "1"
       NMP_AUTH_POLICY_DECISION_POINT_BASE_URL: http://127.0.0.1:8080
+      NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE: /var/run/secrets/nemo-platform/workload-token-signing/private-key.pem
       NMP_SEED_ON_STARTUP: "true"
       NMP_PLATFORM_SEED_MODEL_PROVIDER_ENABLED: "false"
       NMP_SECRETS_ALLOW_KEY_CREATION: "1"

@@ -36,7 +36,7 @@ import {
 } from '@studio/util/forms/customization';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
 import { type FieldErrors, FormProvider, type Resolver, useForm, useWatch } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface NewCustomizationFormProps {
   workspace: string;

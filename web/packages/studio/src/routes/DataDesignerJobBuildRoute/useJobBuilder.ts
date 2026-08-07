@@ -8,6 +8,7 @@ import {
   type BuilderColumn,
   buildColumnsFromTemplate,
   defaultColumnName,
+  defaultColumnValues,
   findColumnOption,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import {
@@ -153,7 +154,7 @@ export const useJobBuilder = (
       if (!option) return;
       const id = `col-${nextId.current++}`;
       const name = defaultColumnName(option, new Set(columns.map((column) => column.name)));
-      appendColumn({ id, option, name, values: {} });
+      appendColumn({ id, option, name, values: defaultColumnValues(option) });
       selectColumn(id);
       setFocusId(id);
     },

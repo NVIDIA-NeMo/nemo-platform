@@ -1,7 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Insights CLI and contributed subcommands."""
+"""Insights CLI and contributed subcommands.
+
+The module-level :func:`analyze` and :func:`doctor` callbacks are the verb bodies for
+:class:`nemo_insights_plugin.analyst.cli.AnalystCLI` (``nemo agents analyst run`` /
+``nemo agents analyst doctor``). This module's ``InsightsCLI`` keeps the periodic
+``analysis`` surface and does not mount those agent verbs.
+"""
 
 import asyncio
 import json
@@ -27,15 +33,16 @@ from nemo_insights_plugin.contracts.profile import (
 )
 from nemo_insights_plugin.preflight import (
     AnalysisProbes,
-    check_credentials,
     check_environment,
+    check_models,
     check_profile,
     read_agent_spec,
 )
 from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
-from pydantic_ai import AgentRunError
+from nemo_platform_plugin.nooa_model_client import configured_model_refs
+from nooa import GenerationError
 
 DEFAULT_WORKSPACE = "default"
 _PREFLIGHT_PROBES: AnalysisProbes | None = None
@@ -48,7 +55,6 @@ class _ResolvedAnalysis:
     workspace: str
     base_url: str
     insights_output: Path | None
-    profile_output: Path | None
     profile_dir: Path | None
     spec_checks: tuple[CheckResult, ...]
 
@@ -125,32 +131,48 @@ def _resolve_analysis(
     spec_content, spec_checks = read_agent_spec(spec_path, spec_error)
 
     resolved_base_url = resolve_base_url(base_url)
-    profile_output = None
-    if insights_output is None and profile is not None:
-        profile_output = profile.profile_dir / ".nemo-optimizer" / "insights.yaml"
-    resolved_output = insights_output if insights_output is not None else profile_output
-    validate_insights_file(resolved_output)
+    validate_insights_file(insights_output)
 
     return _ResolvedAnalysis(
         agent=resolved_agent,
         agent_spec=spec_content,
         workspace=resolved_workspace,
         base_url=resolved_base_url,
-        insights_output=resolved_output,
-        profile_output=profile_output,
+        insights_output=insights_output,
         profile_dir=profile.profile_dir if profile is not None else None,
         spec_checks=tuple(spec_checks),
     )
 
 
+def _prepare_mirror(insights_output: Path | None) -> Path | None:
+    """Ready the mirror's directory, dropping the mirror if that fails.
+
+    The mirror is a convenience beside the platform, which is the source of
+    truth, so an unusable local path must not cost the user the analysis. This
+    matches how a failed mirror *write* is reported — a warning on the run
+    report rather than a failed run.
+    """
+    if insights_output is None:
+        return None
+    try:
+        insights_output.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        typer.echo(
+            f"warning: insights mirror disabled — could not create {insights_output.parent}: "
+            f"{_one_line_error(exc)}. Insights are still written to the platform.",
+            err=True,
+        )
+        return None
+    typer.echo(f"Insights file (mirror of the platform): {insights_output}", err=True)
+    return insights_output
+
+
 async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
     checks = list(analysis.spec_checks)
-    checks.extend(check_credentials(analysis.profile_dir, probes=_PREFLIGHT_PROBES))
+    checks.extend(check_models())
     _preflight_or_exit(checks)
 
-    if analysis.profile_output is not None:
-        analysis.profile_output.parent.mkdir(parents=True, exist_ok=True)
-        typer.echo(f"Insights file: {analysis.profile_output}", err=True)
+    insights_output = _prepare_mirror(analysis.insights_output)
     try:
         try:
             client = make_client(analysis.base_url)
@@ -162,10 +184,10 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             workspace=analysis.workspace,
             base_url=analysis.base_url,
             client=client,
-            insights_output=analysis.insights_output,
+            insights_output=insights_output,
             verbose=verbose,
         )
-    except AgentRunError as exc:
+    except GenerationError as exc:
         detail = _one_line_error(exc).rstrip(".")
         typer.echo(
             f"Error: analyst run failed: {detail}. "
@@ -182,6 +204,134 @@ async def _run_analysis(analysis: _ResolvedAnalysis, *, verbose: bool) -> str:
             err=True,
         )
         raise typer.Exit(1) from None
+
+
+def analyze(
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        help="Name of the agent (agent under test) the analyst should focus on.",
+    ),
+    agent_spec: Path | None = typer.Option(
+        None,
+        "--agent-spec",
+        help="Path to a markdown file describing the agent under test (its spec).",
+        exists=True,
+        readable=True,
+    ),
+    workspace: str | None = typer.Option(
+        None,
+        "--workspace",
+        help="Workspace the analyst should operate in.",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="Base URL of the running NMP instance the analyst's tools should call.",
+    ),
+    profile_path: Path | None = typer.Option(
+        None,
+        "--profile",
+        help="Path to optimizer.yaml. Default: discovered by walking up from cwd.",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    insights_output: Path | None = typer.Option(
+        None,
+        "--insights-file-output",
+        help=(
+            "Also write insights to this local YAML file. Insights always go "
+            "to the platform first; the file mirrors what was stored, "
+            "platform ids included, and each run merges into it."
+        ),
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help=(
+            "Stream the analyst's tool calls and reasoning to stderr "
+            "while it runs. Off by default so that stdout stays clean "
+            "for piping the final answer."
+        ),
+    ),
+) -> None:
+    """Run the analyst agent against a running NMP instance.
+
+    Builds the analyst agent with ``--agent`` (and optional
+    ``--agent-spec``) formatted into its instructions and tools scoped
+    to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
+    prints whatever the agent returns. Insights are written to the
+    platform, and mirrored to ``--insights-file-output`` when given.
+    """
+    try:
+        analysis = _resolve_analysis(
+            agent=agent,
+            agent_spec=agent_spec,
+            workspace=workspace,
+            base_url=base_url,
+            profile_path=profile_path,
+            insights_output=insights_output,
+        )
+        output = asyncio.run(_run_analysis(analysis, verbose=verbose))
+    except (ProfileError, EnvFileError, InsightsFileError, OSError, UnicodeError) as exc:
+        typer.echo(f"Error: {_one_line_error(exc)}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(output)
+
+
+def doctor(
+    profile_path: Path | None = typer.Option(
+        None,
+        "--profile",
+        help="Path to optimizer.yaml. Default: discovered by walking up from cwd.",
+        exists=True,
+        dir_okay=False,
+        readable=True,
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="Base URL of the running NMP instance to check.",
+    ),
+) -> None:
+    """Check whether the current profile is ready for analysis."""
+    try:
+        try:
+            profile, profile_error = _load_profile_or_error(profile_path)
+        except ProfileError as exc:
+            profile, profile_error = None, str(exc)
+        spec_path: Path | None = None
+        spec_error: str | None = None
+        if profile is not None:
+            try:
+                spec_path = pick_agent_spec(profile)
+            except ProfileError as exc:
+                spec_error = str(exc)
+        _, spec_results = read_agent_spec(spec_path, spec_error)
+
+        async def _flow() -> list[CheckResult]:
+            results = check_profile(profile, profile_error)
+            results.extend(spec_results)
+            results.extend(
+                await check_environment(
+                    agent=profile.agent if profile is not None else None,
+                    workspace=profile.workspace if profile is not None else None,
+                    base_url=resolve_base_url(base_url),
+                    profile_dir=profile.profile_dir if profile is not None else None,
+                    probes=_PREFLIGHT_PROBES,
+                )
+            )
+            return results
+
+        results = asyncio.run(_flow())
+    except (EnvFileError, OSError, UnicodeError) as exc:
+        typer.echo(f"Error: {_one_line_error(exc)}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(format_report(results))
+    if required_failures(results):
+        raise typer.Exit(code=1)
 
 
 class InsightsCLI(NemoCLI):
@@ -202,135 +352,6 @@ class InsightsCLI(NemoCLI):
             no_args_is_help=True,
         )
         app.add_typer(analysis_app, name="analysis")
-
-        @app.command("analyze")
-        def analyze(
-            agent: str | None = typer.Option(
-                None,
-                "--agent",
-                help="Name of the agent (agent under test) the analyst should focus on.",
-            ),
-            agent_spec: Path | None = typer.Option(
-                None,
-                "--agent-spec",
-                help="Path to a markdown file describing the agent under test (its spec).",
-                exists=True,
-                readable=True,
-            ),
-            workspace: str | None = typer.Option(
-                None,
-                "--workspace",
-                help="Workspace the analyst should operate in.",
-            ),
-            base_url: str | None = typer.Option(
-                None,
-                "--base-url",
-                help="Base URL of the running NMP instance the analyst's tools should call.",
-            ),
-            profile_path: Path | None = typer.Option(
-                None,
-                "--profile",
-                help="Path to optimizer.yaml. Default: discovered by walking up from cwd.",
-                exists=True,
-                dir_okay=False,
-                readable=True,
-            ),
-            insights_output: Path | None = typer.Option(
-                None,
-                "--insights-file-output",
-                help=(
-                    "Read and write insights from this local YAML file instead "
-                    "of the Insights plugin API. Lets the analyst run against a "
-                    "deployment that hosts observability data but not this "
-                    "plugin; each run merges into the file. Trace/feedback reads "
-                    "still hit --base-url."
-                ),
-            ),
-            verbose: bool = typer.Option(
-                False,
-                "--verbose",
-                "-v",
-                help=(
-                    "Stream the analyst's tool calls and reasoning to stderr "
-                    "while it runs. Off by default so that stdout stays clean "
-                    "for piping the final answer."
-                ),
-            ),
-        ) -> None:
-            """Run the analyst agent against a running NMP instance.
-
-            Builds the analyst agent with ``--agent`` (and optional
-            ``--agent-spec``) formatted into its instructions and tools scoped
-            to ``--agent`` / ``--workspace`` / ``--base-url``, runs it, and
-            prints whatever the agent returns.
-            """
-            try:
-                analysis = _resolve_analysis(
-                    agent=agent,
-                    agent_spec=agent_spec,
-                    workspace=workspace,
-                    base_url=base_url,
-                    profile_path=profile_path,
-                    insights_output=insights_output,
-                )
-                output = asyncio.run(_run_analysis(analysis, verbose=verbose))
-            except (ProfileError, EnvFileError, InsightsFileError, OSError, UnicodeError) as exc:
-                typer.echo(f"Error: {_one_line_error(exc)}", err=True)
-                raise typer.Exit(1) from None
-            typer.echo(output)
-
-        @app.command("doctor")
-        def doctor(
-            profile_path: Path | None = typer.Option(
-                None,
-                "--profile",
-                help="Path to optimizer.yaml. Default: discovered by walking up from cwd.",
-                exists=True,
-                dir_okay=False,
-                readable=True,
-            ),
-            base_url: str | None = typer.Option(
-                None,
-                "--base-url",
-                help="Base URL of the running NMP instance to check.",
-            ),
-        ) -> None:
-            """Check whether the current profile is ready for analysis."""
-            try:
-                try:
-                    profile, profile_error = _load_profile_or_error(profile_path)
-                except ProfileError as exc:
-                    profile, profile_error = None, str(exc)
-                spec_path: Path | None = None
-                spec_error: str | None = None
-                if profile is not None:
-                    try:
-                        spec_path = pick_agent_spec(profile)
-                    except ProfileError as exc:
-                        spec_error = str(exc)
-                _, spec_results = read_agent_spec(spec_path, spec_error)
-
-                async def _flow() -> list[CheckResult]:
-                    results = check_profile(profile, profile_error)
-                    results.extend(spec_results)
-                    results.extend(
-                        await check_environment(
-                            agent=profile.agent if profile is not None else None,
-                            workspace=profile.workspace if profile is not None else None,
-                            base_url=resolve_base_url(base_url),
-                            profile_dir=profile.profile_dir if profile is not None else None,
-                            probes=_PREFLIGHT_PROBES,
-                        )
-                    )
-                    return results
-
-                results = asyncio.run(_flow())
-            except (EnvFileError, OSError, UnicodeError) as exc:
-                typer.echo(f"Error: {_one_line_error(exc)}", err=True)
-                raise typer.Exit(1) from None
-            typer.echo(format_report(results))
-            if required_failures(results):
-                raise typer.Exit(code=1)
 
         @analysis_app.command("enable")
         def enable_analysis(
@@ -438,12 +459,23 @@ async def _analysis_config_command(
     base_url: str,
 ) -> str:
     """Run one analysis-config CLI action and return JSON for stdout."""
+    model_refs = None
+    if action == "enable":
+        if agent is None:
+            raise ValueError("agent is required for enable")
+        model_refs = configured_model_refs()
+
     client = make_client(base_url)
     try:
         if action == "enable":
-            if agent is None:
-                raise ValueError("agent is required for enable")
-            result = await client.insights.analysis_configs.enable(workspace=workspace, agent=agent)
+            assert agent is not None
+            assert model_refs is not None
+            result = await client.insights.analysis_configs.enable(
+                workspace=workspace,
+                agent=agent,
+                default_model=model_refs.default,
+                fast_model=model_refs.fast,
+            )
             return _json(result.model_dump(mode="json"))
         if action == "disable":
             if agent is None:

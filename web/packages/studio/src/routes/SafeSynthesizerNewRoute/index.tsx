@@ -21,7 +21,7 @@ import { getSafeSynthesizerJobRoute, getSafeSynthesizerRoute } from '@studio/rou
 import { logger } from '@studio/util/logger';
 import { FC, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const SafeSynthesizerNewRoute: FC | null = SAFE_SYNTHESIZER_ENABLED
   ? () => {

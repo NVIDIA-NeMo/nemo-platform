@@ -45,6 +45,10 @@ export const isValidationErrorArray = (detail: unknown): detail is ValidationErr
   );
 };
 
+/** The entity-store's optimistic-lock rejection: `expected_db_version` no longer matches. */
+export const isVersionConflictError = (error: unknown): boolean =>
+  error instanceof AxiosError && error.response?.status === 409;
+
 /**
  * Extracts a user-friendly error message from an error object.
  * Handles both ValidationError arrays and simple string errors from the backend.

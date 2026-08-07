@@ -6,7 +6,7 @@ import type { RequestHandler } from 'msw';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupWorker } from 'msw/browser';
 import { useEffect, useState } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import '../../studio/src/index.css';
 
 const worker = setupWorker();
@@ -66,6 +66,7 @@ const preview: Preview = {
   parameters: {
     layout: 'padded',
     backgrounds: { disable: true },
+    a11y: { test: 'todo' },
     controls: {
       matchers: {
         color: /(background|color)$/i,

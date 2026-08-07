@@ -3,12 +3,12 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 import pytest
 from click.testing import Result
 from nemo_experimentalist_plugin import cli
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import DatasetRef
+from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes
 from nemo_platform import AsyncNeMoPlatform
@@ -28,7 +28,6 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: True,
-            env={"EXPERIMENTALIST_API_BASE": "http://llm", "EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
 
@@ -65,7 +64,6 @@ class CapturedExperimentRun:
     workspace: str
     client: AsyncNeMoPlatform | None
     config: EvolutionaryOptimizerConfig
-    mode: Literal["local", "remote"]
     insight: Path | str | None
     agent_spec: str | None
     framework_skills_dirs: list[Path] | None
@@ -113,7 +111,6 @@ class ExperimentRunRecorder:
         insight: Path | str | None = None,
         agent_spec: str | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        mode: Literal["local", "remote"],
     ) -> str:
         self.captured = CapturedExperimentRun(
             agent=agent,
@@ -124,7 +121,6 @@ class ExperimentRunRecorder:
             workspace=workspace,
             client=client,
             config=config,
-            mode=mode,
             insight=insight,
             agent_spec=agent_spec,
             framework_skills_dirs=framework_skills_dirs,
@@ -229,7 +225,9 @@ def test_experiment_cli_passes_dataset_driven_contract_to_runner(
     # reads insight files with json.loads, so YAML-authored files must not
     # reach it raw); platform ids still pass through verbatim.
     assert runner.captured.insight == str(paths.experiment / "resolved" / "insight.json")
-    assert Path(runner.captured.insight).read_text(encoding="utf-8").strip() == "{}"
+    captured_insight = runner.captured.insight
+    assert captured_insight is not None
+    assert Path(captured_insight).read_text(encoding="utf-8").strip() == "{}"
     # Datasets and the task template are forwarded as DatasetRef URI handles,
     # tagged with a stable id the evaluator adapter uses when building datasets.
     assert runner.captured.train_dataset == DatasetRef(uri=str(paths.train), metadata={"id": "train"})
@@ -239,20 +237,12 @@ def test_experiment_cli_passes_dataset_driven_contract_to_runner(
     assert runner.captured.workspace == "workspace-a"
     assert runner.captured.client is platform_client
     assert platform_client.closed
-    assert runner.captured.mode == "local"
     assert runner.captured.config == expected_config
 
 
 @pytest.mark.parametrize(
     ("extra_args", "config_body", "expected_exit_code", "expected_errors"),
     [
-        pytest.param(
-            ("--mode", "remote"),
-            None,
-            1,
-            ("Remote mode is not implemented yet",),
-            id="unsupported-remote-mode",
-        ),
         pytest.param(
             (),
             "max_rounds: [",

@@ -115,8 +115,34 @@ def test_missing_executor_raises(backend_classes: dict[str, type[DeploymentBacke
         [ExecutorSpec(name="a", backend="docker", config={})],
         backend_classes=backend_classes,
     )
-    with pytest.raises(ExecutorNotFoundError):
+    with pytest.raises(ExecutorNotFoundError, match="'missing' is not registered"):
         registry.resolve("missing")
+
+
+def test_unavailable_executor_reports_distinct_error(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    # A configured executor whose backend was skipped must resolve to a distinct,
+    # actionable error that names the backend, not the generic 'not registered'
+    # message used for a genuinely unknown name.
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+    classes = {**backend_classes, "sandbox": _MissingDepBackend}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="ok", backend="docker", config={}),
+            ExecutorSpec(name="sandbox-local", backend="sandbox", config={}),
+        ],
+        backend_classes=classes,
+    )
+    with pytest.raises(ExecutorNotFoundError) as excinfo:
+        registry.resolve("sandbox-local")
+    message = str(excinfo.value)
+    assert "is not registered" not in message
+    assert "configured but" in message
+    assert "unavailable" in message
+    assert "sandbox" in message
+    assert "openshell extra not installed" in message
 
 
 def test_unknown_backend_type_raises() -> None:
@@ -181,18 +207,63 @@ def test_registry_skips_backend_with_missing_dependency(
         registry.resolve("sandbox-local")
 
 
-def test_registry_missing_dependency_default_executor_still_fails(
+def test_registry_missing_dependency_default_executor_fails(
     backend_classes: dict[str, type[DeploymentBackend]],
 ) -> None:
-    # A skipped backend is fine as a secondary executor, but if it is the
-    # configured default the registry must still fail fast.
+    # Skipping an optional executor is fine; a configured default that cannot
+    # register must fail fast so misconfiguration is obvious at startup.
     sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
     classes = {**backend_classes, "sandbox": _MissingDepBackend}
-    with pytest.raises(ExecutorNotFoundError):
+    with pytest.raises(ExecutorNotFoundError, match="default_executor 'sandbox-local' is not registered"):
         ExecutorRegistry.from_config(
             sdk,
             [ExecutorSpec(name="sandbox-local", backend="sandbox", config={})],
             default_executor="sandbox-local",
+            backend_classes=classes,
+        )
+
+
+def test_registry_skips_unavailable_docker_and_keeps_other_backends(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+
+    class _UnavailableDocker(_StubBackend):
+        def init(self) -> None:
+            raise MissingBackendDependencyError("Docker daemon is unavailable")
+
+    classes = {**backend_classes, "docker": _UnavailableDocker}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="local-docker", backend="docker", config={}),
+            ExecutorSpec(name="cluster-a", backend="k8s", config={}),
+        ],
+        # No default pointing at the skipped docker executor — other backends boot.
+        backend_classes=classes,
+    )
+    assert registry.registered_names() == ["cluster-a"]
+    assert registry.resolve("cluster-a") is not None
+
+
+def test_registry_unavailable_docker_default_executor_fails(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+
+    class _UnavailableDocker(_StubBackend):
+        def init(self) -> None:
+            raise MissingBackendDependencyError("Docker daemon is unavailable")
+
+    classes = {**backend_classes, "docker": _UnavailableDocker}
+    with pytest.raises(ExecutorNotFoundError, match="default_executor 'local-docker' is not registered"):
+        ExecutorRegistry.from_config(
+            sdk,
+            [
+                ExecutorSpec(name="local-docker", backend="docker", config={}),
+                ExecutorSpec(name="cluster-a", backend="k8s", config={}),
+            ],
+            default_executor="local-docker",
             backend_classes=classes,
         )
 

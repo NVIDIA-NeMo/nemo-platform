@@ -40,7 +40,7 @@ import {
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
 import { type ComponentProps, type FC, type ReactNode, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 const SPAN_STATUS_FILTER_OPTIONS = [
   { value: 'success', label: 'Success' },

@@ -4,7 +4,7 @@
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const VirtualModelsListRoute = lazy(() =>
   import('@studio/routes/VirtualModelsListRoute').then((module) => ({

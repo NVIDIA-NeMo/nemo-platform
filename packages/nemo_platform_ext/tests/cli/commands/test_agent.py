@@ -176,6 +176,7 @@ class TestAgentCommands:
         command_rows = [line for line in result.stdout.splitlines() if line.startswith("| nemo ")]
         assert command_rows == [
             "| nemo setup | Setup | Set up NeMo Platform: connect or start services, configure a provider, install skills. |",
+            "| nemo auth | Setup | Manage authentication for NeMo Platform. |",
             "| nemo services | Setup | Run platform services locally. |",
             "| nemo skills | Setup | Install AI agent skill files for Nemo. |",
             "| nemo chat | CLI functions | Start an interactive chat session with a model. |",
@@ -192,4 +193,6 @@ class TestAgentCommands:
             "| nemo data-designer | Functional plugins | Plugin commands for data-designer. |",
             "| nemo guardrail | Functional plugins | Manage guardrails. |",
             "| nemo anonymizer | Functional plugins | Plugin commands for anonymizer. |",
+            "| nemo experiments | Functional plugins | Manage experiments. |",
+            "| nemo intake | Functional plugins | Intake operations. |",
         ]

@@ -3,19 +3,22 @@
 
 """Studio service implementation for serving the NeMo Studio UI."""
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Mapping
 from html import escape
 from pathlib import Path
-from typing import ClassVar, List
+from typing import ClassVar
 
-from fastapi import FastAPI, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import FileResponse, HTMLResponse
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
-from nmp.studio import coding_agents
+from nmp.studio import copilot
 from nmp.studio.config import StudioConfig
-from nmp.studio.static_files import SPAStaticFiles
+from nmp.studio.plugins import build_plugins_router, discover_plugins
+from nmp.studio.static_files import SPAStaticFiles, build_csp
 from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,38 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 
+CONTAINER_STATIC_FILES_PATH = Path("/static/studio")
+
+SOURCE_CHECKOUT_TIPS_HTML = """      <h2>Build tips</h2>
+      <p>Run these commands from the repository root.</p>
+      <p>Studio uses the Node.js and pnpm engines in <code>web/package.json</code>.</p>
+      <p>If you use nvm:</p>
+      <pre>source ~/.nvm/nvm.sh
+nvm install 22
+nvm use 22
+make bootstrap-studio
+nemo services restart</pre>
+      <p>If you use pnpm-managed Node.js:</p>
+      <pre>pnpm env use --global 22.18.0
+make bootstrap-studio
+nemo services restart</pre>"""
+
+DOCS_URL = "https://docs.nvidia.com/nemo-platform"
+
+PACKAGED_INSTALL_NOTICE_HTML = f"""      <p>This install ships with the Studio bundle, so this is unexpected.</p>
+      <p>See the <a href="{DOCS_URL}">NeMo Platform documentation</a> for help.</p>"""
+
+
+def _bundle_asset_media_type(filename: str) -> str | None:
+    """Media type for an allowed plugin bundle asset; None for disallowed suffixes."""
+    if filename.endswith(".js.map"):
+        return "application/json"
+    if filename.endswith(".js"):
+        return "text/javascript"
+    if filename.endswith(".css"):
+        return "text/css"
+    return None
+
 
 class StudioService(Service[StudioConfig]):
     """Studio service for serving the NeMo Studio UI static assets.
@@ -51,7 +86,7 @@ class StudioService(Service[StudioConfig]):
     - env_replacements: Runtime values to inject into the UI bundle (cached)
     """
 
-    dependencies: ClassVar[list[str]] = []
+    dependencies: ClassVar[list[str]] = ["entities", "auth"]
 
     def __init__(self):
         """Initialize the studio service."""
@@ -65,9 +100,9 @@ class StudioService(Service[StudioConfig]):
     @property
     def description(self) -> str:
         """Service description for OpenAPI docs."""
-        return "Serves the NeMo Studio web application and local coding-agent bridge"
+        return "Serves the NeMo Studio web application and local copilot bridge"
 
-    def get_routers(self) -> List[RouterConfig]:
+    def get_routers(self) -> list[RouterConfig]:
         """Return routers for the studio service.
 
         Studio exposes API routes for local-only UI integrations in addition to
@@ -75,9 +110,9 @@ class StudioService(Service[StudioConfig]):
         """
         return [
             RouterConfig(
-                coding_agents.router,
-                tag="Studio Coding Agents",
-                description="Local coding-agent bridge endpoints",
+                copilot.router,
+                tag="NeMo Copilot",
+                description="Local copilot bridge endpoints",
             )
         ]
 
@@ -91,12 +126,13 @@ class StudioService(Service[StudioConfig]):
             app: The platform's FastAPI application
         """
         self._mount_telemetry_proxy(app)
-        self._mount_coding_agent_mcp(app)
+        self._mount_copilot_mcp(app)
         self._mount_static_files(app)
+        self._configure_plugins(app)
 
-    def _mount_coding_agent_mcp(self, app: FastAPI) -> None:
+    def _mount_copilot_mcp(self, app: FastAPI) -> None:
         """Mount the auth-bypassed MCP callback before the /studio static app."""
-        coding_agents.mount_public_mcp_route(app)
+        copilot.mount_public_mcp_route(app)
 
     def _get_config(self) -> StudioConfig:
         """Get the studio config, creating a default if none is set.
@@ -223,6 +259,23 @@ class StudioService(Service[StudioConfig]):
             if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() in {"content-type", "content-encoding"}
         }
 
+    def _build_csp_header(self) -> str:
+        """CSP extended with the cross-origin endpoints the SPA is configured to reach."""
+        replacements = self._get_config().env_replacements
+        issuer = replacements.get("STUDIO_UI_VITE_AUTH_AUTHORITY", "")
+        platform_base_url = replacements.get("STUDIO_UI_VITE_PLATFORM_BASE_URL", "")
+        return build_csp(
+            connect_src_urls=(
+                issuer,
+                platform_base_url,
+                replacements.get("STUDIO_UI_VITE_DATA_STORE_MICROSERVICE_URL", ""),
+                replacements.get("STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_URL", ""),
+                replacements.get("STUDIO_UI_VITE_NIM_PROXY_MICROSERVICE_INTERNAL_URL", ""),
+            ),
+            frame_src_urls=(issuer,),  # oidc-client-ts silent-renew iframe
+            script_src_urls=(platform_base_url,),  # dynamic import() of plugin bundles
+        )
+
     def _mount_static_files(self, app: FastAPI) -> None:
         """Mount static files on the given FastAPI app.
 
@@ -231,14 +284,13 @@ class StudioService(Service[StudioConfig]):
         """
         static_path = self._get_static_files_path()
         if self._static_assets_ready(static_path):
-            # Get env replacements from config (single source of truth, cached)
-            env_replacements = self._get_config().env_replacements
             app.mount(
                 "/studio",
                 SPAStaticFiles(
                     directory=str(static_path),
                     html=True,
-                    env_replacements=env_replacements,
+                    env_replacements=self._get_config().env_replacements,
+                    csp_header=self._build_csp_header(),
                 ),
                 name="studio-static",
             )
@@ -252,36 +304,29 @@ class StudioService(Service[StudioConfig]):
         @app.get("/studio/", include_in_schema=False)
         @app.get("/studio/{path:path}", include_in_schema=False)
         async def studio_static_files_missing(path: str = "") -> HTMLResponse:
-            return self._missing_static_files_response(static_path, path)
+            return self._missing_static_files_response(
+                static_path, path, source_checkout=self._source_static_files_path() is not None
+            )
 
     @staticmethod
-    def _missing_static_files_response(static_path: Path, requested_path: str = "") -> HTMLResponse:
+    def _missing_static_files_response(
+        static_path: Path, requested_path: str = "", source_checkout: bool = True
+    ) -> HTMLResponse:
         route = "/studio" if requested_path == "" else f"/studio/{requested_path}"
+        recovery_html = SOURCE_CHECKOUT_TIPS_HTML if source_checkout else PACKAGED_INSTALL_NOTICE_HTML
         html = f"""<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>NeMo Studio assets are not built</title>
+    <title>NeMo Studio assets were not found</title>
   </head>
   <body>
     <main>
-      <h1>NeMo Studio assets are not built</h1>
+      <h1>NeMo Studio assets were not found</h1>
       <p>The platform is running, but Studio cannot be served because the built web assets were not found.</p>
       <p>Requested path: <code>{escape(route)}</code></p>
       <p>Expected assets at: <code>{escape(str(static_path))}</code></p>
-      <h2>Build tips</h2>
-      <p>Run these commands from the repository root.</p>
-      <p>Studio uses the Node.js and pnpm engines in <code>web/package.json</code>.</p>
-      <p>If you use nvm:</p>
-      <pre>source ~/.nvm/nvm.sh
-nvm install 22
-nvm use 22
-make bootstrap-studio
-nemo services restart</pre>
-      <p>If you use pnpm-managed Node.js:</p>
-      <pre>pnpm env use --global 22.18.0
-make bootstrap-studio
-nemo services restart</pre>
+{recovery_html}
     </main>
   </body>
 </html>
@@ -292,12 +337,49 @@ nemo services restart</pre>
             headers={"Cache-Control": "no-store"},
         )
 
+    def _configure_plugins(self, app: FastAPI) -> None:
+        """Discover studio plugins and wire up their bundle assets and API endpoint."""
+        manifests = discover_plugins()
+
+        bundle_dirs: dict[str, Path] = {}
+        for manifest in manifests:
+            plugin_dir = manifest.bundle_dir
+            if plugin_dir is None:
+                logger.debug("Plugin %r has no web bundle — skipping bundle assets", manifest.name)
+            elif plugin_dir.exists():
+                bundle_dirs[manifest.name] = plugin_dir
+                logger.info("Serving plugin bundle assets for %r at /plugin-ui/%s", manifest.name, manifest.name)
+            else:
+                logger.warning(
+                    "Plugin %r bundle directory %r not found — bundle assets not served",
+                    manifest.name,
+                    plugin_dir,
+                )
+
+        @app.get("/plugin-ui/{plugin_name}/{filename}", include_in_schema=False)
+        async def serve_plugin_asset(plugin_name: str, filename: str) -> FileResponse:
+            # Allowlist: only direct children of the bundle dir with bundle-asset
+            # suffixes — never the plugin's Python source or subdirectories.
+            bundle_dir = bundle_dirs.get(plugin_name)
+            media_type = _bundle_asset_media_type(filename)
+            if bundle_dir is None or media_type is None or "/" in filename or "\\" in filename:
+                raise HTTPException(status_code=404)
+            # resolve() + parent check stops a symlink inside the bundle dir from
+            # escaping it and serving an arbitrary file over this public route.
+            file_path = (bundle_dir / filename).resolve()
+            if file_path.parent != bundle_dir.resolve() or not file_path.is_file():
+                raise HTTPException(status_code=404)
+            return FileResponse(file_path, media_type=media_type)
+
+        app.include_router(build_plugins_router(manifests))
+
     def _get_static_files_path(self) -> Path:
         """Get the path to the static files directory.
 
         Returns:
             The configured static_files_path from StudioConfig, falling back to the
-            packaged `static/` directory or source checkout `web/packages/studio/dist`.
+            packaged `static/` directory, the container image bundle at
+            `/static/studio`, or source checkout `web/packages/studio/dist`.
         """
         configured = self._get_config().static_files_path
         if configured is not None:
@@ -306,6 +388,10 @@ nemo services restart</pre>
         packaged_static = self._packaged_static_files_path()
         if self._static_assets_ready(packaged_static):
             return packaged_static
+
+        container_static = self._container_static_files_path()
+        if self._static_assets_ready(container_static):
+            return container_static
 
         source_static = self._source_static_files_path()
         if source_static is not None:
@@ -317,6 +403,11 @@ nemo services restart</pre>
     def _packaged_static_files_path() -> Path:
         """Return the package-local Studio static asset directory."""
         return Path(__file__).parent / "static"
+
+    @staticmethod
+    def _container_static_files_path() -> Path:
+        """Return the Studio bundle location baked into NeMo Platform container images."""
+        return CONTAINER_STATIC_FILES_PATH
 
     @staticmethod
     def _static_assets_ready(path: Path) -> bool:

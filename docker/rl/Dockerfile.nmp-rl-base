@@ -22,7 +22,9 @@
 # build-only tooling in the publish stage; the CUDA devel toolkit (nvcc) and gcc/build-essential
 # stay because deep_ep JIT and native-v1 env installs need them at runtime.
 
-ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.03-cuda13.2-devel-ubuntu24.04
+# Kept in lockstep with the pinned NEMO_RL_REF: RL's own Dockerfile builds on this tag, and its lock
+# overrides nvidia-nccl-cu13 to the version that ships here. Bump both together.
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.05-cuda13.2-devel-ubuntu24.04
 
 # Source. Default clones the soluwalana/RL fork at the given ref; override with a local checkout via
 # `--build-context nemo-rl=<path>` or point elsewhere via the NEMO_RL_{REPO,REF} build-args. Gym is
@@ -33,13 +35,11 @@ ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.03-cuda13.2-devel-ubuntu24.04
 ARG NEMO_RL_REPO=https://github.com/soluwalana/RL.git
 ARG NEMO_RL_REF=nmp/customizer
 
-ARG UV_VERSION=0.11.18
-ARG PYTHON_VERSION=3.13.13
+# CVE bumps: uv 0.11.18 bundles a vulnerable quinn-proto (0.12 has breaking changes, so stay on
+# 0.11.x); Python 3.13.14 clears 5 CVEs. Both are scanned at their installed path - see README.md.
+ARG UV_VERSION=0.11.33
+ARG PYTHON_VERSION=3.13.14
 ARG CMAKE_VERSION=4.0.3
-
-# Reuse the shared FFmpeg/VLM wheels (cp313 av / opencv-headless / decord2), supplied by bake as a
-# named context (see docker/base/Dockerfile.python-wheels). Replaces the FFmpeg-bundling PyPI copies.
-FROM ffmpeg-vlm-wheel-image AS ffmpeg-vlm-wheel-src
 
 # ---- RL source (+ its submodules, incl. Gym) via BuildKit's git ADD ----
 # RL pins Gym, Automodel and Megatron-Bridge (+ nested Megatron-LM) as git submodules, all over
@@ -55,11 +55,14 @@ FROM ${BASE_IMAGE} AS base
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
+# openssl is the only dpkg package here with an out-of-SLA CVE. Upgraded explicitly rather than via
+# a blanket `apt-get upgrade`, which would also pull newer CUDA packages from the NVIDIA repos.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         jq curl git rsync wget less vim ccache gnupg \
         build-essential ca-certificates \
         libibverbs-dev && \
+    apt-get install -y --only-upgrade openssl libssl3t64 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # CMake (CUDA extension builds: transformer-engine, mamba-ssm, ...).
@@ -80,7 +83,11 @@ RUN ARCH="$(uname -m)" && \
 # "No module named 'encodings'". Copy the uv binary to /usr/local/bin for the same reason (runtime env installs).
 ARG UV_VERSION
 ARG PYTHON_VERSION
+# UV_PYTHON pins the interpreter for every uv call, at build and at runtime (node-built venvs too).
+# Required, not cosmetic: RL ships a `.python-version` that otherwise wins, so bumping PYTHON_VERSION
+# alone leaves every venv on RL's patch release and the requested one unused on disk.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_PYTHON=${PYTHON_VERSION} \
     PATH="/usr/local/bin:/root/.local/bin:${PATH}"
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
     cp /root/.local/bin/uv /usr/local/bin/uv && \
@@ -234,22 +241,21 @@ uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenac
 
 # CVE GHSA-mqqc-3gqh-h2x8: drop ray's bundled old aiohttp from the uv cache.
 find "${UV_CACHE_DIR}" -type d -path "*ray/_private/runtime_env/agent/thirdparty_files/aiohttp*" -exec rm -rf {} + || true
-EOF
 
-# Replace the FFmpeg-bundling av / opencv / decord2 copies with vendored cp313 wheels (CVE).
-RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg,readonly <<"EOF" bash -exu
-for site in /opt/nemo_rl_venv/lib/python*/site-packages; do
-    [ -d "${site}" ] || continue
-    rm -rf \
-        "${site}/av" "${site}"/av-*.dist-info "${site}/av.libs" \
-        "${site}/cv2" "${site}/opencv_python_headless.libs" "${site}"/opencv_python_headless-*.dist-info \
-        "${site}/decord" "${site}"/decord-*.dist-info "${site}/decord.libs" \
-        "${site}/decord2" "${site}"/decord2-*.dist-info "${site}/decord2.libs"
-done
-uv pip install --python /opt/nemo_rl_venv/bin/python --no-cache --no-deps --reinstall \
-    /tmp/ffmpeg/wheels/av-*-abi3-manylinux_2_28_*.whl \
-    /tmp/ffmpeg/wheels/opencv_python_headless-*cp313*.whl \
-    /tmp/ffmpeg/wheels/decord2-*cp313*.whl
+# jackson-databind / jackson-core CVEs: drop ray's bundled ray_dist.jar, which only backs Ray's Java
+# worker support (unused - no JVM here). Removed before the prefetch so no venv symlinks to it.
+find "${UV_CACHE_DIR}" -type d -path "*/ray/jars" -exec rm -rf {} + || true
+
+# FFmpeg CVEs (CVE-2026-8461 + CVE-2026-64830..64835): PyNvVideoCodec bundles FFmpeg 8.1.1 shared
+# libraries, which the scan reports as `ffmpeg` whatever the Python package version is. vLLM pins it
+# so it cannot leave the lock, but nothing on the DPO/GRPO path reaches it: vLLM defaults to the
+# `opencv` video backend and imports PyNvVideoCodec inside decode_frames_pynvvideocodec(), so only
+# the opt-in `pynvvideocodec` backend breaks. Upgrading does not help - 2.2.0 ships FFmpeg 8.1.2,
+# which fixes only one of the seven. The second pattern is the wheel's vendored FFmpeg source
+# tarball. Removed before the prefetch so no venv symlinks into it; only these two directories go,
+# so uv still sees the package as cached and does not re-download it.
+find "${UV_CACHE_DIR}" -type d \
+    \( -name PyNvVideoCodec -o -name 'pynvvideocodec-*.data' \) -exec rm -rf {} + || true
 EOF
 
 # Full RL source including submodules (Automodel, Megatron-Bridge + nested Megatron-LM, Gym). Copied
@@ -278,16 +284,29 @@ RUN uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps -e /opt/nemo-
 # deep_ep / mamba-ssm / causal-conv1d on every job, with a cold uv cache. Prefetching bakes them in
 # (same approach as NeMo-RL's own release stage).
 #
-# Prefetched (filters are SUBSTRING matches against ACTOR FQNs, not extra names). The four filters
-# below resolve to FIVE venvs - exactly what DPO + GRPO + Gym need:
+# Prefetched (filters are SUBSTRING matches against ACTOR FQNs, not extra names). One venv is built
+# PER ACTOR, not per extra - prefetch_venvs.py passes the actor FQN as the venv name - so actors
+# sharing an extra still need their own filter. The six filters below resolve to SEVEN venvs,
+# exactly what DPO + GRPO + sandboxed Gym need:
 #   dtensor_policy_worker.DTensorPolicyWorker -> --extra fsdp     (DPO/GRPO policy training)
 #   vllm.vllm_worker                          -> --extra vllm     (GRPO generation) - matches BOTH
 #       VllmGenerationWorker and VllmAsyncGenerationWorker, which is wanted: NeMo-Gym forces async
 #       rollouts, so the async engine is on the GRPO+Gym path.
 #   sync_rollout_actor.SyncRolloutActor       -> --extra vllm     (GRPO rollout driver, sync path)
-#   nemo_gym.NemoGym                          -> --extra nemo_gym (Gym environment actor)
+#   nemo_gym.NemoGym                          -> --extra nemo_gym (Gym environment actor, mode A)
+#   nemo_gym_actor.SandboxedGymActor          -> --extra nemo_gym (trusted proxy actor, mode B - the
+#       Gym stack itself runs in the job sandbox; this actor never imports user environment code)
+#   broker_actor.SandboxEpisodeBrokerActor    -> --extra nemo_gym (trusted episode broker: creates
+#       per-episode sandboxes on the agent's behalf so the untrusted job sandbox never holds the
+#       OpenSandbox credential)
 # The filters are intentionally specific: a bare "vllm" would also match nemo_rl.modelopt's
-# vllm_quant_worker and drag in the modelopt+vllm combination.
+# vllm_quant_worker and drag in the modelopt+vllm combination, and a bare "nemo_gym" would not
+# distinguish the three nemo_gym-extra actors (it would match all three, which is fine, but naming
+# them keeps this list readable against ray_actor_environment_registry.py).
+#
+# The opensandbox / tenacity SDKs the sandbox path needs arrive through the extra itself: RL
+# declares `nemo_gym = ["nemo_gym[sandbox]"]`, and Gym's `sandbox` extra pins opensandbox>=0.1.9 and
+# tenacity>=9.1.4.
 #
 # NOT prefetched: automodel / mcore (unused by our DPO+GRPO path - see README), sglang, trtllm,
 # modelopt-quant, and the async-GRPO bookkeeping actors AsyncTrajectoryCollector / ReplayBuffer
@@ -299,40 +318,40 @@ uv run nemo_rl/utils/prefetch_venvs.py \
     dtensor_policy_worker.DTensorPolicyWorker \
     vllm.vllm_worker \
     sync_rollout_actor.SyncRolloutActor \
-    nemo_gym.NemoGym
+    nemo_gym.NemoGym \
+    nemo_gym_actor.SandboxedGymActor \
+    broker_actor.SandboxEpisodeBrokerActor
 
-# Gym sandbox CLIENT SDK, into the NemoGym ACTOR venv. NeMo-RL's lock carries opensandbox only
-# behind nemo_gym's own `sandbox` extra, so `uv run --extra nemo_gym` (the executable this actor
-# launches with) does NOT install it. NeMo-Gym imports it lazily in
-# nemo_gym/sandbox/providers/opensandbox/provider.py, so a missing package would surface only on
-# first sandbox use rather than at startup. Installing into the base venv alone is not enough:
-# the actor runs from /opt/ray_venvs, not /opt/nemo_rl_venv.
-GYM_VENV=/opt/ray_venvs/nemo_rl.environments.nemo_gym.NemoGym
-if [ -x "${GYM_VENV}/bin/python" ]; then
-    uv pip install --python "${GYM_VENV}/bin/python" "opensandbox>=0.1.9" "tenacity>=9.1.4"
-else
-    echo "ERROR: expected prefetched NemoGym venv at ${GYM_VENV}" >&2
-    exit 1
-fi
+# Fail loudly if the registry moved an actor out from under a filter above - otherwise the venv
+# would silently be built on the node at first use instead, turning a build error into a slow job.
+# The vLLM-tier actors are listed too: the publish stage privatizes `vllm/` in whatever venvs exist,
+# so a filter that stops producing one would leave that worker sharing ray_executor.py again.
+for actor in \
+    nemo_rl.environments.nemo_gym.NemoGym \
+    nemo_rl.environments.sandbox.nemo_gym_actor.SandboxedGymActor \
+    nemo_rl.environments.sandbox.broker_actor.SandboxEpisodeBrokerActor \
+    nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker \
+    nemo_rl.models.generation.vllm.vllm_worker_async.VllmAsyncGenerationWorker \
+    nemo_rl.experience.sync_rollout_actor.SyncRolloutActor
+do
+    if [ ! -x "/opt/ray_venvs/${actor}/bin/python" ]; then
+        echo "ERROR: expected prefetched venv at /opt/ray_venvs/${actor}" >&2
+        echo "       check the filters above against ray_actor_environment_registry.py" >&2
+        exit 1
+    fi
+done
 EOF
 
-# ---- Bundled NeMo-Gym environment venvs (GRPO only) ----
+# ---- Bundled NeMo-Gym environment venvs (GRPO only; OFF by default, opt in below) ----
 # SECOND, separate venv layer from /opt/ray_venvs above: NeMo-Gym gives every environment server its
 # own venv under NEMO_GYM_VENV_DIR (/opt/gym_venvs), built from that server's own pyproject.toml /
 # requirements.txt. The isolation is required - env deps (rdkit, spacy, numpy 2.x) would otherwise
 # clobber RL's pinned stack.
 #
-# Baking the SHIPPED environments in removes their install cost from job startup. The default config
-# is NeMo-RL's curated union of the environments used across the RLVR / SWE / RLHF stages; it is
-# purpose-built for this (dry-run NemoGym._spinup, dummy interpolation values) and is kept in step
-# with the Gym pin. Override with a space-separated list of config paths, or set empty to skip.
-#
-# NOT covered (by design): user-supplied environment FileSets, which are downloaded per job and so
-# cannot exist at build time - those install into /opt/gym_venvs at first use. A `wheels-v1` FileSet
-# vendors its wheels and installs without PyPI egress; `native-v1` installs from source.
-#
-# DPO does not use NeMo-Gym at all (no rollout/environment stage), so this layer is GRPO-only.
-ARG NEMO_GYM_PREFETCH_CONFIGS=examples/nemo_gym/prefetch_super_all_envs.yaml
+# Nothing is prefetched: every environment installs into /opt/gym_venvs at first use on the node.
+# To bake a set in, pass a space-separated list of Gym config paths - e.g. NeMo-RL's curated
+# examples/nemo_gym/prefetch_super_all_envs.yaml.
+ARG NEMO_GYM_PREFETCH_CONFIGS=""
 # Gym's model servers pin a plain `vllm==0.20.0`, which resolves to the CUDA 12 wheel on PyPI -
 # it would fail to load CUDA libraries inside this CUDA 13 image. Override it to vLLM's prebuilt
 # cu130 GitHub wheel (the same one RL's policy pins) and keep torch on the matching backend, so
@@ -343,7 +362,7 @@ ARG TARGETARCH
 RUN <<"EOF" bash -exu
 export UV_LINK_MODE=symlink
 mkdir -p /opt/gym_venvs
-if [ -n "${NEMO_GYM_PREFETCH_CONFIGS}" ]; then
+if [ -n "${NEMO_GYM_PREFETCH_CONFIGS:-}" ]; then
     cd /opt/nemo-rl
     case "${TARGETARCH:-amd64}" in arm64) WHEEL_ARCH=aarch64 ;; *) WHEEL_ARCH=x86_64 ;; esac
     GYM_VLLM_OVERRIDE=/opt/nemo-rl/.gym-vllm-override.txt
@@ -395,10 +414,16 @@ FROM builder AS nmp-rl-base
 # toolkit / nvcc (deep_ep JIT-compiles kernels at runtime), gcc/build-essential + libibverbs-dev
 # (JIT + native-v1 env-dep compiles), git + curl (git+https env deps, downloads).
 #
-# /opt/uv_cache is NOT pruned and must never be: the venvs under /opt/ray_venvs and /opt/gym_venvs
-# are symlinked into it (UV_LINK_MODE=symlink), so deleting it breaks every one of them. It also
-# doubles as a warm cache for environments installed at runtime (user Gym FileSets, non-prefetched
+# /opt/uv_cache is NOT pruned and must never be: the per-worker venvs under /opt/ray_venvs are
+# symlinked into it (UV_LINK_MODE=symlink), so deleting it breaks every one of them - as it would
+# any /opt/gym_venvs environment baked in via NEMO_GYM_PREFETCH_CONFIGS. It also doubles as a warm
+# cache for everything installed at runtime (Gym environments, user FileSets, non-prefetched
 # actors), making those installs faster.
+#
+# Nsight Systems / Nsight Compute come in with cuda-dl-base and carry Go stdlib CVEs (3 Critical, 25
+# High). They are profilers - nothing on the DPO/GRPO path runs nsys/ncu. This clears them from the
+# flattened rootfs the scanner walks; it does NOT shrink the pulled image, since they live in an
+# ancestor layer and this stage inherits the builder filesystem (see header NOTE).
 RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
     apt-get autoremove -y >/dev/null 2>&1 || true; \
     rm -rf \
@@ -406,6 +431,9 @@ RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
         /usr/local/share/cmake-* \
         /root/.cache/ccache \
         /var/lib/apt/lists/* \
+        /usr/local/cuda*/NsightSystems-cli-* /usr/local/cuda*/nsight-compute-* \
+        /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
+        /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
 
 # NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on every
@@ -438,6 +466,38 @@ RUN chmod -R a+rX /opt/uv /opt/uv_cache /opt/nemo_rl_venv /opt/nemo-rl /opt/gym_
 ARG RUNTIME_UID=1000
 ARG RUNTIME_GID=1000
 RUN chown ${RUNTIME_UID}:${RUNTIME_GID} /opt/ray_venvs /opt/gym_venvs
+
+# NeMo-RL patches vLLM in place at worker startup (models/generation/vllm/patches.py), which
+# symlinking breaks two ways: the venvs are root-owned so the patch lock fails with EACCES as UID
+# 1000, and every vLLM venv symlinks to ONE copy in /opt/uv_cache while the patch writes a per-venv
+# py_executable into it. Giving each venv a private vllm/ fixes both. Scoped to vllm/ (~506 MB x 3)
+# rather than UV_LINK_MODE=copy globally (~56 GB) - see README.md, "Link mode".
+RUN <<"EOF" bash -exu
+privatized=0
+for sp in /opt/ray_venvs/*/lib/python*/site-packages; do
+    [ -d "${sp}/vllm" ] || continue
+    # -L turns the per-file symlinks into real files; the uv cache entries stay untouched.
+    cp -rL --preserve=mode,timestamps "${sp}/vllm" "${sp}/.vllm.private"
+    rm -rf "${sp}/vllm"
+    mv "${sp}/.vllm.private" "${sp}/vllm"
+    chmod -R a+rX "${sp}/vllm"
+    chown -R ${RUNTIME_UID}:${RUNTIME_GID} "${sp}/vllm"
+    privatized=$((privatized + 1))
+done
+# Fail loudly: if the vllm prefetch filters change, this must not become a silent no-op.
+if [ "${privatized}" -eq 0 ]; then
+    echo "ERROR: no prefetched venv contains a vllm package." >&2
+    echo "       check the vllm prefetch filters against ray_actor_environment_registry.py" >&2
+    exit 1
+fi
+echo "privatized vllm/ in ${privatized} venv(s)"
+EOF
+
+# Gym falls back to this in-tree cache when a process does not inherit NRL_CONTAINER / UV_CACHE_DIR
+# (the sandboxed Gym host's per-app servers), and fails with EACCES on a root-owned tree. Keeping
+# the fallback writable is the safety net; the real fix is env propagation, which lives in NeMo-RL.
+RUN mkdir -p /opt/nemo-rl/3rdparty/Gym-workspace/Gym/cache && \
+    chown ${RUNTIME_UID}:${RUNTIME_GID} /opt/nemo-rl/3rdparty/Gym-workspace/Gym/cache
 
 WORKDIR /opt/nemo-rl
 

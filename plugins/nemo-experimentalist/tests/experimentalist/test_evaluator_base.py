@@ -6,13 +6,8 @@ from pathlib import Path
 from typing import Sequence
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    Evaluator,
-    EvaluatorConfig,
-    MetricResult,
-    TrialResult,
-)
+from nemo_experimentalist_plugin.entities import Dataset, MetricResult, TrialResult
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator, EvaluatorConfig
 
 _HAPPY_PATH_TRIAL_RESULTS = [
     TrialResult(

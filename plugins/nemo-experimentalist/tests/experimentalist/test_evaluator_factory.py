@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import DatasetRef
+from nemo_experimentalist_plugin.entities import DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Dataset,
     Evaluator,
@@ -18,7 +18,6 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import Task
 
 _UNSUPPORTED_TYPE = "unsupported"
 _SUPPORTED_TYPE = "concrete"

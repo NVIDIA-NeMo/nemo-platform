@@ -45,7 +45,7 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "eslint-plugin-testing-library": "^7.15.4",
     "eslint-plugin-unused-imports": "^4.1.4",
-    "globals": "^15.15.0",
+    "globals": "^17.7.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.6.2",
@@ -54,8 +54,8 @@
     "typescript-eslint": "^8.59.0"
   },
   "engines": {
-    "node": ">=22.18.0 <23",
-    "pnpm": ">=10.32.1"
+    "node": ">=22.23.2 <23",
+    "pnpm": ">=10.34.5"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@10.34.5"
 }

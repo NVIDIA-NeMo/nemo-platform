@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Created by local Hermes / Fabric optimize runs — do not commit.
+artifacts/
+.e2e-storage/
+.tmp/

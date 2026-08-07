@@ -5,13 +5,13 @@ import * as router from 'react-router';
 import type { Mock } from 'vitest';
 
 export const mockUseParams = (params?: router.Params) => {
-  vitest.spyOn(router, 'useParams').mockImplementation(() => {
+  vi.mocked(router.useParams).mockImplementation(() => {
     return params ?? {};
   });
 };
 
 export const mockUseNavigate = (mockImplementation?: Mock) => {
-  vitest.spyOn(router, 'useNavigate').mockImplementation(() => {
+  vi.mocked(router.useNavigate).mockImplementation(() => {
     return mockImplementation ?? vi.fn();
   });
 };

@@ -9,7 +9,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { SIDE_NAV_OPEN_KEY } from '@studio/util/localStorage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 const mockItems = [
   { id: 'projects', slotLabel: 'Projects', icon: 'ProjectsIcon', href: ROUTES.workspace.index },
@@ -23,8 +23,8 @@ const mockItems = [
     group: 'Evaluate',
     items: [
       {
-        id: 'annotation',
-        slotLabel: 'Annotation',
+        id: 'traces',
+        slotLabel: 'Traces',
         subItems: [
           {
             id: 'entries',
@@ -78,7 +78,7 @@ describe('NavigationDrawer', () => {
       renderWithProjectRoute(<NavigationDrawer items={mockItems} />);
       expect(await screen.findByText('Projects')).toBeInTheDocument();
       expect(await screen.findByText('Customizations')).toBeInTheDocument();
-      expect(await screen.findByText('Annotation')).toBeInTheDocument();
+      expect(await screen.findByText('Traces')).toBeInTheDocument();
       expect(await screen.findByText('Entries')).toBeInTheDocument();
       expect(await screen.findByText('Export Jobs')).toBeInTheDocument();
     });
@@ -119,13 +119,13 @@ describe('NavigationDrawer', () => {
 
       const NavigationDrawer = await importNavigationDrawer();
       renderWithProjectRoute(<NavigationDrawer items={mockItems} />);
-      expect(await screen.findByText('Annotation')).toBeInTheDocument();
+      expect(await screen.findByText('Traces')).toBeInTheDocument();
       expect(await screen.findByText('Entries')).toBeInTheDocument();
       expect(await screen.findByText('Export Jobs')).toBeInTheDocument();
 
       // KUI v1.0 collapsible uses native <details><summary> — find the summary via text.
       // eslint-disable-next-line testing-library/no-node-access
-      const accordionTrigger = screen.getByText('Annotation').closest('summary');
+      const accordionTrigger = screen.getByText('Traces').closest('summary');
       expect(accordionTrigger).not.toBeNull();
 
       // Starts expanded

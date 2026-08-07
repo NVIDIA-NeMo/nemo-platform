@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient, _type_adapter
+from nemo_platform_plugin.client.client import DEFAULT_TIMEOUT, AsyncNemoClient, NemoClient, _type_adapter
 from nemo_platform_plugin.client.endpoint import delete, get, post
 from nemo_platform_plugin.client.errors import NemoHTTPError, NemoResponseValidationError, NotFoundError
 from nemo_platform_plugin.client.response import NemoResponse
@@ -468,6 +468,75 @@ def test_response_carries_prepared_request() -> None:
     assert resp.request is not None
     assert resp.request.method == "GET"
     assert resp.request.path_params == {"name": "alice"}
+
+
+# ---------------------------------------------------------------------------
+# Timeout
+# ---------------------------------------------------------------------------
+
+
+def test_constructor_timeout_is_sent_with_every_request() -> None:
+    """A supplied transport's timeout is fixed, so the override rides per request."""
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+        json={"id": 1, "name": "alice"},
+    )
+    upload_timeout = httpx.Timeout(30.0, write=10 * 60, read=5 * 60)
+
+    client = NemoClient(base_url=BASE, http_client=mock_http, timeout=upload_timeout)
+    client.send(GET_ITEM(name="alice"))
+
+    assert mock_http.request.call_args.kwargs["timeout"] == upload_timeout
+
+
+def test_omitted_timeout_defers_to_the_transport() -> None:
+    mock_http = MagicMock(spec=httpx.Client)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+        json={"id": 1, "name": "alice"},
+    )
+
+    client = NemoClient(base_url=BASE, http_client=mock_http)
+    client.send(GET_ITEM(name="alice"))
+
+    assert "timeout" not in mock_http.request.call_args.kwargs
+
+
+def test_owned_transport_is_built_with_the_default_timeout() -> None:
+    client = NemoClient(base_url=BASE)
+
+    assert client._http.timeout == httpx.Timeout(DEFAULT_TIMEOUT)
+
+
+def test_from_client_carries_the_timeout() -> None:
+    """The clone shares the transport, so it must carry the override too."""
+    upload_timeout = httpx.Timeout(30.0, write=10 * 60, read=5 * 60)
+    client = NemoClient(
+        base_url=BASE,
+        http_client=MagicMock(spec=httpx.Client),
+        timeout=upload_timeout,
+    )
+
+    assert NemoClient.from_client(client)._timeout == upload_timeout
+
+
+@pytest.mark.asyncio
+async def test_constructor_timeout_is_sent_with_every_request_async() -> None:
+    mock_http = AsyncMock(spec=httpx.AsyncClient)
+    mock_http.request.return_value = httpx.Response(
+        200,
+        request=httpx.Request("GET", f"{BASE}/apis/test/v2/items/alice"),
+        json={"id": 1, "name": "alice"},
+    )
+    upload_timeout = httpx.Timeout(30.0, write=10 * 60, read=5 * 60)
+
+    client = AsyncNemoClient(base_url=BASE, http_client=mock_http, timeout=upload_timeout)
+    await client.send(GET_ITEM(name="alice"))
+
+    assert mock_http.request.call_args.kwargs["timeout"] == upload_timeout
 
 
 # ---------------------------------------------------------------------------

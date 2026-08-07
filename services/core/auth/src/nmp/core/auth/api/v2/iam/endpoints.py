@@ -13,7 +13,7 @@ from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOp
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.auth import AuthClient, get_auth_client
-from nmp.common.entities import ALL_WORKSPACES, EntityClient
+from nmp.common.entities import ALL_WORKSPACES, EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.core.auth.entities import RoleBindingEntity
 
@@ -46,6 +46,23 @@ def _generate_binding_name(principal: str, workspace: str, role: str) -> str:
     composite_key = f"{principal}:{workspace}:{role}"
     hash_digest = hashlib.sha256(composite_key.encode()).hexdigest()[:24]
     return f"rb-{hash_digest}"  # rb- prefix + 24 hex chars = 27 chars
+
+
+async def _get_role_binding_by_name(
+    entities_client: EntityClient,
+    name: str,
+) -> RoleBindingEntity:
+    """Resolve a role binding by its deterministic name across workspaces."""
+    try:
+        return await entities_client.find_one(
+            RoleBindingEntity,
+            workspace=ALL_WORKSPACES,
+            filter_obj={"name": name},
+        )
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Role binding not found") from e
+    except EntityConflictError as e:
+        raise HTTPException(status_code=409, detail=f"Multiple role bindings found for name '{name}'") from e
 
 
 @router.get(
@@ -197,9 +214,7 @@ async def get_role_binding(
     This endpoint requires Platform Admin permissions.
     """
     require_service_principal_for_iam_role_bindings(auth_client)
-    obj = await entities_client.get(RoleBindingEntity, name=name)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="Role binding not found")
+    obj = await _get_role_binding_by_name(entities_client, name)
 
     return RoleBinding.model_validate(obj.model_dump())
 
@@ -227,9 +242,7 @@ async def revoke_role_binding(
     Use `wait_role_propagation=false` to skip waiting (useful for bulk operations).
     """
     require_service_principal_for_iam_role_bindings(auth_client)
-    obj = await entities_client.get(RoleBindingEntity, name=name)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="Role binding not found")
+    obj = await _get_role_binding_by_name(entities_client, name)
 
     if obj.revoked_at is not None:
         raise HTTPException(status_code=409, detail="Role binding is already revoked")

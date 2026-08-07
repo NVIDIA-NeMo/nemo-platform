@@ -277,8 +277,10 @@ class RetryPolicy:
     Set as a client-level default via the ``retry`` constructor parameter,
     or override per-request via ``send()``'s ``retry`` keyword argument.
 
-    This is an operational concern — it does not belong in endpoint
-    signatures.
+    This is an operational concern and does not belong in endpoint
+    signatures. Response-header handling and broad server-error retries are
+    opt-in so adapters can reproduce another client's retry contract without
+    changing standalone client defaults.
 
     .. note::
 
@@ -287,6 +289,15 @@ class RetryPolicy:
         non-safe methods (POST, PATCH).  Consider using an
         ``Idempotency-Key`` header for create operations that must be
         safe to retry.
+
+        A request whose ``content`` is a generator, file object or other
+        one-shot iterable is only retried while its body is still
+        untouched — that is, on a connection-establishment failure.  Once
+        httpx has started reading the body it cannot be sent again, so a
+        mid-body failure (and any retryable status code, which by
+        definition arrives after the body) is raised to the caller
+        instead.  Retry those where the body can be rebuilt from its
+        source.
 
     Usage::
 
@@ -300,6 +311,9 @@ class RetryPolicy:
     max_retries: int = 3
     backoff_base: float = 0.5
     retryable_status_codes: tuple[int, ...] = (502, 503, 504, 429)
+    retry_all_server_errors: bool = False
+    respect_retry_decision_headers: bool = False
+    respect_retry_after_headers: bool = False
 
 
 @dataclass(frozen=True, slots=True)

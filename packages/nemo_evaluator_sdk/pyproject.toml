@@ -36,7 +36,9 @@ dependencies = [
   # nemo-fabric-runtime unconditionally as of rc4, which is why the `runtime` extra it used to expose
   # is gone. The harness adapters are the weight (codex ~299 MB, claude ~231 MB) and stay in the
   # `fabric` extra below, so only *resolving and running* a harness pulls them.
-  "nemo-fabric>=0.1.0rc6,<0.2.0",
+  # Floor stays at 0.1.0 so published wheels remain PyPI-resolvable; workspace uv.sources
+  # pins the mid-Aug main SHA (0.2.0 content) until PyPI ships 0.2.0.
+  "nemo-fabric>=0.1.0,<0.3.0",
 ]
 version = "0.0.0"
 
@@ -92,9 +94,12 @@ nemo-platform = [
 #   * deepagents is omitted to match plugins/nemo-agents (AIRCORE-952: its adapter does not support
 #     the Relay observability v2 config Fabric streaming generates). Nothing here exercises it.
 fabric = [
-  "nemo-fabric[claude,codex]>=0.1.0rc6,<0.2.0",
-  "nemo-fabric-adapters-hermes>=0.1.0rc6,<0.2.0; python_version < '3.14'",
+  "nemo-fabric[claude,codex]>=0.1.0,<0.3.0",
+  "nemo-fabric-adapters-hermes>=0.1.0,<0.3.0; python_version < '3.14'",
 ]
+
+[project.entry-points."nemo.fabric.task_hooks"]
+mcp_run_binding = "nemo_evaluator_sdk.agent_eval.runtimes.fabric.hooks_mcp_binding:McpRunBindingHook"
 
 [build-system]
 requires = ["hatchling"]

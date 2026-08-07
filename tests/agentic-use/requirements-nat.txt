@@ -15,18 +15,22 @@
 #
 #   python3.11 -m venv .venv-nat
 #   source .venv-nat/bin/activate
-#   pip install -r tests/agentic-use/requirements-nat.txt
+#   uv pip install --python .venv-nat/bin/python --prerelease=allow \
+#     -r tests/agentic-use/requirements-nat.txt
 #   nat --version
 #
 # OR use uv with an isolated venv:
 #
 #   uv venv .venv-nat --python 3.11
-#   uv pip install -r tests/agentic-use/requirements-nat.txt --python .venv-nat/bin/python
+#   uv pip install --python .venv-nat/bin/python --prerelease=allow \
+#     -r tests/agentic-use/requirements-nat.txt
 #
 # DOCKER CONTAINER
 # ----------------
 # Dockerfile.agentic-base installs this automatically during image build:
-#   uv pip install "nvidia-nat[mcp,eval,langchain]"
+#   uv pip install --prerelease=allow "nvidia-nat[mcp,eval,langchain]==1.8.0" ...
 
-nvidia-nat[mcp,eval,langchain]
-nvidia-nat-atif
+nvidia-nat[mcp,eval,langchain]==1.8.0
+nvidia-nat-atif==1.8.0
+nvidia-nat-eval==1.8.0
+nvidia-nat-mcp==1.8.0

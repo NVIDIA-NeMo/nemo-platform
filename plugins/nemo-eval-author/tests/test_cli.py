@@ -5,7 +5,8 @@
 
 The entry-point cases cover the ``pyproject.toml`` wiring that nothing else exercises. A
 typo in the key or the import path does not fail an import; it just makes ``nemo
-eval-author`` quietly missing from the CLI, which no unit test of this module would catch.
+agents eval-author`` quietly missing from the CLI, which no unit test of this module would
+catch.
 
 ``discover`` has shipped, so it is asserted on in ``discover/test_command.py`` instead. It
 is listed in ``_IMPLEMENTED_VERBS`` here only so ``--help`` still has to show it.
@@ -25,7 +26,7 @@ _PLACEHOLDER_VERBS = [
     ("audit", "ASE-676"),
     ("propose", "ASE-675"),
     ("run", "ASE-673"),
-    ("doctor", "ASE-769"),
+    ("doctor", "ASE-678"),
 ]
 
 _IMPLEMENTED_VERBS = ["discover"]
@@ -37,8 +38,8 @@ def app() -> typer.Typer:
 
 
 def _eval_author_entry_point() -> EntryPoint:
-    matches = [entry for entry in entry_points(group="nemo.cli") if entry.name == "eval-author"]
-    assert matches, "no nemo.cli entry point named 'eval-author'; reinstall the plugin with uv sync"
+    matches = [entry for entry in entry_points(group="nemo.cli.agents") if entry.name == "eval-author"]
+    assert matches, "no nemo.cli.agents entry point named 'eval-author'; reinstall the plugin with uv sync"
     return matches[0]
 
 
@@ -56,6 +57,24 @@ def test_verb_refuses_to_run_and_names_its_ticket(app: typer.Typer, command: str
 
     assert result.exit_code == 1, result.output
     assert ticket in result.output
+
+
+def test_not_implemented_quotes_the_invoked_command_path() -> None:
+    """Placeholder messages use ``ctx.command_path``, not a hardcoded CLI string."""
+    app = typer.Typer()
+
+    @app.callback()
+    def _root() -> None:
+        """Force subcommand dispatch."""
+
+    @app.command("probe")
+    def probe(ctx: typer.Context) -> None:
+        cli._not_implemented(ctx, "ASE-000")
+
+    result = runner.invoke(app, ["probe"], prog_name="nemo")
+
+    assert result.exit_code == 1, result.output
+    assert "`nemo probe` is not implemented yet (ASE-000)." in result.output
 
 
 def test_entry_point_key_matches_the_cli_name() -> None:

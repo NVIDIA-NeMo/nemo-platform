@@ -6,13 +6,13 @@ min_rounds_before_stopping: 1
 max_survivors: 1
 max_candidates: 1
 max_trajectory_tasks: 2
-max_train_batch_tasks: 4
 train_batch_seed: 20260727
 disable_trajectory_scoring: true
 disable_convergence_check: true
+storage:
+  archive_candidates: true
 evaluator:
   n_attempts: 1
-  n_concurrent_trials: 1
   quiet: true
   agent_setup_timeout_multiplier: 2.0
   environment_build_timeout_multiplier: 3.0

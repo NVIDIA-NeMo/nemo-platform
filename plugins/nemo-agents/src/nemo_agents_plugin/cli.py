@@ -14,10 +14,11 @@ instance.
 - ``invoke``   — single invocation
 - ``run``      — start a persistent local FastAPI server
 
-The ``evaluate`` and ``optimize`` commands are auto-generated from the
-``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
-``nemo.jobs`` entry-point group — the platform injects them into this CLI
-group at startup.
+The ``evaluate`` command is auto-generated from the
+``EvaluateAgentJob`` registered under the
+``nemo.jobs`` entry-point group — the platform injects it into this CLI
+group at startup. Numeric optimize is likewise auto-injected from
+``agents.optimize`` (``OptimizeJob`` in ``nemo-optimization``).
 
 **Agent Resources commands (require a running cluster):**
 
@@ -62,8 +63,11 @@ from nemo_agents_plugin.cli_context import (
 )
 from nemo_agents_plugin.entities import (
     CONTAINER_DEPLOYMENT_MODES,
+    MAX_AGENT_SPEC_STAGED_BYTES,
+    MAX_AGENT_SPEC_STAGED_FILES,
     NAT_WORKFLOW_CONFIG_FORMAT,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    agent_spec_fileset_name,
 )
 from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
@@ -263,10 +267,8 @@ def _register_local_commands(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
 
 
-# Note: ``evaluate`` and ``optimize`` commands are auto-generated from the
-# ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
-# ``nemo.jobs`` entry-point group.  The platform's CLI loader injects them
-# into this group at startup (see ``nemo_platform_ext.cli.app``).
+# Note: ``evaluate`` and ``optimize`` (run/submit/explain) are auto-generated
+# from ``nemo.jobs`` entry points.
 
 
 # ---------------------------------------------------------------------------
@@ -364,20 +366,19 @@ def _register_package_command(app: typer.Typer) -> None:
             "Defaults to 'Dockerfile' next to --pyproject when given (project root, "
             "so COPY statements resolve), otherwise next to the agent config.",
         ),
-        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NAT_BASE_IMAGE_URL"),
-        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NAT_BASE_IMAGE_TAG"),
-        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NAT_PYTHON_VERSION"),
+        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NEMO_AGENTS_BASE_IMAGE_URL"),
+        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NEMO_AGENTS_BASE_IMAGE_TAG"),
+        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NEMO_AGENTS_PYTHON_VERSION"),
         nat_version: Optional[str] = typer.Option(
             None,
             "--nat-version",
-            envvar="NAT_VERSION",
             help=(
                 "NAT release to install (e.g. '1.7.0').  Strongly recommended: "
                 "pin explicitly so image tags/labels/deps are reproducible.  "
                 "When omitted, a baked-in default is used and a warning is printed."
             ),
         ),
-        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NAT_UV_VERSION"),
+        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NEMO_AGENTS_UV_VERSION"),
         allow_root: bool = typer.Option(
             False, "--allow-root", help="Disable non-root USER hardening in the rendered Dockerfile."
         ),
@@ -394,7 +395,7 @@ def _register_package_command(app: typer.Typer) -> None:
             True, "--ignore/--no-ignore", help="Generate a .dockerignore file alongside the Dockerfile."
         ),
         skip_validation: bool = typer.Option(
-            False, "--skip-validation", help="Bypass validate_agent_config before build."
+            False, "--skip-validation", help="Bypass agent config validation before build."
         ),
         agent_version: Optional[str] = typer.Option(None, "--agent-version", help="Override agent version OCI label."),
         agent_author: Optional[str] = typer.Option(None, "--agent-author", help="Override agent author OCI label."),
@@ -426,11 +427,29 @@ def _register_package_command(app: typer.Typer) -> None:
             template=template,
             platform=platform,
         )
-        _warn_if_nat_version_unpinned(nat_version)
+
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        try:
+            config_format = detect_agent_config_format(agent)
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+
+        if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+            _warn_if_nat_version_unpinned(nat_version)
+        elif config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT and nat_version is not None:
+            typer.echo(
+                "Error: --nat-version is only valid for NAT workflow packaging; "
+                "Fabric agent packaging does not use NAT_VERSION.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
 
         if no_build:
             _package_render_only(
                 agent_config=agent,
+                config_format=config_format,
                 pyproject=pyproject,
                 output=output,
                 format=format,
@@ -448,28 +467,48 @@ def _register_package_command(app: typer.Typer) -> None:
             )
             return
 
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_fabric_agent_image, build_nat_agent_image
 
         try:
-            result_tag = build_agent_image(
-                agent,
-                pyproject=pyproject,
-                dockerfile=dockerfile,
-                tag=tag,
-                nat_version=nat_version,
-                base_image_url=base_image_url,
-                base_image_tag=base_image_tag,
-                python_version=python_version,
-                uv_version=uv_version,
-                allow_root=allow_root,
-                sandbox_runtime=sandbox_runtime,
-                agent_version=agent_version,
-                agent_author=agent_author,
-                template_path=template,
-                skip_validation=skip_validation,
-                generate_ignore=generate_ignore,
-                platforms=platform,
-            )
+            if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+                result_tag = build_fabric_agent_image(
+                    agent,
+                    pyproject=pyproject,
+                    dockerfile=dockerfile,
+                    tag=tag,
+                    base_image_url=base_image_url,
+                    base_image_tag=base_image_tag,
+                    python_version=python_version,
+                    uv_version=uv_version,
+                    allow_root=allow_root,
+                    sandbox_runtime=sandbox_runtime,
+                    agent_version=agent_version,
+                    agent_author=agent_author,
+                    template_path=template,
+                    skip_validation=skip_validation,
+                    generate_ignore=generate_ignore,
+                    platforms=platform,
+                )
+            else:
+                result_tag = build_nat_agent_image(
+                    agent,
+                    pyproject=pyproject,
+                    dockerfile=dockerfile,
+                    tag=tag,
+                    nat_version=nat_version,
+                    base_image_url=base_image_url,
+                    base_image_tag=base_image_tag,
+                    python_version=python_version,
+                    uv_version=uv_version,
+                    allow_root=allow_root,
+                    sandbox_runtime=sandbox_runtime,
+                    agent_version=agent_version,
+                    agent_author=agent_author,
+                    template_path=template,
+                    skip_validation=skip_validation,
+                    generate_ignore=generate_ignore,
+                    platforms=platform,
+                )
         except ValueError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1)
@@ -570,6 +609,7 @@ def _warn_if_nat_version_unpinned(nat_version: Optional[str]) -> None:
 def _package_render_only(
     *,
     agent_config: Path,
+    config_format: str,
     pyproject: Optional[Path],
     output: Optional[Path],
     format: str,
@@ -590,23 +630,42 @@ def _package_render_only(
     # before we get here; assert for the developer who deletes that guard.
     assert format == "docker", f"unreachable: format={format!r}"
 
-    from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
+    from nemo_agents_plugin.container.template import (
+        render_dockerignore,
+        render_fabric_dockerfile,
+        render_nat_dockerfile,
+    )
 
     try:
-        content = render_dockerfile(
-            agent_config,
-            pyproject,
-            base_image_url=base_image_url,
-            base_image_tag=base_image_tag,
-            python_version=python_version,
-            nat_version=nat_version,
-            uv_version=uv_version,
-            allow_root=allow_root,
-            sandbox_runtime=sandbox_runtime,
-            agent_version=agent_version,
-            agent_author=agent_author,
-            template_path=template,
-        )
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            content = render_fabric_dockerfile(
+                agent_config,
+                pyproject,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+            )
+        else:
+            content = render_nat_dockerfile(
+                agent_config,
+                pyproject,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                nat_version=nat_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                sandbox_runtime=sandbox_runtime,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+            )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1)
@@ -727,6 +786,38 @@ def _register_platform_commands(app: typer.Typer) -> None:
             "config_format": config_format,
         }
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
+        if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+            try:
+                _upload_agent_spec_fileset(
+                    agent_name=name,
+                    workspace=workspace,
+                    agent_root=agent_config.parent,
+                    base_url=base_url,
+                )
+            except Exception as exc:
+                typer.echo(
+                    f"Error: failed to upload agent spec fileset for {name!r}: {exc}",
+                    err=True,
+                )
+                try:
+                    _delete_agent_entity(
+                        agent_name=name,
+                        workspace=workspace,
+                        base_url=base_url,
+                    )
+                # ``typer.Exit`` subclasses ``Exception``, so this also covers the
+                # exit raised by ``_api_request`` on an HTTP error.
+                except Exception:
+                    logger.exception(
+                        "Failed to roll back agent %r after fileset upload failure",
+                        name,
+                    )
+                    typer.echo(
+                        f"Error: failed to roll back agent {name!r}; it may still exist on the "
+                        f"platform. Remove it with `nemo agents delete {name}`.",
+                        err=True,
+                    )
+                raise typer.Exit(code=1) from exc
         typer.echo(json.dumps(resp, indent=2))
 
     @app.command(name="list", rich_help_panel="Agent Resources (requires running cluster)")
@@ -783,7 +874,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
         base_url = _resolve_base_url(base_url)
         if not yes:
             typer.confirm(f"Delete agent '{name}'?", abort=True)
-        _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{name}")
+        _delete_agent_entity(agent_name=name, workspace=workspace, base_url=base_url)
         typer.echo(f"Agent '{name}' deleted.")
 
     @app.command(rich_help_panel="Agent Resources (requires running cluster)")
@@ -1476,6 +1567,92 @@ def _api_request(method: str, base_url: str, path: str, *, json_body: dict[str, 
     except httpx.RequestError as exc:
         print_http_request_error(exc, action=f"{method} agent API")
         raise typer.Exit(code=1)
+
+
+def _platform_sdk(base_url: str) -> Any:
+    """Return an auth-aware platform SDK client for fileset upload/delete."""
+    from nemo_platform import NeMoPlatform
+
+    headers = _resolve_context_headers()
+    if headers:
+        return NeMoPlatform(base_url=base_url, default_headers=headers)
+    return NeMoPlatform(base_url=base_url)
+
+
+def _check_agent_root_bounds(agent_root: Path) -> None:
+    """Reject an agent root too large to deliver into a container deployment.
+
+    The upload is recursive with no server-side filtering, so an ``agent.yaml``
+    sitting in a source checkout would ship the whole tree and then fail at
+    container start when the ConfigMap/env payload is built. Fail here instead,
+    naming the limit that was exceeded.
+
+    Symlinks are rejected rather than skipped: the upload enumerates them and
+    ships their target content, so skipping one here would both stage files from
+    outside *agent_root* and let them evade the limits below.
+    """
+    total_bytes = 0
+    file_count = 0
+    for path in agent_root.rglob("*"):
+        if path.is_symlink():
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} contains symlink "
+                f"{path.relative_to(agent_root).as_posix()!r}; the fileset upload follows "
+                "symlinks, which would stage content from outside the agent directory. "
+                "Replace it with a regular file or move the target inside the agent directory"
+            )
+        if not path.is_file():
+            continue
+        file_count += 1
+        total_bytes += path.stat().st_size
+        if file_count > MAX_AGENT_SPEC_STAGED_FILES:
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} holds more than "
+                f"{MAX_AGENT_SPEC_STAGED_FILES} files; point --agent-config at a "
+                "directory containing only the agent's own artifacts"
+            )
+        if total_bytes > MAX_AGENT_SPEC_STAGED_BYTES:
+            raise ValueError(
+                f"agent directory {str(agent_root)!r} exceeds the "
+                f"{MAX_AGENT_SPEC_STAGED_BYTES} byte limit for container config delivery; "
+                "point --agent-config at a directory containing only the agent's own artifacts"
+            )
+
+
+def _upload_agent_spec_fileset(
+    *,
+    agent_name: str,
+    workspace: str,
+    agent_root: Path,
+    base_url: str,
+) -> None:
+    """Upload *agent_root* into the conventional ``{agent}-spec`` fileset.
+
+    *agent_root* is ``agent.yaml``'s parent directory (Fabric ``base_dir``).
+    Agent YAML must live in a dedicated agent root so sibling artifacts
+    (skills, prompts) upload without shipping an unrelated checkout tree.
+    """
+    from nemo_agents_plugin.jobs.fileset_io import upload_to_fileset
+
+    _check_agent_root_bounds(agent_root)
+    upload_to_fileset(
+        agent_root,
+        fileset=agent_spec_fileset_name(agent_name),
+        workspace=workspace,
+        sdk=_platform_sdk(base_url),
+    )
+
+
+def _delete_agent_entity(*, agent_name: str, workspace: str, base_url: str) -> None:
+    """Delete the agent entity, leaving the ``{agent}-spec`` fileset in place.
+
+    The fileset outlives the agent on purpose: it is the canonical home of
+    ``AGENT-SPEC.md`` (see ``agent_spec_file_ref``), which ``nemo-spec`` writes
+    before the agent exists and ``nemo-build-agent`` reads on every rebuild.
+    Deleting the fileset here would destroy that durable contract, so the
+    executable artifacts it also carries are left behind instead.
+    """
+    _api_request("DELETE", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents/{agent_name}")
 
 
 def _load_yaml(path: Path) -> dict:

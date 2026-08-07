@@ -1,24 +1,26 @@
 ---
 name: nooa
 description: Build, modify, debug, or optimize agents using NVIDIA-labs OO Agents (NOOA). Use for nooa.Agent subclasses, ellipsis generation methods, CodeAct or Predict strategies, ShellTools, Skill/TextSkill, context and persistence, MCP, tracing, middleware, channels, or trace analysis.
-compatibility: Python >= 3.12,<3.14; uv; nooa at the revision pinned in pyproject.toml
+compatibility: Python >= 3.12,<3.14; uv; nooa at the revision pinned in the workspace root pyproject.toml
 metadata:
   upstream: https://github.com/NVIDIA-NeMo/labs-OO-Agents
-  revision: bea4614a0e2a6cf88f76225466159af883da80a0
+  revision: 6e0274dd03f883254a084cfb9f871ea580e03434
 ---
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
 # NVIDIA-labs OO Agents (NOOA)
 
-Use the `nooa` package and namespace pinned in this repository.
+Use the `nooa` package and namespace this repository pins. The revision is set in
+the workspace root `pyproject.toml` under `[tool.uv.sources]` — the plugin's own
+`pyproject.toml` declares `nooa` without one.
 
 For detailed framework guidance, consult the skills at the immutable upstream
 revision this repository pins:
-https://github.com/NVIDIA-NeMo/labs-OO-Agents/tree/bea4614a0e2a6cf88f76225466159af883da80a0/skills
+https://github.com/NVIDIA-NeMo/labs-OO-Agents/tree/6e0274dd03f883254a084cfb9f871ea580e03434/skills
 
 Before changing framework behavior, inspect the pinned implementation or the
-matching upstream skill instead of guessing. In Optimizer:
+matching upstream skill instead of guessing. In Experimentalist:
 
 - Call `super().__init__()` before attaching tools or skills.
 - Use `GuardedShellTools` where workspace access must remain restricted.

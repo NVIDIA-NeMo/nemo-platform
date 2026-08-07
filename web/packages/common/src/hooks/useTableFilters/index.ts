@@ -3,7 +3,7 @@
 
 import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { useState, useEffect, useCallback, SetStateAction, Dispatch } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useDebounce } from 'use-debounce';
 
 import {

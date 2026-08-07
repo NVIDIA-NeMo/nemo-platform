@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Dataset
+from nemo_experimentalist_plugin.entities import Dataset
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -18,7 +19,6 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match, ShellTools, TodoManager
 from pydantic import BaseModel, Field, model_validator
 
-from .model_config import get_fast_model
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -279,7 +279,7 @@ def find_node(root: GoalNode, node_id: str) -> GoalNode | None:
 GoalNode.model_rebuild()
 
 
-class GoalTreeGenerator(Agent, llm=get_fast_model()):
+class GoalTreeGenerator(Agent):
     """Generates the goal tree consumed by the trajectory scorer.
 
     The generator MUST NOT see the agent's implementation, harbor wrapper, or any
@@ -300,7 +300,7 @@ class GoalTreeGenerator(Agent, llm=get_fast_model()):
             **kwargs: additional arguments passed to the parent Agent.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
         self._config = config
         self._workspace_path = workspace.resolve()
 
@@ -464,7 +464,7 @@ class GoalTreeGenerator(Agent, llm=get_fast_model()):
         analysis: str,
         round_num: int,
         agent_spec: Path | None = None,
-    ) -> GoalTree:  # pyright: ignore[reportReturnType]
+    ) -> GoalTree:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Propose a reweighted goal tree informed by a round of agent analysis.
 
         # What you receive

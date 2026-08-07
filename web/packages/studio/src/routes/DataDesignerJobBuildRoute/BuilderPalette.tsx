@@ -10,7 +10,7 @@ import type {
   JobBuilderFormValues,
   PaletteTab,
 } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
 
 export interface BuilderPaletteProps {
@@ -24,7 +24,7 @@ export interface BuilderPaletteProps {
 }
 
 // Tabs only swap what you're adding — column and model configs both open in the right pane.
-export const BuilderPalette: FC<BuilderPaletteProps> = ({
+export const BuilderPalette: FC<BuilderPaletteProps> = memo(function BuilderPalette({
   tab,
   onTabChange,
   selectedModelId,
@@ -32,7 +32,7 @@ export const BuilderPalette: FC<BuilderPaletteProps> = ({
   onAddColumn,
   onAddModel,
   onSelectModel,
-}) => {
+}) {
   const { control, getValues } = useFormContext<JobBuilderFormValues>();
   const models = useWatch({ control, name: 'models' });
   const hasSeedColumn = getValues('columns').some(
@@ -69,4 +69,4 @@ export const BuilderPalette: FC<BuilderPaletteProps> = ({
       </div>
     </aside>
   );
-};
+});

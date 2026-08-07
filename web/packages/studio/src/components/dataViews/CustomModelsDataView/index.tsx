@@ -43,7 +43,7 @@ import { getIntakeTracesRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { BrainCircuit, X, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 type SearchQuery = Record<string, unknown>;
 

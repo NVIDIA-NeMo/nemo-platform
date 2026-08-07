@@ -20,16 +20,19 @@ import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, TypeVar, cast
 from urllib.parse import urlparse
 
 import httpx
-from nemo_experimentalist_plugin.entities import Candidate, ExperimentRun
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import (
+from nemo_experimentalist_plugin.config import CandidateStorageConfig
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
     EvaluationResult,
+    ExperimentRun,
     ResourceRef,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.atif import build_ingest_payload, read_session_id
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
     AgentSource,
     PRPublisher,
@@ -42,12 +45,6 @@ from nemo_experimentalist_plugin.experimentalist.components.repository import (
 from nemo_experimentalist_plugin.experimentalist.experiment_mirror import ExperimentMirror
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id, spans_to_protobuf
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
-from nemo_experimentalist_plugin.resolve import (
-    AgentSourceConfig as AgentSourceConfig,
-)
-from nemo_experimentalist_plugin.resolve import (
-    CandidateStorageConfig as CandidateStorageConfig,
-)
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel
@@ -83,6 +80,32 @@ async def _upload_trace_otlp(
             content=payload,
             options={"headers": {"Content-Type": "application/x-protobuf"}},
         )
+
+
+async def _upload_trace_atif(
+    client: AsyncNeMoPlatform,
+    workspace: str,
+    ref: ResourceRef,
+    *,
+    experiment_id: str,
+    task_id: str,
+    extra_attrs: dict[str, str] | None = None,
+) -> None:
+    """Upload an ATIF trajectory to Intake as JSON.
+
+    Trial identity travels as the trajectory's own ``session_id``, which Intake
+    adopts as the trace id — so unlike the OTLP path there is no separate
+    ``trial_id`` to stamp. Intake performs the ATIF-to-spans mapping server-side.
+    """
+
+    payload = build_ingest_payload(
+        ref,
+        experiment_id=experiment_id,
+        task_id=task_id,
+        agent_attrs=extra_attrs or {},
+    )
+    url = f"/apis/intake/v2/workspaces/{workspace}/ingest/atif"
+    await client.post(url, cast_to=object, body=payload)
 
 
 _BASELINE_AGENT_LABEL = "agent-0"
@@ -246,37 +269,7 @@ class ExperimentalistBackend(ABC):
         """
         ...
 
-    # -- Intake reads --------------------------------------------------------
-
-    @abstractmethod
-    async def list_traces(
-        self,
-        *,
-        workspace: str,
-        filter: dict[str, Any] | None,
-        sort: str,
-        mode: str,
-        limit: int,
-    ) -> dict[str, Any]:
-        """Return up to *limit* traces matching the requested query."""
-        ...
-
-    @abstractmethod
-    async def get_trace(self, *, workspace: str, trace_id: str, mode: str) -> dict[str, Any]:
-        """Fetch a single trace by id."""
-        ...
-
-    @abstractmethod
-    async def list_scores(self, *, workspace: str, span_id: str) -> dict[str, Any]:
-        """Fetch evaluator results for a span."""
-        ...
-
     # -- Agent reads ---------------------------------------------------------
-
-    @abstractmethod
-    async def get_agent(self, *, workspace: str, agent: str) -> Any:
-        """Return metadata for the registered agent."""
-        ...
 
     @abstractmethod
     async def get_agent_spec(self, *, workspace: str, spec: str, dest: Path) -> Path:
@@ -284,90 +277,20 @@ class ExperimentalistBackend(ABC):
         ...
 
 
-class RemoteExperimentalistBackend(ExperimentalistBackend):
-    """Backend selected for platform-backed Experimentalist runs."""
+def load_candidate(path: Path) -> Candidate:
+    """Deserialize a ``metadata.json`` file into a :class:`Candidate`.
 
-    def __init__(self, *, client: AsyncNeMoPlatform, path: Path, storage: CandidateStorageConfig | None = None) -> None:
-        super().__init__(client, path, storage)
-        # Reuse local-mode file persistence for the plugin entities (spec §3 decision 5).
-        # LocalExperimentalistBackend also performs the best-effort projection to native
-        # Experiments whenever it has a platform client — which this backend always passes —
-        # so delegation here covers both persistence and projection.
-        self.client = client
-        self._files = LocalExperimentalistBackend(client=client, path=path, storage=self.storage)
-
-    async def get_insight(self, *, workspace: str, insight_id: str) -> Insight:
-        return await self._files.get_insight(workspace=workspace, insight_id=insight_id)
-
-    async def create_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
-        return await self._files.create_run(workspace=workspace, run=run)
-
-    async def update_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
-        return await self._files.update_run(workspace=workspace, run=run)
-
-    async def create_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
-        return await self._files.create_candidate(workspace=workspace, candidate=candidate)
-
-    async def update_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
-        return await self._files.update_candidate(workspace=workspace, candidate=candidate)
-
-    async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
-        return await self._files.get_candidate(workspace=workspace, candidate_id=candidate_id)
-
-    async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
-        return await self._files.list_candidates(workspace=workspace, run_id=run_id)
-
-    async def persist_result(self, *, workspace: str, result: ExperimentalistResult) -> None:
-        await self._files.persist_result(workspace=workspace, result=result)
-
-    async def persist_evaluation(
-        self, *, workspace: str, result: EvaluationResult, candidate: Candidate, split: str
-    ) -> None:
-        await self._files.persist_evaluation(workspace=workspace, result=result, candidate=candidate, split=split)
-
-    async def get_experiment_id(self, *, workspace: str, candidate: Candidate, split: str) -> str:
-        return await self._files.get_experiment_id(workspace=workspace, candidate=candidate, split=split)
-
-    async def get_agent_code(
-        self, *, workspace: str, agent: str | Path, dest: Path, clone_depth: int | None = None
-    ) -> AgentSource | None:
-        # Git-sourced agents fetch identically regardless of backend (git transport).
-        # A non-git "live" platform agent (fetched via the platform) is not supported yet.
-        # Delegate to the local file backend so its captured _agent_source powers archival.
-        if looks_like_git(str(agent)):
-            return await self._files.get_agent_code(
-                workspace=workspace, agent=agent, dest=dest, clone_depth=clone_depth
-            )
-        raise NotImplementedError
-
-    async def archive_candidate(self, *, workspace: str, candidate: Candidate) -> str | None:
-        return await self._files.archive_candidate(workspace=workspace, candidate=candidate)
-
-    async def publish_candidate(self, *, workspace: str, candidate: Candidate) -> str | None:
-        return await self._files.publish_candidate(workspace=workspace, candidate=candidate)
-
-    async def list_traces(
-        self,
-        *,
-        workspace: str,
-        filter: dict[str, Any] | None,
-        sort: str,
-        mode: str,
-        limit: int,
-    ) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def get_trace(self, *, workspace: str, trace_id: str, mode: str) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def list_scores(self, *, workspace: str, span_id: str) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def get_agent(self, *, workspace: str, agent: str) -> Any:
-        raise NotImplementedError
-
-    async def get_agent_spec(self, *, workspace: str, spec: str, dest: Path) -> Path:
-        return await self._files.get_agent_spec(workspace=workspace, spec=spec, dest=dest)
+    Free function rather than a backend method: read-only callers (the Coder's
+    workspace tool) need the deserialization without constructing a backend,
+    which would create directories and projection state as a side effect.
+    """
+    data = json.loads(path.read_text())
+    candidate = Candidate.model_validate(data)
+    # Restore private _id if present in the serialized form.
+    entity_id = data.get("id", "")
+    if entity_id:
+        candidate._id = entity_id  # type: ignore[attr-defined]
+    return candidate
 
 
 def _load_entity(cls: type[_ModelT], path: Path) -> _ModelT:
@@ -584,31 +507,11 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             if sib.label == _BASELINE_AGENT_LABEL:
                 continue
             marker = " (winner)" if sib.label == candidate.label else ""
-            reward = sib.validation_reward or sib.train_reward or {}
-            lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — reward={reward}")
+            metrics = sib.reward("validation").metrics or sib.reward("train").metrics or {}
+            lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — metrics={metrics}")
         return summary + "\n" + "\n".join(lines) + "\n"
 
-    # -- Intake reads and agent reads (PR #3) --------------------------------
-
-    async def list_traces(
-        self,
-        *,
-        workspace: str,
-        filter: dict[str, Any] | None,
-        sort: str,
-        mode: str,
-        limit: int,
-    ) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def get_trace(self, *, workspace: str, trace_id: str, mode: str) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def list_scores(self, *, workspace: str, span_id: str) -> dict[str, Any]:
-        raise NotImplementedError
-
-    async def get_agent(self, *, workspace: str, agent: str) -> Any:
-        raise NotImplementedError
+    # -- Agent reads ---------------------------------------------------------
 
     async def get_agent_spec(self, *, workspace: str, spec: str, dest: Path) -> Path:
         src = Path(spec)
@@ -650,13 +553,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
 
     def _load_candidate(self, path: Path) -> Candidate:
         """Deserialize a current-schema ``metadata.json`` file into a Candidate."""
-        data = json.loads(path.read_text())
-        candidate = Candidate.model_validate(data)
-        # Restore private _id if present in the serialized form.
-        entity_id = data.get("id", "")
-        if entity_id:
-            candidate._id = entity_id  # type: ignore[attr-defined]
-        return candidate
+        return load_candidate(path)
 
     async def create_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
         if not candidate.id:
@@ -665,7 +562,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
             json.dumps(
-                {**candidate.model_dump(exclude={"artifacts"}), "id": candidate.id},
+                {**candidate.model_dump(), "id": candidate.id},
                 indent=2,
             )
         )
@@ -683,7 +580,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         p = self._candidate_path(candidate.label)
         p.write_text(
             json.dumps(
-                {**candidate.model_dump(exclude={"artifacts"}), "id": candidate.id},
+                {**candidate.model_dump(), "id": candidate.id},
                 indent=2,
             )
         )
@@ -745,6 +642,10 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         }
         for trial in result.trials:
             if trial.trace is None:
+                logger.warning(
+                    f"[INTAKE] Trial {trial.id} ({trial.task_id}) has no trace; skipping persistence. "
+                    "The evaluator found no trace artifact in the configured format."
+                )
                 continue
             try:
                 await self._persist_trial(
@@ -788,22 +689,33 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     )
                 trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
         else:
+            trace_format = str(trial.trace.metadata.get("trace_format", "otlp"))
             try:
-                trace_id = read_trace_id(trial.trace)
+                trace_id = read_session_id(trial.trace) if trace_format == "atif" else read_trace_id(trial.trace)
             except (ValueError, json.JSONDecodeError, FileNotFoundError) as exc:
                 # Empty, invalid, or missing trace file (e.g., cancelled trial) — skip upload
                 logger.debug(f"[INTAKE] No valid trace found for trial {trial.id}: {exc}; skipping upload")
                 return
             original_uri = uri
-            await _upload_trace_otlp(
-                self.client,
-                workspace,
-                trial.trace,
-                experiment_id=experiment_id,
-                trial_id=trial.id,
-                task_id=trial.task_id,
-                extra_attrs=agent_attrs,
-            )
+            if trace_format == "atif":
+                await _upload_trace_atif(
+                    self.client,
+                    workspace,
+                    trial.trace,
+                    experiment_id=experiment_id,
+                    task_id=trial.task_id,
+                    extra_attrs=agent_attrs,
+                )
+            else:
+                await _upload_trace_otlp(
+                    self.client,
+                    workspace,
+                    trial.trace,
+                    experiment_id=experiment_id,
+                    trial_id=trial.id,
+                    task_id=trial.task_id,
+                    extra_attrs=agent_attrs,
+                )
             trial.trace = ResourceRef(
                 uri=f"intake://traces/{trace_id}",
                 description=trial.trace.description,
@@ -882,25 +794,19 @@ def make_experimentalist_backend(
     *,
     client: AsyncNeMoPlatform | None,
     experiments_output: str,
-    mode: Literal["local", "remote"],
     storage: CandidateStorageConfig | None = None,
 ) -> ExperimentalistBackend:
-    """Select the experimentalist backend based on *mode*.
+    """Build the Experimentalist backend.
 
-    When *mode* is "local", entity state is written to that local directory using the
-    ``eval-and-optimize/`` tree layout. Otherwise, the platform-backed backend is selected.
+    Entity state is written under *experiments_output* using the ``eval-and-optimize/``
+    tree layout. When a platform client is supplied, evaluations and candidates are also
+    projected to native Experiments on a best-effort basis.
 
     Args:
-        client(AsyncNeMoPlatform | None): Optional platform API client for local
-            runs. Remote mode requires a client.
-        experiments_output(str): Optional local output directory.
-        mode(Literal["local", "remote"]): The backend mode.
+        client(AsyncNeMoPlatform | None): Optional platform API client.
+        experiments_output(str): Local output directory.
         storage(CandidateStorageConfig | None): Candidate-archival / winner-PR settings.
     Returns:
         ExperimentalistBackend: The experimentalist backend.
     """
-    if mode == "local":
-        return LocalExperimentalistBackend(client=client, path=Path(experiments_output), storage=storage)
-    if client is None:
-        raise ValueError("remote Experimentalist backend requires a platform client")
-    return RemoteExperimentalistBackend(client=client, path=Path(experiments_output), storage=storage)
+    return LocalExperimentalistBackend(client=client, path=Path(experiments_output), storage=storage)

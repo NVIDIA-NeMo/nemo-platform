@@ -20,7 +20,7 @@ Any `nemo …` call may fail with `Connection error`, timeout, or connection ref
 
 | Situation | Action |
 |-----------|--------|
-| User gave a platform host/URL (e.g. `10.0.0.51:8080`) or you set `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | Report that the platform is not reachable at that address. Ask them to confirm the host is up and the URL is correct. **Do not** start local services. |
+| User gave a platform host/URL (e.g. `<remote-host>:8080`) or you set `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | Report that the platform is not reachable at that address. Ask them to confirm the host is up and the URL is correct. **Do not** start local services. |
 | Default URL only — no user override | **Ask** whether to start the platform locally. If they agree, from the **nemo-platform** git root run in the **background**, then poll until healthy and retry the failed command: |
 
 ```bash
@@ -64,7 +64,7 @@ Each entry has `provider`, `profile` (name), and `backend` (e.g. `docker`, `kube
 | Response includes **`provider`: `gpu` or `gpu_distributed`** | **`automodel`** (default) |
 | No GPU profiles (only `subprocess` and/or CPU `provider`) | Report that GPU customization is unavailable |
 
-Automodel and unsloth are **`submit`-only**. After submit, the platform's **Docker executor** runs GPU container steps on the daemon attached to the connected platform host (`platform.runtime: docker`). Training does not run in the CLI shell — query execution profiles on the platform (`NMP_BASE_URL`), not GPU availability in the agent's terminal.
+Automodel and unsloth are **`submit`-only**. After submit, the platform's **Docker executor** runs GPU container steps on the daemon attached to the connected platform host (`platform.runtime: docker`). (rl is also submit-only but runs on Kubernetes/Ray — see `rl-kubernetes-runtime.md`.) Training does not run in the CLI shell — query execution profiles on the platform (`NMP_BASE_URL`), not GPU availability in the agent's terminal.
 
 ### Pick execution profile
 
@@ -175,13 +175,13 @@ After secret + fileset are wired, re-submit the same job JSON (use a fresh `outp
 
 ## Missing training images
 
-Job errors like `Failed to pull image … nmp-unsloth-training:… Not Found`, `manifest unknown`, or a missing automodel training image mean the **connected platform's Docker daemon** (the one that runs GPU job steps) does not have the image. With the default `NMP_BASE_URL` (`127.0.0.1:8080` / `localhost:8080`), that daemon is usually on the same machine as the agent; with a user-overridden URL (e.g. `10.0.0.51:8080`), it is on the remote target host instead.
+Job errors like `Failed to pull image … nmp-unsloth-training:… Not Found`, `manifest unknown`, or a missing automodel training image mean the **connected platform's Docker daemon** (the one that runs GPU job steps) does not have the image. With the default `NMP_BASE_URL` (`127.0.0.1:8080` / `localhost:8080`), that daemon is usually on the same machine as the agent; with a user-overridden URL (e.g. `<remote-host>:8080`), it is on the remote target host instead.
 
 **Did the user override the base URL?** (same rule as **Platform unreachable** — track this from the start of the workflow.)
 
 | Situation | Action |
 |-----------|--------|
-| **Remote platform** — user gave a host/URL (e.g. `10.0.0.51:8080`) or you set `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | **Do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine — that only affects the agent's local daemon, not the remote platform. Tell the user they must build or load the image **on the target host** (the machine whose Docker daemon runs the GPU job steps). Report with the template in `references/reporting.md`, then append **Report follow-up — missing image (remote platform)** below. Stop; do not retry submit until the user confirms the image is available on the target. |
+| **Remote platform** — user gave a host/URL (e.g. `<remote-host>:8080`) or you set `NMP_BASE_URL` to something other than `http://127.0.0.1:8080` or `http://localhost:8080` | **Do not** run `docker build`, `docker pull`, or `docker buildx bake` on the agent machine — that only affects the agent's local daemon, not the remote platform. Tell the user they must build or load the image **on the target host** (the machine whose Docker daemon runs the GPU job steps). Report with the template in `references/reporting.md`, then append **Report follow-up — missing image (remote platform)** below. Stop; do not retry submit until the user confirms the image is available on the target. |
 | **Local platform** — default URL only (`127.0.0.1:8080` / `localhost:8080`) | Build or pull on **that same host** where `nemo services run` and Docker share a daemon. See build commands below and `docker/unsloth/README.md` (unsloth) or automodel docker docs. Set env vars **before** starting/restarting the platform. |
 
 Image env vars are read when the platform starts (not per job):

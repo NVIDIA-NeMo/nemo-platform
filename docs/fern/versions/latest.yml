@@ -261,8 +261,14 @@ navigation:
         contents:
           - page: Deploy Agents
             path: ../../agents/deploy-agents.mdx
-          - page: Optimize Agents
-            path: ../../agents/optimization.mdx
+          - page: Observe Agents
+            path: ../../agents/observability.mdx
+          - section: Optimize Agents
+            contents:
+              - page: Run the Agent Optimizer
+                path: ../../agents/optimization.mdx
+              - page: Insight-Driven Optimization
+                path: ../../agents/insight-driven-optimization.mdx
           - page: Secure Agents
             path: ../../agents/security.mdx
           - page: Plugins and Skills
@@ -403,6 +409,9 @@ navigation:
                 path: ../../evaluator/tutorials/run-llm-judge-evaluation.mdx
               - page: Define and Run Custom Python Metrics
                 path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
+          - page: Experiments
+            slug: experiments
+            path: ../../evaluator/experiments.mdx
           - page: SDK Resources
             path: ../../evaluator/sdk-resources.mdx
           - page: Manage Tasks & Tasksets
@@ -468,6 +477,8 @@ navigation:
             path: ../../requirements.mdx
           - page: Support Matrix
             path: ../../support-matrix.mdx
+          - page: Telemetry and Privacy
+            path: ../../telemetry-and-privacy.mdx
           - api: API Reference
           - section: Python SDK
             path: ../../pysdk/index.mdx
@@ -477,6 +488,8 @@ navigation:
           - section: CLI Reference
             path: ../../cli/index.mdx
             contents:
+              - page: Connect to Deployments
+                path: ../../cli/connect-to-deployments.mdx
               - page: Configuration
                 path: ../../cli/configuration.mdx
               - page: Working with Resources

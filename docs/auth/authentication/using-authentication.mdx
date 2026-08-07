@@ -1,10 +1,10 @@
 ---
 title: "Using Authentication"
-description: ""
+description: "Log in, call APIs, manage tokens, and create Scoped Access Keys."
 ---
-How to log in, make authenticated API calls, and manage tokens with the CLI and SDK.
+How to log in, make authenticated API calls, manage tokens, and create Scoped Access Keys with the CLI and SDK.
 
-**Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](/documentation/access-control/authentication/oidc-setup).
+**Prerequisites**: For OIDC login, configure an identity provider first. See [OIDC](/documentation/access-control/authentication/oidc). For local testing without OIDC, use `nemo auth login --unsigned-token --email <email>`. Scoped Access Keys also require the administrator to enable `auth.access_keys.enabled`; see [Authentication Configuration](/documentation/access-control/deployment/configuration#scoped-access-keys).
 
 ## Log In
 
@@ -29,9 +29,17 @@ nemo auth status
 ```
 
 ```text
-Logged in as alice@company.com
-Scopes: platform:read platform:write
-Token expires: 2026-02-15T14:30:00Z
+Authentication Status
+Cluster             https://nmp.company.com
+Context             default
+Config File         /home/alice/.config/nmp/config.yaml
+Auth Type           oauth
+Credential Source   config file
+Email               alice@company.com
+Scopes              platform:read platform:write
+Expires             2026-02-15T14:30:00+00:00 (1h 0m remaining)
+Refresh Token       available (run 'nemo auth refresh' to renew)
+Token               eyJhbGciOiJSUzI1NiIs...abc1234567
 ```
 
 All CLI and SDK commands now use the stored token automatically.
@@ -64,7 +72,7 @@ The SDK reads credentials from the CLI config automatically — no manual token 
 ```python
 from nemo_platform import NeMoPlatform
 
-# After `nemo auth login` (OIDC) or `nemo auth login --unsigned-token ...` (quickstart),
+# After `nemo auth login` (OIDC) or `nemo auth login --unsigned-token --email <email>` (quickstart),
 # the SDK reads base_url, workspace, and the stored token from the CLI config.
 # This is the recommended pattern for interactive / OIDC-authenticated usage.
 client = NeMoPlatform()
@@ -90,8 +98,38 @@ client = NeMoPlatform(
 ```bash
 TOKEN=$(nemo auth token)
 curl -H "Authorization: Bearer $TOKEN" \
- https://nmp.company.com/v2/workspaces
+ https://nmp.company.com/apis/entities/v2/workspaces
 ```
+
+## Scoped Access Keys for Non-SDK Clients
+
+When Scoped Access Keys are enabled by the platform administrator, an
+authenticated user can mint a scoped bearer token for automation that cannot use
+the SDK's OIDC refresh flow:
+
+```bash
+# Create a Scoped Access Key with the platform default expiry and print the token once.
+nemo auth access-keys create --name ci-build
+```
+
+Scoped Access Key management commands live under the `auth` namespace as
+`nemo auth access-keys ...`. The `access-keys` command group is not a top-level CLI
+command and is not a separate NeMo Platform plugin.
+
+`create` prints the Scoped Access Key token once. Store it in your secret
+manager and send it in the standard `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer $NMP_SCOPED_ACCESS_KEY" \
+ https://nmp.company.com/apis/entities/v2/workspaces
+```
+
+Scoped Access Keys are signed JWT bearer tokens scoped to the principal and
+groups present when the key is created. By default, new keys use the platform's
+configured default expiry, which is 30 days unless the administrator changes it.
+Pass `--expires-in <seconds>` to request a specific finite lifetime. Pass
+`--expires-in none` only for deployments where the administrator has explicitly
+allowed unlimited keys. Revocation and rotation are not implemented.
 
 ### Token Inspection
 
@@ -104,7 +142,7 @@ nemo auth token
 Decode the token to inspect claims:
 
 ```bash
-nemo auth token | cut -d. -f2 | base64 -d 2>/dev/null | python -m json.tool
+nemo auth token --decode
 ```
 
 Key claims to check:
@@ -145,10 +183,10 @@ Tokens are stored in `~/.config/nmp/config.yaml`:
 
 ```yaml
 users:
- - type: oauth
- name: default
- token: "<access_token_jwt>"
- refresh_token: "<refresh_token>"
+  - name: default
+    type: oauth
+    token: "<access_token_jwt>"
+    refresh_token: "<refresh_token>"
 ```
 
 The OIDC token endpoint is **not** stored — it is discovered at runtime from your cluster's `/apis/auth/discovery` endpoint. This keeps the config portable across environments.
@@ -165,7 +203,7 @@ The OIDC token endpoint is **not** stored — it is discovered at runtime from y
 </Warning>
 ## Related
 
-- [OIDC Setup](/documentation/access-control/authentication/oidc-setup) — Configure your identity provider.
+- [OIDC](/documentation/access-control/authentication/oidc) — Configure your identity provider.
 - [API Scopes](/documentation/access-control/authorization/api-scopes) — Scope model and available scopes.
 - [Security Model](/documentation/access-control/security-model) — Trust boundaries and the principal model.
 - [Troubleshooting](/documentation/access-control/troubleshooting) — Fix common 401/403 errors and login failures.

@@ -11,7 +11,6 @@ from nemo_platform.types import (
     DeleteResponse,
     FileStorageType,
     FilesetMetadata,
-    FilesetMetadataParam,
     FinetuningType,
     GenericSortField,
     HTTPValidationError,
@@ -75,3 +74,7 @@ from nemo_platform.types import (
 # [Evaluations](src/nemo_platform/resources/evaluations/api.md)
 
 # [Experiments](src/nemo_platform/resources/experiments/api.md)
+
+# [Auth](src/nemo_platform/resources/auth/api.md)
+
+# [AccessKeys](src/nemo_platform/resources/access_keys/api.md)

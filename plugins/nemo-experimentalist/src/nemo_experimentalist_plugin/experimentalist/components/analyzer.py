@@ -11,12 +11,7 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import (
-    Dataset,
-    EvaluationResult,
-    Task,
-    TrialResult,
-)
+from nemo_experimentalist_plugin.entities import Dataset, EvaluationResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,
@@ -24,6 +19,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer impor
 )
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -34,10 +30,11 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from . import cache
-from .model_config import get_fast_model, get_smart_model
 from .rationalizer import Rationale, Rationalizer, RationalizerConfig  # noqa: F401
 from .tools import GuardedShellTools
 from .util import load_framework_skills
+
+logger = logging.getLogger(__name__)
 
 
 class AnalyzerConfig(BaseModel):
@@ -175,6 +172,7 @@ class TrialAnalysis(BaseModel):
 
     task_id: str
     trial_id: str
+    selection_reason: str
     metrics: dict[str, float]
     diagnostic: Diagnostic
 
@@ -187,12 +185,20 @@ class TrialAnalysis(BaseModel):
         """
         metrics = ", ".join(f"{name}: {value:.3f}" for name, value in self.metrics.items()) or "no metrics"
         lines = [f"### {self.task_id} / {self.trial_id} ({metrics})"]
+        lines.append(f"Selected for analysis: {self.selection_reason}")
         lines.append(f"Outcome: {self.diagnostic.outcome}")
         lines.append(f"Summary: {self.diagnostic.summary}")
         if self.diagnostic.failure_point is not None:
             lines.append(f"Failure point: span {self.diagnostic.failure_point}")
         lines.append(f"Root cause: {self.diagnostic.root_cause}")
         return "\n".join(lines)
+
+
+class TrialSelection(BaseModel):
+    """One trial selected for analysis, with the reason it merits attention."""
+
+    trial_id: str = Field(description="ID of a trial from the evaluation result.")
+    reason: str = Field(description="Evidence-based reason this trial should be analyzed.")
 
 
 class AgentAnalysis(BaseModel):
@@ -219,7 +225,7 @@ class AgentAnalysis(BaseModel):
         return "\n\n".join(sections)
 
 
-class AgentAnalyzer(Agent, llm=get_smart_model()):
+class AgentAnalyzer(Agent):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
 
     def __init__(
@@ -238,11 +244,14 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(**kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or AnalyzerConfig()
         self._workspace_path = workspace
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
         self.shell = GuardedShellTools(cwd=workspace)
+        # Two generation methods run on the fast tier. Resolved here, like every other
+        # tier this component uses, and read off the instance by the decorator's callable.
+        self._fast_model = get_fast_model()
         self.todos = TodoManager()
         self.context["file_match"] = doc(Match)
         self.skills: SkillRegistry = SkillRegistry(self)
@@ -250,29 +259,34 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         load_framework_skills(self.skills, self._framework_skills_dirs)
         TokenBudgetSummarizer.install(
             self,
-            llm=get_fast_model(),
+            llm=self._fast_model,
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
     @strategy(
         CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)),
-        llm=get_fast_model(),
+        llm=lambda self: self._fast_model,
     )
     async def select_trials(
         self,
         agent_id: str,
         dataset: Dataset,
         evaluation: EvaluationResult,
-    ) -> Sequence[TrialResult]:
-        """Pick which trials to analyze in depth. Return their TrialResult objects.
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
+    ) -> list[TrialSelection]:
+        """Pick which trials to analyze in depth and explain each choice.
 
         Args:
             agent_id: The agent to analyze.
             dataset: The dataset to analyze.
             evaluation: The evaluation result to analyze.
+            objective_metrics: Metrics the optimization run should improve.
+            regression_metrics: Metrics that must not worsen.
 
         Returns:
-            Sequence[TrialResult]: The selected trials.
+            list[TrialSelection]: Selected evaluation trial IDs and the evidence-based
+                reason each was selected.
 
         ## Step 1: Get task and trial objects
 
@@ -292,33 +306,53 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
 
         ## Step 3: Triage — pick up to {self._config.max_trials} trials
 
+        Objective metrics: {objective_metrics}
+        Regression metrics: {regression_metrics}
+
         Prefer trials where:
+        - an objective metric is low relative to the other trials or is the
+          clearest evidence of why that objective is not improving
         - status/error indicates the evaluator did not complete cleanly
-        - one or more numeric metric values are below the task's expected passing
-          value
         - the trace reference is missing or unloadable
         - outputs/resources suggest repeated failures across task ids
+
+        Regression metrics are guardrails. Do not select a trial solely because
+        a regression metric is low unless it exposes why an objective-focused
+        change would violate that guardrail.
 
         Metric names are evaluator-defined. Do not assume particular metric
         names, result directories, private checks, or split paths.
 
-        ## Step 4: Return TrialResult objects
+        ## Step 4: Return selected trial IDs and a reason for each
 
         ```python
-        return selected_trials
+        return [
+            TrialSelection(
+                trial_id=trial.id,
+                reason="Concise evidence-based reason to inspect this trace.",
+            )
+            for trial in selected_trials
+        ]
         ```
+
+        Every ``trial_id`` must identify a trial from ``evaluation.trials``.
+        State the concrete objective shortfall that makes each selected trial
+        useful. Mention a regression risk only as a constraint on that
+        objective-focused analysis.
         """
         ...
 
     @strategy(
         CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=3600.0)),
-        llm=get_fast_model(),
+        llm=lambda self: self._fast_model,
     )
     async def classify_failures(
         self,
         agent_id: str,
         diagnoses: list[Diagnostic],
         trials: Sequence[TrialResult],
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> FailureClassification:
         """Classify diagnoses into systematic vs. one-off and agent vs. mechanical failures.
 
@@ -335,6 +369,12 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         an agent logic error (optimizable) or a mechanical error (needs an infra
         fix). Do not penalise the agent for mechanical errors.
 
+        Center systematic failures and root causes on `objective_metrics`: explain
+        how the trace behavior causes an objective metric to underperform.
+        `regression_metrics` are guardrails; report their risks separately and do
+        not classify a regression-only shortfall as the primary failure pattern.
+        Do not invent formulas or weights for evaluator metrics.
+
         Return a FailureClassification with:
         - `systematic`: list of SystematicFailure (root_cause, affected_tasks, pattern)
         - `mechanical`: list of MechanicalError (task_id, issue_type, description)
@@ -348,6 +388,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         evaluation: EvaluationResult,
         diagnoses: list[Diagnostic],
         peer_evaluations: dict[str, EvaluationResult] | None = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> PeerComparison:
         """Compare this agent to peers and return divergent trials and complementary patterns.
 
@@ -368,17 +410,31 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             agent_id,
             evaluation,
             peer_evaluations,
+            metric_directions=self._metric_directions(objective_metrics or [], regression_metrics or []),
             k=self._config.max_divergent_pairs,
         )
-        complementary_raw = self._find_complementary_failures(agent_id, evaluation, peer_evaluations)
+        complementary_raw = self._find_complementary_failures(
+            agent_id,
+            evaluation,
+            peer_evaluations,
+            metric_directions=self._metric_directions(objective_metrics or [], regression_metrics or []),
+        )
 
-        return await self._narrate_peer_comparison(agent_id, top_divergent, complementary_raw, diagnoses)
+        return await self._narrate_peer_comparison(
+            agent_id,
+            top_divergent,
+            complementary_raw,
+            diagnoses,
+            objective_metrics or [],
+            regression_metrics or [],
+        )
 
     def _select_divergent_pairs(
         self,
         agent_id: str,
         evaluation: EvaluationResult,
         peer_evaluations: dict[str, EvaluationResult],
+        metric_directions: dict[str, str],
         k: int = 3,
     ) -> list[dict[str, Any]]:
         """Pick top-k divergent (peer, task) pairs ordered by absolute score delta.
@@ -406,7 +462,11 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             for task_id in sorted(set(focal_means) & set(peer_means)):
                 fm = focal_means[task_id]
                 pm = peer_means[task_id]
-                focal_delta = {m: fm.get(m, 0.0) - pm.get(m, 0.0) for m in sorted(set(fm) | set(pm))}
+                focal_delta = {
+                    metric: (fm.get(metric, 0.0) - pm.get(metric, 0.0))
+                    * (1.0 if metric_directions.get(metric, "maximize") == "maximize" else -1.0)
+                    for metric in sorted(set(fm) | set(pm))
+                }
                 magnitude = sum(abs(v) for v in focal_delta.values())
                 if magnitude == 0.0:
                     continue
@@ -451,11 +511,19 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             for task_id, metrics in per_task.items()
         }
 
+    @staticmethod
+    def _metric_directions(
+        objective_metrics: list[dict[str, str]], regression_metrics: list[dict[str, str]]
+    ) -> dict[str, str]:
+        """Return metric directions, defaulting dimensions outside the contract to maximize."""
+        return {metric["name"]: metric["direction"] for metric in [*objective_metrics, *regression_metrics]}
+
     def _find_complementary_failures(
         self,
         agent_id: str,
         evaluation: EvaluationResult,
         peer_evaluations: dict[str, EvaluationResult],
+        metric_directions: dict[str, str],
     ) -> dict[str, dict[str, dict[str, list[str]]]]:
         """Find tasks where agents split on leaders vs. trailers, per metric.
 
@@ -484,10 +552,14 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
                 }
                 if len(values) < 2 or min(values.values()) == max(values.values()):
                     continue
-                best = max(values.values())
+                best = (
+                    max(values.values())
+                    if metric_directions.get(metric, "maximize") == "maximize"
+                    else min(values.values())
+                )
                 per_metric[metric] = {
                     "leaders": sorted(agent for agent, value in values.items() if value == best),
-                    "trailers": sorted(agent for agent, value in values.items() if value < best),
+                    "trailers": sorted(agent for agent, value in values.items() if value != best),
                 }
             if per_metric:
                 complementary[task_id] = per_metric
@@ -500,6 +572,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         top_divergent: list[dict[str, Any]],
         complementary_raw: dict[str, dict[str, dict[str, list[str]]]],
         diagnoses: list[Diagnostic],
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> PeerComparison:
         """Write the DivergentTrial and ComplementaryPattern narratives from pre-computed data.
 
@@ -517,6 +591,11 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         `complementary_raw` is
         `{task_id: {metric: {"leaders": [agents], "trailers": [agents]}}}`
         — per-metric splits between the best-scoring agents and the rest.
+
+        `objective_metrics` identifies metrics to improve and
+        `regression_metrics` identifies metrics to preserve. Use them to explain
+        whether a divergence is desirable or a regression risk; do not create a
+        scalar ranking.
 
         ## For each divergent pair
 
@@ -573,6 +652,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         client: AsyncNeMoPlatform | None = None,
         nmp_workspace: str | None = None,
         agent_spec: Path | None = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> AgentAnalysis:
         """Run the full analysis pipeline for one agent in one optimization round.
 
@@ -587,6 +668,8 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             nmp_workspace: NeMo Platform (Intake) workspace *name* — the request
                 context for ``intake://`` trace lookups. Distinct from the
                 constructor's ``workspace: Path`` (the filesystem eval dir).
+            objective_metrics: Active metrics to improve.
+            regression_metrics: Active metrics to preserve.
 
         Returns:
             AgentAnalysis: per-trial diagnostics, failure classification, and peer
@@ -600,17 +683,35 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
         # trace-starved. Keying on availability prevents such a degraded result
         # from being replayed on a later run that *can* load those traces.
         intake_key = ":intake:1" if client is not None and nmp_workspace is not None else ":intake:0"
-        cache_key = cache.agent_hash(f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}")
+        objective_metrics = objective_metrics or []
+        regression_metrics = regression_metrics or []
+        cache_key = cache.agent_hash(
+            f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}:"
+            f"objective-metrics:{objective_metrics}:regression-metrics:{regression_metrics}"
+        )
         cached = cache.load(self._workspace_path, cache_key, AgentAnalysis)
         if cached is not None:
             return cached
 
-        trials = await self.select_trials(agent_id, dataset, evaluation)
+        selections = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
+        trials_by_id = {trial.id: trial for trial in evaluation.trials}
+        selected_trials: list[tuple[TrialResult, str]] = []
+        for selection in selections:
+            trial = trials_by_id.get(selection.trial_id)
+            if trial is None:
+                logger.warning(
+                    "Ignoring selected trial %s for %s because it is absent from evaluation %s",
+                    selection.trial_id,
+                    agent_id,
+                    evaluation.id,
+                )
+                continue
+            selected_trials.append((trial, selection.reason))
         tasks_by_id = self._tasks_by_id(dataset)
 
         missing_task_diagnostics: dict[str, Diagnostic] = {}
-        trial_tasks: list[tuple[TrialResult, Task]] = []
-        for trial in trials:
+        trial_tasks: list[tuple[TrialResult, Task, str]] = []
+        for trial, selection_reason in selected_trials:
             task = tasks_by_id.get(trial.task_id)
             if task is None:
                 missing_task_diagnostics[trial.id] = Diagnostic(
@@ -620,9 +721,9 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
                     root_cause="evaluation_result_references_unknown_task",
                 )
                 continue
-            trial_tasks.append((trial, task))
+            trial_tasks.append((trial, task, selection_reason))
 
-        unique_tasks = {task.id: task for _, task in trial_tasks}
+        unique_tasks = {task.id: task for _, task, _ in trial_tasks}
         rationales_list = await asyncio.gather(
             *[
                 Rationalizer(
@@ -654,15 +755,18 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
                     task=task,
                     agent_path=agent_path,
                     rationale=rationales.get(task.id),
+                    selection_reason=selection_reason,
+                    objective_metrics=objective_metrics,
+                    regression_metrics=regression_metrics,
                     client=client,
                     workspace=nmp_workspace,
                 )
-                for trial, task in trial_tasks
+                for trial, task, selection_reason in trial_tasks
             ],
             return_exceptions=True,
         )
         diagnostics_by_trial_id = dict(missing_task_diagnostics)
-        for (trial, _), result in zip(trial_tasks, diagnoses_list, strict=True):
+        for (trial, _, _), result in zip(trial_tasks, diagnoses_list, strict=True):
             if isinstance(result, asyncio.CancelledError):
                 raise result
             if isinstance(result, BaseException):
@@ -685,17 +789,31 @@ class AgentAnalyzer(Agent, llm=get_smart_model()):
             TrialAnalysis(
                 task_id=trial.task_id,
                 trial_id=trial.id,
+                selection_reason=selection_reason,
                 metrics={name: float(metric.value) for name, metric in trial.metrics.items()},
                 diagnostic=diagnostics_by_trial_id[trial.id],
             )
-            for trial in trials
+            for trial, selection_reason in selected_trials
             if trial.id in diagnostics_by_trial_id
         ]
         diagnoses = [analysis.diagnostic for analysis in trial_analyses]
 
         classification, comparison = await asyncio.gather(
-            self.classify_failures(agent_id, diagnoses, trials),
-            self.compare_with_peers(agent_id, evaluation, diagnoses, peer_evaluations),
+            self.classify_failures(
+                agent_id,
+                diagnoses,
+                [trial for trial, _ in selected_trials],
+                objective_metrics,
+                regression_metrics,
+            ),
+            self.compare_with_peers(
+                agent_id,
+                evaluation,
+                diagnoses,
+                peer_evaluations,
+                objective_metrics,
+                regression_metrics,
+            ),
         )
 
         analysis_out = AgentAnalysis(

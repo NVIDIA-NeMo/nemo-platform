@@ -65,7 +65,7 @@ The umbrella chart passes the Kubernetes-specific NeMo Platform configuration
 through `nemo-platform.platformConfig` values. It also configures
 `nemo-platform.envoyProxy.configOverride` so the NeMo Platform chart's Envoy
 deployment keeps the Authentik path split and validates both Authentik-issued
-tokens and NeMo workload-exchange tokens.
+tokens, NeMo workload-exchange tokens, and NeMo Scoped Access Key JWTs.
 
 Kubernetes projected service account token expiration defaults to `600` seconds
 in the jobs backend. Override it through the NeMo Platform chart values if you
@@ -108,16 +108,26 @@ kubectl --context "${KUBE_CONTEXT}" -n "${NAMESPACE}" describe pod \
   -l "nmp.nvidia.com/job_id=${JOB_NAME}"
 ```
 
-## Workload Token Signing Key
+## Shared Token Signing Key
 
 Workload identity token exchange requires the NeMo auth service to sign the
 access token it mints from a Kubernetes projected service account subject
 token. The chart creates `Secret/nemo-workload-token-signing-key` by default,
 mounts `private-key.pem` into the NeMo Platform API pod at
 `/etc/nmp/workload-token/private-key.pem`, and sets
-`auth.oidc.workload_token_private_key_file` to that path. The matching public
-key is served from `/apis/auth/jwks`; the NeMo Platform chart's Envoy deployment
-uses that JWKS endpoint to validate exchanged workload tokens.
+`auth.token_signing.private_key_file` to that path. The same shared signing
+configuration is used for workload-exchange access tokens and Scoped Access Key
+JWTs. The matching public keys are served from `/apis/auth/jwks`.
+
+The Helm-rendered Envoy config authenticates protected `/apis/` requests by
+calling `/apis/auth/authenticate` on the NeMo API service. It does not use Envoy
+`claim_to_headers` for Scoped Access Keys. This keeps future revocation and
+dynamic-key checks inside the auth service, where access-key records can be
+looked up before Envoy forwards trusted principal headers.
+
+Scoped Access Keys remain disabled in the checked-in chart values by default.
+Runtime tests and local experiments can enable them with
+`nemo-platform.platformConfig.auth.access_keys.enabled=true`.
 
 The manual walkthrough can rely on the Helm chart to create and preserve this
 Secret.
@@ -137,4 +147,4 @@ Secret instead of relying on the demo-generated key. Set
 `workloadTokenSigningKey.create=false`, keep
 `workloadTokenSigningKey.secretName` and
 `nemo-platform.api.extraVolumes[].secret.secretName` aligned, and keep
-`auth.oidc.workload_token_private_key_file` pointed at the mounted file path.
+`auth.token_signing.private_key_file` pointed at the mounted file path.

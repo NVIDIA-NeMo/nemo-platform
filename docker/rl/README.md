@@ -182,15 +182,15 @@ Two sources of environments, with different timing:
 
 | Environment source | Venv built | Cost |
 |---|---|---|
-| **Built into the Gym repo** (math_with_judge, code_gen, swe_agents, …) | At **image build** — `NEMO_GYM_PREFETCH_CONFIGS` defaults to NeMo-RL's curated `examples/nemo_gym/prefetch_super_all_envs.yaml` | Paid once at build; zero at job start |
+| **Built into the Gym repo** (math_with_judge, code_gen, swe_agents, …) | At **runtime**, on first spin-up — prefetch is off by default (`NEMO_GYM_PREFETCH_CONFIGS` is empty) | Paid per job/node, until you opt back in |
 | **User-supplied env FileSet** (downloaded per job) | At **runtime**, on first spin-up | Paid per job/node — unavoidable, the env isn't known at build time |
 
-The default prefetch config is the union of the environments NeMo-RL uses across its RLVR /
-SWE / RLHF stages, and is maintained in step with the Gym pin. Set
-`NEMO_GYM_PREFETCH_CONFIGS` to a different space-separated list of config paths to bake a
-different set, or to empty to skip the layer entirely (every environment then installs at
-runtime). Baking these environments is a deliberate build-time / image-size cost traded for
-job startup latency.
+**Prefetch is disabled by default.**
+To bake a set back in, set `NEMO_GYM_PREFETCH_CONFIGS` to a space-separated list of config
+paths — NeMo-RL's `examples/nemo_gym/prefetch_super_all_envs.yaml` is the curated union of the
+environments it uses across its RLVR / SWE / RLHF stages, purpose-built for prefetching and
+maintained in step with the Gym pin. That trades build time and image size for job startup
+latency.
 
 User environments therefore *do* add startup time, and cannot be prebaked. Two things bound it:
 
@@ -222,8 +222,9 @@ IMAGE (built once)                                RUNTIME
   ├─ …SyncRolloutActor      [vllm]      ────────> rollout driver       (GRPO only)
   └─ …NemoGym               [nemo_gym]  ────────> Gym actor            (GRPO only)
 
-/opt/gym_venvs/<env>         per-ENVIRONMENT venvs
-  ├─ built-in Gym envs   ── prefetched at build (NEMO_GYM_PREFETCH_CONFIGS)
+/opt/gym_venvs/<env>         per-ENVIRONMENT venvs — empty in the shipped image
+  ├─ built-in Gym envs   ── created at RUNTIME (prefetch off; opt in via
+  │                         NEMO_GYM_PREFETCH_CONFIGS to bake them at build)
   └─ user FileSet envs   ── created at RUNTIME from the env's pyproject/requirements
 ```
 
@@ -244,9 +245,13 @@ driver (base venv)
   ├─ Generation  ─ VllmGenerationWorker ×N →  /opt/ray_venvs/…VllmGenerationWorker [vllm]
   │                                            └─ deep_ep / deep_gemm  → Hopper+ only
   ├─ Rollout     ─ SyncRolloutActor        →  /opt/ray_venvs/…SyncRolloutActor     [vllm]
-  └─ Env         ─ NemoGym actor           →  /opt/ray_venvs/…NemoGym          [nemo_gym]
+  └─ Env         ─ mode A: NemoGym         →  /opt/ray_venvs/…NemoGym          [nemo_gym]
+                   mode B: SandboxedGymActor + SandboxEpisodeBrokerActor
+                                           →  /opt/ray_venvs/…SandboxedGymActor [nemo_gym]
+                                              /opt/ray_venvs/…BrokerActor       [nemo_gym]
+                     └─ Gym stack + user FileSet run in an isolated OpenSandbox pod
                      └─ per-environment venv →  /opt/gym_venvs/<env>
-                          ├─ shipped env  → prebuilt in image  (no startup cost)
+                          ├─ shipped env  → built on first use (prefetch off by default)
                           └─ user FileSet → built on first use (startup cost;
                                             wheels-v1 avoids PyPI, native-v1 needs egress)
 ```
@@ -344,18 +349,11 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile, but it is not built at all now — it
   only exists in the unused `automodel` / `mcore` extras (see the note above).
-
-## CVE handling
-
-- **Version floors** for the ecosystem (aiohttp, cryptography, urllib3, protobuf, av,
-  …) come from NeMo-RL's `constraint-dependencies` / `override-dependencies` in its
-  `pyproject.toml`. We inherit them by building from RL's lock — nothing to do here.
-- **FFmpeg-bundling wheels** (`av`, `opencv-python-headless`, `decord2`) statically
-  embed FFmpeg codec libraries that carry CVEs regardless of the Python package
-  version, so a version bump alone doesn't fix them. The base deletes the PyPI copies
-  and reinstalls clean `cp313` wheels built against a patched FFmpeg (from
-  `docker/base/Dockerfile.python-wheels`).
-- **Ray's bundled aiohttp** is removed from the uv cache to fully address its CVE.
+  `.python-version` pinning an exact patch release, which uv honours over whatever
+  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
+  every venv came up on RL's version while ours sat unused on disk, so the image shipped
+  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
+  and persists into the runtime image, so node-built venvs agree too.
 
 ## Layering for fast CI rebuilds
 
@@ -379,9 +377,11 @@ whenever the *dependency graph* hasn't changed:
 
 ### Prefetching the per-worker venvs (build once, not per job)
 
-The warmup `uv sync --extra …` calls populate the **uv cache**, which is a build-time
-cache mount and never enters the image. The venvs training actually runs in are the
-per-worker ones under `/opt/ray_venvs`, so the base runs
+The warmup `uv sync --extra …` calls populate the **uv cache at `/opt/uv_cache`, which
+ships inside the image** — it has to, because the prefetched venvs symlink into it (see
+"Link mode" below). Do not confuse it with the `--mount=type=cache` the training image
+uses for its editable install, which is build-only and never enters the image. The venvs
+training actually runs in are the per-worker ones under `/opt/ray_venvs`, so the base runs
 `nemo_rl/utils/prefetch_venvs.py` after the source copy to bake them in — the same
 approach NeMo-RL's own release stage uses.
 
@@ -392,11 +392,18 @@ Prefetched (the filters match **actor FQNs**, not extra names):
 | `dtensor_policy_worker.DTensorPolicyWorker` | `fsdp` | DPO + GRPO policy training |
 | `vllm.vllm_worker` | `vllm` | GRPO generation — matches **both** `VllmGenerationWorker` and `VllmAsyncGenerationWorker` (NeMo-Gym forces async rollouts, so both are on the path) |
 | `sync_rollout_actor.SyncRolloutActor` | `vllm` | GRPO rollout driver (sync path) |
-| `nemo_gym.NemoGym` | `nemo_gym` | Gym environment actor |
+| `nemo_gym.NemoGym` | `nemo_gym` | Gym environment actor (mode A, colocated) |
+| `nemo_gym_actor.SandboxedGymActor` | `nemo_gym` | Sandboxed Gym (mode B) — the trusted proxy actor in the training pod |
+| `broker_actor.SandboxEpisodeBrokerActor` | `nemo_gym` | Trusted episode broker — creates per-episode sandboxes so the job sandbox never holds the OpenSandbox credential |
 
-Filters are **substring matches on actor FQNs**, so four filters yield five venvs. They are
+Filters are **substring matches on actor FQNs**, so six filters yield seven venvs. They are
 deliberately specific — a bare `vllm` would also match `nemo_rl.modelopt`'s
 `vllm_quant_worker` and pull in the modelopt+vllm combination.
+
+One venv is built **per actor, not per extra** — `prefetch_venvs.py` passes the actor FQN as
+the venv name — so the three `nemo_gym`-extra actors above each get their own directory and
+each needs its own filter. `opensandbox` / `tenacity` come in through the extra itself, since
+RL declares `nemo_gym = ["nemo_gym[sandbox]"]`.
 
 Without this, each venv is built **on the node at first run**, re-resolving and
 recompiling `deep_ep` / `mamba-ssm` / `causal-conv1d` against a cold uv cache on every
@@ -429,6 +436,33 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 
 A useful side effect: environments installed at runtime (user Gym FileSets, actors that
 were not prefetched) resolve against a warm cache instead of downloading from scratch.
+
+#### `vllm/` is a private copy per vLLM venv
+
+NeMo-RL **patches vLLM in place at worker startup** (`nemo_rl/models/generation/vllm/patches.py`
+rewrites `v1/executor/ray_executor.py`, `model_executor/models/llama_eagle3.py` and
+`tool_parsers/hermes_tool_parser.py`, taking a `<file>.patch_lock` beside each). Symlinking breaks
+that in two independent ways, both observed on the shipped image:
+
+1. **Permission** — the prefetched venvs are root-owned and the runtime is UID 1000, so creating
+   `ray_executor.py.patch_lock` fails with `EACCES` and the `VllmAsyncGenerationWorker` actor dies
+   in its creation task.
+2. **Sharing** — every vLLM-tier venv symlinks that file to *one* physical copy in `/opt/uv_cache`.
+   The patch writes a **per-venv `py_executable`** into it, so two venvs cannot share it. No amount
+   of `chown` fixes this; the file must not be shared at all.
+
+So the publish stage replaces `site-packages/vllm/` with a real, private, UID-1000-owned copy in
+each vLLM-tier venv.
+
+The two need separate fixes: **ownership** solves (1), **private copies** solve (2). Running as root
+would silence the `EACCES` but leaves the sharing intact — the first venv to patch wins and the next
+one launches under another venv's interpreter.
+
+Note this is *not* what upstream NeMo-RL does. Its published image symlinks too (74,567 symlinks vs
+925 real files in one vLLM venv, both vLLM venvs sharing one `ray_executor.py`), and it runs as
+**root** — so (1) never surfaces there and (2) stays latent, because vLLM 0.25 defaults
+`VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1` and the V2 executor never reads the patched call site. Running
+non-root is required here, so we can inherit neither the root workaround nor that assumption.
 
 ## Image size
 
@@ -469,12 +503,12 @@ every import.
 
 ### Levers, if size becomes a problem
 
-- **`NEMO_GYM_PREFETCH_CONFIGS`** — the environment venvs are 4.2 GB, but the build step that
-  produces them costs far more than that, because resolving 25 environments pulls their
-  dependencies into the shared cache and materializes the SWE agent setups (~5.9 GB).
-  Narrowing the list, or setting it empty, moves that cost from image size to job-start
-  latency. It is kept broad on purpose so GRPO runs do not install environments at startup,
-  and `swe_agents` in particular is required by the sandboxed-Gym work.
+- **`NEMO_GYM_PREFETCH_CONFIGS`** — already empty by default, which is the single largest
+  saving available: the environment venvs are 4.2 GB, and the build step that produces them
+  costs far more than that, because resolving 25 environments pulls their dependencies into the
+  shared cache and materializes the SWE agent setups (~5.9 GB). Setting it back to a non-empty
+  list moves that cost from job-start latency to image size and build time. Note `swe_agents` is
+  the set the sandboxed-Gym work uses, and it is also the least reliable to build.
 - **`--extra modelopt`** can be dropped from the warmup sync if quantization is not needed.
 - The **CUDA devel toolkit** cannot be removed: `deep_ep` JIT-compiles kernels at runtime and
   `native-v1` environments compile dependencies on the node.
@@ -488,5 +522,5 @@ every import.
 | `TORCH_CUDA_ARCH_LIST` | `"9.0 10.0"` | Archs for the torch-based source extensions (deep_ep, deep_gemm, mamba, causal-conv1d). |
 | `NVTE_CUDA_ARCHS` | `90;100` | Archs for Transformer-Engine. Inert today (TE is only in the unused `automodel`/`mcore` extras); kept for when either is enabled. |
 | `UV_SYNC_MODE` | `--frozen` | Reproducible sync. Set to empty to relock if a bumped RL commit's lock has drifted. |
-| `NEMO_GYM_PREFETCH_CONFIGS` | `examples/nemo_gym/prefetch_super_all_envs.yaml` | Space-separated Gym config paths whose environment venvs are baked into `/opt/gym_venvs`. Set empty to skip (every environment then installs at runtime). |
+| `NEMO_GYM_PREFETCH_CONFIGS` | *(empty — prefetch off)* | Space-separated Gym config paths whose environment venvs are baked into `/opt/gym_venvs`. Empty means every environment installs at runtime on first use. Set to `examples/nemo_gym/prefetch_super_all_envs.yaml` to bake NeMo-RL's curated set back in. |
 

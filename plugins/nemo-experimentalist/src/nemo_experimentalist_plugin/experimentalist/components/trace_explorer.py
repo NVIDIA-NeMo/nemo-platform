@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.models import ResourceRef
+from nemo_experimentalist_plugin.entities import ResourceRef
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -636,7 +636,7 @@ def _raw_attrs(raw: dict[str, Any]) -> dict[str, Any]:
     return attrs
 
 
-def _span_from_record(raw: dict[str, Any], resource_attrs: dict[str, Any] | None = None) -> TraceSpan:
+def _span_from_otlp_record(raw: dict[str, Any], resource_attrs: dict[str, Any] | None = None) -> TraceSpan:
     attrs = _raw_attrs(raw)
     if resource_attrs:
         for key, value in resource_attrs.items():
@@ -736,6 +736,203 @@ def _span_from_record(raw: dict[str, Any], resource_attrs: dict[str, Any] | None
             output_value=_json_text(output_value) if output_value is not None else None,
             output_mime_type=_attr(attrs, "output.mime_type"),
             score=_attr(attrs, "score", "evaluator.score") or raw.get("score"),
+        )
+
+    return Span(**base, kind=kind)
+
+
+# Intake column -> the token_counts key trace_explorer exposes.
+_TOKEN_COLUMN_BY_KEY: tuple[tuple[str, str], ...] = (
+    ("prompt", "input_tokens"),
+    ("completion", "output_tokens"),
+    ("cached", "cached_tokens"),
+    ("total", "total_tokens"),
+)
+
+# ATIF step source -> chat message role.
+_ROLE_BY_ATIF_SOURCE: dict[str, str] = {"user": "user", "system": "system", "agent": "assistant"}
+_ATIF_INPUT_ROLES = frozenset({"user", "system"})
+
+
+def _column_int(value: Any) -> int | None:
+    """Coerce an Intake numeric column, tolerating strings and rejecting bools."""
+    if value is None or isinstance(value, bool):
+        return None
+    if not isinstance(value, (int, float, str)):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _intake_token_counts(row: dict[str, Any]) -> dict[str, int]:
+    """Read token counts from the row's typed columns.
+
+    Intake strips the ``llm.token_count.*`` keys from raw_attributes because it
+    exposes them as columns, so the columns are the only source here.
+    """
+    counts: dict[str, int] = {}
+    for key, column in _TOKEN_COLUMN_BY_KEY:
+        parsed = _column_int(row.get(column))
+        if parsed is not None:
+            counts[key] = parsed
+    return counts
+
+
+def _intake_error_fields(row: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Read error type and message from the row's typed columns."""
+
+    def pick(value: Any) -> str | None:
+        return str(value) if value not in (None, "") else None
+
+    return pick(row.get("error_type")), pick(row.get("error_message"))
+
+
+def _atif_messages(attrs: dict[str, Any]) -> tuple[list[LLMMessage], list[LLMMessage]]:
+    """Synthesize messages from an ATIF step's source and message.
+
+    ATIF records a step's text as a bare string plus a ``source`` discriminator,
+    so there is no message list to recover — one is built from those two fields.
+    """
+    message = attrs.get("message")
+    if not isinstance(message, str) or not message:
+        return [], []
+    role = _ROLE_BY_ATIF_SOURCE.get(str(attrs.get("source")), "assistant")
+    entry = LLMMessage(role=role, content=message)
+    if role in _ATIF_INPUT_ROLES:
+        return [entry], []
+    return [], [entry]
+
+
+def _atif_tool_definitions(attrs: dict[str, Any]) -> list[ToolDefinition]:
+    """Return the tool definitions ATIF preserved on the trajectory root span."""
+    agent = attrs.get("agent")
+    if not isinstance(agent, dict):
+        return []
+    definitions = agent.get("tool_definitions")
+    if not isinstance(definitions, list):
+        return []
+    return [
+        ToolDefinition(
+            name=str(definition.get("name") or ""),
+            description=str(definition.get("description") or ""),
+            parameters=definition.get("parameters") if isinstance(definition.get("parameters"), dict) else {},
+        )
+        for definition in definitions
+        if isinstance(definition, dict) and definition.get("name")
+    ]
+
+
+def _atif_tool_call_id(attrs: dict[str, Any]) -> str:
+    """Return the tool call id ATIF preserved on a TOOL span."""
+    tool_call = attrs.get("tool_call")
+    if isinstance(tool_call, dict):
+        call_id = tool_call.get("tool_call_id")
+        if isinstance(call_id, str):
+            return call_id
+    return ""
+
+
+def _looks_like_intake_row(record: dict[str, Any]) -> bool:
+    """Intake rows always carry the source column; OTLP file records never do."""
+    return "source" in record and ("span_id" in record or "external_span_id" in record)
+
+
+def _span_from_intake_row(row: dict[str, Any]) -> TraceSpan:
+    """Build a span from an Intake row, reading promoted values from columns.
+
+    Intake lifts known attributes into typed columns and strips those keys from
+    ``raw_attributes``, so the columns are authoritative here. Only values Intake
+    preserved rather than promoted — ATIF's raw step payload, mime types,
+    invocation parameters — are read from the attribute bag.
+    """
+    attrs = _raw_attrs(row)
+    start_time = _time_ns(row.get("started_at"))
+    end_time = _time_ns(row.get("ended_at"))
+    status = _status_from_raw(row.get("status"), attrs)
+    kind = _kind(row.get("kind"))
+    error_type, error_message = _intake_error_fields(row)
+    parent_span_id = row.get("parent_span_id") or row.get("external_parent_span_id")
+    input_value = row.get("input")
+    output_value = row.get("output")
+    is_atif = row.get("source") == "atif"
+
+    base: dict[str, Any] = dict(
+        span_id=str(row.get("span_id") or row.get("external_span_id") or ""),
+        trace_id=str(row.get("trace_id") or ""),
+        parent_span_id=str(parent_span_id) if parent_span_id else None,
+        name=str(row.get("name") or ""),
+        start_time=start_time,
+        end_time=end_time,
+        duration_ns=end_time - start_time if start_time and end_time else 0,
+        status=status,
+        attributes=attrs,
+        events=[],
+    )
+
+    if kind == "LLM":
+        atif_input, atif_output = _atif_messages(attrs) if is_atif else ([], [])
+        return LLMSpan(
+            **base,
+            provider=str(row.get("provider") or ""),
+            model_name=str(row.get("model") or ""),
+            invocation_parameters=_parse_jsonish(_attr(attrs, "llm.invocation_parameters")) or {},
+            input_value=_json_text(input_value) if input_value is not None else None,
+            input_mime_type=_attr(attrs, "input.mime_type"),
+            output_value=_json_text(output_value) if output_value is not None else None,
+            output_mime_type=_attr(attrs, "output.mime_type"),
+            input_messages=_messages_from_payload(input_value) or atif_input,
+            output_messages=_messages_from_payload(output_value) or atif_output,
+            tools=_tools_from_attrs(attrs) or (_atif_tool_definitions(attrs) if is_atif else []),
+            token_counts=_intake_token_counts(row),
+        )
+
+    if kind == "TOOL":
+        return ToolSpan(
+            **base,
+            tool_name=str(row.get("tool_name") or row.get("name") or ""),
+            # Intake has no tool_call_id column, so these keys survive in raw_attributes
+            # for OTLP rows. ATIF preserves the id inside its tool_call payload instead.
+            tool_call_id=str(
+                _attr(attrs, "tool_call.id", "tool.id", "tool_call_id")
+                or (_atif_tool_call_id(attrs) if is_atif else "")
+            ),
+            input_value=_json_text(input_value) if input_value is not None else None,
+            input_mime_type=_attr(attrs, "input.mime_type"),
+            output_value=_json_text(output_value) if output_value is not None else None,
+            output_mime_type=_attr(attrs, "output.mime_type"),
+            error_type=error_type,
+            error_message=error_message or status.description,
+        )
+
+    if kind == "AGENT":
+        return AgentSpan(
+            **base,
+            agent_name=str(row.get("agent_name") or "Agent"),
+            method_name=str(row.get("name") or "run"),
+            input_value=_json_text(input_value) if input_value is not None else None,
+            output_value=_json_text(output_value) if output_value is not None else None,
+            error_type=error_type,
+            error_message=error_message or status.description,
+        )
+
+    if kind == "CHAIN":
+        return ChainSpan(
+            **base,
+            input_value=_json_text(input_value) if input_value is not None else None,
+            output_value=_json_text(output_value) if output_value is not None else None,
+        )
+
+    if kind == "EVALUATOR":
+        return EvaluatorSpan(
+            **base,
+            evaluator_name=str(row.get("name") or ""),
+            input_value=_json_text(input_value) if input_value is not None else None,
+            input_mime_type=_attr(attrs, "input.mime_type"),
+            output_value=_json_text(output_value) if output_value is not None else None,
+            output_mime_type=_attr(attrs, "output.mime_type"),
+            score=_attr(attrs, "score", "evaluator.score"),
         )
 
     return Span(**base, kind=kind)
@@ -848,7 +1045,14 @@ def _load_trace_models(
     eval_contexts: list[EvalContextData] = []
     for document in documents:
         for record, resource_attrs in _iter_span_records(document):
-            span = _span_from_record(record, resource_attrs)
+            # This path deliberately accepts either shape — _looks_like_span_record
+            # matches Intake-shaped records, so a dumped Intake payload must keep
+            # working here. Only from_intake, which knows its source, skips the check.
+            span = (
+                _span_from_intake_row(record)
+                if _looks_like_intake_row(record)
+                else _span_from_otlp_record(record, resource_attrs)
+            )
             if span.span_id:
                 spans.append(span)
         eval_contexts.extend(_eval_context_from_record(record) for record in _iter_evaluator_result_records(document))
@@ -1337,6 +1541,12 @@ class TraceExplorer:
     ) -> TraceExplorer:
         """Load a trace from a resource reference."""
         if ref.uri.startswith("file://"):
+            if ref.uri.endswith(".atif.json"):
+                raise ValueError(
+                    f"Cannot read ATIF trajectory from disk: {ref.uri}. ATIF becomes spans only "
+                    "through Intake ingest, so this trace was never uploaded — check for an earlier "
+                    "persistence failure, or supply a client and workspace to load it from Intake."
+                )
             return await cls.from_file(ref.uri[len("file://") :])
         elif ref.uri.startswith("intake://") and client is not None and workspace is not None:
             # Trial/eval traces are stored as ``intake://traces/<id>`` (see the
@@ -1374,7 +1584,7 @@ class TraceExplorer:
             row = item.model_dump(mode="json", exclude_none=True)
             if row.get("session_id"):
                 session_ids.add(str(row["session_id"]))
-            spans.append(_span_from_record(row))
+            spans.append(_span_from_intake_row(row))
 
         eval_contexts = await _fetch_intake_eval_contexts(
             client=client,

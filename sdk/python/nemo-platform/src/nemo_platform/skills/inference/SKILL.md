@@ -522,10 +522,8 @@ let translate do the conversion.
 
 ## Troubleshooting
 
-**DB disk I/O error on startup** — orphaned WAL journal files. Delete all three:
-```bash
-rm -rf ~/.local/share/nemo
-```
+**DB disk I/O error on startup** — use the `nemo-teardown` skill's **stop +
+wipe data** flow, then rerun setup. Do not delete live platform data directly.
 
 **`nemo-switchyard` fails to load at startup** — `switchyard.lib` not importable.
 Run `uv sync` from the repo root with default groups enabled to install the

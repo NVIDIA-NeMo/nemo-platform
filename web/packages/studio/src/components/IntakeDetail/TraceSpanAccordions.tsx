@@ -35,7 +35,7 @@ import {
   type SessionTrajectory,
 } from '@studio/util/intakeTelemetry';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 
 const TRACE_SPANS_PAGE_SIZE = 1000;
 const EMPTY_SPANS: Span[] = [];

@@ -4,7 +4,7 @@
 import { ROUTES } from '@studio/constants/routes';
 import { gateBaseModelsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const WorkspaceBaseModelsRoute = lazy(() =>
   import('@studio/routes/WorkspaceBaseModelsRoute').then((module) => ({

@@ -10,10 +10,6 @@ const RECIPE_COUNT_LABEL = `${FILESET_TEMPLATES.length} ${
   FILESET_TEMPLATES.length === 1 ? 'recipe' : 'recipes'
 }`;
 
-/**
- * The "How do you want to start?" tiles, in display order. Only "Build from scratch"
- * is enabled today; the others are placeholders for upcoming entry points.
- */
 export const START_OPTIONS: StartOption[] = [
   {
     id: 'ai',
@@ -21,7 +17,7 @@ export const START_OPTIONS: StartOption[] = [
     description:
       'Tell us what you need in plain language. AI drafts the columns and prompts — then you refine everything visually.',
     icon: Sparkles,
-    enabled: false,
+    enabled: true,
   },
   {
     id: 'template',

@@ -37,6 +37,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrial,
     AgentEvalTrialStatus,
     AgentOutput,
+    RunnerInfo,
     resolve_trial_status,
     standard_evidence_descriptors,
 )
@@ -550,6 +551,24 @@ class NatWorkflowRuntime:
     ) -> None:
         self.config = config or NatWorkflowConfig()
         self.environment = environment or PlatformDockerEnvironmentProvider()
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runtime and the settings that shape its results (the AgentTaskRunner contract).
+
+        Enumerates fields rather than dumping ``NatWorkflowConfig``: it also carries ``nvidia_api_key``,
+        and this is persisted with the run.
+        """
+        return RunnerInfo(
+            name="example_nat_workflow",
+            kind="runner",
+            config={
+                "nmp_base_url": self.config.nmp_base_url,
+                "agent_model": self.config.agent_model,
+                "timeout_sec": self.config.timeout_sec,
+                "run_verify": self.config.run_verify,
+                "docker_extra_args": list(self.config.docker_extra_args),
+            },
+        )
 
     async def run_tasks(
         self,

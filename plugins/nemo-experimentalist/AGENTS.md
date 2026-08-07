@@ -13,10 +13,22 @@ Inherited from the NeMo Platform monorepo that now hosts this plugin:
 
 ## Active migrations
 
+### 2026-07-31: Command group nested under `nemo agents`
+
+The only path is `nemo agents experimentalist <verb>`. `ExperimentalistCLI` is
+registered under the `nemo.cli.agents` entry-point group, which the `nemo-agents`
+plugin's `AgentsCLI` discovers and mounts. There is no top-level
+`nemo experimentalist` alias.
+
+Analyst and Eval Author follow the same rule: `nemo agents analyst run` (was
+`nemo insights analyze`) and `nemo agents eval-author <verb>`. Prefer
+`ctx.command_path` over a hardcoded path when a message quotes the command back
+to the user.
+
 ### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone
 
 `plugins/nemo-eval-author/` (`nemo-eval-author-plugin`) owns the Eval Author agent package
-(`eval_author/`) plus its own `AUTHOR_*` `model_config`.
+(`eval_author/`).
 
 **The target is one arrow: Experimentalist → Eval Author.** Eval Author is meant to stop
 depending on Experimentalist entirely, even where that means duplicating code. Today the
@@ -30,23 +42,11 @@ arrow points both ways:
   and the backend factory.
 
 `plugins/nemo-eval-author/tests/test_plugin_boundary.py` pins that second list so it can
-only shrink. **When you are tempted to share a helper between the two plugins, duplicate it
-into Eval Author instead.** Sharing reads like a cleanup and is a regression here; the
-boundary test will reject it, which is the intended answer, not an obstacle to route
-around. `uv` resolves the current cycle fine — install both with
-`uv sync --group experimentalist`.
-
-Two transitional mechanisms exist only because of the second arrow. Both should be deleted
-with the last `nemo_experimentalist_plugin` import, and both are tagged
-`TODO(eval-author-standalone)` — `rg 'eval-author-standalone'` lists every site:
-
-- `nemo_eval_author_plugin/_env_bridge.py` copies `AUTHOR_*` into unset `EXPERIMENTALIST_*`
-  slots and is imported for that side effect. `eval_author/agent.py` imports it ahead of
-  every Experimentalist agent, because those agents build their LLM in the class body and
-  so read the environment at import time. isort keeps a plain `import` ahead of `from`
-  imports in the same section, so do not convert it to a `from` import.
-- `AUTHOR_*` falls back to `EXPERIMENTALIST_*` in `model_config`. `AUTHOR_*` is the real
-  contract; the fallback only keeps one credential set working in insight mode.
+only shrink. **Do not share Eval Author implementation helpers with Experimentalist.**
+The Platform-owned model client integration is intentionally different: both plugins use
+`nemo_platform_plugin.nooa_model_client` so provider routing, Platform authentication,
+and configured model selection have one owner outside either plugin. `uv` resolves the
+remaining package cycle; install both with `uv sync --group experimentalist`.
 
 ### 2026-07-24: Optimizer renamed to Experimentalist
 
@@ -56,29 +56,31 @@ breaking rename with no compatibility aliases:
 
 - distribution `nemo-optimizer-plugin` → `nemo-experimentalist-plugin`, source
   path `src/nemo_optimizer_plugin` → `src/nemo_experimentalist_plugin`
-- `OptimizerCLI` → `ExperimentalistCLI`, and both the `nemo.cli` and
+- `OptimizerCLI` → `ExperimentalistCLI`, and the `nemo.cli.agents` and
   `nemo.skills` entry-point keys are now `experimentalist`, so the command is
-  `nemo experimentalist ...`
-- the `experiment` verb is now `run`: `nemo experimentalist run`
+  `nemo agents experimentalist ...` (historically also briefly exposed as a
+  top-level `nemo experimentalist` alias; that alias is gone)
+- the `experiment` verb is now `run`: `nemo agents experimentalist run`
 - `OPTIMIZER_API_BASE`, `OPTIMIZER_API_KEY`, `OPTIMIZER_{SMART,MID,FAST}_MODEL_NAME`,
   `OPTIMIZER_MODEL`, `NEMO_OPTIMIZER_E2E`, and `NEMO_OPTIMIZER_RUNTIME_CACHE` are
-  now `EXPERIMENTALIST_*` / `NEMO_EXPERIMENTALIST_*`
+  now `NEMO_EXPERIMENTALIST_*`
 - the dataset cache moved from `~/.cache/nemo-optimizer/` to
   `~/.cache/nemo-experimentalist/`, so cached datasets re-download once
 
 Two names deliberately did **not** change. `optimizer.yaml` and the
 `.nemo-optimizer/` state directory are a shared contract with
 `nemo-insights-plugin`: `PROFILE_FILENAME` and `discover_profile()` live in
-`nemo_insights_plugin.contracts.profile`, and `nemo insights analyze` writes
-`<profile-dir>/.nemo-optimizer/insights.yaml`, which this plugin reads as the
-default insight. Rename them only in lockstep with a Platform change to that
+`nemo_insights_plugin.contracts.profile`, and `nemo agents analyst run` can
+mirror the Platform rows it wrote into `<profile-dir>/.nemo-optimizer/insights.yaml`
+via `--insights-file-output`, which this plugin reads as the default insight when
+the file exists. Rename them only in lockstep with a Platform change to that
 contract. `EvolutionaryOptimizer` and `EvolutionaryOptimizerConfig` also keep
 their names — they describe the optimization algorithm, not the product.
 
-The command group is top-level (`nemo experimentalist`) rather than the
-eventual `nemo agents experimentalist`. The platform's `nemo.cli` entry-point
-group is flat — only `nemo.jobs` and `nemo.functions` are dot-scoped — so
-nesting under `nemo agents` needs a Platform-side change first.
+At the time of this rename the command group was top-level (`nemo
+experimentalist`), because the platform's `nemo.cli` entry-point group was flat
+and nesting under `nemo agents` needed a Platform-side change first. That change
+has since landed — see the `nemo agents` entry above for the current path.
 
 ### 2026-07-21: Curator renamed to Eval Author
 
@@ -107,11 +109,14 @@ instead of restoring Curator imports, configuration, or aliases. The obsolete
   Configure Platform services, trace storage, and Insights analysis according
   to the Platform documentation; this repository does not own a service,
   scheduler, or testbed setup.
-- `nooa` is pinned to an immutable public GitHub revision in `pyproject.toml`,
-  currently a commit rather than a tag because the MCP transport-timeout fix
-  landed after `v0.0.6`. Update the revision, the matching pin in
-  `examples/tau3-nooa-agent/pyproject.toml`, and both lock files together. Keep
-  the Platform-supplied Insights plugin separate.
+- `nooa` is pinned to an immutable public GitHub revision in the workspace root
+  `pyproject.toml` under `[tool.uv.sources]`; this plugin's `pyproject.toml` only
+  declares the dependency. It is a commit rather than a tag because the callable
+  `@strategy(llm=...)` support this plugin depends on landed after `v0.0.8`.
+  Update the root pin, the matching pin in
+  `examples/tau3-nooa-agent/pyproject.toml`, the revision quoted in
+  `framework-skills/nooa/SKILL.md`, and both lock files together. Keep the
+  Platform-supplied Insights plugin separate.
 - This branch uses merged Platform PR 718 contracts only. After the Platform
   handoff lands, rebase and repin before adopting any new Platform testbed or
   installer interfaces.
