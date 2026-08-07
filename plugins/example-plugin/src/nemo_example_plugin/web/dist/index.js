@@ -5,8 +5,21 @@ import { NavLink as i, Navigate as a, Outlet as o, Route as s, Routes as c } fro
 import { RelativeTime as l, StatusBadge as u, StudioDataView as d, TableEmptyState as f, useStudioDataViewState as p } from "@nemo/common";
 import { useCallback as m } from "react";
 import { jsx as h, jsxs as g } from "react/jsx-runtime";
+//#region src/paths.ts
+var _ = (e, t) => `/workspaces/${e}/plugin/example/${t}`, v = [
+	"overview",
+	"auth",
+	"workspace",
+	"shared-ui"
+], y = {
+	overview: "Overview",
+	auth: "Auth",
+	workspace: "Workspace",
+	"shared-ui": "Shared UI"
+};
+//#endregion
 //#region src/SharedUiPage.tsx
-function _({ host: e }) {
+function b({ host: e }) {
 	let { data: t, isPending: i } = e.sdk.platform.useEntitiesListWorkspaces({
 		page: 1,
 		page_size: 100
@@ -64,83 +77,66 @@ function _({ host: e }) {
 }
 //#endregion
 //#region src/Root.tsx
-function v({ host: e }) {
+function x({ host: e }) {
 	return /* @__PURE__ */ h(c, { children: /* @__PURE__ */ g(s, {
-		element: /* @__PURE__ */ h(y, {}),
+		element: /* @__PURE__ */ h(S, { workspaceId: e.workspaceId }),
 		children: [
 			/* @__PURE__ */ h(s, {
 				index: !0,
 				element: /* @__PURE__ */ h(a, {
-					to: "overview",
+					to: _(e.workspaceId, "overview"),
 					replace: !0
 				})
 			}),
 			/* @__PURE__ */ h(s, {
 				path: "overview",
-				element: /* @__PURE__ */ h(x, { host: e })
+				element: /* @__PURE__ */ h(w, { host: e })
 			}),
 			/* @__PURE__ */ h(s, {
 				path: "auth",
-				element: /* @__PURE__ */ h(S, { getAccessToken: e.auth.getAccessToken })
+				element: /* @__PURE__ */ h(T, { getAccessToken: e.auth.getAccessToken })
 			}),
 			/* @__PURE__ */ h(s, {
 				path: "workspace",
-				element: /* @__PURE__ */ h(C, { workspaceId: e.workspaceId })
+				element: /* @__PURE__ */ h(E, { workspaceId: e.workspaceId })
 			}),
 			/* @__PURE__ */ h(s, {
 				path: "shared-ui",
-				element: /* @__PURE__ */ h(_, { host: e })
+				element: /* @__PURE__ */ h(b, { host: e })
 			}),
 			/* @__PURE__ */ h(s, {
 				path: "*",
-				element: /* @__PURE__ */ h(w, {})
+				element: /* @__PURE__ */ h(D, {})
 			})
 		]
 	}) });
 }
-function y() {
-	let e = ({ isActive: e }) => `px-3 py-1 rounded text-sm font-medium transition-colors ${e ? "text-primary bg-surface-hover" : "text-subtle hover:text-primary"}`;
+function S({ workspaceId: e }) {
+	let r = ({ isActive: e }) => `px-3 py-1 rounded text-sm font-medium transition-colors ${e ? "text-primary bg-surface-hover" : "text-subtle hover:text-primary"}`;
 	return /* @__PURE__ */ g(n, {
 		gap: "4",
 		className: "h-full p-4",
-		children: [/* @__PURE__ */ g(t, {
+		children: [/* @__PURE__ */ h(t, {
 			gap: "2",
 			className: "border-b border-subtle pb-2",
-			children: [
-				/* @__PURE__ */ h(i, {
-					to: "overview",
-					className: e,
-					children: "Overview"
-				}),
-				/* @__PURE__ */ h(i, {
-					to: "auth",
-					className: e,
-					children: "Auth"
-				}),
-				/* @__PURE__ */ h(i, {
-					to: "workspace",
-					className: e,
-					children: "Workspace"
-				}),
-				/* @__PURE__ */ h(i, {
-					to: "shared-ui",
-					className: e,
-					children: "Shared UI"
-				})
-			]
+			children: v.map((t) => /* @__PURE__ */ h(i, {
+				to: _(e, t),
+				className: r,
+				children: y[t]
+			}, t))
 		}), /* @__PURE__ */ h("div", {
 			className: "flex-1",
 			children: /* @__PURE__ */ h(o, {})
 		})]
 	});
 }
-function b({ children: e }) {
+function C({ children: e }) {
 	return /* @__PURE__ */ h("pre", {
 		className: "bg-surface-sunken text-subtle rounded p-3 text-xs overflow-x-auto font-mono",
 		children: e
 	});
 }
-function x({ host: i }) {
+function w({ host: i }) {
 	let { data: a, isPending: o, isError: s } = i.sdk.platform.useEntitiesListWorkspaces({
 		page: 1,
 		page_size: 100
@@ -219,7 +215,7 @@ function x({ host: i }) {
 		]
 	});
 }
-function S({ getAccessToken: e }) {
+function T({ getAccessToken: e }) {
 	let t = e(), i = null;
 	try {
 		let e = t.split(".")[1];
@@ -242,14 +238,14 @@ function S({ getAccessToken: e }) {
 				children: [/* @__PURE__ */ h(r, {
 					kind: "label/bold/sm",
 					children: "Example API call"
-				}), /* @__PURE__ */ h(b, { children: "fetch('/apis/v1/workspaces', {\n  headers: { Authorization: `Bearer ${getAccessToken()}` },\n})" })]
+				}), /* @__PURE__ */ h(C, { children: "fetch('/apis/v1/workspaces', {\n  headers: { Authorization: `Bearer ${getAccessToken()}` },\n})" })]
 			}),
 			/* @__PURE__ */ g(n, {
 				gap: "1",
 				children: [/* @__PURE__ */ h(r, {
 					kind: "label/bold/sm",
 					children: "Token claims (decoded, not verified)"
-				}), i ? /* @__PURE__ */ h(b, { children: JSON.stringify(i, null, 2) }) : /* @__PURE__ */ h(r, {
+				}), i ? /* @__PURE__ */ h(C, { children: JSON.stringify(i, null, 2) }) : /* @__PURE__ */ h(r, {
 					kind: "body/regular/xs",
 					color: "secondary",
 					children: t ? "Could not decode token." : "No token provided."
@@ -258,7 +254,7 @@ function S({ getAccessToken: e }) {
 		]
 	});
 }
-function C({ workspaceId: e }) {
+function E({ workspaceId: e }) {
 	return /* @__PURE__ */ g(n, {
 		gap: "3",
 		children: [
@@ -276,19 +272,19 @@ function C({ workspaceId: e }) {
 				children: [/* @__PURE__ */ h(r, {
 					kind: "label/bold/sm",
 					children: "Current workspace"
-				}), /* @__PURE__ */ h(b, { children: e })]
+				}), /* @__PURE__ */ h(C, { children: e })]
 			}),
 			/* @__PURE__ */ g(n, {
 				gap: "1",
 				children: [/* @__PURE__ */ h(r, {
 					kind: "label/bold/sm",
 					children: "Example API call scoped to this workspace"
-				}), /* @__PURE__ */ h(b, { children: "fetch(`/apis/v1/workspaces/${workspaceId}/models`, {\n  headers: { Authorization: `Bearer ${getAccessToken()}` },\n})" })]
+				}), /* @__PURE__ */ h(C, { children: "fetch(`/apis/v1/workspaces/${workspaceId}/models`, {\n  headers: { Authorization: `Bearer ${getAccessToken()}` },\n})" })]
 			})
 		]
 	});
 }
-function w() {
+function D() {
 	return /* @__PURE__ */ h(r, {
 		kind: "body/regular/sm",
 		color: "secondary",
@@ -297,34 +293,34 @@ function w() {
 }
 //#endregion
 //#region src/Nav.tsx
-var T = (e) => [{
+var O = (e) => [{
 	group: "Example Plugin",
 	items: [
 		{
 			id: "example-overview",
 			iconName: "flask-conical",
 			label: "Overview",
-			href: `/workspaces/${e}/plugin/example/overview`
+			href: _(e, "overview")
 		},
 		{
 			id: "example-auth",
 			iconName: "key-round",
 			label: "Auth",
-			href: `/workspaces/${e}/plugin/example/auth`
+			href: _(e, "auth")
 		},
 		{
 			id: "example-workspace",
 			iconName: "building-2",
 			label: "Workspace",
-			href: `/workspaces/${e}/plugin/example/workspace`
+			href: _(e, "workspace")
 		},
 		{
 			id: "example-shared-ui",
 			iconName: "table",
 			label: "Shared UI",
-			href: `/workspaces/${e}/plugin/example/shared-ui`
+			href: _(e, "shared-ui")
 		}
 	]
 }];
 //#endregion
-export { v as Root, T as navItems };
+export { x as Root, O as navItems };

@@ -22,7 +22,7 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 | Concern | DO | DON'T |
 | --- | --- | --- |
 | Entry | `export { Root }` (component) + `export { navItems }` from `src/index.ts` | export `mount()` or call `createRoot` |
-| Routing | Studio's shared router — `Routes`/`Route`/`NavLink`/`Navigate`/`Outlet`/`useNavigate`, paths relative to the plugin mount | `BrowserRouter`, `history.pushState` patching, hardcoded `basename` |
+| Routing | Studio's shared router — `Routes`/`Route`/`NavLink`/`Navigate`/`Outlet`/`useNavigate`. Route `path`s are relative; every `to` / `href` must be **absolute** (see below) | `BrowserRouter`, `history.pushState` patching, hardcoded `basename`, relative `to` |
 | Components | KUI from `@nvidia/foundations-react-core` — `Text`, `Stack`, `Flex`, `Button` | hand-rolled styled `<div>`s or native `<button>` |
 | Tables, forms, status | Studio's shared UI from `@nemo/common` — `StudioDataView`, `useStudioDataViewState`, `ControlledTextInput`, `StatusBadge`, … | re-implement a table/empty state/relative timestamp, or deep-import `@nemo/common/src/...` |
 | Styling | Studio's theme-aware tokens: `bg-surface-base/raised/sunken/hover`, `text-subtle/muted/primary`, `border-subtle` | hardcoded Tailwind palette (`bg-gray-100`, `text-blue-700`) — not compiled for the plugin, not theme-aware |
@@ -152,6 +152,16 @@ The bundle is registered via the plugin's `nemo.studio` entry point
 UI route is gated behind the `pluginsEnabled` flag (on by default).
 
 ## Gotchas
+
+- **Links must be absolute — a relative `to` silently appends.** Studio mounts
+  plugins at a splat route (`/workspaces/:workspaceId/plugin/:pluginName/*`),
+  and React Router resolves a relative `to` against the splat's *full* matched
+  pathname, not the mount point (`getResolveToMatches` uses `match.pathname` for
+  the last match, not `match.pathnameBase`). So on `/plugin/example/auth`,
+  `<NavLink to="shared-ui">` navigates to `/plugin/example/auth/shared-ui`, and
+  each further click appends again. Build hrefs from `host.workspaceId` — see
+  `src/paths.ts`, used by both `Root.tsx` and `Nav.tsx`. Route `path`s are
+  unaffected; only `to` / `href` resolution is.
 
 - **Token classes must be ones Studio already compiles.** Studio's Tailwind only
   scans `web/packages/**`, not this dir. Stick to the semantic tokens Studio uses
