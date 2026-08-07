@@ -48,7 +48,7 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 )
 from nemo_experimentalist_plugin.experimentalist.registry import resolve
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
-from nemo_experimentalist_plugin.experimentalist.seam import Fork
+from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, Fork
 from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,6 @@ def _accepted(constructor: Any, supplied: dict[str, Any]) -> dict[str, Any]:
 
 #: The split every run has, and what ``evaluate()`` measures unless told otherwise.
 #: It is also the channel a selector ranks on by default.
-PRIMARY_SPLIT = "validation"
 
 #: What a fork must not carry from its source, composed from the owners that actually
 #: contribute names: this run's own layout, generic developer hygiene, the evaluator's

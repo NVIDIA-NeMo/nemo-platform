@@ -13,7 +13,6 @@ import asyncio
 import logging
 import random
 import shutil
-from collections import defaultdict
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
@@ -23,18 +22,9 @@ from nemo_experimentalist_plugin.entities import (
     Dataset,
     EvaluationResult,
     Proposal,
-    RewardRecord,
-    TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
-from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
-    GoalTree,
-    GoalTreeConfig,
-    GoalTreeGenerator,
-    leaf_weights_by_id,
-    traverse_tree,
-)
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
     ensure_heldout_hidden,
     restore_heldout_splits,
@@ -69,30 +59,6 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match
 
 logger = logging.getLogger(__name__)
-
-
-def _trajectory_detail_from_reward(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        reward_val = value.get("reward", value.get("score", 0.0))
-        explanation = value.get("reason") or value.get("explanation") or ""
-    else:
-        reward_val = getattr(value, "reward", getattr(value, "score", value))
-        explanation = getattr(value, "reason", "") or getattr(value, "explanation", "")
-    detail: dict[str, Any] = {"reward": float(reward_val)}
-    if explanation:
-        detail["explanation"] = str(explanation)
-    return detail
-
-
-def _complete_trace_groups(
-    traces_by_task: dict[str, dict[str, TrialResult]], agent_ids: list[str]
-) -> dict[str, dict[str, TrialResult]]:
-    required_agents = set(agent_ids)
-    return {
-        task_id: by_agent
-        for task_id, by_agent in traces_by_task.items()
-        if set(by_agent) == required_agents and all(by_agent[aid] for aid in required_agents)
-    }
 
 
 class AnalysisSkill(Skill):
@@ -333,7 +299,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         # train and validation are guaranteed by the runner; insight exists only when the
         # run was given an Insight, which is why it alone is optional.
         train_eval_dataset = ctx.datasets["train"]
-        validation_eval_dataset = ctx.datasets["validation"]
         insight_eval_dataset = ctx.datasets.get("insight")
         agent_spec_path = ctx.agent_spec
 
@@ -372,14 +337,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 candidates=candidates,
             )
 
-        # ---- Initial goal tree (idempotent) ------------------------------
-        await self._generate_initial_goal_tree(
-            dataset=train_eval_dataset,
-            wanted=config.trajectory_scorer is not None,
-            config=config,
-            agent_spec_path=agent_spec_path,
-        )
-
         phase: Literal["exploration", "exploitation"] = "exploration" if round_num % 2 == 0 else "exploitation"
 
         # ---- Pareto optimization loop (shared by fresh start and resume) --
@@ -394,12 +351,12 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             )
             # Selecting no terminator means no early stopping; the budget above still holds.
             if config.terminator is not None:
-                terminator = get_component("terminator", config.terminator, models=self._models)
+                terminator = cast(
+                    "roles.Terminator",
+                    ctx.component("terminator", config.terminator, config=config.terminator_config),
+                )
                 decision = await terminator.run(
-                    round_num=round_num,
-                    evolution_tree=evolution_tree,
-                    prior_analysis=prior_analysis,
-                    config=config,
+                    round_num=round_num, candidates=candidates, prior_analysis=prior_analysis
                 )
                 if decision.stop:
                     logger.info(f"phase=terminate reason={decision.reason}")
@@ -458,16 +415,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 nmp_workspace=ctx.workspace,
                 agent_spec_path=agent_spec_path,
             )
-            if config.trajectory_scorer is not None:
-                await self._update_goal_tree(
-                    analysis_dir=analysis_dir,
-                    round_num=round_num,
-                    analysis=analysis,
-                    dataset=train_eval_dataset,
-                    config=config,
-                    agent_spec_path=agent_spec_path,
-                )
-
             proposals = await self._propose_improvements(
                 analysis=analysis,
                 evolution_tree=evolution_tree,
@@ -520,20 +467,19 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                         result=validation_candidate_results[candidate.label],
                     )
             if config.trajectory_scorer is not None:
-                trajectory_results = await self._reward_trajectories(
-                    ctx=ctx,
-                    dataset=validation_eval_dataset,
-                    candidates=candidates,
-                    config=config,
+                scorer = cast(
+                    "roles.TrajectoryScorer",
+                    ctx.component(
+                        "trajectory-scorer",
+                        config.trajectory_scorer,
+                        config=config.trajectory_scorer_config,
+                        framework_skills_dirs=self._framework_skills_dirs,
+                    ),
                 )
-                for candidate in candidates:
-                    if candidate.label in trajectory_results:
-                        candidate.trajectory_detail = trajectory_results[candidate.label]["details"]
-                        await ctx.record_reward(
-                            candidate,
-                            channel="validation-trajectory",
-                            result=RewardRecord(metrics=trajectory_results[candidate.label]["reward"]),
-                        )
+                for candidate, record in (
+                    await scorer.run(ctx, candidates=candidates, round_num=round_num, analysis=analysis)
+                ).items():
+                    await ctx.record_reward(candidate, channel="validation-trajectory", result=record)
 
             for candidate in new_candidates:
                 await ctx.archive_candidate(candidate)
@@ -758,33 +704,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         path = analysis_dir / f"round-{round_num}.md"
         return path.read_text() if path.exists() else None
 
-    def _goal_tree_path(self, round_num: int) -> Path:
-        return self.working_dir / "eval-and-optimize" / "analysis" / f"round-{round_num}-goal.json"
-
-    def _latest_goal_tree_path(self) -> Path | None:
-        analysis_dir = self.working_dir / "eval-and-optimize" / "analysis"
-        best: tuple[int, Path] | None = None
-        for p in analysis_dir.glob("round-*-goal.json"):
-            try:
-                n = int(p.stem.split("-")[1])
-            except (IndexError, ValueError):
-                continue
-            if best is None or n > best[0]:
-                best = (n, p)
-        return best[1] if best else None
-
-    def _load_goal_tree(
-        self,
-        path: Path,
-        goal_config: GoalTreeConfig,
-        context: str,
-    ) -> GoalTree | None:
-        try:
-            return GoalTree.from_path(path, config=goal_config)
-        except (OSError, ValueError) as exc:
-            logger.warning(f"[TRAJ] Failed to load {context} goal tree {path}: {exc}")
-            return None
-
     def _format_evolution_table(self, evolution_tree: EvolutionTree) -> str:
         if not evolution_tree.nodes:
             return "(none yet — this is the first round)"
@@ -936,33 +855,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 f"{config.builder!r} accepts {sorted(accepts) or 'nothing'}; no proposal could be built"
             )
 
-    async def _generate_initial_goal_tree(
-        self,
-        *,
-        dataset: Dataset,
-        wanted: bool,
-        config: EvolutionaryOptimizerConfig,
-        agent_spec_path: Path | None = None,
-    ) -> None:
-        """Generate and persist the round-0 goal tree if it does not already exist."""
-        if not wanted:
-            return
-        tree_path = self._goal_tree_path(0)
-        if tree_path.exists():
-            return
-        try:
-            tree = await GoalTreeGenerator(
-                workspace=self.working_dir,
-                config=config.trajectory_scorer_config,
-                framework_skills_dirs=self._framework_skills_dirs,
-                models=self._models,
-            ).generate(dataset, agent_spec=agent_spec_path)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"[TRAJ] Failed to generate initial goal tree; continuing without trajectory scoring: {exc}")
-            return
-        tree_path.parent.mkdir(parents=True, exist_ok=True)
-        tree_path.write_text(tree.to_json())
-
     async def _evaluate_train_candidates(
         self,
         *,
@@ -1058,13 +950,11 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     framework_skills_dirs=self._framework_skills_dirs,
                     models=self._models,
                 ).run(
-                    agent=s.label,
+                    candidate=s,
                     dataset=dataset,
                     evaluation=evaluations[s.label],
-                    round=round_num,
                     peer_evaluations={k: v for k, v in evaluations.items() if k != s.label},
-                    client=client,
-                    nmp_workspace=nmp_workspace,
+                    round_num=round_num,
                     agent_spec=agent_spec_path,
                 )
                 for s in survivors
@@ -1074,37 +964,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         analysis_path.parent.mkdir(parents=True, exist_ok=True)
         analysis_path.write_text(analysis)
         return analysis
-
-    async def _update_goal_tree(
-        self,
-        *,
-        analysis_dir: Path,
-        round_num: int,
-        analysis: str,
-        dataset: Dataset,
-        config: EvolutionaryOptimizerConfig,
-        agent_spec_path: Path | None = None,
-    ) -> None:
-        """Refine and persist the goal tree for round *round_num* + 1."""
-        next_goal_path = self._goal_tree_path(round_num + 1)
-        if next_goal_path.exists():
-            return
-        goal_tree_path = self._latest_goal_tree_path()
-        if goal_tree_path is None:
-            return
-        goal_config = config.trajectory_scorer_config
-        goal_tree = self._load_goal_tree(goal_tree_path, goal_config, context="analysis")
-        if goal_tree is None:
-            return
-        generator = GoalTreeGenerator(
-            workspace=self.working_dir,
-            config=goal_config,
-            framework_skills_dirs=self._framework_skills_dirs,
-            models=self._models,
-        )
-        updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, agent_spec=agent_spec_path)
-        next_goal_path.parent.mkdir(parents=True, exist_ok=True)
-        next_goal_path.write_text(updated_tree.to_json())
 
     async def _propose_improvements(
         self,
@@ -1126,11 +985,10 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         )
         return await proposer.run(
             analysis=analysis,
-            evolution_history=self._format_evolution_table(evolution_tree),
-            evolution_tree=evolution_tree,
+            candidates=[n.candidate for n in evolution_tree.nodes.values()],
             round_num=round_num,
-            phase=phase,
             max_candidates=config.max_candidates,
+            hint=phase,
         )
 
     async def _build_candidates(
@@ -1228,118 +1086,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             source_path=config.source.source_path,
             entrypoint=config.source.entrypoint,
         )
-
-    async def _reward_trajectories(
-        self,
-        *,
-        ctx: StrategyContext,
-        dataset: Dataset,
-        candidates: list[Candidate],
-        config: EvolutionaryOptimizerConfig,
-    ) -> dict[str, dict[str, Any]]:
-        """Score candidates against the goal tree; return trajectory results keyed by candidate label."""
-        tree_path = self._latest_goal_tree_path()
-        if tree_path is None:
-            logger.info("[TRAJ] No goal tree found, skipping trajectory scoring")
-            return {}
-
-        goal_tree = self._load_goal_tree(tree_path, config.trajectory_scorer_config, context="trajectory scoring")
-        if goal_tree is None:
-            logger.info("[TRAJ] Invalid goal tree, skipping trajectory scoring")
-            return {}
-
-        pending = [c.label for c in candidates]
-        if len(pending) == 1:
-            logger.info("[TRAJ] Only one agent to score, skipping GRA")
-            return {}
-
-        logger.info(f"[TRAJ] Scoring {len(pending)} agents using GRA")
-
-        nodes = traverse_tree(goal_tree.root)
-        node_weights = leaf_weights_by_id(goal_tree.root)
-        traces_by_task: dict[str, dict[str, TrialResult]] = {}
-        for candidate in candidates:
-            if "validation" not in candidate.rewards:
-                continue
-            for trial in candidate.rewards["validation"].trials or []:
-                if trial.trace is None:
-                    continue
-                traces_by_task.setdefault(trial.task_id, {}).setdefault(candidate.label, trial)
-
-        # Only require agents that actually contributed traces; a candidate with no
-        # traces at all (e.g. its validation run failed entirely) must not cause every
-        # task to be dropped from scoring.
-        agents_with_traces = {label for task_traces in traces_by_task.values() for label in task_traces}
-        if len(agents_with_traces) < 2:
-            logger.info("[TRAJ] Fewer than two agents have traces, skipping trajectory scoring")
-            return {}
-        complete_traces = _complete_trace_groups(traces_by_task, list(agents_with_traces))
-        dropped = len(traces_by_task) - len(complete_traces)
-        if dropped:
-            logger.info(f"[TRAJ] Skipping {dropped} tasks missing traces for one or more agents")
-        traces_by_task = complete_traces
-
-        task_names = sorted(traces_by_task)
-        total_tasks = len(task_names)
-        max_tasks = config.max_trajectory_tasks
-        if max_tasks and total_tasks > max_tasks:
-            task_names = task_names[:max_tasks]
-            traces_by_task = {t: traces_by_task[t] for t in task_names}
-            logger.info(f"[TRAJ] Selected first {max_tasks}/{total_tasks} complete tasks")
-
-        if not traces_by_task:
-            logger.info("[TRAJ] No complete trace groups found, skipping")
-            return {}
-        if config.trajectory_scorer is None:
-            return {}
-
-        scores_by_node_trial_agent: dict[str, dict[str, dict[str, dict[str, Any]]]] = defaultdict(
-            lambda: defaultdict(dict)
-        )
-        keys = [(node.id, task_id) for node in nodes for task_id in traces_by_task]
-        logger.info(f"[TRAJ] Starting {len(keys)} GRA scoring tasks...")
-
-        scorer = get_component(
-            "trajectory-scorer",
-            config.trajectory_scorer,
-            workspace=self.working_dir,
-            client=ctx.platform_client,
-            nmp_workspace=ctx.workspace,
-            models=self._models,
-        )
-        scoring_results = await asyncio.gather(
-            *[scorer.run(node, traces_by_task[task_id], dataset) for node in nodes for task_id in traces_by_task]
-        )
-        logger.info("[TRAJ] Scoring completed")
-        for (node_id, task_id), group_scores in zip(keys, scoring_results, strict=True):
-            for aid, gs in group_scores.items():
-                scores_by_node_trial_agent[node_id][task_id][aid] = _trajectory_detail_from_reward(gs)
-
-        trajectory_results: dict[str, dict[str, Any]] = {}
-        for aid in pending:
-            details: dict[str, dict[str, dict[str, Any]]] = {}
-            for node in nodes:
-                details[node.id] = {
-                    tid: by_agent[aid]
-                    for tid, by_agent in scores_by_node_trial_agent[node.id].items()
-                    if aid in by_agent
-                }
-            node_means = {
-                node.id: sum(item["reward"] for item in details[node.id].values()) / len(details[node.id])
-                for node in nodes
-                if details[node.id]
-            }
-            trajectory_reward = sum(node_weights[node.id] * node_means.get(node.id, 0.0) for node in nodes)
-            trajectory_results[aid] = {
-                "details": details,
-                "reward": {
-                    "aggregate": trajectory_reward,
-                    **node_means,
-                },
-            }
-            logger.info(f"[TRAJ] {aid}: trajectory_reward={trajectory_reward:.3f}")
-
-        return trajectory_results
 
     async def _finalize(self, *, evolution_tree: EvolutionTree, selector: roles.Selector) -> Candidate | None:
         """Pick the winner and write this strategy's own report; return the winner.

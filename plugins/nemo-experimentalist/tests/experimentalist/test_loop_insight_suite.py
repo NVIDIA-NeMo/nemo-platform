@@ -169,7 +169,6 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         "_evaluate_insight_candidates",
         evaluate_insight_candidates,
     )
-    monkeypatch.setattr(EvolutionaryStrategy, "_generate_initial_goal_tree", AsyncMock())
     monkeypatch.setattr(
         EvolutionaryStrategy,
         "_evaluate_train_candidates",
@@ -180,7 +179,6 @@ async def test_insight_run_evaluates_and_persists_baseline_and_new_candidate_met
         ),
     )
     monkeypatch.setattr(EvolutionaryStrategy, "_analyze_round", AsyncMock(return_value="round analysis"))
-    monkeypatch.setattr(EvolutionaryStrategy, "_update_goal_tree", AsyncMock())
     monkeypatch.setattr(EvolutionaryStrategy, "_propose_improvements", AsyncMock(return_value=[object()]))
 
     optimizer = object.__new__(EvolutionaryStrategy)

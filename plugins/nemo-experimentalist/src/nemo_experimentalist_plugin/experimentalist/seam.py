@@ -27,6 +27,9 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator import Eva
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field
 
+#: The split a candidate's headline reward is measured on, and the winner chosen by.
+PRIMARY_SPLIT = "validation"
+
 
 class Fork(BaseModel):
     """A working copy, and the thing it was forked from, as one value."""

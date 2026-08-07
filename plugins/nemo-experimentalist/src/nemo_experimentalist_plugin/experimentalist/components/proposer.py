@@ -3,12 +3,11 @@ import logging
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
-from typing import Any, ClassVar, Literal, get_args
+from typing import Any, ClassVar, Literal, cast, get_args
 
-from nemo_experimentalist_plugin.entities import Proposal, local_path_from_uri
+from nemo_experimentalist_plugin.entities import Candidate, Proposal, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
-    EvolutionTree,
     OptimizationType,
 )
 from nooa import Agent, CodeActStrategy, strategy
@@ -141,14 +140,26 @@ class Proposer(Agent, roles.Proposer):
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
+    @staticmethod
+    def _evolution_table(candidates: list[Candidate]) -> str:
+        """Render the population as the markdown table the prompt reads."""
+        if not candidates:
+            return "(none yet — this is the first round)"
+        rows = ["| agent | generation | ancestor | validation reward |", "| --- | --- | --- | --- |"]
+        for c in sorted(candidates, key=lambda c: (c.generation, c.label)):
+            reward = c.rewards["validation"].metrics or {}
+            ancestor = next((o.label for o in candidates if o.id == c.ancestor), "—")
+            rows.append(f"| {c.label} | {c.generation} | {ancestor} | {reward or '—'} |")
+        return "\n".join(rows)
+
     async def run(
         self,
+        *,
         analysis: str,
-        evolution_history: str,
-        evolution_tree: EvolutionTree,
+        candidates: list[Candidate],
         round_num: int,
-        phase: Literal["exploration", "exploitation"],
         max_candidates: int,
+        hint: str | None = None,
     ) -> list[Proposal]:
         """Return up to max_candidates targeted improvement proposals.
 
@@ -168,13 +179,13 @@ class Proposer(Agent, roles.Proposer):
         all_types = set(get_args(OptimizationType))
         tried_types = sorted(
             {
-                n.optimization_type
-                for n in evolution_tree.nodes.values()
-                if n.optimization_type and n.optimization_type in all_types
+                kind
+                for c in candidates
+                if (kind := (c.generated_from.payload or {}).get("optimization_type")) in all_types
             }
         )
         available_types = sorted(all_types - set(tried_types))
-        proposal_survivors = evolution_tree.survivors(round_num)
+        proposal_survivors = [c for c in candidates if c.killed_generation is None]
 
         survivor_context: list[dict[str, Any]] = []
         for s in proposal_survivors:
@@ -203,17 +214,17 @@ class Proposer(Agent, roles.Proposer):
 
         improvements = await self._run_with_context(
             analysis=analysis,
-            evolution_history=evolution_history,
+            evolution_history=self._evolution_table(candidates),
             tried_types=tried_types,
             available_types=available_types,
             survivors=survivor_context,
             cards_index=doc(self.optimize),
-            phase=phase,
+            phase=cast("Literal['exploration', 'exploitation']", hint or "exploration"),
             max_candidates=max_candidates,
         )
         usable = self._usable_improvements(
             improvements,
-            known_ancestors={s.id for s in proposal_survivors},
+            known_ancestors={c.id for c in proposal_survivors},
             allowed_types=set(available_types) or all_types,
         )
         self._validate_improvements(improvements=usable, max_candidates=max_candidates)

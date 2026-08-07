@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
+from doubles import make_candidate
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     AgentAnalyzer,
@@ -139,10 +140,14 @@ class _CompareWithPeers:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
 
-def _make_analyzer(tmp_path: Path, trials: list[Any]) -> AgentAnalyzer:
+def _make_analyzer(
+    tmp_path: Path, trials: list[Any], *, client: Any = None, nmp_workspace: str | None = None
+) -> AgentAnalyzer:
     """Build an AgentAnalyzer without the LLM-heavy __init__ and stub its strategies."""
     analyzer = object.__new__(AgentAnalyzer)
     analyzer._workspace_path = tmp_path
+    analyzer._client = client
+    analyzer._nmp_workspace = nmp_workspace
     analyzer._config = AnalyzerConfig()
     analyzer._framework_skills_dirs = []
     # __init__ is skipped, so supply what run() reads: it hands its tiers to the
@@ -173,20 +178,22 @@ def _fixtures() -> tuple[_FakeTrial, _FakeDataset, _FakeEvaluation]:
 async def test_run_threads_client_and_workspace_into_trace_analyzer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AgentAnalyzer.run forwards client and nmp_workspace to TraceAnalyzer.run."""
+    """The platform handles the analyzer was built with reach TraceAnalyzer.run.
+
+    Taken at construction rather than per call, so the ``root-cause-analyzer`` role's
+    own signature names no platform types.
+    """
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
-    analyzer = _make_analyzer(tmp_path, [trial])
-
     sentinel_client = object()
+    analyzer = _make_analyzer(tmp_path, [trial], client=sentinel_client, nmp_workspace="tau2-airline-ws")
+
     result = await analyzer.run(
-        agent="agent-a",
+        candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
-        round=0,
-        client=cast(Any, sentinel_client),
-        nmp_workspace="tau2-airline-ws",
+        round_num=0,
     )
 
     assert result.agent_id == "agent-a"
@@ -203,7 +210,12 @@ async def test_run_defaults_client_and_workspace_to_none(tmp_path: Path, monkeyp
     trial, dataset, evaluation = _fixtures()
     analyzer = _make_analyzer(tmp_path, [trial])
 
-    await analyzer.run(agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0)
+    await analyzer.run(
+        candidate=make_candidate(label="agent-a"),
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round_num=0,
+    )
 
     assert len(calls) == 1
     assert calls[0]["client"] is None
@@ -219,16 +231,19 @@ async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypa
 
     # Same workspace/tmp_path across both runs, so the on-disk cache persists.
     analyzer_no_client = _make_analyzer(tmp_path, [trial])
-    await analyzer_no_client.run(agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0)
-
-    analyzer_with_client = _make_analyzer(tmp_path, [trial])
-    await analyzer_with_client.run(
-        agent="agent-a",
+    await analyzer_no_client.run(
+        candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
-        round=0,
-        client=cast(Any, object()),
-        nmp_workspace="ws-1",
+        round_num=0,
+    )
+
+    analyzer_with_client = _make_analyzer(tmp_path, [trial], client=object(), nmp_workspace="ws-1")
+    await analyzer_with_client.run(
+        candidate=make_candidate(label="agent-a"),
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round_num=0,
     )
 
     # The second (intake-available) run must recompute rather than reuse the

@@ -14,12 +14,15 @@ that strategy is what calls it.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-from nemo_experimentalist_plugin.entities import Candidate, Dataset, Proposal
+from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, Proposal, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import Evaluator, EvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.registry import Component
 from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext, StrategyContext
+
+if TYPE_CHECKING:
+    from nemo_experimentalist_plugin.experimentalist.components.terminator import TerminationDecision
 
 
 class Strategy(Component):
@@ -65,6 +68,10 @@ class Evaluation(Component, Evaluator):
     dataset_type: ClassVar[type[Dataset]]
     config_type: ClassVar[type[EvaluatorConfig]]
 
+    #: ``run(agent, dataset, ...) -> EvaluationResult`` is inherited from :class:`Evaluator`
+    #: rather than redeclared: overriding it here with a stub would shadow the working
+    #: implementation every evaluator relies on.
+
 
 class Proposer(Component):
     """Turn scored candidates into Proposals for the next round."""
@@ -76,6 +83,27 @@ class Proposer(Component):
     #: per proposal, a round at a time.
     produces: ClassVar[frozenset[str]] = frozenset()
 
+    async def run(
+        self,
+        *,
+        analysis: str,
+        candidates: list[Candidate],
+        round_num: int,
+        max_candidates: int,
+        hint: str | None = None,
+    ) -> list[Proposal]:
+        """Up to *max_candidates* Proposals for the next round.
+
+        Args:
+            analysis: The round's diagnosis, or an empty string when none was produced.
+            candidates: The scored population to propose against; lineage is on each one.
+            round_num: The round these Proposals are for.
+            max_candidates: Upper bound. Returning fewer is normal.
+            hint: A free-form steer from the strategy — the evolutionary loop alternates
+                "exploration" and "exploitation". Ignorable.
+        """
+        raise NotImplementedError
+
 
 class Analyzer(Component):
     """Diagnose why candidates fail, as input to proposing.
@@ -86,25 +114,71 @@ class Analyzer(Component):
 
     role: ClassVar[str] = "root-cause-analyzer"
 
+    async def run(
+        self,
+        *,
+        candidate: Candidate,
+        dataset: Dataset,
+        evaluation: EvaluationResult,
+        peer_evaluations: dict[str, EvaluationResult] | None = None,
+        round_num: int | None = None,
+        agent_spec: Path | None = None,
+    ) -> object:
+        """Diagnose why *candidate* scored what it did, for the Proposer to act on.
+
+        Peers are passed so a diagnosis can say what this candidate did differently,
+        which is the difference between a root cause and a description.
+        """
+        raise NotImplementedError
+
 
 class Terminator(Component):
     """Decide whether to stop before the round budget is spent."""
 
     role: ClassVar[str] = "terminator"
 
+    async def run(
+        self,
+        *,
+        round_num: int,
+        candidates: list[Candidate],
+        prior_analysis: str | None = None,
+    ) -> "TerminationDecision":
+        """Whether to stop *before* spending another round.
+
+        Only early stopping: the round budget is the loop's own and holds regardless, so
+        a terminator that never stops cannot produce an unbounded run.
+        """
+        raise NotImplementedError
+
 
 class TrajectoryScorer(Component):
     """Score the steps a candidate took, not just its outcome.
 
     A second measurement of the same run, landing in its own reward channel.
-
-    The narrowest of the eight: the evolutionary strategy builds a goal tree and calls a
-    scorer once per (leaf, task) group, so a replacement is handed ``GoalNode`` objects
-    whether or not it models goals. Moving that pipeline into the component is what would
-    make this seam as wide as the rest.
     """
 
     role: ClassVar[str] = "trajectory-scorer"
+
+    async def run(
+        self,
+        ctx: "StrategyContext",
+        *,
+        candidates: list[Candidate],
+        round_num: int = 0,
+        analysis: str | None = None,
+    ) -> dict[Candidate, RewardRecord]:
+        """One reward record per candidate, measuring *how* it got there.
+
+        Whatever a scorer needs to decompose a trajectory — the built-in ranks against a
+        goal tree it builds and refines itself — is its own state, kept wherever it likes
+        under the run. The strategy hands over the population and this round's analysis
+        and takes back reward records.
+
+        Returning fewer records than candidates is normal: a candidate with no usable
+        traces is skipped rather than scored zero.
+        """
+        raise NotImplementedError
 
 
 class Selector(Component):

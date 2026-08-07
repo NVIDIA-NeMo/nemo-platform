@@ -14,20 +14,29 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from nemo_experimentalist_plugin.entities import Candidate
+
 # Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
 # this module, so going through it would be circular.
-from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree, pareto_front
+from nemo_experimentalist_plugin.experimentalist.components.models import pareto_front
 from nemo_experimentalist_plugin.skills import skills_dir
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .model_config import ModelTiers
 
 logger = logging.getLogger(__name__)
+
+
+class TerminatorConfig(BaseModel):
+    """Tuning parameters for early stopping."""
+
+    min_rounds_before_stopping: int = Field(
+        default=3, description="Scored rounds required before convergence can stop a run."
+    )
 
 
 class TerminationDecision(BaseModel):
@@ -47,10 +56,13 @@ class Terminator(Agent, roles.Terminator):
 
     name = "convergence"
 
-    def __init__(self, *, models: ModelTiers | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self, *, models: ModelTiers | None = None, config: TerminatorConfig | None = None, **kwargs: Any
+    ) -> None:
         tiers = models or ModelTiers()
         super().__init__(llm=kwargs.pop("llm", None) or tiers.fast, **kwargs)
         self._models = tiers
+        self._config = config or TerminatorConfig()
         self.terminator_skill = TextSkill(path=skills_dir() / "terminator")
 
     @hidden
@@ -58,42 +70,30 @@ class Terminator(Agent, roles.Terminator):
         self,
         *,
         round_num: int,
-        evolution_tree: EvolutionTree,
-        prior_analysis: str | None,
-        config: EvolutionaryOptimizerConfig,
+        candidates: list[Candidate],
+        prior_analysis: str | None = None,
     ) -> TerminationDecision:
         """Canonical termination decision, consulted once per round at the top of the loop.
 
-        Stops when the round budget is exhausted; otherwise stops when the
-        optimization has converged. Composes :meth:`assess_round_budget` and
-        :meth:`assess_convergence` (budget first — it is cheap and deterministic,
-        so an exhausted budget avoids the qualitative LLM call).
+        Early stopping only: the round budget belongs to the loop, so a terminator that
+        never stops still cannot produce an unbounded run.
 
         Args:
             round_num: Rounds completed so far.
-            evolution_tree: Live tree of scored candidates across rounds.
+            candidates: The scored population; convergence is judged from their rewards.
             prior_analysis: Markdown analysis from the previous round, if any.
-            config: Active optimizer config (read-only).
 
         Returns:
             A :class:`TerminationDecision`.
         """
-        budget = self.assess_round_budget(round_num=round_num, config=config)
-        if budget.stop:
-            return budget
-        return await self.assess_convergence(
-            evolution_tree=evolution_tree,
-            prior_analysis=prior_analysis,
-            config=config,
-        )
+        return await self.assess_convergence(candidates=candidates, prior_analysis=prior_analysis)
 
     @hidden
     async def assess_convergence(
         self,
         *,
-        evolution_tree: EvolutionTree,
+        candidates: list[Candidate],
         prior_analysis: str | None,
-        config: EvolutionaryOptimizerConfig,
     ) -> TerminationDecision:
         """Decide whether to early-stop before running another round.
 
@@ -101,9 +101,8 @@ class Terminator(Agent, roles.Terminator):
         to compare against. Otherwise consults :meth:`_has_converged`.
 
         Args:
-            evolution_tree: Live tree of scored candidates across rounds.
+            candidates: The scored population.
             prior_analysis: Markdown analysis from the previous round, if any.
-            config: Active optimizer config (read-only).
 
         Returns:
             A :class:`TerminationDecision`.
@@ -111,48 +110,26 @@ class Terminator(Agent, roles.Terminator):
         if prior_analysis is None:
             return TerminationDecision(stop=False)
         converged = await self._has_converged(
-            evolution_tree=evolution_tree,
+            candidates=candidates,
             prior_analysis=prior_analysis,
-            min_rounds_before_stopping=config.min_rounds_before_stopping,
+            min_rounds_before_stopping=self._config.min_rounds_before_stopping,
         )
         if converged:
             return TerminationDecision(stop=True, reason="optimization converged (Pareto front stagnated)")
         return TerminationDecision(stop=False)
 
     @hidden
-    def assess_round_budget(
-        self,
-        *,
-        round_num: int,
-        config: EvolutionaryOptimizerConfig,
-    ) -> TerminationDecision:
-        """Decide whether the round budget is exhausted.
-
-        Args:
-            round_num: The number of rounds completed so far.
-            config: Active optimizer config (read-only).
-
-        Returns:
-            A :class:`TerminationDecision` that stops when
-            ``round_num >= config.max_rounds``.
-        """
-        if round_num >= config.max_rounds:
-            return TerminationDecision(stop=True, reason=f"reached max_rounds ({config.max_rounds})")
-        return TerminationDecision(stop=False)
-
-    @hidden
     async def _has_converged(
         self,
         *,
-        evolution_tree: EvolutionTree,
+        candidates: list[Candidate],
         prior_analysis: str,
         min_rounds_before_stopping: int,
     ) -> bool:
         """Return True if the optimization has converged and should stop early."""
-        # Truthy check (not ``is not None``): ``EvolutionNode.val_reward`` returns ``{}`` for
-        # unscored nodes, so ``is not None`` would pull them in and skew the round cutoff /
-        # Pareto front. Match ``EvolutionTree.get_best()``.
-        scored = [n for n in evolution_tree.nodes.values() if n.val_reward]
+        # Truthy check, not ``is not None``: an unscored candidate has an empty metrics
+        # dict, and counting those would skew both the round cutoff and the front.
+        scored = [c for c in candidates if c.rewards["validation"].metrics]
         rounds = sorted({n.generation for n in scored})
         if len(rounds) < min_rounds_before_stopping:
             return False
@@ -160,8 +137,9 @@ class Terminator(Agent, roles.Terminator):
         old = [n for n in scored if n.generation <= cutoff_round]
         if not old:
             return False
-        old_front_ids = {n.label for n in pareto_front(old, lambda n: n.val_reward)}
-        full_front_ids = {n.label for n in pareto_front(scored, lambda n: n.val_reward)}
+        metrics = lambda c: c.rewards["validation"].metrics or {}  # noqa: E731
+        old_front_ids = {c.id for c in pareto_front(old, metrics)}
+        full_front_ids = {c.id for c in pareto_front(scored, metrics)}
         if full_front_ids.issubset(old_front_ids):
             return True
         return await self.qualitative_stop_check(prior_analysis)

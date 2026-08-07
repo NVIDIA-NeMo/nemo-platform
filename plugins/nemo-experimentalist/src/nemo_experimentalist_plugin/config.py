@@ -26,6 +26,7 @@ from nemo_experimentalist_plugin.experimentalist.components.coder import CoderCo
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
 from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
 from nemo_experimentalist_plugin.experimentalist.components.selector import SelectorConfig
+from nemo_experimentalist_plugin.experimentalist.components.terminator import TerminatorConfig
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -127,6 +128,9 @@ class EvolutionaryOptimizerConfig(BaseModel):
         description="Registered 'selector' component choosing survivors and the winner.",
     )
     selector_config: SelectorConfig = Field(default_factory=SelectorConfig, description="Tuning for the selector.")
+    terminator_config: TerminatorConfig = Field(
+        default_factory=TerminatorConfig, description="Tuning for the terminator."
+    )
     builder: str = Field(
         default="coder",
         description=(

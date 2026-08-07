@@ -442,15 +442,17 @@ async def test_naming_a_trajectory_scorer_reaches_it(tmp_path, isolated_registry
     class StepCountScorer(TrajectoryScorer):
         name = "acme-steps"
 
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def run(self, ctx: Any, *, candidates: list[Candidate], **kwargs: Any) -> dict[Candidate, Any]:
+            reached.append("acme-steps")
+            return {}
+
     config = EvolutionaryOptimizerConfig(max_rounds=1, analyzer=None, terminator=None, trajectory_scorer="acme-steps")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
 
-    async def scoring(**kwargs: Any) -> dict[str, Any]:
-        reached.append(kwargs["config"].trajectory_scorer)
-        return {}
-
     loop._ensure_baseline = _one_baseline
-    loop._reward_trajectories = scoring
     loop._evaluate_validation_candidates = _no_results
     loop._record_baseline_validation = _no_results
     loop._analyze_round = _no_results

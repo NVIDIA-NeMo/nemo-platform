@@ -29,6 +29,10 @@ class GoalTreeConfig(BaseModel):
     Enforces hierarchical depth and node count constraints during tree generation.
     """
 
+    max_trajectory_tasks: int | None = Field(
+        default=None, description="Cap on tasks scored per round; None scores every complete trace group."
+    )
+
     max_depth: int = Field(default=3, gt=0, description="Maximum tree depth allowed")
     max_initial_depth: int = Field(
         default=2,
