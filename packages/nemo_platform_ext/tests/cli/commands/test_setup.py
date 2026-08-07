@@ -1910,7 +1910,12 @@ class TestInteractiveModelPairSelection:
                 deploy_agent=False,
             )
 
-        select_model_pair.assert_called_once_with(client, "default", provider_name="anthropic")
+        select_model_pair.assert_called_once_with(
+            client,
+            "default",
+            provider_name="anthropic",
+            configured_default_model=cli_context.get_sdk_context().default_model,
+        )
 
     def test_skips_default_model_picker_when_new_provider_has_no_models(self):
         """When the new provider is still syncing, setup should not show a misleading picker."""
@@ -2027,10 +2032,56 @@ class TestInteractiveModelPairSelection:
         default_call, fast_call = mock_prompt_select.call_args_list
         assert default_call.args[0] == "Choose your default model (used for quality-critical agent work):"
         assert default_call.kwargs["default"] == "default/qwen2.5:1.5b"
-        assert default_call.kwargs["hint"] == "Press Enter to accept the default."
+        assert default_call.kwargs["hint"] == "Press Enter to keep the configured default."
         assert fast_call.args[0] == "Choose your fast model (used for latency-sensitive agent work):"
         assert fast_call.kwargs["default"] == "default/qwen2.5:1.5b"
         assert fast_call.kwargs["hint"] == "Press Enter to reuse the default model."
+
+    def test_picker_reuses_configured_default_when_available(self):
+        client = MagicMock()
+        provider = MagicMock()
+        provider.name = "openai"
+        provider.served_models = [
+            MagicMock(model_entity_id="default/gpt-4-1-mini"),
+            MagicMock(model_entity_id="default/gpt-4-1"),
+        ]
+        client.inference.providers.list.return_value = MagicMock(data=[provider])
+
+        with patch(
+            f"{self._MOD}.prompt_select",
+            side_effect=["default/gpt-4-1", "default/gpt-4-1"],
+        ) as mock_prompt_select:
+            result = _select_model_pair(
+                client,
+                "default",
+                provider_name="openai",
+                configured_default_model="default/gpt-4-1",
+            )
+
+        assert result == ModelPair(default="default/gpt-4-1", fast="default/gpt-4-1")
+        default_call = mock_prompt_select.call_args_list[0]
+        assert default_call.kwargs["default"] == "default/gpt-4-1"
+        assert default_call.kwargs["hint"] == "Press Enter to keep the configured default."
+
+    def test_picker_requires_explicit_default_when_multiple_models_have_no_configured_default(self):
+        client = MagicMock()
+        provider = MagicMock()
+        provider.name = "openai"
+        provider.served_models = [
+            MagicMock(model_entity_id="default/gpt-4-1-mini"),
+            MagicMock(model_entity_id="default/gpt-4-1"),
+        ]
+        client.inference.providers.list.return_value = MagicMock(data=[provider])
+
+        with patch(
+            f"{self._MOD}.prompt_select",
+            side_effect=["default/gpt-4-1", "default/gpt-4-1"],
+        ) as mock_prompt_select:
+            _select_model_pair(client, "default", provider_name="openai")
+
+        default_call = mock_prompt_select.call_args_list[0]
+        assert default_call.kwargs["default"] is None
+        assert "Choose explicitly" in default_call.kwargs["hint"]
 
 
 class TestAutoModelPairSelection:
@@ -2064,7 +2115,10 @@ class TestAutoModelPairSelection:
                 clear=True,
             ),
             patch(f"{SETUP_MOD}._auto_setup", return_value="anthropic"),
-            patch(f"{SETUP_MOD}._get_all_model_entity_ids", return_value=["default/discovered"]),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=["default/quality", "default/fast"],
+            ),
             patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
             patch(f"{SETUP_MOD}._maybe_install_skills"),
             patch(f"{SETUP_MOD}._maybe_deploy_agent"),
@@ -2113,6 +2167,64 @@ class TestAutoModelPairSelection:
                 fast="default/claude-sonnet-4-6",
             ),
         )
+
+    def test_multiple_discovered_models_require_explicit_default(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="openai"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=["default/gpt-4-1", "default/gpt-4-1-mini"],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}.console") as mock_console,
+        ):
+            with pytest.raises(typer.Exit) as exc_info:
+                _run_auto_mode(
+                    cli_context,
+                    MagicMock(),
+                    "default",
+                    "http://localhost:8080",
+                    install_skills=False,
+                    deploy_agent=False,
+                )
+
+        assert exc_info.value.exit_code == 1
+        save_pair.assert_not_called()
+        output = "\n".join(call.args[0] for call in mock_console.print.call_args_list if call.args)
+        assert "cannot infer a safe default model" in output
+
+    @pytest.mark.parametrize("env_name", ["NEMO_DEFAULT_MODEL", "NEMO_FAST_MODEL"])
+    def test_explicit_model_must_be_registered_by_configured_provider(self, env_name):
+        cli_context = MagicMock()
+        env = {
+            "NEMO_DEFAULT_MODEL": "default/gpt-4-1",
+            "NEMO_FAST_MODEL": "default/gpt-4-1-mini",
+        }
+        env[env_name] = "default/not-registered"
+        with (
+            patch.dict("os.environ", env, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="openai"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=["default/gpt-4-1", "default/gpt-4-1-mini"],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}.console"),
+        ):
+            with pytest.raises(typer.Exit) as exc_info:
+                _run_auto_mode(
+                    cli_context,
+                    MagicMock(),
+                    "default",
+                    "http://localhost:8080",
+                    install_skills=False,
+                    deploy_agent=False,
+                )
+
+        assert exc_info.value.exit_code == 1
+        save_pair.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
