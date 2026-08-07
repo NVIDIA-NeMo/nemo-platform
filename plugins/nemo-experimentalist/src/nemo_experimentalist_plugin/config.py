@@ -9,9 +9,8 @@ a stale ``NEMO_EXPERIMENTALIST_MAX_ROUNDS`` silently truncating a run whose conf
 says otherwise would be a bad failure, and it would make ``config_snapshot`` a dishonest
 record of what ran. It is therefore a plain ``BaseModel`` with no environment binding.
 
-The other half of the configuration -- which endpoint this install talks to and with which
-models -- is a deployment setting, lives in ``settings.py`` as a :class:`NemoConfig` like
-every other plugin's, and *does* let the environment win over the config file.
+The optimizer's own default/fast model pair is selected by ``nemo setup`` and
+stored in the active Platform CLI context.
 
 Component-owned slices (``CoderConfig``, ``AnalyzerConfig``, ...) are imported from the
 components that consume them rather than redeclared here -- ``resolve.py`` used to carry a
@@ -86,8 +85,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     Deliberately not a :class:`NemoConfig`: these values describe a single experiment, are
     named explicitly on the command line, and are recorded in ``config_snapshot`` as the
     account of what ran. Letting an ambient environment variable override them would make
-    that account wrong. Endpoint and model settings live in
-    :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`.
+    that account wrong. Agent model settings live in the active Platform CLI context.
     """
 
     @model_validator(mode="before")
@@ -99,9 +97,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
             raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
         if "models" in data:
             raise ValueError(
-                "'models' is no longer a run-config key; model tiers are deployment settings. "
-                "Set them under the 'experimentalist:' config section or as "
-                "NEMO_EXPERIMENTALIST_MODELS_{SMART,MID,FAST}."
+                "'models' is no longer a run-config key. Run `nemo setup` to select the default and fast agent models."
             )
         return data
 

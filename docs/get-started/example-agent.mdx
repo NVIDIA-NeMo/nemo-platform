@@ -10,7 +10,7 @@ This provides a guide for how you can quickly load agent traces into your NeMo P
 - Git, GNU Make, uv, and pnpm
 - Docker Engine 29.6.2 or later
 - [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) (`sbx`) 0.37.1 or later
-- An NVIDIA Inference Gateway virtual key (`sk-...`) from `inference.nvidia.com`.
+- An API key for the inference provider used by the Tau3 agent under test.
 
 ## 1. Clone and bootstrap NeMo Platform
 
@@ -32,6 +32,12 @@ platform services in the background and walks you through the configuration requ
 uv run nemo setup
 ```
 
+Register the provider you want the Platform agents to use, then select a
+default model for quality-critical work and a fast model for latency-sensitive
+work. Press Enter at the fast-model prompt to reuse the default. These
+workspace-qualified Model Entities are used by the Analyst, Eval Author, and
+Experimentalist; their provider credentials stay in Platform Secrets.
+
 To use an external ClickHouse instead, set `NMP_INTAKE_CLICKHOUSE_URL` before running setup.
 
 You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
@@ -44,7 +50,10 @@ Now that we have a running NeMo Platform, it's time to load up some data! This e
 cp plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env.example plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env
 ```
 
-Then, update the `.env` file to have an appropriate API key for your inference endpoint, and source the `.env` file.
+Then, update the `.env` file with the inference endpoint and key for the Tau3
+agent under test. If you will run the Experimentalist in a Docker Sandbox,
+also uncomment `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL` and copy the
+workspace-qualified IDs reported by `nemo setup`. Source the file afterward.
 
 ```bash
 source plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env
@@ -140,6 +149,12 @@ pushes a validated winner to a new branch, and opens a draft PR or MR against
 configuration. Authenticate GitHub inside the sandbox so it can clone and push
 the private repository.
 
+<Warning>
+Clone mode is an integrity boundary, not a confidentiality boundary. The sandbox
+can read the cloned host repository and every credential passed with `sbx exec --env`.
+Use dedicated, revocable, spending-limited credentials.
+</Warning>
+
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 sbx create --clone --name nemo-experimentalist-git shell "$repo"
@@ -154,11 +169,8 @@ sbx exec --workdir "$repo" \
   --env INFERENCE_API_BASE \
   --env OPENAI_API_KEY \
   --env OPENAI_BASE_URL \
-  --env NEMO_EXPERIMENTALIST_API_KEY \
-  --env NEMO_EXPERIMENTALIST_API_BASE \
-  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
-  --env NEMO_EXPERIMENTALIST_MODELS_MID \
-  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  --env NEMO_DEFAULT_MODEL \
+  --env NEMO_FAST_MODEL \
   --env TAU2_USER_MODEL \
   --env TAU2_NL_ASSERTIONS_MODEL \
   --env AUT_MODEL_NAME \
@@ -209,11 +221,8 @@ sbx exec --workdir "$repo" \
   --env INFERENCE_API_BASE \
   --env OPENAI_API_KEY \
   --env OPENAI_BASE_URL \
-  --env NEMO_EXPERIMENTALIST_API_KEY \
-  --env NEMO_EXPERIMENTALIST_API_BASE \
-  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
-  --env NEMO_EXPERIMENTALIST_MODELS_MID \
-  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  --env NEMO_DEFAULT_MODEL \
+  --env NEMO_FAST_MODEL \
   --env TAU2_USER_MODEL \
   --env TAU2_NL_ASSERTIONS_MODEL \
   --env AUT_MODEL_NAME \

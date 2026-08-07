@@ -10,8 +10,8 @@ from typing import Any
 
 from nemo_experimentalist_plugin.config import MetricTarget
 from nemo_experimentalist_plugin.entities import Candidate
-from nemo_experimentalist_plugin.experimentalist.components.model_config import get_smart_model
 from nemo_experimentalist_plugin.experimentalist.components.tools import WorkspaceTool
+from nemo_platform_plugin.nooa_model_client import get_default_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.config import CodeActConfig
 
@@ -20,7 +20,7 @@ class SurvivorSelector(Agent):
     """Select survivors from a Pareto-ranked population."""
 
     def __init__(self, workspace: Path, **kwargs: Any) -> None:
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self.workspace = WorkspaceTool(workspace=workspace)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, cell_timeout=3600.0)))

@@ -41,7 +41,7 @@ nemo setup
 
 Source development still needs Git and GNU Make. `make bootstrap` supplies the rest of the toolchain, installing the uv, Node.js and pnpm versions pinned in `mise.toml`. Run it before other `make` targets — they call uv through mise but don't install it. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
 
-`nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
+`nemo setup` starts local services, registers your LLM provider, discovers available models, selects default and fast agent models, installs agent skills, and deploys a sample agent (see more below).
 
 Review [Telemetry and Privacy](docs/telemetry-and-privacy.mdx) for the omnibus disclosure covering anonymous telemetry, bundled library telemetry, third-party endpoint notes, and opt-out controls.
 
@@ -95,6 +95,7 @@ If `make bootstrap` reports that Studio asset bootstrap did not complete, the AP
 ```bash
 export NVIDIA_API_KEY=nvapi...
 export NEMO_DEFAULT_MODEL=nvidia-nemotron-3-super-120b-a12b
+export NEMO_FAST_MODEL="$NEMO_DEFAULT_MODEL"
 nemo setup --auto --start-services --install-skills --deploy-agent
 ```
 

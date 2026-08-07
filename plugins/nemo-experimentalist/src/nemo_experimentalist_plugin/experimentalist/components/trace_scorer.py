@@ -8,13 +8,13 @@ from typing import Any
 from nemo_experimentalist_plugin.entities import Dataset, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
 from pydantic import BaseModel, Field
 
 from .goal_tree import GoalNode
-from .model_config import get_mid_model
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class GroupLeafScorer(Agent):
 
         Args:
             workspace: Path to the workspace directory.
-            llm: Language model instance; defaults to mid-tier model selection.
+            llm: Language model instance; defaults to the configured fast model.
             client: NeMo Platform client; required to load ``intake://`` traces.
             nmp_workspace: NeMo Platform workspace name; required to load ``intake://`` traces.
             **kwargs: Additional arguments passed to parent Agent class.
@@ -58,7 +58,7 @@ class GroupLeafScorer(Agent):
             ValueError: if workspace does not exist or is invalid.
 
         """
-        super().__init__(llm=llm or get_mid_model(), **kwargs)
+        super().__init__(llm=llm or get_fast_model(), **kwargs)
         self.workspace = workspace
         self._client = client
         self._nmp_workspace = nmp_workspace
@@ -70,7 +70,7 @@ class GroupLeafScorer(Agent):
         node: GoalNode,
         trials: dict[str, TrialResult],
         dataset: Dataset,
-    ) -> dict[str, GroupLeafScore]:  # pyright: ignore[reportReturnType]
+    ) -> dict[str, GroupLeafScore]:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Compute the relative group advantage score for a group of traces coming from different agents for a given node.
         All scores must be strictly ordered: score_a < score_b < ... < score_n (no ties).
 

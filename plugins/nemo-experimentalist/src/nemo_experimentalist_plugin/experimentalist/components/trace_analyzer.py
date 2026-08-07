@@ -13,10 +13,10 @@ from urllib.parse import unquote, urlparse
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, MetricResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.model_config import get_fast_model, get_smart_model
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools, WorkspaceTool
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -122,7 +122,7 @@ class TraceAnalyzer(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or TraceAnalyzerConfig()
         self._experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)

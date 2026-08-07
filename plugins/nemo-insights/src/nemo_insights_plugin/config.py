@@ -88,14 +88,6 @@ class AnalystSchedulerConfig(BaseModel):
             "Optional platform base URL passed to analyst jobs. When unset, jobs use their active platform context."
         ),
     )
-    inference_api_key_secret_name: str | None = Field(
-        default=None,
-        description=(
-            "Optional platform secret name whose value is exposed to analyst "
-            "jobs as INFERENCE_API_KEY. Temporary until FP-202 moves analyst "
-            "model execution to platform-registered models."
-        ),
-    )
 
 
 class InsightsConfig(NemoConfig):

@@ -3,9 +3,8 @@
 
 """Reusable Eval Author run orchestration."""
 
-import importlib
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
@@ -19,10 +18,13 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
-
-
-class _LiteLLMModule(Protocol):
-    drop_params: bool
+from nemo_platform_plugin.nooa_model_client import (
+    ConfiguredModelClients,
+    ConfiguredModelRefs,
+    activate_model_clients,
+    configured_model_refs,
+    resolve_model_clients,
+)
 
 
 class _EvalAuthorAgent(Protocol):
@@ -50,6 +52,7 @@ async def run_eval_author(
     config: EvalAuthorConfig,
     agent: Path | str | None = None,
     evaluator_type: EvaluatorType = "harbor",
+    model_refs: ConfiguredModelRefs | None = None,
 ) -> EvalAuthorResult:
     """Stage evaluation inputs, resolve one Insight, then run Eval Author.
 
@@ -62,20 +65,24 @@ async def run_eval_author(
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
         config: Eval Author tuning parameters.
-        agent: Optional agent source override. The Insight's agent is the default.
-        evaluator_type: Evaluator adapter used to parse the task template.
+        agent: Optional agent source override. When absent, the Insight's agent is used.
+        evaluator_type: Evaluator adapter used to parse datasets and task template.
+        model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
+            the active Platform CLI context.
 
     Returns:
         EvalAuthorResult: containing the modified and newly created datasets, additional metrics
             and summary.
     """
-    _enable_litellm_drop_params()
+    selected_model_refs = model_refs if model_refs is not None else configured_model_refs()
     experiment_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir = experiment_dir.resolve()
     insight_locator = str(insight.resolve()) if isinstance(insight, Path) else insight
 
     client = make_client(base_url)
+    model_clients: ConfiguredModelClients | None = None
     try:
+        model_clients = await resolve_model_clients(client, selected_model_refs)
         backend = make_experimentalist_backend(
             client=client,
             experiments_output=str(experiment_dir),
@@ -113,20 +120,25 @@ async def run_eval_author(
             evaluator_type,
             staged_inputs.task_template,
         )
-        eval_author = build_eval_author_agent(
-            experiment_dir=experiment_dir,
-            config=config,
-        )
-        return await eval_author.run(
-            insight=resolved_insight,
-            agent_path=agent_path,
-            task_template=parsed_template,
-            train_dataset=parsed_train,
-            validation_dataset=parsed_validation,
-            client=client,
-        )
+        with activate_model_clients(model_clients):
+            eval_author = build_eval_author_agent(
+                experiment_dir=experiment_dir,
+                config=config,
+            )
+            return await eval_author.run(
+                insight=resolved_insight,
+                agent_path=agent_path,
+                task_template=parsed_template,
+                train_dataset=parsed_train,
+                validation_dataset=parsed_validation,
+                client=client,
+            )
     finally:
-        await client.close()
+        try:
+            if model_clients is not None:
+                await model_clients.aclose()
+        finally:
+            await client.close()
 
 
 def build_eval_author_agent(
@@ -143,12 +155,3 @@ def build_eval_author_agent(
         config=config,
         reporter=reporter,
     )
-
-
-def _enable_litellm_drop_params() -> None:
-    """Let LiteLLM omit unsupported model parameters when it is installed."""
-    try:
-        litellm = cast(_LiteLLMModule, importlib.import_module("litellm"))
-    except ModuleNotFoundError:
-        return
-    litellm.drop_params = True

@@ -67,11 +67,12 @@ Desktop on macOS/Windows or the Docker service on Linux, then restart `nemo serv
 
 ### Configure a provider
 
-In a second shell, register the NVIDIA Build provider and pick a default model:
+In a second shell, register the NVIDIA Build provider and pick default and fast
+models (press Enter at the fast prompt to reuse the default):
 
 ```bash
 set -a && source .env && set +a
-uv run nemo setup --auto
+uv run nemo setup
 ```
 
 ### Register the workflow as an agent

@@ -9,6 +9,7 @@ from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
 )
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -18,7 +19,6 @@ from nooa.skill_registry import SkillRegistry
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import get_fast_model, get_smart_model
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -76,7 +76,7 @@ class Proposer(Agent):
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ):
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or ProposerConfig()
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)

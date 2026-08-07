@@ -4,12 +4,14 @@
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
 import typer
 from nemo_insights_plugin import cli
 from nemo_insights_plugin.analyst.cli import AnalystCLI
+from nemo_insights_plugin.contracts.checks import CheckResult
 from nemo_insights_plugin.contracts.profile import DEFAULT_BASE_URL
 from nemo_insights_plugin.preflight import AnalysisProbes
 from nemo_platform import NeMoPlatformError
@@ -17,7 +19,7 @@ from nooa import GenerationError
 from typer.testing import CliRunner
 
 runner = CliRunner()
-_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "INFERENCE_API_KEY")
+_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "TEST_PROFILE_ENV")
 
 
 class AnalystRecorder:
@@ -57,12 +59,28 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch, restore_profile_env: None) 
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
             http_ok=lambda base_url: True,
             workspace_ok=queryable,
         ),
     )
     monkeypatch.setattr(cli, "make_client", lambda base_url: object())
+    monkeypatch.setattr(
+        cli,
+        "check_models",
+        lambda: [
+            CheckResult(
+                name="agent-models",
+                group="models",
+                status="pass",
+                severity="required",
+                message="default=default/gpt-5; fast=default/gpt-5-mini",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "nemo_insights_plugin.preflight.configured_model_refs",
+        lambda: SimpleNamespace(default="default/gpt-5", fast="default/gpt-5-mini"),
+    )
 
 
 @pytest.fixture
@@ -128,10 +146,15 @@ def test_unusable_mirror_directory_drops_the_mirror_and_still_analyzes(
     output = tmp_path / "unwritable" / "insights.yaml"
     original_mkdir = Path.mkdir
 
-    def refuse_mirror_dir(self: Path, *args: object, **kwargs: object) -> None:
+    def refuse_mirror_dir(
+        self: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
         if self == output.parent:
             raise PermissionError(13, "Permission denied")
-        original_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+        original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
 
     monkeypatch.setattr(Path, "mkdir", refuse_mirror_dir)
     monkeypatch.setattr(cli, "run_analyst", recorder)
@@ -190,7 +213,6 @@ def test_analyze_renders_invalid_profile_env_as_command_error(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
             http_ok=lambda base_url: probe_calls.append("http") or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -228,7 +250,6 @@ def test_doctor_renders_invalid_profile_env_as_command_error(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
             http_ok=lambda base_url: probe_calls.append("http") or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -289,7 +310,6 @@ def test_doctor_resolves_base_url_after_profile_env_loading(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
             http_ok=lambda base_url: http_urls.append(base_url) or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -406,15 +426,15 @@ def test_malformed_discovered_profile_warns_with_agent_only(app: typer.Typer, tm
 def test_malformed_discovered_profile_still_loads_env_file(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    monkeypatch.delenv("TEST_PROFILE_ENV", raising=False)
     (tmp_path / "optimizer.yaml").write_text("agent: ''\n", encoding="utf-8")
-    (tmp_path / ".env").write_text("INFERENCE_API_KEY=from-env-file\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("TEST_PROFILE_ENV=from-env-file\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["run", "--agent", "other"])
 
     assert result.exit_code == 0, result.output
-    assert os.environ["INFERENCE_API_KEY"] == "from-env-file"
+    assert os.environ["TEST_PROFILE_ENV"] == "from-env-file"
     assert recorder.kwargs is not None
 
 
@@ -440,16 +460,28 @@ def test_missing_profile_and_agent_errors(app: typer.Typer, tmp_path: Path, monk
     assert "No --agent given and no optimizer.yaml profile found" in result.output
 
 
-def test_analyze_blocks_before_runner_when_preflight_fails(
+def test_analyze_blocks_before_runner_when_model_configuration_is_missing(
     app: typer.Typer, profile_tree: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
     monkeypatch.setattr(
         cli,
+        "check_models",
+        lambda: [
+            CheckResult(
+                name="agent-models",
+                group="models",
+                status="fail",
+                severity="required",
+                message="No default model is configured",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={},
             http_ok=lambda base_url: True,
             workspace_ok=lambda base_url, workspace, agent: _queryable(),
         ),
@@ -459,11 +491,11 @@ def test_analyze_blocks_before_runner_when_preflight_fails(
     result = runner.invoke(app, ["run"])
 
     assert result.exit_code == 1
-    assert "INFERENCE_API_KEY not set" in result.output
+    assert "No default model is configured" in result.output
     assert recorder.kwargs is None
 
 
-def test_analyze_runs_only_the_credential_check(
+def test_analyze_runs_only_the_model_configuration_check(
     app: typer.Typer, profile_tree: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recorder = AnalystRecorder()
@@ -478,7 +510,6 @@ def test_analyze_runs_only_the_credential_check(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={"INFERENCE_API_KEY": "k"},
             http_ok=lambda base_url: probe_calls.append("http") or False,
             workspace_ok=record_workspace_probe,
         ),
@@ -746,7 +777,6 @@ def test_doctor_missing_profile_still_runs_environment_checks(
         cli,
         "_PREFLIGHT_PROBES",
         AnalysisProbes(
-            env={},
             http_ok=lambda base_url: http_urls.append(base_url) or True,
             workspace_ok=record_workspace_probe,
         ),
@@ -757,7 +787,7 @@ def test_doctor_missing_profile_still_runs_environment_checks(
 
     assert result.exit_code == 1
     assert "no optimizer.yaml found" in result.output
-    assert "INFERENCE_API_KEY not set" in result.output
+    assert "Models\n  ✓ default=default/gpt-5; fast=default/gpt-5-mini" in result.output
     assert http_urls == ["https://flag.example"]
     assert workspace_urls == []
 
@@ -769,4 +799,4 @@ def test_doctor_reports_healthy_profile(app: typer.Typer, profile_tree: Path, mo
 
     assert result.exit_code == 0, result.output
     assert "Profile\n  ✓ profile for agent 'flight-planner'" in result.output
-    assert "Credentials\n  ✓ INFERENCE_API_KEY set" in result.output
+    assert "Models\n  ✓ default=default/gpt-5; fast=default/gpt-5-mini" in result.output
