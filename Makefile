@@ -165,19 +165,31 @@ verify-python-version: verify-mise ## Verify Python version and install if neces
 	@echo "verifying python version"
 	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
 
-# Order-only so a direct `make .venv` still resolves mise and the interpreter,
-# without rebuilding an existing venv on every invocation.
-.venv/bin/python: | verify-python-version
+# Phony rather than a file target: a `.venv/bin/python` that already exists says
+# nothing about which interpreter it is, so changing PYTHON_VERSION has to force
+# a rebuild. Order-only prerequisite keeps mise resolution out of the recipe.
+.PHONY: .venv
+.venv: | verify-python-version ## Create a Python virtual environment
 	@echo "~~~"
-	@if [ "$(BOOTSTRAP_CREATE_VENV)" = "0" ]; then \
-		echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing"; \
+	@current=$$([ -x .venv/bin/python ] && .venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])'); \
+	if [ "$$current" = "$(PYTHON_VERSION)" ]; then \
+		exit 0; \
+	fi; \
+	if [ "$(BOOTSTRAP_CREATE_VENV)" = "0" ]; then \
+		if [ -n "$$current" ]; then \
+			echo "BOOTSTRAP_CREATE_VENV=0 but .venv is on Python $$current, not $(PYTHON_VERSION)"; \
+		else \
+			echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing"; \
+		fi; \
 		echo "Create .venv manually, or run make again without BOOTSTRAP_CREATE_VENV=0."; \
 		exit 1; \
-	fi
-	@echo "setting up a venv with uv"
-	$(UV) venv --python $(PYTHON_VERSION) --seed --allow-existing
-
-.venv: .venv/bin/python ## Create a Python virtual environment
+	fi; \
+	if [ -n "$$current" ]; then \
+		echo "recreating .venv on Python $(PYTHON_VERSION) (was $$current)"; \
+	else \
+		echo "setting up a venv with uv"; \
+	fi; \
+	$(UV) venv --python $(PYTHON_VERSION) --seed $${current:+--clear}
 
 # Optional escape hatch for local plugin packages that cannot participate in the
 # root uv workspace/lock. Leave empty for the normal monorepo bootstrap path.
