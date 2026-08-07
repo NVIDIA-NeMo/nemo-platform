@@ -29,7 +29,8 @@ interface TraceDetailViewProps {
   traceId: string;
   sessionId: string;
   traceSummary?: Trace;
-  isTraceSummaryLoading?: boolean;
+  traceSummaryStatus: 'loading' | 'resolved' | 'error';
+  traceSummaryErrorMessage?: string;
   parentBreadcrumbs: BreadcrumbsItemProps[];
   children: (trace: Trace) => ReactNode;
 }
@@ -40,7 +41,8 @@ export const TraceDetailView: FC<TraceDetailViewProps> = ({
   traceId,
   sessionId,
   traceSummary,
-  isTraceSummaryLoading = false,
+  traceSummaryStatus,
+  traceSummaryErrorMessage,
   parentBreadcrumbs,
   children,
 }) => {
@@ -73,8 +75,20 @@ export const TraceDetailView: FC<TraceDetailViewProps> = ({
     setBreadcrumbs([...parentBreadcrumbs, { slotLabel: `Trace ${traceBreadcrumbLabel}` }]);
   }, [parentBreadcrumbs, setBreadcrumbs, traceBreadcrumbLabel]);
 
-  if (!resolvedTrace && (isLoading || (traceNotFound && isTraceSummaryLoading))) {
+  if (!resolvedTrace && (isLoading || (traceNotFound && traceSummaryStatus === 'loading'))) {
     return <Loading description="Loading trace..." />;
+  }
+
+  if (traceNotFound && !resolvedTrace && traceSummaryStatus === 'error') {
+    return (
+      <StatusMessage
+        className="mx-auto mt-density-2xl"
+        size="medium"
+        slotMedia={<CircleAlert width={65} height={65} />}
+        slotHeading="Error loading trace activity"
+        slotSubheading={traceSummaryErrorMessage}
+      />
+    );
   }
 
   if (traceNotFound && !resolvedTrace) {

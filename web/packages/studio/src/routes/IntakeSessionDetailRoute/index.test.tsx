@@ -477,6 +477,36 @@ describe('IntakeSessionDetailRoute', () => {
     expect(screen.queryByText(/Trace details are still arriving/)).not.toBeInTheDocument();
   });
 
+  it('shows an error when trace details are missing and session spans fail to load', async () => {
+    const traceId = 'trace-with-failed-activity-request';
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({
+          ...mockTracesPage,
+          data: [],
+          pagination: {
+            ...mockTracesPage.pagination,
+            current_page_size: 0,
+            total_results: 0,
+          },
+        })
+      ),
+      http.get(
+        '*/apis/intake/v2/workspaces/:workspace/traces/:traceId',
+        () => new HttpResponse(null, { status: 404 })
+      ),
+      http.get(
+        '*/apis/intake/v2/workspaces/:workspace/spans',
+        () => new HttpResponse(null, { status: 500 })
+      )
+    );
+
+    renderSessionDetail('session-agent-run-001', `?traceId=${traceId}`);
+
+    expect(await screen.findByText('Error loading trace activity')).toBeInTheDocument();
+    expect(screen.queryByText('Trace Not Found')).not.toBeInTheDocument();
+  });
+
   it('rejects a trace deep link that belongs to another session', async () => {
     renderSessionDetail('session-agent-run-001', '?traceId=trace-agent-run-002');
 
