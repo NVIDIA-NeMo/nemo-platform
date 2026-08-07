@@ -578,14 +578,17 @@ def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(
     # dataset type -- survives it.
     from nemo_datasets_plugin.profiler import stats as stats_module
 
-    real_column_stats = stats_module._column_stats
+    real_accumulator_for = stats_module._accumulator_for
 
-    def explode_on_completion(feature, values, total):
-        if feature.name == "completion":
+    class Boom(stats_module.ColumnAccumulator):
+        def _observe(self, present):
             raise RuntimeError("boom")
-        return real_column_stats(feature, values, total)
 
-    monkeypatch.setattr(stats_module, "_column_stats", explode_on_completion)
+    monkeypatch.setattr(
+        stats_module,
+        "_accumulator_for",
+        lambda feature: Boom() if feature.name == "completion" else real_accumulator_for(feature),
+    )
     _write_parquet(tmp_path / "train.parquet", [{"prompt": "q", "completion": "a"}])
 
     part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]

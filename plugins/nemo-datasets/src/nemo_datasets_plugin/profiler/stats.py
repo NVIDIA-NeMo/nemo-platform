@@ -15,6 +15,17 @@ per-column counts (:class:`ColumnProbes`, also reachable alone via :func:`derive
 classification uses when it was handed no probes). Those are measurements, not interpretations: what
 they mean is classification's job, and keeping the looking here is what stops a content signal from
 being reachable only through a correctly named column.
+
+The measuring itself is done by a :class:`ColumnAccumulator` per column, chosen once on dtype. An
+accumulator folds batches in and keeps no reference to them, so a column measured in pieces gives
+the same answer as one measured whole — the property that lets a caller stop materialising a
+partition before it can measure it. The base class is the entire measurement for a dtype with no
+statistics of its own, because the probes run over every column whatever its type.
+
+Two things here are still sized by the column rather than bounded: the retained strings a quality
+stride needs to place its sample, and the lengths a quantile needs to sort. Both are what the
+reservoir and the parquet footer row counts are for, and until then they cost what materialising the
+column already cost.
 """
 
 from __future__ import annotations
@@ -83,17 +94,20 @@ def measure_columns(
     stats: dict[str, ColumnStats] = {}
     probes: dict[str, ColumnProbes] = {}
     errors: list[Evidence] = []
-    total = len(rows)
     for feature in features:
         # Parquet permits duplicate field names, and both maps are keyed by name. Measuring the
         # first and skipping the rest makes which one wins deterministic instead of "whichever came
         # last", and keeps stats and probes agreeing on the same one.
         if feature.name in probes:
             continue
-        values = [row.get(feature.name) for row in rows]
+        accumulator = _accumulator_for(feature)
         try:
-            column = _column_stats(feature, values, total)
-            probes[feature.name] = _column_probes(values)
+            # One batch, being every row this partition holds. The accumulator does not care: fed in
+            # pieces it gives the same answer, which is what lets the caller stop materialising the
+            # partition first.
+            accumulator.update([row.get(feature.name) for row in rows])
+            column, probe = accumulator.finalize()
+            probes[feature.name] = probe
         except Exception as exc:
             errors.append(
                 Evidence(
@@ -135,44 +149,261 @@ def quote_enumerations(
         column.categorical.values = sorted(str(value) for value in distinct)
 
 
-def _column_stats(feature: FeatureSchema, values: list[Any], total: int) -> ColumnStats | None:
-    present = [value for value in values if value is not None]
-    null_rate = (total - len(present)) / total if total else 0.0
+class ColumnAccumulator:
+    """Measures one top-level column, over however many batches it is handed.
 
-    text = numeric = messages = categorical = quality = None
+    ``update`` folds a batch in and keeps no reference to it; ``finalize`` turns what was folded into
+    the stored blocks. Splitting a column across calls gives the same answer as one call with all of
+    it, which is the property that lets the caller stop materialising a partition before measuring it.
+
+    The base class is the whole measurement for a dtype with no statistics of its own — a struct, a
+    list, anything the dispatch does not recognise — because the content probes run over every column
+    regardless of type. Subclasses add their dtype's state by overriding ``_observe`` and ``_blocks``.
+    """
+
+    def __init__(self) -> None:
+        self.rows = 0
+        self._nulls = 0
+        self._non_empty = 0
+        self._texts = 0
+        self._extractable_answer = 0
+        self._transcript_marker = 0
+
+    def update(self, values: list[Any]) -> None:
+        """Fold one batch of this column's values in, one entry per row."""
+        present: list[Any] = []
+        for value in values:
+            self.rows += 1
+            if value is None:
+                self._nulls += 1
+            else:
+                present.append(value)
+                if value not in ("", [], {}):
+                    self._non_empty += 1
+            text = _probe_text(value)
+            if text is not None:
+                self._texts += 1
+                if _GSM8K_ANSWER.search(text) or _BOXED_ANSWER.search(text):
+                    self._extractable_answer += 1
+                if _TRANSCRIPT_MARKER.search(text):
+                    self._transcript_marker += 1
+        self._observe(present)
+
+    def finalize(self) -> tuple[ColumnStats | None, ColumnProbes]:
+        """The column's stored measurements, and its probe counts.
+
+        Stats are None when there was nothing worth measuring, which keeps the map sparse. Probes are
+        always returned: a column of nothing is a finding classification is entitled to read.
+        """
+        blocks = self._blocks()
+        null_rate = self._nulls / self.rows if self.rows else 0.0
+        column = ColumnStats(null_rate=null_rate, **blocks)
+        if not any(blocks.values()) and null_rate == 0.0:
+            column = None
+        return column, ColumnProbes(
+            rows=self.rows,
+            non_empty=self._non_empty,
+            texts=self._texts,
+            extractable_answer=self._extractable_answer,
+            transcript_marker=self._transcript_marker,
+        )
+
+    def _observe(self, present: list[Any]) -> None:
+        """Fold this batch's non-null values into the dtype's own state. The base column has none."""
+
+    def _blocks(self) -> dict[str, Any]:
+        """The dtype-specific ``ColumnStats`` blocks. The base column contributes none."""
+        return {}
+
+
+class _Vocabulary:
+    """Distinct values, for as long as the column still looks like a controlled vocabulary.
+
+    Stops the moment it stops looking like one and drops what it had, which is the whole point:
+    counting distinct values exactly means *retaining* them, so on a free-text column this set grows
+    to hold the column. Today that costs little, because the rows are held anyway and the set stores
+    pointers into them -- 2.6 MB beside 61.4 MB of resident rows. It is the fold this is becoming
+    that makes it matter: once a batch is folded and discarded, this set is the *sole owner* of every
+    value it kept, and two text columns cost 46.8 MB against 0.163 MB for every other accumulator
+    combined. Unbounded, it is the one thing that would make the fold O(rows) again.
+
+    Three bounds rather than one. A count alone bounds cardinality but not bytes, and 1024 reasoning
+    traces is 32 MB. The middle bound does the real work: it asks what the column *is* rather than
+    how many values it holds, in the same way the role gate on quoting does. A vocabulary member is
+    short by nature, so a single long value settles the question on sight, which is why free-text
+    columns stop here almost immediately instead of after 1024 values.
+
+    The values themselves are never handed out here. They are row content, gated on role rather than
+    on size, and :func:`quote_enumerations` adds them once classification has assigned one.
+    """
+
+    def __init__(self) -> None:
+        self._values: set[Any] = set()
+        self._bytes = 0
+        self._saturated = False
+
+    def update(self, present: list[Any]) -> None:
+        if self._saturated:
+            return
+        for value in present:
+            if isinstance(value, str) and len(value) > _MAX_VOCABULARY_VALUE_CHARS:
+                return self._saturate()
+            try:
+                if value in self._values:
+                    continue
+                self._values.add(value)
+            except TypeError:
+                return self._saturate()  # unhashable values (dicts / lists) have no cardinality signal
+            self._bytes += len(value) if isinstance(value, str) else _NON_STRING_VALUE_BYTES
+            if len(self._values) > _MAX_VOCABULARY_VALUES or self._bytes > _MAX_VOCABULARY_BYTES:
+                return self._saturate()
+
+    def _saturate(self) -> None:
+        self._values = set()  # release what was held; holding it is the cost this bound exists to cap
+        self._saturated = True
+
+    def finalize(self) -> CategoricalStats | None:
+        return None if self._saturated else CategoricalStats(distinct_count=len(self._values))
+
+
+class StringAccumulator(ColumnAccumulator):
+    """A ``string`` column: length quantiles, corruption ratios, and a vocabulary if it has one."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._strings: list[str] = []
+        self._vocabulary = _Vocabulary()
+
+    def _observe(self, present: list[Any]) -> None:
+        # The strings are retained because the quality stride needs the column's length to place its
+        # sample, and that is not known until the last batch. Bounding this is what the reservoir and
+        # the footer row count are for; until then it costs what materialising the column already did.
+        self._strings.extend(value for value in present if isinstance(value, str))
+        self._vocabulary.update(present)
+
+    def _blocks(self) -> dict[str, Any]:
+        text = quality = None
+        if self._strings:
+            text = TextStats(chars=_quantiles([len(value) for value in self._strings]))
+            quality = _text_quality(self._strings)
+        return {"text": text, "quality": quality, "categorical": self._vocabulary.finalize()}
+
+
+class NumericAccumulator(ColumnAccumulator):
+    """An ``int*`` / ``uint*`` / ``float*`` column: running extrema and mean, plus a vocabulary."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._min = math.inf
+        self._max = -math.inf
+        self._sum = 0.0
+        self._count = 0
+        self._vocabulary = _Vocabulary()
+
+    def _observe(self, present: list[Any]) -> None:
+        for value in present:
+            # Non-finite floats (NaN / +-inf) are dropped: they serialize to JSON null and then fail
+            # to re-validate against NumericStats' required floats, making the profile unreadable on
+            # its next load. bool is an int in Python and is not a number here.
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+                number = float(value)
+                self._min = min(self._min, number)
+                self._max = max(self._max, number)
+                self._sum += number
+                self._count += 1
+        self._vocabulary.update(present)
+
+    def _blocks(self) -> dict[str, Any]:
+        numeric = None
+        if self._count:
+            numeric = NumericStats(min=self._min, max=self._max, mean=self._sum / self._count)
+        return {"numeric": numeric, "categorical": self._vocabulary.finalize()}
+
+
+class BoolAccumulator(ColumnAccumulator):
+    """A ``bool`` column. The column that decides unpaired_preference deserves a measured class
+    balance rather than no stats at all, and two values is a vocabulary by any reading."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._vocabulary = _Vocabulary()
+
+    def _observe(self, present: list[Any]) -> None:
+        self._vocabulary.update(present)
+
+    def _blocks(self) -> dict[str, Any]:
+        return {"categorical": self._vocabulary.finalize()}
+
+
+class MessageAccumulator(ColumnAccumulator):
+    """A ``messages`` column: turn and length distributions, the roles seen, and chat-shape rates."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._conversations = 0
+        self._turns: list[int] = []
+        self._content_chars: list[int] = []
+        self._roles_seen: list[str] = []
+        self._ends_with_assistant = 0
+        self._valid_alternation = 0
+        self._has_tool_calls = False
+
+    def _observe(self, present: list[Any]) -> None:
+        for messages in present:
+            if not isinstance(messages, list):
+                continue
+            self._conversations += 1
+            self._turns.append(len(messages))
+            total_content = 0
+            for message in messages:
+                if not isinstance(message, dict):
+                    continue
+                role = _role_of(message)
+                if role is not None:
+                    # Coerced to str because roles_seen is typed list[str] and a non-string role
+                    # would fail validation. Reported verbatim otherwise: the contract is explicit
+                    # that an unexpected role is the finding worth surfacing, not something to
+                    # normalize away.
+                    role = role if isinstance(role, str) else str(role)
+                    if role not in self._roles_seen:
+                        self._roles_seen.append(role)
+                total_content += _content_len(_message_field(message, "content", "value"))
+                # `.get` truthiness, not `in`: parquet materializes every declared struct field, so a
+                # schema that merely declares tool_calls would otherwise report tool use on every row.
+                if message.get("tool_calls") or role == "tool":
+                    self._has_tool_calls = True
+            self._content_chars.append(total_content)
+            if messages and isinstance(messages[-1], dict) and _is_assistant_role(_role_of(messages[-1])):
+                self._ends_with_assistant += 1
+            if _valid_alternation(messages):
+                self._valid_alternation += 1
+
+    def _blocks(self) -> dict[str, Any]:
+        if not self._conversations:
+            return {"messages": None}
+        return {
+            "messages": MessageStats(
+                turns=_quantiles(self._turns),
+                content_chars=_quantiles(self._content_chars),
+                roles_seen=self._roles_seen,
+                ends_with_assistant_rate=self._ends_with_assistant / self._conversations,
+                valid_alternation_rate=self._valid_alternation / self._conversations,
+                has_tool_calls=self._has_tool_calls,
+            )
+        }
+
+
+def _accumulator_for(feature: FeatureSchema) -> ColumnAccumulator:
+    """The accumulator that knows how to measure this column, dispatched once on its dtype."""
     if feature.dtype == "string":
-        strings = [value for value in present if isinstance(value, str)]
-        if strings:
-            text = TextStats(chars=_quantiles([len(value) for value in strings]))
-            quality = _text_quality(strings)
-        # Only while the column looks like a controlled vocabulary; see `_cardinality`. The values
-        # themselves are row data and are added later, by role, never by size.
-        categorical = _cardinality(present)
-    elif feature.dtype == "bool":
-        # The column that decides unpaired_preference deserves a measured class balance rather than
-        # no stats at all.
-        categorical = _cardinality(present)
-    elif _is_numeric(feature.dtype):
-        # Drop non-finite floats (NaN / +-inf): they serialize to JSON null and then fail to
-        # re-validate against NumericStats' required floats, which would make the whole profile
-        # unreadable on the next load.
-        numbers = [
-            float(value)
-            for value in present
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-        ]
-        if numbers:
-            numeric = NumericStats(min=min(numbers), max=max(numbers), mean=sum(numbers) / len(numbers))
-        categorical = _cardinality(present)
-    elif feature.dtype == "messages":
-        messages = _message_stats([value for value in present if isinstance(value, list)])
-
-    column = ColumnStats(
-        null_rate=null_rate, text=text, numeric=numeric, messages=messages, categorical=categorical, quality=quality
-    )
-    if not any([text, numeric, messages, categorical, quality]) and null_rate == 0.0:
-        return None  # nothing worth measuring
-    return column
+        return StringAccumulator()
+    if feature.dtype == "bool":
+        return BoolAccumulator()
+    if feature.dtype == "messages":
+        return MessageAccumulator()
+    if _is_numeric(feature.dtype):
+        return NumericAccumulator()
+    return ColumnAccumulator()
 
 
 def _is_numeric(dtype: str) -> bool:
@@ -191,46 +422,6 @@ def _quantiles(values: list[int]) -> Quantiles:
         return ordered[min(rank, n) - 1]
 
     return Quantiles(p50=at(50), p95=at(95), p99=at(99), max=ordered[-1] if ordered else 0)
-
-
-def _cardinality(present: list[Any]) -> CategoricalStats | None:
-    """The distinct-value count, for as long as the column looks like a controlled vocabulary.
-
-    Returns None the moment it stops looking like one, discarding what it had accumulated. Counting
-    distinct values exactly means *retaining* them, so on a free-text column this set grows to hold
-    the column, to report that `response` had 9,954 distinct values in 10,000 rows -- which is "this
-    is free text", which the role marker and the length quantiles already say for nothing.
-
-    Today that costs little, because the rows are held anyway and the set stores pointers into them:
-    measured at 2.6 MB beside 61.4 MB of resident rows. The bound is here for the pipeline this is
-    becoming. Once a batch is folded and discarded, a distinct set is the *sole owner* of every value
-    it kept, and the same two columns cost 46.8 MB against 0.163 MB for every other accumulator
-    combined. Unbounded, this is the one thing that would make a streaming fold O(rows) again.
-
-    Three bounds rather than one. A count alone bounds cardinality but not bytes, and 1024 reasoning
-    traces is 32 MB. The middle bound is the one that does the real work: it asks what the column
-    *is* rather than how many values it holds, in the same way the role gate on quoting does. A
-    vocabulary member is short by nature, so a single 32 KB value settles the question on sight,
-    which is why free-text columns exit here almost immediately instead of after 1024 values.
-
-    The values themselves are still never returned here. They are row content, gated on role rather
-    than on size, and :func:`quote_enumerations` adds them once classification has assigned one.
-    """
-    distinct: set[Any] = set()
-    retained_bytes = 0
-    for value in present:
-        if isinstance(value, str) and len(value) > _MAX_VOCABULARY_VALUE_CHARS:
-            return None
-        try:
-            if value in distinct:
-                continue
-            distinct.add(value)
-        except TypeError:
-            return None  # unhashable values (dicts / lists) have no cardinality signal
-        retained_bytes += len(value) if isinstance(value, str) else _NON_STRING_VALUE_BYTES
-        if len(distinct) > _MAX_VOCABULARY_VALUES or retained_bytes > _MAX_VOCABULARY_BYTES:
-            return None
-    return CategoricalStats(distinct_count=len(distinct))
 
 
 # --- text quality --------------------------------------------------------------------------------
@@ -462,25 +653,21 @@ class ColumnProbes:
 
 
 def derive_probes(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> dict[str, ColumnProbes]:
-    """Run the content probes over every top-level column, keyed by column name."""
+    """Run the content probes over every top-level column, keyed by column name.
+
+    The probes alone, through the base accumulator, which carries no dtype state — so this costs the
+    scan and nothing else. Classification calls it when it was handed no probes of its own;
+    :func:`measure_columns` is the path that wants the statistics as well.
+    """
     probes: dict[str, ColumnProbes] = {}
     for feature in features:
         # Duplicate parquet field names: first wins, matching `measure_columns` so both agree on which.
         if feature.name in probes:
             continue
-        probes[feature.name] = _column_probes([row.get(feature.name) for row in rows])
+        accumulator = ColumnAccumulator()
+        accumulator.update([row.get(feature.name) for row in rows])
+        probes[feature.name] = accumulator.finalize()[1]
     return probes
-
-
-def _column_probes(values: list[Any]) -> ColumnProbes:
-    texts = [text for value in values if (text := _probe_text(value)) is not None]
-    return ColumnProbes(
-        rows=len(values),
-        non_empty=sum(1 for value in values if value not in (None, "", [], {})),
-        texts=len(texts),
-        extractable_answer=sum(1 for text in texts if _GSM8K_ANSWER.search(text) or _BOXED_ANSWER.search(text)),
-        transcript_marker=sum(1 for text in texts if _TRANSCRIPT_MARKER.search(text)),
-    )
 
 
 def _probe_text(value: Any) -> str | None:

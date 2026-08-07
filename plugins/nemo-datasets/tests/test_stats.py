@@ -59,14 +59,17 @@ def test_text_quality_flags_repetition_and_non_ascii():
 def test_one_bad_column_costs_only_itself(monkeypatch):
     # The narrow guard. A value no detector anticipated used to cost the partition every measurement
     # it had; it now costs its own column, and says so rather than leaving a silent gap.
-    real_column_stats = stats_module._column_stats
+    real_accumulator_for = stats_module._accumulator_for
 
-    def explode_on_one(feature, values, total):
-        if feature.name == "bad":
+    class Boom(stats_module.ColumnAccumulator):
+        def _observe(self, present):
             raise RuntimeError("boom")
-        return real_column_stats(feature, values, total)
 
-    monkeypatch.setattr(stats_module, "_column_stats", explode_on_one)
+    monkeypatch.setattr(
+        stats_module,
+        "_accumulator_for",
+        lambda feature: Boom() if feature.name == "bad" else real_accumulator_for(feature),
+    )
 
     features = [_feature("good", "string"), _feature("bad", "string")]
     measured, probes, errors = measure_columns(features, [{"good": "x", "bad": "y"}])
@@ -77,10 +80,57 @@ def test_one_bad_column_costs_only_itself(monkeypatch):
     assert "'bad'" in errors[0].detail and "RuntimeError" in errors[0].detail
 
 
-def test_measure_columns_agrees_with_the_unguarded_pair():
-    # `measure_columns` is a refactor, not a change of measurement: it must produce exactly what the
-    # two functions it replaced produced, for every dtype the dispatch knows. Both paths are still
-    # here, so this is checkable directly rather than by reading.
+# One column per dtype the dispatch knows, each carrying the awkward cases: nulls, empties, a
+# non-finite float, a value long enough to saturate a vocabulary, both chat spellings.
+_DTYPE_VALUES = {
+    "string": ["a prompt #### 42", "héllo wörld", "", "aaaaaaaa", None, "x" * 300, "yes", "yes"],
+    "int64": [1, 2, 2, None, 3, -5],
+    "float64": [1.5, float("nan"), 2.5, None, float("inf"), 0.0],
+    "bool": [True, False, True, None],
+    "messages": [
+        [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "there"}],
+        [{"from": "human", "value": "q"}, {"from": "gpt", "value": "\\boxed{4}"}],
+        [{"role": "user", "content": "x", "tool_calls": [{"n": 1}]}],
+        None,
+        [],
+    ],
+    "struct": [{"a": 1}, None, {"b": 2}],
+}
+
+
+@pytest.mark.parametrize("dtype", sorted(_DTYPE_VALUES))
+@pytest.mark.parametrize("chunks", [1, 2, 3, 7])
+def test_an_accumulator_folds_rather_than_buffers(dtype, chunks):
+    # The property the fold rests on: a column split across calls has to measure the same as one
+    # handed over whole. Without it, batching would quietly change the numbers -- and the batch size
+    # is an implementation detail no reader of the profile could see.
+    values = _DTYPE_VALUES[dtype] * 5
+    feature = _feature("c", dtype)
+
+    whole = stats_module._accumulator_for(feature)
+    whole.update(values)
+
+    in_pieces = stats_module._accumulator_for(feature)
+    step = max(1, -(-len(values) // chunks))
+    for start in range(0, len(values), step):
+        in_pieces.update(values[start : start + step])
+
+    assert in_pieces.finalize() == whole.finalize()
+
+
+def test_the_typed_accumulators_probe_exactly_as_the_bare_one_does():
+    # Probe counting lives on the base class, so every dtype gets it for free. If a subclass ever
+    # shadows that, a chat column would quietly stop contributing verifiability evidence.
+    features = [_feature(dtype, dtype) for dtype in sorted(_DTYPE_VALUES)]
+    rows = [dict(zip(sorted(_DTYPE_VALUES), values)) for values in zip(*_DTYPE_VALUES.values())]
+
+    _, probes, errors = measure_columns(features, rows)
+
+    assert errors == []
+    assert probes == derive_probes(features, rows)  # derive_probes goes through the base class
+
+
+def test_measure_columns_measures_every_dtype_the_dispatch_knows():
     features = [
         _feature("text", "string"),
         _feature("count", "int64"),
@@ -104,9 +154,16 @@ def test_measure_columns_agrees_with_the_unguarded_pair():
     ]
     measured, probes, errors = measure_columns(features, rows)
 
-    assert measured == _stats(features, rows)
-    assert probes == derive_probes(features, rows)
     assert errors == []
+    assert measured["text"].text is not None and measured["text"].quality is not None
+    assert measured["count"].numeric.min == 0.0
+    assert measured["count"].categorical.distinct_count == 5
+    assert measured["score"].numeric.mean == pytest.approx(sum(i / 3 for i in range(5)) / 5)
+    assert measured["flag"].categorical.distinct_count == 2
+    assert measured["chat"].messages.roles_seen == ["user", "assistant"]
+    assert "meta" not in measured  # a struct with no nulls has nothing worth measuring
+    assert measured["missing"].null_rate == 1.0  # all-null, kept for the null rate alone
+    assert set(probes) == {feature.name for feature in features}  # every column, typed or not
 
 
 def test_a_column_with_nothing_to_measure_is_not_reported_as_an_error():
