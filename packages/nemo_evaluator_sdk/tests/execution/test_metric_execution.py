@@ -1903,18 +1903,20 @@ class TestEvaluateMetricOnline:
 
         metric.set_inference_fn(fake_judge_inference)
         mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.inference.make_inference_request",
+            "nemo_evaluator_sdk.execution.benchmark_execution.make_inference_request",
             new_callable=AsyncMock,
             side_effect=fake_generation_inference,
         )
 
-        result = await LocalBackend().evaluate(
-            metric=metric,
+        job = await LocalBackend().evaluate_dataset(
+            metrics=[metric],
             dataset=[{"prompt": "What is the capital of France?"}],
             target=candidate_model,
             prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
             params=RunConfigOnlineModel(parallelism=1),
         )
+        await job.wait_until_done()
+        result = await job.get_result()
 
         assert captured_generation_requests == [
             {"messages": [{"role": "user", "content": "What is the capital of France?"}]}
@@ -1991,18 +1993,20 @@ class TestEvaluateMetricOnline:
 
         metric.set_inference_fn(fake_judge_inference)
         mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.inference.make_inference_request",
+            "nemo_evaluator_sdk.execution.benchmark_execution.make_inference_request",
             new_callable=AsyncMock,
             side_effect=fake_generation_inference,
         )
 
-        result = await LocalBackend().evaluate(
-            metric=metric,
+        job = await LocalBackend().evaluate_dataset(
+            metrics=[metric],
             dataset=[{"prompt": "What is the capital of France?"}],
             target=candidate_model,
             prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
             params=RunConfigOnlineModel(parallelism=1),
         )
+        await job.wait_until_done()
+        result = await job.get_result()
 
         detect_mode.assert_awaited_once()
         assert detect_mode.await_args is not None

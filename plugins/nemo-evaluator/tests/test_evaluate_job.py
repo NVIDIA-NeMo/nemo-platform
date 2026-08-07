@@ -1128,7 +1128,7 @@ class TestEvaluateJobRun:
         result = _empty_evaluation_result()
         result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
-        evaluator.run_sync.return_value = result
+        evaluator.run_dataset_sync.return_value = result
         evaluator_cls = mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
         config = {
             **_exact_match_spec(),
@@ -1148,8 +1148,8 @@ class TestEvaluateJobRun:
         assert "result" not in run_result
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         evaluator_cls.assert_called_once_with()
-        call_kwargs = evaluator.run_sync.call_args.kwargs
-        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        call_kwargs = evaluator.run_dataset_sync.call_args.kwargs
+        assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
         assert call_kwargs["dataset"] == expected_spec.dataset
         assert call_kwargs["config"] == expected_config
         assert call_kwargs["target"] == expected_spec.target
@@ -1159,7 +1159,7 @@ class TestEvaluateJobRun:
         result = _empty_evaluation_result()
         result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
-        evaluator.run_sync.return_value = result
+        evaluator.run_dataset_sync.return_value = result
         evaluator_cls = mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
         config = {
             **_exact_match_spec(),
@@ -1180,7 +1180,7 @@ class TestEvaluateJobRun:
         assert "result" not in run_result
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         evaluator_cls.assert_called_once_with()
-        call_kwargs = evaluator.run_sync.call_args.kwargs
+        call_kwargs = evaluator.run_dataset_sync.call_args.kwargs
         assert [metric.type.value for metric in call_kwargs["metrics"]] == ["exact-match", "f1"]
         assert call_kwargs["dataset"] == expected_spec.dataset
         assert call_kwargs["config"] == expected_spec.params
@@ -1193,7 +1193,7 @@ class TestEvaluateJobRun:
         result = _empty_evaluation_result()
         result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
-        evaluator.run_sync.return_value = result
+        evaluator.run_dataset_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
         downloaded_path = tmp_path / "persistent" / "dataset" / "default" / "helpsteer2" / "validation.jsonl"
         download_dataset = mocker.patch(
@@ -1223,8 +1223,8 @@ class TestEvaluateJobRun:
             destination=str(ctx.storage.persistent / "dataset"),
         )
         download_dataset_sync.assert_not_called()
-        call_kwargs = evaluator.run_sync.call_args.kwargs
-        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        call_kwargs = evaluator.run_dataset_sync.call_args.kwargs
+        assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
         assert call_kwargs["dataset"] == downloaded_path
         assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
         assert call_kwargs["target"] is None
@@ -1236,7 +1236,7 @@ class TestEvaluateJobRun:
         result = _empty_evaluation_result()
         result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
-        evaluator.run_sync.return_value = result
+        evaluator.run_dataset_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
         downloaded_path = tmp_path / "persistent" / "dataset" / "default" / "helpsteer2" / "validation.jsonl"
         download_dataset = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset", create=True)
@@ -1259,8 +1259,8 @@ class TestEvaluateJobRun:
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
-        call_kwargs = evaluator.run_sync.call_args.kwargs
-        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        call_kwargs = evaluator.run_dataset_sync.call_args.kwargs
+        assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
         assert call_kwargs["dataset"] == downloaded_path
         assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
         assert call_kwargs["target"] is None

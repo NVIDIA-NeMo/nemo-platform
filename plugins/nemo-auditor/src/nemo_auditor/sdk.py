@@ -254,8 +254,7 @@ class AsyncAuditorPluginResource:
 
         ``NemoJobScheduler.run_local`` is sync and itself calls
         ``asyncio.run`` to drive ``to_spec``, so we push it onto a worker
-        thread to keep the caller's event loop free — same pattern as
-        :class:`nemo_evaluator.sdk._executor._AsyncEvaluatorPluginExecutor.run_local`.
+        thread to keep the caller's event loop free.
         """
         ws = workspace or "default"
         resolved_config = await self._resolve_config(config, default_workspace=ws)

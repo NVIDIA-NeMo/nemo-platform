@@ -110,8 +110,8 @@ class TestBLEUMetric:
 
     def test_run_sync_adds_corpus_score(self):
         metric = BLEUMetric(references=["{{item.reference}}"], candidate="{{item.pred}}")
-        result = Evaluator().run_sync(
-            metrics=metric,
+        result = Evaluator().run_dataset_sync(
+            metrics=[metric],
             dataset=[
                 {"reference": "the cat sat", "pred": "the cat sat"},
                 {"reference": "a dog ran", "pred": "a dog ran"},

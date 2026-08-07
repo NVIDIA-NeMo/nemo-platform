@@ -42,7 +42,7 @@ from nemo_evaluator.jobs.publication import publish_agent_eval_result
 from nemo_evaluator.jobs.result_persistence import persist_agent_eval_result
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator.task_refs import resolve_agent_eval_tasks
-from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator, validate_run_inputs
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
@@ -400,7 +400,15 @@ class AgentEvalJob(NemoJob):
         # `async_sdk`; forward whichever identity is present, preferring async when both are — the
         # same precedence the SDK-backed dataset resolver uses.
         evaluator = self._build_evaluator(async_sdk or sdk, spec.target)
-        result = evaluator.run_sync(tasks=tasks, trials=spec.trials, target=target, config=run_config)
+        # Validate before branching: branching alone would let a spec carrying both seams
+        # silently drop one.
+        validate_run_inputs(tasks=tasks, trials=spec.trials, target=target)
+        if spec.trials is not None:
+            result = evaluator.run_sync(tasks=tasks, trials=spec.trials, config=run_config)
+        elif target is not None:
+            result = evaluator.run_sync(tasks=tasks, target=target, config=run_config)
+        else:
+            raise ValueError("provide exactly one of trials or target")
 
         files = self._write_result_files(result, ctx.storage.persistent)
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, files.bundle_dir)

@@ -178,8 +178,8 @@ class TestROUGEMetric:
         monkeypatch.setitem(sys.modules, "rouge_score", fake_pkg)
 
         metric = ROUGEMetric(reference="{{item.reference}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(
-            metrics=metric,
+        result = Evaluator().run_dataset_sync(
+            metrics=[metric],
             dataset=[{"reference": "the cat sat", "prediction": "the cat sat"}],
         )
         assert len(result.row_scores) == 1

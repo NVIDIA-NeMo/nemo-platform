@@ -14,18 +14,18 @@ from collections.abc import Callable, Mapping
 from io import BytesIO
 from pathlib import Path
 from time import monotonic
-from typing import TypeAlias, cast
+from typing import TypeAlias
 
 import httpx
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.sdk import http_utils
-from nemo_evaluator.sdk.utils import filter_aggregate_scores
+from nemo_evaluator.sdk.utils import filter_benchmark_result
 from nemo_evaluator_sdk.execution.job_poll import async_poll_until_terminal
-from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateFieldName, EvaluationResult, RowScore
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
+from nemo_evaluator_sdk.values.results import AggregateFieldName
 from nemo_platform_plugin.jobs.api_factory import BaseJob
 from nemo_platform_plugin.jobs.archive import safe_extract_tar
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
-from pydantic import BaseModel
 
 EvaluatorJob: TypeAlias = BaseJob[EvaluateSpec]
 
@@ -39,12 +39,11 @@ _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 
 _RES_STATUS = "status"
-_RES_AGGREGATE_DOWNLOAD = "results/aggregate-scores/download"
-_RES_ROW_SCORES_DOWNLOAD = "results/row-scores/download"
+#: The whole result as the job saved it. Read in preference to the flattened aggregate and
+#: row-score artifacts the job also writes, which cannot carry the per-metric breakdown.
+_RES_FULL_RESULT_DOWNLOAD = "results/evaluation-results/download"
 _RES_ARTIFACTS_DOWNLOAD = "results/artifacts/download"
 
-_RowScorePayload: TypeAlias = RowScore | BaseModel | Mapping[str, object]
-_AggregateScoresPayload: TypeAlias = AggregatedMetricResult | BaseModel | Mapping[str, object]
 _AsyncHTTPClient: TypeAlias = httpx.AsyncClient | httpx.Client
 
 log = logging.getLogger(__name__)
@@ -63,34 +62,6 @@ def metric_job_status_value(status: PlatformJobStatusResponse) -> str:
 def metric_job_status_details_value(status: PlatformJobStatusResponse) -> Mapping[str, object] | None:
     """Return status details from a metric job status response."""
     return status.status_details or None
-
-
-def _coerce_row_score(row_score: _RowScorePayload) -> RowScore:
-    """Convert a platform SDK row-score object to the evaluator SDK value type."""
-    if isinstance(row_score, RowScore):
-        return row_score
-    if isinstance(row_score, BaseModel):
-        return RowScore.model_validate(row_score.model_dump(mode="json"))
-    return RowScore.model_validate(row_score)
-
-
-def _coerce_aggregate_scores(aggregate_scores: _AggregateScoresPayload) -> AggregatedMetricResult:
-    """Convert platform SDK aggregate scores to the evaluator SDK value type."""
-    if isinstance(aggregate_scores, AggregatedMetricResult):
-        return aggregate_scores
-    if isinstance(aggregate_scores, BaseModel):
-        return AggregatedMetricResult.model_validate(aggregate_scores.model_dump(mode="json"))
-    return AggregatedMetricResult.model_validate(aggregate_scores)
-
-
-def _parse_row_scores_jsonl(payload: str) -> list[RowScore]:
-    """Parse row-score JSONL downloaded from the evaluator plugin result route."""
-    row_scores: list[RowScore] = []
-    for line in payload.splitlines():
-        stripped = line.strip()
-        if stripped:
-            row_scores.append(_coerce_row_score(cast(_RowScorePayload, json.loads(stripped))))
-    return row_scores
 
 
 def _extract_artifacts_tarball(payload: bytes, output_path: Path) -> Path:
@@ -283,32 +254,21 @@ class EvaluatorJobResource:
         )
         _raise_for_terminal_status(status)
 
-    def get_result(self, aggregate_fields: tuple[AggregateFieldName, ...] | None = None) -> EvaluationResult:
-        """Get aggregate and row-score artifacts as an ``EvaluationResult``."""
-        aggregate_response = self._http_client.get(
+    def get_result(self, aggregate_fields: tuple[AggregateFieldName, ...] | None = None) -> BenchmarkEvaluationResult:
+        """Get the finished result as a ``BenchmarkEvaluationResult``.
+
+        Reads the whole result the job saved rather than the flattened aggregate and row-score
+        projections, which cannot express the per-metric breakdown.
+        """
+        response = self._http_client.get(
             http_utils.job_route_resource_url(
                 job_base_url=self._job_base_url,
-                resource_path=_RES_AGGREGATE_DOWNLOAD,
+                resource_path=_RES_FULL_RESULT_DOWNLOAD,
             ),
             headers=self._headers,
         )
-        aggregate_response.raise_for_status()
-        row_scores_response = self._http_client.get(
-            http_utils.job_route_resource_url(
-                job_base_url=self._job_base_url,
-                resource_path=_RES_ROW_SCORES_DOWNLOAD,
-            ),
-            headers=self._headers,
-        )
-        row_scores_response.raise_for_status()
-        aggregate_scores = filter_aggregate_scores(
-            _coerce_aggregate_scores(cast(_AggregateScoresPayload, aggregate_response.json())),
-            aggregate_fields,
-        )
-        return EvaluationResult(
-            row_scores=_parse_row_scores_jsonl(row_scores_response.text),
-            aggregate_scores=aggregate_scores,
-        )
+        response.raise_for_status()
+        return filter_benchmark_result(BenchmarkEvaluationResult.model_validate(response.json()), aggregate_fields)
 
     def download_artifacts(self, path: Path | str | None = None) -> Path:
         """Download and extract the full evaluator job artifacts tarball.
@@ -425,36 +385,19 @@ class AsyncEvaluatorJobResource:
     async def get_result(
         self,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult:
-        """Get aggregate and row-score artifacts as an ``EvaluationResult``.
+    ) -> BenchmarkEvaluationResult:
+        """Get the finished result as a ``BenchmarkEvaluationResult``.
 
-        Aggregate and row-score downloads are dispatched concurrently so a slow
-        artifact never serializes the other.
+        See :meth:`EvaluatorJobResource.get_result`.
         """
-        aggregate_response, row_scores_response = await asyncio.gather(
-            self._get(
-                http_utils.job_route_resource_url(
-                    job_base_url=self._job_base_url,
-                    resource_path=_RES_AGGREGATE_DOWNLOAD,
-                )
-            ),
-            self._get(
-                http_utils.job_route_resource_url(
-                    job_base_url=self._job_base_url,
-                    resource_path=_RES_ROW_SCORES_DOWNLOAD,
-                )
-            ),
+        response = await self._get(
+            http_utils.job_route_resource_url(
+                job_base_url=self._job_base_url,
+                resource_path=_RES_FULL_RESULT_DOWNLOAD,
+            )
         )
-        aggregate_response.raise_for_status()
-        row_scores_response.raise_for_status()
-        aggregate_scores = filter_aggregate_scores(
-            _coerce_aggregate_scores(cast(_AggregateScoresPayload, aggregate_response.json())),
-            aggregate_fields,
-        )
-        return EvaluationResult(
-            row_scores=_parse_row_scores_jsonl(row_scores_response.text),
-            aggregate_scores=aggregate_scores,
-        )
+        response.raise_for_status()
+        return filter_benchmark_result(BenchmarkEvaluationResult.model_validate(response.json()), aggregate_fields)
 
     async def download_artifacts(self, path: Path | str | None = None) -> Path:
         """Download and extract the full evaluator job artifacts tarball.

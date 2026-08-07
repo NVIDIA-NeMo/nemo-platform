@@ -5,14 +5,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, overload
 from urllib.parse import quote
 
 from nemo_evaluator.sdk import http_utils
+from nemo_evaluator.sdk._agent_eval_executor import (
+    _AsyncAgentEvalExecutor,
+    _SyncAgentEvalExecutor,
+)
 from nemo_evaluator.sdk._executor import (
     SubmitTargetSpec,
     _AsyncEvaluatorPluginExecutor,
     _SyncEvaluatorPluginExecutor,
+)
+from nemo_evaluator.sdk.agent_eval_job_resources import (
+    AgentEvalJobResource,
+    AsyncAgentEvalJobResource,
 )
 from nemo_evaluator.sdk.job_resources import (
     AsyncEvaluatorJobResource,
@@ -45,15 +54,16 @@ from nemo_evaluator.sdk.types import (
 )
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackager
 from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric_bundle_packager
+from nemo_evaluator_sdk.agent_eval.evaluator import validate_run_inputs
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget, AgentEvalTrial
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
-    AggregateFieldName,
     FieldMapping,
     Model,
     ModelRef,
 )
-from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
@@ -66,6 +76,7 @@ class Evaluator:
         self._platform = platform
         self._http_client = platform._client
         self._executor = _SyncEvaluatorPluginExecutor(platform=platform)
+        self._agent_eval_executor = _SyncAgentEvalExecutor(platform=platform)
         self.metrics = EvaluatorMetricsResource(platform)
         self.agent_eval_results = EvaluatorAgentEvalResultsResource(platform)
         self.eval_results = EvaluatorEvalResultsResource(platform)
@@ -104,12 +115,12 @@ class Evaluator:
         )
 
     @overload
-    def submit(
+    def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfig | None = None,
+        params: RunConfig | None = None,
         target: None = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: None = None,
@@ -117,12 +128,12 @@ class Evaluator:
     ) -> EvaluatorJobResource: ...
 
     @overload
-    def submit(
+    def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfigOnlineModel,
+        params: RunConfigOnlineModel,
         target: Model | ModelRef,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
@@ -130,102 +141,125 @@ class Evaluator:
     ) -> EvaluatorJobResource: ...
 
     @overload
-    def submit(
+    def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfigOnline,
+        params: RunConfigOnline,
         target: Agent,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any],
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource: ...
 
-    def submit(
+    def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+        params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: SubmitTargetSpec | None = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
-        """Submit a metric job through the evaluator plugin executor."""
-        return self._executor.submit(
-            metric=metric,
+        """Submit a dataset metric job to the platform and return its job handle.
+
+        Takes the metric list the SDK
+        :class:`~nemo_evaluator_sdk.execution.backends.base.EvaluationBackend` contract spells, but
+        still returns a job handle where that contract returns a completed
+        :class:`~nemo_evaluator_sdk.values.multi_metric_results.BenchmarkEvaluationResult`, so it
+        does not satisfy the contract yet.
+        """
+        return self._executor.evaluate_dataset(
+            metrics=metrics,
             dataset=dataset,
-            params=config,
+            params=params,
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
             metric_bundle_packager=resolve_default_metric_bundle_packager(
-                metric, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
+                metrics, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
             ),
         )
 
     @overload
-    def run(
+    def evaluate(
         self,
         *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | None = None,
-        target: None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
+        taskset: Sequence[AgentEvalTask],
+        target: AgentEvalTarget,
+        config: AgentEvalRunConfig | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
+        workspace: str | None = None,
+    ) -> AgentEvalJobResource: ...
 
     @overload
-    def run(
+    def evaluate(
         self,
         *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnlineModel,
-        target: Model,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
+        taskset: Sequence[AgentEvalTask],
+        trials: Sequence[AgentEvalTrial],
+        config: AgentEvalRunConfig | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
+        workspace: str | None = None,
+    ) -> AgentEvalJobResource: ...
 
-    @overload
-    def run(
+    def evaluate(
         self,
         *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnline,
-        target: Agent,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any],
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
+        taskset: Sequence[AgentEvalTask],
+        target: AgentEvalTarget | None = None,
+        trials: Sequence[AgentEvalTrial] | None = None,
+        config: AgentEvalRunConfig | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
+        workspace: str | None = None,
+    ) -> AgentEvalJobResource:
+        """Start a taskset evaluation on the platform and return its job handle.
 
-    def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
-        return self._executor.evaluate(
-            metric=metric,
-            dataset=dataset,
-            params=config,
-            target=target,
-            field_mapping=field_mapping,
-            prompt_template=prompt_template,
-            aggregate_fields=aggregate_fields,
-        )
+        Returns a handle rather than a result, matching
+        :meth:`~nemo_evaluator_sdk.execution.backends.base.EvaluationBackend.evaluate` and its
+        sibling :meth:`evaluate_dataset`. Await it with ``wait_until_done()`` then ``get_result()``,
+        or let :meth:`nemo_evaluator_sdk.execution.evaluator.Evaluator.submit` do both for you.
+
+        The handle carries the taskset, so rebuilding the result does not ask the caller to hand
+        their live tasks back.
+
+        Args:
+            taskset: Tasks to evaluate, each carrying its own metrics.
+            target: What generates trials — a model, agent, or runner target spec. Mutually
+                exclusive with ``trials``.
+            trials: Precomputed trials to score instead of generating them. Mutually exclusive
+                with ``target``.
+            config: Run-level execution settings.
+            metric_bundle_packager: How task metrics are serialized for the wire. Built-in metrics
+                default to the declarative packager; anything needing cloudpickle must opt in.
+            workspace: Workspace to submit into. Defaults to the client's workspace.
+
+        Returns:
+            The job handle.
+        """
+        # Validate before branching: branching alone would let a call carrying both seams
+        # silently drop one.
+        validate_run_inputs(tasks=taskset, trials=trials, target=target)
+        if trials is not None:
+            return self._agent_eval_executor.evaluate(
+                taskset=taskset,
+                trials=trials,
+                config=config,
+                metric_bundle_packager=metric_bundle_packager,
+                workspace=workspace,
+            )
+        if target is not None:
+            return self._agent_eval_executor.evaluate(
+                taskset=taskset,
+                target=target,
+                config=config,
+                metric_bundle_packager=metric_bundle_packager,
+                workspace=workspace,
+            )
+        raise ValueError("provide exactly one of trials or target")
 
 
 class AsyncEvaluator:
@@ -236,6 +270,7 @@ class AsyncEvaluator:
         self._platform = platform
         self._http_client = platform._client
         self._executor = _AsyncEvaluatorPluginExecutor(platform=platform)
+        self._agent_eval_executor = _AsyncAgentEvalExecutor(platform=platform)
         self.metrics = AsyncEvaluatorMetricsResource(platform)
         self.agent_eval_results = AsyncEvaluatorAgentEvalResultsResource(platform)
         self.eval_results = AsyncEvaluatorEvalResultsResource(platform)
@@ -274,73 +309,12 @@ class AsyncEvaluator:
         )
 
     @overload
-    async def run(
+    async def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfig | None = None,
-        target: None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    @overload
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnlineModel,
-        target: Model,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    @overload
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnline,
-        target: Agent,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any],
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
-        return await self._executor.evaluate(
-            metric=metric,
-            dataset=dataset,
-            params=config,
-            target=target,
-            field_mapping=field_mapping,
-            prompt_template=prompt_template,
-            aggregate_fields=aggregate_fields,
-        )
-
-    @overload
-    async def submit(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | None = None,
+        params: RunConfig | None = None,
         target: None = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: None = None,
@@ -348,12 +322,12 @@ class AsyncEvaluator:
     ) -> AsyncEvaluatorJobResource: ...
 
     @overload
-    async def submit(
+    async def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfigOnlineModel,
+        params: RunConfigOnlineModel,
         target: Model | ModelRef,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
@@ -361,41 +335,101 @@ class AsyncEvaluator:
     ) -> AsyncEvaluatorJobResource: ...
 
     @overload
-    async def submit(
+    async def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfigOnline,
+        params: RunConfigOnline,
         target: Agent,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any],
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource: ...
 
-    async def submit(
+    async def evaluate_dataset(
         self,
         *,
-        metric: Metric,
+        metrics: Sequence[Metric],
         dataset: PluginDatasetInput,
-        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+        params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: SubmitTargetSpec | None = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
-        """Submit a metric job through the evaluator plugin executor."""
-        return await self._executor.submit(
-            metric=metric,
+        """Submit a dataset metric job to the platform and return its job handle.
+
+        See :meth:`Evaluator.evaluate_dataset`.
+        """
+        return await self._executor.evaluate_dataset(
+            metrics=metrics,
             dataset=dataset,
-            params=config,
+            params=params,
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
             metric_bundle_packager=resolve_default_metric_bundle_packager(
-                metric, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
+                metrics, metric_bundle_packager, allow_cloudpickle_fallback=False, action="Submitting"
             ),
         )
+
+    @overload
+    async def evaluate(
+        self,
+        *,
+        taskset: Sequence[AgentEvalTask],
+        target: AgentEvalTarget,
+        config: AgentEvalRunConfig | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
+        workspace: str | None = None,
+    ) -> AsyncAgentEvalJobResource: ...
+
+    @overload
+    async def evaluate(
+        self,
+        *,
+        taskset: Sequence[AgentEvalTask],
+        trials: Sequence[AgentEvalTrial],
+        config: AgentEvalRunConfig | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
+        workspace: str | None = None,
+    ) -> AsyncAgentEvalJobResource: ...
+
+    async def evaluate(
+        self,
+        *,
+        taskset: Sequence[AgentEvalTask],
+        target: AgentEvalTarget | None = None,
+        trials: Sequence[AgentEvalTrial] | None = None,
+        config: AgentEvalRunConfig | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
+        workspace: str | None = None,
+    ) -> AsyncAgentEvalJobResource:
+        """Start a taskset evaluation on the platform and return its job handle.
+
+        See :meth:`Evaluator.evaluate`.
+        """
+        # Validate before branching: branching alone would let a call carrying both seams
+        # silently drop one.
+        validate_run_inputs(tasks=taskset, trials=trials, target=target)
+        if trials is not None:
+            return await self._agent_eval_executor.evaluate(
+                taskset=taskset,
+                trials=trials,
+                config=config,
+                metric_bundle_packager=metric_bundle_packager,
+                workspace=workspace,
+            )
+        if target is not None:
+            return await self._agent_eval_executor.evaluate(
+                taskset=taskset,
+                target=target,
+                config=config,
+                metric_bundle_packager=metric_bundle_packager,
+                workspace=workspace,
+            )
+        raise ValueError("provide exactly one of trials or target")
 
 
 evaluator_sdk_resources = NemoPluginSDKResources(

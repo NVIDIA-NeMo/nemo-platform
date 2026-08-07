@@ -28,11 +28,13 @@ def evaluate_standalone() -> Any:
     """Evaluate one deterministic metric in process."""
     from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
 
-    return Evaluator().run_sync(
-        metrics=ExactMatchMetric(
-            reference="{{item.expected}}",
-            candidate="{{item.output}}",
-        ),
+    return Evaluator().run_dataset_sync(
+        metrics=[
+            ExactMatchMetric(
+                reference="{{item.expected}}",
+                candidate="{{item.output}}",
+            )
+        ],
         dataset=[
             {"expected": "Paris", "output": "Paris"},
             {"expected": "Paris", "output": "London"},
@@ -44,11 +46,13 @@ def submit_and_collect(client: Any, output_dir: Path) -> tuple[Any, Path]:
     """Submit one metric, wait for completion, and retrieve its artifacts."""
     from nemo_evaluator_sdk import ExactMatchMetric
 
-    job = client.evaluator.submit(
-        metric=ExactMatchMetric(
-            reference="{{item.expected}}",
-            candidate="{{item.output}}",
-        ),
+    job = client.evaluator.evaluate_dataset(
+        metrics=[
+            ExactMatchMetric(
+                reference="{{item.expected}}",
+                candidate="{{item.output}}",
+            )
+        ],
         dataset=[{"expected": "Paris", "output": "Paris"}],
     )
     job.wait_until_done()

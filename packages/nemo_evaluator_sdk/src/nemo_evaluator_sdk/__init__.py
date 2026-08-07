@@ -38,6 +38,11 @@ if TYPE_CHECKING:
     from nemo_evaluator_sdk.datasets import DatasetLoadError, load_dataset, load_dataset_as_dicts
     from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
     from nemo_evaluator_sdk.execution.evaluator import Evaluator
+    from nemo_evaluator_sdk.execution.jobs import (
+        EvaluationJob,
+        LocalJob,
+        SyncEvaluationJob,
+    )
     from nemo_evaluator_sdk.execution.values import (
         EvaluationError,
         EvaluationPhase,
@@ -135,6 +140,9 @@ _LAZY_ATTRS: dict[str, str] = {
     "load_dataset_as_dicts": ".datasets",
     "LocalBackend": ".execution.backends.local.backend",
     "Evaluator": ".execution.evaluator",
+    "EvaluationJob": ".execution.jobs",
+    "SyncEvaluationJob": ".execution.jobs",
+    "LocalJob": ".execution.jobs",
     "EvaluationError": ".execution.values",
     "EvaluationPhase": ".execution.values",
     "BLEUMetric": ".metrics.bleu",
@@ -208,6 +216,9 @@ __all__ = [
     "RunConfigOnlineModel",
     "EvaluationResult",
     "Evaluator",
+    "EvaluationJob",
+    "SyncEvaluationJob",
+    "LocalJob",
     "ExactMatchMetric",
     "F1Metric",
     "FieldMapping",

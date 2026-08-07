@@ -458,7 +458,7 @@ def run_chat_online_eval(
         assert_chat_row(row, index=index)
     if metrics is None:
         metrics = chat_metrics()
-    return Evaluator().run_sync(
+    return Evaluator().run_dataset_sync(
         metrics=metrics,
         dataset=list(rows),
         target=target,

@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import json
 import tarfile
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
@@ -21,8 +20,6 @@ from nemo_evaluator.sdk.job_resources import (
     AsyncEvaluatorJobResource,
     EvaluatorJob,
     EvaluatorJobResource,
-    _coerce_aggregate_scores,
-    _coerce_row_score,
     _poll_until_terminal,
     _raise_for_terminal_status,
     _status_is_complete,
@@ -32,6 +29,7 @@ from nemo_evaluator.sdk.job_resources import (
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
@@ -40,9 +38,11 @@ from nemo_evaluator_sdk.values.results import (
     RowScore,
 )
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus, PlatformJobStatusResponse
-from pydantic import BaseModel
 from pytest_mock import MockerFixture
 
+_RESULT_URL = (
+    "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/evaluation-results/download"
+)
 _JOB_PAYLOAD = {
     "name": "job-123",
     "status": "created",
@@ -124,8 +124,8 @@ def _status_response(
     )
 
 
-def _evaluation_result_parts() -> tuple[AggregatedMetricResult, list[RowScore]]:
-    """Return typed aggregate and row scores for result download tests."""
+def _benchmark_result() -> BenchmarkEvaluationResult:
+    """Return a whole result, as the job saves it, for result download tests."""
     aggregate_scores = AggregatedMetricResult(
         scores=[
             AggregateRangeScore(
@@ -148,7 +148,11 @@ def _evaluation_result_parts() -> tuple[AggregatedMetricResult, list[RowScore]]:
             requests=[],
         )
     ]
-    return aggregate_scores, row_scores
+    return BenchmarkEvaluationResult(
+        row_scores=row_scores,
+        aggregate_scores=aggregate_scores,
+        per_metric={"serializable": EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)},
+    )
 
 
 def _artifact_tar_bytes(member_name: str = "artifacts/report.json", *, member_type: bytes | None = None) -> bytes:
@@ -185,30 +189,6 @@ def test_metric_job_status_helpers_handle_empty_and_detailed_payloads() -> None:
     assert metric_job_status_value(status) == ""
     assert metric_job_status_details_value(status) == {"step": "compile"}
     assert metric_job_status_details_value(_status_response("active")) is None
-
-
-def test_score_coercion_accepts_existing_models_and_base_models() -> None:
-    """Score coercion should accept SDK values directly and pydantic-compatible generated SDK values."""
-
-    class RowScorePayload(BaseModel):
-        row_index: int
-        item: dict[str, object]
-        sample: dict[str, object]
-        metrics: dict[str, list[dict[str, object]]]
-        requests: list[object]
-
-    class AggregatePayload(BaseModel):
-        scores: list[dict[str, object]]
-
-    aggregate_scores, row_scores = _evaluation_result_parts()
-
-    assert _coerce_row_score(row_scores[0]) is row_scores[0]
-    assert _coerce_row_score(RowScorePayload.model_validate(row_scores[0].model_dump(mode="json"))) == row_scores[0]
-    assert _coerce_aggregate_scores(aggregate_scores) is aggregate_scores
-    assert (
-        _coerce_aggregate_scores(AggregatePayload.model_validate(aggregate_scores.model_dump(mode="json")))
-        == aggregate_scores
-    )
 
 
 def test_get_job_status_delegates_to_metric_jobs_resource(
@@ -419,36 +399,19 @@ def test_get_result_returns_evaluation_result(
     job_resource: EvaluatorJobResource,
     http_client: Mock,
 ) -> None:
-    """Result downloads should combine plugin aggregate JSON and row-score JSONL artifacts."""
-    aggregate_scores, row_scores = _evaluation_result_parts()
+    """The result download reads the whole result the job saved, in one request."""
+    expected = _benchmark_result()
     http_client.get.side_effect = [
         httpx.Response(
             200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-            ),
-            json=aggregate_scores.model_dump(mode="json"),
-        ),
-        httpx.Response(
-            200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-            ),
-            text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+            request=httpx.Request("GET", _RESULT_URL),
+            json=expected.model_dump(mode="json"),
         ),
     ]
 
-    assert job_resource.get_result() == EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)
-    assert [call.args for call in http_client.get.call_args_list] == [
-        (
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-        ),
-        ("https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",),
-    ]
+    assert job_resource.get_result() == expected
+    assert [call.args for call in http_client.get.call_args_list] == [(_RESULT_URL,)]
     assert [call.kwargs for call in http_client.get.call_args_list] == [
-        {"headers": {"Authorization": "Bearer platform-token"}},
         {"headers": {"Authorization": "Bearer platform-token"}},
     ]
 
@@ -465,23 +428,12 @@ def test_get_result_filters_aggregate_fields(
         workspace="client-ws",
         headers={"Authorization": "Bearer platform-token"},
     )
-    aggregate_scores, row_scores = _evaluation_result_parts()
+    expected = _benchmark_result()
     http_client.get.side_effect = [
         httpx.Response(
             200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-            ),
-            json=aggregate_scores.model_dump(mode="json"),
-        ),
-        httpx.Response(
-            200,
-            request=httpx.Request(
-                "GET",
-                "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-            ),
-            text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+            request=httpx.Request("GET", _RESULT_URL),
+            json=expected.model_dump(mode="json"),
         ),
     ]
 
@@ -496,7 +448,7 @@ def test_get_result_filters_aggregate_fields(
             }
         ]
     }
-    assert result.row_scores == row_scores
+    assert result.row_scores == expected.row_scores
 
 
 def test_download_artifacts_extracts_artifact_tarball(
@@ -663,26 +615,15 @@ async def test_async_resource_with_sync_platform_downloads_result_in_worker_thre
     mocker: MockerFixture,
 ) -> None:
     """Async resources backed by sync HTTP clients should run result downloads in worker threads."""
-    aggregate_scores, row_scores = _evaluation_result_parts()
-    aggregate_response = httpx.Response(
+    expected = _benchmark_result()
+    result_response = httpx.Response(
         200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-        ),
-        json=aggregate_scores.model_dump(mode="json"),
-    )
-    row_scores_response = httpx.Response(
-        200,
-        request=httpx.Request(
-            "GET",
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-        ),
-        text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
+        request=httpx.Request("GET", _RESULT_URL),
+        json=expected.model_dump(mode="json"),
     )
     to_thread = mocker.patch(
         "nemo_evaluator.sdk.job_resources.asyncio.to_thread",
-        new=mocker.AsyncMock(side_effect=[aggregate_response, row_scores_response]),
+        new=mocker.AsyncMock(side_effect=[result_response]),
         create=True,
     )
     resource = AsyncEvaluatorJobResource(
@@ -693,19 +634,9 @@ async def test_async_resource_with_sync_platform_downloads_result_in_worker_thre
         headers={"Authorization": "Bearer platform-token"},
     )
 
-    assert await resource.get_result() == EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)
-    assert [call.args for call in to_thread.await_args_list] == [
-        (
-            http_client.get,
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/aggregate-scores/download",
-        ),
-        (
-            http_client.get,
-            "https://nmp.test/apis/evaluator/v2/workspaces/client-ws/evaluate/jobs/job-123/results/row-scores/download",
-        ),
-    ]
+    assert await resource.get_result() == expected
+    assert [call.args for call in to_thread.await_args_list] == [(http_client.get, _RESULT_URL)]
     assert [call.kwargs for call in to_thread.await_args_list] == [
-        {"headers": {"Authorization": "Bearer platform-token"}},
         {"headers": {"Authorization": "Bearer platform-token"}},
     ]
 
@@ -789,32 +720,6 @@ async def test_async_get_job_status_accepts_nullable_detail_fields(
 
 
 @pytest.mark.asyncio
-async def test_async_get_result_collects_async_row_score_stream(
-    async_job_resource: AsyncEvaluatorJobResource,
-    async_http_client: httpx.AsyncClient,
-) -> None:
-    """Async result downloads should parse row-score JSONL from the plugin route."""
-    aggregate_scores, row_scores = _evaluation_result_parts()
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.headers["authorization"] == "Bearer platform-token"
-        if str(request.url).endswith("/aggregate-scores/download"):
-            return httpx.Response(200, json=aggregate_scores.model_dump(mode="json"))
-        if str(request.url).endswith("/row-scores/download"):
-            return httpx.Response(
-                200,
-                text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
-            )
-        return httpx.Response(404)
-
-    async_http_client._transport = httpx.MockTransport(handler)
-
-    result = await async_job_resource.get_result()
-
-    assert result == EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)
-
-
-@pytest.mark.asyncio
 async def test_async_get_result_filters_aggregate_fields(
     async_http_client: httpx.AsyncClient,
 ) -> None:
@@ -827,17 +732,12 @@ async def test_async_get_result_filters_aggregate_fields(
         workspace="client-ws",
         headers={"Authorization": "Bearer platform-token"},
     )
-    aggregate_scores, row_scores = _evaluation_result_parts()
+    expected = _benchmark_result()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer platform-token"
-        if str(request.url).endswith("/aggregate-scores/download"):
-            return httpx.Response(200, json=aggregate_scores.model_dump(mode="json"))
-        if str(request.url).endswith("/row-scores/download"):
-            return httpx.Response(
-                200,
-                text="\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n",
-            )
+        if str(request.url).endswith("/evaluation-results/download"):
+            return httpx.Response(200, json=expected.model_dump(mode="json"))
         return httpx.Response(404)
 
     async_http_client._transport = httpx.MockTransport(handler)
@@ -853,7 +753,7 @@ async def test_async_get_result_filters_aggregate_fields(
             }
         ]
     }
-    assert result.row_scores == row_scores
+    assert result.row_scores == expected.row_scores
 
 
 @pytest.mark.asyncio
@@ -878,32 +778,6 @@ async def test_async_download_artifacts_extracts_artifact_tarball(
 
     assert artifacts_path == tmp_path / "job-123"
     assert (artifacts_path / "artifacts" / "report.json").read_text(encoding="utf-8") == '{"ok": true}'
-
-
-@pytest.mark.asyncio
-async def test_async_get_result_ignores_blank_jsonl_lines(
-    async_job_resource: AsyncEvaluatorJobResource,
-    async_http_client: httpx.AsyncClient,
-) -> None:
-    """Blank lines in streamed row-score JSONL should not create empty score entries."""
-    aggregate_scores, row_scores = _evaluation_result_parts()
-
-    async def handler(request: httpx.Request) -> httpx.Response:
-        assert request.headers["authorization"] == "Bearer platform-token"
-        if str(request.url).endswith("/aggregate-scores/download"):
-            return httpx.Response(200, json=aggregate_scores.model_dump(mode="json"))
-        if str(request.url).endswith("/row-scores/download"):
-            return httpx.Response(
-                200,
-                text="\n\n".join(json.dumps(row_score.model_dump(mode="json")) for row_score in row_scores) + "\n\n",
-            )
-        return httpx.Response(404)
-
-    async_http_client._transport = httpx.MockTransport(handler)
-
-    result = await async_job_resource.get_result()
-
-    assert result == EvaluationResult(row_scores=row_scores, aggregate_scores=aggregate_scores)
 
 
 @pytest.mark.asyncio

@@ -68,8 +68,8 @@ class TestExactMatchMetric:
 
     def test_evaluate_with_inline_rows(self):
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")
-        result = Evaluator().run_sync(
-            metrics=metric,
+        result = Evaluator().run_dataset_sync(
+            metrics=[metric],
             dataset=[
                 {"expected": "blue", "model_output": "Blue"},
                 {"expected": "Jupiter", "model_output": "Saturn"},
@@ -91,7 +91,7 @@ class TestExactMatchMetric:
         )
 
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(metrics=metric, dataset=dataset_path)
+        result = Evaluator().run_dataset_sync(metrics=[metric], dataset=dataset_path)
 
         assert len(result.row_scores) == 2
         assert result.aggregate_scores.scores[0].count == 2
@@ -101,7 +101,7 @@ class TestExactMatchMetric:
         _write_jsonl(dataset_path, [{"expected": "4", "prediction": "4"}])
 
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(metrics=metric, dataset=dataset_path)
+        result = Evaluator().run_dataset_sync(metrics=[metric], dataset=dataset_path)
 
         assert len(result.row_scores) == 1
         assert result.aggregate_scores.scores[0].mean == 1.0
@@ -111,7 +111,7 @@ class TestExactMatchMetric:
         _write_jsonl(tmp_path / "ignored.jsonl", [{"expected": "10", "prediction": "11"}])
 
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path / "train.jsonl")
+        result = Evaluator().run_dataset_sync(metrics=[metric], dataset=tmp_path / "train.jsonl")
 
         assert len(result.row_scores) == 1
         assert result.aggregate_scores.scores[0].mean == 1.0
@@ -122,7 +122,7 @@ class TestExactMatchMetric:
         _write_jsonl(tmp_path / "ignored.csv", [{"expected": "10", "prediction": "11"}])
 
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path / "*.jsonl")
+        result = Evaluator().run_dataset_sync(metrics=[metric], dataset=tmp_path / "*.jsonl")
 
         assert len(result.row_scores) == 2
         assert result.aggregate_scores.scores[0].mean == 1.0
@@ -134,7 +134,7 @@ class TestExactMatchMetric:
         )
 
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path / "splits" / "**" / "*.jsonl")
+        result = Evaluator().run_dataset_sync(metrics=[metric], dataset=tmp_path / "splits" / "**" / "*.jsonl")
 
         assert len(result.row_scores) == 2
         assert result.aggregate_scores.scores[0].mean == 1.0
@@ -142,8 +142,8 @@ class TestExactMatchMetric:
     @pytest.mark.asyncio
     async def test_evaluate_async_matches_sync_behavior(self):
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")
-        result = await Evaluator().run(
-            metrics=metric,
+        result = await Evaluator().run_dataset(
+            metrics=[metric],
             dataset=[
                 {"expected": "blue", "model_output": "Blue"},
                 {"expected": "Jupiter", "model_output": "Saturn"},
@@ -156,8 +156,8 @@ class TestExactMatchMetric:
     @pytest.mark.asyncio
     async def test_evaluate_runs_inside_active_event_loop(self):
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")
-        result = Evaluator().run_sync(
-            metrics=metric,
+        result = Evaluator().run_dataset_sync(
+            metrics=[metric],
             dataset=[
                 {"expected": "blue", "model_output": "Blue"},
                 {"expected": "Jupiter", "model_output": "Saturn"},
@@ -261,8 +261,8 @@ class TestOfflineEvaluationResult:
     @pytest.fixture
     def result(self):
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")
-        return Evaluator().run_sync(
-            metrics=metric,
+        return Evaluator().run_dataset_sync(
+            metrics=[metric],
             dataset=[
                 {"expected": "blue", "model_output": "Blue"},
                 {"expected": "Jupiter", "model_output": "Saturn"},
@@ -272,8 +272,8 @@ class TestOfflineEvaluationResult:
     def test_to_records_rows(self, result):
         records = result.to_records(view="rows")
         assert len(records) == 2
-        assert records[0]["output.exact-match"] == 1.0
-        assert records[1]["output.exact-match"] == 0.0
+        assert records[0]["output.exact-match.exact-match"] == 1.0
+        assert records[1]["output.exact-match.exact-match"] == 0.0
         assert records[0]["item.expected"] == "blue"
         assert records[1]["item.expected"] == "Jupiter"
         assert records[0]["item.model_output"] == "Blue"
@@ -289,21 +289,21 @@ class TestOfflineEvaluationResult:
     def test_to_table_returns_pyarrow_table(self, result):
         table = result.to_table(view="rows")
         assert table.num_rows == 2
-        assert "output.exact-match" in table.column_names
+        assert "output.exact-match.exact-match" in table.column_names
 
     def test_to_pandas_returns_dataframe_when_available(self, result):
         pd = pytest.importorskip("pandas")
         dataframe = result.to_pandas(view="rows")
         assert isinstance(dataframe, pd.DataFrame)
-        assert "output.exact-match" in dataframe.columns
+        assert "output.exact-match.exact-match" in dataframe.columns
 
     def test_format_summary_and_str(self, result):
         formatted = result.format_summary(max_rows=1)
-        assert "EvaluationResult(rows=2, aggregate_scores=1, ok=2)" in formatted
+        assert "BenchmarkEvaluationResult(rows=2, aggregate_scores=1, ok=2)" in formatted
         assert "Aggregate scores" in formatted
-        assert "Row preview (first 1 of 2)" in formatted
+        assert "Row preview for metric 'exact-match' (first 1 of 2)" in formatted
         assert "Error details" not in formatted
-        assert str(result).startswith("EvaluationResult(rows=2, aggregate_scores=1, ok=2)")
+        assert str(result).startswith("BenchmarkEvaluationResult(rows=2, aggregate_scores=1, ok=2)")
 
     def test_to_records_rows_includes_error_status_and_response_payload(self):
         result = EvaluationResult(

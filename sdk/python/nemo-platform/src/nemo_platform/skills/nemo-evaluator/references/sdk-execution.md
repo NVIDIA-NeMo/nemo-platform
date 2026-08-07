@@ -80,8 +80,8 @@ metric = StringCheckMetric(
     right_template="{{item.expected | trim}}",
 )
 
-result = Evaluator().run_sync(
-    metrics=metric,
+result = Evaluator().run_dataset_sync(
+    metrics=[metric],
     dataset=[
         {"output": "hello", "expected": "hello"},
         {"output": "foo", "expected": "bar"},
@@ -110,7 +110,7 @@ metrics = [
     ),
 ]
 
-result = Evaluator().run_sync(metrics=metrics, dataset=rows)
+result = Evaluator().run_dataset_sync(metrics=metrics, dataset=rows)
 result.print_summary()
 print(result.per_metric)
 ```
@@ -138,8 +138,8 @@ target = Model(
     api_key_secret="<secret-or-env-name>",
 )
 
-result = Evaluator().run_sync(
-    metrics=metric,
+result = Evaluator().run_dataset_sync(
+    metrics=[metric],
     target=target,
     dataset=[{"prompt": "What is 2+2?", "expected": "4"}],
     prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
@@ -199,8 +199,8 @@ metric = LLMJudgeMetric(
     },
 )
 
-result = Evaluator().run_sync(
-    metrics=metric,
+result = Evaluator().run_dataset_sync(
+    metrics=[metric],
     dataset=[
         {"input": "Explain photosynthesis.", "output": "Plants use sunlight to make sugars."},
         {"input": "Explain photosynthesis.", "output": "I cannot help."},
@@ -225,7 +225,7 @@ from nemo_evaluator_sdk import Evaluator, ToolCallingMetric
 
 
 metric = ToolCallingMetric(reference="{{item.expected_tool_calls}}")
-result = Evaluator().run_sync(metrics=metric, dataset=rows)
+result = Evaluator().run_dataset_sync(metrics=[metric], dataset=rows)
 ```
 
 Each row should include a `response` object shaped like an OpenAI chat

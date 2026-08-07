@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
+from nemo_evaluator_sdk.execution.jobs import EvaluationJob
 from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
@@ -20,6 +22,12 @@ from packages.nemo_evaluator_sdk.tests.execution.backends.local._stubs import (
     IdentityPreprocessHook,
     PreparedBenchmarkMetric,
 )
+
+
+async def _finished(job: EvaluationJob[Any]) -> Any:
+    """Drive a job to completion and return its result."""
+    await job.wait_until_done()
+    return await job.get_result()
 
 
 class TestLocalBackendEvaluateBenchmark:
@@ -45,7 +53,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
         metrics = [DuplicateMetric(), DuplicateMetric()]
 
-        result = await backend.evaluate_benchmark(metrics=metrics, dataset=dataset, params=params)
+        result = await _finished(await backend.evaluate_dataset(metrics=metrics, dataset=dataset, params=params))
 
         assert result is expected_result
         mock_prepare.assert_called_once_with(dataset, None, None)
@@ -76,7 +84,7 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
+        await _finished(await backend.evaluate_dataset(metrics=[DuplicateMetric()], dataset=dataset, params=params))
 
         assert mock_sdk.await_args is not None
         assert "fail_fast" not in mock_sdk.await_args.kwargs
@@ -98,7 +106,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
 
         with pytest.raises(RuntimeError, match="bad dataset"):
-            await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
+            await _finished(await backend.evaluate_dataset(metrics=[DuplicateMetric()], dataset=dataset, params=params))
 
         mock_sdk.assert_not_awaited()
 
@@ -120,7 +128,7 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
+        await _finished(await backend.evaluate_dataset(metrics=[DuplicateMetric()], dataset=dataset, params=params))
 
         assert mock_sdk.await_args is not None
         assert mock_sdk.await_args.kwargs["params"] is params
@@ -144,7 +152,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
         original = PreparedBenchmarkMetric()
 
-        await backend.evaluate_benchmark(metrics=[original], dataset=dataset, params=params)
+        await _finished(await backend.evaluate_dataset(metrics=[original], dataset=dataset, params=params))
 
         assert mock_sdk.await_args is not None
         prepared = mock_sdk.await_args.kwargs["metrics"][0][1]
@@ -177,13 +185,15 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(
-            metrics=[DuplicateMetric()],
-            dataset=dataset,
-            params=params,
-            target=target,
-            preprocess_hooks=(explicit_preprocess,),
-            postprocess_hooks=(explicit_postprocess,),
+        await _finished(
+            await backend.evaluate_dataset(
+                metrics=[DuplicateMetric()],
+                dataset=dataset,
+                params=params,
+                target=target,
+                preprocess_hooks=(explicit_preprocess,),
+                postprocess_hooks=(explicit_postprocess,),
+            )
         )
 
         assert mock_sdk.await_args is not None
@@ -215,12 +225,14 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(
-            metrics=[DuplicateMetric()],
-            dataset=dataset,
-            params=params,
-            preprocess_hooks=(explicit_preprocess,),
-            postprocess_hooks=(explicit_postprocess,),
+        await _finished(
+            await backend.evaluate_dataset(
+                metrics=[DuplicateMetric()],
+                dataset=dataset,
+                params=params,
+                preprocess_hooks=(explicit_preprocess,),
+                postprocess_hooks=(explicit_postprocess,),
+            )
         )
 
         assert mock_sdk.await_args is not None

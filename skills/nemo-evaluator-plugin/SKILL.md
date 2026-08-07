@@ -46,14 +46,16 @@ metric for a rubric, RAG workflow, or tool-calling evaluation.
 | Need | Interface |
 | --- | --- |
 | Fast metric iteration without NeMo Platform | `nemo_evaluator_sdk.Evaluator` |
-| Dataset-driven platform job | `client.evaluator.submit(...)` or `nemo evaluator evaluate submit` |
+| Dataset-driven platform job | `client.evaluator.evaluate_dataset(...)` or `nemo evaluator evaluate submit` |
 | Multiple inline/stored metric refs in one job | `nemo evaluator evaluate submit` with an `EvaluateInputSpec` |
 | Task-driven platform job | `nemo evaluator agent-evaluate submit` |
 | Reusable platform definitions and result indexes | `client.evaluator.metrics`, `.tasks`, `.tasksets`, `.eval_results`, `.agent_eval_results` |
 
-Default to `submit` for every plugin evaluation. The plugin's local execution
-path — `client.evaluator.run()` and the `nemo evaluator ... run` CLI verb — is
-being retired, so do not build on it even though `--help` still lists it. For
+Default to `evaluate_dataset` for dataset-driven plugin evaluations, and to
+`nemo evaluator agent-evaluate submit` for task-driven ones. The plugin's local
+execution path is being retired: `client.evaluator.run()` has been removed, and
+the `nemo evaluator ... run` CLI verb should not be built on even though
+`--help` still lists it. For
 fast metric iteration without the platform, use the standalone
 `nemo_evaluator_sdk.Evaluator` instead.
 
@@ -65,7 +67,7 @@ result queries.
 ## Limitations
 
 - `api_key_secret` is an environment-variable name standalone but a NeMo
-  Platform secret name on `submit`. See [API Auth](references/api-auth.md).
+  Platform secret name on `evaluate_dataset`. See [API Auth](references/api-auth.md).
 - HTTP 409 from a submission often means a referenced platform secret is
   missing, not a duplicate job. Read the response body.
 - `intent` is grader metadata and is never shown to the agent; only `inputs`

@@ -18,7 +18,7 @@ deterministic vs LLM judges, or working with RAG/agentic/tool-calling metrics.
 | Agent final outcome | `agent_goal_accuracy`, `answer_accuracy`, `topic_adherence` | RAGAS agentic metric classes | Most require a judge model |
 | Agent tool/function calls | `tool_call_accuracy` or `tool-calling` | `ToolCallAccuracyMetric`, `ToolCallingMetric` | Ground truth and response shape must match the metric |
 | Custom business scoring | `remote` or `nemo-agent-toolkit-remote` | `RemoteMetric`, `NemoAgentToolkitRemoteMetric` | Smoke test endpoint auth, payload, timeout, and parser path |
-| Repeatable model comparison | Multi-metric SDK run or platform benchmark job | `Evaluator.run(metrics=[...])` or benchmark APIs | Record metric list, dataset, model config, params, and results |
+| Repeatable model comparison | Multi-metric SDK run or platform benchmark job | `Evaluator.run_dataset(metrics=[...])` or benchmark APIs | Record metric list, dataset, model config, params, and results |
 | Bring-your-own benchmark reproduction | Fixed judge plus explicit artifact protocol | SDK harness around generation, judge predictions, and aggregation | Keep generation quality separate from judge-quality evaluation |
 
 ## Composable Primitive Mapping

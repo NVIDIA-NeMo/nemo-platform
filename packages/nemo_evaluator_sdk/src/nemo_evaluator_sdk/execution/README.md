@@ -21,8 +21,8 @@ The execution package exposes a single public entrypoint:
 ```python
 # Local SDK execution
 evaluator = Evaluator()
-result = await evaluator.run(
-    metrics=ExactMatchMetric(reference="{{item.reference}}"),
+result = await evaluator.run_dataset(
+    metrics=[ExactMatchMetric(reference="{{item.reference}}")],
     dataset=[{"reference": "Paris", "output_text": "Paris"}],
 )
 ```

@@ -99,10 +99,10 @@ dataset = [
     {"expected": "Paris", "output": "London"},
 ]
 
-job = client.evaluator.submit(
-    metric=metric,
+job = client.evaluator.evaluate_dataset(
+    metrics=[metric],
     dataset=dataset,
-    config=RunConfig(parallelism=2),
+    params=RunConfig(parallelism=2),
 )
 
 job.wait_until_done()
@@ -110,7 +110,7 @@ remote_result = job.get_result()
 artifact_dir = job.download_artifacts("evaluation-artifacts")
 ```
 
-`submit` returns an `EvaluatorJobResource`. Always call
+`evaluate_dataset` returns an `EvaluatorJobResource`. Always call
 `wait_until_done()` before retrieving result artifacts.
 
 ## Task-Driven Agent evaluation

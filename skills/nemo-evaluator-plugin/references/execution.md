@@ -15,11 +15,11 @@ Use the standalone SDK for the fastest in-process metric loop:
 ```python
 from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
 
-result = Evaluator().run_sync(
-    metrics=ExactMatchMetric(
+result = Evaluator().run_dataset_sync(
+    metrics=[ExactMatchMetric(
         reference="{{item.expected}}",
         candidate="{{item.output}}",
-    ),
+    )],
     dataset=[
         {"expected": "Paris", "output": "Paris"},
         {"expected": "Paris", "output": "London"},
@@ -40,23 +40,23 @@ uv run nemo evaluator evaluate submit \
 
 **Platform Python SDK**
 
-Use `client.evaluator.submit` for execution through the installed nemo-evaluator-plugin:
+Use `client.evaluator.evaluate_dataset` for execution through the installed nemo-evaluator-plugin:
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric, RunConfig
 from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform(base_url="http://localhost:8080", workspace="default")
-job = client.evaluator.submit(
-    metric=ExactMatchMetric(
+job = client.evaluator.evaluate_dataset(
+    metrics=[ExactMatchMetric(
         reference="{{item.expected}}",
         candidate="{{item.output}}",
-    ),
+    )],
     dataset=[
         {"expected": "Paris", "output": "Paris"},
         {"expected": "Paris", "output": "London"},
     ],
-    config=RunConfig(parallelism=2),
+    params=RunConfig(parallelism=2),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -108,14 +108,14 @@ target = Model(
     api_key_secret=SecretRef(root="nvidia-api-key"),
 )
 
-job = client.evaluator.submit(
-    metric=ExactMatchMetric(reference="{{item.expected}}"),
+job = client.evaluator.evaluate_dataset(
+    metrics=[ExactMatchMetric(reference="{{item.expected}}")],
     dataset=[{"question": "Capital of France?", "expected": "Paris"}],
     target=target,
     prompt_template={
         "messages": [{"role": "user", "content": "{{item.question}}"}],
     },
-    config=RunConfigOnlineModel(parallelism=2),
+    params=RunConfigOnlineModel(parallelism=2),
 )
 job.wait_until_done()
 result = job.get_result()
@@ -178,10 +178,10 @@ Use field_mapping when a metric or online prompt uses canonical evaluator fields
 **Platform SDK**
 
 ```python
-job = client.evaluator.submit(
-    metric=metric,
+job = client.evaluator.evaluate_dataset(
+    metrics=[metric],
     dataset=dataset,
-    config=config,
+    params=config,
     target=target,
     prompt_template=prompt_template,
 )
@@ -222,7 +222,7 @@ operations.
 
 - Always wait for terminal completion. A metric can report 100 percent progress
 before the platform finishes publishing result artifacts.
-- `submit` accepts a concrete `Model` or `ModelRef`; the platform resolves model
+- `evaluate_dataset` accepts a concrete `Model` or `ModelRef`; the platform resolves model
 references in the target workspace.
 
 ## Multiple metrics
@@ -262,8 +262,8 @@ metric submitted to a service, opt in explicitly:
 ```python
 from nemo_evaluator.shared.metric_bundles.hybrid import HybridMetricBundlePackager
 
-job = client.evaluator.submit(
-    metric=custom_metric,
+job = client.evaluator.evaluate_dataset(
+    metrics=[custom_metric],
     dataset=rows,
     metric_bundle_packager=HybridMetricBundlePackager(),
 )

@@ -376,3 +376,11 @@ class BenchmarkEvaluationResult(BaseModel):
             None.
         """
         print(self.format_summary(max_rows=max_rows, max_error_rows=max_error_rows))
+
+    def __str__(self) -> str:
+        """Return the default compact summary representation.
+
+        Returns:
+            Summary string with up to five preview rows.
+        """
+        return self.format_summary(max_rows=5)

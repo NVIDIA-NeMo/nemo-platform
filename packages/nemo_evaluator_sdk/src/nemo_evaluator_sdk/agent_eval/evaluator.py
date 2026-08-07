@@ -83,6 +83,28 @@ _SAMPLE_KEYS_EXCLUDED_FROM_OUTPUT_METADATA = frozenset(
 )
 
 
+def validate_run_inputs(
+    *,
+    tasks: Sequence[AgentEvalTask],
+    trials: Sequence[AgentEvalTrial] | None,
+    target: AgentEvalTarget | None,
+) -> None:
+    """Check the seams a run needs before any work starts.
+
+    Shared with the local backend so that a malformed taskset is rejected when the evaluation is
+    requested, not when it is awaited — the same moment the remote path rejects it, in
+    ``build_spec`` before the job is created.
+
+    Raises:
+        ValueError: If there are no tasks, or if neither or both of ``trials`` and ``target``
+            were supplied.
+    """
+    if not tasks:
+        raise ValueError("at least one task is required")
+    if (trials is None) == (target is None):
+        raise ValueError("provide exactly one of trials or target")
+
+
 class AgentEvaluator:
     """Run stored-trial or live-target agent evaluations.
 
@@ -140,6 +162,24 @@ class AgentEvaluator:
         self.client = client
         self.default_headers = default_headers
 
+    @overload
+    async def run(
+        self,
+        *,
+        tasks: Sequence[AgentEvalTask],
+        target: AgentEvalTarget,
+        config: AgentEvalRunConfig | None = None,
+    ) -> AgentEvalResult: ...
+
+    @overload
+    async def run(
+        self,
+        *,
+        tasks: Sequence[AgentEvalTask],
+        trials: Sequence[AgentEvalTrial],
+        config: AgentEvalRunConfig | None = None,
+    ) -> AgentEvalResult: ...
+
     async def run(
         self,
         *,
@@ -150,12 +190,13 @@ class AgentEvaluator:
     ) -> AgentEvalResult:
         """Evaluate imported trials or generate live trials before scoring.
 
-        Exactly one of ``trials`` or ``target`` must be provided.
+        Exactly one of ``trials`` or ``target`` must be provided; the overloads above say so to the
+        type checker, and :func:`validate_run_inputs` still says it at runtime for callers that
+        assemble their arguments dynamically.
         """
         resolved_config = config or AgentEvalRunConfig()
         task_list = list(tasks)
-        if not task_list:
-            raise ValueError("at least one task is required")
+        validate_run_inputs(tasks=task_list, trials=trials, target=target)
 
         run_id = resolved_config.run_id or _new_run_id()
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
@@ -199,6 +240,24 @@ class AgentEvaluator:
 
         return result
 
+    @overload
+    def run_sync(
+        self,
+        *,
+        tasks: Sequence[AgentEvalTask],
+        target: AgentEvalTarget,
+        config: AgentEvalRunConfig | None = None,
+    ) -> AgentEvalResult: ...
+
+    @overload
+    def run_sync(
+        self,
+        *,
+        tasks: Sequence[AgentEvalTask],
+        trials: Sequence[AgentEvalTrial],
+        config: AgentEvalRunConfig | None = None,
+    ) -> AgentEvalResult: ...
+
     def run_sync(
         self,
         *,
@@ -207,8 +266,17 @@ class AgentEvaluator:
         target: AgentEvalTarget | None = None,
         config: AgentEvalRunConfig | None = None,
     ) -> AgentEvalResult:
-        """Synchronous bridge for :meth:`run`."""
-        return run_sync(lambda: self.run(tasks=tasks, trials=trials, target=target, config=config))
+        """Synchronous bridge for :meth:`run`.
+
+        Branches on which seam was supplied because the overloads keep the two apart; the final
+        raise is what narrows, and is unreachable once one of them is set.
+        """
+        validate_run_inputs(tasks=tasks, trials=trials, target=target)
+        if trials is not None:
+            return run_sync(lambda: self.run(tasks=tasks, trials=trials, config=config))
+        if target is not None:
+            return run_sync(lambda: self.run(tasks=tasks, target=target, config=config))
+        raise ValueError("provide exactly one of trials or target")
 
     async def _score_trials(
         self,

@@ -359,8 +359,8 @@ async def run_offline_local_exact_match_example() -> None:
 
     print("Running offline exact match...")
 
-    exact_match_result = await evaluator.run(
-        metrics=exact_match,
+    exact_match_result = await evaluator.run_dataset(
+        metrics=[exact_match],
         dataset=OFFLINE_EXACT_MATCH_DATASET,
         config=RunConfig(parallelism=4),
     )
@@ -381,8 +381,8 @@ async def run_online_local_exact_match_example() -> None:
 
     print("Running local online exact match...")
 
-    exact_match_result = await evaluator.run(
-        metrics=exact_match,
+    exact_match_result = await evaluator.run_dataset(
+        metrics=[exact_match],
         target=model,
         dataset=ONLINE_EXACT_MATCH_DATASET,
         prompt_template=ONLINE_CHAT_PROMPT_TEMPLATE,
@@ -406,7 +406,7 @@ async def run_offline_local_multi_metric_example() -> None:
 
     print("\nRunning local multi-metric evaluation...")
 
-    combined_result = await evaluator.run(
+    combined_result = await evaluator.run_dataset(
         metrics=[exact_match, custom_metric],
         dataset=OFFLINE_EXACT_MATCH_DATASET,
         config=RunConfig(parallelism=4),
@@ -435,7 +435,7 @@ async def run_offline_local_benchmark_example() -> None:
 
     print("\nRunning local benchmark evaluation...")
 
-    benchmark_result = await evaluator.run(
+    benchmark_result = await evaluator.run_dataset(
         metrics=[exact_match, contains_required_phrase],
         dataset=OFFLINE_BENCHMARK_DATASET,
         config=RunConfig(parallelism=4),
@@ -465,7 +465,7 @@ async def run_online_local_benchmark_example() -> None:
 
     print("\nRunning local online benchmark evaluation...")
 
-    benchmark_result = await evaluator.run(
+    benchmark_result = await evaluator.run_dataset(
         metrics=[exact_match, contains_required_phrase],
         target=model,
         dataset=ONLINE_BENCHMARK_DATASET,
@@ -490,7 +490,7 @@ async def run_local_benchmark_with_metric_failure_example() -> None:
     print("\nRunning local benchmark evaluation with one failing metric...")
 
     try:
-        await evaluator.run(
+        await evaluator.run_dataset(
             metrics=[exact_match, failing_metric],
             dataset=OFFLINE_BENCHMARK_DATASET,
             config=RunConfig(parallelism=4),
@@ -522,8 +522,8 @@ async def run_local_metric_with_template_failure_example() -> None:
 
     print("\nRunning local metric evaluation with an invalid metric template...")
     try:
-        await evaluator.run(
-            metrics=invalid_metric,
+        await evaluator.run_dataset(
+            metrics=[invalid_metric],
             dataset=dataset,
             config=RunConfig(parallelism=1),
         )
@@ -552,8 +552,8 @@ async def run_offline_local_llm_judge_example() -> None:
 
     print("\nRunning local LLM judge evaluation...")
 
-    llm_judge_result = await evaluator.run(
-        metrics=llm_judge_metric,
+    llm_judge_result = await evaluator.run_dataset(
+        metrics=[llm_judge_metric],
         dataset=OFFLINE_JUDGE_DATASET,
         config=RunConfig(parallelism=2),
     )
@@ -574,8 +574,8 @@ async def run_online_local_llm_judge_example() -> None:
 
     print("\nRunning local online LLM judge evaluation...")
 
-    llm_judge_result = await evaluator.run(
-        metrics=llm_judge_metric,
+    llm_judge_result = await evaluator.run_dataset(
+        metrics=[llm_judge_metric],
         target=model_with_custom_headers,
         dataset=ONLINE_JUDGE_DATASET,
         prompt_template=ONLINE_CHAT_PROMPT_TEMPLATE,
@@ -592,8 +592,8 @@ def run_sync_example() -> None:
     """
 
     evaluator = Evaluator()
-    result = evaluator.run_sync(
-        metrics=ExactMatchMetric(reference="{{item.reference}}", candidate="{{item.actual}}"),
+    result = evaluator.run_dataset_sync(
+        metrics=[ExactMatchMetric(reference="{{item.reference}}", candidate="{{item.actual}}")],
         dataset=OFFLINE_EXACT_MATCH_DATASET[:1],  # Only run the first sample
         config=RunConfig(parallelism=1),
     )

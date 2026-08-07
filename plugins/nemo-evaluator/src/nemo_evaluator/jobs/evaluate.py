@@ -264,12 +264,11 @@ class EvaluateJob(NemoJob):
             sdk=sdk,
             async_sdk=async_sdk,
         )
-        runtime_metrics = metrics if len(metrics) > 1 else metrics[0]
         if isinstance(spec.target, Model):
             if not isinstance(params, RunConfigOnlineModel):
                 raise TypeError("model target requires RunConfigOnlineModel")
-            result = evaluator.run_sync(
-                metrics=runtime_metrics,
+            result = evaluator.run_dataset_sync(
+                metrics=metrics,
                 dataset=dataset,
                 config=params,
                 target=spec.target,
@@ -281,8 +280,8 @@ class EvaluateJob(NemoJob):
                 raise TypeError("agent target requires RunConfigOnline")
             if spec.prompt_template is None:
                 raise ValueError("agent target requires prompt_template")
-            result = evaluator.run_sync(
-                metrics=runtime_metrics,
+            result = evaluator.run_dataset_sync(
+                metrics=metrics,
                 dataset=dataset,
                 config=params,
                 target=spec.target,
@@ -292,8 +291,8 @@ class EvaluateJob(NemoJob):
         else:
             if type(params) is not RunConfig:
                 raise TypeError("offline evaluation requires RunConfig")
-            result = evaluator.run_sync(
-                metrics=runtime_metrics,
+            result = evaluator.run_dataset_sync(
+                metrics=metrics,
                 dataset=dataset,
                 config=params,
                 target=None,

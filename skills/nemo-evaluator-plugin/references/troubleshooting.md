@@ -17,7 +17,7 @@ nemo evaluator agent-evaluate explain
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `No such command 'evaluation'` | The legacy generated CLI group is not the plugin surface | Use `nemo evaluator ...` |
-| Guidance or `--help` references a local plugin `run` verb | That execution path is being retired | Use `submit`, or the standalone SDK for local iteration |
+| Guidance or `--help` references a local plugin `run` verb | That execution path is being retired | Use `evaluate_dataset`, or the standalone SDK for local iteration |
 | Agent-eval metric fails every trial with a missing template key | The metric uses the dataset-driven `item.*` context in a task-driven run | Use `inputs.*`, `reference.*`, `task.*`, `trial.*`, or `sample.output_text` |
 | Spec validation error | Fields do not match the current job schema | Run the matching `explain` command and validate against the spec class before submission |
 | Dataset row has missing fields | Jinja templates or `field_mapping` do not match row keys | Inspect one row and every referenced template before rerunning |
@@ -26,7 +26,7 @@ nemo evaluator agent-evaluate explain
 | Built-in metric bundle contains cloudpickle | A legacy or explicit packager was used | Regenerate with `InlineMetricBundlePackager` or the current default |
 | `cloudpickle metric payload was created with Python ...` (HTTP 422) | The bundle was created with a different Python major/minor runtime | For a built-in metric, regenerate the checked inline JSON spec; for an intentional custom metric, recreate the bundle with the worker's Python major/minor version |
 | Custom metric submission rejects the default packager | Shipping custom code requires explicit opt-in | Pass `HybridMetricBundlePackager()` (preferred) or `CloudpickleMetricBundlePackager()` |
-| `ModelRef` fails with the standalone SDK | Model references are resolved by the platform submission path | Use a concrete `Model` with the standalone SDK or use `submit` with `ModelRef` |
+| `ModelRef` fails with the standalone SDK | Model references are resolved by the platform submission path | Use a concrete `Model` with the standalone SDK or use `evaluate_dataset` with `ModelRef` |
 | Fileset evaluation cannot load data | The reference, fragment, or workspace is wrong | Verify the `FilesetRef` and access it through the same workspace |
 | Result download fails while progress shows 100% | Metric progress finished before the platform job finalized artifacts | Call `job.wait_until_done()` before `get_result()` or `download_artifacts()` |
 | Agent-eval rejects the spec | Both or neither of `target` and `trials` were provided | Provide exactly one |

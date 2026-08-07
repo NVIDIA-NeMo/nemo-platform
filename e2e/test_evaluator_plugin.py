@@ -40,7 +40,7 @@ from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
-from nemo_evaluator_sdk.values.results import EvaluationResult
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform import APIConnectionError, APIStatusError, NeMoPlatform
 from nemo_platform.types.inference import ModelProvider
@@ -133,14 +133,14 @@ def _assert_http_status(exc: APIStatusError | httpx.HTTPStatusError, status_code
     assert actual == status_code
 
 
-def _aggregate_score(result: EvaluationResult) -> Any:
+def _aggregate_score(result: BenchmarkEvaluationResult) -> Any:
     for score in result.aggregate_scores.scores:
         if score.name in EXACT_MATCH_AGGREGATE_SCORE_NAMES:
             return score
     raise AssertionError(f"No exact-match aggregate score in {result.aggregate_scores.scores!r}")
 
 
-def _rows_in_index_order(result: EvaluationResult) -> Sequence[Any]:
+def _rows_in_index_order(result: BenchmarkEvaluationResult) -> Sequence[Any]:
     """Order rows by explicit row index, preserving input order when it is absent."""
     return [
         row
@@ -153,7 +153,7 @@ def _rows_in_index_order(result: EvaluationResult) -> Sequence[Any]:
     ]
 
 
-def _row_score_values(result: EvaluationResult) -> list[float]:
+def _row_score_values(result: BenchmarkEvaluationResult) -> list[float]:
     values: list[float] = []
     seen_score_names: list[str] = []
     for row in _rows_in_index_order(result):
@@ -320,7 +320,7 @@ def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJ
     return sdk.evaluator.get_job_resource(job_name)
 
 
-def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
+def _metric_output_values(result: BenchmarkEvaluationResult, name: str) -> list[float]:
     values: list[float] = []
     for row in _rows_in_index_order(result):
         for outputs in row.metrics.values():
@@ -352,10 +352,10 @@ def evaluator_sdk(sdk: NeMoPlatform, evaluator_workspace: str) -> Iterator[NeMoP
 
 @pytest.fixture(scope="module")
 def completed_offline_job(evaluator_sdk: NeMoPlatform) -> Iterator[EvaluatorJobResource]:
-    job = evaluator_sdk.evaluator.submit(
-        metric=_exact_match_metric(),
+    job = evaluator_sdk.evaluator.evaluate_dataset(
+        metrics=[_exact_match_metric()],
         dataset=_offline_rows(),
-        config=RunConfig(parallelism=1),
+        params=RunConfig(parallelism=1),
     )
     try:
         _wait_for_evaluator_job(job)
@@ -479,10 +479,10 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
             "glob": (f"{workspace}/{fileset_name}#part-*.json", [1.0, 0.0, 1.0]),
         }
         for label, (reference, expected_scores) in cases.items():
-            job = evaluator_sdk.evaluator.submit(
-                metric=_exact_match_metric(),
+            job = evaluator_sdk.evaluator.evaluate_dataset(
+                metrics=[_exact_match_metric()],
                 dataset=FilesetRef(root=reference),
-                config=RunConfig(parallelism=1),
+                params=RunConfig(parallelism=1),
             )
             submitted_jobs.append((label, expected_scores, job))
 
@@ -500,10 +500,10 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
 
 def test_run_config_limits_samples(evaluator_sdk: NeMoPlatform) -> None:
     rows = [{"expected": str(index), "output": str(index)} for index in range(8)]
-    job = evaluator_sdk.evaluator.submit(
-        metric=_exact_match_metric(),
+    job = evaluator_sdk.evaluator.evaluate_dataset(
+        metrics=[_exact_match_metric()],
         dataset=rows,
-        config=RunConfig(limit_samples=3, parallelism=2),
+        params=RunConfig(limit_samples=3, parallelism=2),
     )
     try:
         _wait_for_evaluator_job(job)
@@ -596,10 +596,10 @@ def test_tool_calling_metric_preserves_structured_references(evaluator_sdk: NeMo
             },
         },
     ]
-    job = evaluator_sdk.evaluator.submit(
-        metric=ToolCallingMetric(reference="{{item.expected_tool_calls}}"),
+    job = evaluator_sdk.evaluator.evaluate_dataset(
+        metrics=[ToolCallingMetric(reference="{{item.expected_tool_calls}}")],
         dataset=rows,
-        config=RunConfig(parallelism=2),
+        params=RunConfig(parallelism=2),
     )
     try:
         _wait_for_evaluator_job(job)
@@ -629,10 +629,10 @@ def test_online_evaluate_job_uses_mock_provider(
         format=ModelFormat.OPEN_AI,
     )
 
-    job = evaluator_sdk.evaluator.submit(
-        metric=_exact_match_metric(candidate=None),
+    job = evaluator_sdk.evaluator.evaluate_dataset(
+        metrics=[_exact_match_metric(candidate=None)],
         dataset=[{"question": "What is the capital of France?", "expected": "Paris"}],
-        config=RunConfigOnlineModel(
+        params=RunConfigOnlineModel(
             parallelism=1,
             request_timeout=60,
             max_retries=0,
@@ -683,10 +683,10 @@ def test_llm_judge_metric_resolves_model_ref(
             ]
         },
     )
-    job = evaluator_sdk.evaluator.submit(
-        metric=metric,
+    job = evaluator_sdk.evaluator.evaluate_dataset(
+        metrics=[metric],
         dataset=[{"answer": "Paris"}],
-        config=RunConfig(parallelism=1),
+        params=RunConfig(parallelism=1),
     )
     try:
         _wait_for_evaluator_job(job)
@@ -701,10 +701,10 @@ def _assert_runtime_input_failure(
     metric: StringCheckMetric | ExactMatchMetric,
     dataset: list[dict[str, object]] | FilesetRef,
 ) -> None:
-    job = evaluator_sdk.evaluator.submit(
-        metric=metric,
+    job = evaluator_sdk.evaluator.evaluate_dataset(
+        metrics=[metric],
         dataset=dataset,
-        config=RunConfig(parallelism=1),
+        params=RunConfig(parallelism=1),
     )
     try:
         with pytest.raises(RuntimeError):
