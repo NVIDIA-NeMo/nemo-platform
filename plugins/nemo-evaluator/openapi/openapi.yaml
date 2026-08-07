@@ -2665,9 +2665,12 @@ components:
           title: Name
           description: Name of the score.
         count:
-          type: integer
           title: Count
-          description: Number of samples evaluated (excluding NaN).
+          description: "Number of samples evaluated (excluding NaN). None when the\
+            \ sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated."
+          type: integer
         nan_count:
           type: integer
           title: Nan Count
@@ -2688,13 +2691,33 @@ components:
           title: Max
           description: Maximum score value.
           type: number
+        median:
+          title: Median
+          description: Median score value. Equal to percentiles.p50 when a percentile
+            distribution is also present; carried separately because a backend may
+            report a median without one.
+          type: number
         std_dev:
           title: Std Dev
-          description: Standard deviation of the scores.
+          description: Population standard deviation of the scores (divides by n).
+            Describes the spread of the values actually evaluated. See sample_std_dev
+            to estimate the spread of the wider process.
           type: number
         variance:
           title: Variance
-          description: Variance of the scores.
+          description: Population variance of the scores (divides by n). See sample_variance.
+          type: number
+        sample_std_dev:
+          title: Sample Std Dev
+          description: "Sample standard deviation of the scores (Bessel-corrected,\
+            \ divides by n-1). Estimates the spread of the process the values were\
+            \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
+            \ system. None when fewer than two values (undefined, not zero)."
+          type: number
+        sample_variance:
+          title: Sample Variance
+          description: Sample variance of the scores (Bessel-corrected, divides by
+            n-1). None when fewer than two values.
           type: number
         score_type:
           type: string
@@ -2714,7 +2737,6 @@ components:
       type: object
       required:
       - name
-      - count
       - nan_count
       title: AggregateRangeScore
       description: Aggregated statistics for a range-type score with percentiles and
@@ -2726,9 +2748,12 @@ components:
           title: Name
           description: Name of the score.
         count:
-          type: integer
           title: Count
-          description: Number of samples evaluated (excluding NaN).
+          description: "Number of samples evaluated (excluding NaN). None when the\
+            \ sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated."
+          type: integer
         nan_count:
           type: integer
           title: Nan Count
@@ -2749,13 +2774,33 @@ components:
           title: Max
           description: Maximum score value.
           type: number
+        median:
+          title: Median
+          description: Median score value. Equal to percentiles.p50 when a percentile
+            distribution is also present; carried separately because a backend may
+            report a median without one.
+          type: number
         std_dev:
           title: Std Dev
-          description: Standard deviation of the scores.
+          description: Population standard deviation of the scores (divides by n).
+            Describes the spread of the values actually evaluated. See sample_std_dev
+            to estimate the spread of the wider process.
           type: number
         variance:
           title: Variance
-          description: Variance of the scores.
+          description: Population variance of the scores (divides by n). See sample_variance.
+          type: number
+        sample_std_dev:
+          title: Sample Std Dev
+          description: "Sample standard deviation of the scores (Bessel-corrected,\
+            \ divides by n-1). Estimates the spread of the process the values were\
+            \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
+            \ system. None when fewer than two values (undefined, not zero)."
+          type: number
+        sample_variance:
+          title: Sample Variance
+          description: Sample variance of the scores (Bessel-corrected, divides by
+            n-1). None when fewer than two values.
           type: number
         score_type:
           type: string
@@ -2777,11 +2822,105 @@ components:
       type: object
       required:
       - name
-      - count
       - nan_count
       - rubric_distribution
       title: AggregateRubricScore
       description: Aggregated statistics for a rubric-type score with category distribution.
+    AggregateScalarScore:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name of the score.
+        count:
+          title: Count
+          description: "Number of samples evaluated (excluding NaN). None when the\
+            \ sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated."
+          type: integer
+        nan_count:
+          type: integer
+          title: Nan Count
+          description: Number of samples that produced NaN scores.
+        sum:
+          title: Sum
+          description: Sum of all score values.
+          type: number
+        mean:
+          title: Mean
+          description: Mean score value.
+          type: number
+        min:
+          title: Min
+          description: Minimum score value.
+          type: number
+        max:
+          title: Max
+          description: Maximum score value.
+          type: number
+        median:
+          title: Median
+          description: Median score value. Equal to percentiles.p50 when a percentile
+            distribution is also present; carried separately because a backend may
+            report a median without one.
+          type: number
+        std_dev:
+          title: Std Dev
+          description: Population standard deviation of the scores (divides by n).
+            Describes the spread of the values actually evaluated. See sample_std_dev
+            to estimate the spread of the wider process.
+          type: number
+        variance:
+          title: Variance
+          description: Population variance of the scores (divides by n). See sample_variance.
+          type: number
+        sample_std_dev:
+          title: Sample Std Dev
+          description: "Sample standard deviation of the scores (Bessel-corrected,\
+            \ divides by n-1). Estimates the spread of the process the values were\
+            \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
+            \ system. None when fewer than two values (undefined, not zero)."
+          type: number
+        sample_variance:
+          title: Sample Variance
+          description: Sample variance of the scores (Bessel-corrected, divides by
+            n-1). None when fewer than two values.
+          type: number
+        score_type:
+          type: string
+          const: scalar
+          title: Score Type
+          description: Type of score.
+          default: scalar
+        value:
+          type: number
+          title: Value
+          description: The reported value.
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - nan_count
+      - value
+      title: AggregateScalarScore
+      description: 'A single pre-computed value with no underlying distribution available.
+
+
+        For figures a backend reports as one number (e.g. an environment''s own ``pass@1``
+        or Elo) rather
+
+        than a set of per-sample values the SDK could aggregate itself. ``value``
+        carries the number;
+
+        ``mean``/``min``/``max`` are left unset because there is no sample to describe.
+        Distinct from
+
+        :class:`AggregateRangeScore` so a reader can tell "this is the whole story"
+        from "this summarizes
+
+        ``count`` samples", instead of seeing a range score with a suspicious ``count``
+        of 1.'
     AggregatedMetricResult:
       properties:
         scores:
@@ -2789,6 +2928,7 @@ components:
             anyOf:
             - $ref: '#/components/schemas/AggregateRangeScore'
             - $ref: '#/components/schemas/AggregateRubricScore'
+            - $ref: '#/components/schemas/AggregateScalarScore'
           type: array
           title: Scores
           description: The list of aggregated scores.
