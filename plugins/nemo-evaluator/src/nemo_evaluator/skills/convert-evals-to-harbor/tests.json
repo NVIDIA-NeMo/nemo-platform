@@ -1,0 +1,55 @@
+{
+  "skill": "convert-evals-to-harbor",
+  "tests": [
+    {
+      "type": "explicit",
+      "prompt": "Use the convert-evals-to-harbor skill to port my benchmark into Harbor tasks.",
+      "expected_skill": "convert-evals-to-harbor"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Convert these evals to Harbor format with a task.toml per task.",
+      "expected_skill": "convert-evals-to-harbor"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Run harbor init and scaffold Harbor tasks from this dataset.",
+      "expected_skill": "convert-evals-to-harbor"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I have a JSONL benchmark with expected outputs. Turn each row into a task Harbor can run.",
+      "expected_skill": "convert-evals-to-harbor"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Onboard this dataset as Harbor tasks with an oracle solve.sh and a verifier.",
+      "expected_skill": "convert-evals-to-harbor"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Split my converted harbor tasks into train, validation, and test and check the balance.",
+      "expected_skill": "convert-evals-to-harbor"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Pick an LLM-judge metric and submit an evaluation job for my deployed model.",
+      "expected_skill_not": "convert-evals-to-harbor"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Scaffold a new agent from my spec and deploy it to the platform.",
+      "expected_skill_not": "convert-evals-to-harbor"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Build me a new React component for the settings page.",
+      "expected_skill_not": "convert-evals-to-harbor"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Write a SQL query to aggregate monthly revenue by region.",
+      "expected_skill_not": "convert-evals-to-harbor"
+    }
+  ]
+}
