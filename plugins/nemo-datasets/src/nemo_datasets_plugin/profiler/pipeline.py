@@ -4,15 +4,22 @@
 """The top-level profiling pipeline.
 
 ``profile(source)`` lists the files behind a :class:`FileSource`, groups them into partitions and
-splits, reads them, and assembles a ``DatasetProfile``. This stage produces the structural envelope
-— partitions, splits, FileRecords, content digest, sampling metadata — the derived row schema
-(``features``), per-column ``stats``, and the full ``classification`` (roles, format, prompt form,
-dataset type, and verifiability).
+splits, reads them, and assembles a ``DatasetProfile``. It produces the structural envelope —
+partitions, splits with their counts and sizes, the files it could not use, and the sampling figures
+— along with the derived row schema (``features``), per-column ``stats``, and the full
+``classification`` (roles, format, prompt form, dataset type, and verifiability).
 
-Every file is opened — sampling a subset of files would hide columns that appear only in later shards
-— but each is read up to ``row_cap`` rows, so peak memory tracks the file count rather than the
-dataset size. Files smaller than the cap are read to the end and keep their exact counts, so capping
-costs nothing on a small dataset. Pass ``row_cap=None`` for a genuinely exhaustive scan.
+Every file is opened — sampling a *subset of files* would hide columns that appear only in later
+shards — but a partition's ``row_budget`` is divided across its files, so peak memory tracks the
+budget rather than the shard count. Capping each file instead put the knob on the wrong axis:
+resharding the same data then multiplied the rows held in memory without describing any more of it.
+See :data:`DEFAULT_ROW_BUDGET`.
+
+The budget is a target rather than a ceiling. :data:`MIN_ROWS_PER_FILE` is the floor every file is
+read to however thin its share gets, since one sampled below it cannot contribute the columns it
+alone witnesses. Files smaller than their share are read to the end and keep exact row counts, so a
+budgeted profile of a small dataset is still complete. Pass ``row_budget=None`` for a genuinely
+exhaustive scan.
 """
 
 from __future__ import annotations
