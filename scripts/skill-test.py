@@ -11,7 +11,7 @@
 Each skill ships a `tests.json` next to its `SKILL.md` with four test types:
 - explicit: user names the skill; should fire
 - implicit: user states the intent; should fire
-- contextual: adjacent-but-distinct topic; should NOT fire
+- contextual: request with surrounding situation; should route to its stated skill
 - negative-control: unrelated topic; should NOT fire
 
 v1: keyword-overlap heuristic against skill `triggers` + `description`.
@@ -139,14 +139,17 @@ def run_tests(skill_dir: Path, all_skills: list[Skill]) -> tuple[int, int, list[
     for t in data.get("tests", []):
         match = best_match(t["prompt"], all_skills)
         match_name = match.name if match else None
-        if t["type"] in ("explicit", "implicit"):
-            expected = t.get("expected_skill")
+        expected = t.get("expected_skill")
+        if expected:
             if match_name == expected:
                 passed += 1
             else:
                 failed.append(f"  [{t['type']}] expected `{expected}`, got `{match_name}`: {t['prompt']!r}")
-        elif t["type"] in ("contextual", "negative-control"):
-            forbidden = t.get("expected_skill_not") or t.get("expected_skill")
+        else:
+            forbidden = t.get("expected_skill_not")
+            if not forbidden:
+                failed.append(f"  [{t['type']}] needs `expected_skill` or `expected_skill_not`: {t['prompt']!r}")
+                continue
             if match_name != forbidden:
                 passed += 1
             else:

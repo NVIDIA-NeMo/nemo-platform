@@ -13,6 +13,11 @@
       "expected_skill": "nemo-experimentalist"
     },
     {
+      "type": "explicit",
+      "prompt": "Invoke nemo-experimentalist to validate code changes to my agent harness.",
+      "expected_skill": "nemo-experimentalist"
+    },
+    {
       "type": "implicit",
       "prompt": "I have an insight about my agent and want the system to propose and validate a code fix.",
       "expected_skill": "nemo-experimentalist"
@@ -30,7 +35,23 @@
     {
       "type": "contextual",
       "prompt": "My deployed agent costs too much; tune its routing and reduce latency without changing its implementation.",
+      "expected_skill": "agents-optimize",
       "expected_skill_not": "nemo-experimentalist"
+    },
+    {
+      "type": "contextual",
+      "prompt": "Our Harbor validation score regressed after a tool change; use the train and validation splits to propose and verify a harness fix.",
+      "expected_skill": "nemo-experimentalist"
+    },
+    {
+      "type": "contextual",
+      "prompt": "The agent's workflow source is in Git and its benchmark has a reliable verifier. Experiment with candidate code changes and keep only a validated improvement.",
+      "expected_skill": "nemo-experimentalist"
+    },
+    {
+      "type": "contextual",
+      "prompt": "An Insight points to repeated tool-use failures. Improve the existing agent harness against a separate Harbor validation dataset.",
+      "expected_skill": "nemo-experimentalist"
     },
     {
       "type": "negative-control",
@@ -40,6 +61,11 @@
     {
       "type": "negative-control",
       "prompt": "Upload my completed Harbor traces to NeMo Experiments.",
+      "expected_skill_not": "nemo-experimentalist"
+    },
+    {
+      "type": "negative-control",
+      "prompt": "Create an LLM-as-a-judge metric for my evaluation suite.",
       "expected_skill_not": "nemo-experimentalist"
     }
   ]

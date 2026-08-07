@@ -1,4 +1,6 @@
 ---
+# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: nemo-experimentalist
 description: Improve an existing NeMo agent's source or harness from an Insight or explicit Harbor-compatible evaluation datasets. Run the Experimentalist to propose and validate candidate code changes, then optionally publish a changed winner as a draft PR or MR.
 triggers:
@@ -19,7 +21,7 @@ not-for:
   - nemo-insights / agents analyst (use to generate the Insight before optimizing from it)
   - nemo-eval-author (use to author an evaluation outside an Experimentalist run)
   - agents-optimize (use to tune routing, cost, or latency for a deployed agent)
-compatibility: requires the enabled `nemo-experimentalist-plugin`, Docker for Harbor evaluation, a running local platform, and an isolated environment suitable for LLM-authored code.
+compatibility: requires the enabled `nemo-experimentalist-plugin`, Docker for Harbor evaluation, a running local platform, and the repository-root `.venv` for LLM-authored code.
 maturity: beta
 license: Apache-2.0
 user-invocable: true
@@ -69,12 +71,29 @@ the spec before returning here.
 
 ## Configure the environment
 
-The Experimentalist needs a running NeMo Platform, an LLM endpoint for its
-optimizer agents, and a model for each tier. For the NVIDIA Inference Gateway,
-set the Platform URL, inference key, and model tiers:
+The repository-root `.venv` is the only supported Experimentalist environment.
+From the repository root, synchronize it and use its CLI:
+
+```bash
+uv sync
+export NEMO="$PWD/.venv/bin/nemo"
+```
+
+Before running `$NEMO` or relying on a local platform, complete the
+repository-root `SETUP.md`. Then set the Platform URL and verify readiness:
 
 ```bash
 export NMP_BASE_URL=http://localhost:8080
+curl -sf "$NMP_BASE_URL/health/ready"
+```
+
+Stop if setup is incomplete or the readiness check fails.
+
+The Experimentalist needs a running NeMo Platform, an LLM endpoint for its
+optimizer agents, and a model for each tier. For the NVIDIA Inference Gateway,
+set the inference key and model tiers:
+
+```bash
 export INFERENCE_API_KEY=<gateway-api-key>
 export NEMO_EXPERIMENTALIST_MODELS_SMART=<model-name>
 export NEMO_EXPERIMENTALIST_MODELS_MID=<model-name>
@@ -118,12 +137,13 @@ when running locally.
 
 ## Pre-flight
 
-Run the built-in checks from the agent directory that contains `optimizer.yaml`,
+Complete the `SETUP.md` and readiness check above before continuing. Run the
+built-in checks from the agent directory that contains `optimizer.yaml`,
 or pass the profile explicitly. Without a loaded profile, `doctor` cannot check
 the dataset or task-template artifacts:
 
 ```bash
-nemo agents experimentalist doctor --profile path/to/optimizer.yaml
+$NEMO agents experimentalist doctor --profile path/to/optimizer.yaml
 ```
 
 Stop and resolve any missing platform, credential, Docker, or dataset check
@@ -270,7 +290,16 @@ Use copied, low-cost dataset subsets and the smoke configuration above. Keep
 `storage.publish_winner: false`: its default is `true`, so a Git source can
 otherwise create a draft PR/MR when a candidate wins.
 
-Run the command in a persistent terminal session such as `tmux`, because even
+```bash
+$NEMO agents experimentalist run \
+  --no-insight \
+  --agent path/to/agent \
+  --train-dataset smoke/train \
+  --validation-dataset smoke/validation \
+  --config path/to/experimentalist-smoke.yaml
+```
+
+Run this command in a persistent terminal session such as `tmux`, because even
 the shortened walkthrough can take up to an hour. Redirect output to a log if
 you need to disconnect, then follow it with `tail -f`.
 
@@ -284,7 +313,7 @@ Insight.
 Pass the inputs explicitly when running a one-off optimization:
 
 ```bash
-nemo agents experimentalist run \
+$NEMO agents experimentalist run \
   --insight <platform-id-or-local-file> \
   --agent path-or-git-url \
   --task-template path/to/harbor-task-template \
@@ -301,7 +330,7 @@ For a reusable setup, the equivalent information can live in an
 created a default Insight for the agent, this shorter command is enough:
 
 ```bash
-nemo agents experimentalist run --profile path/to/optimizer.yaml
+$NEMO agents experimentalist run --profile path/to/optimizer.yaml
 ```
 
 Pass `--insight <platform-id-or-local-file>` to override the profile's default
@@ -310,7 +339,7 @@ Insight.
 ## 3. Run from explicit datasets
 
 ```bash
-nemo agents experimentalist run \
+$NEMO agents experimentalist run \
   --no-insight \
   --agent path-or-git-url \
   --agent-spec path/to/AGENT-SPEC.md \
@@ -319,6 +348,7 @@ nemo agents experimentalist run \
   --workspace <workspace> \
   --config path/to/experimentalist.yaml
 ```
+
 For a Git source, append a ref such as
 `git@github.com:owner/repository.git@main`.
 The `.git@` marker is required to select a ref; a URL such as
