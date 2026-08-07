@@ -100,6 +100,7 @@ const baseRules = {
 
 const ignores = [
   `${pathPrefix}packages/studio/dist`,
+  `${pathPrefix}packages/studio/public/vendor`,
   `${pathPrefix}packages/studio/playwright-report`,
   `${pathPrefix}packages/studio/test-results`,
   `${pathPrefix}packages/studio/.test-reports`,
