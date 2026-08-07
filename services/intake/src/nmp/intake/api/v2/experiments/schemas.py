@@ -259,18 +259,6 @@ class EvaluationResponse(BaseModel):
     )
 
     @computed_field(  # type: ignore[prop-decorator]
-        json_schema_extra={"nullable": True},
-        description=(
-            "End-to-end latency in milliseconds assuming tasks run serially: the sum of per-test-case "
-            "latency, where a test case run more than once contributes the average of its attempts. "
-            "Equal to latency_ms.sum; null when no session carries latency."
-        ),
-    )
-    @property
-    def end_to_end_latency_ms(self) -> float | None:
-        return self.latency_ms.sum if self.latency_ms is not None else None
-
-    @computed_field(  # type: ignore[prop-decorator]
         deprecated=True,
         description="Deprecated single-experiment alias; the first of experiment_ids. Use experiment_ids.",
     )

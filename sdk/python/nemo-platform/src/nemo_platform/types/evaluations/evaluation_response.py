@@ -32,14 +32,6 @@ class EvaluationResponse(BaseModel):
 
     dataset_name: str
 
-    end_to_end_latency_ms: Optional[float] = None
-    """
-    End-to-end latency in milliseconds assuming tasks run serially: the sum of
-    per-test-case latency, where a test case run more than once contributes the
-    average of its attempts. Equal to latency_ms.sum; null when no session carries
-    latency.
-    """
-
     experiment_group_id: str
     """Deprecated single-experiment alias; the first of experiment_ids.
 

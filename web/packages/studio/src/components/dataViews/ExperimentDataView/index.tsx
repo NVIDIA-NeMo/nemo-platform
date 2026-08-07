@@ -437,13 +437,12 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
           );
         },
       }),
-      accessor((original) => original.end_to_end_latency_ms, {
+      accessor((original) => original.latency_ms?.sum, {
         id: 'end_to_end_latency_ms',
         header: 'End-to-end latency',
         enableSorting: true,
         meta: { title: false, filter: numberRangeFilter('End-to-end latency') },
-        // Sum of per-task latency (a task's attempts averaged): total time to run the tasks serially.
-        cell: ({ row }) => <Text>{formatDurationMs(row.original.end_to_end_latency_ms)}</Text>,
+        cell: ({ row }) => <Text>{formatDurationMs(row.original.latency_ms?.sum)}</Text>,
       }),
       accessor((original) => original.tokens?.mean, {
         id: 'tokens',
