@@ -74,12 +74,15 @@ class _FakeTraces:
 
 
 class _FakeEvaluations:
-    def __init__(self, *, missing: bool = False) -> None:
+    def __init__(self, *, missing: bool = False, error: Exception | None = None) -> None:
         self.missing = missing
+        self.error = error
         self.retrieved: _SessionIds = []
 
     async def retrieve(self, name: str, *, workspace: str | None = None) -> object:
         self.retrieved.append(name)
+        if self.error is not None:
+            raise self.error
         if self.missing:
             raise NotFoundError("not found", response=_response(404), body=None)
         return SimpleNamespace(name=name)
@@ -99,12 +102,18 @@ class _FakeIngest:
 class _FakeClient:
     """Minimal stand-in for the bits of ``AsyncNeMoPlatform`` publication touches."""
 
-    def __init__(self, *, missing_evaluation: bool = False, ingest_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        missing_evaluation: bool = False,
+        ingest_error: Exception | None = None,
+        preflight_error: Exception | None = None,
+    ) -> None:
         self.workspace = "default"
         self.atif_calls: list[dict[str, Any]] = []
         self.eval_result_calls: list[dict[str, Any]] = []
         self.trace_calls: _SessionIds = []
-        self.evaluations = _FakeEvaluations(missing=missing_evaluation)
+        self.evaluations = _FakeEvaluations(missing=missing_evaluation, error=preflight_error)
         self.intake = SimpleNamespace(
             ingest=SimpleNamespace(atif=_FakeIngest(self.atif_calls, error=ingest_error)),
             evaluator_results=_FakeIngest(self.eval_result_calls),
@@ -291,6 +300,26 @@ def test_optional_failure_returns_outcome_instead_of_raising() -> None:
 
     assert outcome.status == PlatformJobStatus.ERROR
     assert outcome.error
+
+
+def test_unexpected_failure_still_honours_required_false() -> None:
+    # `required=False` promises the evaluation survives a failed publish. An error outside the known
+    # taxonomy — a bug, a transport quirk, anything unforeseen — must not be the one case that
+    # escapes and fails the job anyway.
+    client = _FakeClient(preflight_error=ValueError("something nobody planned for"))
+    outcome = _publish(cast(AsyncNeMoPlatform, client), required=False)
+
+    assert outcome.status == PlatformJobStatus.ERROR
+    assert "ValueError" in (outcome.error or "")
+    assert "something nobody planned for" in (outcome.error or "")
+
+
+def test_unexpected_failure_fails_the_job_when_required() -> None:
+    client = _FakeClient(preflight_error=ValueError("something nobody planned for"))
+    with pytest.raises(PublicationFailedError) as excinfo:
+        _publish(cast(AsyncNeMoPlatform, client))
+
+    assert excinfo.value.outcome.status == PlatformJobStatus.ERROR
 
 
 def test_platformless_run_is_a_failure_not_a_crash() -> None:

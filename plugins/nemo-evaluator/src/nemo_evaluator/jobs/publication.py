@@ -166,6 +166,13 @@ def publish_agent_eval_result(
         )
     except NeMoPlatformError as error:
         return fail(f"{type(error).__name__}: {error}")
+    except Exception as error:
+        # `required=False` promises the evaluation survives a failed publish. Letting an unforeseen
+        # error escape would break that promise for exactly the failures nobody anticipated, so the
+        # catch-all is the point rather than an oversight. Logged with a traceback because, unlike
+        # the handlers above, there is no known cause to report.
+        logger.exception("Unexpected error publishing to Intake for evaluation %r", spec.evaluation_id)
+        return fail(f"Unexpected {type(error).__name__}: {error}")
 
     logger.info(
         "Published %d trial(s) and %d evaluator result(s) to Intake under evaluation %r",
