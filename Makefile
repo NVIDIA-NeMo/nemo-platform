@@ -64,7 +64,7 @@ refresh-openapi:  ## Generate the OpenAPI specification
 
 .PHONY: stainless
 stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SDK
-	SDK_RELEASE_TIER=ga ./sdk/stainless.sh sync
+	SDK_RELEASE_TIER=ga $(MISE_EXEC) ./sdk/stainless.sh sync
 
 .PHONY: update-web-sdk
 update-web-sdk: verify-mise ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
@@ -75,7 +75,7 @@ update-sdk: build-policy refresh-openapi stainless update-web-sdk update-cli ## 
 
 .PHONY: vendor-nemo-platform-ext
 vendor-nemo-platform-ext:
-	$(MAKE) -C packages/nemo_platform_ext vendor
+	$(MISE_EXEC) $(MAKE) -C packages/nemo_platform_ext vendor
 
 .PHONY: generate-cli-commands
 generate-cli-commands: ## Run generation of the CLI commands
@@ -171,25 +171,27 @@ verify-python-version: verify-mise ## Verify Python version and install if neces
 .PHONY: .venv
 .venv: | verify-python-version ## Create a Python virtual environment
 	@echo "~~~"
-	@current=$$([ -x .venv/bin/python ] && .venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])'); \
-	if [ "$$current" = "$(PYTHON_VERSION)" ]; then \
-		exit 0; \
-	fi; \
+	@current=$$([ -x .venv/bin/python ] && .venv/bin/python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null); \
+	case "$$current" in \
+		"$(PYTHON_VERSION)"|"$(PYTHON_VERSION)".*) exit 0 ;; \
+	esac; \
 	if [ "$(BOOTSTRAP_CREATE_VENV)" = "0" ]; then \
 		if [ -n "$$current" ]; then \
 			echo "BOOTSTRAP_CREATE_VENV=0 but .venv is on Python $$current, not $(PYTHON_VERSION)"; \
 		else \
-			echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing"; \
+			echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing or not runnable"; \
 		fi; \
 		echo "Create .venv manually, or run make again without BOOTSTRAP_CREATE_VENV=0."; \
 		exit 1; \
 	fi; \
 	if [ -n "$$current" ]; then \
 		echo "recreating .venv on Python $(PYTHON_VERSION) (was $$current)"; \
+	elif [ -d .venv ]; then \
+		echo "replacing unusable .venv with Python $(PYTHON_VERSION)"; \
 	else \
 		echo "setting up a venv with uv"; \
 	fi; \
-	$(UV) venv --python $(PYTHON_VERSION) --seed $${current:+--clear}
+	$(UV) venv --python $(PYTHON_VERSION) --seed $$([ -d .venv ] && echo --clear)
 
 # Optional escape hatch for local plugin packages that cannot participate in the
 # root uv workspace/lock. Leave empty for the normal monorepo bootstrap path.
@@ -334,13 +336,13 @@ check-copyright-headers:
 
 .PHONY: lint
 lint: ## Run all linters (licenses, openapi, config docs, python style/types/sdk, vendored SDK, CLI, auth config)
-	bash tools/lint/lint-all.sh
+	$(MISE_EXEC) bash tools/lint/lint-all.sh
 
 LINT_FIX_VERIFY ?= 0
 
 .PHONY: lint-fix
 lint-fix: ## Auto-fix lint issues (set LINT_FIX_VERIFY=1 to also run CI lint checks)
-	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) bash tools/lint/lint-fix.sh
+	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) $(MISE_EXEC) bash tools/lint/lint-fix.sh
 
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata
