@@ -769,13 +769,67 @@ class _StreamSafeGraph:
             yield event
 
 
+def _preserve_reasoning_content(model: Any) -> Any:
+    """Keep the ``reasoning_content`` delta that langchain-openai discards.
+
+    Nemotron (and other vLLM/NIM-served models) stream their chain of thought in a
+    ``reasoning_content`` delta field. ``langchain-openai`` 1.4.x only understands
+    OpenAI's o-series ``reasoning`` block, so it drops the field entirely and the
+    trace never reaches the graph, the NAT stream, or Studio. Re-attach it to the
+    chunk's ``additional_kwargs`` so downstream consumers can surface it.
+    """
+    original = getattr(model, "_convert_chunk_to_generation_chunk", None)
+    if original is None:
+        return model
+
+    def convert_with_reasoning(chunk: Any, *args: Any, **kwargs: Any) -> Any:
+        generation = original(chunk, *args, **kwargs)
+        if generation is None or not isinstance(chunk, dict):
+            return generation
+        reasoning = "".join(
+            (choice.get("delta") or {}).get("reasoning_content") or ""
+            for choice in chunk.get("choices") or []
+            if isinstance(choice, dict)
+        )
+        if reasoning:
+            generation.message.additional_kwargs["reasoning_content"] = reasoning
+        return generation
+
+    original_result = getattr(model, "_create_chat_result", None)
+
+    def make_result_patch(original: Any) -> Any:
+        def create_result_with_reasoning(response: Any, *args: Any, **kwargs: Any) -> Any:
+            result = original(response, *args, **kwargs)
+            # The non-streaming path drops the field too, so patch both: the graph
+            # may invoke the model rather than stream it.
+            try:
+                payload = response if isinstance(response, dict) else response.model_dump()
+                for generation, choice in zip(result.generations, payload.get("choices") or [], strict=False):
+                    reasoning = (choice.get("message") or {}).get("reasoning_content")
+                    if reasoning:
+                        generation.message.additional_kwargs["reasoning_content"] = reasoning
+            except Exception:
+                logger.debug("could not attach reasoning_content to result", exc_info=True)
+            return result
+
+        return create_result_with_reasoning
+
+    try:
+        object.__setattr__(model, "_convert_chunk_to_generation_chunk", convert_with_reasoning)
+        if original_result is not None:
+            object.__setattr__(model, "_create_chat_result", make_result_patch(original_result))
+    except Exception:
+        logger.debug("could not preserve reasoning_content on %s", type(model).__name__, exc_info=True)
+    return model
+
+
 def _get_model():
     """Get the LLM from NAT's builder context (YAML llms: section)."""
     from nat.builder.framework_enum import LLMFrameworkEnum
     from nat.builder.sync_builder import SyncBuilder
 
     model = SyncBuilder.current().get_llm("agent", wrapper_type=LLMFrameworkEnum.LANGCHAIN)
-    return _disable_nat_method_retries(model)
+    return _preserve_reasoning_content(_disable_nat_method_retries(model))
 
 
 def _disable_nat_method_retries(model: Any) -> Any:
