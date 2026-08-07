@@ -102,9 +102,13 @@ const TemplateCard: FC<TemplateCardProps> = ({ template, workspace }) => {
         }
       }
 
-      const datasetFiles = await fetchAndConvertDataset(template.dataset, (fetched, total) => {
-        setStatusLabel(`Fetching dataset (${fetched}/${total})…`);
-      });
+      const datasetFiles = await fetchAndConvertDataset(
+        queryClient,
+        template.dataset,
+        (fetched, total) => {
+          setStatusLabel(`Fetching dataset (${fetched}/${total})…`);
+        }
+      );
 
       setStatusLabel('Uploading dataset…');
       await swallowConflict(

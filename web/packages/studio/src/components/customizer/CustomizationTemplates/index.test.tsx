@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import { CustomizationTemplates } from '@studio/components/customizer/CustomizationTemplates';
 import { CUSTOMIZATION_TEMPLATES } from '@studio/constants/customizationTemplates';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -13,9 +14,9 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { Mock } from 'vitest';
 
-const WORKSPACE = 'default';
+const HF_ROWS_URL = 'https://datasets-server.huggingface.co/rows';
 
-const hfRowsHandler = http.get('https://datasets-server.huggingface.co/rows', ({ request }) => {
+const hfRowsHandler = http.get(HF_ROWS_URL, ({ request }) => {
   const length = Number(new URL(request.url).searchParams.get('length') ?? '0');
   return HttpResponse.json({
     rows: Array.from({ length }, () => ({
@@ -30,7 +31,7 @@ describe('CustomizationTemplates', () => {
   beforeEach(() => {
     navigate = vi.fn();
     mockUseNavigate(navigate);
-    mockUseParams({ [ROUTE_PARAMS.workspace]: WORKSPACE });
+    mockUseParams({ [ROUTE_PARAMS.workspace]: DEFAULT_WORKSPACE });
     server.use(hfRowsHandler);
   });
 
@@ -62,7 +63,7 @@ describe('CustomizationTemplates', () => {
     await waitFor(
       () =>
         expect(navigate).toHaveBeenCalledWith(
-          getNewCustomizationJobRoute(WORKSPACE),
+          getNewCustomizationJobRoute(DEFAULT_WORKSPACE),
           expect.objectContaining({
             state: expect.objectContaining({
               initialValues: expect.objectContaining({ backend: 'automodel' }),
@@ -75,7 +76,7 @@ describe('CustomizationTemplates', () => {
 
   it('surfaces an error and does not navigate when dataset fetch fails', async () => {
     server.use(
-      http.get('https://datasets-server.huggingface.co/rows', () =>
+      http.get(HF_ROWS_URL, () =>
         HttpResponse.json({ error: 'boom' }, { status: 500 })
       )
     );
