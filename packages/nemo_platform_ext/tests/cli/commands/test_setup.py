@@ -1878,7 +1878,7 @@ class TestProviderIdempotency:
         api_key = "sk-ant-updated"
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": api_key}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "anthropic"
         call_kwargs = client.inference.providers.update.call_args.kwargs
         assert call_kwargs["api_key_secret_name"] == "anthropic-api-key"
         assert call_kwargs["auth_header_format"] == "X-Api-Key: {{ auth_secret }}"
