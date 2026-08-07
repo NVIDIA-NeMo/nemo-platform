@@ -335,6 +335,26 @@ class SplitProfile(BaseModel):
             "train, with the variant's intent kept in `name`."
         ),
     )
+    data_files: str | None = Field(
+        default=None,
+        description=(
+            "A glob selecting exactly this split's files, relative to the fileset root: \"helpsteer2/"
+            'train*.parquet". Gives the files back their addressability without giving back the '
+            "per-file manifest — one pattern per split, whatever the shard count — so a consumer can "
+            "hand a reader the files of one split without listing the fileset and re-deriving which "
+            "shards belong where. Named for HF card front-matter's `configs[].data_files`, which is "
+            "the declared form of this same claim and, once cards are parsed, the thing that will "
+            "replace this inference rather than sit beside it in a second vocabulary.\n\n"
+            "`*` spans any run of characters except `/` — the one reading shared by shell globs, "
+            "Python's glob, fsspec and HF — so the pattern means the same thing wherever it is pasted. "
+            "`**` is never emitted, because its meaning is not shared.\n\n"
+            "None when no single pattern selects these files and nothing else (shards spread across "
+            "subdirectories, say). Never approximate: a pattern is emitted only after being matched "
+            "back against every file in the fileset and found to select this split exactly. A glob is "
+            "an instruction to go read files, so a near miss is not a rougher answer — it silently "
+            "pulls a README, or a neighbouring split's shards, into a training set."
+        ),
+    )
     num_files: int = Field(
         default=0,
         description=(

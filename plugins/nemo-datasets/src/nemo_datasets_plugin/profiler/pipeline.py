@@ -34,7 +34,7 @@ from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
 from nemo_datasets_plugin.profiler.schema import derive_features
-from nemo_datasets_plugin.profiler.splits import resolve_splits
+from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
@@ -123,8 +123,15 @@ def profile(
     # None once any file's row count is unknown: the fileset's total is then unknowable, not zero.
     rows_present: int | None = 0
 
+    # Every path the source listed, data or not. A split's glob is verified against this rather than
+    # against the partition's own files, so a pattern can never be emitted that would also pull in a
+    # README sitting beside the shards.
+    all_paths = [entry.path for entry in all_entries]
+
     for name, partition_entries in group_partitions(data_entries):
-        outcome = _profile_partition(source, name, partition_entries, row_budget, column_roles or {})
+        outcome = _profile_partition(
+            source, name, partition_entries, row_budget, column_roles or {}, all_paths=all_paths
+        )
         partitions.append(outcome.partition)
         rows_scanned += outcome.rows_scanned
         files_read += outcome.files_read
@@ -265,6 +272,8 @@ def _profile_partition(
     entries: list[FileEntry],
     row_budget: int | None,
     column_roles: dict[str, str],
+    *,
+    all_paths: list[str],
 ) -> _PartitionOutcome:
     """Profile one partition — the files of one source directory, whatever formats they are in.
 
@@ -336,6 +345,9 @@ def _profile_partition(
             SplitProfile(
                 name=split.name,
                 canonical=split.canonical,
+                # Inferred from the same paths the split itself was read off, then verified against
+                # the whole listing; None when one pattern cannot express the split exactly.
+                data_files=infer_data_files(split.name, split.entries, all_paths),
                 num_files=len(split.entries),
                 # From the listing, not from reading, so a file that failed mid-read still weighs
                 # what it weighs — unlike `num_examples`, this never goes unknown.
