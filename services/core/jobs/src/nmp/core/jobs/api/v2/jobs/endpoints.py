@@ -61,7 +61,7 @@ from nmp.core.jobs.app.providers import CPUExecutionProvider, SubprocessExecutio
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
 )
-from nmp.core.jobs.config import are_execution_profiles_ready, config, profiles
+from nmp.core.jobs.config import config, profiles
 from nmp.core.jobs.entities import PlatformJobStep, PlatformJobTask
 from pydantic import ValidationError
 from starlette.responses import FileResponse
@@ -241,17 +241,13 @@ def configured_subprocess_translation_profiles() -> set[str]:
 # Execution Profiles Endpoint
 @router.get("/v2/execution-profiles")
 async def get_execution_profiles() -> list[ExecutionProfileT]:
-    """Get all currently configured execution profiles."""
-    # 503 until BackendRegistry.from_config marks profiles ready so clients do
-    # not see pre-prune docker profiles (AIRCORE-971).
-    if not are_execution_profiles_ready():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Execution profiles are not ready yet. The jobs controller has not "
-                "finished registering backends; retry after the controller starts."
-            ),
-        )
+    """Get all currently configured execution profiles.
+
+    Returns the capability-filtered merge from jobs config. In local standalone
+    the controller may prune the shared list further after registry boot; in
+    split topologies the API advertises its own merge result (not controller
+    process memory).
+    """
     return profiles
 
 

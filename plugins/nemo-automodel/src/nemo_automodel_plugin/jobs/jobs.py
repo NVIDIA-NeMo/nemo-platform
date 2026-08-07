@@ -52,6 +52,8 @@ class AutomodelJob(BaseSubmitJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         del entity_client, options
+        if not isinstance(async_sdk, AsyncNeMoPlatform):
+            raise TypeError(f"async_sdk must be AsyncNeMoPlatform, got {type(async_sdk).__name__}")
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
         )
@@ -73,15 +75,12 @@ class AutomodelJob(BaseSubmitJob):
             canonical.training.execution_profile or profile or plugin_config.default_training_execution_profile
         )
 
-        platform_spec = cast(
-            PlatformJobSpec,
-            await platform_job_config_compiler(
-                canonical,
-                workspace,
-                cast(AsyncNeMoPlatform, async_sdk),
-                job_name=job_name,
-                profile=execution_profile,
-            ),
+        platform_spec = await platform_job_config_compiler(
+            canonical,
+            workspace,
+            async_sdk,
+            job_name=job_name,
+            profile=execution_profile,
         )
 
         validate_gpu_available_for_docker(platform_spec)

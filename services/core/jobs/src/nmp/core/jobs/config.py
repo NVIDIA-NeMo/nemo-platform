@@ -71,6 +71,10 @@ class JobsServiceConfig(create_service_config_class("jobs")):  # type: ignore
 # Module-level singleton instances
 config = get_service_config(JobsServiceConfig)
 platform_runtime = get_platform_config().runtime
+# Capability-filtered at merge time (probe_docker). In local standalone the
+# controller may further prune this list in place after backend registration.
+# Split topologies (API vs controller pods) advertise this merge result from the
+# API process — do not gate on controller-only process state (AIRCORE-971).
 profiles = merge_executor_profiles(
     config.executors,
     get_default_executor_profiles_for_runtime(
@@ -80,25 +84,3 @@ profiles = merge_executor_profiles(
     ),
     runtime=platform_runtime,
 )
-
-# Set True after BackendRegistry.from_config prunes ``profiles`` to match
-# registered backends. Until then GET /v2/execution-profiles returns 503 so
-# clients do not see pre-prune docker profiles.
-_execution_profiles_ready: bool = False
-
-
-def mark_execution_profiles_ready() -> None:
-    """Mark advertised execution profiles as aligned with the controller registry."""
-    global _execution_profiles_ready
-    _execution_profiles_ready = True
-
-
-def are_execution_profiles_ready() -> bool:
-    """Whether GET /v2/execution-profiles may advertise the module-level list."""
-    return _execution_profiles_ready
-
-
-def reset_execution_profiles_ready_for_tests() -> None:
-    """Test helper: clear the ready gate (not for production use)."""
-    global _execution_profiles_ready
-    _execution_profiles_ready = False

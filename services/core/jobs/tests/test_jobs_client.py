@@ -68,17 +68,17 @@ async def test_get_execution_profiles_parses_response(jobs_client: AsyncJobsClie
 
 
 @pytest.mark.asyncio
-async def test_get_execution_profiles_returns_503_until_ready(test_client: AsyncClient):
-    """Advertise profiles only after the jobs controller registry is ready."""
-    from nmp.core.jobs import config as jobs_config
+async def test_get_execution_profiles_available_without_controller_ready_gate(
+    test_client: AsyncClient,
+):
+    """API must advertise merge-filtered profiles without a controller ready flag.
 
-    jobs_config.reset_execution_profiles_ready_for_tests()
-    try:
-        raw = await test_client.get("/apis/jobs/v2/execution-profiles")
-        assert raw.status_code == 503
-        assert "not ready" in raw.json()["detail"].lower()
-    finally:
-        jobs_config.mark_execution_profiles_ready()
+    Split topologies (API pod without controllers) previously 503'd forever when
+    readiness lived in controller-only process memory (AIRCORE-971).
+    """
+    raw = await test_client.get("/apis/jobs/v2/execution-profiles")
+    assert raw.status_code == 200
+    assert isinstance(raw.json(), list)
 
 
 async def _create_hello_world_job(test_client: AsyncClient, name: str = "e2e-client-job") -> None:

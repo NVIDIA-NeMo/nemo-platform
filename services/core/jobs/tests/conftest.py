@@ -79,6 +79,19 @@ def _reset_capability_cache() -> Iterator[None]:
     reset_capability_cache()
 
 
+@pytest.fixture
+def docker_probe_unavailable():
+    """Patch probe_docker as unavailable on merge + registry import paths."""
+    from nemo_platform_plugin.capabilities import ProbeResult
+
+    result = ProbeResult(available=False, detail="down")
+    with (
+        patch("nmp.core.jobs.controllers.backends.config.probe_docker", return_value=result),
+        patch("nmp.core.jobs.controllers.backends.registry.probe_docker", return_value=result),
+    ):
+        yield result
+
+
 def pytest_collection_modifyitems(config, items):
     """
     Modify test items during collection.
@@ -573,11 +586,6 @@ async def test_client(mock_dispatcher, mock_store, job_config_with_many_profiles
     from nmp.common.service.dependencies import get_sdk_client
 
     with subprocess_job_executor_patch(job_config_with_many_profiles.executors):
-        from nmp.core.jobs.config import mark_execution_profiles_ready
-
-        # Simulate controller registry construction so GET /v2/execution-profiles
-        # is not gated behind 503 in API unit tests.
-        mark_execution_profiles_ready()
         app = FastAPI()
 
         # Add auth middleware with auth disabled - this sets up auth_client_context

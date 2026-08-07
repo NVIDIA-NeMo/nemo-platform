@@ -87,8 +87,13 @@ def probe_docker(
     return result
 
 
-def _docker_from_env_kwargs(*, timeout: float, docker_host: str | None) -> dict[str, object]:
-    """Build kwargs for ``docker.from_env`` that docker-py 7.x accepts."""
+def docker_from_env_kwargs(*, timeout: float, docker_host: str | None = None) -> dict[str, object]:
+    """Build kwargs for ``docker.from_env`` that docker-py 7.x accepts.
+
+    When ``docker_host`` is set, override ``DOCKER_HOST`` via an ``environment``
+    copy. Leave the process environment untouched when no host override is
+    configured (default socket / existing ``DOCKER_HOST`` still apply).
+    """
     kwargs: dict[str, object] = {"timeout": timeout}
     if docker_host:
         kwargs["environment"] = {**os.environ, "DOCKER_HOST": docker_host}
@@ -110,7 +115,7 @@ def _probe_docker_uncached(*, docker_host: str | None) -> ProbeResult:
     client = None
     try:
         client = docker.from_env(
-            **_docker_from_env_kwargs(timeout=_DOCKER_PROBE_TIMEOUT_SECONDS, docker_host=docker_host)
+            **docker_from_env_kwargs(timeout=_DOCKER_PROBE_TIMEOUT_SECONDS, docker_host=docker_host)
         )
         client.ping()
         return ProbeResult(available=True, detail=None)

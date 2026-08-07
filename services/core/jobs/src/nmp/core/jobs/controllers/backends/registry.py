@@ -189,11 +189,6 @@ class BackendRegistry:
                 profiles.clear()
                 profiles.extend(kept)
 
-        # Advertised profiles are now aligned with backends that registered.
-        from nmp.core.jobs.config import mark_execution_profiles_ready
-
-        mark_execution_profiles_ready()
-
         return cls(registry)
 
     def registered_profile_keys(self) -> frozenset[tuple[str, str]]:
