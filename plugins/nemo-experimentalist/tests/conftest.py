@@ -26,6 +26,8 @@ def _restore_environ():
 
     """
     snapshot = os.environ.copy()
+    os.environ["NEMO_DEFAULT_MODEL"] = "default/fake"
+    os.environ["NEMO_FAST_MODEL"] = "default/fake"
     fake = FakeLLMClient()
     clients = ConfiguredModelClients(
         default=cast(CompletionClient, fake),
