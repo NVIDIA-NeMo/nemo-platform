@@ -96,6 +96,10 @@ const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'cost_usd') return 'cost_usd.mean';
   if (id === 'latency_ms') return 'latency_ms.mean';
   if (id === 'tokens') return 'tokens.mean';
+  // The list columns hold the plural name facets; the API filter params are singular contains-matches.
+  if (id === 'agent_names') return 'agent_name';
+  if (id === 'agent_versions') return 'agent_version';
+  if (id === 'model_names') return 'model_name';
   const evaluatorMatch = id.match(/^evaluator-(.+)$/);
   if (evaluatorMatch) return `evaluators.${evaluatorMatch[1]}.mean`;
   return undefined;
@@ -319,12 +323,18 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
         id: 'agent_names',
         header: 'Agent Names',
         enableSorting: false,
+        meta: {
+          filter: { type: 'text', label: 'Agent Name', placeholder: 'Filter by Agent Name' },
+        },
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       accessor((original) => original.agent_versions?.join(', '), {
         id: 'agent_versions',
         header: 'Agent Versions',
         enableSorting: false,
+        meta: {
+          filter: { type: 'text', label: 'Agent Version', placeholder: 'Filter by Agent Version' },
+        },
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       accessor('dataset_name', {
@@ -351,6 +361,9 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
         id: 'model_names',
         header: 'Models',
         enableSorting: false,
+        meta: {
+          filter: { type: 'text', label: 'Model', placeholder: 'Filter by Model' },
+        },
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       ...metadataKeys.map((key) =>
