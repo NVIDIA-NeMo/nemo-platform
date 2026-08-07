@@ -7,9 +7,8 @@ These tests verify that mock provider mode works correctly through the full
 IGW service, including all three route types (provider, model, openai)
 and all supported HTTP methods.
 
-Note: These tests use function-scoped fixtures to avoid parallelism issues.
-Each test gets its own unique provider names to prevent conflicts when
-running tests in parallel with pytest-xdist.
+Note: These tests share a module-scoped service context on one xdist worker.
+Each test uses unique provider names to prevent state conflicts.
 
 ================================================================================
 REAL-WORLD USAGE EXAMPLES
@@ -40,6 +39,8 @@ from nmp.testing import ClientContext, MockProviderResponse, add_mock_provider, 
 
 DEFAULT_WORKSPACE = "default"
 
+pytestmark = pytest.mark.xdist_group("inference_gateway_mock_provider")
+
 
 def _unique_name(prefix: str) -> str:
     """Generate a unique name with a random suffix for test isolation."""
@@ -66,7 +67,7 @@ def _openai_route(workspace: str, endpoint: str) -> str:
 # =============================================================================
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def mock_provider_test_clients() -> Generator[ClientContext, None, None]:
     """Create a ClientContext for testing with IGW in mock provider mode.
 
@@ -1376,8 +1377,8 @@ def test_fixture_llm_judge_pattern(mock_provider_test_clients: ClientContext):
 def test_fixture_isolation(mock_provider_test_clients: ClientContext):
     """Test that mock_provider_test_clients fixture properly isolates test state.
 
-    Each test using mock_provider_test_clients gets a fresh context. Providers added in
-    one test won't be visible in another test.
+    Providers added to the shared test context are not visible in a separately
+    created context.
     """
     from nemo_platform import NotFoundError
 
@@ -1398,7 +1399,7 @@ def test_fixture_isolation(mock_provider_test_clients: ClientContext):
     )
     assert response == {"context": 1}
 
-    # Create a new context (simulating another test)
+    # Create a separate context.
     with create_test_client(
         InferenceGatewayService,
         ModelsService,
