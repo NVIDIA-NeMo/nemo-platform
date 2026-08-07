@@ -4,7 +4,7 @@
 """Tests for per-column statistics."""
 
 import pytest
-from nemo_datasets_plugin.profiler import stats
+from nemo_datasets_plugin.profiler import stats as stats_module
 from nemo_datasets_plugin.profiler.stats import (
     _MAX_VOCABULARY_BYTES,
     _MAX_VOCABULARY_VALUE_CHARS,
@@ -16,10 +16,18 @@ from nemo_datasets_plugin.profiler.stats import (
     _quality_sample,
     _whitespace_count,
     derive_probes,
-    derive_stats,
+    measure_columns,
     quote_enumerations,
 )
 from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchema
+
+
+def _stats(features, rows):
+    """Statistics only. Asserts nothing failed: these tests measure values, not the guard, and a
+    swallowed exception would surface here as a confusing KeyError instead of its own message."""
+    measured, _, errors = measure_columns(features, rows)
+    assert not errors, errors
+    return measured
 
 
 def _feature(name, dtype):
@@ -35,7 +43,7 @@ def _rows(name, values):
 
 def test_text_stats_length_quantiles_and_quality():
     values = ["a", "bb", "ccc", "dddd"]
-    stats = derive_stats([_feature("t", "string")], _rows("t", values))["t"]
+    stats = _stats([_feature("t", "string")], _rows("t", values))["t"]
     assert stats.text.chars.max == 4
     assert stats.text.chars.p50 in {2, 3}  # nearest-rank over 4 values
     assert stats.quality is not None
@@ -43,9 +51,70 @@ def test_text_stats_length_quantiles_and_quality():
 
 
 def test_text_quality_flags_repetition_and_non_ascii():
-    stats = derive_stats([_feature("t", "string")], _rows("t", ["aaaaaaaa", "héllo wörld"]))["t"]
+    stats = _stats([_feature("t", "string")], _rows("t", ["aaaaaaaa", "héllo wörld"]))["t"]
     assert stats.quality.repetition_score > 0.0  # the "aaaaaaaa" run
     assert stats.quality.non_ascii_ratio > 0.0  # accented characters
+
+
+def test_one_bad_column_costs_only_itself(monkeypatch):
+    # The narrow guard. A value no detector anticipated used to cost the partition every measurement
+    # it had; it now costs its own column, and says so rather than leaving a silent gap.
+    real_column_stats = stats_module._column_stats
+
+    def explode_on_one(feature, values, total):
+        if feature.name == "bad":
+            raise RuntimeError("boom")
+        return real_column_stats(feature, values, total)
+
+    monkeypatch.setattr(stats_module, "_column_stats", explode_on_one)
+
+    features = [_feature("good", "string"), _feature("bad", "string")]
+    measured, probes, errors = measure_columns(features, [{"good": "x", "bad": "y"}])
+
+    assert "good" in measured and "bad" not in measured
+    assert "good" in probes and "bad" not in probes  # probes go with the column that failed
+    assert [e.kind for e in errors] == ["error"]
+    assert "'bad'" in errors[0].detail and "RuntimeError" in errors[0].detail
+
+
+def test_measure_columns_agrees_with_the_unguarded_pair():
+    # `measure_columns` is a refactor, not a change of measurement: it must produce exactly what the
+    # two functions it replaced produced, for every dtype the dispatch knows. Both paths are still
+    # here, so this is checkable directly rather than by reading.
+    features = [
+        _feature("text", "string"),
+        _feature("count", "int64"),
+        _feature("score", "float64"),
+        _feature("flag", "bool"),
+        _feature("chat", "messages"),
+        _feature("meta", "struct"),
+        _feature("missing", "string"),
+    ]
+    rows = [
+        {
+            "text": "a prompt ending in #### 42",
+            "count": i,
+            "score": i / 3,
+            "flag": i % 2 == 0,
+            "chat": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "there"}],
+            "meta": {"src": "x"},
+            "missing": None,
+        }
+        for i in range(5)
+    ]
+    measured, probes, errors = measure_columns(features, rows)
+
+    assert measured == _stats(features, rows)
+    assert probes == derive_probes(features, rows)
+    assert errors == []
+
+
+def test_a_column_with_nothing_to_measure_is_not_reported_as_an_error():
+    # Absence from `stats` is the normal sparse case. Only a *failure* earns an error, or the two
+    # would be indistinguishable and the guard would cry wolf on every well-formed struct column.
+    measured, probes, errors = measure_columns([_feature("s", "struct")], [{"s": {"a": 1}}])
+    assert measured == {} and errors == []
+    assert "s" in probes
 
 
 @pytest.mark.parametrize(
@@ -84,35 +153,35 @@ def test_quality_sample_is_bounded_strided_and_deterministic():
 def test_quality_is_measured_across_the_column_not_its_head(monkeypatch):
     # Corruption confined to the second half. A head sample would report a clean column; a stride
     # sees it. This is why the sample is strided and not simply the first N rows.
-    monkeypatch.setattr(stats, "_QUALITY_SAMPLE_ROWS", 4)
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 4)
     values = ["ordinary sentence"] * 8 + ["aaaaaaaaaaaa"] * 8
-    quality = derive_stats([_feature("t", "string")], _rows("t", values))["t"].quality
+    quality = _stats([_feature("t", "string")], _rows("t", values))["t"].quality
     assert quality.repetition_score > 0.4
 
 
 def test_a_column_under_the_bound_is_measured_exactly(monkeypatch):
-    monkeypatch.setattr(stats, "_QUALITY_SAMPLE_ROWS", 100)
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 100)
     values = ["ordinary sentence"] * 9 + ["aaaaaaaaaaaa"]
-    quality = derive_stats([_feature("t", "string")], _rows("t", values))["t"].quality
+    quality = _stats([_feature("t", "string")], _rows("t", values))["t"].quality
     assert quality.repetition_score == pytest.approx(0.1)  # exactly one corrupt row in ten
 
 
 def test_cardinality_is_counted_while_the_column_is_a_vocabulary():
-    labels = derive_stats([_feature("c", "string")], _rows("c", ["yes", "no", "yes", "no"]))
+    labels = _stats([_feature("c", "string")], _rows("c", ["yes", "no", "yes", "no"]))
     assert labels["c"].categorical.distinct_count == 2
 
     # Still counted well past the point where every value is distinct: it is size, not repetition,
     # that decides whether a column is a vocabulary.
-    many = derive_stats([_feature("t", "string")], _rows("t", [f"unique-{i}" for i in range(50)]))
+    many = _stats([_feature("t", "string")], _rows("t", [f"unique-{i}" for i in range(50)]))
     assert many["t"].categorical.distinct_count == 50
 
 
 def test_cardinality_stops_at_too_many_values():
-    over = derive_stats([_feature("t", "string")], _rows("t", [f"v{i}" for i in range(_MAX_VOCABULARY_VALUES + 1)]))
+    over = _stats([_feature("t", "string")], _rows("t", [f"v{i}" for i in range(_MAX_VOCABULARY_VALUES + 1)]))
     assert over["t"].categorical is None  # absence is the claim: not a vocabulary
     assert over["t"].text is not None  # ...but the column is still measured
 
-    at_cap = derive_stats([_feature("t", "string")], _rows("t", [f"v{i}" for i in range(_MAX_VOCABULARY_VALUES)]))
+    at_cap = _stats([_feature("t", "string")], _rows("t", [f"v{i}" for i in range(_MAX_VOCABULARY_VALUES)]))
     assert at_cap["t"].categorical.distinct_count == _MAX_VOCABULARY_VALUES
 
 
@@ -120,10 +189,10 @@ def test_one_long_value_settles_it_without_counting():
     # The rule that does the real work: a vocabulary member is short by nature, so a single long
     # value proves the column is not one -- on sight, rather than after a thousand of them.
     values = ["yes", "no", "x" * (_MAX_VOCABULARY_VALUE_CHARS + 1)]
-    assert derive_stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
+    assert _stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
 
     still_short = ["yes", "no", "x" * _MAX_VOCABULARY_VALUE_CHARS]
-    assert derive_stats([_feature("t", "string")], _rows("t", still_short))["t"].categorical.distinct_count == 3
+    assert _stats([_feature("t", "string")], _rows("t", still_short))["t"].categorical.distinct_count == 3
 
 
 def test_cardinality_stops_on_total_bytes_before_the_count():
@@ -131,18 +200,18 @@ def test_cardinality_stops_on_total_bytes_before_the_count():
     # the other two would admit 1024 x 256 chars -- four times the byte budget.
     values = [f"{i:04d}" + "x" * 200 for i in range(_MAX_VOCABULARY_BYTES // 200)]
     assert len(values) < _MAX_VOCABULARY_VALUES  # the count bound is not what stops this
-    assert derive_stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
+    assert _stats([_feature("t", "string")], _rows("t", values))["t"].categorical is None
 
 
 def test_derive_stats_never_quotes_values():
     # Quoting needs a role, and roles are not assigned when stats are measured. Filling them in
     # afterwards rather than redacting means a skipped pass stores nothing instead of leaking.
-    stats = derive_stats([_feature("c", "string")], _rows("c", ["yes", "no"]))
+    stats = _stats([_feature("c", "string")], _rows("c", ["yes", "no"]))
     assert stats["c"].categorical.values is None
 
 
 def test_bool_column_gets_a_measured_class_balance():
-    stats = derive_stats([_feature("label", "bool")], _rows("label", [True, False, True]))
+    stats = _stats([_feature("label", "bool")], _rows("label", [True, False, True]))
     assert stats["label"].categorical.distinct_count == 2
 
 
@@ -150,14 +219,14 @@ def test_bool_column_gets_a_measured_class_balance():
 
 
 def test_numeric_stats_and_cardinality():
-    stats = derive_stats([_feature("n", "int64")], _rows("n", [0, 4, 2, 2, 3]))["n"]
+    stats = _stats([_feature("n", "int64")], _rows("n", [0, 4, 2, 2, 3]))["n"]
     assert (stats.numeric.min, stats.numeric.max) == (0.0, 4.0)
     assert stats.numeric.mean == 2.2
     assert stats.categorical.distinct_count == 4  # {0, 2, 3, 4}
 
 
 def test_numeric_cardinality_counts_without_quoting():
-    stats = derive_stats([_feature("n", "int64")], _rows("n", [1, 2, 3]))["n"]
+    stats = _stats([_feature("n", "int64")], _rows("n", [1, 2, 3]))["n"]
     assert stats.categorical.distinct_count == 3
     assert stats.categorical.values is None
 
@@ -166,13 +235,13 @@ def test_numeric_stats_ignore_non_finite_values():
     # NaN / +-inf poison min/max/mean and serialize to JSON null, which then fails to re-validate
     # against NumericStats' required floats -- making the whole profile unreadable. Drop them.
     values = [1.0, float("nan"), 3.0, float("inf"), float("-inf"), 5.0]
-    stats = derive_stats([_feature("n", "float64")], _rows("n", values))["n"]
+    stats = _stats([_feature("n", "float64")], _rows("n", values))["n"]
     assert (stats.numeric.min, stats.numeric.max, stats.numeric.mean) == (1.0, 5.0, 3.0)
     ColumnStats.model_validate_json(stats.model_dump_json())  # round-trips: no NaN/inf leaked into JSON
 
 
 def test_numeric_all_non_finite_yields_no_numeric_summary():
-    stats = derive_stats([_feature("n", "float64")], _rows("n", [float("nan"), float("inf")]))
+    stats = _stats([_feature("n", "float64")], _rows("n", [float("nan"), float("inf")]))
     assert stats.get("n") is None or stats["n"].numeric is None
 
 
@@ -184,7 +253,7 @@ def test_message_stats_shape_signals():
         {"m": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello there"}]},
         {"m": [{"role": "user", "content": "again"}, {"role": "assistant", "content": "yes"}]},
     ]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.turns.max == 2
     assert stats.messages.roles_seen == ["user", "assistant"]  # first-seen order
     assert stats.messages.ends_with_assistant_rate == 1.0
@@ -194,20 +263,20 @@ def test_message_stats_shape_signals():
 
 def test_message_stats_detects_tool_calls_and_user_ending():
     rows = [{"m": [{"role": "user", "content": "run"}, {"role": "assistant", "tool_calls": [{"id": "1"}]}]}]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.has_tool_calls is True
     assert stats.messages.ends_with_assistant_rate == 1.0  # last turn is the assistant tool call
 
 
 def test_message_ends_with_user_turn_is_prompt_only_signal():
     rows = [{"m": [{"role": "user", "content": "solve"}]}]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.ends_with_assistant_rate == 0.0
 
 
 def test_message_stats_read_sharegpt_from_value():
     rows = [{"m": [{"from": "human", "value": "hi"}, {"from": "gpt", "value": "hello there"}]}]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.roles_seen == ["human", "gpt"]  # verbatim, not normalized
     assert stats.messages.content_chars.max == len("hi") + len("hello there")
     assert stats.messages.ends_with_assistant_rate == 1.0  # "gpt" is the responder turn
@@ -217,7 +286,7 @@ def test_assistant_equivalent_roles_count_as_the_training_target():
     # Matching only the literal "assistant" made every other convention look prompt-only.
     for responder in ("assistant", "gpt", "bot", "model", "AI"):
         rows = [{"m": [{"role": "user", "content": "q"}, {"role": responder, "content": "a"}]}]
-        stats = derive_stats([_feature("m", "messages")], rows)["m"]
+        stats = _stats([_feature("m", "messages")], rows)["m"]
         assert stats.messages.ends_with_assistant_rate == 1.0, responder
 
 
@@ -225,7 +294,7 @@ def test_non_string_role_does_not_break_measurement():
     # roles_seen is typed list[str]; a numeric role used to raise a ValidationError from inside the
     # one stage the pipeline did not guard, aborting the whole profile.
     rows = [{"m": [{"role": 1, "content": "hi"}]}]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.roles_seen == ["1"]
 
 
@@ -233,14 +302,14 @@ def test_declared_but_unset_tool_calls_is_not_tool_use():
     # parquet materializes every declared struct field, so `"tool_calls" in message` reported tool
     # use for any schema that merely declares the field.
     rows = [{"m": [{"role": "user", "content": "hi", "tool_calls": None}]}]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.has_tool_calls is False
 
 
 def test_message_content_parts_tolerate_non_string_text():
     # A VLM-style content part whose "text" key is present but not a string must not crash measurement.
     rows = [{"m": [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": None}]}]}]
-    stats = derive_stats([_feature("m", "messages")], rows)["m"]
+    stats = _stats([_feature("m", "messages")], rows)["m"]
     assert stats.messages.content_chars.max == 0  # no measurable text, and no crash
 
 
@@ -250,11 +319,11 @@ def test_message_content_parts_tolerate_non_string_text():
 def test_unmeasured_dtypes_are_omitted():
     features = [_feature("s", "struct"), _feature("j", "json")]
     rows = [{"s": {"a": 1}, "j": object()}]
-    assert derive_stats(features, rows) == {}
+    assert _stats(features, rows) == {}
 
 
 def test_null_rate_is_reported():
-    stats = derive_stats([_feature("t", "string")], _rows("t", ["a", None, "c", None]))["t"]
+    stats = _stats([_feature("t", "string")], _rows("t", ["a", None, "c", None]))["t"]
     assert stats.null_rate == 0.5
 
 
@@ -314,7 +383,7 @@ def _quoted(name, dtype, values, role):
     feature = _feature(name, dtype)
     feature.semantic_role = role
     rows = _rows(name, values)
-    stats = derive_stats([feature], rows)
+    stats = _stats([feature], rows)
     quote_enumerations([feature], stats, rows)
     return stats[name].categorical.values
 

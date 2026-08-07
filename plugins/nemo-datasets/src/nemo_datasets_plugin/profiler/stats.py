@@ -3,15 +3,17 @@
 
 """Per-column statistics and content probes.
 
-Given a partition's features and its sampled rows, measure each top-level column according to its
-dtype: length quantiles and corruption signals for text, min/max/mean for numbers, chat-shape
-signals for messages, and cardinality for both. The result is sparse — a column with nothing worth
-measuring is omitted. Row values themselves are never stored here at all; a small controlled
-vocabulary is added afterwards by :func:`quote_enumerations`, which gates on the column's role.
+Given a partition's features and its rows, :func:`measure_columns` measures each top-level column
+according to its dtype: length quantiles and corruption signals for text, min/max/mean for numbers,
+chat-shape signals for messages, and a bounded vocabulary where the column has one. The result is
+sparse — a column with nothing worth measuring is omitted — and each column is isolated, so one the
+detectors cannot handle costs only itself. Row values themselves are never stored here at all; a
+small controlled vocabulary is added afterwards by :func:`quote_enumerations`, which gates on role.
 
-:func:`derive_probes` additionally reads each column's *content* — answer markers, embedded
-transcripts — as plain per-column counts. Those are measurements, not interpretations: what they
-mean is classification's job, and keeping the looking here is what stops a content signal from
+The same pass reads each column's *content* — answer markers, embedded transcripts — as plain
+per-column counts (:class:`ColumnProbes`, also reachable alone via :func:`derive_probes`, which
+classification uses when it was handed no probes). Those are measurements, not interpretations: what
+they mean is classification's job, and keeping the looking here is what stops a content signal from
 being reachable only through a correctly named column.
 """
 
@@ -25,6 +27,7 @@ from typing import Any
 from nemo_platform_plugin.files.dataset_profile import (
     CategoricalStats,
     ColumnStats,
+    Evidence,
     FeatureSchema,
     MessageStats,
     NumericStats,
@@ -57,23 +60,53 @@ _NON_STRING_VALUE_BYTES = 8
 _QUOTABLE_ROLES = frozenset({"label", "provenance", "meta", "rank"})
 
 
-def derive_stats(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> dict[str, ColumnStats]:
-    """Measure each top-level column. Keys are a subset of the feature names (sparse).
+def measure_columns(
+    features: list[FeatureSchema], rows: list[dict[str, Any]]
+) -> tuple[dict[str, ColumnStats], dict[str, ColumnProbes], list[Evidence]]:
+    """Measure every top-level column: its statistics and its content probes, in one pass each.
 
-    Never fills in ``categorical.values``: that needs the roles, which classification has not
-    assigned yet. :func:`quote_enumerations` adds them afterwards.
+    Each column is isolated. A value no detector anticipated -- a chat message whose ``role`` is a
+    number, a float where a string was declared -- costs that column its measurements and nothing
+    else, where previously it cost the partition every measurement it had. The failure is reported
+    as an ``error`` evidence rather than left as a silent gap, because a column absent from ``stats``
+    is otherwise indistinguishable from one that simply had nothing worth measuring.
+
+    This is the narrow half of the two guards the profiler runs. The wide one still wraps the whole
+    measure stage, and still catches anything structural -- schema derivation, classification -- that
+    is not attributable to a single column.
+
+    Statistics and probes are measured together because they read the same values, and extracting a
+    column out of the rows costs more than either measurement. Neither fills in
+    ``categorical.values``: that needs the roles, which classification has not assigned yet, so
+    :func:`quote_enumerations` adds them afterwards.
     """
-    total = len(rows)
     stats: dict[str, ColumnStats] = {}
+    probes: dict[str, ColumnProbes] = {}
+    errors: list[Evidence] = []
+    total = len(rows)
     for feature in features:
-        # Parquet permits duplicate field names, and stats is keyed by name. Measuring the first and
-        # skipping the rest makes which one wins deterministic instead of "whichever came last".
-        if feature.name in stats:
+        # Parquet permits duplicate field names, and both maps are keyed by name. Measuring the
+        # first and skipping the rest makes which one wins deterministic instead of "whichever came
+        # last", and keeps stats and probes agreeing on the same one.
+        if feature.name in probes:
             continue
-        column = _column_stats(feature, [row.get(feature.name) for row in rows], total)
+        values = [row.get(feature.name) for row in rows]
+        try:
+            column = _column_stats(feature, values, total)
+            probes[feature.name] = _column_probes(values)
+        except Exception as exc:
+            errors.append(
+                Evidence(
+                    kind="error",
+                    detail=(
+                        f"column {feature.name!r} ({feature.dtype}) could not be measured: {type(exc).__name__}: {exc}"
+                    ),
+                )
+            )
+            continue
         if column is not None:
             stats[feature.name] = column
-    return stats
+    return stats, probes, errors
 
 
 def quote_enumerations(
@@ -112,10 +145,8 @@ def _column_stats(feature: FeatureSchema, values: list[Any], total: int) -> Colu
         if strings:
             text = TextStats(chars=_quantiles([len(value) for value in strings]))
             quality = _text_quality(strings)
-        # distinct_count is always safe to store and is the id-like signal (~= rows_scanned) the
-        # contract documents. Only the values themselves are row data, and those are added later,
-        # by role. Withholding the count for high-cardinality strings dropped the signal precisely
-        # where it carries the most information.
+        # Only while the column looks like a controlled vocabulary; see `_cardinality`. The values
+        # themselves are row data and are added later, by role, never by size.
         categorical = _cardinality(present)
     elif feature.dtype == "bool":
         # The column that decides unpaired_preference deserves a measured class balance rather than
@@ -434,7 +465,7 @@ def derive_probes(features: list[FeatureSchema], rows: list[dict[str, Any]]) -> 
     """Run the content probes over every top-level column, keyed by column name."""
     probes: dict[str, ColumnProbes] = {}
     for feature in features:
-        # Duplicate parquet field names: first wins, matching derive_stats so the two agree on which.
+        # Duplicate parquet field names: first wins, matching `measure_columns` so both agree on which.
         if feature.name in probes:
             continue
         probes[feature.name] = _column_probes([row.get(feature.name) for row in rows])

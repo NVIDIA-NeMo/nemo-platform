@@ -35,7 +35,7 @@ from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
 from nemo_datasets_plugin.profiler.schema import derive_features
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
-from nemo_datasets_plugin.profiler.stats import derive_probes, derive_stats, quote_enumerations
+from nemo_datasets_plugin.profiler.stats import measure_columns, quote_enumerations
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     DatasetProfile,
@@ -241,14 +241,17 @@ def _measure(
     try:
         declared = _unify_schemas(arrow_schemas) if all_declared else None
         features = derive_features(partition_rows, declared)
-        stats = derive_stats(features, partition_rows)
-        # Probes are measured over every column, independent of the roles classify is about to
-        # assign, so a content signal survives a column name the alias table does not know.
-        probes = derive_probes(features, partition_rows)
+        # Statistics and probes together, one column at a time and each isolated. Probes cover every
+        # column independent of the roles classify is about to assign, so a content signal survives
+        # a column name the alias table does not know.
+        stats, probes, column_errors = measure_columns(features, partition_rows)
         classification = classify(features, stats, partition_rows, probes=probes, column_roles=column_roles)
         # Last, because the roles classification assigns are what decide whether a column's values
         # may be quoted at all — cardinality only bounds how many.
         quote_enumerations(features, stats, partition_rows)
+        # After classify, so its own reasoning reads first and a column that could not be measured
+        # is reported as a caveat on the result rather than as part of the case for it.
+        classification.evidence.extend(column_errors)
         return features, stats, classification
     except Exception as exc:
         detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
