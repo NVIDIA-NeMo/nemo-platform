@@ -453,6 +453,12 @@ basePlatformConfig: |
           enabled: true
           k8s_executor: local-k8s
           default_executor: local-k8s
+          # Bypass the image `nemo` ENTRYPOINT; invoke the adapters module directly.
+          # Avoids PermissionError when the sidecar writes instance state under $HOME.
+          lora_sidecar_command:
+            - python
+            - -m
+            - nmp.core.models.sidecars.adapters.main
 
   deployments:
     executors:
