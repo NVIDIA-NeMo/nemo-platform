@@ -396,7 +396,8 @@ def test_wait_for_openai_model_retries_unexpected_model_id(sdk):
     assert mock_get.call_count == 2
 
 
-def test_wait_for_openai_model_retries_transient_gateway_errors(sdk):
+@pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+def test_wait_for_openai_model_retries_transient_gateway_errors(sdk, status_code):
     """Test that transient gateway and connection failures keep polling."""
     model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
     request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
@@ -406,7 +407,7 @@ def test_wait_for_openai_model_retries_transient_gateway_errors(sdk):
         "get",
         side_effect=[
             APIConnectionError(request=request),
-            _api_status_error(503),
+            _api_status_error(status_code),
             model_response,
         ],
     ) as mock_get:
@@ -602,14 +603,15 @@ async def test_async_wait_for_openai_model_retries_unexpected_model_id(async_sdk
 
 
 @pytest.mark.asyncio
-async def test_async_wait_for_openai_model_retries_transient_gateway_errors(async_sdk):
+@pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+async def test_async_wait_for_openai_model_retries_transient_gateway_errors(async_sdk, status_code):
     """Test that async polling retries transient gateway and timeout failures."""
     model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
     request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
     mock_get = AsyncMock(
         side_effect=[
             APITimeoutError(request=request),
-            _api_status_error(502),
+            _api_status_error(status_code),
             model_response,
         ]
     )
