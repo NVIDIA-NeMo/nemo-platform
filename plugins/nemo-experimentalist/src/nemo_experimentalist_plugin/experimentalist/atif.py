@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""ATIF trajectory helpers for reading and uploading agent traces.
+
+Kept separate from ``otlp.py``: the two formats share no representation, and
+mixing an ATIF reader into a module named for OTLP would blur a clean boundary.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+from nemo_experimentalist_plugin.entities import ResourceRef
+
+# ATIF carries agent identity on the trajectory; the Experimentalist carries it as
+# OTLP-style span attributes. This maps one onto the other.
+_AGENT_FIELD_BY_ATTR: tuple[tuple[str, str], ...] = (
+    ("name", "gen_ai.agent.name"),
+    ("version", "agent.version"),
+    ("model_name", "gen_ai.request.model"),
+)
+
+
+def _load(ref: ResourceRef) -> dict[str, Any]:
+    """Parse the ATIF trajectory a ResourceRef points at."""
+    path = Path(urlparse(ref.uri).path)
+    trajectory = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(trajectory, dict):
+        raise ValueError(f"ATIF trajectory is not a JSON object: {ref.uri}")
+    return trajectory
+
+
+def read_session_id(ref: ResourceRef) -> str:
+    """Return the trajectory's session_id, which Intake uses as the trace id.
+
+    Args:
+        ref(ResourceRef): Resource reference to the ATIF trajectory file.
+
+    Returns:
+        str: The trajectory session id.
+    """
+    session_id = _load(ref).get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        raise ValueError(f"No session_id found in {ref.uri}")
+    return session_id
+
+
+def build_ingest_payload(
+    ref: ResourceRef,
+    *,
+    experiment_id: str,
+    task_id: str,
+    agent_attrs: dict[str, str],
+) -> dict[str, Any]:
+    """Load a trajectory and stamp evaluation identity onto it for Intake ingest.
+
+    Agent fields the producer already set are left alone; ``agent_attrs`` only
+    fills blanks, so a well-behaved producer stays authoritative.
+
+    ``extra.verifier_result`` is deliberately not injected: the backend already
+    creates ``evaluator_results`` rows per trial metric, and letting Intake derive
+    a second set from the trajectory would double-count them.
+
+    Args:
+        ref(ResourceRef): Resource reference to the ATIF trajectory file.
+        experiment_id(str): Evaluation name, used as ``evaluation_context.evaluation_id``.
+        task_id(str): Test case id, used as ``evaluation_context.test_case_id``.
+        agent_attrs(dict[str, str]): OTLP-style agent attributes used as fallbacks.
+
+    Returns:
+        dict[str, Any]: The ATIF ingest request body.
+    """
+    trajectory = _load(ref)
+    trajectory["evaluation_context"] = {
+        "evaluation_id": experiment_id,
+        "test_case_id": task_id,
+    }
+    agent = trajectory.get("agent")
+    if not isinstance(agent, dict):
+        agent = {}
+    for field, attr in _AGENT_FIELD_BY_ATTR:
+        if not agent.get(field) and attr in agent_attrs:
+            agent[field] = agent_attrs[attr]
+    trajectory["agent"] = agent
+    return trajectory

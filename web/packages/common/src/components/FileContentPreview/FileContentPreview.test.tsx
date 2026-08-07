@@ -79,7 +79,7 @@ describe('FileContentPreview', () => {
   });
 
   describe('JSON / JSONL dispatch', () => {
-    it('routes .json through CodeEditor with contentType=json', () => {
+    it('routes .json through CodeEditor with contentType=json', async () => {
       render(
         <FileContentPreview
           file={{ path: 'data.json' }}
@@ -88,12 +88,12 @@ describe('FileContentPreview', () => {
           content='{"key": "value"}'
         />
       );
-      const editor = screen.getByTestId('code-editor');
+      const editor = await screen.findByTestId('code-editor');
       expect(editor).toHaveAttribute('data-content-type', 'json');
       expect(editor).toHaveTextContent('{"key": "value"}');
     });
 
-    it('routes .jsonl through CodeEditor with contentType=jsonl', () => {
+    it('routes .jsonl through CodeEditor with contentType=jsonl', async () => {
       render(
         <FileContentPreview
           file={{ path: 'data.jsonl' }}
@@ -102,12 +102,12 @@ describe('FileContentPreview', () => {
           content={'{"line": 1}\n{"line": 2}'}
         />
       );
-      const editor = screen.getByTestId('code-editor');
+      const editor = await screen.findByTestId('code-editor');
       expect(editor).toHaveAttribute('data-content-type', 'jsonl');
       expect(editor).toHaveTextContent('{"line": 1}');
     });
 
-    it('handles nested file paths', () => {
+    it('handles nested file paths', async () => {
       render(
         <FileContentPreview
           file={{ path: 'folder/subfolder/data.json' }}
@@ -116,7 +116,7 @@ describe('FileContentPreview', () => {
           content='{"nested": true}'
         />
       );
-      expect(screen.getByTestId('code-editor')).toHaveAttribute('data-content-type', 'json');
+      expect(await screen.findByTestId('code-editor')).toHaveAttribute('data-content-type', 'json');
     });
   });
 
@@ -166,7 +166,7 @@ describe('FileContentPreview', () => {
   });
 
   describe('Plain text fallback', () => {
-    it('routes unknown extensions through CodeEditor with contentType=text', () => {
+    it('routes unknown extensions through CodeEditor with contentType=text', async () => {
       render(
         <FileContentPreview
           file={{ path: 'readme.txt' }}
@@ -175,7 +175,7 @@ describe('FileContentPreview', () => {
           content="This is plain text content"
         />
       );
-      const editor = screen.getByTestId('code-editor');
+      const editor = await screen.findByTestId('code-editor');
       expect(editor).toHaveAttribute('data-content-type', 'text');
       expect(editor).toHaveTextContent('This is plain text content');
     });

@@ -41,10 +41,6 @@ ARG UV_VERSION=0.11.33
 ARG PYTHON_VERSION=3.13.14
 ARG CMAKE_VERSION=4.0.3
 
-# Reuse the shared FFmpeg/VLM wheels (cp313 av / opencv-headless / decord2), supplied by bake as a
-# named context (see docker/base/Dockerfile.python-wheels). Replaces the FFmpeg-bundling PyPI copies.
-FROM ffmpeg-vlm-wheel-image AS ffmpeg-vlm-wheel-src
-
 # ---- RL source (+ its submodules, incl. Gym) via BuildKit's git ADD ----
 # RL pins Gym, Automodel and Megatron-Bridge (+ nested Megatron-LM) as git submodules, all over
 # https, so `ADD <repo>#<ref>` recurses and fetches them anonymously. Submodule CONTENT arrives
@@ -249,22 +245,17 @@ find "${UV_CACHE_DIR}" -type d -path "*ray/_private/runtime_env/agent/thirdparty
 # jackson-databind / jackson-core CVEs: drop ray's bundled ray_dist.jar, which only backs Ray's Java
 # worker support (unused - no JVM here). Removed before the prefetch so no venv symlinks to it.
 find "${UV_CACHE_DIR}" -type d -path "*/ray/jars" -exec rm -rf {} + || true
-EOF
 
-# Replace the FFmpeg-bundling av / opencv / decord2 copies with vendored cp313 wheels (CVE).
-RUN --mount=from=ffmpeg-vlm-wheel-src,target=/tmp/ffmpeg,readonly <<"EOF" bash -exu
-for site in /opt/nemo_rl_venv/lib/python*/site-packages; do
-    [ -d "${site}" ] || continue
-    rm -rf \
-        "${site}/av" "${site}"/av-*.dist-info "${site}/av.libs" \
-        "${site}/cv2" "${site}/opencv_python_headless.libs" "${site}"/opencv_python_headless-*.dist-info \
-        "${site}/decord" "${site}"/decord-*.dist-info "${site}/decord.libs" \
-        "${site}/decord2" "${site}"/decord2-*.dist-info "${site}/decord2.libs"
-done
-uv pip install --python /opt/nemo_rl_venv/bin/python --no-cache --no-deps --reinstall \
-    /tmp/ffmpeg/wheels/av-*-abi3-manylinux_2_28_*.whl \
-    /tmp/ffmpeg/wheels/opencv_python_headless-*cp313*.whl \
-    /tmp/ffmpeg/wheels/decord2-*cp313*.whl
+# FFmpeg CVEs (CVE-2026-8461 + CVE-2026-64830..64835): PyNvVideoCodec bundles FFmpeg 8.1.1 shared
+# libraries, which the scan reports as `ffmpeg` whatever the Python package version is. vLLM pins it
+# so it cannot leave the lock, but nothing on the DPO/GRPO path reaches it: vLLM defaults to the
+# `opencv` video backend and imports PyNvVideoCodec inside decode_frames_pynvvideocodec(), so only
+# the opt-in `pynvvideocodec` backend breaks. Upgrading does not help - 2.2.0 ships FFmpeg 8.1.2,
+# which fixes only one of the seven. The second pattern is the wheel's vendored FFmpeg source
+# tarball. Removed before the prefetch so no venv symlinks into it; only these two directories go,
+# so uv still sees the package as cached and does not re-download it.
+find "${UV_CACHE_DIR}" -type d \
+    \( -name PyNvVideoCodec -o -name 'pynvvideocodec-*.data' \) -exec rm -rf {} + || true
 EOF
 
 # Full RL source including submodules (Automodel, Megatron-Bridge + nested Megatron-LM, Gym). Copied
