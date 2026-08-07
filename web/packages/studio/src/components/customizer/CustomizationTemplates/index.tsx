@@ -32,7 +32,7 @@ import { toError } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { KeyRound } from 'lucide-react';
 import { type FC, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 interface TemplateCardProps {
   template: CustomizationTemplate;
