@@ -242,8 +242,8 @@ class Proposer(Agent):
         Args:
         - analysis (str): round analysis with root causes already enumerated
         - evolution_history (str): markdown table of prior rounds, for context
-        - tried_types (list[str]): optimization_types already attempted — AVOID these
-        - available_types (list[str]): types not yet tried — PICK FROM THESE
+        - tried_types (list[str]): optimization_types already attempted
+        - available_types (list[str]): types not yet tried — PREFER THESE
         - survivors (list[dict]): each {id, reward, trajectory_reward, metadata,
           architecture}; these are your branching candidates with their architecture.md
           already loaded
@@ -270,7 +270,7 @@ class Proposer(Agent):
            independently of the fix, drop the hypothesis.
         2. Pick the ancestor from `survivors` most affected by that root cause.
         3. Load the matching card with `doc(self.optimize.<name>)` and pick ONE
-           optimization_type from `available_types` that the card covers.
+           optimization_type that the card covers, preferring `available_types`.
         4. Read the ancestor's architecture diagram (in `survivors[*].architecture`)
            to understand the current graph shape. If the change touches a skill,
            find it in the diagram — do NOT open source files.
@@ -294,13 +294,15 @@ class Proposer(Agent):
         ## Phase
         - exploration: novel directions, even speculative ones
         - exploitation: refine the current best survivor. When the obvious targeted
-          improvements have already been tried, do NOT stop — pick the best untried
-          direction from `available_types` and explore it.
+          improvements have already been tried, do NOT stop — take the best remaining
+          direction, an untried type when one fits and a tried one when it does not.
 
         ## MANDATORY
         - Return between 1 and max_candidates Improvements. NEVER return [].
-        - Each Improvement.optimization_type MUST be in `available_types`. If
-          `available_types` is empty, pick the least-tried type from the tried set.
+        - Each Improvement.optimization_type MUST be in `available_types` or
+          `tried_types`. Prefer `available_types`; reuse a tried type when it is
+          the tool that actually addresses the root cause. A type that worked in
+          an earlier round is not spent.
         - Each improvement in a round should target a different degree of freedom;
           two improvements touching the same axis are only allowed when no other
           viable direction exists.
