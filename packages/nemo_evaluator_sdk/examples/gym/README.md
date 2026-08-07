@@ -31,7 +31,7 @@ YAML
 From the nemo-platform repo root (any Python with `nemo_evaluator_sdk` importable — the runner shells out to Gym's own venv):
 
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval --gym-root /path/to/Gym
+uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval --gym-root /path/to/Gym
 ```
 
 Useful flags: `--resources-server`, `--agent`, `--model-type` (`inference_provider` for OpenAI-compatible **chat** endpoints; `openai_model` uses the OpenAI **Responses API** and 500s against chat-only endpoints), `--num-repeats`, `--output-dir`.
@@ -51,6 +51,20 @@ aggregate scores:
 
 Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/.../gym-eval-ab12cd34
 ```
+
+## Read the results
+
+`inspect_results.py` is the companion to the above: it reads a bundle and shows how to reach each kind of result — headline aggregates, `pass@k`, per-task outcomes, and the runner's own imported numbers. Its accessors (`aggregate`, `per_task_outcomes`) are written to be lifted into your own code, and everything it shows also works on the in-memory `AgentEvalResult` that `AgentEvaluator().run(...)` returns — reading a bundle just makes it runnable without a live run.
+
+No bundle is checked in; the run above produces one. Give it a stable `--output-dir` and point the reader at the same path:
+
+```bash
+uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval \
+    --gym-root /path/to/Gym --output-dir /tmp/gym-eval
+uv run python -m packages.nemo_evaluator_sdk.examples.gym.inspect_results --bundle /tmp/gym-eval
+```
+
+Aggregates named `runner.gym.*` are Gym's own figures, imported into `summary.scores` so they are addressable exactly like the SDK's — the prefix is what tells you which side computed them. The script cross-checks Gym's `pass@1` against the SDK's natively-computed one (Gym reports accuracy on a 0-100 scale where the SDK uses 0-1). It works on any agent-eval bundle: pass `--metric-type`/`--output-name` for a run scored with a different metric.
 
 ## How it runs Gym
 

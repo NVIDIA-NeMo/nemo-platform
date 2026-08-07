@@ -24,7 +24,9 @@ Prerequisites (see README.md):
 
 Run from the repository root::
 
-    python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval --gym-root /path/to/Gym
+    uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval --gym-root /path/to/Gym
+
+Pass ``--output-dir`` to write the bundle somewhere stable, then read it with ``inspect_results.py``.
 """
 
 from __future__ import annotations

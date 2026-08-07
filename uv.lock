@@ -4388,7 +4388,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'nemo-platform-plugin'", specifier = ">=1.109.1" },
     { name = "pandas" },
     { name = "pydantic", marker = "extra == 'data-designer-nemo'", specifier = ">=2" },
-    { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.10.3" },
+    { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.12.0" },
     { name = "pydantic-settings", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.8.1" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23" },
@@ -4513,7 +4513,7 @@ requires-dist = [
     { name = "nemo-evaluator-sdk", editable = "packages/nemo_evaluator_sdk" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-platform-sdk", editable = "sdk/python/nemo-platform" },
-    { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pydantic", specifier = ">=2.12.0" },
     { name = "typer", specifier = ">=0.20.0" },
 ]
 
@@ -4799,7 +4799,7 @@ requires-dist = [
     { name = "nooa", git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=6e0274dd03f883254a084cfb9f871ea580e03434" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.42.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.42.1" },
-    { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "typer", specifier = ">=0.20.0" },
     { name = "tzdata", specifier = "==2026.2" },
@@ -5096,6 +5096,7 @@ inference-gateway-service = [
 ]
 intake-service = [
     { name = "clickhouse-connect", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "docker", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "fastapi", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-proto", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5536,6 +5537,7 @@ requires-dist = [
     { name = "distro", marker = "extra == 'nemo-platform-sdk'", specifier = ">=1.7.0,<2" },
     { name = "docker", marker = "extra == 'all'", specifier = ">=7.1.0" },
     { name = "docker", marker = "extra == 'core-service'", specifier = ">=7.1.0" },
+    { name = "docker", marker = "extra == 'intake-service'", specifier = ">=7.1.0" },
     { name = "docker", marker = "extra == 'jobs-service'", specifier = ">=7.1.0" },
     { name = "docker", marker = "extra == 'nemo-platform-sdk'", specifier = ">=7.0.0" },
     { name = "docker", marker = "extra == 'services'", specifier = ">=7.1.0" },
@@ -5865,10 +5867,10 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'jobs-service'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'models-service'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'nemo-auditor-plugin'", specifier = ">=2.10.6" },
-    { name = "pydantic", marker = "extra == 'nemo-evaluator-plugin'", specifier = ">=2.10.6" },
+    { name = "pydantic", marker = "extra == 'nemo-evaluator-plugin'", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'nemo-evaluator-sdk'", specifier = ">=2.10.6" },
     { name = "pydantic", marker = "extra == 'nemo-optimization-plugin'", specifier = ">=2.10.6" },
-    { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.10.3" },
+    { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'nemo-platform-sdk'", specifier = ">=2.0.0,<3" },
     { name = "pydantic", marker = "extra == 'nmp-common'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'plugins'", specifier = ">=2.10.6" },
@@ -6151,7 +6153,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'nemo-platform-sdk'" },
     { name = "prompt-toolkit", marker = "extra == 'nemo-platform-sdk'", specifier = ">=3.0.0" },
     { name = "psutil", marker = "extra == 'nemo-platform-sdk'", specifier = ">=5.9.0" },
-    { name = "pydantic", specifier = ">=2.10.3" },
+    { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pydantic", marker = "extra == 'nemo-platform-sdk'", specifier = ">=2.0.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -6481,7 +6483,7 @@ requires-dist = [
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nemo-safe-synthesizer", specifier = "==0.1.7" },
     { name = "openai", marker = "extra == 'nemo-platform-plugin'", specifier = ">=1.109.1" },
-    { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.10.3" },
+    { name = "pydantic", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.12.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2" },
     { name = "pydantic-settings", specifier = ">=2.2.1" },
     { name = "pydantic-settings", marker = "extra == 'nemo-platform-plugin'", specifier = ">=2.8.1" },
@@ -6844,7 +6846,7 @@ requires-dist = [
     { name = "nmp-studio", editable = "services/studio" },
     { name = "orjson", specifier = ">=3.11.6" },
     { name = "protobuf", specifier = ">=6.33.5,<7.0.dev0" },
-    { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "pydantic", specifier = ">=2.12.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", specifier = ">=2.33.1" },
     { name = "sacrebleu" },
@@ -7663,6 +7665,7 @@ version = "0.0.0"
 source = { editable = "services/intake" }
 dependencies = [
     { name = "clickhouse-connect", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "docker", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "fastapi", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "opentelemetry-proto", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -7688,6 +7691,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "clickhouse-connect", specifier = ">=0.7,<1.0" },
+    { name = "docker", specifier = ">=7.1.0" },
     { name = "fastapi", specifier = ">=0.115.5,<1.0.0" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "opentelemetry-proto", specifier = ">=1.27.0" },

@@ -51,6 +51,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import signal
@@ -64,6 +65,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTas
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.values.results import AggregateRangeScore, AggregateScalarScore, AggregateScore
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
@@ -359,6 +361,16 @@ class GymAgentTaskRunner:
 
     def __init__(self, *, config: GymRuntimeConfig) -> None:
         self._config = config
+        self._run_aggregations: dict[str, Any] | None = None
+
+    def run_aggregate_scores(self) -> Sequence[AggregateScore]:
+        """Gym's ``agent_metrics`` mapped onto typed aggregate scores, namespaced ``runner.gym.<metric>``.
+
+        Satisfies :class:`RunAggregationsProvider`. ``reward`` is skipped: the SDK already scores it
+        natively as ``gym_reward.reward``, and two differently-derived numbers under one name invites
+        exactly the confusion the namespace is there to prevent.
+        """
+        return _aggregate_scores_from_gym(self._run_aggregations)
 
     def runner_info(self) -> RunnerInfo:
         """Identify this runner and the Gym settings that shape its results.
@@ -390,6 +402,7 @@ class GymAgentTaskRunner:
         config: AgentEvalRunConfig | None = None,
     ) -> list[AgentEvalTrial]:
         cfg = self._config
+        self._run_aggregations = None  # reset per run so a reused runner never leaks a prior run's numbers
         # Provenance for the log line only — the file Gym actually reads is the normalized one we
         # materialize below from the tasks themselves.
         source_dataset = _source_datasets(tasks)
@@ -421,6 +434,7 @@ class GymAgentTaskRunner:
         )
 
         await self._run_two_step(input_path, rollouts_path, work_dir)
+        self._run_aggregations = _read_run_aggregations(rollouts_path)
         trials = _trials_from_rollouts(rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key)
         _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
@@ -727,6 +741,144 @@ def _require_full_coverage(tasks: Sequence[AgentEvalTask], *, covered_task_ids: 
 def _failures_path_for(rollouts_path: Path) -> Path:
     """Sidecar Gym writes failed rollouts to (mirrors Gym's own ``_failures_path_for``)."""
     return rollouts_path.with_name(rollouts_path.stem + "_failures.jsonl")
+
+
+def _aggregate_metrics_path_for(rollouts_path: Path) -> Path:
+    """Sidecar Gym writes run-level aggregate metrics to (``<stem>_aggregate_metrics.json``)."""
+    return rollouts_path.with_name(rollouts_path.stem + "_aggregate_metrics.json")
+
+
+def _read_run_aggregations(rollouts_path: Path) -> dict[str, Any] | None:
+    """Parse Gym's ``rollouts_aggregate_metrics.json``, or ``None`` when absent/unparseable.
+
+    Gym's file is a list with one entry per agent (``agent_ref`` / ``agent_metrics`` / ``key_metrics`` /
+    ``group_level_metrics``), so it is returned keyed by agent name. Carried through as-is — Gym's schema
+    isn't contractual, so the SDK does not type it.
+    """
+    path = _aggregate_metrics_path_for(rollouts_path)
+    if not path.exists():
+        return None
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        # UnicodeDecodeError is a ValueError, not an OSError: a sidecar truncated mid-codepoint would
+        # otherwise raise straight out of run_tasks and discard a collection that already succeeded.
+        logger.warning("Could not parse Gym aggregate metrics at %s; skipping run aggregations.", path)
+        return None
+    if not isinstance(parsed, list):
+        logger.warning("Unexpected Gym aggregate-metrics shape at %s (%s); skipping.", path, type(parsed).__name__)
+        return None
+    # Gym's schema is not contractual, and this runs after a collection that already succeeded — an
+    # entry in an unexpected shape must not raise out of run_tasks and discard every trial with it.
+    aggregations: dict[str, Any] = {}
+    for entry in parsed:
+        agent_ref = entry.get("agent_ref") if isinstance(entry, Mapping) else None
+        name = agent_ref.get("name") if isinstance(agent_ref, Mapping) else None
+        if not isinstance(name, str):
+            logger.warning(
+                "Skipping a Gym aggregate-metrics entry in %s with no usable agent_ref.name (got %r).", path, agent_ref
+            )
+            continue
+        aggregations[name] = {key: value for key, value in entry.items() if key != "agent_ref"}
+    return aggregations or None
+
+
+#: Gym flattens a distribution into ``<stat>/<metric>`` keys. Its RewardProfiler emits this exact set
+#: together for every numeric column (``describe_dataframe``), minus ``histogram``, which
+#: ``prepare_for_serialization`` strips before the file is written. All five must be present before we
+#: treat a group of keys as one distribution: a resources-server is free to define a metric literally
+#: named ``mean`` (36 of Gym's ~97 servers override ``compute_metrics``), and re-assembling on a partial
+#: match would rename someone's standalone metric into a statistic of a distribution that never existed.
+_GYM_STAT_FAMILY = ("mean", "max", "min", "median", "std")
+
+#: Metric Gym reports that the SDK already computes natively from the same rollouts (``gym_reward.reward``).
+_GYM_REDUNDANT_METRICS = frozenset({"reward"})
+
+
+def _aggregate_scores_from_gym(aggregations: Mapping[str, Any] | None) -> list[AggregateScore]:
+    """Map Gym's run-level ``agent_metrics`` onto typed aggregate scores named ``runner.gym.<metric>``.
+
+    Reads ``agent_metrics``, not ``key_metrics``: ``key_metrics`` is a *subset* of it chosen by the
+    resources-server, and the default selection (``get_key_metrics``) keeps only the ``mean/*`` entries —
+    so the max/min/median/std that make a distribution never appear there, and every metric would arrive
+    as a lone ``mean/<name>`` scalar.
+
+    Keys forming a full stat family are re-assembled into one :class:`AggregateRangeScore`; every other
+    numeric key becomes an :class:`AggregateScalarScore`. Non-numeric values are skipped — they are
+    labels or notes, not measurements.
+
+    Names are namespaced by runner (not by agent): each run is instrumented with a single agent, so the
+    agent adds no disambiguation, and a reader needs to know which *backend* produced a number.
+    """
+    if not aggregations:
+        return []
+    multi_agent = len(aggregations) > 1
+    scores: list[AggregateScore] = []
+    for agent_name, payload in sorted(aggregations.items()):
+        agent_metrics = payload.get("agent_metrics") if isinstance(payload, Mapping) else None
+        if not isinstance(agent_metrics, Mapping):
+            continue
+        # One agent per run is the norm, so `runner.gym.<metric>` reads cleanly; qualify by agent only
+        # when a run really did produce several, where the unqualified names would collide.
+        prefix = f"runner.gym.{agent_name}." if multi_agent else "runner.gym."
+        scores.extend(_scores_from_agent_metrics(agent_metrics, prefix=prefix))
+    return scores
+
+
+def _scores_from_agent_metrics(agent_metrics: Mapping[str, Any], *, prefix: str) -> list[AggregateScore]:
+    families: dict[str, dict[str, float]] = {}
+    scalars: dict[str, float] = {}
+    for key, value in agent_metrics.items():
+        number = _as_float(value)
+        if number is None:
+            continue
+        stat, _, metric = key.partition("/")
+        if metric and stat in _GYM_STAT_FAMILY:
+            families.setdefault(metric, {})[stat] = number
+        else:
+            scalars[key] = number
+
+    scores: list[AggregateScore] = []
+    for metric, stats in sorted(families.items()):
+        # Redundancy is a property of the metric, not of how complete its family is. Checking after the
+        # fallback below would let a partial `reward` family survive as `mean/reward` scalars, since the
+        # scalar filter matches the bare name -- reintroducing the duplicate of `gym_reward.reward` that
+        # skipping reward exists to prevent.
+        if metric in _GYM_REDUNDANT_METRICS:
+            continue
+        if set(stats) < set(_GYM_STAT_FAMILY):
+            # Not a distribution we can vouch for; keep each key as the standalone number it may well be.
+            scalars.update({f"{stat}/{metric}": value for stat, value in stats.items()})
+            continue
+        scores.append(
+            AggregateRangeScore(
+                name=f"{prefix}{metric}",
+                # Gym reports the statistics but not the sample size behind them, and inventing one
+                # would misreport coverage. `None` says "unknown"; 0 would assert nothing was evaluated.
+                count=None,
+                nan_count=0,
+                mean=stats["mean"],
+                min=stats["min"],
+                max=stats["max"],
+                median=stats["median"],
+                # Gym computes this with pandas (ddof=1), so it is the sample standard deviation.
+                sample_std_dev=stats["std"],
+                sample_variance=stats["std"] ** 2,
+            )
+        )
+    scores.extend(
+        AggregateScalarScore(name=f"{prefix}{key}", count=None, nan_count=0, value=value)
+        for key, value in sorted(scalars.items())
+        if key not in _GYM_REDUNDANT_METRICS
+    )
+    return scores
+
+
+def _as_float(value: Any) -> float | None:
+    """``float`` for a numeric Gym metric value; None for anything else (bools included: not measurements)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) else None
 
 
 def _ensure_fresh_output(rollouts_path: Path) -> None:

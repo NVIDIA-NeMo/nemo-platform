@@ -9,14 +9,17 @@ from pathlib import Path
 _SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "nmp" / "intake"
 _RAW_CLIENT_MODULE = "nmp.intake.spans.clickhouse_client"
 
-# Only service composition roots and the executor may depend on the raw runtime client.
+# Only service composition roots, the local lifecycle provisioner, and the
+# executor may depend on the raw runtime client.
 _EXPECTED_RAW_CLIENT_IMPORTS = {
     "api/v2/experiments/dependencies.py",
+    "local_clickhouse.py",
     "repository/clickhouse/executor.py",
     "service.py",
     "spans/api/dependencies.py",
 }
 _EXPECTED_LOW_LEVEL_CALL_MODULES = {
+    "local_clickhouse.py",
     "repository/clickhouse/executor.py",
     "spans/clickhouse_client.py",
     "spans/clickhouse_migrations.py",
@@ -36,7 +39,7 @@ def test_raw_clickhouse_client_imports_are_confined_to_approved_modules() -> Non
     )
 
 
-def test_low_level_clickhouse_calls_are_confined_to_executor_client_and_migrations() -> None:
+def test_low_level_clickhouse_calls_are_confined_to_approved_modules() -> None:
     callers = {
         path.relative_to(_SOURCE_ROOT).as_posix()
         for path in _SOURCE_ROOT.rglob("*.py")
@@ -46,7 +49,7 @@ def test_low_level_clickhouse_calls_are_confined_to_executor_client_and_migratio
     unexpected = callers - _EXPECTED_LOW_LEVEL_CALL_MODULES
     missing = _EXPECTED_LOW_LEVEL_CALL_MODULES - callers
     assert callers == _EXPECTED_LOW_LEVEL_CALL_MODULES, (
-        f"Low-level ClickHouse boundary changed; route runtime operations through ClickHouseExecutor: "
+        f"Low-level ClickHouse boundary changed; route runtime data operations through ClickHouseExecutor: "
         f"{sorted(unexpected)}; remove stale expected callers: {sorted(missing)}"
     )
 
