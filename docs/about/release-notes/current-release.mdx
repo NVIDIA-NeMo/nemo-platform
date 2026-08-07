@@ -1,23 +1,30 @@
 ---
-title: "v0.3.0"
+title: "v0.4.0 - 2026-08-12"
 description: ""
 ---
-NeMo Platform v0.3.0 expands the OSS distribution beyond local setup with
-self-managed Kubernetes and Helm documentation, while continuing to support
-the local-first Python package, CLI, SDK, Studio, and plugin workflows.
+NeMo Platform v0.4.0 expands the self-managed OSS release with user-scoped
+access keys, broader agent management and deployment workflows, OpenShell
+sandbox deployment, Customizer tuning additions, CLI telemetry opt-out
+controls, and an end-to-end local agent optimization loop.
 
 ## Highlights
 
-- **Self-managed Kubernetes.** The docs now cover Helm-based deployment to
-  user-managed Kubernetes clusters, including local Kind workflows and
-  cluster prerequisites.
-- **Agent deployment docs.** Agent container deployment guidance covers local
-  and Kubernetes paths and clarifies how SDK, CLI, and REST callers resolve
-  default model placeholders.
-- **Versioned compatibility.** Requirements and support-matrix pages describe
-  the 0.3.0 release instead of the previous local-only scope.
-- **Generated reference docs.** The configuration reference remains generated
-  from platform config models and renders as regular Fern MDX.
+- **Scoped access keys.** Authenticated users can create user-scoped access
+  keys with expiry for automation and non-SDK clients when the platform
+  administrator enables the feature.
+- **Agent lifecycle and deployment.** The `nemo agents` workflow supports
+  platform-owned agent CRUD and deployment on local subprocess, Docker, and
+  Kubernetes-backed runtimes.
+- **OpenShell deployment target.** Agents can be deployed as governed
+  OpenShell sandboxes through the Deployments plugin, with checked-in local
+  examples and a coding-agent skill for sandbox deployment.
+- **Customizer and optimization updates.** Customizer adds DPO support through
+  the NeMo-RL backend, and Optuna-backed numeric HPO is available for
+  Fabric-native agent packages.
+- **Telemetry controls.** The CLI includes anonymous usage telemetry controls,
+  including per-invocation and persistent opt-out paths.
+- **Insight-driven optimization.** Local developer workflows can run the loop
+  from raw traces to insights to a validated candidate agent.
 
 ## What's included
 
@@ -25,17 +32,44 @@ the local-first Python package, CLI, SDK, Studio, and plugin workflows.
 
 - Local source-install workflows with `make bootstrap`, `nemo setup`, and
   `nemo services run`.
-- Self-managed Helm/Kubernetes documentation for users deploying the platform
-  outside the local developer process.
-- Source-install auth and OIDC bootstrap guidance for users who enable RBAC
-  locally.
+- Self-managed Helm/Kubernetes deployment documentation.
+- Source-install auth, OIDC, RBAC, and scoped access-key workflows for users
+  who enable auth locally or in self-managed deployments.
+- Anonymous CLI telemetry with documented opt-out controls.
+
+### Access Control
+
+- Scoped access keys under `nemo auth access-keys ...` and the
+  `/apis/auth/v2/access-keys` API routes.
+- Access-key expiry controls and user-scope validation for non-SDK clients and
+  automation.
+- Authentik compose and Kubernetes examples that exercise scoped access keys.
 
 ### Agents
 
-- NAT-based agent workflow support through `nemo agents`.
-- Agent container rendering, building, publishing, and deployment guidance.
-- SDK and CLI examples that use the configured default model for agent
-  registration.
+- Platform-owned agent entities managed through `nemo agents create`,
+  `nemo agents list`, `nemo agents deploy`, `nemo agents invoke`,
+  `nemo agents undeploy`, and `nemo agents delete`.
+- Local subprocess, Docker, and Kubernetes deployment modes for agent services.
+- Fabric-backed agent runtime integration for Platform-managed agent configs.
+- Fabric-backed numeric HPO through `nemo agents optimize run` and
+  `nemo agents optimize submit`.
+- Insight-driven workflows that analyze telemetry, record insights, author eval
+  coverage, and validate candidate agents on a local developer machine.
+
+### Deployments
+
+- OpenShell as a deployment backend for sandboxed NAT agent deployments.
+- Local OpenShell gateway, sandbox policy, and demo artifacts under the
+  Deployments plugin examples.
+- Sandbox deployment guidance through the `deploy-sandbox` skill.
+
+### Fine-tune Models
+
+- DPO customization jobs through the `rl` backend, powered by NeMo-RL on a
+  Kubernetes/Ray runtime.
+- Full-weight DPO outputs registered as model entities.
+- Preference-dataset documentation and DPO customization tutorial coverage.
 
 ### Models and Inference
 
@@ -47,8 +81,8 @@ the local-first Python package, CLI, SDK, Studio, and plugin workflows.
 
 - First-party plugin workflows continue from the previous release line,
   including Agents, Customizer, Safe Synthesizer, Auditor, Guardrails,
-  Evaluator, Anonymizer, Data Designer, Switchyard middleware, and
-  Deployments.
+  Evaluator, Anonymizer, Data Designer, Switchyard middleware, Insights,
+  Experimentalist, Optimization, and Deployments.
 - Plugin docs cover runtime service, CLI, job, controller, inference
   middleware, and coding-agent skill surfaces.
 
@@ -70,7 +104,7 @@ configuration.
 For self-managed Kubernetes, start with
 [Install NeMo Platform Helm Chart](/documentation/self-managed-deployment/setup/helm/install).
 
-## Upgrade from v0.2.x
+## Upgrade from v0.3.x
 
 From an existing local checkout:
 
@@ -91,30 +125,43 @@ workflows against the upgraded checkout.
 - macOS and Linux for local CLI, SDK, Studio, and hosted-provider workflows
 - Linux x86_64 for local NVIDIA GPU workloads
 - Self-managed Kubernetes clusters deployed with Helm
-- Docker for Docker-backed platform, job, and local model-serving workflows
-- NVIDIA GPU access for local training, model serving, and GPU-backed
-  synthetic data workflows
+- Docker for Docker-backed platform, job, model-serving, and OpenShell local
+  sandbox workflows
+- Kubernetes/Ray runtime for NeMo-RL DPO customization jobs
+- NVIDIA GPU access for local training, model serving, DPO training, and
+  GPU-backed synthetic data workflows
 - Node 22.18.0+ for Studio assets
-- Platform API and `nemo-platform` Python SDK `0.3.0`
+- Platform API and `nemo-platform` Python SDK `0.4.0`
 
 ## Current constraints
 
-- **Self-managed scope.** v0.3.0 documents local setup and user-managed
+- **Self-managed scope.** v0.4.0 documents local setup and user-managed
   Kubernetes deployment. It is not a managed hosted-service release.
-- **Docker model serving.** v0.3.0 includes vLLM deployment in Docker. Docker
+- **Access keys.** Scoped access keys are disabled by default and must be
+  enabled by the platform administrator.
+- **DPO runtime.** DPO customization uses the `rl` backend and requires a
+  Kubernetes-backed platform with Ray-capable GPU execution. It has no local
+  Docker fallback.
+- **GRPO and PPO.** GRPO/PPO training methods and custom RL environments are
+  not part of the v0.4.0 Customizer release scope.
+- **Docker model serving.** v0.4.0 includes vLLM deployment in Docker. Docker
   deployment for NIM is not included in this release.
-- **Customizer Docker support.** Docker-backed Customizer jobs target GPU
-  Linux environments. ARM64 images and NeMo Automodel Docker execution are not
-  part of this release.
+- **Studio.** v0.4.0 does not add a new Studio release deliverable. The
+  Anonymizer Studio workflow remains out of scope for this release.
+- **Evaluator.** Scaled-evaluation work is tracked outside the v0.4.0 platform
+  release scope.
 - **Auth and RBAC.** Source-install auth and OIDC setups require the bootstrap
   IAM seed step described in [Setup](/documentation/get-started). Validate
   role bindings for your deployment mode before relying on them for multi-user
   access control.
 - **Skill Evaluation.** Skill Evaluation workflows are not included in
-  v0.3.0.
+  v0.4.0.
 
 ## Links
 
 - Repository: [https://github.com/NVIDIA-NeMo/nemo-platform](https://github.com/NVIDIA-NeMo/nemo-platform)
 - Issues: [https://github.com/NVIDIA-NeMo/nemo-platform/issues](https://github.com/NVIDIA-NeMo/nemo-platform/issues)
+- Scoped access-key tutorial: [https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/contrib/auth/authentik/tutorial.md#test-scoped-access-keys](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/contrib/auth/authentik/tutorial.md#test-scoped-access-keys)
+- OpenShell deployment example: [https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/plugins/nemo-deployments/examples/openshell](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/plugins/nemo-deployments/examples/openshell)
+- OpenShell deploy-sandbox skill: [https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-deployments/src/nemo_deployments_plugin/skills/deploy-sandbox/SKILL.md](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-deployments/src/nemo_deployments_plugin/skills/deploy-sandbox/SKILL.md)
 - NeMo Agent Toolkit: [https://docs.nvidia.com/nemo/agent-toolkit/latest/](https://docs.nvidia.com/nemo/agent-toolkit/latest/)
