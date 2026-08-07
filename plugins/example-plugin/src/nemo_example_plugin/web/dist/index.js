@@ -20,10 +20,10 @@ var _ = (e, t) => `/workspaces/${e}/plugin/example/${t}`, v = [
 //#endregion
 //#region src/SharedUiPage.tsx
 function b({ host: e }) {
-	let { data: t, isPending: i } = e.sdk.platform.useEntitiesListWorkspaces({
+	let { data: t, isPending: i, isError: a } = e.sdk.platform.useEntitiesListWorkspaces({
 		page: 1,
 		page_size: 100
-	}), a = t?.data ?? [], o = p(), s = m((e) => [
+	}), o = t?.data ?? [], s = p(), c = m((e) => [
 		e.accessor("name", {
 			header: "Name",
 			size: 240
@@ -57,17 +57,20 @@ function b({ host: e }) {
 				color: "secondary",
 				children: "This table is Studio's own StudioDataView, imported from @nemo/common and resolved through Studio's import map — not a copy bundled into the plugin."
 			}),
-			!i && a.length === 0 ? /* @__PURE__ */ h(f, {
+			a ? /* @__PURE__ */ h(f, {
+				header: "Couldn't load workspaces",
+				emptyMessage: "The request failed. Try again."
+			}) : !i && o.length === 0 ? /* @__PURE__ */ h(f, {
 				header: "No workspaces",
 				emptyMessage: "Create a workspace to see it listed here."
-			}) : /* @__PURE__ */ h("div", {
-				className: "flex min-h-[320px] flex-col",
+			}) : /* @__PURE__ */ h(n, {
+				className: "min-h-[320px]",
 				children: /* @__PURE__ */ h(d, {
-					dataViewState: o,
-					makeColumns: s,
+					dataViewState: s,
+					makeColumns: c,
 					attributes: { DataViewRoot: {
-						data: a,
-						totalCount: a.length,
+						data: o,
+						totalCount: o.length,
 						reactTableOptions: { getRowId: (e) => e.name }
 					} }
 				})

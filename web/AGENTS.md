@@ -38,17 +38,21 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 
 ### Bumping a shared singleton also means bumping the plugins
 
-`react`, `react-dom`, `react-router`, `@nvidia/foundations-react-core`, and
-`@tanstack/react-query` are served to plugin bundles from Studio's vendor build
-(`VENDOR_IMPORT_MAP` in `packages/studio/vite.config.ts`), so plugins declare
-them but never ship them. Plugin web dirs are **standalone pnpm roots** and
-cannot reference the `catalog:` block in `pnpm-workspace.yaml` — they restate
-the versions by hand.
+Everything in `VENDOR_IMPORT_MAP` (`packages/studio/vite.config.ts`) is served to
+plugin bundles from Studio's vendor build, so plugins must leave it external and
+never ship their own copy:
 
-So when you change one of those catalog entries, update the matching
-`dependencies` in every `plugins/*/web/package.json` in the same change.
-Otherwise a plugin keeps typechecking against the old version while Studio
-serves the new one, and nothing fails until it breaks at runtime. See
+| Shared                                                                                          | In the plugin's `package.json`?                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `react`, `react-dom`, `react-router`, `@nvidia/foundations-react-core`, `@tanstack/react-query` | Yes — versions must match the `catalog:` block                                                                                                                                   |
+| `@nemo/common` (Studio's shared UI)                                                             | **No** — unpublished, has no catalog entry, and must not be added as a dependency. Externalized in the plugin's `vite.config.ts`; types come from `paths` in its `tsconfig.json` |
+
+Plugin web dirs are **standalone pnpm roots** and cannot reference the
+`catalog:` block, so they restate the versions by hand. When you change one of
+those catalog entries, update the matching `dependencies` in every
+`plugins/*/web/package.json` in the same change — otherwise a plugin keeps
+typechecking against the old version while Studio serves the new one, and
+nothing fails until it breaks at runtime. See
 [plugins/example-plugin/web/AGENTS.md](../plugins/example-plugin/web/AGENTS.md).
 
 ## Running Tests Locally

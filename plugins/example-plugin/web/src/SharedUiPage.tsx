@@ -18,10 +18,11 @@ import type { PluginHost, Workspace } from "./types";
  * use, not a copy. Only the bare specifier resolves; deep paths do not.
  */
 export function SharedUiPage({ host }: { host: PluginHost }) {
-  const { data, isPending } = host.sdk.platform.useEntitiesListWorkspaces({
-    page: 1,
-    page_size: 100,
-  });
+  const { data, isPending, isError } =
+    host.sdk.platform.useEntitiesListWorkspaces({
+      page: 1,
+      page_size: 100,
+    });
   const workspaces = data?.data ?? [];
 
   // Syncs to URL search params — one DataView per route or they fight.
@@ -64,13 +65,18 @@ export function SharedUiPage({ host }: { host: PluginHost }) {
         bundled into the plugin.
       </Text>
 
-      {!isPending && workspaces.length === 0 ? (
+      {isError ? (
+        <TableEmptyState
+          header="Couldn't load workspaces"
+          emptyMessage="The request failed. Try again."
+        />
+      ) : !isPending && workspaces.length === 0 ? (
         <TableEmptyState
           header="No workspaces"
           emptyMessage="Create a workspace to see it listed here."
         />
       ) : (
-        <div className="flex min-h-[320px] flex-col">
+        <Stack className="min-h-[320px]">
           <StudioDataView
             dataViewState={dataViewState}
             makeColumns={makeColumns}
@@ -82,7 +88,7 @@ export function SharedUiPage({ host }: { host: PluginHost }) {
               },
             }}
           />
-        </div>
+        </Stack>
       )}
     </Stack>
   );
