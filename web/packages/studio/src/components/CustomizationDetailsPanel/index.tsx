@@ -19,6 +19,7 @@ import { CustomizationConfigSidePanel } from '@studio/components/sidePanels/Cust
 import { useCustomizationFilesAsRows } from '@studio/hooks/useCustomizationFiles';
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { hasMetrics } from '@studio/types/customization';
+import { isRlJob } from '@studio/util/customizationBackend';
 import {
   formatTrainingPhase,
   getBaseModel,
@@ -75,7 +76,11 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
     fileset: getDatasetUri(customization) || undefined,
   });
 
-  const epochs = customization?.spec?.schedule?.epochs;
+  const epochs = customization
+    ? isRlJob(customization)
+      ? customization.spec?.training?.epochs
+      : customization.spec?.schedule?.epochs
+    : undefined;
   const batchSize = getTrainingBatchSize(customization);
   const maxXAxisValue = getCustomizationTrainingSteps({
     epochs: epochs ?? 0,
@@ -148,7 +153,27 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
           )}
           <KVPair label="Customization ID" value={customization.id} />
           <KVPair label="Output Model" value={customization.spec?.output?.name ?? '-'} />
-          <KVPair label="Configuration" value={getBaseModel(customization) || '-'} />
+          <KVPair label="Base Model" value={getBaseModel(customization) || '-'} />
+          {isRlJob(customization) && (
+            <>
+              <KVPair
+                label="Training Method"
+                value="DPO (Direct Preference Optimization)"
+              />
+              <KVPair
+                label="KL Penalty (β)"
+                value={customization.spec.training.ref_policy_kl_penalty?.toString() ?? '-'}
+              />
+              <KVPair
+                label="Preference Loss Weight"
+                value={customization.spec.training.preference_loss_weight?.toString() ?? '-'}
+              />
+              <KVPair
+                label="SFT Loss Weight"
+                value={customization.spec.training.sft_loss_weight?.toString() ?? '-'}
+              />
+            </>
+          )}
           <KVPair label="Description" value={customization.description || '-'} />
           <KVPair
             label="Created"

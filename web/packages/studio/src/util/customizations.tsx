@@ -7,6 +7,7 @@ import { Badge } from '@nvidia/foundations-react-core';
 import type { CustomizationTrainingTelemetry } from '@studio/types/customization';
 import {
   isAutomodelJob,
+  isRlJob,
   isUnslothJob,
   type CustomizationJob,
   type CustomizationJobStatusDetails,
@@ -84,6 +85,9 @@ export const getBaseModel = (customizationJob?: CustomizationJob): string => {
   if (isAutomodelJob(customizationJob)) {
     return customizationJob.spec.model ?? '';
   }
+  if (isRlJob(customizationJob)) {
+    return customizationJob.spec.model ?? '';
+  }
   return '';
 };
 
@@ -101,6 +105,9 @@ export const getDatasetUri = (customizationJob?: CustomizationJob): string => {
   if (isUnslothJob(customizationJob)) {
     return customizationJob.spec.dataset.path ?? '';
   }
+  if (isRlJob(customizationJob)) {
+    return customizationJob.spec.dataset ?? '';
+  }
   return '';
 };
 
@@ -117,6 +124,9 @@ export const getTrainingBatchSize = (customizationJob?: CustomizationJob): numbe
   }
   if (isUnslothJob(customizationJob)) {
     return customizationJob.spec.batch?.per_device_train_batch_size ?? 0;
+  }
+  if (isRlJob(customizationJob)) {
+    return customizationJob.spec.training.batch_size ?? 0;
   }
   return 0;
 };
@@ -152,7 +162,9 @@ export const getCustomizationTrainingProgress = (customization: CustomizationJob
     return '';
   }
 
-  const epochs = customization.spec?.schedule?.epochs;
+  const epochs = isRlJob(customization)
+    ? customization.spec?.training?.epochs
+    : customization.spec?.schedule?.epochs;
 
   const { epoch, percentage_done: percentageDone } = customization.status_details || {};
 
@@ -245,6 +257,24 @@ export const getTrainingOptionBadges = (job: CustomizationJob | null | undefined
       badges.push(badge('gpus', <Gpu />, getTextWithCount('GPU', gpuCount)));
     }
     badges.push(badge('precision', undefined, `Precision: ${precision}`));
+    return badges;
+  }
+
+  if (isRlJob(job)) {
+    const p = job.spec.training.parallelism;
+    if (!p) return [];
+    const badges: ReactNode[] = [
+      badge('num_gpus_per_node', <Gpu />, getTextWithCount('GPU', p.num_gpus_per_node ?? 0)),
+      badge('num_nodes', <Circle />, getTextWithCount('Node', p.num_nodes ?? 0)),
+    ];
+    if (p.tensor_parallel_size && p.tensor_parallel_size > 1) {
+      badges.push(
+        badge('tensor_parallel_size', <Gpu />, getTextWithCount('Tensor Parallel', p.tensor_parallel_size))
+      );
+    }
+    if (p.sequence_parallel) {
+      badges.push(badge('sequence_parallel', undefined, 'Sequence Parallel'));
+    }
     return badges;
   }
 
