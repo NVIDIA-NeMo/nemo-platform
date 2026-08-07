@@ -90,6 +90,13 @@ telemetry:
   provider: relay
   output_dir: ./artifacts/relay
   project: email-phishing-agent
+  atif:
+    enabled: true
+    filename_template: trajectory-{session_id}.atif.json
+    storage:
+      - type: http
+        endpoint: http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif
+        timeout_millis: 3000
   atof:
     enabled: true
     filename: events.atof.jsonl
