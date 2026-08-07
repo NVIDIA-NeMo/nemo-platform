@@ -49,26 +49,21 @@ uv run nemo services run          # boots 18 services on :8080 — leave running
 
 Confirm the plugin loaded: `nemo plugins list` should include `insights`, and the startup banner should list the `insights` service.
 
-### Start ClickHouse (for the `intake` service)
+### Verify ClickHouse (for the `intake` service)
 
-The platform's `intake` service persists spans/traces in ClickHouse, and `nemo services run` does not bring it up. Without it, every `/apis/intake/v2/...` route returns `503 ClickHouse spans storage unavailable`, and the OTLP trace exporter in [`workflow.yml`](./workflow.yml) will fail to land traces.
+The platform's `intake` service persists spans/traces in ClickHouse. With Docker running,
+`nemo services run` automatically provisions and reuses a local ClickHouse container for the
+resolved NeMo data directory.
+Set `NMP_INTAKE_CLICKHOUSE_URL` before startup to use an externally managed instance instead.
 
-The quickest fix is to run a single ClickHouse container on the default port (`8123`):
-
-```bash
-docker run -d --name nemo-clickhouse \
-  -p 8123:8123 -p 9000:9000 \
-  clickhouse/clickhouse-server:24.3
-```
-
-`intake` looks for ClickHouse at `http://localhost:8123` by default; override with `NMP_INTAKE_CLICKHOUSE_URL` if you're pointing at a remote instance. Verify with:
+Verify the Intake read path after the platform starts:
 
 ```bash
-curl -s http://localhost:8123/ping                                           # -> Ok.
 curl -s http://localhost:8080/apis/intake/v2/workspaces/default/traces       # -> 200 with JSON
 ```
 
-Tear it down with `docker rm -f nemo-clickhouse` when you're done.
+If this returns `503` and the service log reports that the Docker daemon is unavailable, start Docker
+Desktop on macOS/Windows or the Docker service on Linux, then restart `nemo services run`.
 
 ### Configure a provider
 
