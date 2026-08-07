@@ -69,7 +69,7 @@ require_profile() {
     crun)
       SERVER_DEPLOY="opensandbox-server-crun"
       SERVER_SVC="opensandbox-server-crun"
-      WORKLOAD_NS="opensandbox-crun"
+      WORKLOAD_NS="nmp-temp1"
       API_SECRET="opensandbox-server-crun-api-key"
       EXPECT_RUNTIME_CLASS=""          # cluster default (crun)
       EXPECT_KATA_NODE="false"
@@ -77,7 +77,7 @@ require_profile() {
     kata-qemu)
       SERVER_DEPLOY="opensandbox-server-kata"
       SERVER_SVC="opensandbox-server-kata"
-      WORKLOAD_NS="opensandbox-kata"
+      WORKLOAD_NS="nmp-temp1"
       API_SECRET="opensandbox-server-kata-api-key"
       EXPECT_RUNTIME_CLASS="kata-qemu"
       EXPECT_KATA_NODE="true"
