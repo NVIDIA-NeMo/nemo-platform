@@ -18,7 +18,8 @@ from nemo_agents_plugin.entities import (
     agent_spec_fileset_name,
 )
 from nemo_deployments_plugin.entities import ConfigFile
-from nemo_platform import NotFoundError
+from nemo_platform import NotFoundError as PlatformNotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ async def stage_fabric_spec_config_files(
             _validate_referenced_skill_paths(rewritten_agent_config, config_files, agent_yaml_path)
             _validate_staged_size(config_files, fileset_name)
             return config_files
-    except (FileNotFoundError, NotFoundError) as exc:
+    except (FileNotFoundError, PlatformNotFoundError, PluginClientNotFoundError) as exc:
         logger.info(
             "Agent spec fileset %s/%s unavailable (%s); using inline agent.yaml only",
             workspace,
