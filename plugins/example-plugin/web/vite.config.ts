@@ -23,14 +23,10 @@ const STUDIO_SHARED_DEPS = [
   "@nemo/common",
 ];
 
-// A deep `@nemo/common/...` import is the one shared-UI mistake nothing else
-// catches: it typechecks, it builds, and because only the bare specifier is
-// externalized it quietly bundles a second copy of the component instead of
-// sharing Studio's instance. Fail the build instead.
+// A deep import isn't externalized, so it silently bundles a duplicate.
 const rejectDeepSharedImports = (): Plugin => ({
   name: "reject-deep-shared-imports",
-  // Must beat Vite's core resolver, which would otherwise resolve the deep
-  // path (via tsconfig paths) before this ever sees it.
+  // Must beat Vite's core resolver, which would resolve the path first.
   enforce: "pre",
   resolveId(id: string, importer: string | undefined) {
     if (id.startsWith("@nemo/common/")) {

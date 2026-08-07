@@ -1,14 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/**
- * Absolute paths for this plugin's pages.
- *
- * Studio mounts plugins at a splat route (`/plugin/:pluginName/*`), and React
- * Router resolves a relative `to` against the splat's *full* matched pathname.
- * So `to="overview"` appends to the current page instead of replacing it —
- * `/plugin/example/auth/overview`. Links must be absolute.
- */
+// Links must be absolute: Studio mounts plugins at a splat route, and React
+// Router resolves a relative `to` against the full matched path, so it appends.
 export const pluginPath = (workspaceId: string, page: string): string =>
   `/workspaces/${workspaceId}/plugin/example/${page}`;
 

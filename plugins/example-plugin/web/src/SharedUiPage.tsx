@@ -12,11 +12,8 @@ import { Stack, Text } from "@nvidia/foundations-react-core";
 import { useCallback, type ComponentProps } from "react";
 import type { PluginHost, Workspace } from "./types";
 
-/**
- * Studio's shared UI, rendered from a plugin. `@nemo/common` is external like
- * react and foundations — this is the same StudioDataView Studio's own tables
- * use, not a copy. Only the bare specifier resolves; deep paths do not.
- */
+// `@nemo/common` is external like react — this is Studio's own StudioDataView,
+// not a copy. Bare specifier only.
 export function SharedUiPage({ host }: { host: PluginHost }) {
   const { data, isPending, isError } =
     host.sdk.platform.useEntitiesListWorkspaces({
