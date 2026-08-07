@@ -22,7 +22,7 @@ from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
     MetricTarget,
-    is_eligible_for_metric_contract,
+    has_metric_dimensions,
     pareto_objectives,
 )
 from nemo_experimentalist_plugin.entities import (
@@ -58,7 +58,6 @@ from nemo_experimentalist_plugin.experimentalist.components.model_config import 
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
-    pareto_front,
     pareto_sort,
 )
 from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
@@ -642,7 +641,6 @@ class EvolutionaryOptimizer(Agent):
                     await self._select_survivors(
                         [c.slim() for c in candidates],
                         k=config.max_survivors,
-                        baseline_metrics=self._baseline_validation_metrics(evolution_tree),
                     )
                     if len(candidates) > 1
                     else list(candidates)
@@ -1412,22 +1410,18 @@ class EvolutionaryOptimizer(Agent):
         self,
         candidates: list[Candidate],
         k: int,
-        baseline_metrics: dict[str, float],
     ) -> list[Candidate]:
-        """Return diverse Pareto survivors that meet the complete metric contract."""
+        """Return diverse Pareto survivors, with regression metrics as selector context."""
         eligible = [
             candidate
             for candidate in candidates
-            if is_eligible_for_metric_contract(
-                candidate.reward("validation").metrics or {},
-                objective_function=self.config.objective_function,
-                regression_metrics=self.config.regression_metrics,
-                baseline_metrics=baseline_metrics,
-            )
+            if has_metric_dimensions(candidate.reward("validation").metrics or {}, self.config.objective_function)
         ]
-        excluded = [candidate.label for candidate in candidates if candidate not in eligible]
-        if excluded:
-            logger.warning("[METRICS] Excluding candidates that violate the metric contract: %s", excluded)
+        if not eligible:
+            raise ValueError(
+                "No candidate reports every objective metric: "
+                f"{[target.name for target in self.config.objective_function]}"
+            )
         ranked = pareto_sort(
             eligible,
             lambda candidate: pareto_objectives(
@@ -1440,14 +1434,6 @@ class EvolutionaryOptimizer(Agent):
             self.config.objective_function,
             self.config.regression_metrics,
         )
-
-    @staticmethod
-    def _baseline_validation_metrics(evolution_tree: EvolutionTree) -> dict[str, float]:
-        """Return the round-0 validation metrics used by regression guardrails."""
-        baseline = next((node for node in evolution_tree.nodes.values() if node.round == 0), None)
-        if baseline is None:
-            raise ValueError("Cannot enforce regression metrics without a round-0 baseline candidate")
-        return baseline.val_reward
 
     async def _evaluate_train_candidates(
         self,
@@ -1802,26 +1788,18 @@ class EvolutionaryOptimizer(Agent):
         """Select the winner, copy to workspace root, write final report."""
         # Only survivors that actually have a validation reward are eligible winners.
         scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
-        baseline_metrics = self._baseline_validation_metrics(evolution_tree)
-        eligible = [
-            node
-            for node in scored
-            if is_eligible_for_metric_contract(
-                node.val_reward,
-                objective_function=self.config.objective_function,
-                regression_metrics=self.config.regression_metrics,
-                baseline_metrics=baseline_metrics,
-            )
-        ]
-        front = (
-            pareto_front(
-                eligible,
-                lambda node: pareto_objectives(node.val_reward, self.config.objective_function),
-            )
-            if eligible
-            else []
+        eligible = [node for node in scored if has_metric_dimensions(node.val_reward, self.config.objective_function)]
+        ranked_nodes = pareto_sort(
+            eligible,
+            lambda node: pareto_objectives(node.val_reward, self.config.objective_function),
         )
-        best_id = front[0].label if front else None
+        finalists = await self.select_diverse_survivors(
+            [node.candidate for node in ranked_nodes],
+            1,
+            self.config.objective_function,
+            self.config.regression_metrics,
+        )
+        best_id = finalists[0].label if finalists else None
 
         restore_heldout_splits(self.working_dir)
 

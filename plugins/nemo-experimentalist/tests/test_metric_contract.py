@@ -5,7 +5,7 @@ import pytest
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
     MetricTarget,
-    is_eligible_for_metric_contract,
+    has_metric_dimensions,
     pareto_objectives,
 )
 from nemo_experimentalist_plugin.experimentalist.components.loop import _with_insight_objective
@@ -54,29 +54,14 @@ def test_pareto_ranking_uses_only_objectives_and_normalizes_minimization() -> No
     }
 
 
-def test_metric_contract_excludes_incomplete_or_regressing_candidates() -> None:
+def test_metric_dimensions_require_only_the_objectives_used_for_pareto_ranking() -> None:
     objectives = [MetricTarget(name="quality", direction="maximize")]
     regressions = [MetricTarget(name="cost", direction="minimize")]
-    baseline = {"quality": 0.5, "cost": 10.0}
 
-    assert not is_eligible_for_metric_contract(
-        {"cost": 8.0},
-        objective_function=objectives,
-        regression_metrics=regressions,
-        baseline_metrics=baseline,
-    )
-    assert not is_eligible_for_metric_contract(
-        {"quality": 0.9, "cost": 11.0},
-        objective_function=objectives,
-        regression_metrics=regressions,
-        baseline_metrics=baseline,
-    )
-    assert is_eligible_for_metric_contract(
-        {"quality": 0.9, "cost": 8.0},
-        objective_function=objectives,
-        regression_metrics=regressions,
-        baseline_metrics=baseline,
-    )
+    assert has_metric_dimensions({"quality": 0.9}, objectives)
+    assert not has_metric_dimensions({"cost": 8.0}, objectives)
+    assert has_metric_dimensions({"quality": 0.9, "cost": 11.0}, objectives)
+    assert not has_metric_dimensions({"quality": 0.9}, [*objectives, *regressions])
 
 
 @pytest.mark.parametrize(

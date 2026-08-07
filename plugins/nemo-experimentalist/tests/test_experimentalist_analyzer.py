@@ -192,6 +192,26 @@ def test_trace_cache_key_uses_trace_uri_namespace() -> None:
     assert cache.trace_uri_hash("intake://trace-1:objective-metrics:[]").startswith("trace-uri-")
 
 
+def test_peer_comparison_respects_minimize_metric_directions(tmp_path: Path) -> None:
+    analyzer = _make_analyzer(tmp_path, [])
+    focal = _FakeEvaluation(
+        trials=[_FakeTrial("focal", "task-1", None, {"quality": _FakeMetric(0.8), "tokens": _FakeMetric(10.0)})]
+    )
+    peer = _FakeEvaluation(
+        trials=[_FakeTrial("peer", "task-1", None, {"quality": _FakeMetric(0.7), "tokens": _FakeMetric(5.0)})]
+    )
+    directions = analyzer._metric_directions(
+        [{"name": "quality", "direction": "maximize"}, {"name": "tokens", "direction": "minimize"}], []
+    )
+
+    pairs = analyzer._select_divergent_pairs("focal", focal, {"peer": peer}, directions)
+    complementary = analyzer._find_complementary_failures("focal", focal, {"peer": peer}, directions)
+
+    assert pairs[0]["winner"] == "peer"
+    assert complementary["task-1"]["quality"]["leaders"] == ["focal"]
+    assert complementary["task-1"]["tokens"]["leaders"] == ["peer"]
+
+
 @pytest.mark.asyncio
 async def test_run_threads_client_and_workspace_into_trace_analyzer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

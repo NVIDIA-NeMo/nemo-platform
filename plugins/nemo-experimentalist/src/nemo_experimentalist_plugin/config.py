@@ -20,7 +20,7 @@ longer does.
 """
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
@@ -76,50 +76,8 @@ def pareto_objectives(metrics: dict[str, float], objective_function: list[Metric
 
 
 def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
-    """Return whether an evaluator result contains every declared metric target."""
+    """Return whether an evaluator result contains every required metric target."""
     return all(target.name in metrics for target in targets)
-
-
-def satisfies_regression_constraints(
-    metrics: dict[str, float],
-    baseline_metrics: dict[str, float],
-    regression_metrics: list[MetricTarget],
-) -> bool:
-    """Return whether metrics preserve every regression target relative to baseline.
-
-    A maximize target must stay at or above the baseline value; a minimize
-    target must stay at or below it. Both candidate and baseline must report
-    every declared regression dimension.
-    """
-    if not has_metric_dimensions(metrics, regression_metrics) or not has_metric_dimensions(
-        baseline_metrics, regression_metrics
-    ):
-        return False
-    return all(
-        metrics[target.name] >= baseline_metrics[target.name]
-        if target.direction == "maximize"
-        else metrics[target.name] <= baseline_metrics[target.name]
-        for target in regression_metrics
-    )
-
-
-def is_eligible_for_metric_contract(
-    metrics: dict[str, float],
-    *,
-    objective_function: list[MetricTarget],
-    regression_metrics: list[MetricTarget],
-    baseline_metrics: dict[str, float],
-) -> bool:
-    """Return whether a result is complete and satisfies its regression guardrails.
-
-    Pareto ranking is only meaningful when every candidate supplies each
-    objective dimension. Regression targets are feasibility constraints,
-    measured against the round-0 validation baseline, rather than additional
-    Pareto dimensions.
-    """
-    return has_metric_dimensions(
-        metrics, [*objective_function, *regression_metrics]
-    ) and satisfies_regression_constraints(metrics, baseline_metrics, regression_metrics)
 
 
 class EvolutionaryOptimizerConfig(BaseModel):
@@ -187,7 +145,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
 
     @model_validator(mode="after")
-    def validate_metric_contract(self) -> "EvolutionaryOptimizerConfig":
+    def validate_metric_contract(self) -> Self:
         objective_names = [target.name for target in self.objective_function]
         if len(objective_names) != len(set(objective_names)):
             raise ValueError("objective_function target names must be unique")

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -63,6 +64,27 @@ def test_harbor_dataset_add_tasks_copies_task_directories(tmp_path: Path) -> Non
     assert not (destination_root / "insight-task" / "stale.txt").exists()
     assert [task.id for task in train_dataset.list_tasks()] == ["insight-task"]
     assert Path(train_dataset.get_task("insight-task").uri.removeprefix("file://")) == destination_root / "insight-task"
+
+
+def test_harbor_dataset_add_tasks_preserves_existing_task_when_replacement_is_invalid(tmp_path: Path) -> None:
+    source_root = tmp_path / "insight-suite"
+    destination_root = tmp_path / "train"
+    source_task = source_root / "task-1"
+    destination_task = destination_root / "task-1"
+    source_task.mkdir(parents=True)
+    destination_task.mkdir(parents=True)
+    (source_task / "task.toml").write_text("", encoding="utf-8")
+    (destination_task / "task.toml").write_text("", encoding="utf-8")
+    (destination_task / "stale.txt").write_text("keep", encoding="utf-8")
+    insight_suite = HarborDataset.from_path(source_root)
+    train_dataset = HarborDataset.from_path(destination_root)
+    (source_task / "task.toml").write_text("not valid = [", encoding="utf-8")
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        train_dataset.add_tasks(list(insight_suite.list_tasks()))
+
+    assert (destination_task / "stale.txt").read_text(encoding="utf-8") == "keep"
+    assert (destination_task / "task.toml").is_file()
 
 
 @pytest.mark.asyncio

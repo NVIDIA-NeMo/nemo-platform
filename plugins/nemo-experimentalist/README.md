@@ -189,13 +189,17 @@ metric or an aggregate metric produced by the evaluator. The optimizer only rece
 reported metric values and the declared policy; it does not evaluate expressions,
 invent weights, or encode a selection algorithm.
 
+A single evaluator-produced aggregate metric:
+
 ```yaml
-# A single evaluator-produced aggregate metric.
 objective_function:
   - name: quality
     direction: maximize
+```
 
-# Include several metrics, for example lower token use and cost.
+Several metrics, for example lower token use and cost, with a guardrail:
+
+```yaml
 objective_function:
   - name: tokens
     direction: minimize

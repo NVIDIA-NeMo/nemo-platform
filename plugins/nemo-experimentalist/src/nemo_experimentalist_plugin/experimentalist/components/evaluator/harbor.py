@@ -1231,11 +1231,15 @@ class HarborDataset(Dataset):
             backup = destination_root / f".{task.id}.backup-{uuid4().hex}"
             shutil.copytree(source_dir, staging)
             try:
+                self._from_task_dir(staging)
                 if destination.exists():
                     logger.warning("Replacing existing Harbor task %s in dataset %s", task.id, self.id)
                     destination.rename(backup)
                 staging.rename(destination)
+                imported[task.id] = self._from_task_dir(destination)
             except BaseException:
+                if destination.exists() and backup.exists():
+                    shutil.rmtree(destination)
                 if staging.exists():
                     shutil.rmtree(staging)
                 if backup.exists() and not destination.exists():
@@ -1244,7 +1248,6 @@ class HarborDataset(Dataset):
             else:
                 if backup.exists():
                     shutil.rmtree(backup)
-            imported[task.id] = self._from_task_dir(destination)
 
         self.tasks = [imported.pop(task.id, task) for task in self.tasks]
         self.tasks.extend(imported.values())

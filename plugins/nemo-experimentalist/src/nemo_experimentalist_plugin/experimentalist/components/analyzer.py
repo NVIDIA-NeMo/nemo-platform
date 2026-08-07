@@ -410,9 +410,15 @@ class AgentAnalyzer(Agent):
             agent_id,
             evaluation,
             peer_evaluations,
+            metric_directions=self._metric_directions(objective_metrics or [], regression_metrics or []),
             k=self._config.max_divergent_pairs,
         )
-        complementary_raw = self._find_complementary_failures(agent_id, evaluation, peer_evaluations)
+        complementary_raw = self._find_complementary_failures(
+            agent_id,
+            evaluation,
+            peer_evaluations,
+            metric_directions=self._metric_directions(objective_metrics or [], regression_metrics or []),
+        )
 
         return await self._narrate_peer_comparison(
             agent_id,
@@ -428,6 +434,7 @@ class AgentAnalyzer(Agent):
         agent_id: str,
         evaluation: EvaluationResult,
         peer_evaluations: dict[str, EvaluationResult],
+        metric_directions: dict[str, str],
         k: int = 3,
     ) -> list[dict[str, Any]]:
         """Pick top-k divergent (peer, task) pairs ordered by absolute score delta.
@@ -455,7 +462,11 @@ class AgentAnalyzer(Agent):
             for task_id in sorted(set(focal_means) & set(peer_means)):
                 fm = focal_means[task_id]
                 pm = peer_means[task_id]
-                focal_delta = {m: fm.get(m, 0.0) - pm.get(m, 0.0) for m in sorted(set(fm) | set(pm))}
+                focal_delta = {
+                    metric: (fm.get(metric, 0.0) - pm.get(metric, 0.0))
+                    * (1.0 if metric_directions.get(metric, "maximize") == "maximize" else -1.0)
+                    for metric in sorted(set(fm) | set(pm))
+                }
                 magnitude = sum(abs(v) for v in focal_delta.values())
                 if magnitude == 0.0:
                     continue
@@ -500,11 +511,19 @@ class AgentAnalyzer(Agent):
             for task_id, metrics in per_task.items()
         }
 
+    @staticmethod
+    def _metric_directions(
+        objective_metrics: list[dict[str, str]], regression_metrics: list[dict[str, str]]
+    ) -> dict[str, str]:
+        """Return metric directions, defaulting dimensions outside the contract to maximize."""
+        return {metric["name"]: metric["direction"] for metric in [*objective_metrics, *regression_metrics]}
+
     def _find_complementary_failures(
         self,
         agent_id: str,
         evaluation: EvaluationResult,
         peer_evaluations: dict[str, EvaluationResult],
+        metric_directions: dict[str, str],
     ) -> dict[str, dict[str, dict[str, list[str]]]]:
         """Find tasks where agents split on leaders vs. trailers, per metric.
 
@@ -533,10 +552,14 @@ class AgentAnalyzer(Agent):
                 }
                 if len(values) < 2 or min(values.values()) == max(values.values()):
                     continue
-                best = max(values.values())
+                best = (
+                    max(values.values())
+                    if metric_directions.get(metric, "maximize") == "maximize"
+                    else min(values.values())
+                )
                 per_metric[metric] = {
                     "leaders": sorted(agent for agent, value in values.items() if value == best),
-                    "trailers": sorted(agent for agent, value in values.items() if value < best),
+                    "trailers": sorted(agent for agent, value in values.items() if value != best),
                 }
             if per_metric:
                 complementary[task_id] = per_metric

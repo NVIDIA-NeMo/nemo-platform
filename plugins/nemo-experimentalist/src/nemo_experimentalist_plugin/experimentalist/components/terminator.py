@@ -19,7 +19,7 @@ from typing import Any
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
     MetricTarget,
-    is_eligible_for_metric_contract,
+    has_metric_dimensions,
     pareto_objectives,
 )
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree, pareto_front
@@ -167,18 +167,7 @@ class Terminator(Agent):
             return False
         active_objectives = objective_metrics or EvolutionaryOptimizerConfig().objective_function
         active_regressions = regression_metrics or []
-        baseline = next((node for node in evolution_tree.nodes.values() if node.round == 0), None)
-        baseline_metrics = baseline.val_reward if baseline is not None else {}
-        scored = [
-            node
-            for node in scored
-            if is_eligible_for_metric_contract(
-                node.val_reward,
-                objective_function=active_objectives,
-                regression_metrics=active_regressions,
-                baseline_metrics=baseline_metrics,
-            )
-        ]
+        scored = [node for node in scored if has_metric_dimensions(node.val_reward, active_objectives)]
         if not scored:
             return False
         old = [node for node in old if node in scored]
@@ -195,8 +184,8 @@ class Terminator(Agent):
             return True
         return await self.qualitative_stop_check(
             prior_analysis,
-            objective_metrics or [],
-            regression_metrics or [],
+            active_objectives,
+            active_regressions,
         )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5)))
