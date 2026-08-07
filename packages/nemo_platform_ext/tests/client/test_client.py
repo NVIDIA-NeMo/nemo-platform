@@ -181,15 +181,89 @@ class TestCreateClientOAuth:
         assert saved_user["token"] == new_token
         assert saved_user["refresh_token"] == "new_refresh"
 
-    def test_env_access_token_overrides_user_auth(self, tmp_path, monkeypatch):
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_explicit_access_token_overrides_config_auth(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
-        monkeypatch.setenv("NMP_ACCESS_TOKEN", "env-access-token-123")
+
+        client = create_client(config_path=config_path, access_token="explicit-access-token-123")
+
+        request = client._client.build_request("GET", "http://localhost:8080/test")
+        client._client._event_hooks["request"][0](request)
+        assert request.headers["Authorization"] == "Bearer explicit-access-token-123"
+
+
+class TestCreateClientOAuthUserAuthDisabledCluster:
+    """Regression tests: OAuthUser context pointed at a cluster with no auth.
+
+    This happens when a config context was previously authenticated against a
+    real OIDC cluster and is later pointed at a local/no-auth instance. Once
+    the stored access token expires, the client must not attempt a
+    refresh_token grant against an empty token endpoint.
+    """
+
+    @patch(
+        "nemo_platform.client.factory.discover_nmp_config",
+        return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
+    )
+    @patch(
+        "nemo_platform_ext.client.factory.discover_nmp_config",
+        return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
+    )
+    @patch("nemo_platform_ext.auth.token_provider.httpx.post")
+    def test_expired_token_on_auth_disabled_cluster_does_not_attempt_refresh(
+        self, mock_post, _mock_ext_discover, _mock_sdk_discover, tmp_path
+    ):
+        expired_token = _make_jwt({"exp": int(time.time()) - 100, "sub": "user1"})
+        config_path = _write_config(
+            tmp_path,
+            token=expired_token,
+            refresh_token="refresh_abc",
+        )
+
+        client = create_client(config_path=config_path)
+
+        assert str(client.base_url).rstrip("/") == "http://localhost:8080"
+        mock_post.assert_not_called()
+        assert "Authorization" not in client._custom_headers
+
+    @patch(
+        "nemo_platform.client.factory.discover_nmp_config",
+        return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
+    )
+    @patch(
+        "nemo_platform_ext.client.factory.discover_nmp_config",
+        return_value=NMPOIDCConfig(auth_enabled=False, client_id="", token_endpoint=""),
+    )
+    def test_valid_token_on_auth_disabled_cluster_skips_token_provider(
+        self, _mock_ext_discover, _mock_sdk_discover, tmp_path
+    ):
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        config_path = _write_config(
+            tmp_path,
+            token=token,
+            refresh_token="refresh_abc",
+        )
+
+        client = create_client(config_path=config_path)
+
+        assert "Authorization" not in client._custom_headers
+        assert client._client._event_hooks["request"] == []
+
+    @patch(
+        "nemo_platform_ext.client.factory.discover_nmp_config",
+        side_effect=Exception("network error"),
+    )
+    def test_discovery_failure_preserves_stored_token(self, _mock_discover, tmp_path):
+        # A discovery failure must not strip auth — the stored token may still
+        # be valid and should be used as-is without attempting a refresh.
+        token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
+        config_path = _write_config(tmp_path, token=token, refresh_token="refresh_abc")
 
         client = create_client(config_path=config_path)
 
         request = client._client.build_request("GET", "http://localhost:8080/test")
         client._client._event_hooks["request"][0](request)
-        assert request.headers["Authorization"] == "Bearer env-access-token-123"
+        assert request.headers["Authorization"] == f"Bearer {token}"
 
 
 class TestCreateClientWorkloadIdentity:
@@ -277,7 +351,8 @@ class TestCreateClientWorkloadIdentity:
 
 
 class TestCreateClientApiKey:
-    def test_creates_client_with_api_key(self, tmp_path):
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_creates_client_with_api_key(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 
         client = create_client(config_path=config_path)
@@ -287,7 +362,8 @@ class TestCreateClientApiKey:
         assert "Authorization" in client._custom_headers
         assert client._custom_headers["Authorization"] == "Bearer nvapi-test-key-123"
 
-    def test_creates_client_with_email_api_key(self, tmp_path):
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_creates_client_with_email_api_key(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="admin@example.com")
 
         client = create_client(config_path=config_path)
@@ -355,7 +431,8 @@ class TestCreateClientProviderReuse:
 
 
 class TestCreateClientOverrides:
-    def test_base_url_override_uses_explicit_url_with_context_auth(self, tmp_path):
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_base_url_override_uses_explicit_url_with_context_auth(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 
         client = create_client(config_path=config_path, base_url="http://localhost:9090")
@@ -364,7 +441,8 @@ class TestCreateClientOverrides:
         assert client.workspace == "test-workspace"
         assert client._custom_headers["Authorization"] == "Bearer nvapi-test-key-123"
 
-    def test_context_override_uses_selected_context(self, tmp_path):
+    @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    def test_context_override_uses_selected_context(self, _mock_discover, tmp_path):
         config = {
             "current_context": "default",
             "clusters": [
@@ -646,7 +724,8 @@ class TestClientConstructorBootstrapBypass:
 
 class TestAsyncNeMoPlatformInit:
     @pytest.mark.asyncio
-    async def test_async_client_uses_config_for_api_key(self, tmp_path):
+    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
+    async def test_async_client_uses_config_for_api_key(self, _mock_discover, tmp_path):
         config_path = _write_config(tmp_path, user_type="api-key", api_key="nvapi-test-key-123")
 
         client = AsyncNeMoPlatform(config_path=config_path)
@@ -716,8 +795,9 @@ class TestPluginSDKMounting:
             await client.close()
 
     @pytest.mark.asyncio
+    @patch("nemo_platform.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
     @patch("nemo_platform_ext.client.factory.discover_nmp_config", return_value=_MOCK_NMP_CONFIG)
-    async def test_async_client_oauth_hook_injects_fresh_token(self, _mock_discover, tmp_path):
+    async def test_async_client_oauth_hook_injects_fresh_token(self, _mock_ext_discover, _mock_sdk_discover, tmp_path):
         token = _make_jwt({"exp": int(time.time()) + 3600, "sub": "user1"})
         config_path = _write_config(
             tmp_path,

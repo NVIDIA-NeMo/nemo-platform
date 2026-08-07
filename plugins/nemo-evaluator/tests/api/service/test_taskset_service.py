@@ -30,12 +30,19 @@ class _FakeTaskService:
     async def resolve_revision(self, workspace: str, name: str, fragment: str = "latest") -> str:
         """A stable per-task digest, so pinned membership is deterministic across a test.
 
-        Raises for an unknown task, matching the real service: resolution fetches the task, so a
-        missing one surfaces here rather than from a separate existence check.
+        The digest covers the **fragment** as well as the task, because the real
+        ``TaskService.resolve_revision`` resolves it: a bare member and a tag-pinned one give
+        different digests whenever the tag names an older revision. A fake that ignored the fragment
+        would return the same digest either way, and a publish path that dropped the fragment
+        entirely would look correct in every assertion here.
         """
         if (workspace, name) not in self.existing:
             raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
-        return hashlib.sha256(f"{workspace}/{name}".encode()).hexdigest()
+        return hashlib.sha256(f"{workspace}/{name}#{fragment}".encode()).hexdigest()
+
+    def digest_for(self, workspace: str, name: str, fragment: str = "latest") -> str:
+        """The digest a test should expect for a member — same derivation as ``resolve_revision``."""
+        return hashlib.sha256(f"{workspace}/{name}#{fragment}".encode()).hexdigest()
 
 
 def _taskset_input() -> TasksetInput:
@@ -71,6 +78,31 @@ async def test_create_then_get(service: TasksetService) -> None:
 
     got = await service.get_taskset("default", "ts-1")
     assert got is not None and got.name == "ts-1"
+
+
+async def test_a_tag_pinned_member_stores_the_tagged_revision(
+    existing_tasks: set[tuple[str, str]], entity_store
+) -> None:
+    """A member's ``#tag`` must be resolved through the tag, not silently treated as the head.
+
+    This is the whole point of resolving membership on write: the stored ref has to name the
+    revision the tag pointed at *then*, so moving the tag afterwards cannot re-point a published
+    taskset. Dropping the fragment would still produce a digest-shaped ref, so only comparing
+    against the tag-specific digest catches it.
+    """
+    task_service = _FakeTaskService(existing_tasks)
+    service = TasksetService(entity_store, task_service)
+
+    created, _ = await service.create_taskset(
+        "ts-1", TasksetInput(tasks=[TaskRef("task-a#blessed"), TaskRef("task-b")]), workspace="default"
+    )
+
+    stored = {t.root.split("#")[0]: t.root.split("#")[1] for t in created.tasks}
+    assert stored["default/task-a"] == task_service.digest_for("default", "task-a", "blessed")
+    assert stored["default/task-b"] == task_service.digest_for("default", "task-b", "latest")
+    assert stored["default/task-a"] != task_service.digest_for("default", "task-a", "latest"), (
+        "a tag-pinned member must not collapse onto the task's current revision"
+    )
 
 
 async def test_create_validates_missing_task_ref(service: TasksetService) -> None:

@@ -11,11 +11,8 @@ discoverable and the child tickets have a landing spot, and each body exits non-
 until its own ticket lands. Flags belong to those tickets, so nothing here declares
 options yet.
 
-This module imports nothing from ``eval_author``: those agents build their LLM client
-while the class body executes, so importing one here would make the whole CLI require
-``AUTHOR_*`` credentials — including the ``doctor`` verb whose job is to report that they
-are missing. Experimentalist's CLI keeps its runner behind a lazily-assigned module
-global for the same reason.
+This module imports nothing from ``eval_author`` while the command bodies remain
+placeholders. The completed runner resolves the active Platform model pair at run time.
 """
 
 from typing import ClassVar, NoReturn

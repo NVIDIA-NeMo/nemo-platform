@@ -5158,17 +5158,22 @@ components:
         \ fields (id, name, workspace,\ntimestamps)."
     TasksetRef:
       type: string
-      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      pattern: ^[\w\-.]+(/[\w\-.]+)?(#[\w\-.]+)?$
       title: TasksetRef
-      description: 'Reference to a persisted taskset (format: ``workspace/name`` or
-        ``name``).
-
-
-        Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a
-        stored taskset in place
-
-        of an inline task list; the taskset''s member tasks are loaded and expanded
-        during spec resolution.'
+      description: "Reference to a persisted taskset (format: ``workspace/name`` or\
+        \ ``name``, optionally ``#rev``).\n\nSame shape and charset as :class:`TaskRef`.\
+        \ Lets an evaluation reference a stored taskset in place\nof an inline task\
+        \ list; the taskset's member tasks are loaded and expanded during spec resolution.\n\
+        \nAn optional ``#`` fragment pins the taskset revision to expand \u2014 a\
+        \ tag or a full content digest,\nwith an absent fragment meaning ``latest``.\n\
+        \nWhat each form guarantees, precisely. A taskset revision pins its members\
+        \ by digest, so a member\ntask publishing new content never changes what *any*\
+        \ ref expands to. A **bare** ref still tracks\nthe taskset's own revisions,\
+        \ and republishing the taskset re-resolves its members on write \u2014 so\
+        \ a\n``replace`` can change both which members are named and the content they\
+        \ resolve to, even if the\nsubmitted member names were identical. A **pinned**\
+        \ ref is fixed against that too, and is what an\nevaluation needs to stay\
+        \ comparable across a ``replace``."
     TasksetSort:
       type: string
       enum:

@@ -9,24 +9,11 @@ import { screen } from '@studio/tests/util/render';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, within } from '@testing-library/react';
 
-// Mock the Dial component
-vi.mock('@nemo/common/src/components/Dial', () => ({
-  Dial: ({
-    value,
-    displayValue,
-    color,
-    size,
-  }: {
-    value: number;
-    displayValue: string;
-    color: string;
-    size: string;
-  }) => (
-    <div data-testid="dial">
-      <div data-testid="dial-value">{value}</div>
-      <div data-testid="dial-display">{displayValue}</div>
-      <div data-testid="dial-color">{color}</div>
-      <div data-testid="dial-size">{size}</div>
+// Mock the ScoreGauge component
+vi.mock('@nemo/common/src/components/ScoreGauge', () => ({
+  ScoreGauge: ({ score, size }: { score?: number; size: string }) => (
+    <div data-testid="score-gauge" data-size={size}>
+      {score ? score.toFixed(1) : '—'}
     </div>
   ),
 }));
@@ -262,7 +249,7 @@ describe('DataPrivacyPanel', () => {
       expect(screen.getByText('7.1')).toBeInTheDocument();
     });
 
-    it('should handle zero scores in table', () => {
+    it('should render zero scores as unavailable in table', () => {
       render(
         <DataPrivacyPanel
           reportSummary={createMockReportSummary({
@@ -276,9 +263,8 @@ describe('DataPrivacyPanel', () => {
         { wrapper: createWrapper() }
       );
 
-      // Scores should be formatted as "0.0"
-      const zeroScores = screen.getAllByText('0.0');
-      expect(zeroScores.length).toBeGreaterThan(0);
+      const unavailable = screen.getAllByText('—');
+      expect(unavailable.length).toBeGreaterThan(0);
     });
   });
 
@@ -353,8 +339,8 @@ describe('DataPrivacyPanel', () => {
     });
   });
 
-  describe('Dial Component Props', () => {
-    it('should pass correct props to main TitledDial', () => {
+  describe('Score Gauge Props', () => {
+    it('should pass the raw DPS score to the main gauge', () => {
       render(
         <DataPrivacyPanel
           reportSummary={createMockReportSummary({ data_privacy_score: 7.5 })}
@@ -365,18 +351,11 @@ describe('DataPrivacyPanel', () => {
         { wrapper: createWrapper() }
       );
 
-      // The first dial should be the main one with score 75 (7.5 / 10 * 100)
-      const dialValues = screen.getAllByTestId('dial-value');
-      expect(dialValues[0]).toHaveTextContent('75');
-
-      const dialDisplays = screen.getAllByTestId('dial-display');
-      expect(dialDisplays[0]).toHaveTextContent('7.5');
-
-      const dialColors = screen.getAllByTestId('dial-color');
-      expect(dialColors[0]).toHaveTextContent('var(--color-blue-500)');
+      const gauges = screen.getAllByTestId('score-gauge');
+      expect(gauges[0]).toHaveTextContent('7.5');
     });
 
-    it('should pass correct props to ScoreTable dials', () => {
+    it('should pass correct props to ScoreTable gauges', () => {
       render(
         <DataPrivacyPanel
           reportSummary={createMockReportSummary({

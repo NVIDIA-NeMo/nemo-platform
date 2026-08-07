@@ -12,17 +12,19 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
   under its own Router / QueryClient / KaizenThemeProvider. Never call
   `createRoot`, never create a `BrowserRouter`.
 - **Share the singletons that carry context** — React, react-dom, react-router,
-  and `@nvidia/foundations-react-core` resolve via Studio's import map. This dir
-  **externalizes** them so the plugin uses Studio's one instance (shared router +
-  theme). Everything else bundles privately.
+  `@nvidia/foundations-react-core`, `@tanstack/react-query`, and `@nemo/common`
+  (Studio's shared UI) resolve via Studio's import map. This dir **externalizes**
+  them so the plugin uses Studio's one instance (shared router + theme + query
+  cache + tables). Everything else bundles privately.
 
 ## Rules — DO / DON'T
 
 | Concern | DO | DON'T |
 | --- | --- | --- |
 | Entry | `export { Root }` (component) + `export { navItems }` from `src/index.ts` | export `mount()` or call `createRoot` |
-| Routing | Studio's shared router — `Routes`/`Route`/`NavLink`/`Navigate`/`Outlet`/`useNavigate`, paths relative to the plugin mount | `BrowserRouter`, `history.pushState` patching, hardcoded `basename` |
+| Routing | Studio's shared router — `Routes`/`Route`/`NavLink`/`Navigate`/`Outlet`/`useNavigate`. Route `path`s are relative; every `to` / `href` must be **absolute** (see below) | `BrowserRouter`, `history.pushState` patching, hardcoded `basename`, relative `to` |
 | Components | KUI from `@nvidia/foundations-react-core` — `Text`, `Stack`, `Flex`, `Button` | hand-rolled styled `<div>`s or native `<button>` |
+| Tables, forms, status | Studio's shared UI from `@nemo/common` — `StudioDataView`, `useStudioDataViewState`, `ControlledTextInput`, `StatusBadge`, … | re-implement a table/empty state/relative timestamp, or deep-import `@nemo/common/src/...` |
 | Styling | Studio's theme-aware tokens: `bg-surface-base/raised/sunken/hover`, `text-subtle/muted/primary`, `border-subtle` | hardcoded Tailwind palette (`bg-gray-100`, `text-blue-700`) — not compiled for the plugin, not theme-aware |
 | Auth | `host.auth.getAccessToken()` **per request** → `Authorization: Bearer …` | `react-oidc-context` / `useAuth` (refresh token must not cross the boundary) |
 | Deps | externalize the shared set in `vite.config.ts`; bundle the rest | bundle react / react-dom / react-router / foundations |
@@ -51,6 +53,35 @@ declares a minimal structural `PluginSdk` covering only the hooks this example
 calls. A real plugin either mirrors the calls it needs the same way or, if it can
 resolve the SDK's types, types `host.sdk` as Studio does.
 
+## Shared UI (`@nemo/common`)
+
+Studio's own table, form, and status components are shared the same way KUI is.
+Studio builds the curated surface in
+`../../../web/packages/common/src/plugin.ts` into `public/vendor/common.js` and
+maps the bare specifier to it, so a plugin's `StudioDataView` **is** the module
+instance Studio renders — same behavior, same styles, no second copy in the
+bundle. See `src/SharedUiPage.tsx`.
+
+```ts
+import { StudioDataView, useStudioDataViewState } from '@nemo/common';
+```
+
+- **Bare specifier only.** A deep `@nemo/common/src/...` import is not
+  externalized, so it silently bundles a *second copy* of the component instead
+  of sharing Studio's — it does not error, it just quietly stops being shared.
+  The `reject-deep-shared-imports` plugin in `vite.config.ts` fails the build on
+  one; keep it when you copy this template. Importing a name the barrel doesn't
+  export is already a tsc error, so `pnpm typecheck` covers that half.
+- **`plugin.ts` is the API.** Need something Studio has but the barrel doesn't
+  export? Add it there — additions are cheap, removals are breaking.
+- **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is
+  unpublished, so there is nothing to install. `src/env.d.ts` declares the `*.css`
+  side-effect imports those sources carry.
+- **CSS is already loaded.** The vendor build stubs stylesheet imports because
+  Studio bundles the same files through its own graph. A plugin adds no CSS.
+- **`useStudioDataViewState` syncs to URL search params** on Studio's shared
+  router — two DataViews on one route will fight over them.
+
 ## Contract
 
 ```ts
@@ -70,19 +101,51 @@ resolve the SDK's types, types `host.sdk` as Studio does.
 `src/index.ts` must export `Root` (a `ComponentType<PluginRootProps>`) and
 `navItems(workspaceId) => PluginNavGroup[]`. See `src/Root.tsx` and `src/Nav.tsx`.
 
-## Externals
+## Externals & versions
 
-The `external` list in `vite.config.ts` **must match** Studio's `VENDOR_EXTERNALS`
-in `../../../web/packages/studio/vite.config.ts`. If Studio adds a shared
-singleton, add it here too or the plugin bundles its own copy and loses the
-shared instance/theme. The SDK is **not** in this list — it comes in on the `sdk`
+The `external` list in `vite.config.ts` **must match the keys of** Studio's
+`VENDOR_IMPORT_MAP` in `../../../web/packages/studio/vite.config.ts` — that map,
+not `VENDOR_EXTERNALS`, is what the browser resolves at runtime. (`@nemo/common`
+is in the map but deliberately not in `VENDOR_EXTERNALS`: Studio imports Common
+by deep path and bundles it normally, so externalizing the bare name would only
+add a dead import to every Studio chunk.) If Studio shares something new, add it
+here too or the plugin bundles its own copy and loses the shared
+instance/theme/cache. The SDK is **not** in this list — it comes in on the `sdk`
 prop (see above), so there is nothing to externalize for it.
+
+**Shared deps must also match Studio's versions**, which is a separate
+obligation from externalizing them. Studio *serves* these at runtime, so the
+plugin only ever types and builds against them — declare a version Studio does
+not ship and you get types that describe a different library than the one
+executing. Keep the `dependencies` below in sync with the `catalog:` block in
+`../../../web/pnpm-workspace.yaml`, copying the range verbatim:
+
+| Dep | Why exact-match matters |
+| --- | --- |
+| `@nvidia/foundations-react-core` | Studio pins an **exact** version (no caret). A caret here silently floats the plugin ahead of the KUI Studio actually serves. |
+| `react`, `react-dom`, `react-router` | Hooks, context, and router internals must be one instance. |
+| `@tanstack/react-query` | Shares Studio's QueryClient; the hook and the provider must agree. |
+| `@nemo/common` | Not a package — resolved from Studio's vendor bundle, so it is never a dependency. Types come from `paths` in `tsconfig.json`. |
+
+This dir is a standalone pnpm root, so it cannot use `catalog:` references and
+has to restate the versions.
+
+Build-only tooling (`vite`, `typescript`, `@vitejs/plugin-react`) and the
+`@types/*` packages are not served by Studio, so drift there is a correctness
+issue only for the types. They are still kept catalog-aligned — every dep in
+this `package.json` currently matches the catalog exactly, which makes an audit
+a diff rather than a judgement call.
 
 ## Build & verify
 
+This dir is its own pnpm root (`pnpm-workspace.yaml`), separate from `web/`.
+Use pnpm — `pnpm-lock.yaml` is the only lockfile, and an `npm install` here
+writes a competing `package-lock.json` that resolves different versions.
+
 ```bash
-npm install          # first time — pulls @nvidia/foundations-react-core etc.
-npm run build        # emits ../src/<pkg>/web/dist/index.js (shipped in the wheel)
+pnpm install         # first time — pulls @nvidia/foundations-react-core etc.
+pnpm build           # emits ../src/<pkg>/web/dist/index.js (shipped in the wheel)
+pnpm typecheck       # tsc --noEmit, incl. the shared-UI types from @nemo/common
 
 # shared deps must stay external (bare specifiers, not bundled):
 grep -oE 'from *"[^"]*"' ../src/<pkg>/web/dist/index.js | sort -u
@@ -93,6 +156,16 @@ The bundle is registered via the plugin's `nemo.studio` entry point
 UI route is gated behind the `pluginsEnabled` flag (on by default).
 
 ## Gotchas
+
+- **Links must be absolute — a relative `to` silently appends.** Studio mounts
+  plugins at a splat route (`/workspaces/:workspaceId/plugin/:pluginName/*`),
+  and React Router resolves a relative `to` against the splat's *full* matched
+  pathname, not the mount point (`getResolveToMatches` uses `match.pathname` for
+  the last match, not `match.pathnameBase`). So on `/plugin/example/auth`,
+  `<NavLink to="shared-ui">` navigates to `/plugin/example/auth/shared-ui`, and
+  each further click appends again. Build hrefs from `host.workspaceId` — see
+  `src/paths.ts`, used by both `Root.tsx` and `Nav.tsx`. Route `path`s are
+  unaffected; only `to` / `href` resolution is.
 
 - **Token classes must be ones Studio already compiles.** Studio's Tailwind only
   scans `web/packages/**`, not this dir. Stick to the semantic tokens Studio uses

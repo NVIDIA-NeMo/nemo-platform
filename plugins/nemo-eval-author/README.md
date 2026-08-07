@@ -33,36 +33,28 @@ from nemo_eval_author_plugin.eval_author.run import run_eval_author
 # Still borrowed from Experimentalist, and on the way out. Treat these as Eval Author's
 # own types once they move; do not build new code on the Experimentalist paths.
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import TraceAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 ```
 
-## Credentials (standalone)
+## Agent models
 
-Copy [`.env.example`](.env.example) to `.env` and set `AUTHOR_API_KEY` (and optionally model names / `NMP_BASE_URL`):
+Run `nemo setup` and select the default and fast models for the active Platform
+context. Eval Author uses the default model for authoring and the fast model for
+summarization. Press Enter at the fast-model prompt to reuse the default model.
 
-```bash
-cp plugins/nemo-eval-author/.env.example plugins/nemo-eval-author/.env
-```
+The selections are workspace-qualified Platform Model Entity IDs. The Platform
+routes each request to the provider registered for that entity and reads its
+credential from Platform Secrets; Eval Author does not accept separate provider,
+endpoint, key, or model environment variables.
 
-`AUTHOR_*` is Eval Author's credential contract, and `model_config` imports nothing
-from Experimentalist. When the API base is the NVIDIA Inference Gateway over HTTPS,
-`INFERENCE_API_KEY` is also accepted.
-
-Two pieces of that module are transitional and disappear with the last
-Experimentalist import, both tagged `TODO(eval-author-standalone)`:
-
-- unset `AUTHOR_*` variables fall back to `NEMO_EXPERIMENTALIST_*`, so insight mode works
-  from a single Experimentalist profile `.env`. Setting `AUTHOR_*` explicitly today
-  avoids the break when the fallback is removed.
-- `EvalAuthor.__init__` calls `bridge_author_env_to_experimentalist()`, copying
-  `AUTHOR_*` into unset `NEMO_EXPERIMENTALIST_*` slots so the Experimentalist helpers
-  Eval Author still borrows see credentials during a standalone run.
+For non-interactive and isolated environments, `NEMO_DEFAULT_MODEL` and
+`NEMO_FAST_MODEL` can override the stored selections. Values must still use
+`workspace/model-name` and refer to Model Entities on the target Platform.
 
 A `nemo agents eval-author` CLI is registered under `nemo.cli.agents` and
 mounted by the agents plugin. Verb scaffolding is in place
 (`discover`, `audit`, `propose`, `run`, `doctor`); bodies are still
-placeholders until ASE-673–678 land. The CLI does not auto-load this `.env`
-yet — set credentials in the environment (or rely on the transitional
-`EXPERIMENTALIST_*` fallback) before invoking it.
+placeholders until ASE-673–678 land. The library runner already uses the
+configured Platform model pair.

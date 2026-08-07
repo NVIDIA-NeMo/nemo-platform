@@ -6,7 +6,6 @@ min_rounds_before_stopping: 1
 max_survivors: 1
 max_candidates: 1
 max_trajectory_tasks: 2
-max_train_batch_tasks: 4
 train_batch_seed: 20260727
 disable_trajectory_scoring: true
 disable_convergence_check: true

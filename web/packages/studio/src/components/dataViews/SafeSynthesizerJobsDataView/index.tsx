@@ -9,8 +9,8 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
-import { Dial } from '@nemo/common/src/components/Dial';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
+import { ScoreGauge } from '@nemo/common/src/components/ScoreGauge';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
@@ -224,24 +224,13 @@ export const SafeSynthesizerJobsDataView: FC = () => {
           const summaryIndex = summaryDataMap.get(row.original.id);
           const summaryData =
             summaryIndex !== undefined ? summaryQueries[summaryIndex]?.data : undefined;
-          const sqsValue = summaryData?.synthetic_data_quality_score
-            ? (summaryData.synthetic_data_quality_score / 10) * 100
-            : 0;
-          const sqsDisplay = summaryData?.synthetic_data_quality_score
-            ? summaryData.synthetic_data_quality_score.toFixed(1)
-            : '';
           return (
             <Link
               to={getSafeSynthesizerJobReportRoute(workspace, row.original.name!)}
               className="flex items-center"
               aria-label={`View SQS for job ${row.original.name}`}
             >
-              <Dial
-                value={sqsValue}
-                displayValue={sqsDisplay}
-                color="var(--color-purple-500)"
-                size="s"
-              />
+              <ScoreGauge score={summaryData?.synthetic_data_quality_score} size="sm" />
             </Link>
           );
         },
@@ -258,24 +247,13 @@ export const SafeSynthesizerJobsDataView: FC = () => {
           const summaryIndex = summaryDataMap.get(row.original.id);
           const summaryData =
             summaryIndex !== undefined ? summaryQueries[summaryIndex]?.data : undefined;
-          const dpsValue = summaryData?.data_privacy_score
-            ? (summaryData.data_privacy_score / 10) * 100
-            : 0;
-          const dpsDisplay = summaryData?.data_privacy_score
-            ? summaryData.data_privacy_score.toFixed(1)
-            : '';
           return (
             <Link
               to={getSafeSynthesizerJobReportRoute(workspace, row.original.name!)}
               className="flex items-center"
               aria-label={`View DPS for job ${row.original.name}`}
             >
-              <Dial
-                value={dpsValue}
-                displayValue={dpsDisplay}
-                color="var(--color-blue-500)"
-                size="s"
-              />
+              <ScoreGauge score={summaryData?.data_privacy_score} size="sm" />
             </Link>
           );
         },
