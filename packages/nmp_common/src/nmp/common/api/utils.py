@@ -16,6 +16,9 @@ from nemo_platform_plugin.jobs.openapi_utils import clear_query_param_schemas as
 from nemo_platform_plugin.jobs.openapi_utils import (
     generate_openapi_extra_params as generate_openapi_extra_params,  # noqa: F401
 )
+from nemo_platform_plugin.jobs.openapi_utils import (
+    install_query_param_schema_openapi_hook as install_query_param_schema_openapi_hook,  # noqa: F401
+)
 from nemo_platform_plugin.jobs.openapi_utils import parse_deep_object as parse_deep_object  # noqa: F401
 from nemo_platform_plugin.jobs.openapi_utils import (
     register_query_param_schemas as register_query_param_schemas,  # noqa: F401

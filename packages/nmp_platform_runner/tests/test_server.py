@@ -11,14 +11,16 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
+from nemo_platform_plugin.jobs.openapi_utils import clear_query_param_schemas, generate_openapi_extra_params
 from nmp.common.config import AuthConfig, Configuration
 from nmp.common.config.base import OIDCConfig
-from nmp.common.service import Service
+from nmp.common.service import RouterConfig, Service
 from nmp.platform_runner import config as runner_config
 from nmp.platform_runner import server
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router
+from pydantic import BaseModel
 
 _RUN_ENV_KEYS = (
     "NMP_CONFIG_FILE_PATH",
@@ -58,6 +60,28 @@ class PluginService(Service):
 
     def get_routers(self):
         return []
+
+
+class _DateFilter(BaseModel):
+    gte: str | None = None
+
+
+class _ListFilter(BaseModel):
+    created_at: _DateFilter | None = None
+
+
+class QueryParamSchemaService(Service):
+    def __init__(self):
+        super().__init__(name="query-service", module_name="test.query_service")
+
+    def get_routers(self):
+        router = APIRouter()
+
+        @router.get("/items", openapi_extra=generate_openapi_extra_params(filter_schema=_ListFilter))
+        async def list_items():
+            return {"data": []}
+
+        return [RouterConfig(router, tag="Query", description="Query endpoints")]
 
 
 async def _ready() -> bool:
@@ -172,6 +196,27 @@ def test_create_app_marks_mounted_services_as_local(monkeypatch):
     server.create_app(services=[PluginService()])
 
     assert platform_cfg.services == "agents"
+
+
+def test_create_app_openapi_registers_rebased_query_param_schemas(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+    clear_query_param_schemas()
+    try:
+        app = server.create_app(services=[QueryParamSchemaService()])
+        spec = app.openapi()
+        schemas = spec["components"]["schemas"]
+        filter_param = next(
+            param
+            for param in spec["paths"]["/apis/query-service/items"]["get"]["parameters"]
+            if param["name"] == "filter"
+        )
+
+        assert filter_param["schema"] == {"$ref": "#/components/schemas/_ListFilter"}
+        assert "_ListFilter" in schemas
+        assert "_DateFilter" in schemas
+        assert "$defs" not in schemas["_ListFilter"]
+    finally:
+        clear_query_param_schemas()
 
 
 def test_create_app_mounted_services_drive_sdk_local_routing_without_services_env(monkeypatch):

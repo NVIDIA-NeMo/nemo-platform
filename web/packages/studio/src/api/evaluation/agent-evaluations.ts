@@ -23,7 +23,7 @@ import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
 
 const PAGE_SIZE = 50;
 
-/** Aggregate score — numeric range, rubric category distribution, or a single reported value. */
+/** Aggregate score — numeric range, rubric category distribution, or scalar value. */
 export type AgentEvalAggregateScore =
   | AggregateRangeScore
   | AggregateRubricScore

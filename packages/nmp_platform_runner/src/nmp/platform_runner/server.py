@@ -19,6 +19,7 @@ import uvicorn
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from nmp.common.api.utils import install_query_param_schema_openapi_hook
 from nmp.common.auth import AuthorizationMiddleware
 from nmp.common.config import get_auth_config, get_platform_config
 from nmp.common.http_clients import close_shared_http_clients
@@ -275,6 +276,7 @@ def create_app(
         if service_instance._service_config is not None:
             app.state.service_configs[type(service_instance._service_config)] = service_instance._service_config
 
+    install_query_param_schema_openapi_hook(app)
     app.add_exception_handler(Exception, platform_global_exception_handler)
     return app
 
