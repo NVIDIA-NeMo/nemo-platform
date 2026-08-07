@@ -64,6 +64,10 @@ async def run_eval_author(
         config: Eval Author tuning parameters.
         agent: Optional agent source override. The Insight's agent is the default.
         evaluator_type: Evaluator adapter used to parse the task template.
+
+    Returns:
+        EvalAuthorResult: containing the modified and newly created datasets, additional metrics
+            and summary.
     """
     _enable_litellm_drop_params()
     experiment_dir.mkdir(parents=True, exist_ok=True)
