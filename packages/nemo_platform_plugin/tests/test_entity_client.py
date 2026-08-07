@@ -7,8 +7,16 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from nemo_platform_plugin.client.errors import BadRequestError, NotFoundError
-from nemo_platform_plugin.entities import EntityBase, EntityClient, EntityStoreError, _convert_filter_obj_to_filter_str
+from nemo_platform_plugin.entities import (
+    EntityBase,
+    EntityClient,
+    EntityStoreError,
+    SyncEntityClient,
+    _convert_filter_obj_to_filter_str,
+)
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient, EntitiesClient
 from nemo_platform_plugin.entities.types import Entity
+from pydantic import PrivateAttr, computed_field
 
 
 class ExperimentGroup:
@@ -182,6 +190,75 @@ async def test_parent_survives_the_get_update_round_trip() -> None:
     update_call = mock_api.update_entity_by_name.await_args
     assert update_call is not None
     assert update_call.kwargs["query_params"] == {"parent": "parent-1"}
+
+
+class _EntityWithAuthContext(EntityBase):
+    source: str
+    _auth_context: dict[str, object] | None = PrivateAttr(default=None)
+
+    @computed_field
+    @property
+    def auth_context(self) -> dict[str, object] | None:
+        return self._auth_context
+
+
+def _stored_entity_with_auth_context() -> Entity:
+    return Entity(
+        entity_type="test",
+        id="entity-1",
+        workspace="default",
+        name="entity-1",
+        data={
+            "source": "test-source",
+            "_auth_context": {
+                "principal_id": "creator@example.com",
+                "principal_email": "creator@example.com",
+                "principal_groups": ["team-alpha"],
+            },
+        },
+        db_version=1,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def test_sync_entity_client_auth_context_uses_typed_default_headers() -> None:
+    entities_client = EntitiesClient(
+        base_url="http://testserver",
+        default_headers={"X-NMP-Principal-Id": "service:jobs"},
+    )
+    client = SyncEntityClient(entities_client)
+
+    try:
+        result = client._convert_api_entity_to_model(_stored_entity_with_auth_context(), _EntityWithAuthContext)
+    finally:
+        client.close()
+
+    assert result.auth_context == {
+        "principal_id": "creator@example.com",
+        "principal_email": "creator@example.com",
+        "principal_groups": ["team-alpha"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_async_entity_client_auth_context_uses_typed_default_headers() -> None:
+    entities_client = AsyncEntitiesClient(
+        base_url="http://testserver",
+        default_headers={"X-NMP-Principal-Id": "service:jobs"},
+    )
+    client = EntityClient(entities_client)
+
+    try:
+        result = client._convert_api_entity_to_model(_stored_entity_with_auth_context(), _EntityWithAuthContext)
+    finally:
+        await client.close()
+
+    assert result.auth_context == {
+        "principal_id": "creator@example.com",
+        "principal_email": "creator@example.com",
+        "principal_groups": ["team-alpha"],
+    }
 
 
 @pytest.mark.asyncio

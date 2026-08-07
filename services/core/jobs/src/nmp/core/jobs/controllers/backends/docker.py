@@ -7,20 +7,22 @@ import io
 import json
 import logging
 import os
+import sys
 import tarfile
 import threading
 import time
 import uuid
 from abc import abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from typing import Any, Generic, Self, TypeVar
+from dataclasses import dataclass, field
+from typing import Any, Generic, TypeVar
 
 import docker.types
-from docker.errors import APIError, ImageNotFound, NotFound
+from docker.errors import APIError, DockerException, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
 from nemo_platform_plugin.capabilities import CapabilityUnavailableError, probe_docker
+from nemo_platform_plugin.client.errors import NemoClientError
 from nemo_platform_plugin.jobs.execution_profiles import (
     DockerJobExecutionProfile as PluginDockerJobExecutionProfile,
 )
@@ -41,9 +43,16 @@ from nemo_platform_plugin.jobs.types import (
     PlatformJobStepWithContext,
     PlatformJobTaskUpdate,
 )
-from nmp.common.auth import AuthContext
+from nmp.common.auth import (
+    AuthContext,
+    WorkloadDelegationEntity,
+    WorkloadDelegationError,
+    create_opaque_docker_proof_token,
+    docker_delegation_name,
+)
 from nmp.common.config import get_platform_config, nmp_user_data_dir
 from nmp.common.docker.gpu_pool import GPUAllocationError
+from nmp.common.entities import SYSTEM_WORKSPACE, EntityStoreError
 from nmp.common.jobs.constants import (
     CONFIG_TASK_STORAGE_PATH_ENVVAR,
     DEFAULT_CONFIG_STORAGE_PATH,
@@ -87,9 +96,9 @@ from nmp.core.jobs.app.ctx import JobContext
 from nmp.core.jobs.app.providers import (
     ComputeResources,
     CPUExecutionProvider,
-    ExecutionProviderT,
     GPUExecutionProvider,
 )
+from nmp.core.jobs.app.schemas import PlatformJobStepSpec
 from nmp.core.jobs.controllers.backends.base import (
     NMP_JOB_LAUNCHER_OTLP_LOGS_ENDPOINT_ENVVAR,
     WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR,
@@ -112,21 +121,24 @@ from nmp.core.jobs.controllers.backends.exceptions import (
     SchedulingDeferred,
 )
 from nmp.core.jobs.controllers.backends.workload_tokens import (
-    DEFAULT_SUBJECT_TOKEN_REFRESH_MARGIN_SECONDS,
-    DEFAULT_SUBJECT_TOKEN_TTL_SECONDS,
-    OAuthPasswordGrantSubjectTokenIssuer,
-    SubjectTokenIssuer,
-    SubjectTokenRefreshLoop,
     build_token_archive,
+    create_authenticated_workload_delegation_store,
+    workload_delegation_expires_at,
 )
 from opentelemetry import trace
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, ValidationError
 
 import docker
 
 tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
 DOCKER_CONTAINER_START_WORKERS = 10
+_WORKLOAD_DELEGATION_CLEANUP_ERRORS: tuple[type[Exception], ...] = (
+    JobStorageError,
+    WorkloadDelegationError,
+    EntityStoreError,
+    NemoClientError,
+)
 
 
 def k8s_shm_quantity_to_docker(quantity: str) -> str:
@@ -150,12 +162,11 @@ NEMO_JOBS_DEFAULT_DOCKER_NETWORK = os.getenv("NEMO_JOBS_DEFAULT_DOCKER_NETWORK",
 # Default is 30 seconds which matches the Kubernetes default grace period for pod termination.
 DOCKER_STOP_TIMEOUT = int(os.getenv("NEMO_JOBS_DEFAULT_DOCKER_STOP_TIMEOUT", "30"))
 NMP_JOBS_DOCKER_OWNER_ID_ENVVAR = "NMP_JOBS_DOCKER_OWNER_ID"
-DOCKER_WORKLOAD_IDENTITY_PASSWORD_ENV_VAR_DEFAULT = "AUTHENTIK_WORKLOAD_IDENTITY_PASSWORD"
 DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL = "nmp.nvidia.com/workload_identity_token_file"
 DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL = "nmp.nvidia.com/workload_identity_volume"
 
 
-ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
+ProviderT = TypeVar("ProviderT", CPUExecutionProvider, GPUExecutionProvider)
 
 
 # DockerVolumeMount and DockerJobStorageConfig are pure data shapes shared with
@@ -178,6 +189,20 @@ class DockerTimestampParseResult:
     is_zero: bool
 
 
+@dataclass(frozen=True, slots=True)
+class DockerWorkloadProofToken:
+    token: str = field(repr=False)
+    expires_at: datetime.datetime
+    opaque_subject_token_hash: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DockerContainerCreateResult:
+    container: Container
+    image_source: str
+    duration_seconds: float
+
+
 # Server-side override: the default network name comes from the
 # ``NEMO_JOBS_DEFAULT_DOCKER_NETWORK`` env var (used by quickstart and e2e).
 # No docstring on purpose — a docstring would surface as the schema
@@ -188,87 +213,12 @@ class DockerJobNetworkConfig(PluginDockerJobNetworkConfig):
     )
 
 
-class DockerWorkloadIdentityConfig(BaseModel):
-    """Docker-only subject token issuer configuration for workload identity."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool | None = Field(
-        default=None,
-        description="Enable Docker workload identity token-file injection. Defaults to auth.oidc.workload_token_exchange_enabled.",
-    )
-    token_endpoint: str | None = Field(
-        default=None,
-        description="OAuth token endpoint used by the Docker demo issuer. Defaults to auth.oidc.token_endpoint.",
-    )
-    client_id: str | None = Field(
-        default=None,
-        description="OAuth client ID used by the Docker demo issuer. Defaults to auth.oidc.workload_client_id or auth.oidc.client_id.",
-    )
-    client_secret: str | None = Field(
-        default=None,
-        description="OAuth client secret for the Docker demo issuer.",
-        json_schema_extra={"format": "password", "writeOnly": True},
-    )
-    username: str | None = Field(default=None, description="Username for the Docker demo issuer password grant.")
-    password_env_var: str = Field(
-        default=DOCKER_WORKLOAD_IDENTITY_PASSWORD_ENV_VAR_DEFAULT,
-        description="Controller environment variable that contains the Docker demo issuer password grant shared secret.",
-    )
-    scope: str | None = Field(default=None, description="OAuth scope for the Docker demo issuer.")
-    subject_token_ttl_seconds: int = Field(
-        default_factory=lambda: int(
-            os.environ.get("NMP_WORKLOAD_IDENTITY_TOKEN_TTL_SECONDS", DEFAULT_SUBJECT_TOKEN_TTL_SECONDS)
-        ),
-        ge=1,
-        validate_default=True,
-        description="Fallback subject-token lifetime when the Docker demo issuer response omits expires_in.",
-    )
-    refresh_margin_seconds: int = Field(
-        default=DEFAULT_SUBJECT_TOKEN_REFRESH_MARGIN_SECONDS,
-        ge=0,
-        validate_default=True,
-        description="Seconds before subject-token expiry when the Docker refresher issues a replacement token.",
-    )
-
-    @field_validator("password_env_var")
-    @classmethod
-    def validate_password_env_var(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("password_env_var must name a non-empty environment variable")
-        if value[0].isdigit() or not all(char == "_" or char.isalnum() for char in value):
-            raise ValueError("password_env_var must be a valid environment variable name")
-        return value
-
-    @model_validator(mode="after")
-    def validate_refresh_margin_before_expiry(self) -> Self:
-        if self.refresh_margin_seconds >= self.subject_token_ttl_seconds:
-            raise ValueError("refresh_margin_seconds must be less than subject_token_ttl_seconds")
-        return self
-
-
-def _resolve_docker_workload_identity_scope(workload_config: DockerWorkloadIdentityConfig, oidc_config: Any) -> str:
-    return workload_config.scope or getattr(oidc_config, "workload_scope", None) or "openid email groups"
-
-
-def _resolve_docker_workload_identity_password(workload_config: DockerWorkloadIdentityConfig) -> str | None:
-    password = os.environ.get(workload_config.password_env_var)
-    if password:
-        return password
-    return None
-
-
 class DockerJobExecutionProfileConfig(PluginDockerJobExecutionProfileConfig):
     """Configuration for Docker Job execution profile."""
 
     # ``networking`` re-typed to the server ``DockerJobNetworkConfig`` (env-var default).
     networking: DockerJobNetworkConfig = Field(
         default_factory=DockerJobNetworkConfig, description="Docker networking configuration"
-    )
-    workload_identity: DockerWorkloadIdentityConfig = Field(
-        default_factory=DockerWorkloadIdentityConfig,
-        description="Docker workload identity subject-token issuer configuration.",
     )
 
 
@@ -289,7 +239,6 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         self._jobs_controller_instance_id = _resolve_jobs_controller_instance_id()
         self._container_start_admission = threading.BoundedSemaphore(DOCKER_CONTAINER_START_WORKERS)
         self._container_run_threadpool = ThreadPoolExecutor(max_workers=DOCKER_CONTAINER_START_WORKERS)
-        self._workload_identity_refreshers: dict[str, SubjectTokenRefreshLoop] = {}
         # Short probe first — avoid docker.from_env(timeout=180) hanging when the
         # daemon is down. CapabilityUnavailableError is soft-skipped by the registry.
         probe = probe_docker()
@@ -305,63 +254,189 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
                 password=NEMO_JOBS_IMAGE_REGISTRY_PASSWORD,
                 registry=NEMO_JOBS_IMAGE_REGISTRY,
             )
+        self._workload_delegation_store = create_authenticated_workload_delegation_store(self._nmp_sdk)
 
     def shutdown(self) -> None:
         self._container_run_threadpool.shutdown(wait=True)
-        self._stop_all_workload_identity_refreshers()
         self._client.close()
 
+    def _create_container_once(self, container_args: dict, *, image_source: str) -> DockerContainerCreateResult:
+        create_started_at = time.monotonic()
+        container = self._client.containers.create(**container_args)
+        return DockerContainerCreateResult(
+            container=container,
+            image_source=image_source,
+            duration_seconds=time.monotonic() - create_started_at,
+        )
+
+    def _create_container_with_image_pull(self, *, container_args: dict, image: str) -> DockerContainerCreateResult:
+        try:
+            return self._create_container_once(container_args, image_source="local")
+        except ImageNotFound:
+            self._client.images.pull(image)
+            return self._create_container_once(container_args, image_source="pulled")
+
     def _is_workload_identity_enabled(self) -> bool:
-        configured = self._execution_profile_config.workload_identity.enabled
-        if configured is not None:
-            return configured
         return is_workload_identity_token_exchange_enabled()
 
-    def _create_docker_subject_token_issuer(self) -> SubjectTokenIssuer:
-        workload_config = self._execution_profile_config.workload_identity
+    def _should_enable_workload_identity_for_step(self, step: PlatformJobStepWithContext) -> bool:
+        if not self._is_workload_identity_enabled():
+            return False
+        if step.auth_context is None:
+            logger.debug(
+                "Docker workload identity is enabled, but the job step has no auth_context",
+                extra={"workspace": step.workspace, "job": step.job, "step": step.name},
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _require_step_spec(step: PlatformJobStepWithContext) -> PlatformJobStepSpec:
+        if step.step_spec is None:
+            raise ValueError("Docker job step requires a step_spec")
+        return step.step_spec
+
+    @staticmethod
+    def _workload_delegation_audience() -> str:
         try:
             from nmp.common.config import get_auth_config
 
             oidc_config = get_auth_config().oidc
-        except Exception:
-            oidc_config = None
-
-        token_endpoint = workload_config.token_endpoint or getattr(oidc_config, "token_endpoint", None)
-        client_id = (
-            workload_config.client_id
-            or getattr(oidc_config, "workload_client_id", None)
-            or getattr(oidc_config, "client_id", None)
-        )
-        password = _resolve_docker_workload_identity_password(workload_config)
-        scope = _resolve_docker_workload_identity_scope(workload_config, oidc_config)
-        missing = [
-            name
-            for name, value in {
-                "token_endpoint": token_endpoint,
-                "client_id": client_id,
-                "username": workload_config.username,
-                workload_config.password_env_var: password,
-            }.items()
-            if not value
-        ]
-        if missing:
-            raise JobStorageError(
-                "Docker workload identity token exchange is enabled, but the Docker profile is missing issuer "
-                f"configuration: {', '.join(missing)}"
+        except (RuntimeError, ValidationError):
+            logger.warning(
+                "Could not resolve auth config for Docker workload delegation audience; using the default audience",
+                exc_info=True,
             )
+            return "nemo-platform"
+        return oidc_config.workload_audience or oidc_config.audience or "nemo-platform"
 
-        assert token_endpoint is not None
-        assert client_id is not None
-        assert workload_config.username is not None
-        assert password is not None
-        return OAuthPasswordGrantSubjectTokenIssuer(
-            token_endpoint=token_endpoint,
-            client_id=client_id,
-            client_secret=workload_config.client_secret,
-            username=workload_config.username,
-            password=password,
-            scope=scope,
-            default_expires_in_seconds=workload_config.subject_token_ttl_seconds,
+    def _provision_docker_workload_proof_token(self, delegation_name: str) -> DockerWorkloadProofToken:
+        token, token_hash = create_opaque_docker_proof_token(delegation_name)
+        expires_at = workload_delegation_expires_at(
+            ttl_seconds_active=self._execution_profile_config.ttl_seconds_active
+        )
+        return DockerWorkloadProofToken(
+            token=token,
+            expires_at=expires_at,
+            opaque_subject_token_hash=token_hash,
+        )
+
+    def _build_docker_workload_delegation(
+        self,
+        *,
+        step: PlatformJobStepWithContext,
+        delegation_name: str,
+        proof_token: DockerWorkloadProofToken,
+    ) -> WorkloadDelegationEntity:
+        if step.auth_context is None:
+            raise JobStorageError("Docker workload identity requires a job auth_context for on-behalf-of delegation")
+
+        auth_context = AuthContext.model_validate(step.auth_context.model_dump(mode="python", exclude_none=True))
+        return WorkloadDelegationEntity(
+            name=delegation_name,
+            workspace=SYSTEM_WORKSPACE,
+            workload_subject=delegation_name,
+            workload_audience=self._workload_delegation_audience(),
+            workload_workspace=step.workspace,
+            job_id=step.job,
+            attempt_id=step.attempt_id,
+            step_id=step.id,
+            auth_context=auth_context,
+            opaque_subject_token_hash=proof_token.opaque_subject_token_hash,
+            expires_at=proof_token.expires_at,
+        )
+
+    def _prepare_workload_identity_for_step(
+        self,
+        *,
+        step: PlatformJobStepWithContext,
+        workload_identity_volume_name: str,
+    ) -> str:
+        delegation_name = docker_delegation_name(
+            workload_workspace=step.workspace,
+            job_id=step.job,
+            attempt_id=step.attempt_id,
+            step_id=step.id,
+        )
+        proof_token = self._provision_docker_workload_proof_token(delegation_name)
+        delegation = self._build_docker_workload_delegation(
+            step=step,
+            delegation_name=delegation_name,
+            proof_token=proof_token,
+        )
+        self._workload_delegation_store.register(
+            delegation,
+            require_opaque_subject_token_hash=delegation.opaque_subject_token_hash is not None,
+        )
+
+        token_written = False
+        try:
+            self._write_workload_identity_subject_token(workload_identity_volume_name, proof_token.token)
+            token_written = True
+        finally:
+            if not token_written:
+                self._try_revoke_workload_delegation(
+                    delegation_name,
+                    reason="token provisioning failure",
+                    cause=sys.exception(),
+                )
+
+        return delegation_name
+
+    def _try_revoke_workload_delegation(
+        self,
+        delegation_name: str | None,
+        *,
+        reason: str,
+        cause: BaseException | None = None,
+    ) -> Exception | None:
+        if not delegation_name:
+            return None
+
+        try:
+            self._workload_delegation_store.revoke(delegation_name)
+        except _WORKLOAD_DELEGATION_CLEANUP_ERRORS as exc:
+            logger.exception(
+                "Failed to revoke Docker workload delegation",
+                extra={"delegation_name": delegation_name, "reason": reason},
+            )
+            if cause is not None:
+                cause.add_note(f"Failed to revoke Docker workload delegation {delegation_name} after {reason}: {exc!r}")
+            return exc
+        return None
+
+    def _workload_delegation_name_for_step(self, step: PlatformJobStepWithContext) -> str:
+        return docker_delegation_name(
+            workload_workspace=step.workspace,
+            job_id=step.job,
+            attempt_id=step.attempt_id,
+            step_id=step.id,
+        )
+
+    @staticmethod
+    def _workload_delegation_name_from_container(container: Container) -> str | None:
+        labels = container.labels or {}
+        if DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL not in labels:
+            return None
+
+        workload_workspace = labels.get(JOB_WORKSPACE_ID_LABEL)
+        job_id = labels.get(JOB_ID_LABEL)
+        attempt_id = labels.get(JOB_ATTEMPT_ID_LABEL)
+        step_id = labels.get(JOB_STEP_ID_LABEL)
+        if not isinstance(workload_workspace, str) or not workload_workspace:
+            return None
+        if not isinstance(job_id, str) or not job_id:
+            return None
+        if not isinstance(attempt_id, str) or not attempt_id:
+            return None
+        if not isinstance(step_id, str) or not step_id:
+            return None
+
+        return docker_delegation_name(
+            workload_workspace=workload_workspace,
+            job_id=job_id,
+            attempt_id=attempt_id,
+            step_id=step_id,
         )
 
     def _write_workload_identity_subject_token(self, volume_name: str, token: str) -> None:
@@ -374,32 +449,22 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         finalize_token_command = (
             f"mv {token_volume_path}/token.tmp {token_volume_path}/token && chmod 0444 {token_volume_path}/token"
         )
+        container_args = {
+            "name": container_name,
+            "image": permissions_image,
+            "command": [
+                "sh",
+                "-c",
+                finalize_token_command,
+            ],
+            "volumes": {volume_name: {"bind": token_volume_path, "mode": "rw"}},
+            "labels": {JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER},
+        }
         try:
-            container = self._client.containers.create(
-                name=container_name,
-                image=permissions_image,
-                command=[
-                    "sh",
-                    "-c",
-                    finalize_token_command,
-                ],
-                volumes={volume_name: {"bind": token_volume_path, "mode": "rw"}},
-                labels={JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER},
-            )
-        except ImageNotFound:
-            self._client.images.pull(permissions_image)
-            container = self._client.containers.create(
-                name=container_name,
-                image=permissions_image,
-                command=[
-                    "sh",
-                    "-c",
-                    finalize_token_command,
-                ],
-                volumes={volume_name: {"bind": token_volume_path, "mode": "rw"}},
-                labels={JOB_MANAGED_BY_LABEL: JOB_MANAGED_BY_JOBS_CONTROLLER},
-            )
-        except APIError as exc:
+            container = self._create_container_with_image_pull(
+                container_args=container_args, image=permissions_image
+            ).container
+        except DockerException as exc:
             raise JobStorageError("Error creating workload identity token writer container") from exc
 
         try:
@@ -410,114 +475,13 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
                 raise JobStorageError(
                     f"Workload identity token writer exited with non-zero status {exit_status['StatusCode']}"
                 )
+        except DockerException as exc:
+            raise JobStorageError("Error writing workload identity subject token") from exc
         finally:
             try:
                 container.remove()
-            except Exception:
+            except DockerException:
                 logger.debug("Failed to remove workload identity token writer container", exc_info=True)
-
-    def _build_workload_identity_refresher(self, volume_name: str) -> SubjectTokenRefreshLoop:
-        issuer = self._create_docker_subject_token_issuer()
-        return SubjectTokenRefreshLoop(
-            issuer=issuer,
-            write_token=lambda token: self._write_workload_identity_subject_token(volume_name, token),
-            refresh_margin_seconds=self._execution_profile_config.workload_identity.refresh_margin_seconds,
-        )
-
-    def _start_workload_identity_refresher(
-        self, container_name: str, refresher: SubjectTokenRefreshLoop | None
-    ) -> None:
-        if refresher is None:
-            return
-        old_refresher = self._workload_identity_refreshers.get(container_name)
-        if old_refresher is not None:
-            old_refresher.stop()
-            self._workload_identity_refreshers.pop(container_name, None)
-        refresher.start()
-        self._workload_identity_refreshers[container_name] = refresher
-
-    def _stop_workload_identity_refresher(self, container_name: str) -> None:
-        refresher = self._workload_identity_refreshers.get(container_name)
-        if refresher is not None:
-            refresher.stop()
-            self._workload_identity_refreshers.pop(container_name, None)
-
-    def _stop_all_workload_identity_refreshers(self) -> None:
-        for container_name, refresher in list(self._workload_identity_refreshers.items()):
-            try:
-                refresher.stop()
-            except Exception:
-                logger.warning(
-                    "Failed to stop workload identity subject token refresher for Docker container %s",
-                    container_name,
-                    exc_info=True,
-                )
-            finally:
-                self._workload_identity_refreshers.pop(container_name, None)
-
-    @staticmethod
-    def _get_workload_identity_volume_from_mounts(container: Container) -> str | None:
-        attrs = getattr(container, "attrs", None) or {}
-        mounts = attrs.get("Mounts", []) or []
-        for mount in mounts:
-            if mount.get("Type") != "volume" or mount.get("Destination") != WORKLOAD_IDENTITY_VOLUME_PATH:
-                continue
-            volume_name = mount.get("Name") or mount.get("Source")
-            if isinstance(volume_name, str) and volume_name:
-                return volume_name
-        return None
-
-    def _get_workload_identity_volume_for_container(self, container: Container) -> str | None:
-        labels = getattr(container, "labels", None) or {}
-        token_file = labels.get(DOCKER_WORKLOAD_IDENTITY_TOKEN_FILE_LABEL)
-        if token_file is not None and token_file != WORKLOAD_IDENTITY_TOKEN_FILE_PATH:
-            logger.warning(
-                "Skipping workload identity refresher restore for container with unexpected token file label",
-                extra={
-                    "container_name": getattr(container, "name", None),
-                    "token_file": token_file,
-                },
-            )
-            return None
-
-        volume_name = labels.get(DOCKER_WORKLOAD_IDENTITY_VOLUME_LABEL)
-        if volume_name:
-            return volume_name
-        return self._get_workload_identity_volume_from_mounts(container)
-
-    def _restore_workload_identity_refresher_for_container(self, container: Container) -> None:
-        container_name = getattr(container, "name", None)
-        if not isinstance(container_name, str) or not container_name:
-            return
-        if container_name in self._workload_identity_refreshers:
-            return
-        if container.status != "running":
-            return
-        if not self._is_container_owned_by_this_controller(container):
-            return
-
-        labels = getattr(container, "labels", None) or {}
-        if labels.get(JOB_TYPE_LABEL) != JOB_TYPE_JOB:
-            return
-
-        volume_name = self._get_workload_identity_volume_for_container(container)
-        if volume_name is None:
-            return
-
-        try:
-            self._start_workload_identity_refresher(
-                container_name,
-                self._build_workload_identity_refresher(volume_name),
-            )
-            logger.info(
-                "Restored Docker workload identity refresher for running job container",
-                extra={"container_name": container_name, "volume_name": volume_name},
-            )
-        except Exception:
-            logger.exception(
-                "Failed to restore Docker workload identity refresher for running job container",
-                extra={"container_name": container_name, "volume_name": volume_name},
-            )
 
     @staticmethod
     def get_label_from_container(container: Container, label: str) -> str:
@@ -526,7 +490,7 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
     @staticmethod
     def _is_container_managed_by_jobs_controller(container: Container) -> bool:
         """Return True if the container has the jobs-controller managed-by label."""
-        labels = getattr(container, "labels", None) or {}
+        labels = container.labels or {}
         return labels.get(JOB_MANAGED_BY_LABEL) == JOB_MANAGED_BY_JOBS_CONTROLLER
 
     def _base_controller_labels(self) -> dict[str, str]:
@@ -538,7 +502,7 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         }
 
     def _is_container_owned_by_this_controller(self, container: Container) -> bool:
-        labels = getattr(container, "labels", None) or {}
+        labels = container.labels or {}
         return (
             labels.get(JOB_MANAGED_BY_LABEL) == JOB_MANAGED_BY_JOBS_CONTROLLER
             and labels.get(JOB_CONTROLLER_INSTANCE_ID_LABEL) == self._jobs_controller_instance_id
@@ -587,7 +551,7 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
                     "Task storage volume not found, may have been already cleaned up",
                     extra={"volume_name": volume_name},
                 )
-            except Exception:
+            except DockerException:
                 logger.exception("Failed to clean up task storage volume", extra={"volume_name": volume_name})
 
     def cleanup_job_persistent_storage(self, workspace: str, job: str) -> None:
@@ -636,11 +600,9 @@ fi
         }
 
         try:
-            container = self._client.containers.create(**container_args)
-        except ImageNotFound:
-            # Try pulling the image if not found locally
-            self._client.images.pull(storage_config.volume_permissions_image)
-            container = self._client.containers.create(**container_args)
+            container = self._create_container_with_image_pull(
+                container_args=container_args, image=storage_config.volume_permissions_image
+            ).container
         except APIError:
             logger.error(
                 "Error creating cleanup container for job", extra={"workspace": workspace, "job": job}, exc_info=True
@@ -678,30 +640,31 @@ fi
                 "Skipping container remove (not owned by this jobs-controller)",
                 extra={
                     "container_id": container.id[:16] if container.id else "unknown",
-                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                    "owner_label": (container.labels or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
                 },
             )
             return
         try:
             container.remove(force=True)
-            logger.debug("Removed container", extra={"container_id": container.id[:16]})  # type: ignore
+            logger.debug("Removed container", extra={"container_id": container.id[:16]})
         except NotFound:
             logger.warning(
                 "Container not found, may have been already removed", extra={"container_id": container.id[:16]}
-            )  # type: ignore
-        except Exception:
-            logger.exception("Failed to remove container", extra={"container_id": container.id[:16]})  # type: ignore
+            )
+        except DockerException:
+            logger.exception("Failed to remove container", extra={"container_id": container.id[:16]})
 
     def cleanup_container_network(self, container: Container) -> None:
         """Remove a Docker network."""
 
         # First check if the container is attached to the network
         network_name = self._execution_profile_config.networking.job_container_network
-        if network_name not in container.attrs.get("NetworkSettings", {}).get("Networks", {}):
+        attrs = container.attrs or {}
+        if network_name not in attrs.get("NetworkSettings", {}).get("Networks", {}):
             logger.debug(
                 "Container already detached from network",
                 extra={"container_id": container.id[:16], "network_name": network_name},
-            )  # type: ignore
+            )
             return
 
         # If it is, disconnect it
@@ -709,7 +672,7 @@ fi
         network.disconnect(container)
         logger.debug(
             "Removed network from container", extra={"container_id": container.id[:16], "network_name": network_name}
-        )  # type: ignore
+        )
 
     def get_mounts(
         self,
@@ -803,7 +766,7 @@ fi
         try:
             self._client.volumes.create(task_volume_name)
             logger.debug("Created task storage volume", extra={"volume_name": task_volume_name})
-        except Exception as exc:
+        except DockerException as exc:
             raise JobStorageError(f"Error creating task storage volume {task_volume_name}") from exc
 
         # create a config volume for placing config files if needed
@@ -812,14 +775,14 @@ fi
         try:
             self._client.volumes.create(config_volume_name)
             logger.debug("Created task config volume", extra={"volume_name": config_volume_name})
-        except Exception as exc:
+        except DockerException as exc:
             raise JobStorageError(f"Error creating task config volume {config_volume_name}") from exc
 
         if workload_identity_volume_name is not None:
             try:
                 self._client.volumes.create(workload_identity_volume_name)
                 logger.debug("Created workload identity volume", extra={"volume_name": workload_identity_volume_name})
-            except Exception as exc:
+            except DockerException as exc:
                 raise JobStorageError(
                     f"Error creating workload identity volume {workload_identity_volume_name}"
                 ) from exc
@@ -892,40 +855,38 @@ chmod -R 777 {job_vol}/{storage_subpath}
             tar.addfile(info, io.BytesIO(script.encode("utf-8")))
         fileobj.seek(0)
 
+        container_args = {
+            "name": f"job-init-{workspace}-{job}-{task}",
+            "image": permissions_image,
+            "command": ["sh", "/job-init.sh"],
+            "volumes": volumes,
+        }
         try:
-            container = self._client.containers.create(
-                name=f"job-init-{workspace}-{job}-{task}",
-                image=permissions_image,
-                command=["sh", "/job-init.sh"],
-                volumes=volumes,
-            )
-        except ImageNotFound:
-            # Try pulling the permissions image if not found locally
-            self._client.images.pull(permissions_image)
-            container = self._client.containers.create(
-                name=f"job-init-{workspace}-{job}-{task}",
-                image=permissions_image,
-                command=["sh", "/job-init.sh"],
-                volumes=volumes,
-            )
-        except APIError as exc:
+            container = self._create_container_with_image_pull(
+                container_args=container_args, image=permissions_image
+            ).container
+        except DockerException as exc:
             raise JobStorageError(f"Error creating job init container with image {permissions_image}") from exc
 
-        container.put_archive(path="/", data=fileobj)
         try:
+            container.put_archive(path="/", data=fileobj)
             container.start()
-        except Exception as exc:
+        except DockerException as exc:
             self.cleanup_task_storage_volumes(workspace, job, task)
             raise JobStorageError("Error starting job init container") from exc
 
-        exit_status = container.wait()
-        if exit_status["StatusCode"] != 0:
+        try:
+            exit_status = container.wait()
+            if exit_status["StatusCode"] != 0:
+                self.cleanup_task_storage_volumes(workspace, job, task)
+                raise JobStorageError(f"Job init container exited with non-zero status {exit_status['StatusCode']}")
+        except DockerException as exc:
             self.cleanup_task_storage_volumes(workspace, job, task)
-            raise JobStorageError(f"Job init container exited with non-zero status {exit_status['StatusCode']}")
+            raise JobStorageError("Error waiting for job init container") from exc
 
         try:
             container.remove()
-        except Exception as e:
+        except DockerException as e:
             raise JobStorageError("Failed to remove job init container") from e
 
     def schedule_single_container(
@@ -933,12 +894,13 @@ chmod -R 777 {job_vol}/{storage_subpath}
         executor_config: ProviderT,
         step: PlatformJobStepWithContext,
     ) -> JobUpdate:
+        step_spec = self._require_step_spec(step)
         platform_config = get_platform_config()
 
         # Profile-level env vars first (e.g. HOME=/tmp); system, step, and shared env override these
         env = self._execution_profile_config.env.copy()
         validate_no_reserved_managed_job_environment_variable_names(
-            (envvar.name for envvar in step.step_spec.environment or []),
+            (envvar.name for envvar in step_spec.environment or []),
             source="Job step environment keys",
         )
 
@@ -966,12 +928,12 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 NEMO_JOB_SECRETS_ENVVAR: self.get_secrets_environment_variable_for_injection(step),
             }
         )
-        workload_identity_enabled = self._is_workload_identity_enabled()
+        workload_identity_enabled = self._should_enable_workload_identity_for_step(step)
         if workload_identity_enabled:
             env[WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR] = WORKLOAD_IDENTITY_TOKEN_FILE_PATH
 
         # Set auth context env var for job containers to make authenticated API calls
-        if step.auth_context:
+        if step.auth_context and not workload_identity_enabled:
             sdk_auth_context = step.auth_context
             auth_context = AuthContext.model_validate(sdk_auth_context.model_dump(mode="python", exclude_none=True))
             principal = auth_context.to_principal()
@@ -979,14 +941,14 @@ chmod -R 777 {job_vol}/{storage_subpath}
             for name, value in env_var_dict.items():
                 env[name] = value
 
-        step_config_json = json.dumps(step.step_spec.config)
+        step_config_json = json.dumps(step_spec.config)
 
         job_storage_mount = ""
         task_storage_mount = DEFAULT_TASK_STORAGE_PATH
 
         # Update the step container's environment variables for non-secret values
-        if step.step_spec.environment:
-            for envvar in step.step_spec.environment:
+        if step_spec.environment:
+            for envvar in step_spec.environment:
                 if envvar.value is not None:
                     # If the job has requested persistent job storage path, capture it for use when constructing the volume mount.
                     if envvar.name == PERSISTENT_JOB_STORAGE_PATH_ENVVAR:
@@ -1021,6 +983,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
 
         # The admission slot is owned by this method until submit succeeds.
         # After that, run_container releases it when the start worker exits.
+        container_args = None
+        submitted = False
         try:
             container_args = self._prepare_container_args_for_start(
                 executor_config=executor_config,
@@ -1034,9 +998,17 @@ chmod -R 777 {job_vol}/{storage_subpath}
             )
             submitted_to_threadpool_at = time.monotonic()
             self._container_run_threadpool.submit(self.run_container, step, container_args, submitted_to_threadpool_at)
-        except Exception:
-            self._container_start_admission.release()
-            raise
+            submitted = True
+        finally:
+            if not submitted:
+                if container_args is not None:
+                    self._try_revoke_workload_delegation(
+                        container_args.get("_nmp_workload_delegation_name"),
+                        reason="container scheduling failure",
+                        cause=sys.exception(),
+                    )
+                    self.cleanup_task_storage_volumes(step.workspace, step.job, task_id)
+                self._container_start_admission.release()
         logger.debug(
             "Docker run_container submitted",
             extra={
@@ -1066,7 +1038,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
         job_volume_name = storage_config.volume_name if storage_config is not None else ""
         task_volume_name = self.task_storage_volume_name(workspace=step.workspace, job=step.job, task=task_id)
         config_volume_name = self.task_config_volume_name(workspace=step.workspace, job=step.job, task=task_id)
-        workload_identity_enabled = self._is_workload_identity_enabled()
+        workload_identity_enabled = self._should_enable_workload_identity_for_step(step)
         workload_identity_volume_name = (
             self.task_workload_identity_volume_name(workspace=step.workspace, job=step.job, task=task_id)
             if workload_identity_enabled
@@ -1087,14 +1059,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             step_config_json=step_config_json,
             workload_identity_volume_name=workload_identity_volume_name,
         )
-        workload_identity_refresher = None
-        if workload_identity_volume_name is not None:
-            try:
-                workload_identity_refresher = self._build_workload_identity_refresher(workload_identity_volume_name)
-                workload_identity_refresher.refresh_once()
-            except Exception:
-                self.cleanup_task_storage_volumes(step.workspace, step.job, task_id)
-                raise
+        workload_delegation_name = None
         logger.debug(
             "Docker job storage ensured",
             extra={
@@ -1153,11 +1118,33 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 additional_volume_mounts=additional_volume_mounts,
             ),
         }
-        if workload_identity_refresher is not None:
-            container_args["_nmp_workload_identity_refresher"] = workload_identity_refresher
+        if workload_identity_volume_name is not None:
+            workload_identity_prepared = False
+            try:
+                workload_delegation_name = self._prepare_workload_identity_for_step(
+                    step=step,
+                    workload_identity_volume_name=workload_identity_volume_name,
+                )
+                container_args["_nmp_workload_delegation_name"] = workload_delegation_name
+                workload_identity_prepared = True
+            finally:
+                if not workload_identity_prepared:
+                    self.cleanup_task_storage_volumes(step.workspace, step.job, task_id)
 
         container_args["network"] = self._execution_profile_config.networking.job_container_network
-        return self.configure_container(container_args, executor_config)
+        configured = False
+        try:
+            configured_container_args = self.configure_container(container_args, executor_config)
+            configured = True
+            return configured_container_args
+        finally:
+            if not configured:
+                self._try_revoke_workload_delegation(
+                    workload_delegation_name,
+                    reason="container scheduling failure",
+                    cause=sys.exception(),
+                )
+                self.cleanup_task_storage_volumes(step.workspace, step.job, task_id)
 
     def cancel_scheduling(self, step: PlatformJobStepWithContext) -> bool:
         """Check if the job step is cancelling or pausing, and update status accordingly."""
@@ -1226,10 +1213,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
             if submitted_to_threadpool_at is not None:
                 log_extra["queue_delay_seconds"] = time.monotonic() - submitted_to_threadpool_at
             logger.debug("Docker run_container worker started", extra=log_extra)
+            workload_delegation_name = container_args.get("_nmp_workload_delegation_name")
             try:
                 self._run_container_in_thread(step, container_args)
             except FailedToScheduleError as e:
                 logger.exception("Failed to schedule container for job step")
+                self._try_revoke_workload_delegation(
+                    workload_delegation_name,
+                    reason="container scheduling failure",
+                    cause=e,
+                )
                 status = PlatformJobStatus.ERROR
                 try:
                     self._jobs.update_job_step_status(
@@ -1240,15 +1233,132 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     )
                 except Exception:
                     logger.exception("Failed to persist scheduling error for job step")
-            except Exception:
+            except Exception as e:
                 logger.exception("Unexpected error while scheduling container for job step")
+                self._try_revoke_workload_delegation(
+                    workload_delegation_name,
+                    reason="container scheduling failure",
+                    cause=e,
+                )
             finally:
                 self._container_start_admission.release()
+
+    def _update_step_schedule_status(
+        self,
+        step: PlatformJobStepWithContext,
+        status: PlatformJobStatus,
+        status_details: dict,
+        message: str,
+    ) -> None:
+        status_details["message"] = message
+        self._jobs.update_job_step_status(
+            name=step.name,
+            workspace=step.workspace,
+            job=step.job,
+            body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
+        )
+
+    def _log_job_step_container_created(
+        self,
+        step: PlatformJobStepWithContext,
+        container_args: dict,
+        result: DockerContainerCreateResult,
+    ) -> None:
+        attrs = result.container.attrs or {}
+        host_config = attrs.get("HostConfig", {})
+        if not isinstance(host_config, dict):
+            host_config = {}
+        logger.debug(
+            "Docker container create succeeded",
+            extra={
+                "job": step.job,
+                "step": step.name,
+                "container_name": result.container.name,
+                "image": container_args["image"],
+                "duration_seconds": result.duration_seconds,
+                "image_source": result.image_source,
+                "requested_auto_remove": container_args.get("auto_remove"),
+                "host_config_auto_remove": host_config.get("AutoRemove"),
+            },
+        )
+
+    def _create_job_step_container(
+        self,
+        *,
+        step: PlatformJobStepWithContext,
+        container_args: dict,
+        status: PlatformJobStatus,
+        status_details: dict,
+        workload_delegation_name: str | None,
+    ) -> Container | None:
+        image = container_args["image"]
+        try:
+            result = self._create_container_once(container_args, image_source="local")
+            # Container will create successfully only if image is found locally
+            logger.info("Image found locally", extra={"image": image})
+            self._log_job_step_container_created(step, container_args, result)
+            return result.container
+        except (ImageNotFound, NotFound):
+            # Image not found locally, pull it
+            logger.info("Image not found locally, pulling from registry", extra={"image": image})
+            self._update_step_schedule_status(
+                step,
+                status,
+                status_details,
+                f"Pulling image {image} from registry",
+            )
+            try:
+                pull_start = time.time()
+                self._client.images.pull(image)
+                pull_elapsed = time.time() - pull_start
+                logger.info(
+                    "Successfully pulled image for job step",
+                    extra={"image": image, "pull_elapsed_s": f"{pull_elapsed:.1f}"},
+                )
+            except APIError as e:
+                raise FailedToScheduleError(
+                    "Failed to pull image",
+                    error_details={"message": f"Failed to pull image {image}: {e}"},
+                ) from e
+
+            # If a request to pause or cancel came in while we were pulling down an image,
+            # cancel scheduling the container
+            logger.debug("Checking for cancellation or pausing before creating container after image pull")
+            if self.cancel_scheduling(step):
+                self._try_revoke_workload_delegation(
+                    workload_delegation_name,
+                    reason="container scheduling cancellation",
+                )
+                return None
+
+            self._update_step_schedule_status(
+                step,
+                status,
+                status_details,
+                f"Creating container with image {image}",
+            )
+
+            # Now create it with the pulled container image
+            logger.debug("Creating container for job step after pulling image")
+            try:
+                result = self._create_container_once(container_args, image_source="pulled")
+                self._log_job_step_container_created(step, container_args, result)
+                return result.container
+            except APIError as e:
+                raise FailedToScheduleError(
+                    "Failed to create container for job step",
+                    error_details={"message": f"Failed to create container after pulling image: {e}"},
+                ) from e
+        except APIError as e:
+            raise FailedToScheduleError(
+                "Failed to create container for job step",
+                error_details={"message": f"Failed to create container: {e}"},
+            ) from e
 
     def _run_container_in_thread(self, step: PlatformJobStepWithContext, container_args: dict):
         status_details = {}
         status = PlatformJobStatus.PENDING
-        workload_identity_refresher = container_args.pop("_nmp_workload_identity_refresher", None)
+        workload_delegation_name = container_args.pop("_nmp_workload_delegation_name", None)
 
         # If a request to pause or cancel came in while we were waiting for scheduling loop,
         # cancel scheduling the container
@@ -1262,6 +1372,10 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     "step": step.name,
                     "duration_seconds": time.monotonic() - cancel_check_started_at,
                 },
+            )
+            self._try_revoke_workload_delegation(
+                workload_delegation_name,
+                reason="container scheduling cancellation",
             )
             return
         logger.debug(
@@ -1315,94 +1429,15 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     extra={"launcher_tool_path": self._execution_profile_config.launcher_tool_path},
                 )
 
-            try:
-                create_started_at = time.monotonic()
-                container = self._client.containers.create(**container_args)
-                create_duration_seconds = time.monotonic() - create_started_at
-                # Container will create successfully only if image is found locally
-                logger.info("Image found locally", extra={"image": container_args["image"]})
-                logger.debug(
-                    "Docker container create succeeded",
-                    extra={
-                        "job": step.job,
-                        "step": step.name,
-                        "container_name": container.name,
-                        "image": container_args["image"],
-                        "duration_seconds": create_duration_seconds,
-                        "image_source": "local",
-                        "requested_auto_remove": container_args.get("auto_remove"),
-                        "host_config_auto_remove": container.attrs.get("HostConfig", {}).get("AutoRemove"),
-                    },
-                )
-            except (ImageNotFound, NotFound):
-                # Image not found locally, pull it
-                logger.info("Image not found locally, pulling from registry", extra={"image": container_args["image"]})
-                status_details["message"] = f"Pulling image {container_args['image']} from registry"
-
-                # Send the status update to indicate we are pulling the image
-                self._jobs.update_job_step_status(
-                    name=step.name,
-                    workspace=step.workspace,
-                    job=step.job,
-                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
-                )
-                try:
-                    pull_start = time.time()
-                    self._client.images.pull(container_args["image"])
-                    pull_elapsed = time.time() - pull_start
-                    logger.info(
-                        "Successfully pulled image for job step",
-                        extra={"image": container_args["image"], "pull_elapsed_s": f"{pull_elapsed:.1f}"},
-                    )
-                except APIError as e:
-                    raise FailedToScheduleError(
-                        "Failed to pull image",
-                        error_details={"message": f"Failed to pull image {container_args['image']}: {e}"},
-                    ) from e
-
-                # If a request to pause or cancel came in while we were pulling down an image,
-                # cancel scheduling the container
-                logger.debug("Checking for cancellation or pausing before creating container after image pull")
-                if self.cancel_scheduling(step):
-                    return
-
-                # Send the status update to indicate we are starting the container
-                status_details["message"] = f"Creating container with image {container_args['image']}"
-                self._jobs.update_job_step_status(
-                    name=step.name,
-                    workspace=step.workspace,
-                    job=step.job,
-                    body=PlatformJobStatusUpdateRequest(status=status, status_details=status_details),
-                )
-
-                # Now create it with the pulled container image
-                logger.debug("Creating container for job step after pulling image")
-                try:
-                    create_started_at = time.monotonic()
-                    container = self._client.containers.create(**container_args)
-                    logger.debug(
-                        "Docker container create succeeded",
-                        extra={
-                            "job": step.job,
-                            "step": step.name,
-                            "container_name": container.name,
-                            "image": container_args["image"],
-                            "duration_seconds": time.monotonic() - create_started_at,
-                            "image_source": "pulled",
-                            "requested_auto_remove": container_args.get("auto_remove"),
-                            "host_config_auto_remove": container.attrs.get("HostConfig", {}).get("AutoRemove"),
-                        },
-                    )
-                except APIError as e:
-                    raise FailedToScheduleError(
-                        "Failed to create container for job step",
-                        error_details={"message": f"Failed to create container after pulling image: {e}"},
-                    ) from e
-            except APIError as e:
-                raise FailedToScheduleError(
-                    "Failed to create container for job step",
-                    error_details={"message": f"Failed to create container: {e}"},
-                ) from e
+            container = self._create_job_step_container(
+                step=step,
+                container_args=container_args,
+                status=status,
+                status_details=status_details,
+                workload_delegation_name=workload_delegation_name,
+            )
+            if container is None:
+                return
 
             # Insert the jobs-launcher into the container if the launcher exists
             if jobs_launcher_stream is not None:
@@ -1441,6 +1476,10 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     "duration_seconds": time.monotonic() - pre_start_cancel_check_started_at,
                 },
             )
+            self._try_revoke_workload_delegation(
+                workload_delegation_name,
+                reason="container scheduling cancellation",
+            )
             return
         logger.debug(
             "Docker pre-start cancellation check completed",
@@ -1475,7 +1514,6 @@ chmod -R 777 {job_vol}/{storage_subpath}
             max_attempts = 3
             attempts = 0
             start_started_at = time.monotonic()
-            self._start_workload_identity_refresher(container.name, workload_identity_refresher)
             while not started and attempts < max_attempts:
                 attempts += 1
                 try:
@@ -1502,14 +1540,14 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     "duration_seconds": time.monotonic() - start_started_at,
                 },
             )
-        except Exception as e:
-            self._stop_workload_identity_refresher(container.name)
+        except DockerException as e:
             raise FailedToScheduleError(
                 f"Failed to start container {container.name} for job step",
                 error_details={"message": f"Failed to start container: {e}"},
             ) from e
 
     def _sync(self, step: PlatformJobStepWithContext) -> JobUpdate:
+        step_spec = self._require_step_spec(step)
         container: Container | None = self.get_container(step)
         if step.status == PlatformJobStatus.ACTIVE:
             if container is None:
@@ -1521,7 +1559,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
             ):
                 return result
             if container is not None and self.check_step_is_stale(step):
-                message = staleness_error_message(step.step_spec.lifecycle.staleness_timeout_seconds)
+                message = staleness_error_message(step_spec.lifecycle.staleness_timeout_seconds)
                 return self._kill_container_with_error(step, container, message)
             return self.sync_active(step, container)
         elif step.status == PlatformJobStatus.PENDING:
@@ -1599,7 +1637,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                 "Skipping container kill (not owned by this jobs-controller)",
                 extra={
                     "container_name": container.name,
-                    "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                    "owner_label": (container.labels or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
                 },
             )
             return JobUpdate(
@@ -1715,7 +1753,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     "Skipping container stop (not owned by this jobs-controller)",
                     extra={
                         "container_name": container.name,
-                        "owner_label": (getattr(container, "labels", None) or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
+                        "owner_label": (container.labels or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
                     },
                 )
                 return JobUpdate(
@@ -1801,14 +1839,16 @@ chmod -R 777 {job_vol}/{storage_subpath}
         }
 
     def create_step_update(self, step: PlatformJobStepWithContext, container: Container) -> JobUpdate:
-        if step.status in (PlatformJobStatus.ACTIVE, PlatformJobStatus.PENDING):
-            self._restore_workload_identity_refresher_for_container(container)
-
         status, status_details, error_stack = self.map_docker_container_status_to_platform_status(step, container)
         task_id = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
         error_details = {}
         if status == PlatformJobStatus.ERROR:
             error_details["message"] = status_details.get("message", "Job encountered an error")
+        if status in PlatformJobStatus.terminals() and self._should_enable_workload_identity_for_step(step):
+            self._try_revoke_workload_delegation(
+                self._workload_delegation_name_for_step(step),
+                reason="terminal status",
+            )
 
         logger.debug(
             "Docker container status mapped to platform status",
@@ -1891,7 +1931,7 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     error_stack = logs
                     if len(error_stack) > 2048:
                         error_stack = error_stack[-2048:]
-                except Exception as exc:
+                except DockerException as exc:
                     logger.error("Failed to get logs for container %s: %s", container.name, exc)
 
                 return (
@@ -1954,10 +1994,8 @@ chmod -R 777 {job_vol}/{storage_subpath}
                     logger.debug(
                         "Skipping Docker cleanup for unowned job container",
                         extra={
-                            "container_name": getattr(container, "name", None),
-                            "owner_label": (getattr(container, "labels", None) or {}).get(
-                                JOB_CONTROLLER_INSTANCE_ID_LABEL
-                            ),
+                            "container_name": container.name,
+                            "owner_label": (container.labels or {}).get(JOB_CONTROLLER_INSTANCE_ID_LABEL),
                         },
                     )
                     continue
@@ -2057,9 +2095,15 @@ chmod -R 777 {job_vol}/{storage_subpath}
         workspace = self.get_label_from_container(container, JOB_WORKSPACE_ID_LABEL)
         job = self.get_label_from_container(container, JOB_ID_LABEL)
         task = self.get_label_from_container(container, JOB_TASK_ID_LABEL)
-        exit_code = container.attrs.get("State", {}).get("ExitCode", 0)
+        attrs: dict[str, Any] = container.attrs or {}
+        state = attrs.get("State", {})
+        exit_code = state.get("ExitCode", 0) if isinstance(state, dict) else 0
+        delegation_name = self._workload_delegation_name_from_container(container)
 
-        self._stop_workload_identity_refresher(container.name)
+        self._try_revoke_workload_delegation(
+            delegation_name,
+            reason="terminal status",
+        )
         self.cleanup_container(container)
         logger.debug(
             "Cleaned up container",

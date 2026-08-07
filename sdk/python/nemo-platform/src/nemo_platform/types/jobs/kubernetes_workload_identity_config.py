@@ -19,20 +19,21 @@ from typing import Optional
 
 from ..._models import BaseModel
 
-__all__ = ["WorkloadTokenExchangeErrorResponse"]
+__all__ = ["KubernetesWorkloadIdentityConfig"]
 
 
-class WorkloadTokenExchangeErrorResponse(BaseModel):
-    """RFC 8693 token exchange error response."""
+class KubernetesWorkloadIdentityConfig(BaseModel):
+    """Kubernetes workload identity token projection configuration."""
 
-    error: str
+    token_audience: Optional[str] = None
+    """Audience for the projected service account token.
+
+    Defaults to auth.oidc.workload_client_id, auth.oidc.client_id, then
+    'nemo-platform'.
     """
-    OAuth 2.0 or RFC 8693 token exchange error code, such as invalid_client,
-    invalid_request, invalid_scope, or invalid_target.
+
+    token_expiration_seconds: Optional[int] = None
     """
-
-    error_description: Optional[str] = None
-    """Human-readable ASCII text providing additional information about the error."""
-
-    error_uri: Optional[str] = None
-    """URI identifying a human-readable web page with information about the error."""
+    Requested expirationSeconds for the projected service account token used as the
+    workload identity subject token.
+    """

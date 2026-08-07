@@ -1,17 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import datetime
+import json
 import tarfile
-import threading
-import time
 
 import httpx
-import pytest
+from nemo_platform import NeMoPlatform
+from nmp.common.auth import AuthContext, Principal, WorkloadDelegationEntity, docker_delegation_name
+from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.core.jobs.controllers.backends.workload_tokens import (
-    OAuthPasswordGrantSubjectTokenIssuer,
-    SubjectToken,
-    SubjectTokenRefreshLoop,
+    WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS,
     build_token_archive,
+    create_authenticated_workload_delegation_store,
+    workload_delegation_expires_at,
 )
 
 
@@ -27,369 +29,96 @@ def test_build_token_archive_contains_read_only_token_file() -> None:
         assert extracted.read() == b"subject-token"
 
 
-def test_oauth_password_grant_issuer_requests_subject_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict = {}
+def test_workload_delegation_expires_at_adds_active_ttl_and_cleanup_buffer() -> None:
+    now = datetime.datetime(2026, 8, 10, 12, 0, tzinfo=datetime.timezone.utc)
 
-    def fake_post(url: str, *, data: dict, timeout: float) -> httpx.Response:
-        captured["url"] = url
-        captured["data"] = data
-        captured["timeout"] = timeout
-        return httpx.Response(200, json={"access_token": "subject-token", "expires_in": 120})
+    expires_at = workload_delegation_expires_at(ttl_seconds_active=900, now=now)
 
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
+    assert expires_at == now + datetime.timedelta(seconds=900 + WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS)
 
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="https://idp.example.com/token",
-        client_id="nemo-platform",
-        client_secret="secret",
-        username="svc-nemo",
-        password="app-password",
-        scope="openid email groups",
-        timeout=5.0,
+
+def test_workload_delegation_expires_at_normalizes_naive_now_to_utc() -> None:
+    now = datetime.datetime(2026, 8, 10, 12, 0)
+
+    expires_at = workload_delegation_expires_at(ttl_seconds_active=60, now=now)
+
+    assert expires_at.tzinfo is datetime.timezone.utc
+    assert expires_at == now.replace(tzinfo=datetime.timezone.utc) + datetime.timedelta(
+        seconds=60 + WORKLOAD_DELEGATION_TTL_BUFFER_SECONDS
     )
-    before = time.time()
-
-    token = issuer.issue()
-
-    assert token.value == "subject-token"
-    assert token.expires_at >= before + 120
-    assert captured == {
-        "url": "https://idp.example.com/token",
-        "data": {
-            "grant_type": "password",
-            "client_id": "nemo-platform",
-            "client_secret": "secret",
-            "username": "svc-nemo",
-            "password": "app-password",
-            "scope": "openid email groups",
-        },
-        "timeout": 5.0,
-    }
 
 
-def test_oauth_password_grant_issuer_reports_idp_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_post(url: str, *, data: dict, timeout: float) -> httpx.Response:
+def test_authenticated_workload_delegation_store_uses_sync_service_client() -> None:
+    entity = _workload_delegation_entity()
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        body = json.loads(request.content)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         return httpx.Response(
-            400,
-            json={"error": "invalid_grant", "error_description": "bad credentials"},
-            headers={"content-type": "application/json"},
+            201,
+            request=request,
+            json={
+                "entity_type": "workload_delegation",
+                "id": "delegation-id",
+                "workspace": SYSTEM_WORKSPACE,
+                "parent": None,
+                "project": None,
+                "name": body["name"],
+                "data": body["data"],
+                "created_at": now,
+                "created_by": "service:jobs",
+                "updated_at": now,
+                "updated_by": "service:jobs",
+                "db_version": 1,
+            },
         )
 
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        sdk = NeMoPlatform(
+            base_url="http://platform",
+            default_headers={
+                "Authorization": "Bearer controller-token",
+                "X-NMP-Principal-On-Behalf-Of": "alice@example.com",
+                "X-NMP-Principal-On-Behalf-Of-Email": "alice@example.com",
+                "X-NMP-Principal-On-Behalf-Of-Groups": "team-a",
+            },
+            http_client=http_client,
+        )
 
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="https://idp.example.com/token",
-        client_id="nemo-platform",
-        username="svc-nemo",
-        password="bad-password",
+        saved = create_authenticated_workload_delegation_store(sdk).register(entity)
+
+    assert saved.id == "delegation-id"
+    assert saved.auth_context.principal_id == "creator@example.com"
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.method == "POST"
+    assert str(request.url) == "http://platform/apis/entities/v2/workspaces/system/entities/workload_delegation"
+    assert request.headers["Authorization"] == "Bearer controller-token"
+    assert request.headers["X-NMP-Principal-Id"] == "service:jobs"
+    assert request.headers["X-NMP-Principal-On-Behalf-Of"] == ""
+    assert request.headers["X-NMP-Principal-On-Behalf-Of-Email"] == ""
+    assert request.headers["X-NMP-Principal-On-Behalf-Of-Groups"] == ""
+    assert request.headers["X-NMP-Internal"] == "true"
+
+
+def _workload_delegation_entity() -> WorkloadDelegationEntity:
+    delegation_name = docker_delegation_name(
+        workload_workspace="default",
+        job_id="job-123",
+        attempt_id="attempt-1",
+        step_id="step-a",
     )
-
-    with pytest.raises(RuntimeError, match="invalid_grant - bad credentials"):
-        issuer.issue()
-
-
-@pytest.mark.parametrize(
-    "response",
-    [
-        httpx.Response(400, json=["invalid"], headers={"content-type": "application/json"}),
-        httpx.Response(400, json="invalid", headers={"content-type": "application/json"}),
-        httpx.Response(400, json=None, headers={"content-type": "application/json"}),
-        httpx.Response(400, content=b"not-json", headers={"content-type": "application/json"}),
-    ],
-)
-def test_oauth_password_grant_issuer_ignores_non_object_error_json(
-    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
-) -> None:
-    def fake_post(url: str, *, data: dict, timeout: float) -> httpx.Response:
-        return response
-
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
-
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="https://idp.example.com/token",
-        client_id="nemo-platform",
-        username="svc-nemo",
-        password="bad-password",
+    return WorkloadDelegationEntity(
+        name=delegation_name,
+        workspace=SYSTEM_WORKSPACE,
+        workload_subject=delegation_name,
+        workload_audience="nemo-platform",
+        workload_workspace="default",
+        job_id="job-123",
+        attempt_id="attempt-1",
+        step_id="step-a",
+        auth_context=AuthContext.from_principal(Principal(id="creator@example.com")),
+        expires_at=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
     )
-
-    with pytest.raises(RuntimeError, match="unknown_error - "):
-        issuer.issue()
-
-
-def test_oauth_password_grant_issuer_rejects_non_loopback_http_before_sending_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_post(*args, **kwargs) -> httpx.Response:
-        raise AssertionError("token endpoint should not be called")
-
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
-
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="http://authentik-server:9000/application/o/token/",
-        client_id="nemo-platform",
-        username="svc-nemo",
-        password="app-password",
-    )
-
-    with pytest.raises(RuntimeError, match="token_endpoint must use https://"):
-        issuer.issue()
-
-
-@pytest.mark.parametrize("token_endpoint", ["http://localhost:18080/token", "http://127.0.0.1:18080/token"])
-def test_oauth_password_grant_issuer_allows_loopback_http_for_local_development(
-    monkeypatch: pytest.MonkeyPatch, token_endpoint: str
-) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_post(url: str, *, data: dict, timeout: float) -> httpx.Response:
-        captured["url"] = url
-        return httpx.Response(200, json={"access_token": "subject-token", "expires_in": 120})
-
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
-
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint=token_endpoint,
-        client_id="nemo-platform",
-        username="svc-nemo",
-        password="app-password",
-    )
-
-    assert issuer.issue().value == "subject-token"
-    assert captured["url"] == token_endpoint
-
-
-def test_oauth_password_grant_issuer_uses_configured_default_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_post(url: str, *, data: dict, timeout: float) -> httpx.Response:
-        return httpx.Response(200, json={"access_token": "subject-token"})
-
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
-
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="https://idp.example.com/token",
-        client_id="nemo-platform",
-        username="svc-nemo",
-        password="app-password",
-        default_expires_in_seconds=45,
-    )
-    before = time.time()
-
-    token = issuer.issue()
-
-    assert token.value == "subject-token"
-    assert token.expires_at >= before + 45
-
-
-@pytest.mark.parametrize(
-    ("payload", "message"),
-    [
-        ([], "Token endpoint response was not a JSON object"),
-        ({}, "Token endpoint response did not include a non-empty access_token"),
-        ({"access_token": ""}, "Token endpoint response did not include a non-empty access_token"),
-        ({"access_token": None}, "Token endpoint response did not include a non-empty access_token"),
-        (
-            {"access_token": "subject-token", "expires_in": None},
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            {"access_token": "subject-token", "expires_in": "120"},
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            {"access_token": "subject-token", "expires_in": 0},
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            {"access_token": "subject-token", "expires_in": -1},
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            b'{"access_token": "subject-token", "expires_in": NaN}',
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            b'{"access_token": "subject-token", "expires_in": Infinity}',
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            b'{"access_token": "subject-token", "expires_in": -Infinity}',
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-        (
-            {"access_token": "subject-token", "expires_in": True},
-            "Token endpoint response did not include a positive numeric expires_in",
-        ),
-    ],
-)
-def test_oauth_password_grant_issuer_rejects_invalid_success_response(
-    monkeypatch: pytest.MonkeyPatch, payload: object, message: str
-) -> None:
-    def fake_post(url: str, *, data: dict, timeout: float) -> httpx.Response:
-        if isinstance(payload, bytes):
-            return httpx.Response(200, content=payload)
-        return httpx.Response(200, json=payload)
-
-    monkeypatch.setattr("nmp.core.jobs.controllers.backends.workload_tokens.httpx.post", fake_post)
-
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="https://idp.example.com/token",
-        client_id="nemo-platform",
-        username="svc-nemo",
-        password="app-password",
-    )
-
-    with pytest.raises(RuntimeError, match=f"invalid_response - {message}"):
-        issuer.issue()
-
-
-def test_oauth_password_grant_issuer_repr_excludes_secrets() -> None:
-    issuer = OAuthPasswordGrantSubjectTokenIssuer(
-        token_endpoint="https://idp.example.com/token",
-        client_id="nemo-platform",
-        client_secret="super-sensitive-client-secret",
-        username="svc-nemo",
-        password="super-sensitive-password",
-    )
-
-    issuer_repr = repr(issuer)
-
-    assert "client_secret=" not in issuer_repr
-    assert "password=" not in issuer_repr
-    assert "super-sensitive-client-secret" not in issuer_repr
-    assert "super-sensitive-password" not in issuer_repr
-
-
-def test_refresh_loop_refresh_once_writes_issued_token() -> None:
-    class FakeIssuer:
-        def issue(self) -> SubjectToken:
-            return SubjectToken(value="subject-token", expires_at=time.time() + 120)
-
-    writes: list[str] = []
-    refresher = SubjectTokenRefreshLoop(issuer=FakeIssuer(), write_token=writes.append)
-
-    token = refresher.refresh_once()
-
-    assert token.value == "subject-token"
-    assert writes == ["subject-token"]
-
-
-def test_refresh_loop_can_restart_after_stop() -> None:
-    class FakeIssuer:
-        def __init__(self) -> None:
-            self.issued = 0
-
-        def issue(self) -> SubjectToken:
-            self.issued += 1
-            return SubjectToken(value=f"subject-token-{self.issued}", expires_at=time.time() + 120)
-
-    writes: list[str] = []
-    wrote = threading.Event()
-
-    def write_token(token: str) -> None:
-        writes.append(token)
-        wrote.set()
-
-    refresher = SubjectTokenRefreshLoop(
-        issuer=FakeIssuer(),
-        write_token=write_token,
-        min_sleep_seconds=0.01,
-    )
-
-    refresher.start()
-    assert wrote.wait(timeout=1)
-    refresher.stop()
-
-    wrote.clear()
-    refresher.start()
-    assert wrote.wait(timeout=1)
-    refresher.stop()
-
-    assert writes[:2] == ["subject-token-1", "subject-token-2"]
-
-
-def test_refresh_loop_stop_timeout_preserves_thread_and_prevents_late_write() -> None:
-    issue_started = threading.Event()
-    release_issue = threading.Event()
-    writes: list[str] = []
-
-    class BlockingIssuer:
-        def issue(self) -> SubjectToken:
-            issue_started.set()
-            if not release_issue.wait(timeout=1):
-                raise RuntimeError("issuer was not released")
-            return SubjectToken(value="late-subject-token", expires_at=time.time() + 120)
-
-    refresher = SubjectTokenRefreshLoop(
-        issuer=BlockingIssuer(),
-        write_token=writes.append,
-        min_sleep_seconds=0.01,
-    )
-    refresher._stop_timeout_seconds = 0.01
-
-    refresher.start()
-    assert issue_started.wait(timeout=1)
-
-    with pytest.raises(RuntimeError, match="Timed out stopping workload identity subject token refresher"):
-        refresher.stop()
-
-    thread = refresher._thread
-    assert thread is not None
-    assert thread.is_alive()
-
-    release_issue.set()
-    thread.join(timeout=1)
-    assert not thread.is_alive()
-
-    refresher.stop()
-
-    assert refresher._thread is None
-    assert writes == []
-
-
-def test_refresh_loop_backs_off_failures_and_resets_after_success() -> None:
-    class FakeIssuer:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        def issue(self) -> SubjectToken:
-            self.calls += 1
-            if self.calls in {1, 2, 3, 5}:
-                raise RuntimeError("idp unavailable")
-            return SubjectToken(value="subject-token", expires_at=time.time())
-
-    class FakeStop(threading.Event):
-        def __init__(self) -> None:
-            super().__init__()
-            self.waits: list[float] = []
-            self.stopped = False
-
-        def is_set(self) -> bool:
-            return self.stopped
-
-        def wait(self, timeout: float | None = None) -> bool:
-            assert timeout is not None
-            self.waits.append(timeout)
-            if len(self.waits) == 5:
-                self.stopped = True
-                return True
-            return False
-
-    stop = FakeStop()
-    writes: list[str] = []
-    refresher = SubjectTokenRefreshLoop(
-        issuer=FakeIssuer(),
-        write_token=writes.append,
-        min_sleep_seconds=1.0,
-        max_failure_backoff_seconds=4.0,
-    )
-    refresher._stop = stop
-
-    refresher._run()
-
-    assert writes == ["subject-token"]
-    assert stop.waits == [1.0, 2.0, 4.0, 1.0, 1.0]
-
-
-def test_subject_token_seconds_until_refresh_never_negative() -> None:
-    token = SubjectToken(value="expired", expires_at=time.time() - 10)
-
-    assert token.seconds_until_refresh(margin_seconds=60) == 0.0

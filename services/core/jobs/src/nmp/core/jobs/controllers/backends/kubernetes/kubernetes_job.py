@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
-from typing import Any, Generic, Literal, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from kubernetes import client
 from kubernetes.client.models import V1Job, V1JobStatus
@@ -30,7 +30,12 @@ from nmp.core.jobs.app.providers import (
     GPUExecutionProvider,
 )
 from nmp.core.jobs.app.schemas import BaseExecutionProfile
-from nmp.core.jobs.controllers.backends.base import JobBackend, JobUpdate, staleness_error_message
+from nmp.core.jobs.controllers.backends.base import (
+    JobBackend,
+    JobUpdate,
+    require_staleness_timeout_seconds,
+    staleness_error_message,
+)
 from nmp.core.jobs.controllers.backends.kubernetes.common import (
     BaseKubernetesExecutionProfileConfig,
     aggregate_pod_statuses_for_job_step,
@@ -47,11 +52,20 @@ from nmp.core.jobs.controllers.backends.kubernetes.common import (
     name_for_step,
     update_all_tasks,
 )
+from nmp.core.jobs.controllers.backends.kubernetes.workload_delegations import (
+    KubernetesPodBoundWorkloadDelegationManager,
+    KubernetesPodBoundWorkloadDelegationTarget,
+)
+from nmp.core.jobs.controllers.backends.workload_tokens import (
+    create_authenticated_workload_delegation_store,
+)
 from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
 ProviderT = TypeVar("ProviderT", bound=ExecutionProviderT)
+KubernetesEventDetails = dict[str, object]
+KubernetesStatusDetails = dict[str, object]
 
 
 class KubernetesJobExecutionProfileConfig(BaseKubernetesExecutionProfileConfig):
@@ -87,15 +101,55 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         self._batch_v1 = client.BatchV1Api()
         self._core_v1 = client.CoreV1Api()
         self.namespace = self._execution_profile_config.namespace or get_namespace_from_environment()
+        self._workload_delegation_store = create_authenticated_workload_delegation_store(self._nmp_sdk)
+        self._workload_delegations = KubernetesPodBoundWorkloadDelegationManager(
+            core_v1=self._core_v1,
+            namespace=self.namespace,
+            ttl_seconds_active=lambda: self._execution_profile_config.ttl_seconds_active,
+            workload_audience=self._workload_delegation_audience,
+            register_workload_delegation=self._workload_delegation_store.register,
+            revoke_workload_delegation=self._workload_delegation_store.revoke,
+        )
 
     def shutdown(self):
         self._batch_v1.api_client.close()
         self._core_v1.api_client.close()
         return
 
+    @staticmethod
+    def _workload_delegation_audience() -> str:
+        try:
+            from nmp.common.config import get_auth_config
+
+            oidc_config = get_auth_config().oidc
+        except Exception:
+            logger.debug("Could not resolve auth config for Kubernetes workload delegation audience", exc_info=True)
+            return "nemo-platform"
+        return oidc_config.workload_audience or oidc_config.audience or "nemo-platform"
+
+    def _workload_delegation_target_for_job(self, job: V1Job) -> KubernetesPodBoundWorkloadDelegationTarget | None:
+        metadata = job.metadata
+        if metadata is None:
+            logger.warning("Skipping Kubernetes workload delegation reconciliation for job with missing metadata")
+            return None
+        job_name = metadata.name
+        if not isinstance(job_name, str) or not job_name:
+            logger.warning("Skipping Kubernetes workload delegation reconciliation for job with missing name")
+            return None
+        namespace = metadata.namespace or self.namespace
+        service_account_name = self._execution_profile_config.service_account_name
+        if job.spec and job.spec.template and job.spec.template.spec:
+            service_account_name = job.spec.template.spec.service_account_name or service_account_name
+        return KubernetesPodBoundWorkloadDelegationTarget(
+            namespace=namespace,
+            name=job_name,
+            labels=metadata.labels or {},
+            service_account_name=service_account_name,
+        )
+
     def get_job_by_name(self, name: str) -> V1Job | None:
         try:
-            return self._batch_v1.read_namespaced_job(name=name, namespace=self.namespace)  # type: ignore
+            return self._batch_v1.read_namespaced_job(name=name, namespace=self.namespace)
         except client.ApiException as e:
             if e.status == 404:
                 return None
@@ -113,7 +167,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         label_selector = ",".join([f"{k}={v}" for k, v in labels.items()])
         try:
             job_list = self._batch_v1.list_namespaced_job(namespace=self.namespace, label_selector=label_selector)
-            return job_list.items  # type: ignore
+            return job_list.items
         except client.ApiException:
             logger.exception("Error API fetching jobs")
         except Exception:
@@ -135,7 +189,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         # If it cannot be found, it means either the job was paused before being scheduled on the k8s cluster,
         # or the job was deleted out of band. In either case, we create a new job.
         if step.status == PlatformJobStatus.RESUMING:
-            k8s_job: V1Job | None = self.get_job_by_name(job_name)  # type: ignore
+            k8s_job: V1Job | None = self.get_job_by_name(job_name)
             if k8s_job is not None:
                 self.resume_job(k8s_job)
                 return JobUpdate(
@@ -213,7 +267,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
 
     def _sync(self, step: PlatformJobStepWithContext) -> JobUpdate:
         """Sync job status from Kubernetes."""
-        k8s_job: V1Job | None = self.get_job_by_name(name_for_step(step))  # type: ignore
+        k8s_job: V1Job | None = self.get_job_by_name(name_for_step(step))
 
         if step.status == PlatformJobStatus.ACTIVE:
             if k8s_job is not None and (
@@ -225,7 +279,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             if k8s_job is not None and self.check_step_is_stale(step):
                 update_all_tasks(self._nmp_sdk, self._core_v1, self.namespace, step)
                 self.terminate_job(k8s_job)
-                message = staleness_error_message(step.step_spec.lifecycle.staleness_timeout_seconds)
+                message = staleness_error_message(require_staleness_timeout_seconds(step))
                 return JobUpdate(
                     status=PlatformJobStatus.ERROR,
                     status_details={
@@ -269,9 +323,9 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         else:
             raise ValueError(f"Unhandled job step status: {step.status}")
 
-    def get_kube_job_events(self, job: V1Job) -> list[dict[str, Any]]:
+    def get_kube_job_events(self, job: V1Job) -> list[KubernetesEventDetails]:
         """Get events related to a Kubernetes Job."""
-        job_name = job.metadata.name  # type: ignore
+        job_name = job.metadata.name
         try:
             events_list = self._core_v1.list_namespaced_event(
                 namespace=self.namespace,
@@ -306,9 +360,9 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
 
     def create_step_update(self, step: PlatformJobStepWithContext, job: V1Job) -> JobUpdate:
         status, status_details = map_kubernetes_job_status_to_step_status(job, self._core_v1, step)
-        error_details = {}
+        error_message: str | None = None
         if status == PlatformJobStatus.ERROR:
-            error_details["message"] = status_details.get("message", "Job encountered an error")
+            error_message = _status_details_message(status_details, "Job encountered an error")
         status_details["events"] = self.get_kube_job_events(job)
         task_has_error = update_all_tasks(self._nmp_sdk, self._core_v1, self.namespace, step)
         teardown_lifecycle_statuses = {
@@ -332,10 +386,19 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             )
         elif task_has_error:
             status = PlatformJobStatus.ERROR
-            if "message" not in error_details:
-                error_details["message"] = "One or more tasks are in error state"
+            task_error_message = "One or more tasks are in error state"
+            if error_message is None:
+                error_message = task_error_message
             else:
-                error_details["message"] += "; One or more tasks are in error state"
+                error_message = f"{error_message}; {task_error_message}"
+        if self._workload_delegations.should_manage_step(step):
+            target = self._workload_delegation_target_for_job(job)
+            if target is not None:
+                if status in PlatformJobStatus.terminals():
+                    self._workload_delegations.revoke_for_target(target)
+                else:
+                    self._workload_delegations.ensure_for_target(step, target)
+        error_details = {"message": error_message} if error_message is not None else {}
         return JobUpdate(status=status, status_details=status_details, error_details=error_details)
 
     def enforce_sync_ttl(
@@ -365,6 +428,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         job_name = name_for_step(step)
         if job is None:
             logger.error("Job not found: %s", job_name)
+            self._workload_delegations.revoke_by_key(namespace=self.namespace, name=job_name)
             # Job was deleted
             return JobUpdate(
                 status=PlatformJobStatus.ERROR,
@@ -386,6 +450,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
 
     def sync_terminate_job(self, step: PlatformJobStepWithContext, job: V1Job | None) -> JobUpdate:
         if job is None:
+            self._workload_delegations.revoke_by_key(namespace=self.namespace, name=name_for_step(step))
             # Job already deleted
             # List all the tasks on the step that are ACTIVE and mark them as CANCELLED too,
             # since at this point all those pods should be deleted.
@@ -396,6 +461,12 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             ).data()
             for task in tasks.data:
                 if task.status == PlatformJobStatus.ACTIVE:
+                    if task.name is None:
+                        logger.warning(
+                            "Skipping cancellation update for Kubernetes task with missing name",
+                            extra={"workspace": step.workspace, "job": step.job, "step": step.name},
+                        )
+                        continue
                     self._jobs.update_job_step_task(
                         name=task.name,
                         workspace=step.workspace,
@@ -426,7 +497,12 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
         if not self.is_suspended(job):
             self.suspend_job(job)
             # After suspending, get the updated job to pass for status updates
-            job = self.get_job_by_name(name_for_step(step))  # type: ignore
+            job = self.get_job_by_name(name_for_step(step))
+            if job is None:
+                return JobUpdate(
+                    status=PlatformJobStatus.ERROR,
+                    error_details={"message": "Job not found after suspending"},
+                )
         return self.create_step_update(step, job)
 
     def is_suspended(self, job: V1Job) -> bool:
@@ -454,6 +530,9 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
             )
             return
         logger.info("Deleting Kubernetes Job", extra={"job_name": job_name, "namespace": self.namespace})
+        target = self._workload_delegation_target_for_job(job)
+        if target is not None:
+            self._workload_delegations.revoke_for_target(target)
         try:
             self._batch_v1.delete_namespaced_job(
                 name=job_name,
@@ -485,10 +564,10 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
                 and job.status.completion_time is not None
             ):
                 # Extract job_id and step_name from labels
-                job_id = job.metadata.labels.get(JOB_ID_LABEL)  # type: ignore
-                step_name = job.metadata.labels.get(JOB_STEP_NAME_LABEL)  # type: ignore
-                workspace_id = job.metadata.labels.get(JOB_WORKSPACE_ID_LABEL)  # type: ignore
-                job_type = job.metadata.labels.get(JOB_TYPE_LABEL)  # type: ignore
+                job_id = job.metadata.labels.get(JOB_ID_LABEL)
+                step_name = job.metadata.labels.get(JOB_STEP_NAME_LABEL)
+                workspace_id = job.metadata.labels.get(JOB_WORKSPACE_ID_LABEL)
+                job_type = job.metadata.labels.get(JOB_TYPE_LABEL)
 
                 # Cleanup jobs have similar labels but are of a different type, and cleanup on their own.
                 if job_type is not None and job_type != JOB_TYPE_JOB:
@@ -520,7 +599,7 @@ class KubernetesJobBackend(JobBackend[ProviderT, KubernetesJobExecutionProfileCo
                     )
                     continue
 
-                uses_persistent_storage = job.metadata.labels.get(JOB_USES_PERSISTENT_STORAGE_LABEL) == "true"  # type: ignore
+                uses_persistent_storage = job.metadata.labels.get(JOB_USES_PERSISTENT_STORAGE_LABEL) == "true"
                 if uses_persistent_storage and self._execution_profile_config.storage:
                     # Verify the job is in a terminal state before cleaning up persistent storage
                     if self.check_job_is_terminal(job=job_id, workspace=workspace_id):
@@ -613,9 +692,30 @@ class GPUKubernetesJobBackend(KubernetesJobBackend[GPUExecutionProvider]):
         return self._sync(step)
 
 
+def _status_details_message(status_details: KubernetesStatusDetails, default: str) -> str:
+    message = status_details.get("message")
+    if isinstance(message, str):
+        return message
+    return default
+
+
+def _job_name(job: V1Job) -> str | None:
+    metadata = job.metadata
+    if metadata is None:
+        return None
+    return metadata.name
+
+
+def _job_namespace(job: V1Job) -> str | None:
+    metadata = job.metadata
+    if metadata is None:
+        return None
+    return metadata.namespace
+
+
 def map_kubernetes_job_status_to_step_status(
     job: V1Job, core_v1: client.CoreV1Api, step: PlatformJobStepWithContext
-) -> tuple[PlatformJobStatus, dict]:
+) -> tuple[PlatformJobStatus, KubernetesStatusDetails]:
     status: V1JobStatus = job.status
 
     is_cancelling = step.status == PlatformJobStatus.CANCELLING
@@ -637,7 +737,8 @@ def map_kubernetes_job_status_to_step_status(
                 if condition.type == "Failed" and condition.status == "True":
                     return PlatformJobStatus.ERROR, {"message": f"Job failed: {condition.message}"}
             cond_summary = [
-                {"type": c.type, "status": c.status, "message": getattr(c, "message", None)} for c in status.conditions
+                {"type": condition.type, "status": condition.status, "message": condition.message}
+                for condition in status.conditions
             ]
             return PlatformJobStatus.ERROR, {
                 "message": (f"Job reports {status.failed} failure(s) but no Failed condition is True yet"),
@@ -686,8 +787,8 @@ def map_kubernetes_job_status_to_step_status(
         logger.warning(
             "No pods yet for Job step; treating as pending",
             extra={
-                "job_name": getattr(job.metadata, "name", None),
-                "namespace": getattr(job.metadata, "namespace", None),
+                "job_name": _job_name(job),
+                "namespace": _job_namespace(job),
                 "step_id": step.id,
             },
         )
@@ -698,8 +799,8 @@ def map_kubernetes_job_status_to_step_status(
         logger.warning(
             "Job step status inferred as pending from pod states without Running/Pending phases",
             extra={
-                "job_name": getattr(job.metadata, "name", None),
-                "namespace": getattr(job.metadata, "namespace", None),
+                "job_name": _job_name(job),
+                "namespace": _job_namespace(job),
                 "step_id": step.id,
                 "job_status_summary": {
                     "active": status.active,
@@ -713,8 +814,8 @@ def map_kubernetes_job_status_to_step_status(
         logger.info(
             "Job pods report success before batch Job completion_time was set",
             extra={
-                "job_name": getattr(job.metadata, "name", None),
-                "namespace": getattr(job.metadata, "namespace", None),
+                "job_name": _job_name(job),
+                "namespace": _job_namespace(job),
                 "step_id": step.id,
             },
         )
