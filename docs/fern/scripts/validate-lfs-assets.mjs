@@ -34,7 +34,7 @@ function extensionFor(path) {
   return match ? match[1].toLowerCase() : "";
 }
 
-async function* walk(dir) {
+async function* walk(dir, inDocsImages = false) {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -46,8 +46,8 @@ async function* walk(dir) {
     if (skipDirs.has(entry.name)) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      yield* walk(path);
-    } else if (assetExtensions.has(extensionFor(entry.name))) {
+      yield* walk(path, inDocsImages || (dir === docsRoot && entry.name === "images"));
+    } else if (inDocsImages || assetExtensions.has(extensionFor(entry.name))) {
       yield path;
     }
   }

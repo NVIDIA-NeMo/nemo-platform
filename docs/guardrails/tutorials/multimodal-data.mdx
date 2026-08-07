@@ -168,7 +168,7 @@ client.inference.virtual_models.create(
 
 Send a safe request that includes a base64-encoded image and confirm you receive a non-blocked response.
 
-Download an image of a street scene with traffic signs. You can use `street-scene.jpg` from `docs/guardrails/_snippets/input/` in the source checkout, or source a similar image from [https://commons.wikimedia.org/wiki/Main_Page](https://commons.wikimedia.org/wiki/Main_Page).
+Set `GUARDRAILS_TUTORIAL_ASSETS` to the directory containing `street-scene.jpg`, or copy it into the working directory. You can also source a similar image from [https://commons.wikimedia.org/wiki/Main_Page](https://commons.wikimedia.org/wiki/Main_Page).
 
  ![A street scene featuring a red octagonal stop sign mounted on a brown pole on the left side of the image.](../_snippets/input/street-scene.jpg)
 
@@ -235,7 +235,7 @@ print(response.model_dump_json(indent=2))
 
 Send an unsafe request and confirm you receive a blocked response.
 
-Download an image depicting car audio theft. You can use `car-audio-theft.jpg` from `docs/guardrails/_snippets/input/` in the source checkout.
+Use `car-audio-theft.jpg` from the directory configured by `GUARDRAILS_TUTORIAL_ASSETS`, or copy it into the working directory.
 
  ![A person wearing dark clothing reaches through a broken car window, attempting to steal a car stereo system. The image illustrates vehicle break-in and theft.](../_snippets/input/car-audio-theft.jpg)
 
