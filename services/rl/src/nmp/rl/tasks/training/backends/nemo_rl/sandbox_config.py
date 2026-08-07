@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Day-0 sandbox / bootstrap configuration emitted by the GRPO compiler."""
+"""Sandbox and Gym-host bootstrap helpers used when compiling GRPO configs."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class NemoGymSandboxedConfig(BaseModel):
 
 
 def resolve_ephemeral_work_path(job_id: str) -> str:
-    """Prefer node-local /scratch for lock-heavy Gym/HF work (Automodel pattern)."""
+    """Prefer node-local ``/scratch`` for lock-heavy Gym/HF work; else ``/tmp``."""
     base = Path("/scratch") if Path("/scratch").is_dir() else Path("/tmp")
     return str(base / "nmp-rl" / job_id / "work")
 
@@ -63,7 +63,7 @@ def bootstrap_env_from_job(
     broker_token: str | None = None,
     gym_global_config_json: str | None = None,
 ) -> dict[str, str]:
-    """Frozen bootstrap_env keys (Day-0 §4)."""
+    """Environment variables injected into the Gym job-host bootstrap."""
     env: dict[str, str] = {
         "NMP_JOB_ID": job_id,
         "NMP_ENVIRONMENT_PATH": environment_path,
@@ -88,10 +88,10 @@ def assemble_master_egress_allow(
     broker_host: str | None = None,
     broker_port: int | None = None,
 ) -> list[GymHostEgressRule]:
-    """Build OpenSandbox egress_allow once master knows vLLM + broker endpoints.
+    """Build OpenSandbox egress rules from live vLLM and broker endpoints.
 
-    Compiler may emit placeholder env vars; call this at training-master / actor
-    spinup when real addresses are available (AALGO-418 WS3b).
+    Explicit kwargs win; otherwise read ``NMP_*_SERVICE_*`` env vars, then
+    fall back to localhost defaults suitable for single-node bring-up.
     """
     from nmp.rl.app.constants import (
         NMP_BROKER_HOST_ENVVAR,
@@ -113,7 +113,7 @@ def assemble_master_egress_allow(
 
 
 def apply_master_egress_to_sandbox_config(sandbox: SandboxConfig) -> SandboxConfig:
-    """Replace compile-time placeholder egress with master-resolved endpoints."""
+    """Refresh ``network_policy.egress_allow`` from the current master endpoints."""
     return sandbox.model_copy(
         update={
             "network_policy": SandboxNetworkPolicy(egress_allow=assemble_master_egress_allow()),

@@ -3,8 +3,7 @@
 
 """Platform-owned environment package bootstrap (native-v1 / wheels-v1 / adapter-wheels-v1).
 
-Invoked from the RL / Gym host image entrypoint — not upstream NeMo-RL APIs.
-Validates package layout, then offline-installs wheels when required.
+Validates package layout, then offline-installs wheels when the format requires it.
 """
 
 from __future__ import annotations

@@ -49,7 +49,7 @@ SERVICE_NAME = "rl"
 
 DEFAULT_SEED = 42
 
-# Compiler-injected service endpoints for sandbox egress allowlists (Day-0).
+# Env vars the compiler injects so the training master can build sandbox egress allowlists.
 NMP_VLLM_HOST_ENVVAR = "NMP_VLLM_SERVICE_HOST"
 NMP_VLLM_PORT_ENVVAR = "NMP_VLLM_SERVICE_PORT"
 NMP_BROKER_HOST_ENVVAR = "NMP_BROKER_SERVICE_HOST"
