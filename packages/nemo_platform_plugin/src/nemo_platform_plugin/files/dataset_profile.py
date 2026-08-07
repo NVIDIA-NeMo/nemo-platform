@@ -344,6 +344,19 @@ class SplitProfile(BaseModel):
             "grows without bound and informs no decision."
         ),
     )
+    size_bytes: int = Field(
+        default=0,
+        description=(
+            "On-disk bytes of this split's files, summed. Answers whether the data fits wherever the "
+            "reader means to put it — the first question asked of an unfamiliar dataset, and one a row "
+            "count cannot answer, since a row ranges from an integer score to a reasoning trace. "
+            "Unlike `num_examples` this is never None: it comes from the file listing rather than from "
+            "reading, so a file that failed mid-read still contributes its size. Bytes as stored — "
+            "compressed, and several times this once decoded into memory. Covers only files a "
+            "partition grouped; a format with no reader never reaches a split, so weigh the whole "
+            "fileset with `SamplingInfo.bytes_present`."
+        ),
+    )
     num_examples: int | None = Field(
         default=None,
         description=(
@@ -458,6 +471,18 @@ class SamplingInfo(BaseModel):
             "is not data and is counted nowhere. Every readable file should be opened, since "
             "head-sampling a *subset of files* hides columns that appear only in later shards, so expect "
             "these two to match until scale forces file-level sampling."
+        ),
+    )
+    bytes_present: int = Field(
+        default=0,
+        description=(
+            "On-disk bytes of every data file the fileset holds, whether or not this run could read it "
+            "— the size of the dataset as it sits, independent of how much was profiled. Redundant "
+            "with the sum over `SplitProfile.size_bytes` exactly when nothing failed, and load-bearing "
+            "when something did: a file in a format with no reader never reaches a partition, so a "
+            "directory of .csv shards beside one .parquet would otherwise weigh in at the parquet "
+            "alone. Same reason `files_present` is kept alongside the per-split counts — a denominator "
+            "stops being derivable the moment coverage is partial, which is the only time it is read."
         ),
     )
     row_budget: int | None = Field(

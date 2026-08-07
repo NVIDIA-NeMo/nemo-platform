@@ -94,15 +94,20 @@ def profile(
     # Files that plainly hold records but have no reader yet. They are not profiled, but they must be
     # reported: silently dropping them let a directory of .csv shards profile as an exhaustively
     # scanned, empty dataset — indistinguishable from a dataset that really is empty. They get real
-    # FileRecords like any other file the profiler could not read, just at the envelope, since no
-    # partition ever grouped them.
+    # FileErrors like any other file the profiler could not read, just at the envelope, since no
+    # partition ever grouped them. Kept as entries, not just paths, because their bytes still count
+    # toward the size of the fileset even though no partition will ever weigh them.
+    unreadable_entries = [
+        entry
+        for entry in sorted(all_entries, key=lambda entry: entry.path)
+        if detect_format(entry.path) is None and is_unsupported_data(entry.path)
+    ]
     file_errors = [
         FileError(
             path=entry.path,
             error=f"no reader for '{PurePosixPath(entry.path).suffix.lower()}' files",
         )
-        for entry in sorted(all_entries, key=lambda entry: entry.path)
-        if detect_format(entry.path) is None and is_unsupported_data(entry.path)
+        for entry in unreadable_entries
     ]
 
     partitions: list[PartitionProfile] = []
@@ -130,7 +135,11 @@ def profile(
         files_read=files_read,  # files actually opened and read, not files merely listed
         # Every data file, readable or not: the denominator that makes `files_read` a fraction rather
         # than a bare count. Non-data files (a README, a LICENSE) are not data and are counted nowhere.
-        files_present=len(data_entries) + sum(1 for e in file_errors if detect_format(e.path) is None),
+        files_present=len(data_entries) + len(unreadable_entries),
+        # Weighed over the same set, so a fileset the profiler could not read still reports its size.
+        # Summing the splits would miss the unreadable files, which never reach a partition.
+        bytes_present=sum(entry.size_bytes for entry in data_entries)
+        + sum(entry.size_bytes for entry in unreadable_entries),
         row_budget=row_budget,
     )
     return DatasetProfile(
@@ -321,6 +330,9 @@ def _profile_partition(
                 name=split.name,
                 canonical=split.canonical,
                 num_files=len(split.entries),
+                # From the listing, not from reading, so a file that failed mid-read still weighs
+                # what it weighs — unlike `num_examples`, this never goes unknown.
+                size_bytes=sum(entry.size_bytes for entry in split.entries),
                 num_examples=split_examples if split_counts_known else None,
             )
         )

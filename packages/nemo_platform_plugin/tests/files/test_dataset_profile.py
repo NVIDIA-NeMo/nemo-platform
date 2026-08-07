@@ -36,14 +36,14 @@ profile_schema_version: "1.0"
 created_at: 2026-07-08T22:05:12Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 2112, rows_present: 3201061,
-           files_read: 33, files_present: 33, row_budget: 4096}
+           files_read: 33, files_present: 33, bytes_present: 31821490182, row_budget: 4096}
 partitions:
   - name: ""
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 3200861, num_files: 32}
-      - {name: test, canonical: test, num_examples: 200, num_files: 1}
+      - {name: train, canonical: train, num_examples: 3200861, num_files: 32, size_bytes: 31819412254}
+      - {name: test, canonical: test, num_examples: 200, num_files: 1, size_bytes: 2077928}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -75,14 +75,14 @@ profile_schema_version: "1.0"
 created_at: 2026-07-08T22:41:37Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 46189,
-           files_read: 2, files_present: 2, row_budget: 1024}
+           files_read: 2, files_present: 2, bytes_present: 27055195, row_budget: 1024}
 partitions:
   - name: ""
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 43835, num_files: 1}
-      - {name: test, canonical: test, num_examples: 2354, num_files: 1}
+      - {name: train, canonical: train, num_examples: 43835, num_files: 1, size_bytes: 25670988}
+      - {name: test, canonical: test, num_examples: 2354, num_files: 1, size_bytes: 1384207}
     features:
       - {name: prompt, dtype: messages, semantic_role: prompt, semantic_role_source: detected,
          items: {dtype: struct, fields: [{name: role, dtype: string}, {name: content, dtype: string}]}}
@@ -114,14 +114,14 @@ profile_schema_version: "1.0"
 created_at: 2026-07-09T10:12:45Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 21362,
-           files_read: 2, files_present: 2, row_budget: 1024}
+           files_read: 2, files_present: 2, bytes_present: 19459677, row_budget: 1024}
 partitions:
   - name: ""
     file_formats: [parquet]
     stats_complete: false
     splits:
-      - {name: train, canonical: train, num_examples: 20324, num_files: 1}
-      - {name: validation, canonical: validation, num_examples: 1038, num_files: 1}
+      - {name: train, canonical: train, num_examples: 20324, num_files: 1, size_bytes: 18495985}
+      - {name: validation, canonical: validation, num_examples: 1038, num_files: 1, size_bytes: 963692}
     features:
       - {name: prompt,      dtype: string, semantic_role: prompt, semantic_role_source: detected}
       - {name: response,    dtype: string, semantic_role: completion, semantic_role_source: detected}
@@ -248,6 +248,25 @@ def test_openmathreasoning_locks_contract_shape():
     # Message stats fold into the messages block.
     assert part.stats["prompt"].messages.ends_with_assistant_rate == 0.0
     assert part.stats["completion"].messages.roles_seen == ["assistant"]
+
+
+@pytest.mark.parametrize("name", sorted(FIXTURES))
+def test_split_sizes_account_for_the_whole_fileset(name):
+    """On a clean profile the splits weigh the whole fileset, so `bytes_present` is the same number
+    reached without going through partitions. That redundancy is the point: it is what lets the
+    figure survive a file no partition could group."""
+    profile = DatasetProfile.model_validate(yaml.safe_load(FIXTURES[name]))
+    assert not profile.file_errors
+    from_splits = sum(split.size_bytes for part in profile.partitions for split in part.splits)
+    assert from_splits == profile.sampling.bytes_present
+
+
+def test_a_split_weighs_something_even_when_its_row_count_does_not():
+    """Size is read off the file listing and a row count off the data, so they go unknown
+    independently — `num_examples` is None-able and `size_bytes` is not."""
+    split = SplitProfile(name="train", num_files=3, size_bytes=4096)
+    assert split.num_examples is None
+    assert split.size_bytes == 4096
 
 
 def test_helpsteer2_flat_schema_and_no_verifiability():
