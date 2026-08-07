@@ -15,7 +15,7 @@ triggers:
   - generate insights for my agent
   - find recurring failure patterns
   - run the analyst
-  - my agent keeps getting wrong
+  - my agent keeps getting things wrong
 not-for:
   - nemo-experimentalist (use to act on an Insight and change the agent; this skill produces the Insight it consumes)
   - nemo-intake (use to instrument an agent, ingest telemetry, or query raw spans; this skill interprets telemetry that already landed)
@@ -120,20 +120,26 @@ conventional choice when handing off locally.
 
 ## Verify
 
-Do not report success without checking that Insights actually landed. There is
-no CLI verb for this yet, so read the Insights API directly:
+Do not report success on an exit code. The run prints a line per operation —
+`- created: <title> [<insight-id>] (<n> trace refs)`, `- updated: <insight-id>
+(<n> trace refs)`, or `- no insights created or updated`, which is a successful
+run too. Read back by id whatever it says it wrote, and check each carries a
+clear title, an actionable description, and non-empty `trace_refs`. Listing by
+`?agent=` also returns earlier runs, so it attests the store, not this run:
 
 ```bash
 curl --fail-with-body \
-  -H "Authorization: Bearer $(nemo auth token)" \
-  "$NMP_BASE_URL/apis/insights/v2/workspaces/<workspace>/insights?agent=<agent-name>&page=1&page_size=20"
+  "$NMP_BASE_URL/apis/insights/v2/workspaces/<workspace>/insights/<insight-id>"
 ```
 
-On a local platform with authentication disabled, `nemo auth token` fails and
-the header can be dropped. A successful run leaves at least one Insight for the
-agent, each with a clear title, an actionable description, and non-empty
-`trace_refs`; stored Insights also appear in Studio's optimizer view for the
-workspace.
+On an authenticated platform pass the token through curl's config, not argv
+where any process on the host can read it:
+
+```bash
+printf 'header = "Authorization: Bearer %s"' "$(nemo auth token)" | curl -K - <url>
+```
+
+Stored Insights also appear in Studio's optimizer view for the workspace.
 
 ## When it finds nothing
 
