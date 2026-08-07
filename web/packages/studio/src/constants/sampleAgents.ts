@@ -16,8 +16,10 @@ import { z } from 'zod';
 // fails at startup. Current mappings:
 //   _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
 //   _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
-//   _type: analyze_email           -> plugins/nemo-agents/examples/email-security-analyst
-//   _type: extract_iocs            -> plugins/nemo-agents/examples/email-security-analyst
+//   _type: review_messages         -> plugins/nemo-agents/examples/email-security-analyst
+//   _type: triage_message          -> plugins/nemo-agents/examples/email-security-analyst
+//   _type: trace_thread            -> plugins/nemo-agents/examples/email-security-analyst
+//   _type: draft_warning           -> plugins/nemo-agents/examples/email-security-analyst
 export interface SampleAgent {
   key: string;
   displayName: string;
