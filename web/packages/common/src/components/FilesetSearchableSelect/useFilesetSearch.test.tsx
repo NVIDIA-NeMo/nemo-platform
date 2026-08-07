@@ -4,7 +4,7 @@
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { useFilesetSearch } from '@nemo/common/src/components/FilesetSearchableSelect/useFilesetSearch';
 import { filesListFilesets } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
@@ -24,6 +24,14 @@ const page = (names: string[], pageNumber: number, totalPages: number) =>
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+};
+
+/** A wrapper backed by one client, so two hook instances share a cache. */
+const createSharedWrapper = () => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
 };
 
 describe('useFilesetSearch', () => {
@@ -124,6 +132,39 @@ describe('useFilesetSearch', () => {
       expect.objectContaining({ filter: undefined }),
       expect.anything()
     );
+  });
+
+  it('caches per page size, so a differently-sized hook does not reuse the wrong page', async () => {
+    vi.mocked(filesListFilesets).mockResolvedValue(page(['a'], 1, 1));
+    const sharedWrapper = createSharedWrapper();
+
+    const { result: defaultSized } = renderHook(() => useFilesetSearch({ workspace: 'ws' }), {
+      wrapper: sharedWrapper,
+    });
+    await waitFor(() => expect(defaultSized.current.filesets).toHaveLength(1));
+
+    const { result: smallPaged } = renderHook(
+      () => useFilesetSearch({ workspace: 'ws', pageSize: 5 }),
+      { wrapper: sharedWrapper }
+    );
+    await waitFor(() => expect(smallPaged.current.filesets).toHaveLength(1));
+
+    expect(filesListFilesets).toHaveBeenCalledTimes(2);
+    expect(filesListFilesets).toHaveBeenLastCalledWith(
+      'ws',
+      expect.objectContaining({ page_size: 5 }),
+      expect.anything()
+    );
+  });
+
+  it('reports the failure instead of an empty result set', async () => {
+    vi.mocked(filesListFilesets).mockRejectedValue(new Error('boom'));
+
+    const { result } = renderHook(() => useFilesetSearch({ workspace: 'ws' }), { wrapper });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.message).toBe('boom');
+    expect(result.current.filesets).toEqual([]);
   });
 
   it('does not query without a workspace', () => {

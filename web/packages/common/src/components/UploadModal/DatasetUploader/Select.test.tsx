@@ -6,11 +6,11 @@ import { UploadModalProvider } from '@nemo/common/src/components/UploadModal/Con
 import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/Context/useUploadModalContext';
 import {
   uploadModalInitialState,
-  UploadModalState,
+  type UploadModalState,
 } from '@nemo/common/src/components/UploadModal/Context/useUploadModalReducer';
 import { DatasetSelect } from '@nemo/common/src/components/UploadModal/DatasetUploader/Select';
 import { filesListFilesetFiles, filesListFilesets } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -135,7 +135,7 @@ describe('DatasetSelect', () => {
     expect(await screen.findByLabelText('Loading options')).toBeInTheDocument();
   });
 
-  it('shows an empty state when the query fails', async () => {
+  it('surfaces a failure message when the query fails', async () => {
     vi.mocked(filesListFilesets).mockRejectedValue(new Error('boom'));
 
     render(<DatasetSelect project="test-project" />, {
@@ -143,7 +143,8 @@ describe('DatasetSelect', () => {
     });
 
     await user.click(screen.getByRole('combobox'));
-    expect(await screen.findByText('No filesets found')).toBeInTheDocument();
+    expect(await screen.findByText('Failed to load filesets')).toBeInTheDocument();
+    expect(screen.queryByText('No filesets found')).not.toBeInTheDocument();
   });
 
   it('updates context when dataset is selected', async () => {

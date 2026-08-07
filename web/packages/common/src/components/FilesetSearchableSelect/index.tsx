@@ -8,16 +8,16 @@ import {
 } from '@nemo/common/src/components/form/ControlledSearchableSelect';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import type { FilesetOutput, FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
-import { type ReactNode, useCallback, useMemo } from 'react';
+import { type ReactElement, type ReactNode, useCallback, useMemo } from 'react';
 import { type FieldValues, type UseControllerProps } from 'react-hook-form';
 
-export type FilesetSearchableSelectFormFieldProps = {
+export interface FilesetSearchableSelectFormFieldProps {
   slotLabel?: ReactNode;
   slotInfo?: ReactNode;
   slotError?: string;
-};
+}
 
-export type FilesetSearchableSelectProps<T extends FieldValues> = {
+export interface FilesetSearchableSelectProps<T extends FieldValues> {
   workspace: string;
   queryEnabled?: boolean;
   useControllerProps: UseControllerProps<T>;
@@ -34,7 +34,7 @@ export type FilesetSearchableSelectProps<T extends FieldValues> = {
    *  fileset is resolved from the loaded pages, and is undefined for `leadingOptions`. */
   onChange?: (value: string, fileset?: FilesetOutput) => void;
   disabled?: boolean;
-};
+}
 
 const defaultRenderOption = (fileset: FilesetOutput): SelectItemOption => {
   const ref = getEntityReference(fileset);
@@ -59,26 +59,29 @@ export function FilesetSearchableSelect<T extends FieldValues>({
   renderOption = defaultRenderOption,
   onChange,
   disabled,
-}: FilesetSearchableSelectProps<T>) {
-  const { filesets, setSearch, loadMore, hasMore, isLoading, isLoadingMore } = useFilesetSearch({
-    workspace,
-    purpose,
-    enabled: queryEnabled,
-  });
+}: FilesetSearchableSelectProps<T>): ReactElement {
+  const { filesets, setSearch, loadMore, hasMore, isLoading, isLoadingMore, isError } =
+    useFilesetSearch({
+      workspace,
+      purpose,
+      enabled: queryEnabled,
+    });
+
+  const filesetOptions = useMemo(
+    () => filesets.map((fileset) => ({ fileset, option: renderOption(fileset) })),
+    [filesets, renderOption]
+  );
 
   const options = useMemo<SelectItemOption[]>(
-    () => [...(leadingOptions ?? []), ...filesets.map(renderOption)],
-    [filesets, leadingOptions, renderOption]
+    () => [...(leadingOptions ?? []), ...filesetOptions.map(({ option }) => option)],
+    [filesetOptions, leadingOptions]
   );
 
   const handleChange = useCallback(
     (value: string) => {
-      onChange?.(
-        value,
-        filesets.find((fileset) => getEntityReference(fileset) === value)
-      );
+      onChange?.(value, filesetOptions.find(({ option }) => option.value === value)?.fileset);
     },
-    [onChange, filesets]
+    [onChange, filesetOptions]
   );
 
   return (
@@ -94,7 +97,7 @@ export function FilesetSearchableSelect<T extends FieldValues>({
       isLoading={isLoading}
       isLoadingMore={isLoadingMore}
       searchPlaceholder="Search filesets..."
-      emptyMessage="No filesets found"
+      emptyMessage={isError ? 'Failed to load filesets' : 'No filesets found'}
       triggerPlaceholder={triggerPlaceholder}
       formFieldProps={formFieldProps}
     />

@@ -9,9 +9,9 @@ import { useUploadModalContext } from '@nemo/common/src/components/UploadModal/C
 import { getExistingFileId } from '@nemo/common/src/components/UploadModal/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Text } from '@nvidia/foundations-react-core';
-import { FC, useCallback, useEffect, useMemo } from 'react';
+import { type FC, useCallback, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 
 interface Props {
@@ -41,7 +41,6 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
   const purpose = state.filesetPurpose ?? 'dataset';
   const label = state.datasetLabel ?? 'Dataset';
 
-  // Extract workspace from project (project format is "workspace/name" or just "workspace")
   const workspace = project.includes('/') ? project.split('/')[0] : project;
 
   const selectedDatasetOption = useMemo(() => {
@@ -65,7 +64,6 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
     if (!fileset) return;
     dispatch({ type: 'SET_FETCHING', payload: true });
     dispatch({ type: 'SET_DATASET', payload: { type: 'existing', dataset: fileset } });
-    // Fetch fileset files and set them in the state
     try {
       const filesResponse = await filesListFilesetFiles(fileset.workspace, fileset.name);
       const filesetFiles = filesResponse.data ?? [];
@@ -73,8 +71,6 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
         (file) => ({ id: getExistingFileId(file), type: 'existing', file }) as const
       );
       dispatch({ type: 'SET_FILES', payload: uploadFiles });
-      // Auto-select the first root-level accepted file (only when >1, since
-      // the reducer already auto-selects a lone file).
       if (autoSelectFirstAcceptable && uploadFiles.length > 1) {
         const allowed = acceptableFileTypes.map((t) => t.toLowerCase());
         const target = uploadFiles.find((f) => {

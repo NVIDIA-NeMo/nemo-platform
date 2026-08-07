@@ -31,6 +31,9 @@ export interface UseFilesetSearchResult {
   hasMore: boolean;
   isLoading: boolean;
   isLoadingMore: boolean;
+  /** The fileset query failed; the caller should say so rather than show an empty list. */
+  isError: boolean;
+  error: Error | null;
 }
 
 /**
@@ -58,27 +61,29 @@ export const useFilesetSearch = ({
       : undefined;
   }, [search, purpose]);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
-    queryKey: [
-      ...getFilesListFilesetsQueryKey(workspace),
-      'infinite',
-      'newest',
-      purpose ?? 'all',
-      search,
-    ] as const,
-    queryFn: ({ signal, pageParam }) =>
-      filesListFilesets(
-        workspace,
-        { page: pageParam, page_size: pageSize, sort: '-created_at', filter },
-        signal
-      ),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => {
-      const p = lastPage.pagination;
-      return p && p.page < p.total_pages ? p.page + 1 : undefined;
-    },
-    enabled: enabled && !!workspace,
-  });
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError, error } =
+    useInfiniteQuery({
+      queryKey: [
+        ...getFilesListFilesetsQueryKey(workspace),
+        'infinite',
+        'newest',
+        purpose ?? 'all',
+        search,
+        pageSize,
+      ] as const,
+      queryFn: ({ signal, pageParam }) =>
+        filesListFilesets(
+          workspace,
+          { page: pageParam, page_size: pageSize, sort: '-created_at', filter },
+          signal
+        ),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage) => {
+        const p = lastPage.pagination;
+        return p && p.page < p.total_pages ? p.page + 1 : undefined;
+      },
+      enabled: enabled && !!workspace,
+    });
 
   const filesets = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data?.pages]);
 
@@ -94,5 +99,7 @@ export const useFilesetSearch = ({
     hasMore: hasNextPage ?? false,
     isLoading,
     isLoadingMore: isFetchingNextPage,
+    isError,
+    error,
   };
 };
