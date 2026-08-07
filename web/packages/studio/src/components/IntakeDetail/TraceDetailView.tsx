@@ -4,7 +4,7 @@
 import { IntakeAccordion } from '@nemo/common/src/components/IntakeAccordion';
 import { useGetTrace } from '@nemo/sdk/generated/platform/api';
 import type { Trace } from '@nemo/sdk/generated/platform/schema';
-import { Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import { Banner, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
 import { KeyValueRows } from '@studio/components/IntakeDetail/IntakeComponents/KeyValueRows';
 import { RawJsonDebug } from '@studio/components/IntakeDetail/IntakeComponents/RawJsonDebug';
 import {
@@ -29,6 +29,7 @@ interface TraceDetailViewProps {
   traceId: string;
   sessionId: string;
   traceSummary?: Trace;
+  isTraceSummaryLoading?: boolean;
   parentBreadcrumbs: BreadcrumbsItemProps[];
   children: (trace: Trace) => ReactNode;
 }
@@ -39,6 +40,7 @@ export const TraceDetailView: FC<TraceDetailViewProps> = ({
   traceId,
   sessionId,
   traceSummary,
+  isTraceSummaryLoading = false,
   parentBreadcrumbs,
   children,
 }) => {
@@ -53,6 +55,7 @@ export const TraceDetailView: FC<TraceDetailViewProps> = ({
   // The session already owns enough trace data to keep its explorer mounted
   // while the selected trace's full payload hydrates in the background.
   const resolvedTrace = trace ?? traceSummary;
+  const traceNotFound = error?.response?.status === 404;
 
   const { setBreadcrumbs } = useBreadcrumbs();
   const traceBreadcrumbLabel = resolvedTrace ? getTraceDisplayName(resolvedTrace) : traceId;
@@ -70,17 +73,17 @@ export const TraceDetailView: FC<TraceDetailViewProps> = ({
     setBreadcrumbs([...parentBreadcrumbs, { slotLabel: `Trace ${traceBreadcrumbLabel}` }]);
   }, [parentBreadcrumbs, setBreadcrumbs, traceBreadcrumbLabel]);
 
-  if (error?.response?.status === 404) {
+  if (!resolvedTrace && (isLoading || (traceNotFound && isTraceSummaryLoading))) {
+    return <Loading description="Loading trace..." />;
+  }
+
+  if (traceNotFound && !resolvedTrace) {
     return (
       <NotFound
         subheader="Trace Not Found"
         message="The trace does not exist or you do not have permission to view it."
       />
     );
-  }
-
-  if (isLoading && !resolvedTrace) {
-    return <Loading description="Loading trace..." />;
   }
 
   if (error && !resolvedTrace) {
@@ -110,6 +113,11 @@ export const TraceDetailView: FC<TraceDetailViewProps> = ({
 
   return (
     <>
+      {traceNotFound && (
+        <Banner kind="inline" status="info">
+          Trace details are still arriving. The activity received so far is shown below.
+        </Banner>
+      )}
       {children(resolvedTrace)}
       <IntakeAccordion
         variant="section"

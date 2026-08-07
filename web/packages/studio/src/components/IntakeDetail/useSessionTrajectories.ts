@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useGetSession, useListSpans, useListTraces } from '@nemo/sdk/generated/platform/api';
-import type { Span } from '@nemo/sdk/generated/platform/schema';
+import { type Span, SpanStatus, type Trace } from '@nemo/sdk/generated/platform/schema';
 import { type SessionExplorerData } from '@studio/components/IntakeDetail/TraceSpanAccordions';
-import { buildSpanTree, type SessionTrajectory } from '@studio/util/intakeTelemetry';
+import {
+  buildSpanTree,
+  compareSpansByStartedAt,
+  type SessionTrajectory,
+} from '@studio/util/intakeTelemetry';
 import { useMemo } from 'react';
 
 const SESSION_TRACES_PAGE_SIZE = 1000;
@@ -57,11 +61,33 @@ export function useSessionTrajectories(workspace: string, sessionId: string) {
       traceSpans.push(span);
       groupedSpans.set(span.trace_id, traceSpans);
     }
-    return traces.map((trace) => {
+
+    const traceSummaries: Trace[] = [...traces];
+    const knownTraceIds = new Set(traces.map((trace) => trace.id));
+    for (const [traceId, spans] of groupedSpans) {
+      if (knownTraceIds.has(traceId)) continue;
+      const earliestSpan = spans.reduce((earliest, span) =>
+        compareSpansByStartedAt(span, earliest) < 0 ? span : earliest
+      );
+      traceSummaries.push({
+        id: traceId,
+        session_id: sessionId,
+        workspace,
+        started_at: earliestSpan.started_at,
+        status: SpanStatus.unknown,
+        span_count: spans.length,
+      });
+    }
+
+    traceSummaries.sort((a, b) => {
+      const startedAtDifference = Date.parse(a.started_at) - Date.parse(b.started_at);
+      return startedAtDifference || a.id.localeCompare(b.id);
+    });
+    return traceSummaries.map((trace) => {
       const spans = groupedSpans.get(trace.id) ?? [];
       return { trace, spans, spanTree: buildSpanTree(spans) };
     });
-  }, [sessionSpansResponse?.data, traces]);
+  }, [sessionId, sessionSpansResponse?.data, traces, workspace]);
 
   const explorer = useMemo<SessionExplorerData>(
     () => ({
