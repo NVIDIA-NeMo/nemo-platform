@@ -72,10 +72,10 @@ class Config(BaseModel):
     2. Runtime overrides (from env vars, CLI, or code)
     3. Resolution of effective configuration
 
-    Environment variables (prefix NMP_):
+    Environment variables:
     NMP_CURRENT_CONTEXT, NMP_WORKSPACE, NMP_OUTPUT_FORMAT,
     NMP_TIMESTAMP_FORMAT, NMP_PAGE_SIZE, NMP_COLOR_OUTPUT,
-        NMP_BASE_URL, NMP_ACCESS_TOKEN
+    NMP_BASE_URL, NMP_ACCESS_TOKEN, NEMO_DEFAULT_MODEL, NEMO_FAST_MODEL
     """
 
     # Runtime overrides - can be set via env vars
@@ -486,11 +486,10 @@ class Config(BaseModel):
         if effective_workspace is None:
             effective_workspace = DEFAULT_WORKSPACE
 
-        # Resolve the legacy default first, then let existing single-model
-        # contexts supply both agent-workload roles.
+        # The default model is the quality-oriented model for agent workloads.
+        # Existing single-model contexts also supply the fast role.
         effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context.default_model
-        effective_smart_model = context.smart_model or effective_default_model
-        effective_fast_model = context.fast_model or effective_default_model
+        effective_fast_model = os.environ.get("NEMO_FAST_MODEL") or context.fast_model or effective_default_model
 
         # Create the resolved Context (runtime model) from the ContextDefinition (config file model)
         return Context(
@@ -499,7 +498,6 @@ class Config(BaseModel):
             user=user,  # Fully resolved User with authentication credentials
             workspace=effective_workspace,
             default_model=effective_default_model,
-            smart_model=effective_smart_model,
             fast_model=effective_fast_model,
             preferences=prefs,
         )
@@ -551,14 +549,14 @@ class Config(BaseModel):
 
         # Return resolved Context (runtime model)
         effective_default_model = os.environ.get("NEMO_DEFAULT_MODEL") or context_def.default_model
+        effective_fast_model = os.environ.get("NEMO_FAST_MODEL") or context_def.fast_model or effective_default_model
         return Context(
             context_name=context_name,
             cluster=cluster,
             user=user,
             workspace=context_def.workspace or DEFAULT_WORKSPACE,
             default_model=effective_default_model,
-            smart_model=context_def.smart_model or effective_default_model,
-            fast_model=context_def.fast_model or effective_default_model,
+            fast_model=effective_fast_model,
             preferences=prefs,
         )
 

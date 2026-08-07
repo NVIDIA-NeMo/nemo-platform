@@ -9,9 +9,10 @@ import os
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_eval_author_plugin.model_config import get_fast_model
+from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import DatasetValidationError, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
@@ -20,22 +21,24 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
 )
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_insights_plugin.entities import Insight
+from nemo_platform_plugin.nooa_model_client import (
+    activate_model_clients,
+    configured_model_refs,
+    get_fast_model,
+    resolve_model_clients,
+)
 
 
-def _has_real_llm_credentials() -> bool:
-    """Report whether real credentials are present, rather than the conftest stand-ins.
-
-    conftest fills placeholder credentials so agent classes can be imported at collection
-    time, which means a plain "is it set?" check always passes. These canaries call a live
-    model, so they have to look past the stand-ins.
-    """
-    base = os.environ.get("AUTHOR_API_BASE") or os.environ.get("NEMO_EXPERIMENTALIST_API_BASE") or ""
-    key = os.environ.get("AUTHOR_API_KEY") or os.environ.get("NEMO_EXPERIMENTALIST_API_KEY") or ""
-    return bool(base and key) and "placeholder" not in base and "placeholder" not in key
+def _has_configured_models() -> bool:
+    try:
+        configured_model_refs()
+    except (FileNotFoundError, RuntimeError, ValueError):
+        return False
+    return True
 
 
-_HAS_LLM = _has_real_llm_credentials()
-_CREDENTIALS_HINT = "AUTHOR_API_BASE and AUTHOR_API_KEY (or their NEMO_EXPERIMENTALIST_* equivalents)"
+_HAS_MODELS = _has_configured_models()
+_MODELS_HINT = "run `nemo setup` and select default and fast agent models"
 _RUN_EVAL_AUTHOR_REPAIR_E2E = os.environ.get("RUN_EVAL_AUTHOR_REPAIR_E2E") == "1"
 _RUN_EVAL_AUTHOR_HARBOR_E2E = os.environ.get("RUN_EVAL_AUTHOR_HARBOR_E2E") == "1"
 _MALFORMED_VERIFIER = """\
@@ -73,6 +76,18 @@ _KNOWN_FAILING_TRACE = {
         }
     ]
 }
+
+
+@pytest_asyncio.fixture
+async def configured_models():
+    client = make_client(None)
+    model_clients = await resolve_model_clients(client)
+    try:
+        with activate_model_clients(model_clients):
+            yield
+    finally:
+        await model_clients.aclose()
+        await client.close()
 
 
 def _write_malformed_task(dataset_dir: Path, task_id: str) -> None:
@@ -200,14 +215,14 @@ class WrappedAgent(BaseAgent):
 
 
 @pytest.mark.skipif(
-    not (_RUN_EVAL_AUTHOR_REPAIR_E2E and _HAS_LLM),
-    reason=f"Set RUN_EVAL_AUTHOR_REPAIR_E2E=1 with {_CREDENTIALS_HINT} to run the Eval Author repair canary.",
+    not (_RUN_EVAL_AUTHOR_REPAIR_E2E and _HAS_MODELS),
+    reason=f"Set RUN_EVAL_AUTHOR_REPAIR_E2E=1 and {_MODELS_HINT} to run the Eval Author repair canary.",
 )
-async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
+async def test_configured_fast_model_repairs_malformed_harbor_verifiers(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    configured_models: None,
 ) -> None:
-    """GPT-5 mini repairs try-without-except failures across an Insight suite."""
+    """The configured fast model repairs try-without-except failures across an Insight suite."""
     insight_suite_dir = tmp_path / "insight-suite"
     _write_malformed_task(insight_suite_dir, "task-a")
     _write_malformed_task(insight_suite_dir, "task-b")
@@ -222,9 +237,6 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
     assert "SyntaxError: expected 'except' or 'finally' block" in validation_feedback
 
     llm = get_fast_model()
-    # Construction must not need NEMO_EXPERIMENTALIST_API_KEY: Eval Author owns AUTHOR_* and only
-    # bridges into the Experimentalist slots, which are already resolved by this point.
-    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     eval_author = EvalAuthor(
         experiment_dir=tmp_path,
         config=EvalAuthorConfig(),
@@ -268,12 +280,12 @@ async def test_gpt5_mini_repairs_malformed_harbor_verifiers(
 
 
 @pytest.mark.skipif(
-    not (_RUN_EVAL_AUTHOR_HARBOR_E2E and _HAS_LLM),
-    reason=f"Set RUN_EVAL_AUTHOR_HARBOR_E2E=1 with {_CREDENTIALS_HINT} to run the live Harbor metric canary.",
+    not (_RUN_EVAL_AUTHOR_HARBOR_E2E and _HAS_MODELS),
+    reason=f"Set RUN_EVAL_AUTHOR_HARBOR_E2E=1 and {_MODELS_HINT} to run the live Harbor metric canary.",
 )
 async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    configured_models: None,
 ) -> None:
     """An authored root-cause metric scores a known-failing Harbor baseline low."""
     insight_suite_dir = tmp_path / "insight-suite"
@@ -285,8 +297,6 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
 
     llm = get_fast_model()
     llm.config["temperature"] = 0.0
-    # See the repair canary above: construction must not need NEMO_EXPERIMENTALIST_API_KEY.
-    monkeypatch.delenv("NEMO_EXPERIMENTALIST_API_KEY", raising=False)
     eval_author = EvalAuthor(
         experiment_dir=tmp_path,
         config=EvalAuthorConfig(),

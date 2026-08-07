@@ -14,11 +14,6 @@ from typing import Any
 
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
-from nemo_eval_author_plugin.model_config import (
-    bridge_author_env_to_experimentalist,
-    get_fast_model,
-    get_smart_model,
-)
 from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, ResourceRef, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
@@ -37,6 +32,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_explorer impor
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc
 from nooa.agents import TokenBudgetSummarizer
@@ -70,11 +66,7 @@ class EvalAuthor(Agent):
                 When set, emits mid-run progress lines; never owns header/footer.
             **kwargs: Forwarded to ``Agent.__init__``.
         """
-        # Eval Author still reuses a few Experimentalist agents (TraceAnalyzer,
-        # TraceExplorer). They read NEMO_EXPERIMENTALIST_* when constructed, so bridge the
-        # AUTHOR_* credentials before any of them is built.
-        bridge_author_env_to_experimentalist()
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or EvalAuthorConfig()
         self._reporter = reporter
         self.experiment_dir = experiment_dir

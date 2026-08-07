@@ -32,13 +32,13 @@ def configured_models(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         preflight,
         "configured_model_refs",
-        lambda: SimpleNamespace(smart="default/gpt-5", fast="default/gpt-5-mini"),
+        lambda: SimpleNamespace(default="default/gpt-5", fast="default/gpt-5-mini"),
     )
 
 
 def test_missing_model_pair_is_required_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def missing_models() -> object:
-        raise ValueError("No smart/fast models are configured")
+        raise ValueError("No default model is configured")
 
     monkeypatch.setattr(preflight, "configured_model_refs", missing_models)
     results = asyncio.run(
@@ -180,6 +180,6 @@ def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:
     report = format_report(results)
 
     assert "Profile\n  ✓ profile for agent 'a'" in report
-    assert "Models\n  ✓ smart=default/gpt-5; fast=default/gpt-5-mini" in report
+    assert "Models\n  ✓ default=default/gpt-5; fast=default/gpt-5-mini" in report
     assert "Platform\n  ✓ http://localhost:8080 reachable" in report
     assert not required_failures(results)

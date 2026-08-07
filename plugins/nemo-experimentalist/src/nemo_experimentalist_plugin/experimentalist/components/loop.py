@@ -53,10 +53,6 @@ from nemo_experimentalist_plugin.experimentalist.components.insight_promotion im
     write_insight_comparison_section,
     write_insight_promotion_section,
 )
-from nemo_experimentalist_plugin.experimentalist.components.model_config import (
-    get_fast_model,
-    get_smart_model,
-)
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
     OptimizationType,
@@ -79,6 +75,7 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 from nemo_experimentalist_plugin.experimentalist.reporting import reward_scalar
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -335,7 +332,7 @@ class EvolutionaryOptimizer(Agent):
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self.working_dir = working_dir.resolve()
         self.config = config or EvolutionaryOptimizerConfig()
         self._config = self.config

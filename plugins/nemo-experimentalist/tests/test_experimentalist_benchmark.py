@@ -169,9 +169,6 @@ def test_user_simulator_exports_task_env_credentials(monkeypatch: pytest.MonkeyP
         runner._configure_models(
             runner.ModelSpec(
                 aut="a",
-                experimentalist_smart="b",
-                experimentalist_mid="c",
-                experimentalist_fast="d",
                 user_simulator=user_simulator,
             )
         )

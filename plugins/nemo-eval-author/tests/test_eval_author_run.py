@@ -4,6 +4,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from nemo_eval_author_plugin.eval_author import run as eval_author_run
@@ -19,6 +20,32 @@ class ClosingClient:
 
     async def close(self) -> None:
         self.closed = True
+
+
+@dataclass
+class ClosingModelClients:
+    default: object = None
+    fast: object = None
+    closed: bool = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def model_clients(monkeypatch: pytest.MonkeyPatch) -> ClosingModelClients:
+    clients = ClosingModelClients()
+    refs = eval_author_run.ConfiguredModelRefs(
+        default="workspace-a/default-model",
+        fast="workspace-a/fast-model",
+    )
+
+    async def resolve(*_: object) -> ClosingModelClients:
+        return clients
+
+    monkeypatch.setattr(eval_author_run, "configured_model_refs", lambda: refs)
+    monkeypatch.setattr(eval_author_run, "resolve_model_clients", resolve)
+    return clients
 
 
 @dataclass
@@ -113,8 +140,39 @@ class FakeEvalAuthor:
 
 
 @pytest.mark.asyncio
+async def test_run_eval_author_fails_before_side_effects_when_model_configuration_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    experiment_dir = tmp_path / "eval_author"
+    make_client = MagicMock()
+
+    def missing_model_refs() -> eval_author_run.ConfiguredModelRefs:
+        raise ValueError("No default model is configured. Run `nemo setup` and select agent models.")
+
+    monkeypatch.setattr(eval_author_run, "configured_model_refs", missing_model_refs)
+    monkeypatch.setattr(eval_author_run, "make_client", make_client)
+
+    with pytest.raises(ValueError, match="No default model is configured"):
+        await eval_author_run.run_eval_author(
+            insight="insight-remote-123",
+            train_dataset=DatasetRef(uri="train"),
+            validation_dataset=DatasetRef(uri="validation"),
+            task_template=DatasetRef(uri="template"),
+            experiment_dir=experiment_dir,
+            workspace="workspace-a",
+            base_url="http://platform.test",
+            config=EvalAuthorConfig(),
+        )
+
+    assert not experiment_dir.exists()
+    make_client.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_run_eval_author_builds_and_runs_complete_contract(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     client = ClosingClient()
@@ -130,7 +188,6 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
     eval_author = FakeEvalAuthor()
     backend_calls: list[BackendFactoryCall] = []
     eval_author_calls: list[EvalAuthorFactoryCall] = []
-    litellm_calls: list[bool] = []
 
     def make_backend(
         *,
@@ -148,7 +205,6 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", make_backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", build_eval_author_agent)
-    monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: litellm_calls.append(True))
 
     config = EvalAuthorConfig(max_traces=2)
     train_ref = DatasetRef(uri=str(tmp_path / "train"), metadata={"id": "train"})
@@ -172,7 +228,6 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
     assert result.summary == "Eval Author complete"
     assert result.train_dataset is dataset_factory.train
     assert result.validation_dataset is dataset_factory.validation
-    assert litellm_calls == [True]
     assert backend_calls == [
         BackendFactoryCall(client=client, experiments_output=str(experiment_dir)),
     ]
@@ -201,11 +256,13 @@ async def test_run_eval_author_builds_and_runs_complete_contract(
         client=client,
     )
     assert client.closed
+    assert model_clients.closed
 
 
 @pytest.mark.asyncio
 async def test_run_eval_author_hydrates_fileset_task_template(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     download_calls: list[dict[str, str]] = []
@@ -227,7 +284,6 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
-    monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
 
     template_ref = DatasetRef(uri="fileset://workspace-a/task-template", metadata={"id": "task-template"})
     experiment_dir = (tmp_path / "eval_author").resolve()
@@ -252,11 +308,13 @@ async def test_run_eval_author_hydrates_fileset_task_template(
     ]
     assert dataset_factory.template_refs == [("harbor", template_ref.model_copy(update={"uri": str(staged_path)}))]
     assert client.closed
+    assert model_clients.closed
 
 
 @pytest.mark.asyncio
 async def test_run_eval_author_uses_agent_override(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     client = ClosingClient()
@@ -269,7 +327,6 @@ async def test_run_eval_author_uses_agent_override(
     monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
     monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
     monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
-    monkeypatch.setattr(eval_author_run, "_enable_litellm_drop_params", lambda: None)
 
     override = tmp_path / "override-agent"
     template = tmp_path / "template"
@@ -288,11 +345,13 @@ async def test_run_eval_author_uses_agent_override(
 
     assert backend.agent_code_calls[0].agent == override
     assert client.closed
+    assert model_clients.closed
 
 
 @pytest.mark.asyncio
 async def test_run_eval_author_closes_client_when_backend_creation_fails(
     monkeypatch: pytest.MonkeyPatch,
+    model_clients: ClosingModelClients,
     tmp_path: Path,
 ) -> None:
     client = ClosingClient()
@@ -316,3 +375,4 @@ async def test_run_eval_author_closes_client_when_backend_creation_fails(
         )
 
     assert client.closed
+    assert model_clients.closed

@@ -12,7 +12,6 @@ from typing import Any, ClassVar, TypeVar, cast
 from zoneinfo import ZoneInfo
 
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
-from nemo_insights_plugin.analyst.model_config import configured_model_refs
 from nemo_insights_plugin.config import InsightsConfig
 from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
@@ -28,6 +27,7 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityNotFoundError,
 )
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -234,7 +234,7 @@ class InsightsAnalysisController(NemoController):
             agent=config.agent,
             base_url=self.insights_config.analyst.base_url,
             since=status.last_successful_run_at if status is not None else None,
-            smart_model=model_refs.smart,
+            default_model=model_refs.default,
             fast_model=model_refs.fast,
         )
         job_name = _job_name(config, submitted_at)

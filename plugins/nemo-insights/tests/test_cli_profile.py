@@ -19,7 +19,7 @@ from nooa import GenerationError
 from typer.testing import CliRunner
 
 runner = CliRunner()
-_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "INFERENCE_API_KEY")
+_PROFILE_ENV_KEYS = ("NMP_BASE_URL", "TEST_PROFILE_ENV")
 
 
 class AnalystRecorder:
@@ -73,13 +73,13 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch, restore_profile_env: None) 
                 group="models",
                 status="pass",
                 severity="required",
-                message="smart=default/gpt-5; fast=default/gpt-5-mini",
+                message="default=default/gpt-5; fast=default/gpt-5-mini",
             )
         ],
     )
     monkeypatch.setattr(
         "nemo_insights_plugin.preflight.configured_model_refs",
-        lambda: SimpleNamespace(smart="default/gpt-5", fast="default/gpt-5-mini"),
+        lambda: SimpleNamespace(default="default/gpt-5", fast="default/gpt-5-mini"),
     )
 
 
@@ -146,10 +146,15 @@ def test_unusable_mirror_directory_drops_the_mirror_and_still_analyzes(
     output = tmp_path / "unwritable" / "insights.yaml"
     original_mkdir = Path.mkdir
 
-    def refuse_mirror_dir(self: Path, *args: object, **kwargs: object) -> None:
+    def refuse_mirror_dir(
+        self: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
         if self == output.parent:
             raise PermissionError(13, "Permission denied")
-        original_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+        original_mkdir(self, mode=mode, parents=parents, exist_ok=exist_ok)
 
     monkeypatch.setattr(Path, "mkdir", refuse_mirror_dir)
     monkeypatch.setattr(cli, "run_analyst", recorder)
@@ -421,15 +426,15 @@ def test_malformed_discovered_profile_warns_with_agent_only(app: typer.Typer, tm
 def test_malformed_discovered_profile_still_loads_env_file(app: typer.Typer, tmp_path: Path, monkeypatch) -> None:
     recorder = AnalystRecorder()
     monkeypatch.setattr(cli, "run_analyst", recorder)
-    monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    monkeypatch.delenv("TEST_PROFILE_ENV", raising=False)
     (tmp_path / "optimizer.yaml").write_text("agent: ''\n", encoding="utf-8")
-    (tmp_path / ".env").write_text("INFERENCE_API_KEY=from-env-file\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("TEST_PROFILE_ENV=from-env-file\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["run", "--agent", "other"])
 
     assert result.exit_code == 0, result.output
-    assert os.environ["INFERENCE_API_KEY"] == "from-env-file"
+    assert os.environ["TEST_PROFILE_ENV"] == "from-env-file"
     assert recorder.kwargs is not None
 
 
@@ -469,7 +474,7 @@ def test_analyze_blocks_before_runner_when_model_configuration_is_missing(
                 group="models",
                 status="fail",
                 severity="required",
-                message="No smart/fast models are configured",
+                message="No default model is configured",
             )
         ],
     )
@@ -486,7 +491,7 @@ def test_analyze_blocks_before_runner_when_model_configuration_is_missing(
     result = runner.invoke(app, ["run"])
 
     assert result.exit_code == 1
-    assert "No smart/fast models are configured" in result.output
+    assert "No default model is configured" in result.output
     assert recorder.kwargs is None
 
 
@@ -782,7 +787,7 @@ def test_doctor_missing_profile_still_runs_environment_checks(
 
     assert result.exit_code == 1
     assert "no optimizer.yaml found" in result.output
-    assert "Models\n  ✓ smart=default/gpt-5; fast=default/gpt-5-mini" in result.output
+    assert "Models\n  ✓ default=default/gpt-5; fast=default/gpt-5-mini" in result.output
     assert http_urls == ["https://flag.example"]
     assert workspace_urls == []
 
@@ -794,4 +799,4 @@ def test_doctor_reports_healthy_profile(app: typer.Typer, profile_tree: Path, mo
 
     assert result.exit_code == 0, result.output
     assert "Profile\n  ✓ profile for agent 'flight-planner'" in result.output
-    assert "Models\n  ✓ smart=default/gpt-5; fast=default/gpt-5-mini" in result.output
+    assert "Models\n  ✓ default=default/gpt-5; fast=default/gpt-5-mini" in result.output

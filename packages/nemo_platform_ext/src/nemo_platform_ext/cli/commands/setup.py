@@ -222,7 +222,7 @@ class KeyValidationResult:
 class ModelPair:
     """Model entities selected for quality-critical and low-latency agent work."""
 
-    smart: str
+    default: str
     fast: str
 
 
@@ -746,12 +746,19 @@ def _wait_for_models_impl(
     return []
 
 
-def _get_all_model_entity_ids(client: NeMoPlatform, workspace: str) -> list[str]:
-    """Return all model entity IDs across all providers."""
+def _get_all_model_entity_ids(
+    client: NeMoPlatform,
+    workspace: str,
+    *,
+    provider_name: str | None = None,
+) -> list[str]:
+    """Return model entity IDs, optionally scoped to one provider."""
     entity_ids: list[str] = []
     try:
         page = client.inference.providers.list(workspace=workspace)
         for provider in page.data:
+            if provider_name is not None and getattr(provider, "name", None) != provider_name:
+                continue
             for model in getattr(provider, "served_models", None) or []:
                 if hasattr(model, "model_entity_id") and model.model_entity_id:
                     entity_ids.append(model.model_entity_id)
@@ -760,17 +767,24 @@ def _get_all_model_entity_ids(client: NeMoPlatform, workspace: str) -> list[str]
     return sorted(set(entity_ids))
 
 
-def _get_all_model_choices(client: NeMoPlatform, workspace: str) -> list[tuple[str, str]]:
-    """Return picker choices as (entity_id, label) across all providers."""
+def _get_all_model_choices(
+    client: NeMoPlatform,
+    workspace: str,
+    *,
+    provider_name: str | None = None,
+) -> list[tuple[str, str]]:
+    """Return picker choices, optionally scoped to one provider."""
     choices: list[tuple[str, str]] = []
     try:
         page = client.inference.providers.list(workspace=workspace)
         for provider in page.data:
-            provider_name = getattr(provider, "name", "unknown-provider")
+            current_provider_name = getattr(provider, "name", "unknown-provider")
+            if provider_name is not None and current_provider_name != provider_name:
+                continue
             for model in getattr(provider, "served_models", None) or []:
                 model_entity_id = getattr(model, "model_entity_id", None)
                 if model_entity_id:
-                    label = f"{_display_model_name(model_entity_id)} ({provider_name})"
+                    label = f"{_display_model_name(model_entity_id)} ({current_provider_name})"
                     choices.append((model_entity_id, label))
     except Exception:
         logger.debug("Failed to list model choices", exc_info=True)
@@ -1846,35 +1860,39 @@ def _validate_api_key(
         return KeyValidationResult(passed=True, message=f"Could not validate API key ({exc}).")
 
 
-def _select_model_pair(client: NeMoPlatform, workspace: str) -> ModelPair | None:
-    """Let the user pick smart and fast models from discovered model entities."""
-    display_models = _get_all_model_choices(client, workspace)
+def _select_model_pair(
+    client: NeMoPlatform,
+    workspace: str,
+    *,
+    provider_name: str | None = None,
+) -> ModelPair | None:
+    """Let the user pick default and fast models from one provider."""
+    display_models = _get_all_model_choices(client, workspace, provider_name=provider_name)
     if not display_models:
         console.print(f"  {WARN} No models discovered yet. You can select models later.")
         return None
 
-    default_smart = display_models[0][0]
-    smart = prompt_select(
-        "Choose your smart model (used by default for agent work):",
+    first_model = display_models[0][0]
+    default_model = prompt_select(
+        "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=default_smart,
+        default=first_model,
         hint="Press Enter to accept the default.",
     )
     fast = prompt_select(
         "Choose your fast model (used for latency-sensitive agent work):",
         choices=display_models,
-        default=smart,
-        hint="Press Enter to reuse the smart model.",
+        default=default_model,
+        hint="Press Enter to reuse the default model.",
     )
-    return ModelPair(smart=smart, fast=fast)
+    return ModelPair(default=default_model, fast=fast)
 
 
 def _save_model_pair(cli_context: CLIContext, model_pair: ModelPair) -> None:
-    """Persist both workload roles and keep the legacy default on the smart model."""
+    """Persist the default quality model and the low-latency model."""
     context = cli_context.get_sdk_context()
     params: ConfigParams = {
-        "default_model": model_pair.smart,
-        "smart_model": model_pair.smart,
+        "default_model": model_pair.default,
         "fast_model": model_pair.fast,
     }
     Config.write(params, context_name=context.context_name)
@@ -1894,8 +1912,8 @@ def _check_ollama_running(host_url: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _auto_setup(client: NeMoPlatform, workspace: str) -> bool:
-    """Register a provider from environment variables. Returns True on success."""
+def _auto_setup(client: NeMoPlatform, workspace: str) -> str | None:
+    """Register a provider from environment variables and return its name."""
     for key_var, url_var in _AUTO_ENV_VARS:
         api_key = os.environ.get(key_var)
         if not api_key:
@@ -1967,9 +1985,9 @@ def _auto_setup(client: NeMoPlatform, workspace: str) -> bool:
             )
             console.print(f"  {CHECK} Registered provider '{provider_name}' ({host_url})")
 
-        return True
+        return provider_name
 
-    return False
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -2045,8 +2063,8 @@ def setup_command(
 
     Uses an already-running platform, starts local services, or connects the
     CLI to an existing remote deployment. Then selects and registers an
-    inference provider, picks a default model, installs coding agent skills,
-    and optionally deploys a demo agent.
+    inference provider, picks default and fast agent models, installs coding
+    agent skills, and optionally deploys a demo agent.
 
     The active config context remembers the Platform URL. When a remote
     deployment is already reachable, setup asks whether to continue with it,
@@ -2064,7 +2082,7 @@ def setup_command(
     Use --auto for non-interactive setup from environment variables
     (NEMO_DEFAULT_INFERENCE_KEY, NVIDIA_API_KEY, OPENAI_API_KEY,
     ANTHROPIC_API_KEY, GEMINI_API_KEY).
-    Override the default model with NEMO_DEFAULT_MODEL.
+    Override the selected pair with NEMO_DEFAULT_MODEL and NEMO_FAST_MODEL.
 
     Examples:
       nemo setup
@@ -2196,7 +2214,8 @@ def _run_auto_mode(
 ) -> None:
     """Non-interactive provider registration from environment variables."""
     console.print("[bold]Auto-detecting provider from environment...[/bold]\n")
-    if not _auto_setup(client, workspace):
+    provider_name = _auto_setup(client, workspace)
+    if provider_name is None:
         console.print(f"{CROSS} No provider credentials found in environment.")
         env_var_names = ", ".join(key for key, _ in _AUTO_ENV_VARS)
         console.print(f"  Set one of: {env_var_names}")
@@ -2207,7 +2226,7 @@ def _run_auto_mode(
     for attempt in range(_MODEL_DISCOVERY_MAX_ROUNDS):
         deadline = time.time() + _MODEL_DISCOVERY_ROUND_SECONDS
         while time.time() < deadline:
-            entity_ids = _get_all_model_entity_ids(client, workspace)
+            entity_ids = _get_all_model_entity_ids(client, workspace, provider_name=provider_name)
             if entity_ids:
                 break
             _pause(_MODEL_DISCOVERY_POLL_INTERVAL)
@@ -2229,16 +2248,18 @@ def _run_auto_mode(
     default_model = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
     if not default_model and entity_ids:
         default_model = entity_ids[0]
+    fast_model = os.environ.get("NEMO_FAST_MODEL", "").strip() or default_model
 
     if default_model:
-        model_pair = ModelPair(smart=default_model, fast=default_model)
+        model_pair = ModelPair(default=default_model, fast=fast_model)
         _save_model_pair(cli_context, model_pair)
-        console.print(f"  {CHECK} Smart model: {model_pair.smart}")
+        console.print(f"  {CHECK} Default model: {model_pair.default}")
         console.print(f"  {CHECK} Fast model: {model_pair.fast}")
     else:
         console.print(f"  {WARN} No default model set (no models discovered yet)")
-        console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set via env var:")
+        console.print("  Run [cyan]nemo setup[/cyan] again after models sync, or set the models via env vars:")
         console.print("    [cyan]export NEMO_DEFAULT_MODEL=<model>[/cyan]")
+        console.print("    [cyan]export NEMO_FAST_MODEL=<model>[/cyan]")
 
     _maybe_install_skills(
         auto=True,
@@ -2320,11 +2341,11 @@ def _run_interactive_mode(
         if not models and fallback_model_choices:
             console.print(f"  {WARN} Models from existing providers are available, but not from '{provider_name}' yet.")
 
-        model_pair = _select_model_pair(client, workspace) if models else None
-        default_model = model_pair.smart if model_pair else None
+        model_pair = _select_model_pair(client, workspace, provider_name=provider_name) if models else None
+        default_model = model_pair.default if model_pair else None
         if model_pair:
             _save_model_pair(cli_context, model_pair)
-            console.print(f"  {CHECK} Smart model set to {_display_model_name(model_pair.smart)}")
+            console.print(f"  {CHECK} Default model set to {_display_model_name(model_pair.default)}")
             console.print(f"  {CHECK} Fast model set to {_display_model_name(model_pair.fast)}")
         else:
             console.print(f"  {WARN} No agent models set for this provider yet.")
@@ -2353,7 +2374,6 @@ def _run_interactive_mode(
             base_url,
             provider_name,
             default_model,
-            smart_model=model_pair.smart if model_pair else None,
             fast_model=model_pair.fast if model_pair else None,
             demo_deployed=demo_deployed,
         )
@@ -2423,7 +2443,6 @@ def _print_onboarding(
     provider_name: str,
     default_model: str | None,
     *,
-    smart_model: str | None = None,
     fast_model: str | None = None,
     demo_deployed: bool = False,
 ) -> None:
@@ -2433,12 +2452,10 @@ def _print_onboarding(
 
     console.print(f"\n{CHECK} [green bold]Setup complete![/green bold]")
     console.print(f"  Provider: {provider_name}")
-    if smart_model:
-        console.print(f"  Smart model: {_display_model_name(smart_model)}")
+    if default_model:
+        console.print(f"  Default model: {_display_model_name(default_model)}")
     if fast_model:
         console.print(f"  Fast model: {_display_model_name(fast_model)}")
-    if default_model and not smart_model and not fast_model:
-        console.print(f"  Default model: {_display_model_name(default_model)}")
     if demo_deployed:
         console.print(f"  Demo agent: {_DEMO_AGENT_NAME}")
 

@@ -10,7 +10,6 @@ import logging
 from datetime import datetime, timezone
 from typing import ClassVar
 
-from nemo_insights_plugin.analyst.model_config import AnalystModelRefs
 from nemo_insights_plugin.analyst.run import run_analyst
 from nemo_insights_plugin.entities import AnalysisConfigStatus
 from nemo_platform import NeMoPlatform
@@ -28,6 +27,7 @@ from nemo_platform_plugin.jobs.constants import (
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
 from nemo_platform_plugin.jobs.image import get_qualified_image
+from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 from nemo_platform_plugin.sdk_provider import get_async_task_sdk
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -66,7 +66,7 @@ class AnalyzeSpec(BaseModel):
         default=True,
         description="Update the matching AnalysisRunStatus with run metadata.",
     )
-    smart_model: str = Field(description="Workspace-qualified smart Model Entity ID selected during setup.")
+    default_model: str = Field(description="Workspace-qualified default Model Entity ID selected during setup.")
     fast_model: str = Field(description="Workspace-qualified fast Model Entity ID selected during setup.")
 
 
@@ -148,7 +148,7 @@ class AnalyzeJob(NemoJob):
                     client=async_client,
                     insights_output=spec.insights_output,
                     since=spec.since,
-                    model_refs=AnalystModelRefs(smart=spec.smart_model, fast=spec.fast_model),
+                    model_refs=ConfiguredModelRefs(default=spec.default_model, fast=spec.fast_model),
                 )
             )
         except Exception as exc:  # pragma: no cover - exercised by integration paths

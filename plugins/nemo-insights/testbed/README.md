@@ -206,8 +206,10 @@ written to `testbed/tmp/insights_<name>.yaml`.
 ## Config split: secrets in `.env`, everything else in `testbeds.toml`
 
 On startup the CLI auto-loads `testbed/.env` (gitignored) as `KEY=VALUE` lines. Keep
-**only secrets/endpoints** there — `INFERENCE_API_KEY` (analyst) and
-`OPENAI_API_KEY`/`OPENAI_API_BASE` (the proxy litellm uses for the benchmark sim LLMs).
+**only secrets/endpoints** there — `OPENAI_API_KEY`/`OPENAI_API_BASE` for the
+benchmark simulator LLMs. Run `nemo setup` against the analysis Platform to
+select the Analyst's default and fast Model Entities; its provider credential
+stays in Platform Secrets.
 GLAMR live analysis additionally reads `GLAMR_INTAKE_USER` and
 `GLAMR_INTAKE_PASSWORD` from `.env`; `testbeds.toml` stores only those
 environment-variable names, never their credential values.
@@ -383,7 +385,7 @@ locally: `analyze <subject> --state state-vN`).
 
 Secrets: the workflow uses `TESTBED_STATE_GH_READ_TOKEN`, a least-privilege
 GitHub App/PAT credential with release-read access to `TESTBED_STATE_REPO`,
-plus `NVIDIA_INFERENCE_KEY` and `NVIDIA_INFERENCE_URL`. The latter are exposed
-under the `INFERENCE_API_KEY` and OpenAI-compatible environment names expected
-by the analyst and litellm/tau2. The analyst and tau2 sim LLMs need no VPN and
-work on public runners.
+plus `NVIDIA_INFERENCE_KEY` and `NVIDIA_INFERENCE_URL`. The workflow registers
+the latter with `nemo setup --auto` for the Analyst and also exposes it under
+the OpenAI-compatible environment names expected by litellm/tau2. The Analyst
+and tau2 simulator LLMs need no VPN and work on public runners.

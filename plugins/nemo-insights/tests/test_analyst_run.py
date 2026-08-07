@@ -8,8 +8,8 @@ from typing import Any, cast
 import pytest
 from nemo_insights_plugin.analyst import run as run_module
 from nemo_insights_plugin.analyst.deps import AnalystDeps
-from nemo_insights_plugin.analyst.model_config import AnalystModelPair
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients
 from nooa.context_blocks import ResultStatus
 from nooa.events import LLMComplete, PythonOutput
 
@@ -36,18 +36,18 @@ class FakeBackend:
 
 
 def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> None:
-    smart = FakeModelClient()
+    default = FakeModelClient()
     fast = FakeModelClient()
-    model_pair = AnalystModelPair(
-        smart=cast(Any, smart),
+    model_clients = ConfiguredModelClients(
+        default=cast(Any, default),
         fast=cast(Any, fast),
     )
 
-    async def fake_resolve_model_pair(client: object, refs: object) -> AnalystModelPair:
+    async def fake_resolve_model_clients(client: object, refs: object) -> ConfiguredModelClients:
         seen["model_client"] = client
         seen["model_refs"] = refs
-        seen["model_pair"] = model_pair
-        return model_pair
+        seen["model_clients"] = model_clients
+        return model_clients
 
     def fake_make_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         seen["backend_client"] = client
@@ -58,7 +58,7 @@ def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> 
         return object()
 
     monkeypatch.setattr(run_module, "make_analyst_backend", fake_make_backend)
-    monkeypatch.setattr(run_module, "resolve_model_pair", fake_resolve_model_pair)
+    monkeypatch.setattr(run_module, "resolve_model_clients", fake_resolve_model_clients)
 
     def fake_build_agent(**kwargs: object) -> object:
         seen["build_kwargs"] = kwargs
@@ -86,39 +86,27 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
     build_kwargs = cast(dict[str, object], seen["build_kwargs"])
     assert cast(AnalystDeps, build_kwargs["deps"]).backend is not None
     assert seen["model_client"] is client
-    model_pair = cast(AnalystModelPair, seen["model_pair"])
-    assert cast(FakeModelClient, model_pair.smart).closed
-    assert cast(FakeModelClient, model_pair.fast).closed
+    model_clients = cast(ConfiguredModelClients, seen["model_clients"])
+    assert cast(FakeModelClient, model_clients.default).closed
+    assert cast(FakeModelClient, model_clients.fast).closed
     assert client.closed
-
-
-def test_litellm_compatibility_is_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeLiteLLM:
-        drop_params = False
-
-    fake_litellm = FakeLiteLLM()
-    monkeypatch.setattr(run_module.importlib, "import_module", lambda name: fake_litellm)
-
-    run_module._enable_litellm_drop_params()
-
-    assert fake_litellm.drop_params is True
 
 
 async def test_client_closed_when_backend_construction_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient()
     model = FakeModelClient()
-    pair = AnalystModelPair(
-        smart=cast(Any, model),
+    pair = ConfiguredModelClients(
+        default=cast(Any, model),
         fast=cast(Any, model),
     )
 
-    async def fake_resolve_model_pair(client: object, refs: object) -> AnalystModelPair:
+    async def fake_resolve_model_clients(client: object, refs: object) -> ConfiguredModelClients:
         return pair
 
     def raising_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         raise RuntimeError("backend failed")
 
-    monkeypatch.setattr(run_module, "resolve_model_pair", fake_resolve_model_pair)
+    monkeypatch.setattr(run_module, "resolve_model_clients", fake_resolve_model_clients)
     monkeypatch.setattr(run_module, "make_analyst_backend", raising_backend)
 
     with pytest.raises(RuntimeError, match="backend failed"):
@@ -134,15 +122,15 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
     assert client.closed
 
 
-async def test_client_closed_when_litellm_initialization_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_client_closed_when_model_resolution_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient()
 
-    def raising_litellm_initialization() -> None:
-        raise RuntimeError("litellm failed")
+    async def raising_model_resolution(client: object, refs: object) -> ConfiguredModelClients:
+        raise RuntimeError("model resolution failed")
 
-    monkeypatch.setattr(run_module, "_enable_litellm_drop_params", raising_litellm_initialization)
+    monkeypatch.setattr(run_module, "resolve_model_clients", raising_model_resolution)
 
-    with pytest.raises(RuntimeError, match="litellm failed"):
+    with pytest.raises(RuntimeError, match="model resolution failed"):
         await run_module.run_analyst(
             agent="agent",
             agent_spec=None,

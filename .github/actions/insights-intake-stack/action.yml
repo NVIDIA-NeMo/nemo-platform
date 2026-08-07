@@ -1,5 +1,5 @@
 name: insights-intake-stack
-description: Self-contained Intake (ClickHouse + auth,entities,intake) on :8080 over $RUNNER_TEMP/state
+description: Self-contained Analyst stack (ClickHouse + Intake and Platform model routing) on :8080
 runs:
   using: composite
   steps:

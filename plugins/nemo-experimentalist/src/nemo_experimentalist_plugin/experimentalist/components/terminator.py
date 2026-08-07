@@ -19,12 +19,11 @@ from typing import Any
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree, pareto_front
 from nemo_experimentalist_plugin.skills import skills_dir
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
 from pydantic import BaseModel
-
-from .model_config import get_fast_model
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +162,7 @@ class Terminator(Agent):
         return await self.qualitative_stop_check(prior_analysis)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5)))
-    async def qualitative_stop_check(self, analysis: str) -> bool:  # pyright: ignore[reportReturnType]
+    async def qualitative_stop_check(self, analysis: str) -> bool:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Decide whether the optimization has qualitatively plateaued; return True to stop.
 
         Judge the round ``analysis`` text against the terminator skill's stop

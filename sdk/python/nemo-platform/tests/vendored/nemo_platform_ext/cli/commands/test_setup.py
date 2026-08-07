@@ -64,6 +64,7 @@ from nemo_platform.cli.commands.setup import (
     _render_onboarding_card,
     _resolve_provider_for_url,
     _resolve_setup_workspace,
+    _run_auto_mode,
     _run_interactive_mode,
     _save_data_dir,
     _select_model_pair,
@@ -420,8 +421,8 @@ class TestCreateProvider:
             workspace="default",
         )
         call_kwargs = client.inference.providers.create.call_args.kwargs
-        assert "auth_header_format" not in call_kwargs
         assert "required_extra_headers" not in call_kwargs
+        assert "auth_header_format" not in call_kwargs
 
     def test_provider_without_secret(self):
         """Providers without secrets (e.g. Ollama) should omit api_key_secret_name."""
@@ -456,16 +457,16 @@ def _bypass_key_validation():
 
 @pytest.mark.usefixtures("_bypass_key_validation")
 class TestAutoSetup:
-    def test_no_env_vars_returns_false(self):
+    def test_no_env_vars_returns_none(self):
         client = _make_mock_client()
         with patch.dict("os.environ", {}, clear=True):
-            assert _auto_setup(client, "default") is False
+            assert _auto_setup(client, "default") is None
 
     def test_openai_key_creates_provider(self):
         client = _make_mock_client()
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test123"}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "openai"
         client.mock_secrets.create_secret.assert_called_once()
         client.inference.providers.create.assert_called_once()
         create_kwargs = client.inference.providers.create.call_args
@@ -476,7 +477,7 @@ class TestAutoSetup:
         client = _make_mock_client()
         with patch.dict("os.environ", {"NVIDIA_API_KEY": "nvapi-test"}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "nvidia-build"
         create_kwargs = client.inference.providers.create.call_args
         assert create_kwargs.kwargs["name"] == "nvidia-build"
 
@@ -488,7 +489,7 @@ class TestAutoSetup:
         }
         with patch.dict("os.environ", env, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "openai"
         create_kwargs = client.inference.providers.create.call_args
         assert create_kwargs.kwargs["name"] == "openai"
 
@@ -500,7 +501,7 @@ class TestAutoSetup:
         }
         with patch.dict("os.environ", env, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "my-custom-llm-example-com"
         create_kwargs = client.inference.providers.create.call_args
         assert create_kwargs.kwargs["name"] == "my-custom-llm-example-com"
         assert create_kwargs.kwargs["host_url"] == "https://my-custom-llm.example.com/v1"
@@ -509,7 +510,7 @@ class TestAutoSetup:
         client = _make_mock_client(provider_exists=True, secret_exists=True)
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test123"}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "openai"
         client.inference.providers.create.assert_not_called()
         client.inference.providers.update.assert_called_once()
 
@@ -523,7 +524,7 @@ class TestAutoSetup:
         }
         with patch.dict("os.environ", env, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "anthropic"
         create_kwargs = client.inference.providers.create.call_args
         assert create_kwargs.kwargs["name"] == "anthropic"
 
@@ -532,7 +533,7 @@ class TestAutoSetup:
         client = _make_mock_client()
         with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "anthropic"
         call_kwargs = client.inference.providers.create.call_args.kwargs
         assert call_kwargs["name"] == "anthropic"
         assert "auth_header_format" not in call_kwargs
@@ -552,29 +553,24 @@ class TestDefaultModelConfig:
         ctx2 = ContextDefinition(name="test", cluster="c", user="u", default_model="my-model")
         assert ctx2.default_model == "my-model"
 
-    def test_context_definition_has_optional_model_pair(self):
+    def test_context_definition_has_optional_fast_model(self):
         ctx = ContextDefinition(name="test", cluster="c", user="u")
-        assert ctx.smart_model is None
         assert ctx.fast_model is None
 
         configured = ContextDefinition(
             name="test",
             cluster="c",
             user="u",
-            smart_model="workspace/smart",
             fast_model="workspace/fast",
         )
-        assert configured.smart_model == "workspace/smart"
         assert configured.fast_model == "workspace/fast"
 
     def test_config_params_accepts_default_model(self):
         params: ConfigParams = {
             "default_model": "workspace/openai-gpt-4o",
-            "smart_model": "workspace/openai-gpt-4o",
             "fast_model": "workspace/openai-gpt-4o-mini",
         }
         assert params["default_model"] == "workspace/openai-gpt-4o"
-        assert params["smart_model"] == "workspace/openai-gpt-4o"
         assert params["fast_model"] == "workspace/openai-gpt-4o-mini"
 
     def test_ensure_context_applies_default_model(self):
@@ -586,12 +582,10 @@ class TestDefaultModelConfig:
         )
         params: ConfigParams = {
             "default_model": "workspace/my-model",
-            "smart_model": "workspace/smart",
             "fast_model": "workspace/fast",
         }
         _, _, ctx_def = config_file.ensure_context("test", params)
         assert ctx_def.default_model == "workspace/my-model"
-        assert ctx_def.smart_model == "workspace/smart"
         assert ctx_def.fast_model == "workspace/fast"
 
     def test_context_has_default_model(self):
@@ -600,16 +594,15 @@ class TestDefaultModelConfig:
             cluster=Cluster(name="c", base_url="http://localhost:8080"),
             workspace="default",
             default_model="workspace/gpt-4o",
-            smart_model="workspace/gpt-4o",
             fast_model="workspace/gpt-4o-mini",
             preferences={},
         )
         assert ctx.default_model == "workspace/gpt-4o"
-        assert ctx.smart_model == "workspace/gpt-4o"
         assert ctx.fast_model == "workspace/gpt-4o-mini"
 
-    def test_legacy_default_model_resolves_as_both_roles(self, tmp_path, monkeypatch):
+    def test_default_model_fills_missing_fast_role(self, tmp_path, monkeypatch):
         monkeypatch.delenv("NEMO_DEFAULT_MODEL", raising=False)
+        monkeypatch.delenv("NEMO_FAST_MODEL", raising=False)
         config_file = ConfigFile(
             current_context="test",
             clusters=[{"name": "test-cluster", "base_url": "http://localhost:8080"}],
@@ -627,11 +620,11 @@ class TestDefaultModelConfig:
         context = Config.create(tmp_path / "config.yaml", config_file).resolve()
 
         assert context.default_model == "workspace/legacy-model"
-        assert context.smart_model == "workspace/legacy-model"
         assert context.fast_model == "workspace/legacy-model"
 
     def test_explicit_model_pair_resolves_independently(self, tmp_path, monkeypatch):
         monkeypatch.delenv("NEMO_DEFAULT_MODEL", raising=False)
+        monkeypatch.delenv("NEMO_FAST_MODEL", raising=False)
         config_file = ConfigFile(
             current_context="test",
             clusters=[{"name": "test-cluster", "base_url": "http://localhost:8080"}],
@@ -641,8 +634,7 @@ class TestDefaultModelConfig:
                     "name": "test",
                     "cluster": "test-cluster",
                     "user": "test-user",
-                    "default_model": "workspace/smart",
-                    "smart_model": "workspace/smart",
+                    "default_model": "workspace/default",
                     "fast_model": "workspace/fast",
                 }
             ],
@@ -650,9 +642,31 @@ class TestDefaultModelConfig:
 
         context = Config.create(tmp_path / "config.yaml", config_file).resolve()
 
-        assert context.default_model == "workspace/smart"
-        assert context.smart_model == "workspace/smart"
+        assert context.default_model == "workspace/default"
         assert context.fast_model == "workspace/fast"
+
+    def test_model_environment_overrides_resolve_independently(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEMO_DEFAULT_MODEL", "workspace/env-default")
+        monkeypatch.setenv("NEMO_FAST_MODEL", "workspace/env-fast")
+        config_file = ConfigFile(
+            current_context="test",
+            clusters=[{"name": "test-cluster", "base_url": "http://localhost:8080"}],
+            users=[{"name": "test-user", "type": "no-auth"}],
+            contexts=[
+                {
+                    "name": "test",
+                    "cluster": "test-cluster",
+                    "user": "test-user",
+                    "default_model": "workspace/config-default",
+                    "fast_model": "workspace/config-fast",
+                }
+            ],
+        )
+
+        context = Config.create(tmp_path / "config.yaml", config_file).resolve()
+
+        assert context.default_model == "workspace/env-default"
+        assert context.fast_model == "workspace/env-fast"
 
 
 # ---------------------------------------------------------------------------
@@ -1831,7 +1845,7 @@ class TestProviderIdempotency:
         client = _make_mock_client(provider_exists=True, secret_exists=False)
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-new-key"}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "openai"
         client.mock_secrets.create_secret.assert_called_once()
         client.inference.providers.update.assert_called_once()
         call_kwargs = client.inference.providers.update.call_args.kwargs
@@ -1842,7 +1856,7 @@ class TestProviderIdempotency:
         client = _make_mock_client(provider_exists=True, secret_exists=True)
         with patch.dict("os.environ", {"NVIDIA_API_KEY": "nvapi-new"}, clear=True):
             result = _auto_setup(client, "default")
-        assert result is True
+        assert result == "nvidia-build"
         client.mock_secrets.update_secret.assert_called_once()
         update_call = client.mock_secrets.update_secret.call_args
         assert update_call.kwargs["name"] == "nvidia-build-api-key"
@@ -1859,6 +1873,44 @@ class TestProviderIdempotency:
 
 class TestInteractiveModelPairSelection:
     _MOD = "nemo_platform.cli.commands.setup"
+
+    def test_run_scopes_picker_to_registered_provider(self):
+        client = MagicMock()
+        cli_context = MagicMock()
+        model_pair = ModelPair(
+            default="default/claude-sonnet-4-6",
+            fast="default/claude-haiku-4-5-20251001",
+        )
+
+        with (
+            patch(
+                f"{self._MOD}._interactive_collect_provider",
+                return_value=("anthropic", "https://api.anthropic.com", None, None, None),
+            ),
+            patch(f"{self._MOD}._register_provider_interactive"),
+            patch(
+                f"{self._MOD}._wait_for_models",
+                return_value=[
+                    "default/claude-sonnet-4-6",
+                    "default/claude-haiku-4-5-20251001",
+                ],
+            ),
+            patch(f"{self._MOD}._select_model_pair", return_value=model_pair) as select_model_pair,
+            patch(f"{self._MOD}._save_model_pair"),
+            patch(f"{self._MOD}._maybe_install_skills"),
+            patch(f"{self._MOD}._maybe_deploy_agent", return_value=False),
+            patch(f"{self._MOD}._print_onboarding"),
+        ):
+            _run_interactive_mode(
+                cli_context,
+                client,
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        select_model_pair.assert_called_once_with(client, "default", provider_name="anthropic")
 
     def test_skips_default_model_picker_when_new_provider_has_no_models(self):
         """When the new provider is still syncing, setup should not show a misleading picker."""
@@ -1939,8 +1991,8 @@ class TestInteractiveModelPairSelection:
             for line in printed_lines
         )
 
-    def test_picker_labels_include_provider_names(self):
-        """Both model pickers should show which provider each model comes from."""
+    def test_picker_only_includes_models_from_selected_provider(self):
+        """Models from another provider in the workspace must not enter the picker."""
         client = MagicMock()
         provider_a = MagicMock()
         provider_a.name = "nvidia-build"
@@ -1956,19 +2008,15 @@ class TestInteractiveModelPairSelection:
 
         with patch(
             f"{self._MOD}.prompt_select",
-            side_effect=["default/meta-llama-3-1-8b-instruct", "default/qwen2.5:1.5b"],
+            side_effect=["default/qwen2.5:1.5b", "default/qwen2.5:1.5b"],
         ) as mock_prompt_select:
-            result = _select_model_pair(client, "default")
+            result = _select_model_pair(client, "default", provider_name="my-ollama-custom")
 
         assert result == ModelPair(
-            smart="default/meta-llama-3-1-8b-instruct",
+            default="default/qwen2.5:1.5b",
             fast="default/qwen2.5:1.5b",
         )
         expected_choices = [
-            (
-                "default/meta-llama-3-1-8b-instruct",
-                "meta-llama-3-1-8b-instruct (nvidia-build)",
-            ),
             (
                 "default/qwen2.5:1.5b",
                 "qwen2.5:1.5b (my-ollama-custom)",
@@ -1976,13 +2024,95 @@ class TestInteractiveModelPairSelection:
         ]
         assert mock_prompt_select.call_count == 2
         assert all(call.kwargs["choices"] == expected_choices for call in mock_prompt_select.call_args_list)
-        smart_call, fast_call = mock_prompt_select.call_args_list
-        assert smart_call.args[0] == "Choose your smart model (used by default for agent work):"
-        assert smart_call.kwargs["default"] == "default/meta-llama-3-1-8b-instruct"
-        assert smart_call.kwargs["hint"] == "Press Enter to accept the default."
+        default_call, fast_call = mock_prompt_select.call_args_list
+        assert default_call.args[0] == "Choose your default model (used for quality-critical agent work):"
+        assert default_call.kwargs["default"] == "default/qwen2.5:1.5b"
+        assert default_call.kwargs["hint"] == "Press Enter to accept the default."
         assert fast_call.args[0] == "Choose your fast model (used for latency-sensitive agent work):"
-        assert fast_call.kwargs["default"] == "default/meta-llama-3-1-8b-instruct"
-        assert fast_call.kwargs["hint"] == "Press Enter to reuse the smart model."
+        assert fast_call.kwargs["default"] == "default/qwen2.5:1.5b"
+        assert fast_call.kwargs["hint"] == "Press Enter to reuse the default model."
+
+
+class TestAutoModelPairSelection:
+    def test_entity_discovery_filters_other_workspace_providers(self):
+        client = MagicMock()
+        openai = MagicMock()
+        openai.name = "openai"
+        openai.served_models = [MagicMock(model_entity_id="default/gpt-4.1")]
+        anthropic = MagicMock()
+        anthropic.name = "anthropic"
+        anthropic.served_models = [MagicMock(model_entity_id="default/claude-sonnet-4-6")]
+        client.inference.providers.list.return_value = MagicMock(data=[openai, anthropic])
+
+        result = setup_commands._get_all_model_entity_ids(
+            client,
+            "default",
+            provider_name="anthropic",
+        )
+
+        assert result == ["default/claude-sonnet-4-6"]
+
+    def test_explicit_default_and_fast_models_are_saved_independently(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "NEMO_DEFAULT_MODEL": "default/quality",
+                    "NEMO_FAST_MODEL": "default/fast",
+                },
+                clear=True,
+            ),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="anthropic"),
+            patch(f"{SETUP_MOD}._get_all_model_entity_ids", return_value=["default/discovered"]),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_called_once_with(cli_context, ModelPair(default="default/quality", fast="default/fast"))
+
+    def test_discovered_default_is_scoped_to_auto_configured_provider(self):
+        cli_context = MagicMock()
+        client = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="anthropic"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=["default/claude-sonnet-4-6"],
+            ) as get_model_ids,
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                client,
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        get_model_ids.assert_called_once_with(client, "default", provider_name="anthropic")
+        save_pair.assert_called_once_with(
+            cli_context,
+            ModelPair(
+                default="default/claude-sonnet-4-6",
+                fast="default/claude-sonnet-4-6",
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
