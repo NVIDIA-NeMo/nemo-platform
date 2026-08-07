@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from nemo_experimentalist_plugin.entities import Candidate, Dataset, Proposal
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorConfig
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import Evaluator, EvaluatorConfig
 from nemo_experimentalist_plugin.experimentalist.registry import Component
 from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext, StrategyContext
 
@@ -44,12 +44,16 @@ class Strategy(Component):
         raise NotImplementedError
 
 
-class Evaluation(Component):
+class Evaluation(Component, Evaluator):
     """Measure a candidate's artifact and return an EvaluationResult.
 
     Named for the role rather than the implementation: it is platform vocabulary
     (`EvaluationResult`, `persist_evaluation`, NeMo Evaluator), and it measures the
     *outcome*, where a trajectory-scorer measures the process of the same run.
+
+    Inherits :class:`Evaluator`, so resolving this role yields something that is both
+    constructible (``options``, ``experiment_dir``) and carries the two ClassVars — one
+    type rather than an implicit pairing a plugin author has to infer.
     """
 
     role: ClassVar[str] = "evaluation"

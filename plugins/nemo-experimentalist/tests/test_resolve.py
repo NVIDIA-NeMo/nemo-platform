@@ -814,11 +814,11 @@ def test_config_unknown_top_level_key_is_tolerated(tmp_path: Path) -> None:
     [
         {"storage": {"publish_winer": True}},
         {"source": {"clone_dept": 1}},
-        {"coder": {"max_fix_atempts": 1}},
+        {"builder_config": {"max_fix_atempts": 1}},
         {"analyzer_config": {"rationalizer": {"max_summary_token": 100}}},
-        {"goal_config": {"max_dept": 2}},
+        {"trajectory_scorer_config": {"max_dept": 2}},
     ],
-    ids=["storage", "source", "coder", "deep-analyzer", "goal-config"],
+    ids=["storage", "source", "builder_config", "deep-analyzer", "trajectory_scorer_config"],
 )
 def test_config_unknown_typed_nested_key_is_tolerated(tmp_path: Path, config_payload: dict) -> None:
     profile = load_profile(make_profile_tree(tmp_path))
@@ -843,11 +843,11 @@ def test_evaluator_payload_remains_intentionally_open(tmp_path: Path) -> None:
             profile=profile,
             scratch_dir=tmp_path / "s",
             insight="ins-1",
-            config_payload={"evaluator": {"plugin_specific_option": {"nested": True}}},
+            config_payload={"evaluation_config": {"plugin_specific_option": {"nested": True}}},
         )
     )
 
-    assert inputs.config.evaluator == {"plugin_specific_option": {"nested": True}}
+    assert inputs.config.evaluation_config == {"plugin_specific_option": {"nested": True}}
 
 
 def test_config_invalid_value_is_wrapped_with_source(tmp_path: Path) -> None:
@@ -941,7 +941,7 @@ def test_component_configs_are_the_component_owned_classes() -> None:
     from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
 
     cfg = EvolutionaryOptimizerConfig()
-    assert type(cfg.coder) is CoderConfig
+    assert type(cfg.builder_config) is CoderConfig
     assert type(cfg.analyzer_config) is AnalyzerConfig
     assert type(cfg.proposer_config) is ProposerConfig
-    assert type(cfg.goal_config) is GoalTreeConfig
+    assert type(cfg.trajectory_scorer_config) is GoalTreeConfig

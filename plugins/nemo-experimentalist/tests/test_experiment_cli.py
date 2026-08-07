@@ -171,8 +171,8 @@ def test_cli_help_exposes_only_run_and_doctor() -> None:
     ("config_body", "expected_config", "expected_output"),
     [
         pytest.param(
-            "max_rounds: 2\nevaluator:\n  max_attempts: 3\n",
-            EvolutionaryOptimizerConfig.model_validate({"max_rounds": 2, "evaluator": {"max_attempts": 3}}),
+            "max_rounds: 2\nevaluation_config:\n  max_attempts: 3\n",
+            EvolutionaryOptimizerConfig.model_validate({"max_rounds": 2, "evaluation_config": {"max_attempts": 3}}),
             "configured-summary",
             id="with-config",
         ),

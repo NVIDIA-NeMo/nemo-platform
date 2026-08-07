@@ -4,7 +4,7 @@
 """The Builder that takes an agent as it arrived and commits it unchanged."""
 
 from nemo_experimentalist_plugin.entities import Candidate, Proposal
-from nemo_experimentalist_plugin.experimentalist.roles import Builder
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext
 
 #: Proposal kind meaning "commit this source as a candidate, changing nothing".
@@ -19,7 +19,7 @@ def import_proposal(description: str = "the agent under test, unchanged") -> Pro
     return Proposal(ancestor=None, description=description, kind=IMPORT, payload={})
 
 
-class Importer(Builder):
+class Importer(roles.Builder):
     """Commit a candidate that is the agent under test, unchanged.
 
     An ordinary build of an ordinary Proposal, so ``commit_candidate`` stays the only way

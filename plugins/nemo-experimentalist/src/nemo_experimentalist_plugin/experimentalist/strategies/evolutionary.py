@@ -26,6 +26,7 @@ from nemo_experimentalist_plugin.entities import (
     RewardRecord,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import (
     GoalTree,
@@ -56,7 +57,6 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.util import load_framework_skills
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
-from nemo_experimentalist_plugin.experimentalist.roles import Builder, Proposer, Selector, Strategy
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
 from nooa import Agent, CodeActStrategy, strategy
@@ -256,7 +256,7 @@ class AnalysisSkill(Skill):
     """
 
 
-class EvolutionaryStrategy(Agent, Strategy):
+class EvolutionaryStrategy(Agent, roles.Strategy):
     """Merge each round's per-agent analyses, and write the run's optimization report."""
 
     #: Resolvable as ``strategy: evolutionary``. Ours registers exactly like a third
@@ -301,9 +301,9 @@ class EvolutionaryStrategy(Agent, Strategy):
 
     @staticmethod
     def _coder_config(config: EvolutionaryOptimizerConfig) -> CoderConfig:
-        if config.model_catalog_path is None or config.coder.model_catalog_path is not None:
-            return config.coder
-        return config.coder.model_copy(update={"model_catalog_path": config.model_catalog_path})
+        if config.model_catalog_path is None or config.builder_config.model_catalog_path is not None:
+            return config.builder_config
+        return config.builder_config.model_copy(update={"model_catalog_path": config.model_catalog_path})
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -743,7 +743,7 @@ class EvolutionaryStrategy(Agent, Strategy):
         artifact the Candidate already addresses.
         """
         proposal = import_proposal("baseline: the agent under test, unchanged")
-        builder = cast("type[Builder]", resolve("builder", IMPORT))()
+        builder = cast("type[roles.Builder]", resolve("builder", IMPORT))()
         baseline = await builder.build(ctx, proposal, generation=0)
         await self._generate_architecture_doc(ctx=ctx, agent_dir=ctx.candidate_dir(baseline), config=config)
         return baseline
@@ -928,8 +928,8 @@ class EvolutionaryStrategy(Agent, Strategy):
         look like a run doing work. Only checked when the Proposer declares what it
         emits; an undeclared one is still caught per proposal, a round at a time.
         """
-        produces = cast("type[Proposer]", resolve("proposer", config.proposer)).produces
-        accepts = cast("type[Builder]", resolve("builder", config.builder)).accepts
+        produces = cast("type[roles.Proposer]", resolve("proposer", config.proposer)).produces
+        accepts = cast("type[roles.Builder]", resolve("builder", config.builder)).accepts
         if produces and not produces & accepts:
             raise ValueError(
                 f"proposer {config.proposer!r} emits {sorted(produces)} but builder "
@@ -953,7 +953,7 @@ class EvolutionaryStrategy(Agent, Strategy):
         try:
             tree = await GoalTreeGenerator(
                 workspace=self.working_dir,
-                config=config.goal_config,
+                config=config.trajectory_scorer_config,
                 framework_skills_dirs=self._framework_skills_dirs,
                 models=self._models,
             ).generate(dataset, agent_spec=agent_spec_path)
@@ -1092,7 +1092,7 @@ class EvolutionaryStrategy(Agent, Strategy):
         goal_tree_path = self._latest_goal_tree_path()
         if goal_tree_path is None:
             return
-        goal_config = config.goal_config
+        goal_config = config.trajectory_scorer_config
         goal_tree = self._load_goal_tree(goal_tree_path, goal_config, context="analysis")
         if goal_tree is None:
             return
@@ -1154,7 +1154,7 @@ class EvolutionaryStrategy(Agent, Strategy):
         here the same way: the Builder raised. One bad proposal is not a reason to end a
         run that has already spent hours, so it is logged and dropped.
         """
-        builder_cls = cast("type[Builder]", resolve("builder", config.builder))
+        builder_cls = cast("type[roles.Builder]", resolve("builder", config.builder))
         buildable = [proposal for proposal in proposals if proposal.kind in builder_cls.accepts]
         for proposal in proposals:
             if proposal.kind not in builder_cls.accepts:
@@ -1200,11 +1200,13 @@ class EvolutionaryStrategy(Agent, Strategy):
             built.append(outcome)
         return built
 
-    def _selector(self, config: EvolutionaryOptimizerConfig) -> Selector:
+    def _selector(self, config: EvolutionaryOptimizerConfig) -> roles.Selector:
         """Resolve this run's selector."""
         return get_component("selector", config.selector, config=config.selector_config, models=self._models)
 
-    def _new_builder(self, *, ctx: StrategyContext, dataset: Dataset, config: EvolutionaryOptimizerConfig) -> Builder:
+    def _new_builder(
+        self, *, ctx: StrategyContext, dataset: Dataset, config: EvolutionaryOptimizerConfig
+    ) -> roles.Builder:
         """Resolve and construct this run's Builder, one per build.
 
         One instance per build because a Builder is stateful — the Coder holds a shell
@@ -1241,7 +1243,7 @@ class EvolutionaryStrategy(Agent, Strategy):
             logger.info("[TRAJ] No goal tree found, skipping trajectory scoring")
             return {}
 
-        goal_tree = self._load_goal_tree(tree_path, config.goal_config, context="trajectory scoring")
+        goal_tree = self._load_goal_tree(tree_path, config.trajectory_scorer_config, context="trajectory scoring")
         if goal_tree is None:
             logger.info("[TRAJ] Invalid goal tree, skipping trajectory scoring")
             return {}
@@ -1339,7 +1341,7 @@ class EvolutionaryStrategy(Agent, Strategy):
 
         return trajectory_results
 
-    async def _finalize(self, *, evolution_tree: EvolutionTree, selector: Selector) -> Candidate | None:
+    async def _finalize(self, *, evolution_tree: EvolutionTree, selector: roles.Selector) -> Candidate | None:
         """Pick the winner and write this strategy's own report; return the winner.
 
         Restoring held-out splits, copying the winner out, closing the run entity and

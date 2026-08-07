@@ -4,7 +4,7 @@
 """Factories for evaluator-specific datasets and evaluators."""
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
@@ -14,14 +14,17 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
 )
 from nemo_experimentalist_plugin.experimentalist.registry import resolve
 
+if TYPE_CHECKING:
+    from nemo_experimentalist_plugin.experimentalist.roles import Evaluation
 
-def _evaluation(name: EvaluatorType) -> Any:
+
+def _evaluation(name: EvaluatorType) -> "type[Evaluation]":
     """The registered `evaluation` component called *name*.
 
     Resolved rather than looked up in a table: a table keyed on names this package knows
     is exactly what stops `evaluation:` being swappable from config.
     """
-    return resolve("evaluation", name)
+    return cast("type[Evaluation]", resolve("evaluation", name))
 
 
 class DatasetFactory:

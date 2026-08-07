@@ -10,7 +10,6 @@ from nemo_experimentalist_plugin.entities import DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     Dataset,
-    Evaluator,
     EvaluatorConfig,
     TrialResult,
 )
@@ -48,7 +47,7 @@ class ConcreteDataset(Dataset):
             ]
 
 
-class ConcreteEvaluator(Evaluator, roles.Evaluation):
+class ConcreteEvaluator(roles.Evaluation):
     """A registered evaluation component, the way a separate package would ship one."""
 
     name = _SUPPORTED_TYPE

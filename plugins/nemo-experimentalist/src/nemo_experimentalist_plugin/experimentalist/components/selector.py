@@ -6,9 +6,9 @@
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.models import pareto_front, pareto_sort
-from nemo_experimentalist_plugin.experimentalist.roles import Selector
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agents import TokenBudgetSummarizer
 from nooa.config import CodeActConfig
@@ -34,7 +34,7 @@ class SelectorConfig(BaseModel):
 # arithmetic over reward channels, while choosing among incomparable candidates inside one
 # front is a judgement about architectural diversity. Splitting them is what lets a
 # numeric strategy reuse the ranking and skip the model entirely.
-class ParetoDiversitySelector(Agent, Selector):
+class ParetoDiversitySelector(Agent, roles.Selector):
     """Pareto-rank on the configured objectives, then pick diverse survivors with a model."""
 
     name = "pareto-llm-diversity"

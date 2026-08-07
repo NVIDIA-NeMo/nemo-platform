@@ -14,8 +14,8 @@ from typing import Any
 
 import httpx
 from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, Proposal, Task, TrialResult
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
-from nemo_experimentalist_plugin.experimentalist.roles import Builder
 from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -592,7 +592,7 @@ class ArchitectureSkill(Skill):
 # an artifact that is deliberately not yet a Candidate, and ctx.evaluate exists to
 # associate a result with one. An internal check has nothing to associate and must not be
 # recorded against the run.
-class Coder(Agent, Builder):
+class Coder(Agent, roles.Builder):
     """Create and modify agent source code as part of the optimization loop."""
 
     name = "coder"

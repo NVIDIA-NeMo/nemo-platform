@@ -134,7 +134,7 @@ class ExperimentRunner:
 
         models = self._models
         evaluator = EvaluatorFactory().build_evaluator(
-            self._config.evaluation, self._config.evaluator, experiment_dir=self._root
+            self._config.evaluation, self._config.evaluation_config, experiment_dir=self._root
         )
         inputs = await self._prepare_inputs()
         run, resuming = await self._open_run(inputs, models)

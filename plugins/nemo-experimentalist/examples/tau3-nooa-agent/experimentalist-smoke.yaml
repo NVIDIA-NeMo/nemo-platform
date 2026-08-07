@@ -10,7 +10,7 @@ max_train_batch_tasks: 4
 train_batch_seed: 20260727
 trajectory_scorer: null
 terminator: null
-evaluator:
+evaluation_config:
   n_attempts: 1
   n_concurrent_trials: 1
   quiet: true

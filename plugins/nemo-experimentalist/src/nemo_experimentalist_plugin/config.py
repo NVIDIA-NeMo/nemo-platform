@@ -75,6 +75,9 @@ class EvolutionaryOptimizerConfig(BaseModel):
             ("disable_trajectory_scoring", "trajectory_scorer: null"),
             ("analyzer", "analyzer_config"),
             ("proposer", "proposer_config"),
+            ("evaluator", "evaluation_config"),
+            ("coder", "builder_config"),
+            ("goal_config", "trajectory_scorer_config"),
         ):
             value = data.get(removed)
             if removed in data and (replacement.endswith("_config") and isinstance(value, dict) or ":" in replacement):
@@ -150,9 +153,14 @@ class EvolutionaryOptimizerConfig(BaseModel):
 
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
-    goal_config: GoalTreeConfig = Field(default_factory=GoalTreeConfig)
-    coder: CoderConfig = Field(default_factory=CoderConfig)
+    trajectory_scorer_config: GoalTreeConfig = Field(
+        default_factory=GoalTreeConfig, description="Tuning for the trajectory scorer."
+    )
+    builder_config: CoderConfig = Field(default_factory=CoderConfig, description="Tuning for the builder.")
     analyzer_config: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
     proposer_config: ProposerConfig = Field(default_factory=ProposerConfig)
-    evaluator: dict[str, Any] = Field(default_factory=dict)
+    evaluation_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Config for the selected 'evaluation' component; its own model validates it.",
+    )
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
