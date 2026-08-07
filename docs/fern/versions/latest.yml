@@ -267,7 +267,7 @@ navigation:
             path: ../../agents/observability.mdx
           - section: Optimize Agents
             contents:
-              - page: Agent Optimizer
+              - page: Run the Agent Optimizer
                 path: ../../agents/optimization.mdx
               - page: Insight-Driven Optimization
                 path: ../../agents/insight-driven-optimization.mdx
