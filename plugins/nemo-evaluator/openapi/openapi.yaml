@@ -2676,10 +2676,10 @@ components:
           description: Name of the score.
         count:
           title: Count
-          description: "Number of samples evaluated (excluding NaN). None when the\
-            \ sample size is unknown \u2014 e.g. a figure imported from a backend\
-            \ that reports statistics without the n behind them. Distinct from 0,\
-            \ which asserts that nothing was evaluated."
+          description: "Number of samples evaluated (excluding NaN). Serialized as\
+            \ null when the sample size is unknown \u2014 e.g. a figure imported from\
+            \ a backend that reports statistics without the n behind them. Distinct\
+            \ from 0, which asserts that nothing was evaluated."
           type: integer
         nan_count:
           type: integer
@@ -2722,12 +2722,12 @@ components:
           description: "Sample standard deviation of the scores (Bessel-corrected,\
             \ divides by n-1). Estimates the spread of the process the values were\
             \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
-            \ system. None when fewer than two values (undefined, not zero)."
+            \ system. Omitted when fewer than two values (undefined, not zero)."
           type: number
         sample_variance:
           title: Sample Variance
           description: Sample variance of the scores (Bessel-corrected, divides by
-            n-1). None when fewer than two values.
+            n-1). Omitted when fewer than two values.
           type: number
         score_type:
           type: string
@@ -2759,10 +2759,10 @@ components:
           description: Name of the score.
         count:
           title: Count
-          description: "Number of samples evaluated (excluding NaN). None when the\
-            \ sample size is unknown \u2014 e.g. a figure imported from a backend\
-            \ that reports statistics without the n behind them. Distinct from 0,\
-            \ which asserts that nothing was evaluated."
+          description: "Number of samples evaluated (excluding NaN). Serialized as\
+            \ null when the sample size is unknown \u2014 e.g. a figure imported from\
+            \ a backend that reports statistics without the n behind them. Distinct\
+            \ from 0, which asserts that nothing was evaluated."
           type: integer
         nan_count:
           type: integer
@@ -2805,12 +2805,12 @@ components:
           description: "Sample standard deviation of the scores (Bessel-corrected,\
             \ divides by n-1). Estimates the spread of the process the values were\
             \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
-            \ system. None when fewer than two values (undefined, not zero)."
+            \ system. Omitted when fewer than two values (undefined, not zero)."
           type: number
         sample_variance:
           title: Sample Variance
           description: Sample variance of the scores (Bessel-corrected, divides by
-            n-1). None when fewer than two values.
+            n-1). Omitted when fewer than two values.
           type: number
         score_type:
           type: string
@@ -2844,10 +2844,10 @@ components:
           description: Name of the score.
         count:
           title: Count
-          description: "Number of samples evaluated (excluding NaN). None when the\
-            \ sample size is unknown \u2014 e.g. a figure imported from a backend\
-            \ that reports statistics without the n behind them. Distinct from 0,\
-            \ which asserts that nothing was evaluated."
+          description: "Number of samples evaluated (excluding NaN). Serialized as\
+            \ null when the sample size is unknown \u2014 e.g. a figure imported from\
+            \ a backend that reports statistics without the n behind them. Distinct\
+            \ from 0, which asserts that nothing was evaluated."
           type: integer
         nan_count:
           type: integer
@@ -2890,12 +2890,12 @@ components:
           description: "Sample standard deviation of the scores (Bessel-corrected,\
             \ divides by n-1). Estimates the spread of the process the values were\
             \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
-            \ system. None when fewer than two values (undefined, not zero)."
+            \ system. Omitted when fewer than two values (undefined, not zero)."
           type: number
         sample_variance:
           title: Sample Variance
           description: Sample variance of the scores (Bessel-corrected, divides by
-            n-1). None when fewer than two values.
+            n-1). Omitted when fewer than two values.
           type: number
         score_type:
           type: string
