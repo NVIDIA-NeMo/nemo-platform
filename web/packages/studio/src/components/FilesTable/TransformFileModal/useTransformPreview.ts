@@ -8,6 +8,32 @@ import { useMemo, useState } from 'react';
 
 type Mapping = TransformFileFormFields['mappings'][number];
 
+const UNSAFE_KEY_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Splits a free-text mapping key into path segments, rejecting keys with empty
+ * or prototype-sensitive segments so traversal can never reach Object.prototype.
+ */
+const parseKeyParts = (key: string): string[] | null => {
+  const parts = key
+    .trim()
+    .split('.')
+    .map((part) => part.trim());
+
+  if (parts.some((part) => part === '' || UNSAFE_KEY_SEGMENTS.has(part))) return null;
+
+  return parts;
+};
+
+const renderMapping = (value: string | undefined, row: Record<string, unknown>): string => {
+  try {
+    return Handlebars.compile(value ?? '')(row);
+  } catch {
+    // An in-progress template (e.g. `{{name`) must not break the whole preview.
+    return value ?? '';
+  }
+};
+
 const applyMappings = (row: Row, mappings: Mapping[]): Row => {
   const newRow: Record<string, unknown> = {};
 
@@ -19,10 +45,9 @@ const applyMappings = (row: Row, mappings: Mapping[]): Row => {
   );
 
   for (const { key, value } of mappings) {
-    if (!key.trim()) continue;
+    const keyParts = parseKeyParts(key);
+    if (!keyParts) continue;
 
-    const template = Handlebars.compile(value ?? '');
-    const keyParts = key.split('.');
     let current = newRow;
 
     for (let i = 0; i < keyParts.length - 1; i++) {
@@ -35,7 +60,7 @@ const applyMappings = (row: Row, mappings: Mapping[]): Row => {
     }
 
     const lastPart = keyParts[keyParts.length - 1];
-    const compiledValue = template(processedRow);
+    const compiledValue = renderMapping(value, processedRow);
 
     try {
       if (compiledValue.trim().startsWith('[') || compiledValue.trim().startsWith('{')) {
@@ -81,10 +106,13 @@ export const useTransformPreview = ({ fileContent, fileType, mappings }: Props) 
 
   const totalRows = rows.length;
 
+  // `currentRow` can outlive the file it was chosen for, so report the row actually shown.
+  const displayedRow = totalRows === 0 ? currentRow : rowIndex + 1;
+
   const onRowChange = (row: number) => setCurrentRow(Math.min(Math.max(1, row), totalRows));
 
   return {
-    currentRow,
+    currentRow: displayedRow,
     totalRows,
     sourceRow,
     afterRow,
