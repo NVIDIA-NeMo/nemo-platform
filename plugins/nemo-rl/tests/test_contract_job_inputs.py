@@ -36,6 +36,14 @@ def test_contract_job_input_validates(fixture_name: str) -> None:
     assert spec.integrations.mlflow.name == "run-001"
 
 
+def test_minimal_grpo_fixture_validates() -> None:
+    path = FIXTURES_DIR / "minimal_grpo.json"
+    spec = RlJobInput.model_validate(json.loads(path.read_text()))
+    assert spec.training.type == "grpo"
+    assert spec.environment == "default/ascii-tree-env"
+    assert spec.training.num_generations_per_prompt == 4
+
+
 def test_output_name_cannot_exceed_response_limit() -> None:
     assert len(OutputRequest(name="x" * 255).name or "") == 255
     with pytest.raises(ValueError):

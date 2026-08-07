@@ -55,6 +55,20 @@ class DPOConfig(BaseModel):
     max_grad_norm: float = Field(default=1.0, ge=0.0)
 
 
+class GRPOConfig(BaseModel):
+    """GRPO hyperparameters for NeMo Gym rollouts."""
+
+    num_generations_per_prompt: int = Field(default=8, gt=0)
+    num_prompts_per_step: int | None = Field(default=None, gt=0)
+    num_val_generations_per_prompt: int = Field(default=4, gt=0)
+    normalize_rewards: bool = True
+    max_rollout_turns: int = Field(default=1, gt=0)
+    ref_policy_kl_penalty: float = Field(default=0.0, ge=0.0)
+    ratio_clip_min: float = Field(default=0.2, ge=0.0)
+    ratio_clip_max: float = Field(default=0.28, ge=0.0)
+    max_grad_norm: float = Field(default=1.0, ge=0.0)
+
+
 class WandBConfig(BaseModel):
     project: str | None = None
     name: str | None = None
@@ -89,6 +103,16 @@ class TrainingStepConfig(BaseModel):
         training_type: TrainingType
         finetuning_type: FinetuningType | None = None
         dpo: DPOConfig | None = None
+        grpo: GRPOConfig | None = None
+
+    class GymConfig(BaseModel):
+        """NeMo Gym environment paths and sandbox mode (GRPO only)."""
+
+        environment_path: str | None = None
+        sandbox_environment_path: str | None = None
+        sandbox_dataset_path: str | None = None
+        sandboxed: bool = True
+        gym_runtime_image: str | None = None
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1
@@ -132,6 +156,7 @@ class TrainingStepConfig(BaseModel):
     model: ModelConfig
     dataset: DatasetConfig
     training: TrainingConfig
+    gym: GymConfig | None = None
     schedule: ScheduleConfig
     batch: BatchConfig
     optimizer: OptimizerConfig

@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from nmp.customization_common.schemas.values import OutputNameType
 from nmp.rl.app.jobs.training.schemas import OptimizerType
-from nmp.rl.schemas import DPOTraining, OutputResponse, ParallelismParams, RlJobOutput
+from nmp.rl.schemas import DPOTraining, GRPOTraining, OutputResponse, ParallelismParams, RlJobOutput
 
 
 def _make_output(name: str = "out", out_type: OutputNameType = OutputNameType.MODEL) -> OutputResponse:
@@ -117,3 +117,20 @@ def test_dpo_output_must_be_full_weight_model() -> None:
     # DPO is full-weight; an adapter output is rejected at construction time.
     with pytest.raises(ValueError, match="full-weight model"):
         _make_job_output(DPOTraining(), out_type=OutputNameType.ADAPTER)
+
+
+def test_grpo_requires_environment() -> None:
+    job = RlJobOutput(
+        model="default/base",
+        dataset="default/gym-data",
+        training=GRPOTraining(),
+        output=_make_output(),
+    )
+    with pytest.raises(ValueError, match="environment fileset"):
+        job.validate_for_training()
+
+
+def test_grpo_training_discriminator() -> None:
+    t = GRPOTraining()
+    assert t.type == "grpo"
+    assert t.num_generations_per_prompt == 8

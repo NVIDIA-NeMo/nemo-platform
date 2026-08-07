@@ -18,6 +18,7 @@ from typing import Any, Callable, Optional
 import jsonschema
 from jsonschema import exceptions
 from nmp.rl.entities.values import FinetuningType, TrainingType
+from nmp.rl.schemas.environment import GymVerifiersDatasetRow
 from nmp.rl.tasks.training.datasets.preparation import DatasetFormatError
 from nmp.rl.tasks.training.datasets.schemas import (
     DPOPreferenceDatasetSchemaType,
@@ -109,11 +110,20 @@ def SFT_SCHEMA(prompt_template: str | None = None):
     return schema
 
 
-# The RL backend trains DPO today; only the DPO schema is wired into validation.
-# SFT_SCHEMA is retained for parity/headroom but is not registered here because
-# the RL TrainingType enum has no SFT member.
+def GRPO_SCHEMA(_: str | None = None) -> dict:
+    """JSON schema for NeMo Gym GRPO dataset rows."""
+    from pydantic import TypeAdapter
+
+    adapter = TypeAdapter(GymVerifiersDatasetRow)
+    schema = adapter.json_schema()
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    return schema
+
+
+# The RL backend trains DPO and GRPO; register schemas by TrainingType value.
 SCHEMAS: dict[str, Callable[[str | None], dict]] = {
     TrainingType.DPO.value: DPO_SCHEMA,
+    TrainingType.GRPO.value: GRPO_SCHEMA,
 }
 
 

@@ -196,10 +196,14 @@ latency.
 
 User environments therefore *do* add startup time, and cannot be prebaked. Two things bound it:
 
-- The packaging format matters. `wheels-v1` FileSets vendor their wheels, so the install
-  is a local-file install with **no PyPI egress** (works under deny-default network
-  policy, and is faster/more deterministic). `native-v1` installs from source and needs
-  egress.
+- The packaging format matters. `wheels-v1` / `adapter-wheels-v1` FileSets vendor
+  their wheels, so the install is a local-file install with **no PyPI egress**
+  (works under deny-default network policy, and is faster/more deterministic).
+  `native-v1` installs from source and needs egress.
+- Platform bootstrap for all three formats lives in
+  `nmp.rl.tasks.environment.bootstrap.bootstrap_environment_package` (validators +
+  offline wheel install). The Gym host / RL image entrypoint should call that —
+  not upstream NeMo-RL format APIs.
 - Gym reuses a shared **uv cache** (`uv_cache_dir`) and skips venv creation when one
   already exists, so repeated jobs on the same node re-pay much less.
 

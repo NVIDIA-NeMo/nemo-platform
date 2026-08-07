@@ -54,6 +54,27 @@ class RlConfig(create_service_config_class("rl")):  # ty: ignore[unsupported-bas
         ),
     )
 
+    sandboxed_gym_default: bool = Field(
+        default=True,
+        description=(
+            "When true, GRPO jobs with custom environment filesets compile with "
+            "env.nemo_gym.sandboxed=true (platform operator default)."
+        ),
+    )
+
+    gym_runtime_image: str | None = Field(
+        default=None,
+        description="Override nmp-gym-runtime image for sandboxed GRPO (registry/name:tag).",
+    )
+
+    sandbox_cluster_capable: bool = Field(
+        default=False,
+        description=(
+            "When false and sandboxed_gym_default is true, GRPO jobs with environment "
+            "filesets fail at compile time (fail closed until OpenSandbox is ready)."
+        ),
+    )
+
 
 config = get_service_config(RlConfig)
 platform_config = get_platform_config()
