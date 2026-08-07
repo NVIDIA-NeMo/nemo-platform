@@ -17,6 +17,9 @@ export interface CustomizationStatusDetailsWithMetrics extends CustomizationJobS
   metrics?: {
     train_loss?: CustomizationMetricValue[];
     val_loss?: CustomizationMetricValue[];
+    mean_reward?: CustomizationMetricValue[];
+    reward_std?: CustomizationMetricValue[];
+    clip_fraction?: CustomizationMetricValue[];
   };
 }
 
@@ -37,4 +40,9 @@ export interface CustomizationTrainingTelemetry {
   learningRate?: number;
   gradNorm?: number;
   checkpointPath?: string;
+  // GRPO-specific live telemetry
+  meanReward?: number;
+  rewardStd?: number;
+  clipFraction?: number;
+  klDivergence?: number;
 }

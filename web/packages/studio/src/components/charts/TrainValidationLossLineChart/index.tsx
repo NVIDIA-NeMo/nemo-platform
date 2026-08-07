@@ -25,6 +25,8 @@ interface Props {
   attributes?: {
     XAxis?: ComponentProps<typeof XAxis>;
   };
+  yAxisLabel?: string;
+  seriesLabels?: { train?: string; val?: string };
 }
 
 interface ChartDataPoint {
@@ -84,8 +86,12 @@ export function TrainValidationLossLineChart({
   valLoss = [],
   height = 400,
   attributes = {},
+  yAxisLabel = 'Data Loss',
+  seriesLabels = {},
 }: Props) {
   const { XAxis: xAxisAttributes } = attributes;
+  const trainLabel = seriesLabels.train ?? 'Training Loss';
+  const valLabel = seriesLabels.val ?? 'Validation Loss';
   const chartData = useMemo((): ChartDataPoint[] => {
     // Create a map of all steps with their data
     const dataMap = new Map<number, ChartDataPoint>();
@@ -180,7 +186,7 @@ export function TrainValidationLossLineChart({
           domain={['dataMin', 'dataMax']}
           {...xAxisAttributes}
         />
-        <YAxis label={{ value: 'Data Loss', angle: -90, position: 'insideLeft' }} />
+        <YAxis label={{ value: yAxisLabel, angle: -90, position: 'insideLeft' }} />
         <Tooltip
           content={<CustomTooltip />}
           cursor={{ stroke: 'var(--border-color-accent-gray)', strokeWidth: 1 }}
@@ -215,7 +221,7 @@ export function TrainValidationLossLineChart({
             type="monotone"
             dataKey="trainLoss"
             stroke="var(--border-color-accent-blue)"
-            name="Training Loss"
+            name={trainLabel}
             dot={trainLoss.length <= 3}
             connectNulls
             strokeWidth={2}
@@ -226,7 +232,7 @@ export function TrainValidationLossLineChart({
             type="monotone"
             dataKey="valLoss"
             stroke="var(--border-color-accent-yellow)"
-            name="Validation Loss"
+            name={valLabel}
             dot={valLoss.length <= 3}
             connectNulls
             strokeWidth={2}
@@ -254,13 +260,13 @@ function CustomTooltip({ active, payload, label }: TooltipProps<number, string>)
       </Text>
       <Stack gap="1">
         <Text kind="body/regular/sm" className="text-accent-blue">
-          Training Loss:{' '}
+          {payload[0]?.name ?? 'Train'}:{' '}
           {dataPoint?.trainLoss !== undefined
             ? `${dataPoint.trainLoss.toFixed(6)}${dataPoint.trainLossInterpolated ? ' (estimated)' : ''}`
             : '—'}
         </Text>
         <Text kind="body/regular/sm" className="text-accent-yellow">
-          Validation Loss:{' '}
+          {payload[1]?.name ?? 'Validation'}:{' '}
           {dataPoint?.valLoss !== undefined
             ? `${dataPoint.valLoss.toFixed(6)}${dataPoint.valLossInterpolated ? ' (estimated)' : ''}`
             : '—'}

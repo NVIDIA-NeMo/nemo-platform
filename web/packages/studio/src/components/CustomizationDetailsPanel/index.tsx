@@ -19,7 +19,7 @@ import { CustomizationConfigSidePanel } from '@studio/components/sidePanels/Cust
 import { useCustomizationFilesAsRows } from '@studio/hooks/useCustomizationFiles';
 import { useCustomizationJob } from '@studio/hooks/useCustomizationJob';
 import { hasMetrics } from '@studio/types/customization';
-import { isRlJob } from '@studio/util/customizationBackend';
+import { isGrpoJob, isRlJob } from '@studio/util/customizationBackend';
 import {
   formatTrainingPhase,
   getBaseModel,
@@ -77,10 +77,11 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
   });
 
   const epochs = customization
-    ? isRlJob(customization)
+    ? isRlJob(customization) || isGrpoJob(customization)
       ? customization.spec?.training?.epochs
       : customization.spec?.schedule?.epochs
     : undefined;
+  const isGrpo = customization ? isGrpoJob(customization) : false;
   const batchSize = getTrainingBatchSize(customization);
   const maxXAxisValue = getCustomizationTrainingSteps({
     epochs: epochs ?? 0,
@@ -136,11 +137,23 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
               }
             />
           )}
-          {telemetry.trainLoss !== undefined && (
+          {telemetry.trainLoss !== undefined && !isGrpo && (
             <KVPair label="Current Training Loss" value={telemetry.trainLoss.toFixed(4)} />
           )}
-          {telemetry.valLoss !== undefined && (
+          {telemetry.valLoss !== undefined && !isGrpo && (
             <KVPair label="Current Validation Loss" value={telemetry.valLoss.toFixed(4)} />
+          )}
+          {isGrpo && telemetry.meanReward !== undefined && (
+            <KVPair label="Mean Reward" value={telemetry.meanReward.toFixed(4)} />
+          )}
+          {isGrpo && telemetry.rewardStd !== undefined && (
+            <KVPair label="Reward Std Dev" value={telemetry.rewardStd.toFixed(4)} />
+          )}
+          {isGrpo && telemetry.clipFraction !== undefined && (
+            <KVPair label="Clip Fraction" value={telemetry.clipFraction.toFixed(4)} />
+          )}
+          {isGrpo && telemetry.klDivergence !== undefined && (
+            <KVPair label="KL Divergence" value={telemetry.klDivergence.toFixed(4)} />
           )}
           {telemetry.learningRate !== undefined && (
             <KVPair label="Learning Rate" value={telemetry.learningRate.toExponential(2)} />
@@ -156,10 +169,7 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
           <KVPair label="Base Model" value={getBaseModel(customization) || '-'} />
           {isRlJob(customization) && (
             <>
-              <KVPair
-                label="Training Method"
-                value="DPO (Direct Preference Optimization)"
-              />
+              <KVPair label="Training Method" value="DPO (Direct Preference Optimization)" />
               <KVPair
                 label="KL Penalty (β)"
                 value={customization.spec.training.ref_policy_kl_penalty?.toString() ?? '-'}
@@ -171,6 +181,27 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
               <KVPair
                 label="SFT Loss Weight"
                 value={customization.spec.training.sft_loss_weight?.toString() ?? '-'}
+              />
+            </>
+          )}
+          {isGrpo && isGrpoJob(customization) && (
+            <>
+              <KVPair label="Training Method" value="GRPO (Group Relative Policy Optimization)" />
+              <KVPair
+                label="Reward Model"
+                value={customization.spec.training.reward_model ?? '-'}
+              />
+              <KVPair
+                label="Group Size (num_generations)"
+                value={customization.spec.training.num_generations?.toString() ?? '-'}
+              />
+              <KVPair
+                label="Clip Range (ε)"
+                value={customization.spec.training.epsilon?.toString() ?? '-'}
+              />
+              <KVPair
+                label="KL Coefficient"
+                value={customization.spec.training.kl_coeff?.toString() ?? '-'}
               />
             </>
           )}
@@ -198,13 +229,25 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
           </Button>
         </Stack>
         <TrainValidationLossLineChart
-          trainLoss={hasMetrics(statusDetails) ? statusDetails.metrics?.train_loss : undefined}
-          valLoss={hasMetrics(statusDetails) ? statusDetails.metrics?.val_loss : undefined}
-          attributes={{
-            XAxis: {
-              domain: ['dataMin', maxXAxisValue],
-            },
-          }}
+          trainLoss={
+            hasMetrics(statusDetails)
+              ? isGrpo
+                ? statusDetails.metrics?.mean_reward
+                : statusDetails.metrics?.train_loss
+              : undefined
+          }
+          valLoss={
+            hasMetrics(statusDetails)
+              ? isGrpo
+                ? statusDetails.metrics?.reward_std
+                : statusDetails.metrics?.val_loss
+              : undefined
+          }
+          yAxisLabel={isGrpo ? 'Reward' : 'Data Loss'}
+          seriesLabels={
+            isGrpo ? { train: 'Mean Reward', val: 'Reward Std Dev' } : undefined
+          }
+          attributes={{ XAxis: { domain: ['dataMin', maxXAxisValue] } }}
         />
       </Grid>
     );
