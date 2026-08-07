@@ -95,11 +95,20 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 `make clean` removes the venv; `make clean-python` is the venv-only variant.
 
-### Node.js and pnpm
+### Toolchain: uv, Node.js, pnpm
 
-`mise.toml` pins the Node.js and pnpm versions that satisfy `web/package.json` engines, and `make bootstrap-studio` installs mise on first run and invokes both through `mise exec --`. Nothing is written to your shell rc.
+`mise.toml` pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js and pnpm to satisfy `web/package.json` engines. `make bootstrap` installs mise on first run and invokes each through `mise exec --`, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
 
-That covers the `make` targets only. To run `pnpm` directly in `web/` — the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
+**Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through mise but don't install mise themselves. On a machine that doesn't have it yet, they fail like this:
+
+```
+/bin/sh: /Users/you/.local/bin/mise: No such file or directory
+make: *** [test-unit] Error 127
+```
+
+`make bootstrap` fixes it, as does `make verify-mise` on its own. To use the toolchain you already have instead, pass `NMP_SKIP_MISE=1` — it works on every target.
+
+That covers the `make` targets only. To run `uv` or `pnpm` directly — `uv sync`, the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -109,6 +118,7 @@ Then either prefix commands:
 
 ```bash
 mise exec -- pnpm dev
+mise exec -- uv sync
 ```
 
 or activate mise once so every shell picks up the pinned versions:
@@ -118,7 +128,7 @@ eval "$(mise activate bash)"   # ~/.bashrc
 eval "$(mise activate zsh)"    # ~/.zshrc
 ```
 
-Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`. To bootstrap against your own toolchain instead of mise, use `make bootstrap-studio NMP_SKIP_MISE=1`.
+Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`, and a globally installed uv outside `required-version` fails `uv sync` with a version mismatch. To bootstrap against your own toolchain instead of mise, use `make bootstrap NMP_SKIP_MISE=1`.
 
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 
