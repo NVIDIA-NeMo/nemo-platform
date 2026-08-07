@@ -12,6 +12,7 @@ import {
 import type {
   AggregateRangeScore,
   AggregateRubricScore,
+  AggregateScalarScore,
   AgentEvaluateJob,
   AgentEvaluateJobRequest,
   AgentEvalResult,
@@ -22,8 +23,11 @@ import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
 
 const PAGE_SIZE = 50;
 
-/** Aggregate score — numeric range or rubric category distribution. */
-export type AgentEvalAggregateScore = AggregateRangeScore | AggregateRubricScore;
+/** Aggregate score — numeric range, rubric category distribution, or a single reported value. */
+export type AgentEvalAggregateScore =
+  | AggregateRangeScore
+  | AggregateRubricScore
+  | AggregateScalarScore;
 
 /** Re-export so callers continue to import AgentEvalResult from this module. */
 export type { AgentEvalResult };
