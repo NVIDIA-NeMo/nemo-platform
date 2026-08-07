@@ -11,7 +11,7 @@ public ``load_skills()`` API rather than any "built-in" branch.
 from pathlib import Path
 
 from nemo_platform.cli.commands.skills.base import Skill
-from nemo_platform.cli.commands.skills.registry import load_skills, _load_skills_cached
+from nemo_platform.cli.commands.skills.registry import _load_skills_cached, load_skills
 
 KNOWN_SKILL_PRECONDITIONS = frozenset(
     {

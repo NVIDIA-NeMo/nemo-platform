@@ -10,21 +10,20 @@ To add a new agent:
 
 import hashlib
 import logging
-from pathlib import Path
-from functools import lru_cache
 from collections import defaultdict
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
+from functools import lru_cache
 from importlib.metadata import EntryPoint, entry_points
+from pathlib import Path
 
 import yaml
-
-from nemo_platform.cli.commands.skills.base import Skill, validate_skill_name
-from nemo_platform.cli.commands.skills.installer import BaseAgentInstaller
-from nemo_platform.cli.commands.skills.agents.codex import CodexInstaller
 from nemo_platform.cli.commands.skills.agents.claude import ClaudeInstaller
+from nemo_platform.cli.commands.skills.agents.codex import CodexInstaller
 from nemo_platform.cli.commands.skills.agents.cursor import CursorInstaller
 from nemo_platform.cli.commands.skills.agents.opencode import OpenCodeInstaller
+from nemo_platform.cli.commands.skills.base import Skill, validate_skill_name
+from nemo_platform.cli.commands.skills.installer import BaseAgentInstaller
 
 logger = logging.getLogger(__name__)
 

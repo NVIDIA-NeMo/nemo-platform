@@ -632,7 +632,7 @@ def format_output(
         stream: Emit newline-delimited JSON records. List responses emit one
                 record per item; entity responses emit one record.
     """
-    from nemo_platform.cli.core.table_config import validate_output_columns, resolve_and_validate_columns
+    from nemo_platform.cli.core.table_config import resolve_and_validate_columns, validate_output_columns
 
     timestamp_format = timestamp_format or "iso"
 

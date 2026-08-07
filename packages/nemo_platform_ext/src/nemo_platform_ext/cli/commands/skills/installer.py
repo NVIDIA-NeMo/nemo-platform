@@ -32,9 +32,7 @@ class BaseAgentInstaller:
             validate_skill_name(skill_name)
             path = self.get_install_path(scope, project_root, skill_name)
             if path in destinations:
-                raise ValueError(
-                    f"Multiple skills resolve to {path}: {destinations[path]!r} and {skill_name!r}"
-                )
+                raise ValueError(f"Multiple skills resolve to {path}: {destinations[path]!r} and {skill_name!r}")
             destinations[path] = skill_name
             pending.append((skill, path))
         for skill, path in pending:

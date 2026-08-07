@@ -4,10 +4,10 @@
 """Base types and protocol for agent skill installers."""
 
 import re
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol
 from pathlib import Path
-from dataclasses import field, dataclass
+from typing import Protocol
 
 INSTALLED_SKILL_PREFIX = "nemo-"
 SAFE_SKILL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")

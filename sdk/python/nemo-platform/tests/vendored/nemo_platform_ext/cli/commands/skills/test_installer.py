@@ -6,7 +6,6 @@
 from pathlib import Path
 
 import pytest
-
 from nemo_platform.cli.commands.skills.base import Scope, Skill, installed_skill_name
 from nemo_platform.cli.commands.skills.installer import BaseAgentInstaller
 
