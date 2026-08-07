@@ -19,7 +19,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { CircleAlert } from 'lucide-react';
-import { type ComponentProps, useCallback, useMemo, useRef } from 'react';
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef } from 'react';
 
 type FileRow = {
   id: string;
@@ -102,6 +102,13 @@ export const SimpleFilesTable = () => {
     () => matchingRows.slice(safePageIndex * pageSize, safePageIndex * pageSize + pageSize),
     [matchingRows, safePageIndex, pageSize]
   );
+
+  const setPagination = dataViewState.pagination.set;
+  useEffect(() => {
+    if (pageIndex !== safePageIndex) {
+      setPagination((prev) => ({ ...prev, pageIndex: safePageIndex }));
+    }
+  }, [pageIndex, safePageIndex, setPagination]);
 
   const makeColumns = useCallback<ComponentProps<typeof DataView.Root<FileRow>>['makeColumns']>(
     (col) => [
