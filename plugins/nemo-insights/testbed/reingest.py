@@ -80,9 +80,9 @@ OTLP_REQUEST_MAX_SPANS = 100
 # Where the attribute catalog lives inside a nemo-platform checkout.
 CATALOG_RELPATH = Path("services/intake/src/nmp/intake/spans/span_attribute_catalog.py")
 
-# The dev platform's ClickHouse container: nemo-platform's
-# services/intake/scripts/spans/run_clickhouse.sh always docker-runs it under this name.
-CLICKHOUSE_CONTAINER = "nmp-intake-clickhouse"
+_CLICKHOUSE_MANAGED_BY_LABEL = "nmp.nvidia.com/managed-by=nemo-platform"
+_CLICKHOUSE_COMPONENT_LABEL = "nmp.nvidia.com/component=intake-clickhouse"
+_CLICKHOUSE_URL_ENV_VAR = "NMP_INTAKE_CLICKHOUSE_URL"
 
 # Fields normalized away in round-trip diffs — every one spike-proven unavoidable:
 # - workspace: the whole point of re-ingest is restoring into a different (fixture/scratch) workspace.
@@ -483,11 +483,52 @@ def _wait_for_spans(
 
 
 def _is_loopback(base_url: str) -> bool:
-    """True when the target is the local dev platform — the docker ClickHouse is *its* backing store."""
+    """Return whether the API target is local; this does not identify its ClickHouse."""
     return urlsplit(base_url).hostname in {"localhost", "127.0.0.1", "::1"}
 
 
-def _stop_local_ttl_merges(*, container: str = CLICKHOUSE_CONTAINER) -> None:
+def _local_clickhouse_container() -> str:
+    """Resolve the labeled container bound to Intake's explicit local ClickHouse URL."""
+    clickhouse_url = os.environ.get(_CLICKHOUSE_URL_ENV_VAR)
+    if clickhouse_url is None:
+        raise RuntimeError(f"{_CLICKHOUSE_URL_ENV_VAR} is not set; the Intake ClickHouse target cannot be verified")
+    parsed_url = urlsplit(clickhouse_url)
+    if parsed_url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(f"{_CLICKHOUSE_URL_ENV_VAR} points to external ClickHouse {clickhouse_url}")
+    try:
+        host_port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
+    except ValueError as exc:
+        raise RuntimeError(f"{_CLICKHOUSE_URL_ENV_VAR} has an invalid port: {clickhouse_url}") from exc
+
+    if not shutil.which("docker"):
+        raise RuntimeError("docker is unavailable")
+
+    def running_names(*filters: str) -> list[str]:
+        command = ["docker", "ps"]
+        for filter_value in filters:
+            command.extend(("--filter", filter_value))
+        command.extend(("--format", "{{.Names}}"))
+        try:
+            result = subprocess.run(command, capture_output=True, text=True)
+        except OSError as exc:
+            raise RuntimeError(f"docker lookup failed: {exc}") from exc
+        if result.returncode != 0:
+            raise RuntimeError(f"docker lookup failed: {result.stderr.strip() or f'exit {result.returncode}'}")
+        return [name for name in result.stdout.splitlines() if name]
+
+    names = running_names(
+        f"label={_CLICKHOUSE_MANAGED_BY_LABEL}",
+        f"label={_CLICKHOUSE_COMPONENT_LABEL}",
+        f"publish={host_port}",
+    )
+
+    if len(names) != 1:
+        detail = "none found" if not names else f"found {', '.join(names)}"
+        raise RuntimeError(f"expected one labeled Intake ClickHouse container publishing port {host_port}; {detail}")
+    return names[0]
+
+
+def _stop_local_ttl_merges() -> None:
     """Best-effort ``SYSTEM STOP TTL MERGES`` on the local ClickHouse; never raises.
 
     Intake TTL-drops spans 90 days after ``start_time`` — restoring a stale
@@ -495,16 +536,19 @@ def _stop_local_ttl_merges(*, container: str = CLICKHOUSE_CONTAINER) -> None:
     merge. CI's stack does this unconditionally; this is the laptop-restore
     equivalent. On failure, prints the manual command instead.
     """
-    command = ["docker", "exec", container, "clickhouse-client", "-q", "SYSTEM STOP TTL MERGES"]
+    container: str | None = None
     try:
+        container = _local_clickhouse_container()
+        command = ["docker", "exec", container, "clickhouse-client", "-q", "SYSTEM STOP TTL MERGES"]
         proc = subprocess.run(command, capture_output=True, text=True)
         failure = (proc.stderr.strip() or f"exit {proc.returncode}") if proc.returncode != 0 else None
-    except Exception as exc:  # docker missing entirely, exec error — protection stays best-effort
+    except Exception as exc:  # docker missing entirely, lookup/exec error — protection stays best-effort
         failure = str(exc)
     if failure:
+        target = container or "<intake-clickhouse-container>"
         print(
             f"could not stop TTL merges ({failure}) — run this manually or restored spans may vanish:\n"
-            f'  docker exec {container} clickhouse-client -q "SYSTEM STOP TTL MERGES"',
+            f'  docker exec {target} clickhouse-client -q "SYSTEM STOP TTL MERGES"',
             file=sys.stderr,
         )
     else:
@@ -588,8 +632,8 @@ def warn_if_stale(manifest: dict, *, now: datetime | None = None) -> str | None:
     message = (
         f"WARNING: bundle spans start {age_days} days ago (min_start_time={raw}).\n"
         "  Intake TTL-drops spans 90 days after start_time — restored rows can vanish on the next\n"
-        "  TTL merge. Freeze TTL merges on the target ClickHouse first:\n"
-        '    docker exec nmp-intake-clickhouse clickhouse-client --query "SYSTEM STOP TTL MERGES"\n'
+        "  TTL merge. Run SYSTEM STOP TTL MERGES on the target ClickHouse first. Local restores do\n"
+        "  this automatically only when NMP_INTAKE_CLICKHOUSE_URL verifies a labeled container.\n"
         "  Reads also default to a 30-day lookback: always pass an explicit `since` at or before\n"
         f"  min_start_time ({raw}) when querying restored spans."
     )
@@ -805,20 +849,19 @@ def _diff_collection(original: list[dict], restored: list[dict], *, workspace: s
     return mismatches
 
 
-def cleanup_scratch(base_url: str, workspaces: list[str], *, container: str = CLICKHOUSE_CONTAINER) -> None:
+def cleanup_scratch(base_url: str, workspaces: list[str]) -> None:
     """Best-effort scratch-workspace cleanup after a round-trip check.
 
     There is NO delete API for spans/annotations/evaluator-results rows — row
-    cleanup only works where the docker ClickHouse container IS the target's
-    backing store, i.e. loopback targets (the local dev platform); the DELETE
-    mutations are scoped to an exact IN-list of the scratch names. On remote
-    targets NOTHING is deleted — docker-execing the local container would purge
-    the wrong ClickHouse, and deleting just the workspace *record* would orphan
-    the remote rows behind it (a later same-name restore would silently diff
-    against them). Leaving the record intact means a later collision hits the
-    loud foreign-data guard instead; the leftovers are printed for manual
-    cleanup. Failures are reported, never raised: on CI the whole platform is
-    ephemeral, so residue is moot.
+    cleanup only works when the API target is loopback and
+    ``NMP_INTAKE_CLICKHOUSE_URL`` identifies exactly one labeled container
+    publishing that URL's port. The DELETE mutations are scoped to an exact
+    IN-list of the scratch names. When the binding cannot be verified NOTHING is
+    deleted — docker-execing another container would purge the wrong ClickHouse,
+    and deleting just the workspace *record* would orphan rows behind it. Leaving
+    the record intact means a later collision hits the loud foreign-data guard;
+    leftovers are printed for manual cleanup. Failures are reported, never
+    raised: on CI the whole platform is ephemeral, so residue is moot.
     """
     if not workspaces:
         return
@@ -836,8 +879,16 @@ def cleanup_scratch(base_url: str, workspaces: list[str], *, container: str = CL
     if any("'" in ws or not _WS_OK.fullmatch(ws) for ws in workspaces):
         print(f"cleanup: refusing to build a DELETE for suspicious names: {workspaces}", file=sys.stderr)
         return
-    if shutil.which("docker"):
-        for table in ("spans", "annotations", "evaluator_results", "trace_index"):
+    try:
+        container = _local_clickhouse_container()
+    except RuntimeError as exc:
+        print(
+            f"cleanup: {exc} — scratch rows and workspace records left intact (no row-delete API exists)",
+            file=sys.stderr,
+        )
+        return
+    for table in ("spans", "annotations", "evaluator_results", "trace_index"):
+        try:
             proc = subprocess.run(
                 [
                     "docker",
@@ -850,10 +901,18 @@ def cleanup_scratch(base_url: str, workspaces: list[str], *, container: str = CL
                 capture_output=True,
                 text=True,
             )
-            if proc.returncode != 0:
-                print(f"cleanup: rows in {table} not deleted ({proc.stderr.strip()})", file=sys.stderr)
-    else:
-        print("cleanup: docker unavailable — scratch rows left in ClickHouse (no delete API exists)", file=sys.stderr)
+        except OSError as exc:
+            print(
+                f"cleanup: rows in {table} not deleted ({exc}); workspace records left intact",
+                file=sys.stderr,
+            )
+            return
+        if proc.returncode != 0:
+            print(
+                f"cleanup: rows in {table} not deleted ({proc.stderr.strip()}); workspace records left intact",
+                file=sys.stderr,
+            )
+            return
     with httpx.Client(timeout=30.0) as client:
         for ws in workspaces:
             resp = client.delete(f"{base_url.rstrip('/')}/apis/entities/v2/workspaces/{ws}")

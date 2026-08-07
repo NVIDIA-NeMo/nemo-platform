@@ -183,7 +183,7 @@ def _compute_percentile(sorted_values: list[float], percentile: float) -> float:
     return sorted_values[lower_idx] + frac * (sorted_values[lower_idx + 1] - sorted_values[lower_idx])
 
 
-def _compute_percentiles(sorted_values: list[float]) -> Percentiles:
+def compute_percentiles(sorted_values: list[float]) -> Percentiles:
     """Compute the fixed percentile set used by SDK aggregate output.
 
     Args:
@@ -335,11 +335,18 @@ def aggregate_metrics(
 
         n = len(values)
         mean = results.stats.mean or 0
-        # Use population variance because these rows are the full evaluation set,
-        # not a sample intended to estimate a larger population.
-        variance = sum((v - mean) ** 2 for v in values) / n if n > 0 else 0
+        # Report both conventions under explicit names rather than leaving the divisor implicit.
+        # `variance`/`stddev` stay population (divide by n): these rows are the full evaluation set,
+        # not a sample intended to estimate a larger population. The sample (n-1) figures are also
+        # provided for callers estimating the spread of the process the values were drawn from, and
+        # are undefined for a single value.
+        sum_sq_dev = sum((v - mean) ** 2 for v in values)
+        variance = sum_sq_dev / n if n > 0 else 0
         results.stats.variance = variance
         results.stats.stddev = math.sqrt(variance)
+        sample_variance = sum_sq_dev / (n - 1) if n > 1 else None
+        results.stats.sample_variance = sample_variance
+        results.stats.sample_stddev = math.sqrt(sample_variance) if sample_variance is not None else None
 
     aggregated_scores: list[AggregateScore] = []
     for score_name, metric_score in aggregated_results.items():
@@ -356,6 +363,12 @@ def aggregate_metrics(
         base_max = stats.max if stats.max is not None else base_mean
         base_variance = stats.variance if stats.variance is not None else (None if base_mean is None else 0.0)
         base_std_dev = stats.stddev if stats.stddev is not None else (None if base_mean is None else 0.0)
+        # Sample stats stay None when undefined (fewer than two values) rather than defaulting to 0.0.
+        base_sample_variance = stats.sample_variance
+        base_sample_std_dev = stats.sample_stddev
+        # Derived from the same helper that produces p50, so `median` and `percentiles.p50` agree
+        # exactly wherever both are present (rubric scores carry no percentiles but still get a median).
+        base_median = _compute_percentile(sorted(values), 50) if values else None
 
         if base_count == 0:
             base_sum = None
@@ -364,6 +377,9 @@ def aggregate_metrics(
             base_max = None
             base_variance = None
             base_std_dev = None
+            base_sample_variance = None
+            base_sample_std_dev = None
+            base_median = None
 
         if has_rubric.get(score_name):
             rubric_dist = [
@@ -386,8 +402,11 @@ def aggregate_metrics(
                     mean=base_mean,
                     min=base_min,
                     max=base_max,
+                    median=base_median,
                     variance=base_variance,
                     std_dev=base_std_dev,
+                    sample_variance=base_sample_variance,
+                    sample_std_dev=base_sample_std_dev,
                     rubric_distribution=rubric_dist,
                     mode_category=mode_category,
                 )
@@ -396,7 +415,7 @@ def aggregate_metrics(
             if values:
                 # Range scores get richer distribution metadata than rubric scores.
                 sorted_values = sorted(values)
-                percentiles = _compute_percentiles(sorted_values)
+                percentiles = compute_percentiles(sorted_values)
                 histogram = _compute_histogram(values)
             else:
                 percentiles = None
@@ -411,8 +430,11 @@ def aggregate_metrics(
                     mean=base_mean,
                     min=base_min,
                     max=base_max,
+                    median=base_median,
                     variance=base_variance,
                     std_dev=base_std_dev,
+                    sample_variance=base_sample_variance,
+                    sample_std_dev=base_sample_std_dev,
                     percentiles=percentiles,
                     histogram=histogram,
                 )

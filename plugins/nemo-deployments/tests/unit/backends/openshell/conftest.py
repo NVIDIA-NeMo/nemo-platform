@@ -35,7 +35,7 @@ def openshell_backend(
     mock_sdk: MagicMock, mock_entities: AsyncMock, mock_stub: MagicMock
 ) -> Iterator[OpenShellDeploymentBackend]:
     with (
-        patch("nemo_deployments_plugin.backends.openshell.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.openshell.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.openshell.backend.NemoEntitiesClient", return_value=mock_entities),
         patch("grpc.insecure_channel", return_value=MagicMock()),
     ):

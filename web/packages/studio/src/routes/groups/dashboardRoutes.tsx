@@ -18,9 +18,9 @@ const WorkspaceDashboardRoute = lazy(() =>
     default: module.WorkspaceDashboardRoute,
   }))
 );
-const ClaudeCodeChatRoute = lazy(() =>
-  import('@studio/routes/agents/ClaudeCodeChatRoute').then((m) => ({
-    default: m.ClaudeCodeChatRoute,
+const CopilotChatRoute = lazy(() =>
+  import('@studio/routes/agents/CopilotChatRoute').then((m) => ({
+    default: m.CopilotChatRoute,
   }))
 );
 
@@ -33,7 +33,7 @@ export const dashboardRoutes: RouteObject[] = gateDashboardRoutes([
   ...gateCopilotStudioRoutes([
     {
       path: ROUTES.workspace.copilotChat,
-      element: <ClaudeCodeChatRoute />,
+      element: <CopilotChatRoute />,
       errorElement: <ErrorPanel title="NeMo Copilot" />,
     },
   ]),

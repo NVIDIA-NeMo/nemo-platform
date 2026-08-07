@@ -20,8 +20,8 @@ vi.mock('@studio/routes/PageLayout/ThemeSwitch', () => ({
   ThemeSwitch: () => <div data-testid="theme-switch" />,
 }));
 
-vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeTopBarChat', () => ({
-  ClaudeCodeTopBarChat: () => <div data-testid="copilot-top-bar-chat" />,
+vi.mock('@studio/routes/agents/CopilotChatRoute/CopilotTopBarChat', () => ({
+  CopilotTopBarChat: () => <div data-testid="copilot-top-bar-chat" />,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {

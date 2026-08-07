@@ -34,6 +34,7 @@ class MetricType(str, Enum):
     RESPONSE_RELEVANCY = "response_relevancy"
     FAITHFULNESS = "faithfulness"
     NOISE_SENSITIVITY = "noise_sensitivity"
+    TUNABLE_RAG_EVALUATOR = "tunable-rag-evaluator"
 
     SYSTEM = "system"
 

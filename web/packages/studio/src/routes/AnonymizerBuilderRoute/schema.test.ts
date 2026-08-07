@@ -3,6 +3,7 @@
 
 import {
   DETECTION_ROLES,
+  MAX_PREVIEW_ROWS,
   REPLACE_ROLE,
   REWRITE_ROLES,
   ROLE_LABELS,
@@ -277,6 +278,13 @@ describe('anonymizerFormSchema', () => {
     });
     expect(result.success).toBe(false);
     expect(result.error?.issues.some((i) => i.path.join('.') === 'entityLabels')).toBe(true);
+  });
+
+  it('rejects more preview rows than the server accepts', () => {
+    const result = parse({ previewRows: MAX_PREVIEW_ROWS + 1 });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((i) => i.path.join('.') === 'previewRows')).toBe(true);
+    expect(parse({ previewRows: MAX_PREVIEW_ROWS }).success).toBe(true);
   });
 
   it('accepts custom mode with labels, or with defaults included', () => {

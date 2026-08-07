@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import {
   AccordionContent,
   AccordionItem,
@@ -17,7 +17,7 @@ import type { FC } from 'react';
  * Collapsed raw-JSON escape hatch. Guarantees zero information loss and covers
  * any config field the structured view does not yet render.
  */
-export const RawConfigSection: FC<{ data: RailsConfigOutput }> = ({ data }) => (
+export const RawConfigSection: FC<{ data: RailsConfig }> = ({ data }) => (
   <Panel slotHeading="Raw configuration" slotIcon={<Braces />} elevation="high" density="compact">
     <AccordionRoot>
       <AccordionItem value="raw-config">

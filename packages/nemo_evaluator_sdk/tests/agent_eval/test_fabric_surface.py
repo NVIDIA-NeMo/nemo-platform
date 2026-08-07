@@ -39,6 +39,7 @@ pytest.importorskip("nemo_fabric")
 
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric import runtime as fabric_runtime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 
 # The ``fabric`` extra installs claude/codex/deepagents/hermes. Codex and hermes are both covered
 # below because they exercise *different* skill routing: codex self-discovers bundles from its
@@ -74,6 +75,7 @@ requires_hermes_adapter = pytest.mark.skipif(
 
 _CODEX_ADAPTER_ID = "nvidia.fabric.codex"
 _HERMES_ADAPTER_ID = "nvidia.fabric.hermes"
+_SURFACE_TASK = AgentEvalTask(id="surface-1", intent="Answer.", inputs={"instruction": "Ping?"})
 _HERMES_CONFIG = {
     "metadata": {"name": "fabric-surface-hermes"},
     "harness": {"adapter_id": _HERMES_ADAPTER_ID, "resolution": "preinstalled"},
@@ -108,7 +110,7 @@ def test_compose_config_enables_relay_via_current_signature(tmp_path: Path) -> N
     evidence_dir.mkdir()
     workspace_dir.mkdir()
 
-    composed = runtime._compose_config(agent_config, evidence_dir, workspace_dir)
+    composed = runtime._compose_config(agent_config, evidence_dir, workspace_dir, task=_SURFACE_TASK)
 
     # enable_relay accepted the runtime's call and stored Fabric's own typed relay models: a populated
     # RelayConfig whose observability carries the ATIF/ATOF shape ``_relay_config`` built. The dropped
@@ -149,7 +151,9 @@ def test_compose_config_is_a_complete_config_fabric_accepts(tmp_path: Path) -> N
     workspace_dir = evidence_dir / "workspace"
     workspace_dir.mkdir(parents=True)
 
-    composed = runtime._compose_config(FabricConfig.from_mapping(_CODEX_CONFIG), evidence_dir, workspace_dir)
+    composed = runtime._compose_config(
+        FabricConfig.from_mapping(_CODEX_CONFIG), evidence_dir, workspace_dir, task=_SURFACE_TASK
+    )
     composed.add_skill_path(str(tmp_path / "staged-skill"))
 
     # Evaluator-owned per-task settings live on the config itself, not in a trailing overlay.

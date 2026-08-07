@@ -382,7 +382,7 @@ def _write_analyst_lock(
     *,
     unrelated_version: str = "1",
     transitive_version: str = "1",
-    anthropic_version: str = "1",
+    litellm_version: str = "1",
 ) -> None:
     path.write_text(
         f"""
@@ -396,29 +396,21 @@ version = "{unrelated_version}"
 name = "nemo-insights-plugin"
 version = "1"
 dependencies = [
-    {{ name = "pydantic-ai-harness" }},
-    {{ name = "pydantic-ai-slim", extra = ["anthropic"] }},
+    {{ name = "nooa" }},
 ]
 
 [[package]]
-name = "pydantic-ai-harness"
+name = "nooa"
 version = "2"
-dependencies = [{{ name = "transitive" }}]
-
-[[package]]
-name = "pydantic-ai-slim"
-version = "3"
-
-[package.optional-dependencies]
-anthropic = [{{ name = "anthropic" }}]
+dependencies = [{{ name = "transitive" }}, {{ name = "litellm" }}]
 
 [[package]]
 name = "transitive"
 version = "{transitive_version}"
 
 [[package]]
-name = "anthropic"
-version = "{anthropic_version}"
+name = "litellm"
+version = "{litellm_version}"
 """,
         encoding="utf-8",
     )
@@ -464,7 +456,7 @@ def test_analyst_hash_tracks_resolved_dependency_closure(tmp_path):
         lockfile,
         unrelated_version="changed",
         transitive_version="changed",
-        anthropic_version="changed",
+        litellm_version="changed",
     )
     assert cli._analyst_sha256(plugin_root, lockfile) != transitive_changed
 

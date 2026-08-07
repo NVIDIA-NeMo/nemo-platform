@@ -34,7 +34,7 @@ dependencies = [
   "h11>=0.16.0",
   "protobuf<7.0.dev0,>=6.33.5", # fix for GHSA OOS
   "pyyaml>=6.0.2",
-  "pydantic>=2.10.6",
+  "pydantic>=2.12.0",
   "mypy-extensions==1.0.0",
   "tornado>=6.5.7",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
@@ -186,6 +186,7 @@ enabled-plugins = [
   "nemo-deployments-plugin[docker,k8s]",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
+  "nemo-optimization-plugin",
   "nemo-unsloth-plugin",
   "nemo-rl-plugin",
 ]
@@ -273,7 +274,7 @@ constraint-dependencies = [
   "authlib>=1.6.11",
   "black>=26.3.1",
   "bleach>=6.4.0",
-  "cryptography>=48.0.1,<49",
+  "cryptography>=50.0.0,<51",
   "diffusers>=0.38.0",
   "filelock>=3.20.3",
   "jupyter-server>=2.20.0",
@@ -296,6 +297,7 @@ constraint-dependencies = [
   "pillow>=12.3.0",
   "postcss>=8.5.10",
   "pyasn1>=0.6.3",
+  "pydantic-monty==0.0.18",               # 0.0.19 dropped MontyRepl required by pydantic-ai-harness==0.3.0 CodeMode
   "python-multipart>=0.0.27",
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",                # explicit prerelease so uv allows the rc
@@ -333,7 +335,7 @@ override-dependencies = [
   "xgrammar>=0.1.32",        # High – customizer + nmp-gpu-tasks
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
   "wandb>=0.28.1",           # wandb-core Go CVEs (nspect); unsloth + training images
-  "cryptography>=48.0.1,<49", # Pulse Critical; overrides nvidia-nat-core's <47 cap after changelog review
+  "cryptography>=50.0.0,<51", # GHSA-g6cj-pr64-35w5; overrides nvidia-nat-core's <47 cap after changelog review
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
@@ -381,6 +383,21 @@ nemo-experimentalist-plugin = { workspace = true }
 # depends on landed after v0.0.8; move back to a tag once one ships that contains it.
 nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }
 
+# Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
+# FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every
+# package — git subdirectory sources do not inherit Fabric's own path mappings,
+# and the metapackage pins runtime/adapters to ==0.2.0.
+# Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
+# wheel still resolve (uv.sources do not apply outside this workspace).
+# Remove these entries once PyPI has 0.2.0.
+nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2" }
+nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "python" }
+nemo-fabric-adapters-common = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/common" }
+nemo-fabric-adapters-claude = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/claude" }
+nemo-fabric-adapters-codex = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/codex" }
+nemo-fabric-adapters-deepagents = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/deepagents" }
+nemo-fabric-adapters-hermes = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "55450ffb7c16f895316c5acc91fc23b36f4427b2", subdirectory = "adapters/hermes" }
+
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
 nemo-auditor-plugin = { workspace = true }
@@ -393,6 +410,7 @@ nemo-agents-example-email-phishing = { workspace = true }
 nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
+nemo-optimization-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nemo-rl-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
@@ -452,8 +470,10 @@ members = [
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-agents/examples/email-security-analyst",
+  "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
+  "plugins/nemo-optimization",
   "plugins/nemo-unsloth",
   "plugins/nemo-rl",
   "services/automodel",

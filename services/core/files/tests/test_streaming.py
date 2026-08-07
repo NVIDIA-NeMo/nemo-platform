@@ -285,11 +285,10 @@ async def test_iter_with_inactivity_timeout_empty_iterator():
 
 
 async def test_iter_with_inactivity_timeout_deadline_resets():
-    """Test that deadline resets after each successful read (sliding window).
+    """Test that the inactivity timeout is per gap, not for the whole transfer.
 
-    This verifies the CancelScope deadline update behavior: each successful
-    chunk read should reset the timeout clock, allowing transfers where
-    total time exceeds the timeout but no single gap does.
+    Each successful chunk read starts a fresh wait window, so transfers where
+    total time exceeds the timeout but no single gap does still succeed.
     """
     timeout = 0.1  # 100ms timeout
 

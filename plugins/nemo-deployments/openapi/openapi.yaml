@@ -659,7 +659,7 @@ components:
           type: object
           title: Labels
         backend_config:
-          $ref: '#/components/schemas/DeploymentBackendConfigInput'
+          $ref: '#/components/schemas/DeploymentBackendConfig'
       type: object
       required:
       - name
@@ -841,22 +841,14 @@ components:
       - db_version
       title: Deployment
       description: Desired and observed deployment state.
-    DeploymentBackendConfigInput:
+    DeploymentBackendConfig:
       properties:
         docker:
           $ref: '#/components/schemas/DockerDeploymentConfig'
         k8s:
           $ref: '#/components/schemas/K8sDeploymentConfig'
       type: object
-      title: DeploymentBackendConfigInput
-    DeploymentBackendConfigOutput:
-      properties:
-        docker:
-          $ref: '#/components/schemas/DockerDeploymentConfig'
-        k8s:
-          $ref: '#/components/schemas/K8sDeploymentConfig'
-      type: object
-      title: DeploymentBackendConfigOutput
+      title: DeploymentBackendConfig
     DeploymentConfig:
       properties:
         name:
@@ -913,7 +905,7 @@ components:
           type: object
           title: Labels
         backendConfig:
-          $ref: '#/components/schemas/DeploymentBackendConfigOutput'
+          $ref: '#/components/schemas/DeploymentBackendConfig'
         authProxySidecar:
           type: boolean
           title: Authproxysidecar

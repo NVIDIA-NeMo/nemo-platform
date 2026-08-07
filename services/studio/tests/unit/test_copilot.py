@@ -9,7 +9,9 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
@@ -17,9 +19,76 @@ import pytest
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
+from nmp.common.entities.client import EntityConflictError, EntityNotFoundError
+from nmp.common.service.dependencies import get_entity_client
 from nmp.studio import copilot, copilot_artifacts, copilot_skills, studio_links
 from nmp.studio.config import StudioConfig
+from nmp.studio.entities import CopilotConversation, CopilotMessage
 from nmp.studio.service import StudioService
+
+
+class FakeEntityStore:
+    """Small async EntityClient fake for Copilot route tests."""
+
+    def __init__(self) -> None:
+        self.entities: dict[tuple[str, str], CopilotConversation] = {}
+
+    async def create(self, entity: CopilotConversation) -> CopilotConversation:
+        now = datetime.now(UTC)
+        entity._created_at = now
+        entity._updated_at = now
+        self.entities[(entity.workspace, entity.name)] = entity
+        return entity
+
+    async def get(
+        self,
+        entity_type: type[CopilotConversation],
+        name: str,
+        *,
+        workspace: str | None = None,
+    ) -> CopilotConversation:
+        del entity_type
+        try:
+            return self.entities[(workspace or "default", name)]
+        except KeyError as exc:
+            raise EntityNotFoundError(name) from exc
+
+    async def list(
+        self,
+        entity_type: type[CopilotConversation],
+        *,
+        workspace: str = "default",
+        filter_obj: dict[str, Any] | None = None,
+        **_: Any,
+    ) -> SimpleNamespace:
+        del entity_type
+        owner_id = filter_obj.get("owner_id") if filter_obj else None
+        data = [
+            entity
+            for (entity_workspace, _), entity in self.entities.items()
+            if entity_workspace == workspace and (owner_id is None or entity.owner_id == owner_id)
+        ]
+        data.sort(key=lambda entity: entity.updated_at or datetime.min.replace(tzinfo=UTC), reverse=True)
+        return SimpleNamespace(data=data)
+
+    async def update(self, entity: CopilotConversation) -> CopilotConversation:
+        entity._updated_at = datetime.now(UTC)
+        self.entities[(entity.workspace, entity.name)] = entity
+        return entity
+
+    async def delete(
+        self,
+        entity_type: type[CopilotConversation],
+        name: str,
+        *,
+        workspace: str | None = None,
+        expected_db_version: int | None = None,
+    ) -> None:
+        del entity_type, expected_db_version
+        try:
+            del self.entities[(workspace or "default", name)]
+        except KeyError as exc:
+            raise EntityNotFoundError(name) from exc
 
 
 @pytest.fixture(autouse=True)
@@ -29,20 +98,24 @@ def reset_copilot_state():
     copilot._session_streams.clear()
     copilot._pending_permissions.clear()
     copilot._pending_agent_inputs.clear()
-    copilot._session_conversations.clear()
-    copilot._session_mtimes.clear()
+    copilot._session_workspace_cache.clear()
     yield
     copilot._initialized_sessions.clear()
     copilot._session_streams.clear()
     copilot._pending_permissions.clear()
     copilot._pending_agent_inputs.clear()
-    copilot._session_conversations.clear()
-    copilot._session_mtimes.clear()
+    copilot._session_workspace_cache.clear()
 
 
 @pytest.fixture
-def service_client() -> TestClient:
+def entity_store() -> FakeEntityStore:
+    return FakeEntityStore()
+
+
+@pytest.fixture
+def service_client(entity_store: FakeEntityStore) -> TestClient:
     service = StudioService()
+    service.app.dependency_overrides[get_entity_client] = lambda: entity_store
     return TestClient(service.app)
 
 
@@ -234,43 +307,58 @@ def test_create_session_returns_uuid(service_client: TestClient):
     uuid.UUID(response.json()["session_id"])
 
 
-def test_create_session_evicts_least_recently_updated_session(
+def test_create_session_persists_workspace_and_owner(
     service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    response = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+
+    session_id = response.json()["session_id"]
+    persisted = entity_store.entities[("team-a", f"copilot-{session_id}")]
+    assert persisted.owner_id == "alice@example.com"
+    assert persisted.messages == []
+
+
+def test_recent_conversation_messages_caps_model_context_without_mutating_history(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(copilot, "MAX_RETAINED_SESSIONS", 2)
-    first_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
-    copilot._session_mtimes[first_session_id] = 1
-    second_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
-    copilot._session_mtimes[second_session_id] = 2
-
-    third_session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
-
-    assert set(copilot._session_conversations) == {second_session_id, third_session_id}
-    assert set(copilot._session_mtimes) == {second_session_id, third_session_id}
-
-
-def test_retain_recent_turns_caps_complete_user_assistant_pairs(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(copilot, "MAX_RETAINED_TURNS_PER_SESSION", 2)
-    conversation = [{"role": role, "content": f"{role}-{turn}"} for turn in range(3) for role in ("user", "assistant")]
+    conversation = [
+        CopilotMessage(role=role, content=f"{role}-{turn}") for turn in range(3) for role in ("user", "assistant")
+    ]
 
-    copilot._retain_recent_turns(conversation)
+    recent = copilot._recent_conversation_messages(conversation)
 
-    assert conversation == [
+    assert [message.model_dump() for message in recent] == [
         {"role": "user", "content": "user-1"},
         {"role": "assistant", "content": "assistant-1"},
         {"role": "user", "content": "user-2"},
         {"role": "assistant", "content": "assistant-2"},
     ]
+    assert len(conversation) == 6
 
 
-def test_list_history_sessions_includes_retained_conversation(service_client: TestClient):
+def test_list_history_sessions_includes_persisted_conversation(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
     session_id = str(uuid.uuid4())
-    copilot._session_conversations[session_id] = [
-        {"role": "user", "content": "Help me build an agent"},
-        {"role": "assistant", "content": "What should it do?"},
-    ]
-    copilot._session_mtimes[session_id] = 42
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+        messages=[
+            CopilotMessage(role="user", content="Help me build an agent"),
+            CopilotMessage(role="assistant", content="What should it do?"),
+        ],
+    )
+    conversation._created_at = datetime.fromtimestamp(40, UTC)
+    conversation._updated_at = datetime.fromtimestamp(42, UTC)
+    entity_store.entities[("default", conversation.name)] = conversation
 
     response = service_client.get("/v2/copilot/history/sessions")
 
@@ -298,6 +386,132 @@ def test_list_history_sessions_includes_retained_conversation(service_client: Te
                 "tools": [],
             },
         }
+    ]
+
+
+def test_history_is_scoped_to_workspace_and_owner(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    alice_id = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    ).json()["session_id"]
+    bob_id = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "bob@example.com"},
+    ).json()["session_id"]
+    entity_store.entities[("team-a", f"copilot-{alice_id}")].messages = [
+        CopilotMessage(role="user", content="Alice's private prompt"),
+        CopilotMessage(role="assistant", content="Alice's answer"),
+    ]
+    entity_store.entities[("team-a", f"copilot-{bob_id}")].messages = [
+        CopilotMessage(role="user", content="Bob's private prompt"),
+        CopilotMessage(role="assistant", content="Bob's answer"),
+    ]
+
+    response = service_client.get(
+        "/v2/copilot/history/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert [session["session_id"] for session in response.json()] == [alice_id]
+    forbidden = service_client.get(
+        f"/v2/copilot/history/sessions/{bob_id}?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+    assert forbidden.status_code == 404
+
+
+def test_delete_history_enforces_owner_and_removes_conversation(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    session_id = service_client.post(
+        "/v2/copilot/sessions?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    ).json()["session_id"]
+
+    forbidden = service_client.delete(
+        f"/v2/copilot/history/sessions/{session_id}?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "bob@example.com"},
+    )
+    assert forbidden.status_code == 404
+    assert ("team-a", f"copilot-{session_id}") in entity_store.entities
+
+    deleted = service_client.delete(
+        f"/v2/copilot/history/sessions/{session_id}?workspace=team-a",
+        headers={"X-NMP-Principal-Id": "alice@example.com"},
+    )
+    assert deleted.status_code == 204
+    assert ("team-a", f"copilot-{session_id}") not in entity_store.entities
+
+
+def test_delete_history_rejects_active_session(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
+    copilot._session_streams[session_id] = asyncio.Queue()
+
+    response = service_client.delete(f"/v2/copilot/history/sessions/{session_id}")
+
+    assert response.status_code == 409
+    assert ("default", f"copilot-{session_id}") in entity_store.entities
+
+
+def test_copilot_turn_is_persisted_and_reused_as_context(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session_id = service_client.post("/v2/copilot/sessions").json()["session_id"]
+    invocations: list[list[dict[str, str]]] = []
+
+    async def fake_invoke(
+        agent_url: str,
+        headers: dict[str, str],
+        messages: list[dict[str, str]],
+        studio_session_id: str,
+    ) -> tuple[str, str]:
+        del agent_url, headers
+        assert studio_session_id == session_id
+        invocations.append(messages)
+        return f"answer-{len(invocations)}", "nvidia/copilot-model"
+
+    monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
+
+    first = service_client.post(
+        f"/v2/copilot/sessions/{session_id}/messages",
+        json={"message": "first question", "workspace": "default"},
+    )
+    second = service_client.post(
+        f"/v2/copilot/sessions/{session_id}/messages",
+        json={"message": "second question", "workspace": "default"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert "event: done" in first.text
+    assert "event: done" in second.text
+    persisted = entity_store.entities[("default", f"copilot-{session_id}")]
+    assert [message.model_dump() for message in persisted.messages] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "answer-1"},
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "answer-2"},
+    ]
+    assert invocations[1][:2] == [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "answer-1"},
+    ]
+    history = service_client.get(f"/v2/copilot/history/sessions/{session_id}")
+    assert [item["kind"] for item in history.json()["items"]] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
     ]
 
 
@@ -1688,8 +1902,17 @@ def test_platform_route_stream_uses_deployed_copilot(monkeypatch: pytest.MonkeyP
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
     service.configure_app(app)
-    client = TestClient(app)
     session_id = str(uuid.uuid4())
+    entity_store = FakeEntityStore()
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    entity_store.entities[("default", conversation.name)] = conversation
+    app.dependency_overrides[get_entity_client] = lambda: entity_store
+    client = TestClient(app)
     captured: dict[str, Any] = {}
 
     async def fake_stream(
@@ -1698,7 +1921,10 @@ def test_platform_route_stream_uses_deployed_copilot(monkeypatch: pytest.MonkeyP
         agent_url: str,
         headers: dict[str, str],
         studio_system_prompt: str,
+        conversation: CopilotConversation,
+        entity_store: FakeEntityStore,
     ):
+        del conversation, entity_store
         captured.update(
             {
                 "session_id": session_id,
@@ -1780,8 +2006,17 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
     service.configure_app(app)
-    client = TestClient(app)
     session_id = str(uuid.uuid4())
+    entity_store = FakeEntityStore()
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    entity_store.entities[("default", conversation.name)] = conversation
+    app.dependency_overrides[get_entity_client] = lambda: entity_store
+    client = TestClient(app)
     captured: dict[str, Any] = {}
 
     async def fake_stream(
@@ -1790,7 +2025,10 @@ def test_platform_route_stream_infers_studio_url_from_browser_headers(monkeypatc
         agent_url: str,
         headers: dict[str, str],
         studio_system_prompt: str,
+        conversation: CopilotConversation,
+        entity_store: FakeEntityStore,
     ):
+        del conversation, entity_store
         captured.update(
             {
                 "session_id": session_id,
@@ -1887,7 +2125,132 @@ def test_platform_route_rejects_workspace_path_injection(service_client: TestCli
     assert response.status_code == 422
 
 
-def test_copilot_error_detail_does_not_expose_exception_text():
+_WORKSPACES_LIST_URL = "http://127.0.0.1:8080/apis/entities/v2/workspaces"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_default_skips_lookup():
+    # No HTTP mock configured: the default fallback must not make a network call.
+    assert await copilot._authorized_workspace("default", {}, "sess") == "default"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_returns_name_from_entity_store(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": [{"name": "team-a"}, {"name": "my-ws"}], "pagination": {"total_pages": 1}},
+        )
+    )
+
+    # The returned value is the platform's own copy of the name (not client input).
+    assert await copilot._authorized_workspace("my-ws", {}, "sess") == "my-ws"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_paginates_until_match(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"name": "a"}], "pagination": {"total_pages": 2}}),
+            httpx.Response(200, json={"data": [{"name": "target"}], "pagination": {"total_pages": 2}}),
+        ]
+    )
+
+    assert await copilot._authorized_workspace("target", {}, "sess") == "target"
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_caches_per_session(respx_mock):
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}})
+    )
+
+    first = await copilot._authorized_workspace("my-ws", {}, "sess")
+    second = await copilot._authorized_workspace("my-ws", {}, "sess")
+
+    assert first == second == "my-ws"
+    # The second resolution is served from the per-session cache, not the network.
+    assert route.call_count == 1
+    # A different session does not share the cache.
+    await copilot._authorized_workspace("my-ws", {}, "other-sess")
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_cache_is_not_shared_across_callers(respx_mock):
+    """A cached authorization decision must never be reused for a different caller."""
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}})
+    )
+    session_id = "shared-session"
+    caller_a = {"authorization": "Bearer token-a"}
+    caller_b = {"authorization": "Bearer token-b"}
+
+    await copilot._authorized_workspace("my-ws", caller_a, session_id)
+    assert route.call_count == 1
+    # Same session id, different credential: must re-verify against the Entity Store.
+    await copilot._authorized_workspace("my-ws", caller_b, session_id)
+    assert route.call_count == 2
+    # Each caller still gets its own cache hit on repeat.
+    await copilot._authorized_workspace("my-ws", caller_a, session_id)
+    assert route.call_count == 2
+    # The raw credential is never retained in the cache key material.
+    assert "token-a" not in str(copilot._session_workspace_cache)
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_unauthorized_caller_is_rejected_on_cached_session(respx_mock):
+    """An unauthorized caller cannot ride a session that already resolved the workspace."""
+    session_id = "shared-session"
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": [{"name": "my-ws"}], "pagination": {"total_pages": 1}}),
+            # The second caller is not a member of that workspace.
+            httpx.Response(200, json={"data": [{"name": "other-ws"}], "pagination": {"total_pages": 1}}),
+        ]
+    )
+
+    assert await copilot._authorized_workspace("my-ws", {"authorization": "a"}, session_id) == "my-ws"
+
+    with pytest.raises(HTTPException) as excinfo:
+        await copilot._authorized_workspace("my-ws", {"authorization": "b"}, session_id)
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_rejects_unknown_workspace(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await copilot._authorized_workspace("not-a-member", {}, "sess")
+    assert excinfo.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_does_not_cache_failures(respx_mock):
+    route = respx_mock.get(_WORKSPACES_LIST_URL).mock(
+        return_value=httpx.Response(200, json={"data": [{"name": "team-a"}], "pagination": {"total_pages": 1}})
+    )
+
+    for _ in range(2):
+        with pytest.raises(HTTPException):
+            await copilot._authorized_workspace("not-a-member", {}, "sess")
+    # Unresolved workspaces are re-checked every message (no negative caching).
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_authorized_workspace_maps_upstream_error_to_502(respx_mock):
+    respx_mock.get(_WORKSPACES_LIST_URL).mock(side_effect=httpx.ConnectError("boom"))
+
+    with pytest.raises(HTTPException) as excinfo:
+        await copilot._authorized_workspace("my-ws", {}, "sess")
+    assert excinfo.value.status_code == 502
+
+
+def test_nemo_agent_error_detail_does_not_expose_exception_text():
     request = httpx.Request("POST", "https://platform.test/agent")
     response = httpx.Response(502, request=request)
     status_error = httpx.HTTPStatusError("private upstream detail", request=request, response=response)
@@ -1898,6 +2261,146 @@ def test_copilot_error_detail_does_not_expose_exception_text():
     )
 
 
+def test_parse_tool_step_input_extracts_python_repr_dict():
+    payload = "**Input:**\n```json\n{'action': 'list', 'resource': 'secrets'}\n```\n**Output:** ..."
+    assert copilot._parse_tool_step_input(payload) == {"action": "list", "resource": "secrets"}
+
+
+def test_parse_tool_step_input_returns_empty_on_unparseable():
+    assert copilot._parse_tool_step_input("no dict here") == {}
+    assert copilot._parse_tool_step_input(None) == {}
+    assert copilot._parse_tool_step_input("**Input:** [1, 2, 3]") == {}
+
+
+def test_tool_use_stream_event_shape():
+    event_type, payload = copilot._tool_use_stream_event("nemo_api", {"resource": "secrets"})
+    assert event_type == "agent"
+    block = json.loads(payload)["message"]["content"][0]
+    assert block["type"] == "tool_use"
+    assert block["name"] == "nemo_api"
+    assert block["input"] == {"resource": "secrets"}
+
+
+def test_tool_use_stream_event_strips_internal_session_id():
+    _, payload = copilot._tool_use_stream_event(
+        "ask_user_question",
+        {"studio_session_id": "sess-123", "questions": [{"q": "?"}]},
+    )
+    block = json.loads(payload)["message"]["content"][0]
+    assert "studio_session_id" not in block["input"]
+    assert block["input"] == {"questions": [{"q": "?"}]}
+
+
+@pytest.mark.asyncio
+async def test_stream_copilot_flushes_tool_events_before_final_response(monkeypatch: pytest.MonkeyPatch):
+    session_id = str(uuid.uuid4())
+    entity_store = FakeEntityStore()
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    await entity_store.create(conversation)
+
+    async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        queue = copilot._session_streams[studio_session_id]
+        # Two tool events queued in the same turn the invocation completes: the
+        # loop can consume at most one, so the drain must flush the remainder.
+        queue.put_nowait(copilot._tool_use_stream_event("nemo_api", {"resource": "secrets"}))
+        queue.put_nowait(copilot._tool_use_stream_event("describe_api", {"path": "secrets"}))
+        return "final answer", "model-x"
+
+    monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
+
+    frames = [
+        frame
+        async for frame in copilot._stream_copilot(
+            session_id,
+            "hello",
+            "https://agent.test/x",
+            {},
+            "sys prompt",
+            conversation,
+            entity_store,
+        )
+    ]
+
+    body = "".join(frames)
+    first_tool = body.find("nemo_api")
+    second_tool = body.find("describe_api")
+    final = body.find("final answer")
+    assert first_tool != -1 and second_tool != -1 and final != -1
+    # Both tool-use events survive and are emitted before the final assistant message.
+    assert first_tool < final
+    assert second_tool < final
+    assert [message.content for message in conversation.messages] == ["hello", "final answer"]
+
+
+@pytest.mark.asyncio
+async def test_stream_copilot_retries_conflicted_conversation_update(monkeypatch: pytest.MonkeyPatch):
+    session_id = str(uuid.uuid4())
+    conversation = CopilotConversation(
+        name=f"copilot-{session_id}",
+        workspace="default",
+        session_id=session_id,
+        owner_id="local-user",
+    )
+    concurrent_conversation = conversation.model_copy(deep=True)
+    concurrent_conversation.messages.extend(
+        [
+            CopilotMessage(role="user", content="remote question"),
+            CopilotMessage(role="assistant", content="remote answer"),
+        ]
+    )
+
+    class ConflictingEntityStore(FakeEntityStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.update_calls = 0
+
+        async def update(self, entity: CopilotConversation) -> CopilotConversation:
+            self.update_calls += 1
+            if self.update_calls == 1:
+                self.entities[(concurrent_conversation.workspace, concurrent_conversation.name)] = (
+                    concurrent_conversation
+                )
+                raise EntityConflictError("conversation was updated by another replica")
+            return await super().update(entity)
+
+    entity_store = ConflictingEntityStore()
+    await entity_store.create(conversation)
+
+    async def fake_invoke(agent_url, headers, messages, studio_session_id):
+        return "local answer", "model-x"
+
+    monkeypatch.setattr(copilot, "_invoke_copilot", fake_invoke)
+
+    frames = [
+        frame
+        async for frame in copilot._stream_copilot(
+            session_id,
+            "local question",
+            "https://agent.test/x",
+            {},
+            "sys prompt",
+            conversation,
+            entity_store,
+        )
+    ]
+
+    assert "event: done" in "".join(frames)
+    assert entity_store.update_calls == 2
+    persisted = entity_store.entities[("default", conversation.name)]
+    assert [message.content for message in persisted.messages] == [
+        "remote question",
+        "remote answer",
+        "local question",
+        "local answer",
+    ]
+    assert persisted.chat_artifacts.copilot_model == "model-x"
+
+
 def test_copilot_request_payload_keeps_session_outside_model_messages():
     messages = [{"role": "user", "content": "hello"}]
     session_id = str(uuid.uuid4())
@@ -1906,7 +2409,7 @@ def test_copilot_request_payload_keeps_session_outside_model_messages():
 
     assert payload == {
         "messages": messages,
-        "stream": False,
+        "stream": True,
         "studio_session_id": session_id,
     }
     assert session_id not in json.dumps(payload["messages"])
@@ -1949,3 +2452,148 @@ def test_copilot_routes_are_available_by_default():
 
     assert response.status_code == 200
     uuid.UUID(response.json()["session_id"])
+
+
+def test_parse_reasoning_step_output_extracts_the_trace():
+    payload = "**Input:**\n```python\nchain of thought\n```\n\n**Output:** The user asked a math question."
+    assert copilot._parse_reasoning_step_output(payload) == "The user asked a math question."
+
+
+def test_parse_reasoning_step_output_ignores_a_start_step():
+    # The paired start step has no Output block yet.
+    assert copilot._parse_reasoning_step_output("**Input:**\n```python\nchain of thought\n```") == ""
+    assert copilot._parse_reasoning_step_output(None) == ""
+
+
+def test_reasoning_stream_event_shape():
+    event_type, payload = copilot._reasoning_stream_event("thinking out loud")
+    assert event_type == "agent"
+    block = json.loads(payload)["message"]["content"][0]
+    assert block == {"type": "reasoning", "text": "thinking out loud"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_copilot_relays_reasoning_despite_shared_step_id(monkeypatch: pytest.MonkeyPatch):
+    """A reasoning step is a start/end pair sharing one id. The tool dedup must not
+    claim that id on the start, or the end -- which carries the trace -- is dropped.
+    """
+    session_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue()
+    copilot._session_streams[session_id] = queue
+
+    start = json.dumps({"id": "step-1", "name": "Reasoning: model", "payload": "**Input:**\n```python\nx\n```"})
+    end = json.dumps(
+        {
+            "id": "step-1",
+            "name": "Reasoning: model",
+            "payload": "**Input:**\n```python\nx\n```\n\n**Output:** I thought about it.",
+        }
+    )
+    lines = [
+        f"intermediate_data: {start}",
+        f"intermediate_data: {end}",
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        "data: [DONE]",
+    ]
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            for line in lines:
+                yield line
+
+    class _Stream:
+        async def __aenter__(self):
+            return _Response()
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def stream(self, *args, **kwargs):
+            return _Stream()
+
+    monkeypatch.setattr(copilot.httpx, "AsyncClient", lambda **kwargs: _Client())
+
+    text, _ = await copilot._invoke_copilot("https://a.test", {}, [], session_id)
+
+    assert text == "done"
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    reasoning = [json.loads(payload) for _, payload in events]
+    blocks = [b for message in reasoning for b in message["message"]["content"]]
+    assert {"type": "reasoning", "text": "I thought about it."} in blocks
+
+
+@pytest.mark.asyncio
+async def test_invoke_copilot_emits_a_repeated_reasoning_step_once(monkeypatch: pytest.MonkeyPatch):
+    """A repeated completed step must not render the same trace twice, while the
+    start of the pair -- which shares its id -- must never claim that id."""
+    session_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue()
+    copilot._session_streams[session_id] = queue
+
+    start = json.dumps({"id": "step-1", "name": "Reasoning: model", "payload": "**Input:**\n```python\nx\n```"})
+    end = json.dumps(
+        {
+            "id": "step-1",
+            "name": "Reasoning: model",
+            "payload": "**Input:**\n```python\nx\n```\n\n**Output:** I thought about it.",
+        }
+    )
+    lines = [
+        f"intermediate_data: {start}",
+        f"intermediate_data: {end}",
+        f"intermediate_data: {end}",
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        "data: [DONE]",
+    ]
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            for line in lines:
+                yield line
+
+    class _Stream:
+        async def __aenter__(self):
+            return _Response()
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def stream(self, *args, **kwargs):
+            return _Stream()
+
+    monkeypatch.setattr(copilot.httpx, "AsyncClient", lambda **kwargs: _Client())
+
+    await copilot._invoke_copilot("https://a.test", {}, [], session_id)
+
+    blocks = []
+    while not queue.empty():
+        _, payload = queue.get_nowait()
+        blocks.extend(json.loads(payload)["message"]["content"])
+    reasoning_blocks = [b for b in blocks if b.get("type") == "reasoning"]
+    assert reasoning_blocks == [{"type": "reasoning", "text": "I thought about it."}]

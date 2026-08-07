@@ -51,8 +51,6 @@ def _guardrail(
 
 _GUARDRAIL_SELECTED_MESSAGES = _guardrail(subject="The selected messages below", pronoun="them")
 _GUARDRAIL_EMAIL_MATERIAL = _guardrail()
-_GUARDRAIL_HEADERS = _guardrail(surfaces="header field names and values", actor="header")
-_GUARDRAIL_URL = _guardrail(surfaces="the URL or domain under analysis", actor="the material")
 
 # ---------------------------------------------------------------------------
 # Per-capability prompts
@@ -87,25 +85,6 @@ REASONING: one or two sentences naming the signals you found
 
 """
 
-triage_batch_prompt = f"""
-
-You are an email security analyst. An analyst has selected several messages and asked which of
-them should be quarantined.
-
-{_GUARDRAIL_SELECTED_MESSAGES}
-
-Weigh social-engineering signals, credential and payment requests, sender/link domain mismatches,
-and lookalike domains impersonating a known brand.
-
-Selected messages:
-{{body}}
-
-Your first line must be the 1-based positions of every message to quarantine, separated by single
-spaces, and nothing else on that line. Write none if no message should be quarantined. Justify
-each choice on the lines after.
-
-"""
-
 triage_message_prompt = f"""
 
 You are an email security analyst. An analyst has asked whether a message is safe.
@@ -125,51 +104,6 @@ that decided it.
 
 """
 
-assess_severity_prompt = f"""
-
-You are an email security analyst rating how serious a threat is, so the team knows what to work
-first. Severity is about consequence and targeting, not about how obvious the message looks.
-
-{_GUARDRAIL_EMAIL_MATERIAL}
-
-- high: a credible attempt to move money or take over an account at this organisation. Executive
-  or vendor impersonation asking for payment or banking changes, credential harvesting aimed at a
-  real corporate system, or a malware payload.
-- medium: a real phishing attempt with no specific targeting. Generic credential pages, mass
-  lures wearing a known brand, anything that would need a user mistake and offers limited payoff.
-- low: nuisance mail with no credential or payment objective. Spam, scams too crude to work, and
-  legitimate mail that merely looks alarming.
-
-Material:
-{{body}}
-
-Your first line must be exactly one of: low, medium, high. Lowercase, alone on the line. Justify
-the rating on the lines after, naming the consequence you are weighing.
-
-"""
-
-attribute_attack_prompt = f"""
-
-You are an email security analyst naming the category of an attack.
-
-{_GUARDRAIL_EMAIL_MATERIAL}
-
-The categories are:
-- bec: business email compromise. Impersonates an executive or trusted counterparty to move money
-  or change payment details. No malicious link is needed.
-- credential: aims to harvest a password or session, usually through a fake sign-in page.
-- malware: aims to get the recipient to open or run a malicious attachment or download.
-- spam: unsolicited bulk or scam mail with no targeted credential or payment objective.
-- benign: not an attack.
-
-Material:
-{{body}}
-
-Your first line must be exactly one of: bec, credential, malware, spam, benign. Lowercase, alone on
-the line, nothing else. Justify it on the lines after.
-
-"""
-
 trace_thread_prompt = f"""
 
 You are an email security analyst reviewing a reply thread. The messages are given in order.
@@ -183,53 +117,6 @@ Material:
 
 Your first line must be a bare integer: the 1-based position of the message where the attack first
 appears. Nothing else on that line. Explain what gave it away on the lines after.
-
-"""
-
-analyze_headers_prompt = f"""
-
-You are an email security analyst reading raw SMTP headers. Check the sender authentication
-results: SPF, DKIM, and DMARC.
-
-{_GUARDRAIL_HEADERS}
-
-Material:
-{{body}}
-
-Your first line must be exactly one of: spf, dkim, dmarc, none. Lowercase, alone on the line,
-naming the mechanism that failed. Explain what the headers show on the lines after.
-
-"""
-
-check_url_brand_prompt = f"""
-
-You are an email security analyst inspecting a link for brand impersonation. Lookalike domains
-substitute similar-looking characters, append hyphenated words like "secure" or "verify", or nest a
-real brand name inside an unrelated domain.
-
-{_GUARDRAIL_URL}
-
-Material:
-{{body}}
-
-Your first line must be the name of the well-known brand the domain is impersonating, lowercase and
-alone on the line, or none if it impersonates no brand. Explain the trick on the lines after.
-
-"""
-
-incident_response_prompt = f"""
-
-You are an email security analyst responding to an incident that has already happened. The damage
-is done; the question is what to do now.
-
-{_GUARDRAIL_EMAIL_MATERIAL}
-
-Material:
-{{body}}
-
-Give the remediation steps, numbered, most urgent first. Lead with whatever limits ongoing damage,
-then containment, then evidence preservation and notification. Say what to do specifically rather
-than naming a category of action.
 
 """
 
