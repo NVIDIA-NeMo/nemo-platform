@@ -335,10 +335,14 @@ paths:
           title: Job
       responses:
         '200':
-          description: Successful Response
+          description: Aggregate gzip archive of all garak report artifacts.
           content:
-            application/json:
-              schema: {}
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: No report artifacts found for the job.
         '422':
           description: Validation Error
           content:

@@ -41,7 +41,17 @@ _AUDIT_READ_PERMISSION = _AUDIT_SCOPE.permission(
 _REPORT_RESULT_NAMES = ("report-jsonl", "report-html", "report-hitlog-jsonl")
 
 
-@router.get("/jobs/audit/{job}/results/artifacts/download")
+@router.get(
+    "/jobs/audit/{job}/results/artifacts/download",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "Aggregate gzip archive of all garak report artifacts.",
+            "content": {"application/gzip": {"schema": {"type": "string", "format": "binary"}}},
+        },
+        404: {"description": "No report artifacts found for the job."},
+    },
+)
 @_AUDIT_SCOPE.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[_AUDIT_READ_PERMISSION])
 async def download_audit_artifacts(
