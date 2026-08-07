@@ -8,7 +8,7 @@ on:
   push:
 
 jobs:
-  request:
+  filter:
     if: >
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
@@ -17,6 +17,63 @@ jobs:
       (github.event_name == 'push' &&
         github.actor == (vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'nv-skills-ci[bot]') &&
         startsWith(github.event.head_commit.message, vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_request: ${{ steps.filter.outputs.should_request }}
+    steps:
+      - name: Check for watched NVSkills paths
+        id: filter
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (context.eventName === 'push') {
+              core.info('Signature push event; preserving NVSkills request handling.');
+              core.setOutput('should_request', 'true');
+              return;
+            }
+
+            const prNumber = context.payload.pull_request?.number || context.payload.issue?.number;
+            if (!prNumber) {
+              core.info('No pull request number found.');
+              core.setOutput('should_request', 'false');
+              return;
+            }
+
+            const ignoredPluginOpenApi = /^plugins\/[^/]+\/openapi\/openapi\.ya?ml$/;
+            const isWatchedPath = (path) => (
+              path.startsWith('skills/') ||
+              path.startsWith('team-skills/') ||
+              path.startsWith('rules/team-rules/') ||
+              (path.startsWith('plugins/') && !ignoredPluginOpenApi.test(path))
+            );
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+
+            const watchedFile = files.find((file) => (
+              isWatchedPath(file.filename || '') ||
+              isWatchedPath(file.previous_filename || '')
+            ));
+
+            if (watchedFile) {
+              core.info(`Requesting NVSkills CI because ${watchedFile.filename} is watched.`);
+              core.setOutput('should_request', 'true');
+              return;
+            }
+
+            core.info('Skipping NVSkills CI request: no watched paths changed after ignoring plugin OpenAPI specs.');
+            core.setOutput('should_request', 'false');
+
+  request:
+    needs: filter
+    if: needs.filter.outputs.should_request == 'true'
     permissions:
       contents: read
       pull-requests: read
