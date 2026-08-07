@@ -217,6 +217,42 @@ async def test_model_clients_close_shared_client_once():
     shared.aclose.assert_awaited_once()
 
 
+async def test_model_clients_close_fast_after_default_close_fails():
+    default = MagicMock()
+    default.aclose = AsyncMock(side_effect=RuntimeError("default close failed"))
+    fast = MagicMock()
+    fast.aclose = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="default close failed"):
+        await ConfiguredModelClients(default=default, fast=fast).aclose()
+
+    default.aclose.assert_awaited_once()
+    fast.aclose.assert_awaited_once()
+
+
+async def test_resolve_model_clients_closes_constructed_client_after_failure(monkeypatch):
+    default_entity = SimpleNamespace(
+        workspace="default",
+        name="quality",
+        backend_format="OPENAI_CHAT",
+        model_providers=[],
+        api_endpoint=SimpleNamespace(model_id="quality"),
+    )
+    client = MagicMock()
+    client.models.retrieve = AsyncMock(side_effect=[default_entity, RuntimeError("fast resolution failed")])
+    constructed = MagicMock()
+    constructed.aclose = AsyncMock()
+    monkeypatch.setattr(nooa_model_client, "_completion_client", MagicMock(return_value=constructed))
+
+    with pytest.raises(RuntimeError, match="fast resolution failed"):
+        await resolve_model_clients(
+            client,
+            ConfiguredModelRefs(default="default/quality", fast="default/fast"),
+        )
+
+    constructed.aclose.assert_awaited_once()
+
+
 def test_openai_chat_reasoning_effort_uses_litellm_capability(monkeypatch):
     monkeypatch.setattr(
         nooa_model_client,

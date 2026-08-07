@@ -62,9 +62,18 @@ class ConfiguredModelClients:
 
     async def aclose(self) -> None:
         """Close each distinct client owned by this pair."""
-        await self.default.aclose()
-        if self.fast is not self.default:
-            await self.fast.aclose()
+        close_error: Exception | None = None
+        clients = (self.default,) if self.fast is self.default else (self.default, self.fast)
+        for client in clients:
+            try:
+                await client.aclose()
+            except Exception as exc:
+                if close_error is None:
+                    close_error = exc
+                else:
+                    close_error.add_note(f"Another model client also failed to close: {exc!r}")
+        if close_error is not None:
+            raise close_error
 
 
 _ACTIVE_MODEL_CLIENTS: ContextVar[ConfiguredModelClients | None] = ContextVar(
@@ -174,13 +183,21 @@ async def resolve_model_clients(
     selected = refs or configured_model_refs()
     resolved: dict[str, CompletionClient] = {}
     provider_cache: dict[str, ModelProvider] = {}
-    for model_ref in (selected.default, selected.fast):
-        if model_ref in resolved:
-            continue
-        workspace, name = _parse_model_ref(model_ref)
-        entity = await client.models.retrieve(name, workspace=workspace)
-        served_model_name = await _served_model_name(client, entity, provider_cache)
-        resolved[model_ref] = _completion_client(client, entity, served_model_name)
+    try:
+        for model_ref in (selected.default, selected.fast):
+            if model_ref in resolved:
+                continue
+            workspace, name = _parse_model_ref(model_ref)
+            entity = await client.models.retrieve(name, workspace=workspace)
+            served_model_name = await _served_model_name(client, entity, provider_cache)
+            resolved[model_ref] = _completion_client(client, entity, served_model_name)
+    except Exception as resolution_error:
+        for model_client in resolved.values():
+            try:
+                await model_client.aclose()
+            except Exception as cleanup_error:
+                resolution_error.add_note(f"A constructed model client also failed to close: {cleanup_error!r}")
+        raise
     return ConfiguredModelClients(
         default=resolved[selected.default],
         fast=resolved[selected.fast],

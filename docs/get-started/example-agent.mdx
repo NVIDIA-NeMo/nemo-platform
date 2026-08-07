@@ -149,6 +149,12 @@ pushes a validated winner to a new branch, and opens a draft PR or MR against
 configuration. Authenticate GitHub inside the sandbox so it can clone and push
 the private repository.
 
+<Warning>
+Clone mode is an integrity boundary, not a confidentiality boundary. The sandbox
+can read the cloned host repository and every credential passed with `sbx exec --env`.
+Use dedicated, revocable, spending-limited credentials.
+</Warning>
+
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 sbx create --clone --name nemo-experimentalist-git shell "$repo"

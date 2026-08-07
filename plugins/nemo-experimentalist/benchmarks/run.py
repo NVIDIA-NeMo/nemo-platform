@@ -321,14 +321,22 @@ def summarize_experimentalist_jobs(results_dir: Path) -> dict[str, Any]:
         if not isinstance(payload, dict) or not isinstance(payload.get("stats"), dict):
             continue
         stats = payload["stats"]
+        integer_fields = {
+            "trials": payload.get("n_total_trials"),
+            "completed_trials": stats.get("n_completed_trials"),
+            "errored_trials": stats.get("n_errored_trials"),
+            "input_tokens": stats.get("n_input_tokens"),
+            "cache_tokens": stats.get("n_cache_tokens"),
+            "output_tokens": stats.get("n_output_tokens"),
+        }
+        for field, value in integer_fields.items():
+            if value is None:
+                integer_fields[field] = 0
+            elif isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"Expected integer job summary field {field!r}, got {type(value).__name__}")
         job = {
             "name": result_path.parent.name,
-            "trials": int(payload.get("n_total_trials") or 0),
-            "completed_trials": int(stats.get("n_completed_trials") or 0),
-            "errored_trials": int(stats.get("n_errored_trials") or 0),
-            "input_tokens": int(stats.get("n_input_tokens") or 0),
-            "cache_tokens": int(stats.get("n_cache_tokens") or 0),
-            "output_tokens": int(stats.get("n_output_tokens") or 0),
+            **integer_fields,
             "cost_usd": stats.get("cost_usd") if isinstance(stats.get("cost_usd"), int | float) else None,
             "evals": stats.get("evals") if isinstance(stats.get("evals"), dict) else {},
         }
@@ -342,10 +350,7 @@ def summarize_experimentalist_jobs(results_dir: Path) -> dict[str, Any]:
             "cache_tokens",
             "output_tokens",
         ):
-            value = job[key]
-            if not isinstance(value, int):
-                raise TypeError(f"Expected integer job summary field {key!r}, got {type(value).__name__}")
-            totals[key] += value
+            totals[key] += integer_fields[key]
         if job["cost_usd"] is not None:
             costs.append(float(job["cost_usd"]))
     return {**totals, "cost_usd": sum(costs) if costs else None, "job_results": jobs}
@@ -410,6 +415,9 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
 
     _configure_models(benchmark_config.models)
     from nemo_experimentalist_plugin.experimentalist.run import run_experimentalist  # noqa: PLC0415
+    from nemo_platform_plugin.nooa_model_client import configured_model_refs  # noqa: PLC0415
+
+    optimizer_model_refs = configured_model_refs()
 
     run_dir = args.output.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -457,6 +465,7 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
         client=None,
         config=benchmark_config.optimizer,
         framework_skills_dirs=framework_skills_dirs,
+        model_refs=optimizer_model_refs,
     )
     run_document = json.loads((experimentalist_dir / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
     winner_label = run_document.get("winner_agent")
@@ -496,6 +505,10 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
             "config_path": str(args.config.resolve()),
         },
         "models": benchmark_config.models.model_dump(),
+        "optimizer_models": {
+            "default": optimizer_model_refs.default,
+            "fast": optimizer_model_refs.fast,
+        },
         "config": benchmark_config.model_dump(mode="json"),
         "baseline": baseline,
         "optimizer": {
