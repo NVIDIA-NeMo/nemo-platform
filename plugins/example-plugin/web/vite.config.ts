@@ -19,6 +19,8 @@ const STUDIO_SHARED_DEPS = [
   "@nvidia/foundations-react-core",
   // Shared so the plugin's useQuery uses Studio's QueryClient (one cache).
   "@tanstack/react-query",
+  // Studio's shared UI. Bare specifier only — deep paths aren't mapped.
+  "@nemo/common",
 ];
 
 // Prepended to the built bundle so the emitted artifact keeps an SPDX header —

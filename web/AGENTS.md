@@ -36,6 +36,21 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 - Install dependencies: `pnpm add <package>`
 - Run scripts: `pnpm <script-name>`
 
+### Bumping a shared singleton also means bumping the plugins
+
+`react`, `react-dom`, `react-router`, `@nvidia/foundations-react-core`, and
+`@tanstack/react-query` are served to plugin bundles from Studio's vendor build
+(`VENDOR_IMPORT_MAP` in `packages/studio/vite.config.ts`), so plugins declare
+them but never ship them. Plugin web dirs are **standalone pnpm roots** and
+cannot reference the `catalog:` block in `pnpm-workspace.yaml` — they restate
+the versions by hand.
+
+So when you change one of those catalog entries, update the matching
+`dependencies` in every `plugins/*/web/package.json` in the same change.
+Otherwise a plugin keeps typechecking against the old version while Studio
+serves the new one, and nothing fails until it breaks at runtime. See
+[plugins/example-plugin/web/AGENTS.md](../plugins/example-plugin/web/AGENTS.md).
+
 ## Running Tests Locally
 
 - **Never invoke `vitest` directly** (e.g. `pnpm vitest --run`). Always go through a package's `test` script so env/config (e.g. `NODE_OPTIONS=--max-old-space-size=10240` in `studio`) is applied.

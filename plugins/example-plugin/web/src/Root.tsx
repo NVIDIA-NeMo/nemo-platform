@@ -3,6 +3,7 @@
 
 import { Button, Flex, Stack, Text } from "@nvidia/foundations-react-core";
 import { Routes, Route, NavLink, Navigate, Outlet } from "react-router";
+import { SharedUiPage } from "./SharedUiPage";
 import type { PluginHost, PluginRootProps } from "./types";
 
 /**
@@ -40,6 +41,7 @@ export function Root({ host }: PluginRootProps) {
           path="workspace"
           element={<WorkspacePage workspaceId={host.workspaceId} />}
         />
+        <Route path="shared-ui" element={<SharedUiPage host={host} />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
@@ -68,6 +70,9 @@ function Layout() {
         </NavLink>
         <NavLink to="workspace" className={linkClass}>
           Workspace
+        </NavLink>
+        <NavLink to="shared-ui" className={linkClass}>
+          Shared UI
         </NavLink>
       </Flex>
       <div className="flex-1">

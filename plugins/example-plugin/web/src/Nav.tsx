@@ -32,6 +32,12 @@ export const navItems = (workspaceId: string): PluginNavGroup[] => [
         label: 'Workspace',
         href: `/workspaces/${workspaceId}/plugin/example/workspace`,
       },
+      {
+        id: 'example-shared-ui',
+        iconName: 'table',
+        label: 'Shared UI',
+        href: `/workspaces/${workspaceId}/plugin/example/shared-ui`,
+      },
     ],
   },
 ];
