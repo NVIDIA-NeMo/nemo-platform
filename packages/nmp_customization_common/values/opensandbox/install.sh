@@ -33,7 +33,9 @@ kubectl get runtimeclass kata-qemu >/dev/null
 kubectl get nodes -l katacontainers.io/kata-runtime=true --no-headers
 
 echo "=== namespaces ==="
-for ns in opensandbox-system opensandbox-crun opensandbox-kata; do
+# Control plane in opensandbox-system; sandboxes (both crun + kata) in nmp-temp1.
+# Orphaned opensandbox-crun / opensandbox-kata namespaces are not deleted automatically.
+for ns in opensandbox-system nmp-temp1; do
   kubectl create namespace "${ns}" --dry-run=client -o yaml | kubectl apply -f -
 done
 
@@ -82,6 +84,8 @@ helm upgrade --install opensandbox-server-kata "${SERVER_CHART}" \
 
 echo "=== wait ==="
 kubectl rollout status deploy/opensandbox-controller-manager -n opensandbox-system --timeout=180s
+# ConfigMap-only changes do not always roll pods; restart servers so they remount config.toml.
+kubectl rollout restart deploy/opensandbox-server-crun deploy/opensandbox-server-kata -n opensandbox-system
 kubectl rollout status deploy/opensandbox-server-crun -n opensandbox-system --timeout=180s
 kubectl rollout status deploy/opensandbox-server-kata -n opensandbox-system --timeout=180s
 

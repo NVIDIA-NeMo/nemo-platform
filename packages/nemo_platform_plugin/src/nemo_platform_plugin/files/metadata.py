@@ -9,9 +9,16 @@ The metadata uses a tagged/keyed structure where the key indicates the type:
 The key in metadata should match the fileset's purpose field.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+if TYPE_CHECKING:
+    from nemo_platform_plugin.files.types import FilesetPurpose
 
 
 class DatasetMetadataContent(BaseModel):
@@ -104,6 +111,19 @@ class ModelMetadataContent(BaseModel):
     tool_calling: ToolCallingMetadataContent | None = None
 
 
+class EnvironmentMetadataContent(BaseModel):
+    """Content for environment-type filesets (GRPO Gym packages)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    format: str = Field(description="Environment package format (native-v1, wheels-v1, adapter-wheels-v1).")
+    name: str
+    adapter_agent: str | None = None
+    hub_id: str | None = None
+    vf_env_id: str | None = None
+    config_paths: list[str] = Field(default_factory=list)
+
+
 class FilesetMetadata(BaseModel):
     """Tagged metadata container - the key indicates the type.
 
@@ -117,3 +137,35 @@ class FilesetMetadata(BaseModel):
 
     dataset: DatasetMetadataContent | None = None
     model: ModelMetadataContent | None = None
+    environment: EnvironmentMetadataContent | None = None
+
+    @model_validator(mode="after")
+    def _purpose_key_matches(self) -> "FilesetMetadata":
+        populated = sum(
+            1 for key in (self.dataset, self.model, self.environment) if key is not None
+        )
+        if populated > 1:
+            raise ValueError("FilesetMetadata must have at most one typed key populated")
+        return self
+
+
+def environment_metadata_from_manifest(manifest_dict: dict) -> EnvironmentMetadataContent:
+    """Build FilesetMetadata.environment from parsed nemo-environment.yaml."""
+    meta = manifest_dict.get("metadata") or {}
+    adapter = manifest_dict.get("adapter") or {}
+    return EnvironmentMetadataContent(
+        format=str(manifest_dict["format"]),
+        name=str(meta.get("name") or "environment"),
+        adapter_agent=adapter.get("agent") or meta.get("adapter_agent"),
+        hub_id=meta.get("hub_id"),
+        vf_env_id=meta.get("vf_env_id"),
+        config_paths=list(manifest_dict.get("config_paths") or []),
+    )
+
+
+def metadata_for_purpose(purpose: FilesetPurpose, content: EnvironmentMetadataContent) -> FilesetMetadata:
+    from nemo_platform_plugin.files.types import FilesetPurpose as _FilesetPurpose
+
+    if purpose == _FilesetPurpose.ENVIRONMENT:
+        return FilesetMetadata(environment=content)
+    raise ValueError(f"Cannot build environment metadata for purpose {purpose!r}")

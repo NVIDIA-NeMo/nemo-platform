@@ -17,13 +17,14 @@ from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegratio
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.entities.utils import get_random_id
 from nmp.rl.app.jobs.compiler import (
+    _build_download_config,
     _build_training_step,
     _build_training_step_config,
     platform_job_config_compiler,
 )
 from nmp.rl.app.jobs.training.schemas import OptimizerType, TrainingType
 from nmp.rl.entities.values import FinetuningType
-from nmp.rl.schemas import DPOTraining, OutputResponse, ParallelismParams, RlJobOutput
+from nmp.rl.schemas import DPOTraining, GRPOTraining, OutputResponse, ParallelismParams, RlJobOutput
 
 
 def _make_model_entity(fileset: str | None = "default/base-model") -> ModelEntity:
@@ -40,13 +41,17 @@ def _make_model_entity(fileset: str | None = "default/base-model") -> ModelEntit
 
 
 def _make_job_output(
-    training: DPOTraining | None = None,
+    training: DPOTraining | GRPOTraining | None = None,
     integrations: IntegrationsSpec | None = None,
+    *,
+    environment: str | None = None,
 ) -> RlJobOutput:
+    training = training or DPOTraining()
     return RlJobOutput(
         model="default/base-model",
         dataset="default/prefs",
-        training=training or DPOTraining(),
+        environment=environment,
+        training=training,
         integrations=integrations,
         output=OutputResponse(name="my-dpo", type="model", fileset="my-dpo-fs"),
     )
@@ -249,3 +254,49 @@ async def test_compiler_rejects_model_without_fileset(monkeypatch: pytest.Monkey
     )
     with pytest.raises(PlatformJobCompilationError, match="has no fileset"):
         await platform_job_config_compiler("default", _make_job_output(), mock_sdk)
+
+
+def test_grpo_download_includes_environment() -> None:
+    job = _make_job_output(GRPOTraining(), environment="default/my-env")
+    cfg = _build_download_config(job, _make_model_entity(), workspace="default")
+    dests = [item.dest for item in cfg.download]
+    assert "/var/run/scratch/job/environment" in dests
+    assert len(cfg.download) == 3
+
+
+def test_grpo_training_step_config_sandboxed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    sc = _build_training_step_config(
+        _make_job_output(GRPOTraining(), environment="default/env"),
+        trust_remote_code=False,
+    )
+    assert sc.training.training_type is TrainingType.GRPO
+    assert sc.gym is not None
+    assert sc.gym.sandboxed is True
+    assert sc.gym.sandbox_environment_path == "/job/environment"
+    assert sc.training.grpo is not None
+    assert sc.training.grpo.num_generations_per_prompt == 8
+
+
+def test_grpo_compile_fails_closed_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", False, raising=False)
+    with pytest.raises(PlatformJobCompilationError, match="sandbox_cluster_capable"):
+        _build_training_step_config(
+            _make_job_output(GRPOTraining(), environment="default/env"),
+            trust_remote_code=False,
+        )
+
+
+def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    job = _make_job_output(GRPOTraining(), environment="default/env")
+    step = _build_training_step(job, [], trust_remote_code=False, profile=None)
+    assert step["name"] == "grpo-training"
+    env_names = {
+        (env["name"] if isinstance(env, dict) else env.name)
+        for env in step["environment"]
+    }
+    assert "NMP_VLLM_SERVICE_HOST" in env_names
+    assert "NMP_BROKER_SERVICE_PORT" in env_names
