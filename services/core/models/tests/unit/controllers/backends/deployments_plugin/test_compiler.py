@@ -362,13 +362,14 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     assert sidecar.command == ["python", "-m", "nmp.core.models.sidecars.adapters.main"]
     env = {item.name: item.value for item in sidecar.env}
     assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
-    # Sidecar writes instance state ($XDG_STATE_HOME) and local data ($XDG_DATA_HOME via
-    # nmp_user_data_dir). Both must land on the writable scratch volume, not the image
+    # Sidecar writes under $XDG_STATE_HOME, $XDG_DATA_HOME (via nmp_user_data_dir), and
+    # $XDG_CONFIG_HOME. All three must land on the writable scratch volume, not the image
     # $HOME (unwritable under the pod's vLLM uid). Invoking the adapters module directly
     # (not `nemo services run`) avoids the platform runner's home-dir writes that caused
     # PermissionError / READY→PENDING regressions (NVBug 6573168). See _lora_sidecar.
     assert env["XDG_STATE_HOME"] == "/scratch/.local"
     assert env["XDG_DATA_HOME"] == "/scratch/.local"
+    assert env["XDG_CONFIG_HOME"] == "/scratch/.local"
     assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
