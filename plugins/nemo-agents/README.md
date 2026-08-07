@@ -163,7 +163,7 @@ The packaging command runs locally; Platform services are not required.
 | Requirement | Notes |
 |---|---|
 | Docker | A running Docker-compatible daemon |
-| Container dependencies | Install with `uv pip install 'nemo-agents-plugin[container]'` |
+| Container dependencies | Install with `uv sync --package nemo-agents-plugin --extra container` from the repository root |
 
 #### Progressive pipeline
 

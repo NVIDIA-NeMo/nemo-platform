@@ -137,7 +137,7 @@ selects the Platform agent image pipeline automatically. Image building
 requires the `container` extra. Install it with:
 
 ```bash
-uv pip install 'nemo-agents-plugin[container]'
+uv sync --package nemo-agents-plugin --extra container
 ```
 
 The examples below use the calculator agent that ships with the source

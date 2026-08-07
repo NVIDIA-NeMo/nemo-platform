@@ -1,0 +1,189 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Publish a finished agent-eval run to Intake, when the spec asked for it.
+
+``publish_to_intake`` is deliberately not a side effect of ``AgentEvaluator.run()`` (AALGO-290):
+optionality is structural, you call it or you don't. ``spec.publication.intake`` keeps that shape —
+absent means no publish, and nothing here runs — while giving the job API a way to request it, which
+is what Studio needs to get evaluation runs into Experiments.
+
+``run`` is synchronous and the publisher is async, so the call goes through the same ``run_sync``
+bridge ``result_persistence`` uses for the entity write.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from nemo_evaluator.intake.publish import PublishError, PublishReport, publish_to_intake
+from nemo_evaluator.jobs.agent_spec import IntakePublicationSpec, Target, target_agent_identity
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
+from nemo_evaluator_sdk.execution.metric_execution import run_sync
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform._exceptions import NeMoPlatformError, NotFoundError
+from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
+from pydantic import BaseModel, ConfigDict, Field
+
+logger = logging.getLogger(__name__)
+
+
+class PublicationOutcome(BaseModel):
+    """What publication did, as reported in the job output.
+
+    Deliberately not ``PublishReport``: that is the publisher's internal shape and names the
+    Evaluation ``experiment_id``, which contradicts the ``evaluation_id`` the job API accepts. This
+    is the public contract, so it uses the API's vocabulary and omits the rest.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: PlatformJobStatus = Field(
+        description="Platform job status vocabulary: COMPLETED when everything published, ERROR "
+        "otherwise. Only those two are ever emitted here.",
+    )
+    evaluation_id: str = Field(description="Evaluation the results were published under.")
+    trial_count: int = Field(default=0, description="Trials actually published (partial on failure).")
+    evaluator_result_count: int = Field(default=0, description="Evaluator-result rows written.")
+    skipped: list[str] = Field(
+        default_factory=list,
+        description="Score outputs Intake cannot represent, as 'trial_id: name (reason)'.",
+    )
+    error: str | None = Field(default=None, description="Why publication failed; absent on success.")
+
+
+class PublicationFailedError(RuntimeError):
+    """Publication failed and the spec marked it required, so the job fails with it.
+
+    Carries the outcome so the caller can still report what landed before the failure.
+    """
+
+    def __init__(self, outcome: PublicationOutcome) -> None:
+        super().__init__(outcome.error or "publication failed")
+        self.outcome = outcome
+
+
+def _skipped_lines(report: PublishReport) -> list[str]:
+    return [f"{item.trial_id}: {item.name} ({item.reason})" for item in report.skipped]
+
+
+def _completed(evaluation_id: str, report: PublishReport) -> PublicationOutcome:
+    return PublicationOutcome(
+        status=PlatformJobStatus.COMPLETED,
+        evaluation_id=evaluation_id,
+        trial_count=report.trial_count,
+        evaluator_result_count=report.evaluator_result_count,
+        skipped=_skipped_lines(report),
+    )
+
+
+def _failed(evaluation_id: str, error: str, report: PublishReport | None) -> PublicationOutcome:
+    return PublicationOutcome(
+        status=PlatformJobStatus.ERROR,
+        evaluation_id=evaluation_id,
+        trial_count=report.trial_count if report is not None else 0,
+        evaluator_result_count=report.evaluator_result_count if report is not None else 0,
+        skipped=_skipped_lines(report) if report is not None else [],
+        error=error,
+    )
+
+
+async def _publish(
+    result: AgentEvalResult,
+    *,
+    platform: AsyncNeMoPlatform,
+    spec: IntakePublicationSpec,
+    workspace: str,
+    agent_name: str,
+    model_name: str | None,
+) -> PublishReport:
+    """Check the Evaluation exists, then publish under it."""
+    # The Evaluation must pre-exist — ATIF ingest rejects an unknown one per trial, so without this
+    # a typo would surface as N failed writes after a partial publish instead of one clear stop.
+    # This reads the entity store, so it says nothing about whether Intake's span storage is up;
+    # that surfaces on the first ingest below, and re-publish is idempotent, so it needs no probe.
+    await platform.evaluations.retrieve(spec.evaluation_id, workspace=workspace)
+    return await publish_to_intake(
+        result,
+        platform=platform,
+        experiment_id=spec.evaluation_id,
+        workspace=workspace,
+        agent_name=agent_name,
+        agent_version=spec.agent_version,
+        model_name=model_name,
+    )
+
+
+def publish_agent_eval_result(
+    result: AgentEvalResult,
+    *,
+    spec: IntakePublicationSpec,
+    target: Target | None,
+    workspace: str,
+    async_sdk: AsyncNeMoPlatform | None,
+) -> PublicationOutcome:
+    """Publish a finished run to Intake and describe what happened.
+
+    Raises :class:`PublicationFailedError` when publication fails and ``spec.required`` is set;
+    otherwise returns a failed outcome for the job output. Either way the result bundle has already
+    been saved by the caller, so nothing is lost — a failure costs a re-publish, not a re-run.
+    """
+    derived_agent_name, model_name = target_agent_identity(target)
+    # Spec validation guarantees one of these is set (see `_require_resolvable_publication_identity`).
+    agent_name = spec.agent_name or derived_agent_name or ""
+
+    def fail(error: str, report: PublishReport | None = None) -> PublicationOutcome:
+        outcome = _failed(spec.evaluation_id, error, report)
+        if spec.required:
+            raise PublicationFailedError(outcome)
+        logger.warning(
+            "Publication to Intake failed for evaluation %r but was not required; continuing: %s",
+            spec.evaluation_id,
+            error,
+        )
+        return outcome
+
+    if async_sdk is None:
+        return fail("No platform client available to publish with (platformless local run).")
+
+    logger.info(
+        "Publishing %d trial(s) to Intake under evaluation %r in workspace %r",
+        len(result.trials),
+        spec.evaluation_id,
+        workspace,
+    )
+    try:
+        report = run_sync(
+            lambda: _publish(
+                result,
+                platform=async_sdk,
+                spec=spec,
+                workspace=workspace,
+                agent_name=agent_name,
+                model_name=model_name,
+            )
+        )
+    except PublishError as error:
+        return fail(str(error), error.report)
+    except NotFoundError:
+        return fail(
+            f"Evaluation {spec.evaluation_id!r} does not exist in workspace {workspace!r}. "
+            "Create it before submitting the job; the evaluation does not create it."
+        )
+    except NeMoPlatformError as error:
+        return fail(f"{type(error).__name__}: {error}")
+    except Exception as error:
+        # `required=False` promises the evaluation survives a failed publish. Letting an unforeseen
+        # error escape would break that promise for exactly the failures nobody anticipated, so the
+        # catch-all is the point rather than an oversight. Logged with a traceback because, unlike
+        # the handlers above, there is no known cause to report.
+        logger.exception("Unexpected error publishing to Intake for evaluation %r", spec.evaluation_id)
+        return fail(f"Unexpected {type(error).__name__}: {error}")
+
+    logger.info(
+        "Published %d trial(s) and %d evaluator result(s) to Intake under evaluation %r",
+        report.trial_count,
+        report.evaluator_result_count,
+        spec.evaluation_id,
+    )
+    return _completed(spec.evaluation_id, report)
