@@ -457,7 +457,7 @@ class MessageAccumulator(ColumnAccumulator):
                     # that an unexpected role is the finding worth surfacing, not something to
                     # normalize away.
                     role = role if isinstance(role, str) else str(role)
-                    if role not in self._roles_seen:
+                    if role not in self._roles_seen and len(self._roles_seen) < _MAX_ROLES_SEEN:
                         self._roles_seen.append(role)
                 total_content += _content_len(_message_field(message, "content", "value"))
                 # `.get` truthiness, not `in`: parquet materializes every declared struct field, so a
@@ -733,6 +733,13 @@ def _repetition_score(text: str) -> float:
 # like it ended on a user turn, which classification reads as a prompt-only dataset with no training
 # target — a false negative over a large slice of public chat data.
 _ASSISTANT_ROLES = {"assistant", "gpt", "bot", "model", "chatbot", "ai"}
+
+# Distinct role strings a chat column may show before the list stops growing. It is fed straight from
+# row content, so without a bound one malformed column could hold a string per message -- and since
+# membership is checked against the list, that is quadratic as well as unbounded. The truncation
+# costs nothing a reader would act on: the list exists to pick a chat template, and a column with
+# more than this many roles is not a chat column, which the first few dozen already say.
+_MAX_ROLES_SEEN = 64
 
 
 def _message_field(message: dict, *names: str) -> Any:

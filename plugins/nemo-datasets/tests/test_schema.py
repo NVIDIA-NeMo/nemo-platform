@@ -4,7 +4,7 @@
 """Tests for row-schema derivation (from a declared arrow schema and from sampled rows)."""
 
 import pyarrow as pa
-from nemo_datasets_plugin.profiler.schema import derive_features
+from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
 
 # --- from a declared arrow schema (parquet) ------------------------------------------------------
 
@@ -86,3 +86,15 @@ def test_from_rows_all_null_column_is_json():
 def test_derive_features_prefers_declared_arrow_schema():
     feature = derive_features([{"x": 1}], pa.schema([("x", pa.int32())]))[0]
     assert feature.dtype == "int32"  # declared width beats the int64 inference from rows
+
+
+def test_column_count_is_bounded_and_says_when_it_stopped():
+    # A malformed file whose rows carry unique keys would otherwise mint a column -- and later an
+    # accumulator -- for every row. The row budget used to bound this by accident; an unbounded read
+    # does not, so the bound is stated and the truncation is reported rather than silent.
+    rows = [{f"col{i}": i} for i in range(MAX_COLUMNS + 500)]
+    features = derive_features(rows)
+    assert len(features) == MAX_COLUMNS
+    assert columns_were_capped(features)
+
+    assert not columns_were_capped(derive_features([{"a": 1, "b": 2}]))

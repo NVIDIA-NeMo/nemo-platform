@@ -24,14 +24,32 @@ from nemo_platform_plugin.files.dataset_profile import FeatureSchema
 _MESSAGE_KEY_SETS = ({"role", "content"}, {"from", "value"})
 
 
+# Columns a partition may have before the profiler stops describing it. Nothing legitimate reaches
+# this: it is a guard against a malformed file whose rows carry per-row unique keys, which would
+# otherwise mint a column -- and an accumulator -- for every row in the dataset. The row budget used
+# to bound this by accident, since a schema inferred from at most N rows had at most N keys; an
+# unbounded read has no such accident, so the bound is stated.
+MAX_COLUMNS = 4096
+
+
 def derive_features(rows: list[dict[str, Any]], arrow_schema: pa.Schema | None = None) -> list[FeatureSchema]:
-    """The row schema. Uses the declared arrow schema when present, else infers from ``rows``."""
+    """The row schema. Uses the declared arrow schema when present, else infers from ``rows``.
+
+    Truncated at :data:`MAX_COLUMNS`. Use :func:`columns_were_capped` to tell a dataset that really
+    is that wide from one whose keys are runaway; the caller reports the difference rather than
+    silently describing part of a file as though it were all of it.
+    """
     if arrow_schema is not None:
         return [
             _feature_from_arrow(arrow_schema.field(i).name, arrow_schema.field(i).type)
-            for i in range(len(arrow_schema))
+            for i in range(min(len(arrow_schema), MAX_COLUMNS))
         ]
     return _features_from_rows(rows)
+
+
+def columns_were_capped(features: list[FeatureSchema]) -> bool:
+    """Whether the schema stopped at the cap rather than at the end of the data."""
+    return len(features) >= MAX_COLUMNS
 
 
 def _is_message_struct(item: FeatureSchema) -> bool:
@@ -93,6 +111,10 @@ def _features_from_rows(rows: list[dict[str, Any]]) -> list[FeatureSchema]:
             if key not in seen:
                 seen.add(key)
                 ordered_keys.append(key)
+                if len(ordered_keys) >= MAX_COLUMNS:
+                    break
+        if len(ordered_keys) >= MAX_COLUMNS:
+            break
     return [_infer_feature(key, [row.get(key) for row in rows]) for key in ordered_keys]
 
 

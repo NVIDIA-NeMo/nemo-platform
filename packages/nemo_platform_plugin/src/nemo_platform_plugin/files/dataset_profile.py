@@ -174,7 +174,9 @@ class MessageStats(BaseModel):
             '"user", "assistant", "tool"], but equally ShareGPT\'s ["human", "gpt"] or a house convention. '
             "A measurement of row content, not a vocabulary the profiler picks from, so it is deliberately "
             "not an enum: an unexpected role is the finding worth reporting, and normalizing or dropping it "
-            "would hide exactly what a consumer needs to see before choosing a chat template."
+            "would hide exactly what a consumer needs to see before choosing a chat template. "
+            "Bounded: this is fed straight from row content, and a column with more distinct roles "
+            "than fit here is not a chat column, which the first few dozen already say."
         ),
     )
     ends_with_assistant_rate: float = Field(

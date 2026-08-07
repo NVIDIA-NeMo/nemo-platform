@@ -87,6 +87,16 @@ def test_an_empty_histogram_reports_zeros():
     assert (quantiles.p50, quantiles.p95, quantiles.p99, quantiles.max) == (0, 0, 0, 0)
 
 
+def test_roles_seen_stops_growing():
+    # Fed straight from row content, so without a bound one malformed column could hold a string per
+    # message -- and membership is checked against the list, so it is quadratic as well as unbounded.
+    rows = _rows("m", [[{"role": f"role-{i}", "content": "x"}] for i in range(stats_module._MAX_ROLES_SEEN * 3)])
+    measured = _stats([_feature("m", "messages")], rows)["m"]
+    assert len(measured.messages.roles_seen) == stats_module._MAX_ROLES_SEEN
+    # The rates still count every row: only the vocabulary of roles is bounded, not the measurement.
+    assert measured.messages.turns.max == 1
+
+
 # --- text ----------------------------------------------------------------------------------------
 
 
