@@ -66,6 +66,9 @@ refresh-openapi:  ## Generate the OpenAPI specification
 stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SDK
 	SDK_RELEASE_TIER=ga ./sdk/stainless.sh sync
 
+.PHONY: generate
+generate: stainless ## Alias for SDK generation via Stainless
+
 .PHONY: update-web-sdk
 update-web-sdk: verify-mise ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
 	cd web && $(MISE_EXEC) pnpm gen
