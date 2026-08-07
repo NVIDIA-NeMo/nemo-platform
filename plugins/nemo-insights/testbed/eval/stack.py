@@ -12,8 +12,14 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 PLATFORM_ROOT = Path(__file__).resolve().parents[4]
+CLICKHOUSE_URL = "http://localhost:8123"
+_CLICKHOUSE_LABEL_FILTERS = (
+    "label=nmp.nvidia.com/managed-by=nemo-platform",
+    "label=nmp.nvidia.com/component=intake-clickhouse",
+)
 
 
 def _wait(url: str, attempts: int, delay: float) -> bool:
@@ -33,8 +39,26 @@ def _fail_with_log(log: Path, message: str) -> None:
     sys.exit(1)
 
 
+def _intake_clickhouse_container(clickhouse_url: str = CLICKHOUSE_URL) -> str:
+    """Resolve the labeled container publishing the stack's local ClickHouse URL."""
+    parsed_url = urlsplit(clickhouse_url)
+    if parsed_url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(f"stack ClickHouse URL is not local: {clickhouse_url}")
+    host_port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
+    command = ["docker", "ps"]
+    for filter_value in (*_CLICKHOUSE_LABEL_FILTERS, f"publish={host_port}"):
+        command.extend(("--filter", filter_value))
+    command.extend(("--format", "{{.Names}}"))
+    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    names = [name for name in result.stdout.splitlines() if name]
+    if len(names) != 1:
+        detail = "none found" if not names else f"found {', '.join(names)}"
+        raise RuntimeError(f"expected one labeled Intake ClickHouse container publishing port {host_port}; {detail}")
+    return names[0]
+
+
 def verify() -> None:
-    for url in ("http://localhost:8123/ping", "http://localhost:8080/health/ready"):
+    for url in (f"{CLICKHOUSE_URL}/ping", "http://localhost:8080/health/ready"):
         if not _wait(url, attempts=1, delay=0):
             sys.exit(f"verify failed: {url}")
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
@@ -54,12 +78,17 @@ def main() -> None:
     subprocess.run(
         [str(PLATFORM_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
         check=True,
-        env={**os.environ, "CLICKHOUSE_DATA_DIR": str(state / "clickhouse")},
+        env={
+            **os.environ,
+            "CLICKHOUSE_DATA_DIR": str(state / "clickhouse"),
+            "NMP_INTAKE_CLICKHOUSE_URL": CLICKHOUSE_URL,
+        },
     )
-    if not _wait("http://localhost:8123/ping", attempts=30, delay=2):
+    if not _wait(f"{CLICKHOUSE_URL}/ping", attempts=30, delay=2):
         sys.exit("ClickHouse never became ready")
+    clickhouse_container = _intake_clickhouse_container()
     subprocess.run(
-        ["docker", "exec", "nmp-intake-clickhouse", "clickhouse-client", "--query", "SYSTEM STOP TTL MERGES"],
+        ["docker", "exec", clickhouse_container, "clickhouse-client", "--query", "SYSTEM STOP TTL MERGES"],
         check=True,
     )
 
@@ -82,7 +111,11 @@ def main() -> None:
                 "8080",
             ],
             cwd=PLATFORM_ROOT,
-            env={**os.environ, "NMP_DATA_DIR": str(state / "nmp")},
+            env={
+                **os.environ,
+                "NMP_DATA_DIR": str(state / "nmp"),
+                "NMP_INTAKE_CLICKHOUSE_URL": CLICKHOUSE_URL,
+            },
             stdout=fh,
             stderr=subprocess.STDOUT,
             start_new_session=True,

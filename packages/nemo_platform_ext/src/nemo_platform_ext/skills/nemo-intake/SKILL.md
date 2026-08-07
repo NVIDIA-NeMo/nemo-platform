@@ -53,10 +53,10 @@ Require:
 For a remote deployment, set `NMP_BASE_URL` to its HTTPS origin and skip local startup. Use the
 deployment's authentication mechanism. Do not send authentication across an HTTP redirect: validate
 the final HTTPS origin and do not add `curl -L` to authenticated requests. For a local source
-checkout, follow `SETUP.md`, then start ClickHouse before the backend:
+checkout, follow `SETUP.md`, make sure Docker is running, then start the backend. Intake
+automatically provisions local ClickHouse unless `NMP_INTAKE_CLICKHOUSE_URL` is set:
 
 ```bash
-services/intake/scripts/spans/run_clickhouse.sh
 uv run nemo services run --services auth,entities,intake --host 127.0.0.1 --port 8080
 ```
 
@@ -110,7 +110,10 @@ tool, token, cost, input/output, and session fields needed for useful Intake tel
    ```
 
 5. Emit a root agent/chain span plus granular model, tool, retrieval, guardrail, and error spans.
-   Preserve parent-child IDs and set a stable `session.id` for related traces.
+   Preserve parent-child IDs and set a stable `session.id` for related traces. Always set
+   `gen_ai.agent.name` (or `llm.agent.name` / `agent.name` for instrumentation that emits those
+   conventions) on every span to a stable name for the agent. This ensures the spans can be analyzed
+   by NeMo Insights in the future.
 6. Run one representative interaction, then verify it through the spans query below.
 
 Intake maps OpenInference and OTel GenAI semantic attributes into queryable model, provider, tool,
@@ -146,5 +149,7 @@ curl -g "$NMP_BASE_URL/apis/intake/v2/workspaces/$WORKSPACE/spans?filter[session
 ```
 
 Confirm the response contains the expected session, trace/span hierarchy, inputs and outputs,
-status/errors, and any evaluator results. If the goal is to create named evaluation runs and compare
-them in a leaderboard, hand off to `nemo-experiments-upload`.
+status/errors, and any evaluator results. Also query with `filter[agent_name]=<agent-name>` and
+confirm the returned `agent_name` matches the stable value emitted by the agent. If the goal is to
+create named evaluation runs and compare them in a leaderboard, hand off to
+`nemo-experiments-upload`.

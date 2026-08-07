@@ -13,6 +13,7 @@ import {
 import {
   type CustomAssistantBeforeRunContext,
   type CustomAssistantRunContext,
+  type CustomAssistantRunResult,
   useCustomAssistantChatRuntime,
 } from '@studio/routes/agents/CopilotChatRoute/useCustomAssistantChatRuntime';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -43,6 +44,9 @@ const getAssistantContent = (messages: readonly ThreadMessageLike[]) => {
   if (!Array.isArray(content)) throw new Error('Expected assistant content parts');
   return content;
 };
+
+const runContextOf = (onRun: ReturnType<typeof vi.fn>): CustomAssistantRunContext | undefined =>
+  onRun.mock.calls[0]?.[0] as CustomAssistantRunContext | undefined;
 
 describe('useCustomAssistantChatRuntime', () => {
   beforeEach(() => {
@@ -473,6 +477,114 @@ describe('useCustomAssistantChatRuntime', () => {
         type: 'complete',
         reason: 'stop',
       });
+    });
+  });
+  it('starts a new assistant message for tool calls that follow a picker answer', async () => {
+    let runContext: CustomAssistantRunContext | undefined;
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      runContext = context;
+      await new Promise<void>((resolve) => {
+        context.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Anonymize a dataset');
+    });
+
+    await waitFor(() => {
+      expect(getMockRuntime(result.current.runtime).messages).toHaveLength(2);
+    });
+
+    const pickerPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_select',
+      toolName: 'select_dataset_file',
+      args: {},
+      argsText: '{}',
+    };
+    const afterPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_after',
+      toolName: 'nemo_api',
+      args: { resource: 'files' },
+      argsText: '{"resource":"files"}',
+    };
+
+    act(() => {
+      runContext?.appendAssistantParts([pickerPart]);
+      // The picker is shown, which closes the active assistant message...
+      runContext?.prepareForUserInput();
+      // ...but a tool step still streams in before the user answers, which
+      // re-attaches the run to that now-closed message.
+      runContext?.appendAssistantParts([pickerPart]);
+    });
+
+    act(() => {
+      result.current.appendUserMessage('Selected dataset: test-pi/titanic.parquet');
+      runContext?.appendAssistantParts([afterPart]);
+    });
+
+    await waitFor(() => {
+      const messages = getMockRuntime(result.current.runtime).messages;
+      // The tool call that followed the answer must render below it, not merged
+      // back into the assistant message that came before.
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      expect(getMessageText(messages[2]!)).toBe('Selected dataset: test-pi/titanic.parquet');
+      expect(JSON.stringify(messages[3]?.content)).toContain('toolu_after');
+      expect(JSON.stringify(messages[1]?.content)).not.toContain('toolu_after');
+    });
+
+    await act(async () => {
+      await getMockRuntime(result.current.runtime).onCancel();
+    });
+  });
+  it('keeps a returned result below a picker answer instead of dropping it', async () => {
+    let resolveRun: ((result: CustomAssistantRunResult) => void) | undefined;
+    const onRun = vi.fn(
+      () =>
+        new Promise<CustomAssistantRunResult>((resolve) => {
+          resolveRun = resolve;
+        })
+    );
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Anonymize a dataset');
+    });
+
+    await waitFor(() => {
+      expect(getMockRuntime(result.current.runtime).messages).toHaveLength(2);
+    });
+
+    act(() => {
+      runContextOf(onRun)?.appendAssistantText('Picking a dataset.');
+      // Showing the picker completes the active assistant message...
+      runContextOf(onRun)?.prepareForUserInput();
+      // ...and the answer is appended after it.
+      result.current.appendUserMessage('Selected dataset: titanic.parquet');
+    });
+
+    act(() => {
+      resolveRun?.({ text: 'Anonymized 100 rows.' });
+    });
+
+    await waitFor(() => {
+      const messages = getMockRuntime(result.current.runtime).messages;
+      // The result must land in a new message below the answer, not be dropped.
+      expect(messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ]);
+      expect(getMessageText(messages[3]!)).toBe('Anonymized 100 rows.');
     });
   });
 });

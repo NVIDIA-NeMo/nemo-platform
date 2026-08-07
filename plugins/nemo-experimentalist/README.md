@@ -51,6 +51,41 @@ effective inputs:
 $NEMO agents experimentalist doctor
 ```
 
+## Agent trace formats
+
+The agent under test can emit traces as OTLP or ATIF. **OTLP is the default** —
+skip this section unless your agent emits ATIF.
+
+To use an ATIF-emitting agent:
+
+1. Have the agent write its trajectory under its trace directory (`/app/traces`
+   in the Harbor task container) with a `.atif.json` suffix.
+2. Select the format on the evaluator, in the profile's `experiment_config`:
+
+   ```yaml
+   experiment_config:
+     evaluator:
+       trace_format: atif   # otlp (default) | atif
+   ```
+
+3. Run against a platform, which ATIF requires:
+
+   ```bash
+   $NEMO agents experimentalist run --base-url https://<platform-host> ...
+   ```
+
+Experiment grouping, run counts, and evaluator scores in Studio behave the same
+as for OTLP. ATIF traces do not carry per-step timing, so individual step
+durations show as zero.
+
+### Troubleshooting
+
+- *"configured `trace_format='otlp'` matched no trace artifact, but atif
+  artifacts are present"* — set `trace_format: atif`.
+- *"Cannot read ATIF trajectory from disk … this trace was never uploaded"* — the
+  run had no reachable platform, so the trace was never ingested. Supply
+  `--base-url` and a workspace.
+
 ## Run the Experimentalist locally
 
 `nemo agents experimentalist run` runs the local Experimentalist loop. It evaluates

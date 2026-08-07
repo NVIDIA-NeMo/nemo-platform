@@ -8,6 +8,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +19,14 @@ class AgentEvalScoreStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     PARTIAL = "partial"
+
+
+#: Diagnostic detail key stamped when a score is ``FAILED`` because the *trial* failed — the agent
+#: produced nothing to score — rather than because the metric itself raised. Both are reported as
+#: ``FAILED``, but they mean different things to a reader: a failed trial is a failed *attempt*, a
+#: failed metric is a failed *measurement*. Consumers that must tell them apart read this key via
+#: :func:`is_trial_failure`.
+TRIAL_STATUS_DETAIL = "trial_status"
 
 
 class AgentEvalDiagnosticSeverity(str, Enum):
@@ -67,4 +76,22 @@ class AgentEvalTaskScore(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Free-form metadata associated with the score.",
+    )
+
+
+def is_trial_failure(score: AgentEvalTaskScore) -> bool:
+    """True when a ``FAILED`` score records a failed *trial* rather than a metric that raised.
+
+    The evaluator short-circuits a failed trial into a failed score without running the metric, and
+    stamps :data:`TRIAL_STATUS_DETAIL` on the diagnostic; a metric that raised is stamped with its
+    exception type instead. The distinction is what lets pass@k charge a dead rollout to the agent
+    while leaving an unusable measurement out of the denominator entirely.
+
+    Matches on the detail's *value*, not merely the key's presence: ``trial_status`` is a natural
+    thing for a hand-built score to carry for its own reasons, and only ``failed`` means the attempt
+    is one the agent is answerable for.
+    """
+    return score.status is AgentEvalScoreStatus.FAILED and any(
+        diagnostic.details.get(TRIAL_STATUS_DETAIL) == AgentEvalTrialStatus.FAILED.value
+        for diagnostic in score.diagnostics
     )
