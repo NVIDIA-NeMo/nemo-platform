@@ -230,11 +230,8 @@ export const getInitialFormValuesFromState = (
     cloneFromJob?: unknown;
   };
 
-  if (typeof initialValues === 'object' && initialValues !== null) {
-    const backend = (initialValues as Record<string, unknown>).backend;
-    if (backend === 'automodel' || backend === 'unsloth') {
-      return initialValues as CustomizationFormFields;
-    }
+  if (customizationFormSchema.safeParse(initialValues).success) {
+    return initialValues as CustomizationFormFields;
   }
 
   if (typeof cloneFromJob === 'object' && cloneFromJob !== null) {

@@ -13,6 +13,14 @@ export interface HfRowsPage {
   rows: Array<{ row: Record<string, unknown> }>;
 }
 
+const isHfRowsPage = (value: unknown): value is HfRowsPage =>
+  typeof value === 'object' &&
+  value !== null &&
+  Array.isArray((value as { rows?: unknown }).rows) &&
+  (value as { rows: unknown[] }).rows.every(
+    (entry) => typeof entry === 'object' && entry !== null && 'row' in entry
+  );
+
 export interface HuggingFaceRowsSource {
   hfDataset: string;
   hfConfig: string;
@@ -72,7 +80,13 @@ const fetchRowsPage = async (url: string, querySignal: AbortSignal): Promise<HfR
       throw new TransientRowsPageError(`Failed to fetch dataset from Hugging Face: ${reason}`);
     }
 
-    if (response.ok) return (await response.json()) as HfRowsPage;
+    if (response.ok) {
+      const payload: unknown = await response.json();
+      if (!isHfRowsPage(payload)) {
+        throw new Error('Failed to fetch dataset from Hugging Face: unexpected response shape');
+      }
+      return payload;
+    }
 
     const message = `Failed to fetch dataset from Hugging Face: ${response.statusText || 'request failed'}`;
     throw isTransientStatus(response.status)

@@ -92,6 +92,28 @@ describe('useHuggingFaceDatasetRows', () => {
     expect(result.current.error?.message).toMatch(/Failed to fetch dataset from Hugging Face/);
   });
 
+  it('errors on a 200 whose payload is not a rows page, without retrying', async () => {
+    let attempts = 0;
+    server.use(
+      http.get(HF_DATASETS_API, () => {
+        attempts += 1;
+        return HttpResponse.json({});
+      })
+    );
+
+    const { result } = renderHook(
+      () => useHuggingFaceDatasetRows({ source: SOURCE, rowCount: 10 }),
+      {
+        wrapper: TestProviders,
+      }
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(attempts).toBe(1);
+    expect(result.current.rows).toBeUndefined();
+  });
+
   it('retries a transient status up to the configured budget, then gives up', async () => {
     let attempts = 0;
     server.use(

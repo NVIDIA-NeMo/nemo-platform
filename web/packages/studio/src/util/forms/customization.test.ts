@@ -314,6 +314,15 @@ describe('getInitialFormValuesFromState', () => {
     expect(getInitialFormValuesFromState({ initialValues: { backend: 'nope' } })).toBeUndefined();
   });
 
+  it('ignores initialValues with a valid backend but no matching spec', () => {
+    expect(
+      getInitialFormValuesFromState({ initialValues: { backend: 'automodel' } })
+    ).toBeUndefined();
+    expect(
+      getInitialFormValuesFromState({ initialValues: { backend: 'unsloth' } })
+    ).toBeUndefined();
+  });
+
   it('ignores a cloneFromJob whose spec matches no backend', () => {
     expect(
       getInitialFormValuesFromState({ cloneFromJob: { spec: { foo: 'bar' } } })
