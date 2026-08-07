@@ -32,7 +32,7 @@ _INFERENCE_ERROR = "inference_error"
 
 
 class RowIdentityError(ValueError):
-    """A configured ``test_case_id_field`` is missing from a row."""
+    """A row's published identity is unusable — missing, or shared with another row."""
 
 
 def _test_case_id(row: RowScore, index: int, test_case_id_field: str | None) -> str:
@@ -110,8 +110,25 @@ def row_result_to_agent_eval_result(
     """
     trials: list[AgentEvalTrial] = []
     scores: list[AgentEvalTaskScore] = []
+    # Published session ids are `{run_id}:{trial id}`, so two rows sharing an id are one session:
+    # the second trajectory replaces the first and its scores land on the same span. That loses a row
+    # with nothing to show for it, so refuse the whole run instead — a column that is not unique is a
+    # misconfiguration, and publishing 1 of 1000 rows silently is the worst way to find out.
+    seen: dict[str, int] = {}
     for index, row in enumerate(result.row_scores):
         test_case_id = _test_case_id(row, index, test_case_id_field)
+        if test_case_id in seen:
+            source = (
+                f"column {test_case_id_field!r}"
+                if test_case_id_field is not None
+                else "row position (rows carry inconsistent `row_index` values)"
+            )
+            raise RowIdentityError(
+                f"Rows {seen[test_case_id]} and {index} both resolve to test case id "
+                f"{test_case_id!r} from {source}. Ids must be unique or the rows overwrite each "
+                "other in Intake."
+            )
+        seen[test_case_id] = index
         output = _output(row)
         trials.append(
             AgentEvalTrial(

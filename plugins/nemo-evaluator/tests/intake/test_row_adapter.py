@@ -136,6 +136,20 @@ def test_non_string_id_column_is_coerced() -> None:
     assert result.trials[0].id == "42"
 
 
+def test_duplicate_id_column_values_are_rejected() -> None:
+    # Two rows sharing an id publish as one session, the second silently replacing the first. A
+    # non-unique column is a misconfiguration, so fail the run rather than lose rows.
+    with pytest.raises(RowIdentityError, match="both resolve to test case id 'q-1'"):
+        _adapt([_row(item={"qid": "q-1"}), _row(row_index=1, item={"qid": "q-1"})], test_case_id_field="qid")
+
+
+def test_duplicate_positional_ids_are_rejected() -> None:
+    # `row_index` is optional, so a mix of set and unset values can collide against the enumeration
+    # fallback: here row 0 has no index (-> "row-0") and row 1 carries row_index=0 (-> "row-0").
+    with pytest.raises(RowIdentityError, match="both resolve to test case id 'row-0'"):
+        _adapt([_row(row_index=None), _row(row_index=0)])
+
+
 def test_missing_id_column_raises_instead_of_falling_back() -> None:
     # A silent fallback to row position would reinstate exactly the instability the field exists to
     # remove, and the caller would have no way to notice.
