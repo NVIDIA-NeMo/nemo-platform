@@ -29,6 +29,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Jobs here provision their own toolchain (astral-sh/setup-uv reads the same
+  # required-version out of pyproject.toml, actions/setup-node pins Node), so
+  # the Makefile should call those rather than a mise it never installed.
+  NMP_SKIP_MISE: 1
+
 jobs:
   changes:
     name: Detect Path Changes

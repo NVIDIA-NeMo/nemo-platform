@@ -17,7 +17,7 @@ ifeq ($(ARCH),arm64)
 	export BUILD_ARCH ?= linux/arm64
 endif
 PYTEST_EXTRA ?=
-PYTHON_VERSION ?= 3.11
+PYTHON_VERSION ?= 3.12
 BOOTSTRAP_CREATE_VENV ?= 1
 BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
 BOOTSTRAP_ACTIVATION_REMINDER = if [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
@@ -60,11 +60,11 @@ docker-push: ## Build and push Docker bake TARGET, default docker-cpu
 
 .PHONY: refresh-openapi
 refresh-openapi:  ## Generate the OpenAPI specification
-	uv run --frozen script/generate-openapi-spec.sh
+	$(UV) run --frozen script/generate-openapi-spec.sh
 
 .PHONY: stainless
 stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SDK
-	SDK_RELEASE_TIER=ga ./sdk/stainless.sh sync
+	SDK_RELEASE_TIER=ga $(MISE_EXEC) ./sdk/stainless.sh sync
 
 .PHONY: generate
 generate: stainless ## Alias for SDK generation via Stainless
@@ -78,27 +78,27 @@ update-sdk: build-policy refresh-openapi stainless update-web-sdk update-cli ## 
 
 .PHONY: vendor-nemo-platform-ext
 vendor-nemo-platform-ext:
-	$(MAKE) -C packages/nemo_platform_ext vendor
+	$(MISE_EXEC) $(MAKE) -C packages/nemo_platform_ext vendor
 
 .PHONY: generate-cli-commands
 generate-cli-commands: ## Run generation of the CLI commands
-	uv run --frozen nemo-platform-sdk-tools generate-cli $(ARGS)
+	$(UV) run --frozen nemo-platform-sdk-tools generate-cli $(ARGS)
 
 	# auto-generated code can be cleaned up more aggressively (in this case, we want to remove unused imports in __init__.py files)
-	uv run --frozen ruff check --fix --preview --unsafe-fixes --extend-select F401,E402 packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/
+	$(UV) run --frozen ruff check --fix --preview --unsafe-fixes --extend-select F401,E402 packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/
 	# ARG001 catches unused function arguments which indicates variable shadowing bugs (no auto-fix)
-	uv run --frozen ruff check --select ARG001 packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/
-	uv run --frozen ruff check --fix --unsafe-fixes packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/
-	uv run --frozen ruff format packages/nemo_platform_ext
+	$(UV) run --frozen ruff check --select ARG001 packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/
+	$(UV) run --frozen ruff check --fix --unsafe-fixes packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/
+	$(UV) run --frozen ruff format packages/nemo_platform_ext
 
 .PHONY: generate-cli-reference-docs
 generate-cli-reference-docs: ## Generate the CLI reference documentation
-	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py reference > docs/cli/reference.mdx
-	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py summary > docs/fern/snippets/_snippets/cli-summary.mdx
+	$(UV) run --frozen packages/nemo_platform_ext/scripts/docs_generator.py reference > docs/cli/reference.mdx
+	$(UV) run --frozen packages/nemo_platform_ext/scripts/docs_generator.py summary > docs/fern/snippets/_snippets/cli-summary.mdx
 
 .PHONY: generate-config-reference-docs
 generate-config-reference-docs: ## Generate the platform config reference documentation
-	uv run --frozen generate-config-docs
+	$(UV) run --frozen generate-config-docs
 
 # ============================================================================
 # Fern documentation site (docs/fern)
@@ -128,12 +128,12 @@ docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link ch
 .PHONY: docs-check-python-snippets
 docs-check-python-snippets: ## Syntax-check and type-check Python snippets in one doc (DOCS_PATH=...)
 	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-check-python-snippets DOCS_PATH=docs/customizer/tutorials/import-hf-model.mdx" >&2; exit 2; fi
-	uv run --frozen python docs/_scripts/lint_python_snippets.py "$(DOCS_PATH)"
+	$(UV) run --frozen python docs/_scripts/lint_python_snippets.py "$(DOCS_PATH)"
 
 .PHONY: docs-run-notebook
 docs-run-notebook: ## Execute one Fern notebook source (DOCS_PATH=.mdx/.ipynb/.md, optional ARGS=...)
 	@if [ -z "$(strip $(DOCS_PATH))" ]; then echo "Usage: make docs-run-notebook DOCS_PATH=docs/customizer/tutorials/sft-customization-job.mdx" >&2; exit 2; fi
-	uv run --frozen python docs/fern/scripts/run_notebooks.py $(ARGS) "$(DOCS_PATH)"
+	$(UV) run --frozen python docs/fern/scripts/run_notebooks.py $(ARGS) "$(DOCS_PATH)"
 
 .PHONY: docs-broken-links
 docs-broken-links: ## Report broken links across the built docs
@@ -163,34 +163,48 @@ clean-python: ## remove python virtual environment
 	rm -rf .venv/
 
 .PHONY: verify-python-version
-verify-python-version: ## Verify Python version and install if necessary
+verify-python-version: verify-mise ## Verify Python version and install if necessary
 	@echo "~~~~~~"
 	@echo "verifying python version"
-	uv python find $(PYTHON_VERSION) || uv python install $(PYTHON_VERSION)
+	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
 
-.venv/bin/python:
+# Phony rather than a file target: a `.venv/bin/python` that already exists says
+# nothing about which interpreter it is, so changing PYTHON_VERSION has to force
+# a rebuild. Order-only prerequisite keeps mise resolution out of the recipe.
+.PHONY: .venv
+.venv: | verify-python-version ## Create a Python virtual environment
 	@echo "~~~"
-	@if [ "$(BOOTSTRAP_CREATE_VENV)" = "0" ]; then \
-		echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing"; \
+	@current=$$([ -x .venv/bin/python ] && .venv/bin/python -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null); \
+	case "$$current" in \
+		"$(PYTHON_VERSION)"|"$(PYTHON_VERSION)".*) exit 0 ;; \
+	esac; \
+	if [ "$(BOOTSTRAP_CREATE_VENV)" = "0" ]; then \
+		if [ -n "$$current" ]; then \
+			echo "BOOTSTRAP_CREATE_VENV=0 but .venv is on Python $$current, not $(PYTHON_VERSION)"; \
+		else \
+			echo "BOOTSTRAP_CREATE_VENV=0 but .venv/bin/python is missing or not runnable"; \
+		fi; \
 		echo "Create .venv manually, or run make again without BOOTSTRAP_CREATE_VENV=0."; \
 		exit 1; \
-	fi
-	@echo "verifying python version"
-	uv python find $(PYTHON_VERSION) || uv python install $(PYTHON_VERSION)
-	@echo "setting up a venv with uv"
-	uv venv --seed --allow-existing
-
-.venv: .venv/bin/python ## Create a Python virtual environment
+	fi; \
+	if [ -n "$$current" ]; then \
+		echo "recreating .venv on Python $(PYTHON_VERSION) (was $$current)"; \
+	elif [ -d .venv ]; then \
+		echo "replacing unusable .venv with Python $(PYTHON_VERSION)"; \
+	else \
+		echo "setting up a venv with uv"; \
+	fi; \
+	$(UV) venv --python $(PYTHON_VERSION) --seed $$([ -d .venv ] && echo --clear)
 
 # Optional escape hatch for local plugin packages that cannot participate in the
 # root uv workspace/lock. Leave empty for the normal monorepo bootstrap path.
 BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
 
 .PHONY: bootstrap-python
-bootstrap-python: ## Bootstrap Python dependencies.
+bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
 	@echo "~~~~~~"
 	@echo "installing python dependencies"
-	uv sync --frozen --all-packages
+	$(UV) sync --python $(PYTHON_VERSION) --frozen --all-packages
 	@if [ -n "$(strip $(BOOTSTRAP_LOCAL_PLUGIN_DIRS))" ]; then \
 		$(MAKE) bootstrap-plugins BOOTSTRAP_LOCAL_PLUGIN_DIRS="$(BOOTSTRAP_LOCAL_PLUGIN_DIRS)"; \
 	fi
@@ -205,6 +219,7 @@ NMP_SKIP_MISE ?=
 MISE_VERSION ?= v2026.5.7
 MISE := $(shell command -v mise 2>/dev/null || echo $(HOME)/.local/bin/mise)
 MISE_EXEC := $(if $(NMP_SKIP_MISE),,"$(MISE)" exec --)
+UV := $(MISE_EXEC) uv
 
 .PHONY: verify-mise
 verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
@@ -220,7 +235,19 @@ verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
 		echo "or re-run with NMP_SKIP_MISE=1 to use your own node/pnpm."; \
 		exit 1; \
 	fi; \
-	"$(MISE)" install --yes
+	if [ -z "$${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then \
+		GITHUB_TOKEN="$$(gh auth token 2>/dev/null)"; \
+		export GITHUB_TOKEN; \
+	fi; \
+	"$(MISE)" install --yes || { \
+		echo ""; \
+		echo "mise could not install the pinned tools."; \
+		echo "pnpm and uv are fetched through the GitHub API, which allows only"; \
+		echo "60 unauthenticated requests per hour per IP. If the output above"; \
+		echo "mentions a rate limit, set GITHUB_TOKEN (or run 'gh auth login')"; \
+		echo "and re-run."; \
+		exit 1; \
+	}
 
 .PHONY: verify-pnpm
 verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
@@ -261,7 +288,7 @@ bootstrap-plugins: .venv ## Install editable plugin packages not covered by the 
 		editable_args="$$editable_args -e $$plugin"; \
 	done; \
 	if [ -n "$$editable_args" ]; then \
-		. .venv/bin/activate && uv pip install $$editable_args; \
+		. .venv/bin/activate && $(UV) pip install $$editable_args; \
 	else \
 		echo "no local plugin packages configured, skipping"; \
 	fi
@@ -280,7 +307,7 @@ bootstrap: bootstrap-python ## Bootstrap the local dev environment, including St
 
 .PHONY: run
 run: build-policy ## Run the NeMo Platform locally with Docker job backend
-	NMP_CONFIG_FILE_PATH=${NMP_CONFIG_FILE_PATH} uv run nemo services run
+	NMP_CONFIG_FILE_PATH=${NMP_CONFIG_FILE_PATH} $(UV) run nemo services run
 
 .PHONY: clean
 clean: clean-python ## Clean the NeMo Platform DB, files, and Python virtual environment
@@ -289,8 +316,8 @@ clean: clean-python ## Clean the NeMo Platform DB, files, and Python virtual env
 
 .PHONY: update-licenses
 update-licenses: ## Update the third_party/license.txt file with the latest licenses
-	uv sync --inexact
-	uv run --frozen nemo-platform-sdk-tools license generate
+	$(UV) sync --inexact
+	$(UV) run --frozen nemo-platform-sdk-tools license generate
 
 .PHONY: check-licenses
 check-licenses: ## Check that license files are up to date
@@ -299,9 +326,9 @@ check-licenses: ## Check that license files are up to date
 	export PATH="$$HOME/.local/bin:$$PATH" && \
 	$(MAKE) update-licenses && \
 	diff third_party/licenses.jsonl "$${LICENSE_DIR}/$${LICENSE_NAME}" && \
-	uv run --frozen nemo-platform-sdk-tools license find-missing
+	$(UV) run --frozen nemo-platform-sdk-tools license find-missing
 
-CMD_COPYRIGHT_HEADER_FIXER := uv run script/copyright_fixer.py .
+CMD_COPYRIGHT_HEADER_FIXER := $(UV) run script/copyright_fixer.py .
 .PHONY: update-copyright-headers
 update-copyright-headers:
 	$(CMD_COPYRIGHT_HEADER_FIXER)
@@ -312,20 +339,20 @@ check-copyright-headers:
 
 .PHONY: lint
 lint: ## Run all linters (licenses, openapi, config docs, python style/types/sdk, vendored SDK, CLI, auth config)
-	bash tools/lint/lint-all.sh
+	$(MISE_EXEC) bash tools/lint/lint-all.sh
 
 LINT_FIX_VERIFY ?= 0
 
 .PHONY: lint-fix
 lint-fix: ## Auto-fix lint issues (set LINT_FIX_VERIFY=1 to also run CI lint checks)
-	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) bash tools/lint/lint-fix.sh
+	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) $(MISE_EXEC) bash tools/lint/lint-fix.sh
 
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata
-	uv run --no-sync nemo-platform-sdk-tools vendor all-from-configs \
+	$(UV) run --no-sync nemo-platform-sdk-tools vendor all-from-configs \
 		nemo_platform_ext models filesets \
 		nemo_evaluator_sdk
-	uv run --no-sync nemo-platform-sdk-tools post-generation update-license-headers
+	$(UV) run --no-sync nemo-platform-sdk-tools post-generation update-license-headers
 
 # ============================================================================
 # Python Testing Targets
@@ -340,7 +367,7 @@ PYTEST_VERBOSITY := $(if $(filter true,$(CI)),-q,-v)
 PYTEST_WORKERS ?= auto
 PYTEST_MAX_WORKERS ?= 16
 PYTEST_DIST ?= loadscope
-PYTEST_CMD = env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" uv run --frozen \
+PYTEST_CMD = env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" $(UV) run --frozen \
 	pytest \
 	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) --max-worker-restart=2 \
 	--dist $(PYTEST_DIST) --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
@@ -404,32 +431,32 @@ test-gpu-integration-ci: ## Run Python integration gpu tests (tests service inte
 .PHONY: test-all-script
 test-all-script: ## Run all unit tests using the helper script (with summary)
 	@echo "Running all unit tests with summary..."
-	uv run --frozen python tools/run_all_tests.py
+	$(UV) run --frozen python tools/run_all_tests.py
 
 .PHONY: test-e2e
 test-e2e: ## Run e2e tests against nemo services (starts/stops services automatically)
 	@echo "Running e2e tests..."
-	uv run --frozen pytest e2e -v --run-e2e --junitxml=report.xml $(PYTEST_EXTRA)
+	$(UV) run --frozen pytest e2e -v --run-e2e --junitxml=report.xml $(PYTEST_EXTRA)
 
 .PHONY: test-regression
 test-regression: ## Run Python regression tests (functional microservice baseline tests)
 	@echo "Running Python regression tests..."
-	uv run --frozen pytest -v -m regression
+	$(UV) run --frozen pytest -v -m regression
 
 .PHONY: test-all
 test-all: ## Run all Python tests (unit, integration, e2e, regression)
 	@echo "Running all Python tests..."
-	uv run --frozen pytest -v -m "not canary and not skip_in_ci"
+	$(UV) run --frozen pytest -v -m "not canary and not skip_in_ci"
 
 .PHONY: test-canary
 test-canary: ## Run canary tests against deployed environments
 	@echo "Running canary tests..."
-	uv run --frozen pytest -v -m canary
+	$(UV) run --frozen pytest -v -m canary
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage reporting
 	@echo "Running tests with coverage..."
-	uv run --frozen pytest -v --cov --cov-report=html --cov-report=term --cov-report=xml
+	$(UV) run --frozen pytest -v --cov --cov-report=html --cov-report=term --cov-report=xml
 	@echo "Coverage report generated in htmlcov/index.html"
 
 .PHONY: test-coverage-report
@@ -445,14 +472,14 @@ ifndef PACKAGE
 	$(error PACKAGE is not set. Usage: make test-package PACKAGE=<package_name>)
 endif
 	@echo "Running tests for package: $(PACKAGE)..."
-	uv run --frozen pytest -v packages/$(PACKAGE)/tests/
+	$(UV) run --frozen pytest -v packages/$(PACKAGE)/tests/
 
 .PHONY: test-deployments-openshell
 test-deployments-openshell: ## Run OpenShell deployment backend unit tests with the platform-restricted [openshell] extra installed
 	# The openshell extra is not part of the default sync (platform-restricted
 	# wheel), so the shared unit-test job skips these. Install it just here and
 	# run the backend's tests for real (mirrors the nemo-guardrails --extra bench job).
-	uv run --frozen --package nemo-deployments-plugin --extra openshell \
+	$(UV) run --frozen --package nemo-deployments-plugin --extra openshell \
 		pytest -v plugins/nemo-deployments/tests/unit/backends/openshell/
 
 .PHONY: test-service
@@ -461,28 +488,28 @@ ifndef SERVICE
 	$(error SERVICE is not set. Usage: make test-service SERVICE=<service_name>)
 endif
 	@echo "Running tests for service: $(SERVICE)..."
-	uv run --frozen pytest -v services/$(SERVICE)/tests/
+	$(UV) run --frozen pytest -v services/$(SERVICE)/tests/
 
 
 .PHONY: test-fast
 test-fast: ## Run fast tests only (excludes slow, e2e, integration marked tests)
 	@echo "Running fast tests..."
-	uv run --frozen pytest -v -m "unit and not slow"
+	$(UV) run --frozen pytest -v -m "unit and not slow"
 
 .PHONY: test-watch
 test-watch: ## Run tests in watch mode (requires pytest-watch)
 	@echo "Running tests in watch mode..."
-	uv run --frozen ptw -- -v
+	$(UV) run --frozen ptw -- -v
 
 .PHONY: test-debug
 test-debug: ## Run tests with debugging output (verbose, no capture, show locals)
 	@echo "Running tests in debug mode..."
-	uv run --frozen pytest -vvv -s --tb=long --showlocals
+	$(UV) run --frozen pytest -vvv -s --tb=long --showlocals
 
 .PHONY: test-failed
 test-failed: ## Re-run only the tests that failed in the last run
 	@echo "Re-running failed tests..."
-	uv run --frozen pytest -v --lf
+	$(UV) run --frozen pytest -v --lf
 
 .PHONY: test-clean
 test-clean: ## Clean test artifacts (coverage, cache, etc.)
@@ -499,12 +526,12 @@ test-clean: ## Clean test artifacts (coverage, cache, etc.)
 .PHONY: test-list
 test-list: ## List all available tests without running them
 	@echo "Listing all tests..."
-	uv run --frozen pytest --collect-only -q
+	$(UV) run --frozen pytest --collect-only -q
 
 .PHONY: test-markers
 test-markers: ## List all available pytest markers
 	@echo "Available pytest markers:"
-	uv run --frozen pytest --markers
+	$(UV) run --frozen pytest --markers
 
 .PHONY: test-policy
 test-policy: ## Run OPA policy tests for auth service
@@ -552,45 +579,45 @@ test-jobs-launcher:
 .PHONY: test-e2e-docker
 test-e2e-docker: ## Run e2e tests using docker
 	@echo "Running e2e tests with docker..."
-	uv run --frozen pytest e2e --docker -v --junitxml=report.xml $(PYTEST_EXTRA)
+	$(UV) run --frozen pytest e2e --docker -v --junitxml=report.xml $(PYTEST_EXTRA)
 
 .PHONY: test-e2e-docker-auth
 test-e2e-docker-auth: ## Run e2e tests using docker and auth
 	@echo "Running e2e tests with docker and auth..."
-	uv run --frozen pytest e2e --docker --feature auth -v --junitxml=report.xml
+	$(UV) run --frozen pytest e2e --docker --feature auth -v --junitxml=report.xml
 
 .PHONY: test-e2e-docker-gpu
 test-e2e-docker-gpu: ## Run GPU e2e tests using docker (requires GPU host and GPU config)
 	@echo "Running GPU e2e tests with docker..."
-	uv run --frozen pytest e2e --docker --feature gpu -v --junitxml=report.xml
+	$(UV) run --frozen pytest e2e --docker --feature gpu -v --junitxml=report.xml
 
 .PHONY: test-e2e-kubernetes
 test-e2e-kubernetes: ## Run e2e tests against Kubernetes (set NMP_E2E_CLUSTER_URL)
 	@echo "Running e2e tests with Kubernetes..."
-	uv run --frozen pytest e2e --kubernetes -v -n 2 --junitxml=report-kubernetes.xml
+	$(UV) run --frozen pytest e2e --kubernetes -v -n 2 --junitxml=report-kubernetes.xml
 
 .PHONY: test-e2e-kubernetes-auth
 test-e2e-kubernetes-auth: ## Run e2e tests against Kubernetes with auth enabled (set NMP_E2E_CLUSTER_URL)
 	@echo "Running e2e tests with Kubernetes and feature auth enabled..."
-	uv run --frozen pytest e2e --kubernetes --feature auth -n 2 -v --junitxml=report-kubernetes-auth.xml
+	$(UV) run --frozen pytest e2e --kubernetes --feature auth -n 2 -v --junitxml=report-kubernetes-auth.xml
 
 .PHONY: test-e2e-kubernetes-kai
 test-e2e-kubernetes-kai: ## Run KAI Scheduler e2e tests against Kubernetes (set NMP_E2E_CLUSTER_URL)
 	@echo "Running e2e tests with Kubernetes and feature kai-scheduler..."
-	uv run --frozen pytest e2e --kubernetes --feature kai-scheduler -v --junitxml=report-kubernetes-kai.xml
+	$(UV) run --frozen pytest e2e --kubernetes --feature kai-scheduler -v --junitxml=report-kubernetes-kai.xml
 
 .PHONY: test-e2e-kubernetes-gpu
 test-e2e-kubernetes-gpu: ## Run GPU e2e tests against Kubernetes (requires GPU nodes; set NMP_E2E_CLUSTER_URL)
 	@echo "Running GPU e2e tests with Kubernetes with feature gpu enabled..."
-	uv run --frozen pytest e2e --kubernetes --feature gpu -v --junitxml=report-kubernetes-gpu.xml
+	$(UV) run --frozen pytest e2e --kubernetes --feature gpu -v --junitxml=report-kubernetes-gpu.xml
 
 .PHONY: test-e2e-kubernetes-gpu-automodel
 test-e2e-kubernetes-gpu-automodel: ## Run GPU automodel customization e2e tests against Kubernetes (requires GPU nodes; set NMP_E2E_CLUSTER_URL)
 	@echo "Running GPU automodel customization e2e tests with Kubernetes..."
-	uv run --frozen pytest tests/agentic-use/customizer-lora-job-cli/tests/test_outputs.py --kubernetes --feature gpu --log-cli-level=INFO -v --junitxml=report-kubernetes-gpu-automodel.xml
+	$(UV) run --frozen pytest tests/agentic-use/customizer-lora-job-cli/tests/test_outputs.py --kubernetes --feature gpu --log-cli-level=INFO -v --junitxml=report-kubernetes-gpu-automodel.xml
 
 .PHONY: benchmark-guardrails
 benchmark-guardrails: ## Run nemo-guardrails IGW benchmark sweep (set BENCHMARK_ARGS for extra flags)
 	@echo "Running nemo-guardrails IGW benchmark..."
-	uv run --frozen --package nemo-guardrails-plugin --extra bench \
+	$(UV) run --frozen --package nemo-guardrails-plugin --extra bench \
 		python -m nemo_guardrails_plugin.benchmarks.run $(BENCHMARK_ARGS)
