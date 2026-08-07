@@ -5,25 +5,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WEB_DIR="$REPO_ROOT/web"
 
-# --- pnpm availability ---
+# --- Toolchain availability ---
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  if command -v corepack >/dev/null 2>&1; then
-    corepack enable pnpm
-  else
-    echo "pnpm is required for Studio bootstrap."
-    echo "Install pnpm and put it first on PATH."
+for tool in node pnpm; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "$tool is not on PATH."
+    if [ -n "${NMP_SKIP_MISE:-}" ]; then
+      echo "NMP_SKIP_MISE is set, so $tool has to come from your PATH."
+      echo "Install it, or re-run without NMP_SKIP_MISE to use the mise-managed one."
+    else
+      echo "Run 'make verify-mise' to install the pinned toolchain."
+    fi
     exit 1
   fi
-fi
-
-# --- Node.js availability ---
-
-if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js is required for Studio bootstrap."
-  echo "Install a matching local Node.js and put it first on PATH."
-  exit 1
-fi
+done
 
 # --- Engine compatibility check ---
 

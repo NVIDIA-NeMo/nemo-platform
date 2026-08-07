@@ -50,6 +50,24 @@ def test_current_context(config_file: Path):
     assert "local" in result.stdout
 
 
+def test_current_context_respects_environment_override(config_file: Path, monkeypatch):
+    monkeypatch.setenv("NMP_CURRENT_CONTEXT", "production")
+
+    result = runner.invoke(app, "config current-context")
+
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "production"
+
+
+def test_current_context_cli_flag_beats_env_var(config_file: Path, monkeypatch):
+    monkeypatch.setenv("NMP_CURRENT_CONTEXT", "local")
+
+    result = runner.invoke(app, "--context production config current-context")
+
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "production"
+
+
 def test_current_context_no_config_file(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("NMP_CONFIG_FILE", str(tmp_path / "nonexistent.yaml"))
     result = runner.invoke(app, "config current-context")
@@ -111,7 +129,7 @@ def test_view_redacts_secrets(config_file: Path):
 def test_use_context(config_file: Path):
     result = runner.invoke(app, "config use-context production")
     assert_exit_code(result, 0)
-    assert 'Switched to context "production"' in result.stdout
+    assert result.output.strip() == "Switched to context 'production'"
 
     with open(config_file) as f:
         data = yaml.safe_load(f)
@@ -171,6 +189,7 @@ def test_set_activate_requires_context(config_file: Path):
 def test_set_can_create_and_activate_named_context(config_file: Path):
     result = runner.invoke(app, "config set --context staging --base-url https://staging.example.com --activate")
     assert_exit_code(result, 0)
+    assert result.output.strip() == "Context 'staging' created and set as current"
 
     with open(config_file) as f:
         data = yaml.safe_load(f)
@@ -180,6 +199,30 @@ def test_set_can_create_and_activate_named_context(config_file: Path):
     context = next(c for c in data["contexts"] if c["name"] == "staging")
     cluster = next(c for c in data["clusters"] if c["name"] == context["cluster"])
     assert cluster["base_url"] == "https://staging.example.com/"
+
+
+def test_set_activate_existing_context_reports_switch(config_file: Path):
+    result = runner.invoke(app, "config set --context production --activate")
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "Switched to context 'production'"
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert data["current_context"] == "production"
+
+
+def test_set_update_and_activate_existing_context_reports_both_actions(config_file: Path):
+    result = runner.invoke(app, "config set --context production --workspace updated-ws --activate")
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "Configuration updated for context 'production' and set as current"
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert data["current_context"] == "production"
+    production = next(context for context in data["contexts"] if context["name"] == "production")
+    assert production["workspace"] == "updated-ws"
 
 
 def test_set_creates_isolated_cluster_per_context(config_file: Path):
@@ -222,26 +265,88 @@ def test_set_base_url_does_not_affect_other_contexts(config_file: Path):
     assert a_cluster["base_url"] == "https://a-updated.example.com/"
 
 
-def test_set_new_context_auto_activates(config_file: Path):
-    """Creating a new context via config set should auto-switch to it."""
+def test_set_new_named_context_does_not_switch(config_file: Path):
     result = runner.invoke(app, "config set --context new-ctx --base-url https://new.example.com")
     assert_exit_code(result, 0)
+    assert result.output.strip() == (
+        "Context 'new-ctx' created\nTo make it current, run: nemo config use-context new-ctx"
+    )
 
     with open(config_file) as f:
         data = yaml.safe_load(f)
 
-    assert data["current_context"] == "new-ctx"
+    assert data["current_context"] == "local"
+
+
+def test_set_first_named_context_becomes_current(tmp_path: Path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+
+    result = runner.invoke(app, "config set --context staging --base-url https://staging.example.com")
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "Context 'staging' created and set as current"
+
+    with open(config_path) as f:
+        data = yaml.safe_load(f)
+
+    assert data["current_context"] == "staging"
+
+
+def test_set_new_context_hint_handles_leading_hyphen(config_file: Path):
+    _ = config_file  # fixture sets up existing config so use-context below can succeed
+    result = runner.invoke(
+        app,
+        ["config", "set", "--context", "-qa", "--base-url", "https://qa.example.com"],
+    )
+    assert_exit_code(result, 0)
+    assert "To make it current, run: nemo config use-context -- -qa" in result.output
+
+    switch_result = runner.invoke(app, ["config", "use-context", "--", "-qa"])
+    assert_exit_code(switch_result, 0)
+    assert Config.load(config_path=config_file).get_config_file().current_context == "-qa"
 
 
 def test_set_existing_context_does_not_switch(config_file: Path):
     """Modifying an existing context should not change the current context."""
     result = runner.invoke(app, "config set --context production --workspace updated-ws")
     assert_exit_code(result, 0)
+    assert result.output.strip() == "Configuration updated for context 'production'"
 
     with open(config_file) as f:
         data = yaml.safe_load(f)
 
     assert data["current_context"] == "local", "Should stay on 'local', not switch to 'production'"
+
+
+def test_set_reports_context_selected_by_environment(config_file: Path, monkeypatch):
+    monkeypatch.setenv("NMP_CURRENT_CONTEXT", "production")
+
+    result = runner.invoke(app, "config set --workspace updated-ws")
+    assert_exit_code(result, 0)
+    assert result.output.strip() == "Configuration updated for context 'production'"
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert data["current_context"] == "local"
+    production = next(context for context in data["contexts"] if context["name"] == "production")
+    assert production["workspace"] == "updated-ws"
+
+
+def test_set_rejects_unknown_context_selected_by_environment(config_file: Path, monkeypatch):
+    monkeypatch.setenv("NMP_CURRENT_CONTEXT", "prodction")
+    with open(config_file) as f:
+        before = yaml.safe_load(f)
+
+    result = runner.invoke(app, "config set --workspace updated-ws")
+
+    assert_exit_code(result, 1)
+    assert "Context 'prodction' not found" in result.output
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    assert data == before
 
 
 def test_set_new_context_creates_dedicated_cluster_and_user(config_file: Path):

@@ -546,3 +546,43 @@ class NoiseSensitivity(_RAGASBase, _RAGASJudgeConfig):
     """RAGAS metric for measuring noise sensitivity."""
 
     type: Literal[MetricType.NOISE_SENSITIVITY] = MetricType.NOISE_SENSITIVITY
+
+
+class TunableRagEvaluator(MetricBase):
+    """Tunable RAG evaluator with customizable judge prompt and weighted sub-scores."""
+
+    type: Literal[MetricType.TUNABLE_RAG_EVALUATOR] = MetricType.TUNABLE_RAG_EVALUATOR
+    model: Model | ModelRef = Field(description="Judge model used to score generated answers.")
+    judge_llm_prompt: str = Field(
+        default="",
+        description="Optional custom judge rubric. Ignored when default_scoring is true except as extra context.",
+    )
+    default_scoring: bool = Field(
+        default=True,
+        description="Use built-in coverage/correctness/relevance rubric and weighted composite.",
+    )
+    default_score_weights: dict[str, float] = Field(
+        default_factory=lambda: {"coverage": 0.5, "correctness": 0.3, "relevance": 0.2},
+        description="Weights for coverage/correctness/relevance when default_scoring is true.",
+    )
+    inference: InferenceParams | None = Field(
+        default=None,
+        description="Optional inference parameters for the judge model.",
+    )
+
+    def input_schema(self) -> InputSchema:
+        return InputSchema(
+            schema={
+                "type": "object",
+                "properties": {
+                    "inputs": {
+                        "type": "object",
+                        "properties": {"instruction": {"type": "string"}},
+                    },
+                    "reference": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                    },
+                },
+            }
+        )

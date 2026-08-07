@@ -53,7 +53,7 @@ def test_adapter_composite_entity_name() -> None:
 
 def test_build_platform_model_target_routes_lora_via_provider() -> None:
     target = eval_helpers.build_platform_model_target(
-        base_url="http://10.0.0.51:8080",
+        base_url="http://localhost:8080",
         workspace="default",
         model_entity="qwen3-1.7b",
         adapter_name="my-lora",
@@ -66,7 +66,7 @@ def test_build_platform_model_target_routes_lora_via_provider() -> None:
 
 def test_build_platform_model_target_routes_base_via_model_entity() -> None:
     target = eval_helpers.build_platform_model_target(
-        base_url="http://10.0.0.51:8080",
+        base_url="http://localhost:8080",
         workspace="default",
         model_entity="qwen3-1.7b",
         provider_name="my-provider",
@@ -82,7 +82,7 @@ def test_build_platform_model_target_requires_ready_provider_for_base(
     monkeypatch.setattr(eval_helpers, "find_ready_provider_for_model_entity", lambda **kwargs: None)
     with pytest.raises(ValueError, match="No READY inference provider"):
         eval_helpers.build_platform_model_target(
-            base_url="http://10.0.0.51:8080",
+            base_url="http://localhost:8080",
             workspace="default",
             model_entity="qwen3-1.7b",
         )
@@ -241,7 +241,7 @@ def test_adapter_from_completed_job_parses_spec(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(eval_helpers, "_platform_get_json", fake_get)
     info = eval_helpers.adapter_from_completed_job(
-        base_url="http://10.0.0.51:8080",
+        base_url="http://localhost:8080",
         workspace="default",
         job_name="unsloth-abc",
     )

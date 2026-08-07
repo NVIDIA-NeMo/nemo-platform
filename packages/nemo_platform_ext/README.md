@@ -85,8 +85,7 @@ contexts:
 Configure a context with `nemo config set`:
 
 ```bash
-nemo config set --base-url https://nmp.example.com
-nemo config set --context prod --base-url https://nmp.prod.example.com --activate
+nemo config set --context production --base-url https://nmp.example.com --activate
 ```
 
 ### Priority
@@ -146,10 +145,10 @@ nemo config set --api-key YOUR_API_KEY
 nemo config set --workspace my-workspace --output-format json
 
 # Configure and activate a named context in one step
-nemo config set --context prod --base-url https://api.prod.example.com --activate
+nemo config set --context production --base-url https://nmp.example.com --activate
 
 # Switch to an existing context
-nemo config use-context prod
+nemo config use-context production
 ```
 
 ## Setup (Local Development)

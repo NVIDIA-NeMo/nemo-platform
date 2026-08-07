@@ -40,3 +40,25 @@ export const isPowerOf = (value: number, base: number = 2) => {
 export function assertUnreachable(value: never, message?: string): never {
   throw new Error(message ?? `Unknown state: ${JSON.stringify(value)}. This should never happen.`);
 }
+
+/**
+ * Narrows an unknown value to a keyed object, excluding null and arrays. Use to
+ * walk untyped payloads without asserting a shape the compiler cannot verify.
+ */
+export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Narrows an unknown value to a primitive that renders as-is. Excludes null,
+ * undefined, objects and arrays, which need their own presentation.
+ */
+export const isScalar = (value: unknown): value is string | number | boolean =>
+  typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+
+/**
+ * True for a value that carries no usable score: a non-finite number, or the
+ * string `"NaN"` the evaluator emits when inference failed for a row.
+ */
+export const isNaNScore = (value: unknown): boolean =>
+  (typeof value === 'number' && !Number.isFinite(value)) ||
+  (typeof value === 'string' && value.toLowerCase() === 'nan');

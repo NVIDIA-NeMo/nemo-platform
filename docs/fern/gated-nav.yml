@@ -111,8 +111,3 @@
   contents:
   - page: Cluster Setup
     path: ../../troubleshooting/cluster-setup.mdx
-# Publish inside the Agents section of versions/latest.yml, after "Optimize Agents".
-- section: Agents
-  contents:
-  - page: Insight-Driven Optimization
-    path: ../../agents/insight-driven-optimization.mdx

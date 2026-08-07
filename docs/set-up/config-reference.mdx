@@ -888,26 +888,6 @@ safe_synthesizer:
   default_job_resource_cpu_limit: '4'
 ```
 
-### `experimentalist`
-
-LLM endpoint and model tiers the Experimentalist's own agents run on.
-
-```yaml wordWrap
-experimentalist:
-  # Base URL of the OpenAI-compatible endpoint the optimizer's agents call.
-  api_base:
-  # Credential for that endpoint. Prefer NEMO_EXPERIMENTALIST_API_KEY over writing it here.
-  api_key:
-  # Model per tier, named as your endpoint names it. Every tier is required.
-  models:
-    # Model for the smart tier, as your endpoint names it.
-    smart:
-    # Model for the mid tier, as your endpoint names it.
-    mid:
-    # Model for the fast tier, as your endpoint names it.
-    fast:
-```
-
 ### `studio`
 
 Configuration for the Studio service.

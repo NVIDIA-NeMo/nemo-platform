@@ -3,7 +3,7 @@
 
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import type { RailsConfigOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
@@ -17,14 +17,14 @@ import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { ListChecks, Plus, Settings } from 'lucide-react';
-import type { FC } from 'react';
+import { type FC, useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 interface GuardrailTestCasesEditorProps {
   readonly workspace: string;
   readonly configId: string;
   /** The config's rails, used by the result panel to list guardrail coverage. */
-  readonly configData: RailsConfigOutput | undefined;
+  readonly configData: RailsConfig | undefined;
   readonly checks: GuardrailCheckEntity[];
   /** Which sub-tab to show. The route owns this; an unknown segment redirects upstream. */
   readonly subTab: GuardrailChecksSubTab;
@@ -40,11 +40,19 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
   const toast = useToast();
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
 
+  // Per-card flushers, keyed by check name; see `handleRunAll`.
+  const flushersRef = useRef(new Map<string, () => Promise<GuardrailCheckEntity>>());
+  const [isFlushing, setIsFlushing] = useState(false);
+
   const runMutation = useRunGuardrailChecks({
     onSuccess: (results) => {
       const errors = results.filter((r): r is { name: string; error: Error } => 'error' in r);
-      if (errors.length) {
-        toast.error(`${errors.length} test(s) failed to run`);
+      const [firstError] = errors;
+      if (firstError) {
+        // The batch swallows per-check failures, so a bare count makes every cause look alike.
+        toast.error(
+          `${errors.length} test(s) failed to run: ${getErrorMessage(firstError.error, 'Unknown error')}`
+        );
       } else {
         toast.success(`Ran ${results.length} test(s) successfully`);
       }
@@ -60,9 +68,29 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
     },
   });
 
-  const handleRunAll = () => {
-    if (!checks.length) return;
-    runMutation.mutate({ workspace, checks });
+  const registerFlush = useCallback(
+    (name: string, flush: (() => Promise<GuardrailCheckEntity>) | null) => {
+      if (flush) flushersRef.current.set(name, flush);
+      else flushersRef.current.delete(name);
+    },
+    []
+  );
+
+  const isRunning = isFlushing || runMutation.isPending;
+
+  const handleRunAll = async () => {
+    if (!checks.length || isRunning) return;
+    setIsFlushing(true);
+    try {
+      // Clicking Run blurs the focused message, dispatching that card's save. Await it, or the
+      // run sends stale text and its write-back 409s against the version that save just bumped.
+      const fresh = await Promise.all(
+        checks.map((check) => flushersRef.current.get(check.name)?.() ?? Promise.resolve(check))
+      );
+      runMutation.mutate({ workspace, checks: fresh });
+    } finally {
+      setIsFlushing(false);
+    }
   };
 
   const handleAddTest = () => {
@@ -89,9 +117,9 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
           <LoadingButton
             kind="primary"
             height={32}
-            loading={runMutation.isPending}
-            disabled={!checks.length || runMutation.isPending}
-            onClick={handleRunAll}
+            loading={isRunning}
+            disabled={!checks.length || isRunning}
+            onClick={() => void handleRunAll()}
           >
             <ListChecks size={16} />
             Run {checks.length} {checks.length === 1 ? 'Test' : 'Tests'}
@@ -130,7 +158,13 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
       {subTab === GuardrailChecksSubTab.Tests ? (
         <Stack gap="density-lg">
           {checks.map((check, i) => (
-            <GuardrailTestCard key={check.id} check={check} index={i} workspace={workspace} />
+            <GuardrailTestCard
+              key={check.id}
+              check={check}
+              index={i}
+              workspace={workspace}
+              registerFlush={registerFlush}
+            />
           ))}
           <LoadingButton
             kind="secondary"

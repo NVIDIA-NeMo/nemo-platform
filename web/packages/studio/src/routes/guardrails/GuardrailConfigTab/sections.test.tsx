@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RailsConfigOutput, RailsOutput } from '@nemo/sdk/generated/platform/schema';
+import type { RailsConfig, Rails } from '@nemo/sdk/generated/platform/schema';
 import { BehaviorSection } from '@studio/routes/guardrails/GuardrailConfigTab/BehaviorSection';
 import { DetectorsSection } from '@studio/routes/guardrails/GuardrailConfigTab/DetectorsSection';
 import { PipelineSection } from '@studio/routes/guardrails/GuardrailConfigTab/PipelineSection';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen } from '@testing-library/react';
 
-const rails: RailsOutput = {
+const rails: Rails = {
   config: {
     content_safety: { reasoning: { enabled: true } },
     gliner: { input: { entities: ['email'] }, output: { entities: ['ssn'] } },
@@ -69,7 +69,7 @@ describe('BehaviorSection', () => {
   it('renders nothing when tracing is an empty object with no behavior fields', () => {
     render(
       <TestProviders>
-        <BehaviorSection data={{ tracing: {} } as RailsConfigOutput} />
+        <BehaviorSection data={{ tracing: {} } as RailsConfig} />
       </TestProviders>
     );
     expect(screen.queryByText('Behavior & operations')).not.toBeInTheDocument();
@@ -78,9 +78,7 @@ describe('BehaviorSection', () => {
   it('renders nothing when content capture is disabled and no other content exists', () => {
     render(
       <TestProviders>
-        <BehaviorSection
-          data={{ tracing: { enable_content_capture: false } } as RailsConfigOutput}
-        />
+        <BehaviorSection data={{ tracing: { enable_content_capture: false } } as RailsConfig} />
       </TestProviders>
     );
     expect(screen.queryByText('Behavior & operations')).not.toBeInTheDocument();
@@ -89,7 +87,7 @@ describe('BehaviorSection', () => {
   it('renders when there is meaningful tracing content', () => {
     render(
       <TestProviders>
-        <BehaviorSection data={{ tracing: { enabled: true } } as RailsConfigOutput} />
+        <BehaviorSection data={{ tracing: { enabled: true } } as RailsConfig} />
       </TestProviders>
     );
     expect(screen.getByText('Tracing')).toBeInTheDocument();

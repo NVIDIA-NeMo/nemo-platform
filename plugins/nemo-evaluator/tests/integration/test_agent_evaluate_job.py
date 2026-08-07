@@ -50,6 +50,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskInput,
     AgentTarget,
     CodexRunnerTarget,
+    HarborRunnerTarget,
     ModelTarget,
 )
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob
@@ -438,6 +439,20 @@ def _codex_eval_input_spec() -> dict:
     ).model_dump(mode="json")
 
 
+def _harbor_eval_input_spec() -> dict:
+    """Minimal Harbor target submission; compilation must reject it before task execution."""
+    return AgentEvalInputSpec(
+        tasks=[
+            AgentEvalTaskInput(
+                id="harbor-task",
+                intent="Exercise Harbor backend compatibility validation.",
+                inputs=TaskInputs(instruction="Reply with DONE."),
+            )
+        ],
+        target=HarborRunnerTarget(agent_name="oracle"),
+    ).model_dump(mode="json")
+
+
 @requires_codex
 @pytest.mark.timeout(600)
 def test_submit_to_subprocess_backend_runs_agent_eval(subprocess_platform: str) -> None:
@@ -636,6 +651,37 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
     assert result.job_id == job_name
     assert (result.target_kind, result.target_name) == ("model", model_name)
     assert result.bundle_ref
+
+
+@pytest.mark.timeout(300)
+def test_submit_harbor_target_to_docker_backend_fails_fast(docker_platform: str) -> None:
+    workspace = _unique("harbor-docker-guard")
+    client = NeMoPlatform(base_url=docker_platform, max_retries=2)
+    client.workspaces.create(name=workspace, exist_ok=True)
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        NemoJobScheduler().submit_remote(
+            AgentEvalJob,
+            _harbor_eval_input_spec(),
+            base_url=docker_platform,
+            workspace=workspace,
+            profile="default",
+        )
+
+    response = exc_info.value.response
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "profile 'default'" in detail
+    assert "backend 'docker'" in detail
+    assert "Harbor targets currently require local execution or the subprocess backend" in detail
+
+    jobs = httpx.get(
+        f"{docker_platform}/apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs",
+        params={"page_size": 100},
+        timeout=30,
+    )
+    assert jobs.status_code == 200, jobs.text
+    assert jobs.json()["data"] == []
 
 
 @pytest.mark.timeout(600)

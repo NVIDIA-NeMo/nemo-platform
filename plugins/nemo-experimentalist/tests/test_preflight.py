@@ -19,11 +19,10 @@ from nemo_experimentalist_plugin.profile import load_profile
 from nemo_insights_plugin.contracts.checks import CheckResult, required_failures
 
 
-def make_probes(*, cmd_ok: bool = True, http: bool = True, env: dict | None = None) -> Probes:
+def make_probes(*, cmd_ok: bool = True, http: bool = True) -> Probes:
     return Probes(
         run_cmd=lambda argv: (0, "ok") if cmd_ok else (1, "boom"),
         http_ok=lambda url: http,
-        env=env or {},
     )
 
 
@@ -50,7 +49,7 @@ def test_preflight_results_use_shared_check_result() -> None:
 
 
 def test_healthy_experiment_setup_all_pass(tmp_path: Path) -> None:
-    probes = make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"})
+    probes = make_probes()
     profile = full_profile(tmp_path)
     results = (
         check_profile(profile, None)
@@ -112,23 +111,19 @@ def test_unreachable_platform_is_advisory(tmp_path: Path) -> None:
         profile=full_profile(tmp_path),
         insight=None,
         base_url="http://x",
-        probes=make_probes(
-            http=False, env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}
-        ),
+        probes=make_probes(http=False),
     )
     assert any(r.name == "platform-reachable" and r.status == "warn" for r in results)
     assert all(r.severity == "advisory" for r in results if r.status != "pass")
 
 
-def test_environment_display_urls_are_sanitized_without_changing_probes(tmp_path: Path) -> None:
-    model_base = "https://model-user:model-secret@models.example:8443/v1"  # trufflehog:ignore
-    model_probe = f"{model_base}/models"
+def test_environment_display_url_is_sanitized_without_changing_probe(tmp_path: Path) -> None:
     platform_base = "https://platform-user:platform-secret@platform.example:9443/api"  # trufflehog:ignore
     probed_urls: list[str] = []
 
     def http_ok(url: str) -> bool:
         probed_urls.append(url)
-        return url == model_probe
+        return False
 
     results = check_environment(
         profile=full_profile(tmp_path),
@@ -137,31 +132,31 @@ def test_environment_display_urls_are_sanitized_without_changing_probes(tmp_path
         probes=Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=http_ok,
-            env={"NEMO_EXPERIMENTALIST_API_BASE": model_base, "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
 
-    model = next(result for result in results if result.name == "model-endpoint")
     platform = next(result for result in results if result.name == "platform-reachable")
-    assert probed_urls == [model_probe, f"{platform_base}/health/ready"]
-    assert model.message == "https://***@models.example:8443/v1/models reachable"
+    assert probed_urls == [f"{platform_base}/health/ready"]
     assert platform.message == "https://***@platform.example:9443/api unreachable"
-    assert not any(
-        secret in f"{model.message}\n{platform.message}"
-        for secret in ("model-user", "model-secret", "platform-user", "platform-secret")
+    assert not any(secret in platform.message for secret in ("platform-user", "platform-secret"))
+
+
+def test_missing_agent_models_are_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        preflight,
+        "configured_model_refs",
+        lambda: (_ for _ in ()).throw(ValueError("No default model is configured")),
     )
-
-
-def test_missing_experiment_credentials_are_required(tmp_path: Path) -> None:
     results = check_environment(
         profile=full_profile(tmp_path),
         insight=None,
         base_url="http://x",
-        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "   "}),  # whitespace-only = unset
+        probes=make_probes(),
     )
-    assert any(r.name == "NEMO_EXPERIMENTALIST_API_BASE" and r.status == "fail" for r in results)
-    assert any(r.name == "NEMO_EXPERIMENTALIST_API_KEY" and r.status == "fail" for r in results)
-    assert not any(r.name == "INFERENCE_API_KEY" for r in results)
+    models = next(r for r in results if r.name == "agent-models")
+    assert models.status == "fail"
+    assert models.severity == "required"
+    assert "nemo setup" in (models.hint or "")
 
 
 def test_git_source_probe_failure_is_advisory(tmp_path: Path) -> None:
@@ -170,7 +165,7 @@ def test_git_source_probe_failure_is_advisory(tmp_path: Path) -> None:
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source="https://host/g/repo.git@main"),
-        probes=Probes(run_cmd=remote_unreachable, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=remote_unreachable, http_ok=lambda url: True),
     )
     git = next(r for r in results if r.name == "agent-source-git")
     assert git.severity == "advisory"
@@ -200,7 +195,7 @@ def test_missing_git_is_required_for_effective_source_or_storage(
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source=agent_source),
-        probes=Probes(run_cmd=missing_git, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=missing_git, http_ok=lambda url: True),
         storage=storage,
     )
 
@@ -235,7 +230,7 @@ def test_git_repo_url_extraction(tmp_path: Path, source: str, expected_repo: str
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source=source),
-        probes=Probes(run_cmd=record, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=record, http_ok=lambda url: True),
     )
     assert calls == [["git", "--version"], ["git", "ls-remote", expected_repo]]
     assert all(r.status == "pass" for r in results)
@@ -258,7 +253,7 @@ def test_invalid_git_agent_path_is_required_failure_without_probes_or_echo(
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source=f"https://host/g/repo.git#{fragment}"),
-        probes=Probes(run_cmd=record, http_ok=lambda _url: True, env={}),
+        probes=Probes(run_cmd=record, http_ok=lambda _url: True),
     )
 
     failure = next(result for result in results if result.name == "agent-source-path")
@@ -315,7 +310,7 @@ def test_git_source_probe_timeout_uses_controlled_message(tmp_path: Path) -> Non
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source=source),
-        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True),
     )
 
     failure = next(result for result in results if result.name == "agent-source-git")
@@ -363,9 +358,7 @@ def test_unreadable_insight_file_is_required_failure(tmp_path: Path) -> None:
             profile=full_profile(tmp_path),
             insight=str(insight),
             base_url="http://x",
-            probes=make_probes(
-                env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}
-            ),
+            probes=make_probes(),
         )
     finally:
         insight.chmod(0o644)
@@ -388,7 +381,7 @@ def test_non_json_insight_content_is_required_failure(tmp_path: Path) -> None:
         insight=str(insight),
         insight_id="0",
         base_url="http://x",
-        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(),
     )
     failure = next(r for r in required_failures(results) if r.name == "insight-file")
     assert "JSON-serializable" in failure.message
@@ -469,7 +462,7 @@ def test_forge_auth_checks_matching_cli_and_host(
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source=source),
-        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True),
         storage={"publish_winner": True},
     )
 
@@ -489,7 +482,7 @@ def test_forge_auth_unknown_host_is_actionable_advisory(tmp_path: Path) -> None:
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source="https://bitbucket.org/org/repo.git"),
-        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True),
         storage={"publish_winner": True},
     )
 
@@ -517,7 +510,7 @@ def test_local_persistence_requires_git_source(tmp_path: Path, storage: dict[str
 
     results = check_artifacts(
         full_profile(tmp_path),
-        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True),
         storage=storage,
     )
 
@@ -538,7 +531,7 @@ def test_archive_candidates_alone_does_not_check_forge_auth(tmp_path: Path) -> N
 
     results = check_artifacts(
         full_profile(tmp_path, agent_source="https://github.com/org/repo.git"),
-        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True, env={}),
+        probes=Probes(run_cmd=run_cmd, http_ok=lambda url: True),
         storage={"archive_candidates": True},
     )
 
@@ -563,7 +556,6 @@ def test_preflight_git_failure_suppresses_child_output_and_sanitizes_remote(tmp_
         probes=Probes(
             run_cmd=run_cmd,
             http_ok=lambda url: True,
-            env={},
         ),
     )
 
@@ -597,7 +589,7 @@ def test_local_multi_insight_requires_selector(tmp_path: Path) -> None:
         profile=full_profile(tmp_path),
         insight=str(insights),
         base_url="http://x",
-        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(),
     )
     failure = next(r for r in results if r.name == "insight-file")
     assert failure.status == "fail" and failure.severity == "required"
@@ -613,7 +605,7 @@ def test_single_insight_file_with_matching_selector_passes(tmp_path: Path) -> No
         insight=str(insights),
         insight_id="i-a",
         base_url="http://x",
-        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(),
     )
     parse = next(r for r in results if r.name == "insight-file")
     assert parse.status == "pass"
@@ -631,7 +623,7 @@ def test_selected_insight_checks_only_selected_agent_without_selector_warning(tm
         insight=str(insights),
         insight_id="i-a",
         base_url="http://x",
-        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(),
     )
     agent = next(r for r in results if r.name == "insight-agent")
     assert agent.status == "pass"
@@ -650,7 +642,7 @@ def test_ambiguous_selected_insight_is_required_failure(tmp_path: Path) -> None:
         insight=str(insights),
         insight_id="same",
         base_url="http://x",
-        probes=make_probes(env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"}),
+        probes=make_probes(),
     )
     failure = next(r for r in required_failures(results) if r.name == "insight-file")
     assert "ambiguous" in failure.message
@@ -694,16 +686,17 @@ def test_check_artifacts_has_no_dataset_results(tmp_path: Path) -> None:
     assert not any(r.name.startswith("dataset-") for r in results)
 
 
-def test_missing_env_hint_names_source_and_env_file(tmp_path: Path) -> None:
-    profile = full_profile(tmp_path)
+def test_missing_model_hint_names_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        preflight,
+        "configured_model_refs",
+        lambda: (_ for _ in ()).throw(ValueError("No default model is configured")),
+    )
     results = check_environment(
-        profile=profile,
+        profile=full_profile(tmp_path),
         insight=None,
         base_url="http://x",
-        probes=make_probes(env={}),
+        probes=make_probes(),
     )
-    base = next(r for r in results if r.name == "NEMO_EXPERIMENTALIST_API_BASE")
-    assert "inference-api.nvidia.com" in (base.hint or "")  # names the real endpoint
-    assert str(tmp_path / ".env") in (base.hint or "")  # says exactly where to save it
-    assert "example-agent.mdx" in (base.hint or "")  # points at a doc that exists
-    assert "export NEMO_EXPERIMENTALIST_API_BASE" in (base.hint or "")
+    models = next(r for r in results if r.name == "agent-models")
+    assert models.hint == "run `nemo setup` and select default and fast agent models"

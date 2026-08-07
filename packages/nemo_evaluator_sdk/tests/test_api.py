@@ -19,6 +19,7 @@ from nemo_evaluator_sdk.values.results import (
     Percentiles,
     RowScore,
     RubricScoreStat,
+    ScoreStats,
 )
 from pytest_mock import MockerFixture
 
@@ -395,8 +396,11 @@ class TestOfflineEvaluationResult:
                 "mean": 1.5,
                 "min": 1.0,
                 "max": 2.0,
+                "median": None,
                 "std_dev": 0.5,
                 "variance": 0.25,
+                "sample_std_dev": None,
+                "sample_variance": None,
                 "score_type": "rubric",
                 "rubric_distribution": [
                     {"label": "good", "description": None, "value": 2, "count": 1},
@@ -471,3 +475,33 @@ class TestOfflineEvaluationResult:
         assert "(no rows)" in formatted
         assert "Row preview" not in formatted
         assert "Error details (1 of 1 failed rows)" in formatted
+
+
+def test_score_stats_serializes_every_nan_statistic_as_a_string() -> None:
+    """NaN is not valid JSON, so ScoreStats renders it as "NaN" — including the sample statistics.
+
+    sample_variance/sample_stddev were added alongside the population pair; leaving them off the
+    serializer would emit a bare NaN token where every sibling stat emits a quoted string.
+    """
+    nan = float("nan")
+    stats = ScoreStats(
+        count=1,
+        sum=nan,
+        sum_squared=nan,
+        min=nan,
+        max=nan,
+        mean=nan,
+        variance=nan,
+        stddev=nan,
+        sample_variance=nan,
+        sample_stddev=nan,
+        stderr=nan,
+    )
+
+    payload = stats.model_dump()
+    counts_and_lists = {"count", "nan_count", "rubric_distribution"}
+    numeric = {key: value for key, value in payload.items() if key not in counts_and_lists}
+    assert numeric == dict.fromkeys(numeric, "NaN"), f"unserialized NaN in: {numeric}"
+
+    # And the result is actually JSON-encodable, which a bare NaN would not be under strict mode.
+    json.dumps(payload, allow_nan=False)

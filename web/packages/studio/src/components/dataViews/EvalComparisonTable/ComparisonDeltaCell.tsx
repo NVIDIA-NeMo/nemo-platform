@@ -3,7 +3,7 @@
 
 import { Badge, Flex, Text } from '@nvidia/foundations-react-core';
 import type { ComparisonMetricDelta } from '@studio/components/dataViews/EvalComparisonTable/types';
-import { formatScore } from '@studio/routes/agents/AgentEvaluationsRoute/evalScores';
+import { formatScore } from '@studio/components/evaluation/utils';
 import { Equal, Minus, Plus } from 'lucide-react';
 import type { FC } from 'react';
 

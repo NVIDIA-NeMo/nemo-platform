@@ -3389,68 +3389,6 @@ components:
       required:
       - data
       title: NemoListResponse_Agent_
-    OptimizeAgentSpec:
-      properties:
-        agent:
-          title: Agent
-          description: "Agent to optimize \u2014 either a platform-managed agent reference\
-            \ (e.g. 'react-agent', 'workspace/react-agent') or an HTTP(S) endpoint\
-            \ URL (e.g. 'http://localhost:8080').  Bare names fetch the agent's stored\
-            \ config and merge it with the optimize config so trials run the agent's\
-            \ workflow locally with swept parameters; URLs are passed through to 'nat\
-            \ optimize --endpoint' verbatim (opaque service mode \u2014 local parameter\
-            \ sweeps don't reach the remote agent).  When omitted, the optimize config\
-            \ must include an inline agent workflow."
-          type: string
-        optimize_config:
-          type: string
-          title: Optimize Config
-          description: Path to the NAT optimization YAML config file, interpreted
-            relative to the downloaded fileset when ``optimize_config_fileset`` is
-            set.
-        optimize_config_fileset:
-          title: Optimize Config Fileset
-          description: Optional fileset (``name`` or ``workspace/name``) that pre-stages
-            the optimize YAML and its sibling inputs for remote submissions; leave
-            unset for local CLI runs where ``optimize_config`` is a real path.
-          type: string
-        output:
-          title: Output
-          description: "Where to write optimizer outputs \u2014 a local directory\
-            \ (path-shaped: '/', './', '../', '~/') or a NeMo Platform fileset ('name'\
-            \ or 'workspace/name', auto-created), defaulting to the platform-persistent\
-            \ results dir when unset."
-          type: string
-        workspace:
-          type: string
-          title: Workspace
-          description: Workspace name used to fetch the agent's stored config when
-            --agent is a bare name, and to construct the Inference Gateway URL when
-            injecting base_url into LLMs that have none set.
-          default: default
-      type: object
-      required:
-      - optimize_config
-      title: OptimizeAgentSpec
-      description: "Spec for an agent optimization job.\n\nField declaration order\
-        \ also drives the auto-generated CLI flag\norder \u2014 keep the most-frequently-set\
-        \ knobs first.\n\nAttributes:\n    agent: The agent to optimize.  Accepts\
-        \ either a platform-managed\n        agent reference (``\"name\"`` or ``\"\
-        workspace/name\"``) or a\n        literal HTTP(S) endpoint URL.  Bare names\
-        \ cause the job to\n        fetch the agent's stored config from the platform\
-        \ and merge\n        it with the optimize config so trials run the agent's\n\
-        \        workflow locally with the swept parameters; URLs are\n        forwarded\
-        \ to ``nat optimize --endpoint`` and treated as an\n        opaque service\
-        \ (sweeps don't affect the remote agent \u2014 see\n        module docstring).\
-        \  When ``None`` the optimize config is\n        expected to include an inline\
-        \ agent workflow.\n    optimize_config: Path to the NAT optimization YAML\
-        \ config file.\n    optimize_config_fileset: Optional fileset containing the\
-        \ optimization\n        YAML and its sibling inputs.\n    output: Local directory\
-        \ or fileset where optimizer artifacts are\n        written. The relative\
-        \ suffixes from ``eval.general.output_dir``\n        and ``optimizer.output_path``\
-        \ inside the YAML are preserved under\n        this output base.\n    workspace:\
-        \ NeMo Platform workspace used to scope the agent fetch and the\n        gateway\
-        \ URL injection, and as the default workspace for bare\n        fileset references."
     OptimizeJob:
       properties:
         id:
@@ -3477,7 +3415,7 @@ components:
           type: string
           format: date-time
         spec:
-          $ref: '#/components/schemas/OptimizeAgentSpec'
+          $ref: '#/components/schemas/OptimizeSpec'
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
         status_details:
@@ -3513,7 +3451,7 @@ components:
           title: Project
           type: string
         spec:
-          $ref: '#/components/schemas/OptimizeAgentSpec'
+          $ref: '#/components/schemas/OptimizeSpec'
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3811,6 +3749,28 @@ components:
       - updated_at
       - -updated_at
       title: OptimizeSkillsJobsSortField
+    OptimizeSpec:
+      properties:
+        optimize_config:
+          type: string
+          title: Optimize Config
+          description: Absolute path to the Fabric-native optimization YAML file.
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace used to fetch a platform agent and for VirtualModel
+            preflight.
+          default: default
+        agent:
+          title: Agent
+          description: Optional platform agent reference ('name' or 'workspace/name').
+            When omitted, optimize_config must include an inline Fabric agent package.
+          type: string
+      type: object
+      required:
+      - optimize_config
+      title: OptimizeSpec
+      description: Spec for an Agents optimize study (``nemo agents optimize``).
     PaginationData:
       properties:
         page:

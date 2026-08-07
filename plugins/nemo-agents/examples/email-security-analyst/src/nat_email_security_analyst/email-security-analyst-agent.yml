@@ -46,32 +46,12 @@ functions:
   triage_message:
     _type: triage_message
     llm: llm
-  triage_batch:
-    _type: triage_batch
-    llm: llm
-  attribute_attack:
-    _type: attribute_attack
-    llm: llm
-  assess_severity:
-    _type: assess_severity
-    llm: llm
   trace_thread:
     _type: trace_thread
-    llm: llm
-  analyze_headers:
-    _type: analyze_headers
-    llm: llm
-  check_url_brand:
-    _type: check_url_brand
-    llm: llm
-  incident_response:
-    _type: incident_response
     llm: llm
   draft_warning:
     _type: draft_warning
     llm: llm
-  extract_iocs:
-    _type: extract_iocs      # deterministic, no LLM
 
 llms:
   llm:
@@ -88,27 +68,13 @@ workflow:
   tool_names:
     - review_messages
     - triage_message
-    - triage_batch
-    - attribute_attack
-    - assess_severity
     - trace_thread
-    - analyze_headers
-    - check_url_brand
-    - incident_response
     - draft_warning
-    - extract_iocs
   return_direct:
     - review_messages
     - triage_message
-    - triage_batch
-    - attribute_attack
-    - assess_severity
     - trace_thread
-    - analyze_headers
-    - check_url_brand
-    - incident_response
     - draft_warning
-    - extract_iocs
   llm_name: llm
   verbose: false
   additional_instructions: >-

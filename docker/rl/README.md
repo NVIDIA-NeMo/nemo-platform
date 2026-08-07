@@ -349,19 +349,6 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile, but it is not built at all now — it
   only exists in the unused `automodel` / `mcore` extras (see the note above).
-
-## CVE handling
-
-- **Version floors** for the ecosystem (aiohttp, cryptography, urllib3, protobuf, av,
-  …) come from NeMo-RL's `constraint-dependencies` / `override-dependencies` in its
-  `pyproject.toml`. We inherit them by building from RL's lock — nothing to do here.
-- **FFmpeg-bundling wheels** (`av`, `opencv-python-headless`, `decord2`) statically
-  embed FFmpeg codec libraries that carry CVEs regardless of the Python package
-  version, so a version bump alone doesn't fix them. The base deletes the PyPI copies
-  and reinstalls clean `cp313` wheels built against a patched FFmpeg (from
-  `docker/base/Dockerfile.python-wheels`).
-- **Ray's bundled aiohttp** is removed from the uv cache to fully address its CVE.
-- **The interpreter needs `UV_PYTHON`, not just `PYTHON_VERSION`.** NeMo-RL ships a
   `.python-version` pinning an exact patch release, which uv honours over whatever
   `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
   every venv came up on RL's version while ours sat unused on disk, so the image shipped

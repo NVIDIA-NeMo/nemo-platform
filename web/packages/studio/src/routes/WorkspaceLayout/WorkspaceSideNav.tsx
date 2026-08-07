@@ -39,7 +39,7 @@ import {
   getEvaluationResultsRoute,
   getExperimentRoute,
   getGuardrailsRoute,
-  getIntakeRoute,
+  getIntakeTracesRoute,
   getModelCompareRoute,
   getOptimizerRoute,
   getWorkspaceBaseModelsRoute,
@@ -62,7 +62,7 @@ import {
   Home,
   ShieldCheck,
   Sliders,
-  UserPen,
+  Activity,
   Cog,
   Columns3,
   Rocket,
@@ -125,13 +125,13 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
-    const intakeNav = INTAKE_ENABLED
+    const tracesNav = INTAKE_ENABLED
       ? [
           {
-            id: 'annotation',
-            slotIcon: <UserPen className={iconColorClass} />,
+            id: 'traces',
+            slotIcon: <Activity className={iconColorClass} />,
             slotLabel: 'Traces',
-            href: getIntakeRoute(workspace),
+            href: getIntakeTracesRoute(workspace),
           },
         ]
       : [];
@@ -227,7 +227,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...dataDesignerNav,
       ...anonymizerNav,
     ];
-    const evaluateItems = [...evalNav, ...intakeNav, ...experimentNav];
+    const evaluateItems = [...evalNav, ...tracesNav, ...experimentNav];
 
     const safetyItems = GUARDRAILS_ENABLED
       ? [

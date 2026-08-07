@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RunJob } from '@nemo/sdk/generated/anonymizer/schema';
+import { OUTPUT_SUFFIXES } from '@studio/components/AnonymizerRecordView/parse';
 
 export const ANONYMIZER_POLLING_INTERVAL_MS = 5000;
 
@@ -38,9 +39,6 @@ export const metadataTextColumn = (metadata: string | undefined): string | undef
     return undefined;
   }
 };
-
-/** Rewrite writes `<column>_rewritten`; the replace strategies write `<column>_replaced`. */
-const OUTPUT_SUFFIXES = ['_rewritten', '_replaced'];
 
 export const orderResultColumns = (columns: string[], textColumn: string | undefined): string[] => {
   if (!textColumn || !columns.includes(textColumn)) return columns;

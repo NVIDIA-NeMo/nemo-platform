@@ -290,6 +290,15 @@ class RetryPolicy:
         ``Idempotency-Key`` header for create operations that must be
         safe to retry.
 
+        A request whose ``content`` is a generator, file object or other
+        one-shot iterable is only retried while its body is still
+        untouched — that is, on a connection-establishment failure.  Once
+        httpx has started reading the body it cannot be sent again, so a
+        mid-body failure (and any retryable status code, which by
+        definition arrives after the body) is raised to the caller
+        instead.  Retry those where the body can be rebuilt from its
+        source.
+
     Usage::
 
         # Client-level default

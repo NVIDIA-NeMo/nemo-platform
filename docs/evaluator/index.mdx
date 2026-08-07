@@ -120,10 +120,12 @@ result = job.get_result()
 
 <Note>
 
-**Agent evaluation runs from the SDK today.** Task-driven runs use the local SDK
-(`AgentEvaluator().run()`); running them as durable platform jobs — the way dataset-driven metrics
-already can — is [in progress](/documentation/evaluate-models/agent-eval). Use the local SDK path for
-now.
+**Agent evaluation has local interfaces and durable platform interfaces.**
+- Use `await AgentEvaluator().run(tasks=..., target=...)` for local task-driven SDK runs
+that do not require running nemo-platform.
+- Use the Evaluator plugin's `uv run nemo evaluator agent-evaluate submit` job for durable runs with inline
+tasks or stored tasksets. The high-level `client.evaluator.run/submit` interfaces
+above remain dataset-driven only.
 
 </Note>
 

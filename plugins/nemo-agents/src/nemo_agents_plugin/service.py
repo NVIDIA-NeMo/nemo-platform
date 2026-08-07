@@ -31,9 +31,9 @@ class _JobCollection(NamedTuple):
 # Sub-names are concise and stable and need not match the job's URL path segment:
 #   EvaluateAgentJob   /jobs/evaluate        -> agents.evaluate
 #   EvaluateSuiteJob   /jobs/evaluate-suite  -> agents.suite
+#   OptimizeJob        /jobs/optimize        -> agents.optimize
 #   OptimizeSkillsJob  /jobs/optimize-skills -> agents.optimize-skills
 #   AnalyzeBatchJob    /jobs/analyze         -> agents.analyze
-#   OptimizeAgentJob   /jobs/optimize        -> agents.optimize
 # Distinct service_name per job type so each list endpoint filters to rows of its own type only
 # (add_job_routes filters source=service_name); sharing the default would let /jobs/<x> pull in
 # sibling-type rows and 500 on the wrong schema.
@@ -41,8 +41,8 @@ def _job_collections() -> list[_JobCollection]:
     from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
     from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
     from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
-    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
+    from nemo_optimization.jobs.optimize import OptimizeJob
 
     return [
         _JobCollection(EvaluateAgentJob, "evaluate", None, "Submit and track agent evaluation jobs"),
@@ -51,6 +51,12 @@ def _job_collections() -> list[_JobCollection]:
             "suite",
             "nemo-agents-plugin-evaluate-suite",
             "Submit and track evaluate-suite jobs (Harbor / NAT eval runner).",
+        ),
+        _JobCollection(
+            OptimizeJob,
+            "optimize",
+            "nemo-agents-plugin-optimize",
+            "Submit and track numeric optimize jobs (Fabric-backed Optuna HPO).",
         ),
         _JobCollection(
             OptimizeSkillsJob,
@@ -63,12 +69,6 @@ def _job_collections() -> list[_JobCollection]:
             "analyze",
             "nemo-agents-plugin-analyze",
             "Submit and track analyze jobs (eval-suite batch analysis).",
-        ),
-        _JobCollection(
-            OptimizeAgentJob,
-            "optimize",
-            "nemo-agents-plugin-optimize",
-            "Submit and track optimize jobs (prompt tuning, HPO).",
         ),
     ]
 

@@ -16,7 +16,7 @@ const isNotFoundError = (err: unknown): boolean => {
   return e?.response?.status === 404 || e?.status === 404;
 };
 
-const isConflictError = (err: unknown): boolean => {
+export const isConflictError = (err: unknown): boolean => {
   const e = err as { response?: { status?: number }; status?: number };
   return e?.response?.status === 409 || e?.status === 409;
 };
@@ -130,6 +130,8 @@ export const ensureEvalConfigFileset = async (
       if (isCanceledError(createErr)) throw createErr;
       // Ignore only 409 (parallel apply already created it); surface everything else.
       if (!isConflictError(createErr)) throw createErr;
+      const reListing = await filesListFilesetFiles(workspace, fileset, undefined, signal);
+      existingPaths = new Set((reListing?.data ?? []).map((f) => f.path));
     }
   }
   // Idempotent: never overwrite files already present in the fileset.

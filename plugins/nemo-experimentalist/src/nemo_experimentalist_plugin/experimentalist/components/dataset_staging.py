@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from nemo_experimentalist_plugin.entities import DatasetRef, local_path_from_uri
+from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, local_path_from_uri
 from nemo_platform import AsyncNeMoPlatform
 
 
@@ -19,6 +19,24 @@ class _StagedEvalAuthorInputs:
     train_dataset: DatasetRef
     validation_dataset: DatasetRef
     task_template: DatasetRef
+
+
+def distribute_insight_suite_tasks(
+    insight_suite: Dataset,
+    train_dataset: Dataset,
+    validation_dataset: Dataset,
+) -> None:
+    """Assign Insight-suite tasks to validation/train at a deterministic 30/70 split.
+
+    Eval Author retains the materialized suite as its provenance artifact. The
+    optimizer consumes its tasks through the train and validation datasets,
+    reserving the first 30 percent for validation and using the remaining 70
+    percent for training feedback.
+    """
+    tasks = list(insight_suite.list_tasks())
+    validation_count = (3 * len(tasks) + 9) // 10
+    validation_dataset.add_tasks(tasks[:validation_count])
+    train_dataset.add_tasks(tasks[validation_count:])
 
 
 def _local_directory(ref: DatasetRef) -> Path:

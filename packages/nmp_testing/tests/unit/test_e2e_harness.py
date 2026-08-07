@@ -29,7 +29,8 @@ def test_e2e_services_data_dir_is_stable_per_hash(tmp_path):
 
     path = services_pool.e2e_services_data_dir(log_dir, "abc123def456")
 
-    assert path == Path(log_dir / "data-abc123def456")
+    assert path == Path(tmp_path / "logs-data" / "data-abc123def456")
+    assert not path.is_relative_to(log_dir)
 
 
 def test_with_e2e_instance_paths_namespaces_local_filesystem_paths(tmp_path):

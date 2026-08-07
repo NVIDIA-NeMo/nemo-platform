@@ -703,6 +703,7 @@ def test_full_resolution_from_profile(tmp_path: Path) -> None:
     assert inputs.agent_spec == str((tmp_path / "AGENT-SPEC.md").resolve())  # auto-pick
     assert inputs.train_dataset.uri == str((tmp_path / "evals" / "train").resolve())
     assert inputs.train_dataset.metadata == {"id": "train"}
+    assert inputs.task_template is not None
     assert inputs.task_template.uri == str((tmp_path / "evals" / "task_template").resolve())
     assert inputs.workspace == "default"
     assert inputs.config.storage.publish_winner is True
@@ -913,7 +914,7 @@ def test_run_config_rejects_a_models_block() -> None:
     import pytest
     from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 
-    with pytest.raises(ValueError, match="NEMO_EXPERIMENTALIST_MODELS"):
+    with pytest.raises(ValueError, match="nemo setup"):
         EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b"}})
 
 

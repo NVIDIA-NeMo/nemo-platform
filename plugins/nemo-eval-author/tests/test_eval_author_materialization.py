@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 from nemo_eval_author_plugin.eval_author import materialization as materialization_module
-from nemo_eval_author_plugin.eval_author.materialization import InsightSuite
-from nemo_experimentalist_plugin.entities import Task
+from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
+from nemo_experimentalist_plugin.entities import Dataset, DatasetValidationError, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 
 
@@ -44,6 +44,65 @@ build_timeout_sec = 60.0
     tests.mkdir()
     (tests / "test.sh").write_text("#!/bin/sh\nmkdir -p /logs/verifier\necho 1 > /logs/verifier/reward.txt\n")
     return Task(id="task-template", uri=root.as_uri())
+
+
+def _dataset_with_metric_contract(
+    root: Path,
+    dataset_id: str,
+    payload: dict[str, object] | str | None,
+) -> Dataset:
+    task = _write_template(root / dataset_id / "task")
+    if payload is not None:
+        content = payload if isinstance(payload, str) else json.dumps(payload)
+        (root / dataset_id / "task" / "tests" / "metric-contract.json").write_text(content, encoding="utf-8")
+    return Dataset(id=dataset_id, tasks=[task])
+
+
+def test_metric_contracts_require_the_same_authored_key_set_across_datasets(tmp_path: Path) -> None:
+    datasets = {
+        "train": _dataset_with_metric_contract(
+            tmp_path,
+            "train",
+            {"metric_keys": ["uses_required_tool", "cites_source"]},
+        ),
+        "validation": _dataset_with_metric_contract(
+            tmp_path,
+            "validation",
+            {"metric_keys": ["cites_source", "uses_required_tool"]},
+        ),
+        "insight": _dataset_with_metric_contract(
+            tmp_path,
+            "insight",
+            {"metric_keys": ["uses_required_tool", "cites_source"]},
+        ),
+    }
+
+    validate_metric_contracts(
+        datasets,
+        metric_keys=("uses_required_tool", "cites_source"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (None, "missing"),
+        ("not json", "invalid JSON"),
+        ({"metric_keys": ["different_key"]}, "expected"),
+    ],
+)
+def test_metric_contracts_reject_missing_malformed_or_mismatched_keys(
+    tmp_path: Path,
+    payload: dict[str, object] | str | None,
+    message: str,
+) -> None:
+    dataset = _dataset_with_metric_contract(tmp_path, "train", payload)
+
+    with pytest.raises(DatasetValidationError, match=message):
+        validate_metric_contracts(
+            {"train": dataset},
+            metric_keys=("uses_required_tool",),
+        )
 
 
 def test_insight_suite_materializes_discoverable_tasks_with_provenance(tmp_path: Path) -> None:

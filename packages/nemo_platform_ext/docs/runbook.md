@@ -6,36 +6,20 @@
 
 ```bash
 # Set the base URL and authenticate
-nemo config set --base-url https://nmp.dev.example.com
+nemo config set --base-url https://nmp.staging.example.com
 nemo auth login
 
 # Or configure a named context
-nemo config set --context prod --base-url https://nmp.prod.example.com --activate
+nemo config set --context production --base-url https://nmp.example.com --activate
 nemo auth login
 ```
 
 ### View Config
 
 ```bash
-nemo config view                    # Full config (YAML format)
-nemo config view -f json            # JSON format
-nemo config view --minify           # Show only current context and its references
-```
-
-### List Resources
-
-```bash
-# List all clusters
-nemo config get-clusters
-nemo config get-clusters -f json
-
-# List all contexts (shows current context indicator)
-nemo config get-contexts
-nemo config get-contexts my-context    # Get specific context details
-
-# List all users
-nemo config get-users
-nemo config get-users -f json
+nemo config view                    # Current context and its references
+nemo config view -f json            # Current context in JSON format
+nemo config view --all-contexts     # All contexts, clusters, and users
 ```
 
 ### Quick Configuration
@@ -57,76 +41,29 @@ nemo config set --workspace production
 nemo config set --output-format json --timestamp-format relative
 
 # Set values on a specific context
-nemo config set --context staging --workspace dev
+nemo config set --context staging --workspace staging
 
 # Activate a context while setting values
-nemo config set --context prod --activate --workspace production
+nemo config set --context production --activate --workspace production
 ```
 
 ### Context Management
 
 ```bash
-nemo config current-context         # Show current context name
+nemo config current-context         # Show the effective current context name
 nemo config use-context staging     # Switch to a different context
-```
 
-### Cluster Management
+# Create another context without switching from the current one
+nemo config set --context development --base-url https://nmp.dev.example.com
 
-```bash
-# Create a new cluster
-nemo config set-cluster my-cluster --base-url https://api.example.com
+# Create a context and make it current
+nemo config set --context production --base-url https://nmp.example.com --activate
 
-# Update existing cluster
-nemo config set-cluster my-cluster --base-url https://new-api.example.com
+# Update a context without changing the current context
+nemo config set --context development --workspace development
 
-# Delete a cluster (will fail if any contexts reference it)
-nemo config delete-cluster my-cluster
-
-# To delete a cluster that is referenced by contexts:
-# 1. First delete the referencing contexts or update them to reference a different cluster
-nemo config delete-context my-context
-# 2. Then delete the cluster
-nemo config delete-cluster my-cluster
-```
-
-### User Management
-
-```bash
-# Create user with access token
-nemo config set-user my-user --access-token YOUR_ACCESS_TOKEN
-
-# Create user with secure token prompt
-nemo config set-user my-user --access-token -
-
-# Create user without authentication
-nemo config set-user anonymous --no-auth
-
-# Delete a user (will fail if any contexts reference it)
-nemo config delete-user my-user
-
-# To delete a user that is referenced by contexts:
-# 1. First delete the referencing contexts or update them to reference a different user
-nemo config set-context my-context --user different-user
-# 2. Then delete the user
-nemo config delete-user my-user
-```
-
-### Context Configuration
-
-```bash
-# Create a new context (requires existing cluster and user)
-nemo config set-context my-context --cluster my-cluster --user my-user
-
-# Create context with workspace and preferences
-nemo config set-context my-context --cluster my-cluster --user my-user \
-  --workspace production --output-format json --page-size 50
-
-# Update existing context
-nemo config set-context my-context --workspace staging
-nemo config set-context my-context --output-format table --timestamp-format relative
-
-# Delete a context
-nemo config delete-context my-context
+# Authenticate a specific context
+nemo auth login --context development
 ```
 
 ## Common Operations
@@ -203,24 +140,18 @@ nemo workspaces list -f csv > workspaces.csv
 ## Multiple Contexts
 
 ```bash
-# Create cluster and user first
-nemo config set-cluster prod-cluster --base-url https://api.prod.com
-nemo config set-user prod-user --access-token -
-
-# Create production context
-nemo config set-context prod --cluster prod-cluster --user prod-user
-
-# Create staging cluster and context
-nemo config set-cluster staging-cluster --base-url https://api.stage.com
-nemo config set-user staging-user --access-token -
-nemo config set-context staging --cluster staging-cluster --user staging-user
+# Create contexts with isolated connection settings
+nemo config set --context production --base-url https://nmp.example.com --activate
+nemo auth login --context production
+nemo config set --context staging --base-url https://nmp.staging.example.com
+nemo auth login --context staging
 
 # Switch between contexts
 nemo config use-context staging
 nemo config current-context         # Shows: staging
 
 # Use context override for single command
-nemo --context prod workspaces list
+nemo --context production workspaces list
 ```
 
 ## Environment Variables
@@ -236,7 +167,7 @@ NMP_BASE_URL=http://localhost:8080 nemo workspaces list
 
 # Set defaults for session
 export NMP_OUTPUT_FORMAT=json
-export NMP_WORKSPACE=dev
+export NMP_WORKSPACE=staging
 ```
 
 ## Troubleshooting
@@ -249,7 +180,7 @@ Error: Base URL not specified
 
 Fix: Set via config, env var, or CLI flag:
 ```bash
-nemo config set-cluster my-cluster --base-url https://nmp.example.com
+nemo config set --base-url https://nmp.example.com
 # or
 export NMP_BASE_URL=https://nmp.example.com
 # or
