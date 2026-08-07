@@ -19,7 +19,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.config import get_context
 from nemo_platform.types.inference import ModelProvider
 from nemo_platform.types.models import ModelEntity
-from nooa.unifiedllm import CompletionClient
+from nooa.unifiedllm import CompletionClient, UnifiedLLM
 
 _PLACEHOLDER_API_KEY = "not-needed"
 _OPENAI_FORMAT = "OPENAI_CHAT"
@@ -56,8 +56,8 @@ class ConfiguredModelRefs:
 class ConfiguredModelClients:
     """Resolved Nooa clients for default and low-latency agent work."""
 
-    default: CompletionClient
-    fast: CompletionClient
+    default: UnifiedLLM
+    fast: UnifiedLLM
     refs: ConfiguredModelRefs | None = None
 
     async def aclose(self) -> None:
@@ -113,6 +113,8 @@ def _completion_client(
     # response bytes. Nooa needs decoded JSON/SSE, so make that requirement
     # explicit at this adapter boundary for every configured agent client.
     extra_headers[_ACCEPT_ENCODING_HEADER] = _IDENTITY_ENCODING
+    # Backend format is the Platform-facing wire contract, not the upstream
+    # provider identity. The LiteLLM prefix selects the adapter for that shape.
     if model_entity.backend_format == _OPENAI_FORMAT:
         litellm_model = f"openai/{served_model_name}"
         return CompletionClient(
@@ -181,7 +183,7 @@ async def resolve_model_clients(
 ) -> ConfiguredModelClients:
     """Resolve configured Model Entities and construct each distinct client once."""
     selected = refs or configured_model_refs()
-    resolved: dict[str, CompletionClient] = {}
+    resolved: dict[str, UnifiedLLM] = {}
     provider_cache: dict[str, ModelProvider] = {}
     try:
         for model_ref in (selected.default, selected.fast):
@@ -222,12 +224,12 @@ def _active_model_clients() -> ConfiguredModelClients:
     return model_clients
 
 
-def get_default_model() -> CompletionClient:
+def get_default_model() -> UnifiedLLM:
     """Return the active default model client."""
     return _active_model_clients().default
 
 
-def get_fast_model() -> CompletionClient:
+def get_fast_model() -> UnifiedLLM:
     """Return the active low-latency model client."""
     return _active_model_clients().fast
 
