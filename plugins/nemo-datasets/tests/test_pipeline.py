@@ -529,7 +529,7 @@ def test_profile_degrades_one_partition_when_measurement_fails(tmp_path, monkeyp
     from nemo_datasets_plugin.profiler import pipeline as pipeline_module
 
     _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}, {"a": 2}])
-    monkeypatch.setattr(pipeline_module, "derive_stats", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(pipeline_module, "measure_columns", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
 
     result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)  # must not raise
 
@@ -539,6 +539,83 @@ def test_profile_degrades_one_partition_when_measurement_fails(tmp_path, monkeyp
     assert partition.classification.dataset_type == "unknown"
     assert [e.kind for e in partition.classification.evidence] == ["error"]
     assert "RuntimeError" in partition.classification.evidence[0].detail  # says what failed
+
+
+def test_a_read_failure_does_not_look_like_a_measurement_failure(tmp_path):
+    # The two failure domains have to stay distinguishable: a bad *file* is a FileError, and the
+    # rows that were readable still measure and classify normally. Folding the read and measure
+    # loops together is what would blur this, so it is pinned before that happens.
+    _write_parquet(tmp_path / "train-00000-of-00002.parquet", [{"prompt": "q", "completion": "a"}])
+    (tmp_path / "train-00001-of-00002.parquet").write_bytes(b"not parquet")
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    part = result.partitions[0]
+    assert [e.path for e in result.file_errors] == ["train-00001-of-00002.parquet"]
+    assert part.classification.dataset_type == "prompt_completion"  # the readable rows still classify
+    assert "error" not in {e.kind for e in part.classification.evidence}
+    assert part.stats  # ...and are still measured
+
+
+def test_a_measurement_failure_does_not_look_like_a_read_failure(tmp_path, monkeypatch):
+    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+
+    _write_parquet(tmp_path / "train-00000-of-00001.parquet", [{"a": 1}])
+    monkeypatch.setattr(pipeline_module, "measure_columns", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.file_errors == []  # the file was fine; the data was odd
+    assert [e.kind for e in result.partitions[0].classification.evidence] == ["error"]
+    # `stats_complete` speaks to rows read, and every row *was* read -- so it stays True even though
+    # there are no stats. Pinned as it stands; the field means what it says once Phase 5 renames it.
+    assert result.partitions[0].stats_complete is True
+
+
+def test_one_unmeasurable_column_does_not_cost_the_partition_its_classification(tmp_path, monkeypatch):
+    # The narrow guard, end to end. The column's failure reaches the profile as evidence, and
+    # everything the partition could still establish -- the other column's stats, the roles, the
+    # dataset type -- survives it.
+    from nemo_datasets_plugin.profiler import stats as stats_module
+
+    real_column_stats = stats_module._column_stats
+
+    def explode_on_completion(feature, values, total):
+        if feature.name == "completion":
+            raise RuntimeError("boom")
+        return real_column_stats(feature, values, total)
+
+    monkeypatch.setattr(stats_module, "_column_stats", explode_on_completion)
+    _write_parquet(tmp_path / "train.parquet", [{"prompt": "q", "completion": "a"}])
+
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert "prompt" in part.stats and "completion" not in part.stats
+    assert part.classification.dataset_type == "prompt_completion"  # roles come from names, not stats
+    assert any(e.kind == "error" and "'completion'" in e.detail for e in part.classification.evidence)
+    # The reasoning for the classification still reads first; the failure is a caveat on it.
+    assert part.classification.evidence[0].kind != "error"
+
+
+def test_a_measurement_failure_is_scoped_to_its_own_partition(tmp_path, monkeypatch):
+    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+
+    real_measure_columns = pipeline_module.measure_columns
+
+    def poison_one_partition(features, rows):
+        if any(feature.name == "poison" for feature in features):
+            raise RuntimeError("boom")
+        return real_measure_columns(features, rows)
+
+    _write_parquet(tmp_path / "good" / "train.parquet", [{"prompt": "q", "completion": "a"}])
+    _write_parquet(tmp_path / "bad" / "train.parquet", [{"poison": 1}])
+    monkeypatch.setattr(pipeline_module, "measure_columns", poison_one_partition)
+
+    partitions = {p.name: p for p in profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions}
+
+    assert partitions["bad"].classification.dataset_type == "unknown"
+    assert partitions["good"].classification.dataset_type == "prompt_completion"
+    assert partitions["good"].stats  # a neighbour's bad data costs this partition nothing
 
 
 def test_profile_is_deterministic(tmp_path):
