@@ -9,6 +9,7 @@ from nemo_platform_plugin import nooa_model_client
 from nemo_platform_plugin.nooa_model_client import (
     ConfiguredModelClients,
     ConfiguredModelRefs,
+    _openai_chat_reasoning_effort,
     activate_model_clients,
     configured_model_refs,
     get_configured_model_refs,
@@ -214,3 +215,32 @@ async def test_model_clients_close_shared_client_once():
     await ConfiguredModelClients(default=shared, fast=shared).aclose()
 
     shared.aclose.assert_awaited_once()
+
+
+def test_openai_chat_reasoning_effort_uses_litellm_capability(monkeypatch):
+    monkeypatch.setattr(
+        nooa_model_client,
+        "get_model_info",
+        lambda model: {"supports_none_reasoning_effort": False},
+    )
+
+    assert _openai_chat_reasoning_effort("openai/gpt-5-mini") is None
+
+
+def test_openai_chat_reasoning_effort_preserves_none_for_unmapped_models(monkeypatch):
+    def unmapped(model: str):
+        raise Exception("This model isn't mapped yet")
+
+    monkeypatch.setattr(nooa_model_client, "get_model_info", unmapped)
+
+    assert _openai_chat_reasoning_effort("openai/custom-model") == "none"
+
+
+def test_openai_chat_reasoning_effort_does_not_hide_lookup_failures(monkeypatch):
+    def failed(model: str):
+        raise RuntimeError("model registry failed")
+
+    monkeypatch.setattr(nooa_model_client, "get_model_info", failed)
+
+    with pytest.raises(RuntimeError, match="model registry failed"):
+        _openai_chat_reasoning_effort("openai/gpt-5-mini")
