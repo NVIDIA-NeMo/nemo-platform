@@ -75,11 +75,7 @@ describe('CustomizationTemplates', () => {
   });
 
   it('surfaces an error and does not navigate when dataset fetch fails', async () => {
-    server.use(
-      http.get(HF_ROWS_URL, () =>
-        HttpResponse.json({ error: 'boom' }, { status: 500 })
-      )
-    );
+    server.use(http.get(HF_ROWS_URL, () => HttpResponse.json({ error: 'boom' }, { status: 500 })));
     const user = userEvent.setup();
     render(
       <TestProviders>
