@@ -1865,7 +1865,6 @@ def _select_model_pair(
     workspace: str,
     *,
     provider_name: str | None = None,
-    configured_default_model: str | None = None,
 ) -> ModelPair | None:
     """Let the user pick default and fast models from one provider."""
     display_models = _get_all_model_choices(client, workspace, provider_name=provider_name)
@@ -1873,20 +1872,12 @@ def _select_model_pair(
         console.print(f"  {WARN} No models discovered yet. You can select models later.")
         return None
 
-    available_models = {model for model, _ in display_models}
-    default_selection = configured_default_model if configured_default_model in available_models else None
-    if default_selection is None and len(display_models) == 1:
-        default_selection = display_models[0][0]
-
+    first_model = display_models[0][0]
     default_model = prompt_select(
         "Choose your default model (used for quality-critical agent work):",
         choices=display_models,
-        default=default_selection,
-        hint=(
-            "Press Enter to keep the configured default."
-            if default_selection
-            else "Choose explicitly; the provider does not report enough capability metadata to infer a default."
-        ),
+        default=first_model,
+        hint="Press Enter to accept the default.",
     )
     fast = prompt_select(
         "Choose your fast model (used for latency-sensitive agent work):",
@@ -2255,29 +2246,9 @@ def _run_auto_mode(
     )
 
     default_model = os.environ.get("NEMO_DEFAULT_MODEL", "").strip()
-    if not default_model and len(entity_ids) == 1:
+    if not default_model and entity_ids:
         default_model = entity_ids[0]
-    elif not default_model and len(entity_ids) > 1:
-        console.print(f"  {CROSS} Multiple models were discovered; setup cannot infer a safe default model.")
-        console.print("  Set [cyan]NEMO_DEFAULT_MODEL[/cyan] to one of the discovered model entity IDs:")
-        for entity_id in entity_ids:
-            console.print(f"    [cyan]{entity_id}[/cyan]")
-        raise typer.Exit(1)
-
-    if default_model and entity_ids and default_model not in entity_ids:
-        console.print(f"  {CROSS} NEMO_DEFAULT_MODEL is not registered by provider '{provider_name}': {default_model}")
-        console.print("  Choose one of the discovered model entity IDs:")
-        for entity_id in entity_ids:
-            console.print(f"    [cyan]{entity_id}[/cyan]")
-        raise typer.Exit(1)
-
     fast_model = os.environ.get("NEMO_FAST_MODEL", "").strip() or default_model
-    if fast_model and entity_ids and fast_model not in entity_ids:
-        console.print(f"  {CROSS} NEMO_FAST_MODEL is not registered by provider '{provider_name}': {fast_model}")
-        console.print("  Choose one of the discovered model entity IDs:")
-        for entity_id in entity_ids:
-            console.print(f"    [cyan]{entity_id}[/cyan]")
-        raise typer.Exit(1)
 
     if default_model:
         model_pair = ModelPair(default=default_model, fast=fast_model)
@@ -2370,17 +2341,7 @@ def _run_interactive_mode(
         if not models and fallback_model_choices:
             console.print(f"  {WARN} Models from existing providers are available, but not from '{provider_name}' yet.")
 
-        configured_default_model = cli_context.get_sdk_context().default_model
-        model_pair = (
-            _select_model_pair(
-                client,
-                workspace,
-                provider_name=provider_name,
-                configured_default_model=configured_default_model,
-            )
-            if models
-            else None
-        )
+        model_pair = _select_model_pair(client, workspace, provider_name=provider_name) if models else None
         default_model = model_pair.default if model_pair else None
         if model_pair:
             _save_model_pair(cli_context, model_pair)

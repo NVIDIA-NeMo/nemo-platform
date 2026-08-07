@@ -2114,6 +2114,34 @@ class TestAutoModelPairSelection:
             ),
         )
 
+    def test_first_discovered_model_is_default_and_fast_fallback(self):
+        cli_context = MagicMock()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{SETUP_MOD}._auto_setup", return_value="openai"),
+            patch(
+                f"{SETUP_MOD}._get_all_model_entity_ids",
+                return_value=["default/a-model", "default/z-model"],
+            ),
+            patch(f"{SETUP_MOD}._save_model_pair") as save_pair,
+            patch(f"{SETUP_MOD}._maybe_install_skills"),
+            patch(f"{SETUP_MOD}._maybe_deploy_agent"),
+            patch(f"{SETUP_MOD}._verify_platform_health", return_value=True),
+        ):
+            _run_auto_mode(
+                cli_context,
+                MagicMock(),
+                "default",
+                "http://localhost:8080",
+                install_skills=False,
+                deploy_agent=False,
+            )
+
+        save_pair.assert_called_once_with(
+            cli_context,
+            ModelPair(default="default/a-model", fast="default/a-model"),
+        )
+
 
 # ---------------------------------------------------------------------------
 # API key validation

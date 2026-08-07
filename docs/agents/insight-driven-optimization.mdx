@@ -455,8 +455,8 @@ come from the profile:
 nemo agents experimentalist run
 ```
 
-The Experimenter's own models are configured through environment variables
-(refer to [Models](#models)). Train and validation datasets are required, and they must be local
+The Experimenter's own models come from the default/fast pair selected by
+`nemo setup` (refer to [Models](#models)). Train and validation datasets are required, and they must be local
 paths for the Harbor evaluator. The loop runs a baseline evaluation,
 performs root cause analysis, implements changes, then validates and picks a
 winner.
@@ -496,6 +496,10 @@ loop, finds every agent opted in across workspaces, and submits one Analyst job
 per agent that is *due* and has enough new telemetry. Runs are incremental:
 each successful run records a cursor (`last_successful_run_at`), and subsequent
 runs only consider traces newer than that cursor.
+
+`enable` captures the effective default/fast pair in the server-side analysis
+config. Re-run it after changing the pair with `nemo setup`; enabled records
+created before model-pair persistence must also be re-enabled.
 
 ### Configure the Analysis Schedule
 
@@ -545,7 +549,8 @@ Run the Analyst for one analysis of an agent's traces.
 
 Manage per-agent opt-in for periodic analysis. `enable` and `disable` require
 `--agent`; `status` takes an optional `--agent` (omit it to list all configs in
-the workspace). All three accept `--workspace` and `--base-url`.
+the workspace). `enable` stores the active default/fast model pair for future
+scheduled jobs. All three accept `--workspace` and `--base-url`.
 
 ### `nemo agents analyst doctor`
 
@@ -619,7 +624,8 @@ flowing and that you are filtering by the right `agent` name.
 Check that the agent is enabled
 (`nemo insights analysis status`), that `insights.analyst.enabled` is true,
 that the scheduled window has passed in the configured `timezone`, and that at
-least 10 new sessions have landed since the last run.
+least 10 new sessions have landed since the last run. If status shows no model
+selection, re-run `nemo insights analysis enable` after `nemo setup`.
 
 ### Insights Are Not in the Platform
 

@@ -70,7 +70,7 @@ The wizard walks through each stage:
 2. **Choose a provider** — select your model provider and enter your API key
 3. **Register the provider** — connects the provider to the platform
 4. **Discover models** — finds available models from your provider
-5. **Set a default model** — pick the model to use by default
+5. **Select agent models** — pick a default model for quality-critical work and a fast model for latency-sensitive work; reuse the default if one model is enough
 6. **Install skills** — adds NeMo skills to detected coding agents (Cursor, Claude Code, Codex)
 7. **Deploy agent** — optionally deploys a demo calculator agent on the platform
 
@@ -171,11 +171,13 @@ nemo setup --auto --start-services
 | `--install-skills` / `--no-install-skills` | prompt (interactive) or skip (auto) | Install NeMo skills for detected coding agents |
 | `--deploy-agent` / `--no-deploy-agent` | prompt (interactive) or skip (auto) | Deploy the demo calculator agent |
 
-Override the default model with `NEMO_DEFAULT_MODEL`:
+Override the default and fast models with `NEMO_DEFAULT_MODEL` and
+`NEMO_FAST_MODEL`. If the fast override is omitted, it reuses the default.
 
 ```bash
 export OPENAI_API_KEY=sk-...
 export NEMO_DEFAULT_MODEL=default/openai-gpt-4.1
+export NEMO_FAST_MODEL="$NEMO_DEFAULT_MODEL"
 nemo setup --auto --start-services
 ```
 

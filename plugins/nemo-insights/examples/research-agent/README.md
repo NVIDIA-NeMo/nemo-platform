@@ -72,7 +72,8 @@ Tear it down with `docker rm -f nemo-clickhouse` when you're done.
 
 ### Configure a provider
 
-In a second shell, register the NVIDIA Build provider and pick a default model:
+In a second shell, register the NVIDIA Build provider and pick default and fast
+models (press Enter at the fast prompt to reuse the default):
 
 ```bash
 set -a && source .env && set +a

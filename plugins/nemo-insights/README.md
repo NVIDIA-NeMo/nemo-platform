@@ -22,6 +22,11 @@ uv run nemo agents analyst doctor
 uv run nemo agents analyst run
 ```
 
+Run `nemo setup` first to select the default and fast Platform Model Entities.
+The Analyst uses the default model for analysis and the fast model for context
+summarization; an existing context without `fast_model` reuses `default_model`.
+Provider credentials remain in Platform Secrets.
+
 The profile contract consumed by Insights is deliberately small:
 
 ```yaml
@@ -70,6 +75,11 @@ uv run nemo insights analysis enable --agent research-agent
 uv run nemo insights analysis status
 uv run nemo insights analysis disable --agent research-agent
 ```
+
+`analysis enable` stores the effective default/fast pair in the server-side
+analysis config so scheduled jobs do not depend on the operator's local CLI
+file. Re-run `enable` after changing the pair with `nemo setup`. Existing
+enabled records created before model-pair persistence must also be re-enabled.
 
 `--base-url` defaults to `NMP_BASE_URL`, then `http://localhost:8080`.
 
