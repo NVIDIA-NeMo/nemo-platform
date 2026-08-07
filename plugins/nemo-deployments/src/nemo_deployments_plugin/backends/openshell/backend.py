@@ -690,10 +690,11 @@ class OpenShellDeploymentBackend(DeploymentBackend):
     async def _exec_detached(
         self, sandbox_id: str, command: list[str], *, timeout: int | None = None, stdin: bytes | None = None
     ) -> tuple[int | None, str]:
-        """Run a command, draining its event stream. Returns (exit_code, combined output).
+        """Run *command* to completion, returning (exit_code, stdout+stderr merged);
+        ``exit_code`` is None when the stream carried no exit event.
 
-        *timeout* bounds both the RPC and the sandbox-side command; it defaults to the
-        executor's control-plane ``request_timeout_seconds``. Readiness probes pass a much
+        *timeout* bounds both the RPC and the sandbox-side command, defaulting to the
+        executor's control-plane ``request_timeout_seconds``; readiness probes pass a much
         shorter bound so a hung probe cannot stall the serial reconcile loop.
 
         When *stdin* is given it is streamed to the command as its standard input. The
@@ -782,14 +783,14 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             return None
         command, description, exec_timeout = probe_command
         exit_code, _ = await self._exec_detached(sandbox_id, command, timeout=exec_timeout)
-        # Readiness fails closed, unlike liveness. Liveness fails open on an undecidable
-        # probe so a flaky RPC never demotes a healthy deployment, but readiness gates
-        # admission the other way: only a probe that positively proves reachability
-        # (exit 0) may expose the port and flip to sticky READY. A rare no-exit-event
-        # (None) stays STARTING and self-heals -- the port is not exposed while pending,
-        # so the next poll re-probes; a workload that can never be probed never claims
-        # READY, which is the contract this gate exists to keep. Timeouts and RPC errors
-        # surface as RpcError -> UNKNOWN upstream, not as a None exit here.
+        # Readiness fails closed (liveness fails open): the gate admits only positive
+        # proof of reachability, so a flaky probe never exposes an unready workload.
+        #   - exit 0        -> reachable; expose the port and read READY
+        #   - nonzero       -> not reachable yet; stay STARTING
+        #   - no exit event -> undecidable; stay STARTING and re-probe next poll (the port
+        #                      is not exposed while pending, so this self-heals)
+        # A workload that can never be probed never claims READY -- the contract this gate
+        # keeps. Timeouts and RPC errors surface as UNKNOWN upstream, not as a None exit.
         if exit_code == 0:
             return None
         return BackendStatusUpdate(status="STARTING", status_message=f"Awaiting readiness: {description}")

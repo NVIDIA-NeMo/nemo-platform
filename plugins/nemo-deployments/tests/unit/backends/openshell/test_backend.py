@@ -553,7 +553,7 @@ async def test_read_status_gates_on_declared_httpget_probe(
 ) -> None:
     # A declared httpGet readinessProbe is honoured against loopback; a failing probe
     # keeps the deployment STARTING and unexposed, and the probe hits the declared path.
-    mock_entities.get.return_value = _config_with_readiness(Probe(http_get=HTTPGetAction(path="/health", port=8000)))
+    mock_entities.get.return_value = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/health", port=8000)))
     mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
     mock_stub.ExecSandbox.side_effect = [
         _exec_events(0),  # marker present
@@ -723,8 +723,15 @@ async def test_read_status_cleanup_swallows_delete_error(
     mock_stub.DeleteSandbox.assert_called_once()
 
 
+def _require_probe_command(container: Container) -> tuple[list[str], str, int]:
+    """Return the container's readiness probe command, asserting it exists (narrows None)."""
+    probe_command = _readiness_probe_command(container)
+    assert probe_command is not None
+    return probe_command
+
+
 def test_readiness_probe_command_defaults_to_tcp_on_the_first_port() -> None:
-    command, description, timeout = _readiness_probe_command(_config().containers[0])
+    command, description, timeout = _require_probe_command(_config().containers[0])
     assert command[:2] == ["/bin/sh", "-c"]
     assert "127.0.0.1" in command[2]
     assert description == "tcp 127.0.0.1:8000"
@@ -733,8 +740,8 @@ def test_readiness_probe_command_defaults_to_tcp_on_the_first_port() -> None:
 
 
 def test_readiness_probe_command_uses_declared_httpget() -> None:
-    container = _config_with_readiness(Probe(http_get=HTTPGetAction(path="/ready", port=8000))).containers[0]
-    command, description, _timeout = _readiness_probe_command(container)
+    container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/ready", port=8000))).containers[0]
+    command, description, _timeout = _require_probe_command(container)
     assert "http://127.0.0.1:8000/ready" in command[2]
     assert description == "httpGet http://127.0.0.1:8000/ready"
 
@@ -742,7 +749,7 @@ def test_readiness_probe_command_uses_declared_httpget() -> None:
 def test_readiness_probe_command_runs_declared_exec_directly() -> None:
     probe = Probe(exec=ExecAction(command=["/bin/true"]), timeoutSeconds=4)
     container = _config_with_readiness(probe).containers[0]
-    command, description, timeout = _readiness_probe_command(container)
+    command, description, timeout = _require_probe_command(container)
     assert command == ["/bin/true"]
     assert description == "exec readiness probe"
     # An exec probe is bounded by its own timeoutSeconds, not the control-plane deadline,
@@ -751,8 +758,8 @@ def test_readiness_probe_command_runs_declared_exec_directly() -> None:
 
 
 def test_readiness_probe_command_resolves_named_tcp_socket_port() -> None:
-    container = _config_with_readiness(Probe(tcp_socket=TCPSocketAction(port="http"))).containers[0]
-    _command, description, _timeout = _readiness_probe_command(container)
+    container = _config_with_readiness(Probe(tcpSocket=TCPSocketAction(port="http"))).containers[0]
+    _command, description, _timeout = _require_probe_command(container)
     assert description == "tcp 127.0.0.1:8000"
 
 
@@ -762,17 +769,17 @@ def test_readiness_probe_command_is_none_without_probe_or_ports() -> None:
 
 def test_readiness_probe_command_https_uses_unverified_context() -> None:
     container = _config_with_readiness(
-        Probe(http_get=HTTPGetAction(path="/health", port=8000, scheme="HTTPS"))
+        Probe(httpGet=HTTPGetAction(path="/health", port=8000, scheme="HTTPS"))
     ).containers[0]
-    command, _description, _timeout = _readiness_probe_command(container)
+    command, _description, _timeout = _require_probe_command(container)
     assert "https://127.0.0.1:8000/health" in command[2]
     # An https probe against a loopback/self-signed cert must not fail verification.
     assert "_create_unverified_context" in command[2]
 
 
 def test_readiness_probe_command_normalizes_httpget_path_without_leading_slash() -> None:
-    container = _config_with_readiness(Probe(http_get=HTTPGetAction(path="ready", port=8000))).containers[0]
-    _command, description, _timeout = _readiness_probe_command(container)
+    container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="ready", port=8000))).containers[0]
+    _command, description, _timeout = _require_probe_command(container)
     assert description == "httpGet http://127.0.0.1:8000/ready"
 
 
@@ -789,10 +796,10 @@ def test_readiness_probe_command_skips_udp_only_ports() -> None:
 def test_readiness_probe_command_falls_back_when_declared_port_unresolvable() -> None:
     # A declared probe naming a port absent from the container falls back to the first
     # TCP port rather than skipping the gate (which would re-open the bind race).
-    container = _config_with_readiness(Probe(http_get=HTTPGetAction(path="/health", port="does-not-exist"))).containers[
+    container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/health", port="does-not-exist"))).containers[
         0
     ]
-    _command, description, _timeout = _readiness_probe_command(container)
+    _command, description, _timeout = _require_probe_command(container)
     assert description == "httpGet http://127.0.0.1:8000/health"
 
 
