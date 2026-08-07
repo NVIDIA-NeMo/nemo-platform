@@ -23,9 +23,10 @@ Requires `uv >=0.9.14,<0.10.0`.
 **To verify an end-to-end run, follow
 [Get started with an example agent](../../docs/get-started/example-agent.mdx).**
 
-The source dependencies are pinned to tagged or immutable revisions in
-`pyproject.toml`. NVIDIA-labs OO Agents (NOOA) is pinned to a public GitHub
-commit, currently one past `v0.0.6` that carries an MCP transport-timeout fix.
+The source dependencies are pinned to tagged or immutable revisions in the
+workspace root `pyproject.toml` under `[tool.uv.sources]`. NVIDIA-labs OO Agents
+(NOOA) is pinned to a public GitHub commit past `v0.0.8` that carries the
+callable `@strategy(llm=...)` support this plugin depends on.
 
 ## Insight-to-experiment flow
 
