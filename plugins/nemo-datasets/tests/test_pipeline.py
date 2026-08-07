@@ -346,6 +346,11 @@ def test_profile_reports_unsupported_data_files(tmp_path):
     assert result.sampling.rows_present is None  # not 0: "empty" would be a lie
     assert result.sampling.files_read == 0
     assert result.sampling.files_present == 2  # both are data; neither could be read
+    # ...and they still weigh what they weigh. This is the case `bytes_present` exists for: no
+    # partition grouped these files, so summing the splits reports zero -- the same lie as "empty".
+    on_disk = (tmp_path / "train.csv").stat().st_size + (tmp_path / "test.arrow").stat().st_size
+    assert result.sampling.bytes_present == on_disk
+    assert sum(s.size_bytes for p in result.partitions for s in p.splits) == 0
     # Typed records now, each saying why -- not bare paths tucked into a free-form dict.
     assert [e.path for e in result.file_errors] == ["test.arrow", "train.csv"]
     assert all("no reader" in e.error for e in result.file_errors)
@@ -362,6 +367,25 @@ def test_profile_ignores_non_data_files_without_penalty(tmp_path):
     assert result.partitions[0].stats_complete is True
     assert result.file_errors == []
     assert result.sampling.files_present == 1  # the README and LICENSE are not data, counted nowhere
+    # Nor does their weight land on the dataset: a card is not part of what has to be moved.
+    assert result.sampling.bytes_present == (tmp_path / "train-00000-of-00001.parquet").stat().st_size
+
+
+def test_split_size_survives_a_shard_it_could_not_read(tmp_path):
+    # Size comes from the listing and a row count from reading, so they go unknown independently.
+    # A shard that fails to parse still weighs what it weighs, where the split's row count cannot.
+    _write_parquet(tmp_path / "train-00000-of-00002.parquet", [{"a": 1}, {"a": 2}])
+    (tmp_path / "train-00001-of-00002.parquet").write_bytes(b"not parquet")
+
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    on_disk = sum(p.stat().st_size for p in tmp_path.glob("*.parquet"))
+    split = result.partitions[0].splits[0]
+    assert split.num_files == 2
+    assert split.size_bytes == on_disk  # both shards, including the one that would not open
+    assert split.num_examples is None  # the broken shard's rows are unknowable...
+    assert split.size_bytes > 0  # ...but its bytes are not
+    assert result.sampling.bytes_present == on_disk
 
 
 def test_profile_records_a_partial_jsonl_read(tmp_path):
