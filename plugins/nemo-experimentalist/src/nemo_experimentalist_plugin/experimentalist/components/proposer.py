@@ -176,33 +176,18 @@ class Proposer(Agent):
         max_candidates: int,
         allowed_types: set[str],
     ) -> list[Improvement]:
-        """Return the usable improvements, dropping the rest.
+        """Return at most ``max_candidates`` usable improvements, dropping the rest.
 
-        A proposal round is expensive and everything before it is already paid
-        for, so imperfect output is salvaged rather than fatal: surplus
-        improvements are truncated, unusable ones are dropped, and the round
-        continues with fewer candidates. Only an empty result is fatal, because
-        there is then nothing to build.
+        An improvement is dropped when its ``optimization_type`` is outside
+        ``allowed_types`` or its optimization text repeats one already kept; a
+        repeated ``optimization_type`` is fine. Every drop is logged, so a Proposer
+        emitting consistently unusable output cannot look healthy.
 
-        Repeated ``optimization_type`` is fine. Two candidates may need the same
-        kind of edit in different places, and the collision grows *more* likely as
-        optimization succeeds -- each problem closed removes a distinct kind of
-        remaining work, so what is left tends to need the same treatment.
-
-        Drops are logged rather than silent: a Proposer that consistently emits
-        unusable output would otherwise look healthy while doing a fraction of the
-        work.
+        Raises:
+            ValueError: if no usable improvement remains, which leaves nothing to build.
         """
         if not improvements:
             raise ValueError("Proposer returned no improvements")
-
-        if len(improvements) > max_candidates:
-            logger.warning(
-                "Proposer returned %d improvements; keeping the first %d",
-                len(improvements),
-                max_candidates,
-            )
-            improvements = improvements[:max_candidates]
 
         kept: list[Improvement] = []
         seen_descriptions: set[str] = set()
@@ -228,6 +213,16 @@ class Proposer(Agent):
                 f"Proposer returned {len(improvements)} improvements, none of them usable; "
                 "see the warnings above for why each was dropped"
             )
+
+        # Truncate last: a surplus improvement past the cut may be the only usable
+        # one, so the cut has to fall on the kept list rather than the raw one.
+        if len(kept) > max_candidates:
+            logger.warning(
+                "Proposer returned %d usable improvements; keeping the first %d",
+                len(kept),
+                max_candidates,
+            )
+            kept = kept[:max_candidates]
         return kept
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)))

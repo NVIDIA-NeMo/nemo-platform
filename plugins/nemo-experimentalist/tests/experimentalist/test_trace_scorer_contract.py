@@ -4,16 +4,10 @@
 """Pin the parts of the scorer's contract that a turn-less trace depends on.
 
 `GroupLeafScorer.run` is a CodeAct prompt, so its docstring is the instruction the
-model follows. It requires every score to cite span IDs, and the only sanctioned
-lookups -- `get_span_id` and `get_turn_data` -- are indexed by turn. An agent that
-makes no LLM calls produces a trace with zero turns, so those lookups return
-`None` no matter how often they are called: the scorer could never satisfy the
-requirement, retried to its iteration ceiling, and raised GenerationError, which
-took the whole run down with it.
-
-The docstring now states that a turn-less trace is expected and that `span_ids`
-may be empty for it. These tests keep that escape hatch present and keep the
-schema able to represent it.
+model follows. The only sanctioned evidence lookups are indexed by turn, so a trace
+with zero turns needs the contract to name that case, permit an empty `span_ids`,
+and point at evidence the scorer can actually reach. These tests keep that escape
+hatch present and keep the schema able to represent it.
 """
 
 from __future__ import annotations
@@ -27,9 +21,10 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import 
 
 
 def _run_contract() -> str:
+    """The prompt with whitespace collapsed, so assertions do not hinge on where it wraps."""
     doc = inspect.getdoc(GroupLeafScorer.run)
     assert doc is not None, "GroupLeafScorer.run must keep its docstring; it is the prompt"
-    return doc.lower()
+    return " ".join(doc.lower().split())
 
 
 def test_contract_tells_the_scorer_what_to_do_with_no_turns() -> None:
@@ -44,6 +39,8 @@ def test_contract_offers_an_alternative_grounding() -> None:
     """Permission to return nothing is not enough; the reason must still be evidence-backed."""
     contract = _run_contract()
     assert "call graph" in contract, "a turn-less trace still carries a call graph to cite"
+    for required in ("methods that ran", "order they ran in", "status"):
+        assert required in contract, f"the contract must name {required!r} as evidence to cite"
 
 
 def test_contract_still_forbids_inventing_span_ids() -> None:

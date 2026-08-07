@@ -3,13 +3,8 @@
 
 """Pin what `Proposer._filter_improvements` keeps, drops, and refuses.
 
-This used to be `_validate_improvements`, and every problem was fatal: a
-repeated ``optimization_type``, one surplus improvement, or one duplicate
-description aborted the whole run. A proposal round is expensive and everything
-before it is already paid for, so imperfect output is now salvaged and the round
-continues with fewer candidates.
-
-Only an empty result is fatal, because there is then nothing to build.
+Imperfect output is salvaged: an unusable improvement is dropped on its own and
+the round continues with fewer candidates. Only an empty result is fatal.
 """
 
 from __future__ import annotations
@@ -73,6 +68,19 @@ def test_surplus_improvements_are_truncated() -> None:
         max_candidates=2,
     )
     assert [i.optimization for i in kept] == ["first", "second"]
+
+
+def test_surplus_is_counted_after_the_unusable_are_dropped() -> None:
+    """Cutting first would discard the only usable improvement and make the round fatal."""
+    kept = _filter(
+        [
+            _improvement("add_subagent", "delegate to a new agent"),
+            _improvement("add_subagent", "delegate to another new agent"),
+            _improvement("edit_config", "raise the input limit"),
+        ],
+        max_candidates=2,
+    )
+    assert [i.optimization for i in kept] == ["raise the input limit"]
 
 
 def test_type_outside_the_allowed_set_is_dropped() -> None:
