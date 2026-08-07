@@ -135,6 +135,32 @@ remain readable in the sandbox. Follow the plugin's [recommended laptop
 isolation](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-experimentalist/README.md#recommended-laptop-isolation)
 when running locally.
 
+From the repository root, create a clone-mode sandbox and run the
+Experimentalist inside it. Append the run-mode options from this skill to the
+last line:
+
+```bash
+repo="$(git rev-parse --show-toplevel)"
+sbx create --clone --name nemo-experimentalist shell "$repo"
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env INFERENCE_API_KEY \
+  --env NEMO_EXPERIMENTALIST_API_BASE \
+  --env NEMO_EXPERIMENTALIST_API_KEY \
+  --env NEMO_EXPERIMENTALIST_MODELS_SMART \
+  --env NEMO_EXPERIMENTALIST_MODELS_MID \
+  --env NEMO_EXPERIMENTALIST_MODELS_FAST \
+  nemo-experimentalist \
+  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+  nemo agents experimentalist run
+```
+
+The sandbox has its own writable clone and virtual environment; do not point it
+at the host `.venv`. It is not a secret boundary: ignored files remain readable
+inside the sandbox. Forward only dedicated, revocable credentials and ensure
+the sandbox can reach the Platform, model endpoint, registry, and Harbor
+datasets it needs.
+
 ## Pre-flight
 
 Complete the `SETUP.md` and readiness check above before continuing. Run the
