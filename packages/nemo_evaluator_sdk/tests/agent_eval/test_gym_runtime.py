@@ -23,12 +23,14 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
     NG_ROLLOUT_INDEX,
     NG_TASK_INDEX,
     GymRewardMetric,
+    _aggregate_metrics_path_for,
     _canonical_row_hash,
     _content_text,
     _drain_pumps,
     _ensure_fresh_output,
     _materialize_dataset,
     _pump_stream,
+    _read_run_aggregations,
     _render_instruction,
     _require_full_coverage,
     _source_datasets,
@@ -567,3 +569,12 @@ def test_real_fixture_carries_the_schema_the_runner_reads() -> None:
     for record in records:
         for key in ("responses_create_params", "response", "reward", "_ng_task_index", "_ng_rollout_index"):
             assert key in record, key
+
+
+def test_aggregate_metrics_sidecar_with_invalid_utf8_is_skipped_not_raised(tmp_path: Path) -> None:
+    # UnicodeDecodeError is a ValueError, not an OSError, so it slipped past the parse handler and would
+    # raise straight out of run_tasks -- discarding every trial from a collection that already succeeded.
+    rollouts_path = tmp_path / "rollouts.jsonl"
+    _aggregate_metrics_path_for(rollouts_path).write_bytes(b'[{"agent_ref": {"name": "a"}, "x": \xff}]')
+
+    assert _read_run_aggregations(rollouts_path) is None

@@ -7,7 +7,7 @@
 # This agent is the TASK-DRIVEN evaluation example. It models an analyst-facing
 # assistant inside a mail client: the operator selects one or more messages and
 # optionally types a question. The eval's heterogeneity comes from how the human
-# engages -- one message or six, question or none, "is this safe?" vs "write a
+# engages -- one message or several, question or none, "is this safe?" vs "write a
 # warning for the team" -- not from artificially varied material.
 # eval-config.dataset-driven.json is the dataset-driven counterpart.
 #
@@ -28,32 +28,12 @@ functions:
   triage_message:
     _type: triage_message
     llm: llm
-  triage_batch:
-    _type: triage_batch
-    llm: llm
-  attribute_attack:
-    _type: attribute_attack
-    llm: llm
-  assess_severity:
-    _type: assess_severity
-    llm: llm
   trace_thread:
     _type: trace_thread
-    llm: llm
-  analyze_headers:
-    _type: analyze_headers
-    llm: llm
-  check_url_brand:
-    _type: check_url_brand
-    llm: llm
-  incident_response:
-    _type: incident_response
     llm: llm
   draft_warning:
     _type: draft_warning
     llm: llm
-  extract_iocs:
-    _type: extract_iocs
 llms:
   llm:
     _type: openai
@@ -63,34 +43,8 @@ llms:
     max_tokens: 4096
 workflow:
   _type: tool_calling_agent
-  tool_names:
-    [
-      review_messages,
-      triage_message,
-      triage_batch,
-      attribute_attack,
-      assess_severity,
-      trace_thread,
-      analyze_headers,
-      check_url_brand,
-      incident_response,
-      draft_warning,
-      extract_iocs,
-    ]
-  return_direct:
-    [
-      review_messages,
-      triage_message,
-      triage_batch,
-      attribute_attack,
-      assess_severity,
-      trace_thread,
-      analyze_headers,
-      check_url_brand,
-      incident_response,
-      draft_warning,
-      extract_iocs,
-    ]
+  tool_names: [review_messages, triage_message, trace_thread, draft_warning]
+  return_direct: [review_messages, triage_message, trace_thread, draft_warning]
   llm_name: llm
   additional_instructions: >-
     You are an email security analyst assistant inside a mail client.

@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import sys
@@ -1887,3 +1888,89 @@ def test_with_trace_artifact_string_match():
 def test_with_trace_artifact_string_destination_match():
     result = _with_trace_artifact([_TRACE_ARTIFACT_DESTINATION], _TRACE_ARTIFACT_SOURCE)
     assert result == [_TRACE_ARTIFACT_DESTINATION]
+
+
+# ---------------------------------------------------------------------------
+# trace format discovery
+# ---------------------------------------------------------------------------
+
+
+def _trial_dir_with_traces(tmp_path: Path) -> Path:
+    trial_dir = tmp_path / "trial-1"
+    traces = trial_dir / "artifacts" / "traces"
+    traces.mkdir(parents=True)
+    (traces / "trace.jsonl").write_text('{"resourceSpans": []}\n', encoding="utf-8")
+    (traces / "trajectory-abc123.atif.json").write_text(
+        '{"schema_version": "ATIF-v1.7", "session_id": "abc123"}', encoding="utf-8"
+    )
+    return trial_dir
+
+
+def test_trial_resources_defaults_to_the_otlp_trace(tmp_path):
+    _, trace = _trial_resources(_trial_dir_with_traces(tmp_path))
+    assert trace is not None
+    assert trace.uri.endswith("trace.jsonl")
+    assert trace.metadata["trace_format"] == "otlp"
+
+
+def test_trial_resources_selects_the_atif_trace_when_configured(tmp_path):
+    _, trace = _trial_resources(_trial_dir_with_traces(tmp_path), trace_format="atif")
+    assert trace is not None
+    assert trace.uri.endswith("trajectory-abc123.atif.json")
+    assert trace.metadata["trace_format"] == "atif"
+
+
+def test_trial_resources_exposes_both_formats_regardless_of_selection(tmp_path):
+    resources, _ = _trial_resources(_trial_dir_with_traces(tmp_path), trace_format="otlp")
+    assert "trace:traces/trace.jsonl" in resources
+    assert "trace:traces/trajectory-abc123.atif.json" in resources
+
+
+def test_trial_resources_returns_no_trace_when_selected_format_is_absent(tmp_path):
+    trial_dir = tmp_path / "trial-2"
+    traces = trial_dir / "artifacts" / "traces"
+    traces.mkdir(parents=True)
+    (traces / "trace.jsonl").write_text('{"resourceSpans": []}\n', encoding="utf-8")
+
+    _, trace = _trial_resources(trial_dir, trace_format="atif")
+    assert trace is None
+
+
+def test_trial_resources_warns_when_only_the_other_format_is_present(tmp_path, caplog):
+    # An ATIF-only agent under the default otlp config would otherwise produce
+    # trace-less trials with no explanation anywhere.
+    trial_dir = tmp_path / "trial-3"
+    traces = trial_dir / "artifacts" / "traces"
+    traces.mkdir(parents=True)
+    (traces / "trajectory-abc123.atif.json").write_text(
+        '{"schema_version": "ATIF-v1.7", "session_id": "abc123"}', encoding="utf-8"
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _, trace = _trial_resources(trial_dir, trace_format="otlp")
+
+    assert trace is None
+    assert "trace_format='otlp'" in caplog.text
+    assert "atif" in caplog.text
+
+
+def test_trial_resources_is_quiet_when_no_traces_exist_at_all(tmp_path, caplog):
+    trial_dir = tmp_path / "trial-4"
+    (trial_dir / "artifacts").mkdir(parents=True)
+
+    with caplog.at_level(logging.WARNING):
+        _, trace = _trial_resources(trial_dir, trace_format="otlp")
+
+    assert trace is None
+    assert "trace_format" not in caplog.text
+
+
+def test_harbor_config_defaults_trace_format_to_otlp():
+    assert HarborEvaluatorConfig().trace_format == "otlp"
+
+
+def test_trace_format_is_not_passed_to_harbor_job_config():
+    # JobConfig rejects unknown keys; trace_format must be popped in _run.
+    from harbor.models.job.config import JobConfig
+
+    assert "trace_format" not in JobConfig.model_fields

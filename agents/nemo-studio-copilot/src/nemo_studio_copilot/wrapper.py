@@ -63,18 +63,25 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, MessageLikeRepresentation
 from langchain_core.messages.utils import convert_to_messages
 from langchain_core.prompt_values import PromptValue
 from langchain_core.runnables import RunnableConfig
 from nat.builder.builder import Builder
+from nat.builder.context import Context
 from nat.builder.framework_enum import LLMFrameworkEnum
 from nat.builder.function import Function
 from nat.cli.register_workflow import register_function
 from nat.data_models.api_server import ChatRequest, ChatResponse, ChatResponseChunk, Usage
 from nat.data_models.function import FunctionBaseConfig
+from nat.data_models.intermediate_step import (
+    IntermediateStepPayload,
+    IntermediateStepType,
+    StreamEventData,
+)
 from nat.plugins.langchain.callback_handler import LangchainProfilerHandler
 from nemo_studio_copilot.register import create_nemo_studio_copilot
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -91,6 +98,82 @@ _RATE_LIMIT_MESSAGE = (
 )
 _TIMEOUT_MESSAGE = "The model service timed out before it could complete that request. Please try again."
 _MODEL_ERROR_MESSAGE = "The model service returned an error before I could complete that request. Please try again."
+
+
+REASONING_STEP_PREFIX = "Reasoning: "
+
+
+class ReasoningStreamHandler(BaseCallbackHandler):
+    """Publish the model's chain of thought as NAT intermediate steps.
+
+    ``reasoning_content`` is re-attached to each chunk by
+    ``register._preserve_reasoning_content`` (langchain-openai drops it). NAT's
+    ``ChatResponseChunk`` only carries ``content``, so the trace rides the same
+    ``intermediate_data:`` channel the tool-call trace already uses and Studio
+    already parses.
+
+    Tokens are buffered and flushed per LLM run rather than per token: one step
+    per token would be thousands of SSE frames for a single answer.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._step_manager = Context.get().intermediate_step_manager
+        self._buffers: dict[str, list[str]] = {}
+
+    def on_llm_new_token(self, token: str | list[str | dict[str, Any]], **kwargs: Any) -> None:
+        chunk = kwargs.get("chunk")
+        reasoning = getattr(getattr(chunk, "message", None), "additional_kwargs", {}).get("reasoning_content")
+        if reasoning:
+            self._buffers.setdefault(str(kwargs.get("run_id", "")), []).append(reasoning)
+
+    def on_llm_end(self, response: Any, **kwargs: Any) -> None:
+        run_id = str(kwargs.get("run_id", ""))
+        if run_id not in self._buffers:
+            # The graph may invoke the model instead of streaming it, so no tokens
+            # arrived; take the reasoning off the finished message.
+            for generations in getattr(response, "generations", []) or []:
+                for generation in generations or []:
+                    reasoning = getattr(getattr(generation, "message", None), "additional_kwargs", {}).get(
+                        "reasoning_content"
+                    )
+                    if reasoning:
+                        self._buffers.setdefault(run_id, []).append(reasoning)
+        self._flush(run_id)
+
+    def on_llm_error(self, error: BaseException, **kwargs: Any) -> None:
+        self._flush(str(kwargs.get("run_id", "")))
+
+    def _flush(self, run_id: str) -> None:
+        reasoning = "".join(self._buffers.pop(run_id, []))
+        if not reasoning.strip():
+            return
+        # NAT's StepAdaptor (DEFAULT mode) only forwards LLM, TOOL and FUNCTION
+        # categories, so a CUSTOM step never reaches the stream. Reasoning is LLM
+        # output, so publish it as an LLM step pair -- an END without a matching
+        # START is dropped as "not found in outstanding start steps".
+        step_id = str(uuid4())
+        name = f"{REASONING_STEP_PREFIX}model"
+        try:
+            self._step_manager.push_intermediate_step(
+                IntermediateStepPayload(
+                    event_type=IntermediateStepType.LLM_START,
+                    name=name,
+                    UUID=step_id,
+                    # The adaptor reads start.data.input and drops the pair when it is empty.
+                    data=StreamEventData(input="chain of thought"),
+                )
+            )
+            self._step_manager.push_intermediate_step(
+                IntermediateStepPayload(
+                    event_type=IntermediateStepType.LLM_END,
+                    name=name,
+                    UUID=step_id,
+                    data=StreamEventData(output=reasoning),
+                )
+            )
+        except Exception:
+            logger.debug("could not publish reasoning trace", exc_info=True)
 
 
 class NemoStudioCopilotWrapperConfig(FunctionBaseConfig, name="nemo_studio_copilot_wrapper"):
@@ -249,10 +332,17 @@ class NemoStudioCopilotWrapperFunction(
         # which NAT surfaces as ``intermediate_data:`` stream events (and telemetry).
         # Construction binds to the request-scoped step manager; guard so calls
         # outside a NAT context (e.g. unit tests) degrade gracefully.
+        callbacks: list[Any] = []
         try:
-            config["callbacks"] = [LangchainProfilerHandler()]
+            callbacks.append(LangchainProfilerHandler())
         except Exception:
             logger.debug("LangchainProfilerHandler unavailable; tool-call trace disabled", exc_info=True)
+        try:
+            callbacks.append(ReasoningStreamHandler())
+        except Exception:
+            logger.debug("reasoning trace unavailable outside a NAT context", exc_info=True)
+        if callbacks:
+            config["callbacks"] = callbacks
         if value.studio_session_id is not None:
             config["configurable"] = {"studio_session_id": str(value.studio_session_id)}
         return config

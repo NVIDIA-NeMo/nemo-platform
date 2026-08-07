@@ -153,7 +153,11 @@ class WrappedAgent(BaseAgent):
             context.n_input_tokens = metrics["n_input_tokens"]
             context.n_output_tokens = metrics["n_output_tokens"]
             context.n_cache_tokens = metrics["n_cache_tokens"]
-        except (FileNotFoundError, OSError, ValueError) as exc:
+        # RuntimeError covers the environment refusing to copy /app/traces at all, which
+        # is what happens when the agent died before writing any: the traces directory
+        # never exists. Letting that escape would mask the agent's own failure below,
+        # reporting a Docker copy error instead of the traceback that caused it.
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
             metrics_error = f"Trace metrics unavailable: {type(exc).__name__}: {exc}"
             logger.warning(metrics_error)
         finally:

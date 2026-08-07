@@ -36,7 +36,7 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `nemo-status`: read-only health dashboard.
 - `nemo-teardown`: guided shutdown with confirmation.
 
-Plugin-owned skills under `plugins/*/src/*/skills/` handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, and auditor.
+Plugin-owned skills under `plugins/*/src/*/skills/` handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, auditor, and Experimentalist source/harness improvement.
 
 ### Working in a sandboxed environment
 
@@ -248,7 +248,7 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 - **uv version pin:** Root `pyproject.toml` requires `uv>=0.9.14,<0.10.0`. Newer uv releases (e.g. 0.11.x) fail `uv sync` with a version mismatch. Install the pinned range before bootstrapping: `pip install 'uv>=0.9.14,<0.10.0'`.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
-- **Studio (optional):** `make bootstrap-studio` requires Node **22.23.x** and pnpm per `web/package.json` engines. The VM may ship an older Node (e.g. 22.14); API services still run without Studio assets. Upgrade Node then run `make bootstrap-studio` if you need `http://localhost:8080/studio/`.
+- **Studio (optional):** `make bootstrap-studio` installs mise and resolves the Node.js/pnpm versions pinned in `mise.toml`, so a VM shipping an older Node doesn't need upgrading. API services still run without Studio assets. Pass `NMP_SKIP_MISE=1` to bootstrap against the toolchain already on PATH.
 
 ### Running the platform
 
