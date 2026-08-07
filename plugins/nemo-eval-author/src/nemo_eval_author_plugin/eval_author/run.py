@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Reusable optimizer Eval Author run orchestration."""
+"""Reusable Eval Author run orchestration."""
 
 import importlib
 from pathlib import Path
@@ -10,7 +10,7 @@ from typing import Protocol, cast
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult
 from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorType
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
@@ -51,28 +51,28 @@ async def run_eval_author(
     agent: Path | str | None = None,
     evaluator_type: EvaluatorType = "harbor",
 ) -> EvalAuthorResult:
-    """Build and run the Eval Author against an Insight and evaluator datasets.
+    """Stage evaluation inputs, resolve one Insight, then run Eval Author.
 
     Args:
-        insight: Local Insight file path or platform insight id.
-        train_dataset: Evaluator dataset reference for training.
-        validation_dataset: Evaluator dataset reference for validation.
-        task_template: Local or Fileset-backed evaluator task template used for production traces.
-        experiment_dir: Working directory for Eval Author artifacts.
+        insight: Local Insight path or platform Insight id.
+        train_dataset: Training dataset to stage and augment.
+        validation_dataset: Validation dataset to stage and augment.
+        task_template: Local or Fileset-backed evaluator task template.
+        experiment_dir: Working directory for authored artifacts.
         workspace: Platform workspace.
         base_url: Platform base URL. ``None`` uses the active platform context.
         config: Eval Author tuning parameters.
-        agent: Optional agent source override. When absent, the Insight's agent is used.
-        evaluator_type: Evaluator adapter used to parse datasets and task template.
+        agent: Optional agent source override. The Insight's agent is the default.
+        evaluator_type: Evaluator adapter used to parse the task template.
 
     Returns:
-        Typed Eval Author output containing the train dataset, validation dataset, and summary.
+        EvalAuthorResult: containing the modified and newly created datasets, additional metrics
+            and summary.
     """
     _enable_litellm_drop_params()
-
     experiment_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir = experiment_dir.resolve()
-    insight = insight.resolve() if isinstance(insight, Path) else insight
+    insight_locator = str(insight.resolve()) if isinstance(insight, Path) else insight
 
     client = make_client(base_url)
     try:
@@ -80,17 +80,38 @@ async def run_eval_author(
             client=client,
             experiments_output=str(experiment_dir),
         )
-        resolved_insight = await backend.get_insight(workspace=workspace, insight_id=str(insight))
+        resolved_insight = await backend.get_insight(
+            workspace=workspace,
+            insight_id=insight_locator,
+        )
         agent_ref = agent if agent is not None else resolved_insight.agent
         agent_path = experiment_dir / "eval_author" / "source-agent"
-        await backend.get_agent_code(workspace=workspace, agent=agent_ref, dest=agent_path)
+        await backend.get_agent_code(
+            workspace=workspace,
+            agent=agent_ref,
+            dest=agent_path,
+        )
 
-        dataset_factory = DatasetFactory()
-        staged_task_template = await stage_task_template(
+        staged_inputs = await stage_eval_author_inputs(
             experiment_dir,
-            task_template,
+            train_dataset=train_dataset,
+            validation_dataset=validation_dataset,
+            task_template=task_template,
             client=client,
             workspace=workspace,
+        )
+        dataset_factory = DatasetFactory()
+        parsed_train = dataset_factory.build_dataset(
+            evaluator_type,
+            staged_inputs.train_dataset,
+        )
+        parsed_validation = dataset_factory.build_dataset(
+            evaluator_type,
+            staged_inputs.validation_dataset,
+        )
+        parsed_template = dataset_factory.build_task_template(
+            evaluator_type,
+            staged_inputs.task_template,
         )
         eval_author = build_eval_author_agent(
             experiment_dir=experiment_dir,
@@ -99,9 +120,9 @@ async def run_eval_author(
         return await eval_author.run(
             insight=resolved_insight,
             agent_path=agent_path,
-            task_template=dataset_factory.build_task_template(evaluator_type, staged_task_template),
-            train_dataset=dataset_factory.build_dataset(evaluator_type, train_dataset),
-            validation_dataset=dataset_factory.build_dataset(evaluator_type, validation_dataset),
+            task_template=parsed_template,
+            train_dataset=parsed_train,
+            validation_dataset=parsed_validation,
             client=client,
         )
     finally:
@@ -117,7 +138,11 @@ def build_eval_author_agent(
     """Build the LLM-backed Eval Author agent lazily."""
     from nemo_eval_author_plugin.eval_author.agent import build_eval_author_agent as _build_eval_author_agent
 
-    return _build_eval_author_agent(experiment_dir=experiment_dir, config=config, reporter=reporter)
+    return _build_eval_author_agent(
+        experiment_dir=experiment_dir,
+        config=config,
+        reporter=reporter,
+    )
 
 
 def _enable_litellm_drop_params() -> None:

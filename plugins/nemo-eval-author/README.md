@@ -33,7 +33,7 @@ from nemo_eval_author_plugin.eval_author.run import run_eval_author
 # Still borrowed from Experimentalist, and on the way out. Treat these as Eval Author's
 # own types once they move; do not build new code on the Experimentalist paths.
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_task_template
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import TraceAnalyzer
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 ```
