@@ -246,18 +246,29 @@ class FeatureSchema(BaseModel):
 
 
 class CategoricalStats(BaseModel):
-    """Cardinality signals for string / int columns.
+    """The vocabulary of a column that has one.
 
-    ``distinct_count`` is a count, not row content, and is always safe to store. The values
-    themselves ARE row content, so they appear only for a column whose detected role makes it a
-    controlled vocabulary — the assert-only-what-was-proven rule applied to the one place the
+    Present only when the column really is a bounded controlled vocabulary. Absent otherwise, and
+    the absence *is* the claim: this column is not a vocabulary.
+
+    It used to be a general cardinality count on every string and numeric column. Counting distinct
+    values exactly means *retaining* them, and for a column of prompts the set of distinct values is
+    the column. What that bought was a reading of "9,954 distinct in 10,000 rows", which says free
+    text, which ``semantic_role`` and the length quantiles already said for free. Nothing read it
+    either: the only consumers of the number are a ``<= 2`` test that confirms a binary label and
+    the ``<= 32`` gate on ``values`` below.
+
+    The values themselves ARE row content, so they appear only for a column whose detected role makes
+    it a controlled vocabulary — the assert-only-what-was-proven rule applied to the one place the
     profiler would otherwise leak the data it is describing.
     """
 
     distinct_count: int = Field(
         description=(
-            "Distinct values among scanned rows: ~=rows_scanned -> id-like; a small bounded set "
-            "corroborates score / category roles."
+            "How many distinct values the vocabulary holds. Exact, with no cap to have silently hit: "
+            "this model is built only for a column that stayed inside the vocabulary bounds all the "
+            "way through, so there is nothing to caveat. A small bounded set corroborates score / "
+            "category roles, and `<= 2` is what confirms a binary preference label."
         ),
     )
     values: list[str] | None = Field(
@@ -287,7 +298,10 @@ class ColumnStats(BaseModel):
     text: TextStats | None = Field(default=None, description="dtype == string")
     numeric: NumericStats | None = Field(default=None, description="dtype in {int*, uint*, float*}")
     messages: MessageStats | None = Field(default=None, description="dtype == messages (list of {role, content})")
-    categorical: CategoricalStats | None = Field(default=None, description="low observed cardinality only")
+    categorical: CategoricalStats | None = Field(
+        default=None,
+        description="Present only when the column is a bounded controlled vocabulary; absence means it is not one.",
+    )
     quality: TextQuality | None = Field(default=None, description="dtype == string: corruption signals")
 
 
