@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage as getApiErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
@@ -13,7 +14,6 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
 import {
   filesetCreateFormSchema,
   type FilesetCreateFormData,

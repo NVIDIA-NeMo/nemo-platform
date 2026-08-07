@@ -10,6 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
@@ -21,7 +22,6 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useSecretsDeleteSecret, useSecretsListSecrets } from '@nemo/sdk/generated/platform/api';
 import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { ErrorPanel } from '@studio/components/ErrorPanel';

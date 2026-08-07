@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { useModelEntity } from '@nemo/common/src/api/models/useModelEntity';
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { VariableButton } from '@nemo/common/src/components/buttons/VariableButton';
@@ -23,7 +24,6 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import type { MetricItemWithId } from '@studio/components/dataViews/EvaluationMetricsDataView/types';
 import { EvalCard } from '@studio/components/evaluation/EvalCard';
 import { FileValidationPanel } from '@studio/components/sidePanels/MetricRunSidePanel/FileValidationPanel';

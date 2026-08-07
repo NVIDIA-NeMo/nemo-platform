@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { InputErrorText } from '@nemo/common/src/components/InputErrorText';
 import { Badge, Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   ScoreModal,
   type MetricPanelFormData,
   type PanelScoreFormData,
 } from '@studio/components/evaluation/Jobs/form/ScoreModal';
-import { InputErrorText } from '@studio/components/InputErrorText';
 import { Pencil, Plus, Trash } from 'lucide-react';
 import { FC, useState } from 'react';
 import { FieldError, useFormContext, useWatch } from 'react-hook-form';

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { ColumnFilterPanel } from '@nemo/common/src/components/DataView/ColumnFilterPanel';
 import { FilterPanel } from '@nemo/common/src/components/DataView/FilterPanel';
 import { Root as DataView } from '@nemo/common/src/components/DataView/internal';
@@ -16,7 +17,6 @@ import {
   Text,
   TextInput,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { AgentGroupSection } from '@studio/routes/agents/AgentSuggestionsRoute/components/AgentGroupSection';
 import { ApplyEvalConfigModal } from '@studio/routes/agents/AgentSuggestionsRoute/components/ApplyEvalConfigModal';

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
@@ -14,7 +15,6 @@ import type {
   GuardrailsListGuardrailConfigsParams,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { keepPreviousData } from '@tanstack/react-query';

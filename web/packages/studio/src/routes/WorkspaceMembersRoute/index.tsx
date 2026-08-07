@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import {
   getEntitiesListWorkspaceMembersQueryKey,
   useEntitiesListWorkspaceMembers,
@@ -11,7 +12,6 @@ import {
 import type { WorkspaceMember } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { MembersDataView } from '@studio/components/dataViews/MembersDataView';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';

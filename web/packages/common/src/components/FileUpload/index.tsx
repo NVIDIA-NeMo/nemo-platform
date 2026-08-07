@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Block, Flex, Label, Stack, Text } from '@nvidia/foundations-react-core';
-import { FileTag, FileTagStatus } from '@studio/components/FileTag';
+import { FileTag, FileTagStatus } from '@nemo/common/src/components/FileTag';
 import {
   getAcceptedFileExtensions,
   hadInvalidFileTypeError,
   hadTooManyFilesError,
-} from '@studio/components/FileUpload/util';
-import { InputErrorText } from '@studio/components/InputErrorText';
+} from '@nemo/common/src/components/FileUpload/util';
+import { InputErrorText } from '@nemo/common/src/components/InputErrorText';
+import { Block, Flex, Label, Stack, Text } from '@nvidia/foundations-react-core';
 import { FilePlus, FileText } from 'lucide-react';
 import { FC, MouseEvent, MouseEventHandler, ReactNode, useCallback, useState } from 'react';
 import { DropEvent, DropzoneOptions, FileRejection, useDropzone } from 'react-dropzone';

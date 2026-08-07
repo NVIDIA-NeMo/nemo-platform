@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import { DEFAULT_PAGE_SIZE } from '@nemo/common/src/constants/api';
 import { useListAnnotations } from '@nemo/sdk/generated/platform/api';
@@ -19,7 +20,6 @@ import {
   Text,
   TextArea,
 } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { ThumbButton } from '@studio/components/buttons/ThumbButton';
 import { useSpanAnnotationActions } from '@studio/components/IntakeDetail/IntakeComponents/useSpanAnnotationActions';
 import { MessageSquarePlus, Trash2 } from 'lucide-react';

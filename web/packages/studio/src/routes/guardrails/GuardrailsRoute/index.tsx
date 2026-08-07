@@ -10,13 +10,13 @@
  * its affiliates is strictly prohibited.
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import {
   getGuardrailsGetGuardrailConfigQueryKey,
   useGuardrailsDeleteConfig,
 } from '@nemo/sdk/generated/platform/api';
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataView';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

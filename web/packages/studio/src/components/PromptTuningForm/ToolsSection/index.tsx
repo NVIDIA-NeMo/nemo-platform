@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { Anchor, Button, Flex, Stack, Switch, Text } from '@nvidia/foundations-react-core';
-import { AccordionSection } from '@studio/components/AccordionSection';
 import { DetailRow } from '@studio/components/DetailRow';
 import { AddToolForm } from '@studio/components/PromptTuningForm/ToolsSection/components/AddToolForm';
 import { ToolMetadataPanel } from '@studio/components/PromptTuningForm/ToolsSection/components/ToolMetadataPanel';

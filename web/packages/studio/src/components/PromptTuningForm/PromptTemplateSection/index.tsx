@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
 import {
   DEFAULT_PROMPT_TEMPLATE,
   DEFAULT_PROMPT_TEMPLATE_COMPILED,
 } from '@nemo/common/src/models/constants';
 import { compileSystemPrompt } from '@nemo/common/src/models/utils';
 import { Button, Flex, FormField, Stack, TextArea } from '@nvidia/foundations-react-core';
-import { AccordionSection } from '@studio/components/AccordionSection';
 import type {
   PromptTuningFormFields,
   PromptTuningFormSectionProps,
