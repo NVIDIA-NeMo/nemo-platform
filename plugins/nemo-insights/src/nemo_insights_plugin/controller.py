@@ -27,7 +27,6 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityNotFoundError,
 )
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
@@ -125,6 +124,16 @@ class InsightsAnalysisController(NemoController):
 
     async def _reconcile_config(self, config: AnalysisConfig) -> None:
         if not config.enabled:
+            return
+        if not config.default_model:
+            logger.error(
+                "Analysis config for agent '%s' in workspace '%s' has no model selection; "
+                "run `nemo insights analysis enable --agent %s --workspace %s` again",
+                config.agent,
+                config.workspace,
+                config.agent,
+                config.workspace,
+            )
             return
         if await self._has_active_job(config):
             return
@@ -229,13 +238,12 @@ class InsightsAnalysisController(NemoController):
         status: AnalysisRunStatus | None,
         submitted_at: datetime,
     ) -> None:
-        model_refs = configured_model_refs()
         spec = AnalyzeSpec(
             agent=config.agent,
             base_url=self.insights_config.analyst.base_url,
             since=status.last_successful_run_at if status is not None else None,
-            default_model=model_refs.default,
-            fast_model=model_refs.fast,
+            default_model=config.default_model,
+            fast_model=config.fast_model or config.default_model,
         )
         job_name = _job_name(config, submitted_at)
         platform_spec = await self._compile_job_spec(

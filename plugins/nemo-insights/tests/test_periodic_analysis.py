@@ -798,16 +798,18 @@ def test_generated_job_name_fits_derived_fileset_name_limit() -> None:
 @pytest.mark.asyncio
 async def test_controller_submits_due_job(monkeypatch: pytest.MonkeyPatch) -> None:
     controller, sdk, entities = _controller()
-    config = AnalysisConfig(name="research-agent", workspace="default", agent="research-agent")
+    config = AnalysisConfig(
+        name="research-agent",
+        workspace="default",
+        agent="research-agent",
+        default_model="default/gpt-5",
+        fast_model="default/gpt-5-mini",
+    )
 
     async def fake_compile_job_spec(**_: object) -> dict[str, list[object]]:
         return {"steps": []}
 
     monkeypatch.setattr(controller, "_compile_job_spec", fake_compile_job_spec)
-    monkeypatch.setattr(
-        "nemo_insights_plugin.controller.configured_model_refs",
-        lambda: SimpleNamespace(default="default/gpt-5", fast="default/gpt-5-mini"),
-    )
     await controller._reconcile_config(config)
 
     assert len(sdk.jobs.created) == 1
@@ -819,6 +821,21 @@ async def test_controller_submits_due_job(monkeypatch: pytest.MonkeyPatch) -> No
     assert created_spec["default_model"] == "default/gpt-5"
     assert created_spec["fast_model"] == "default/gpt-5-mini"
     assert entities.updated == []
+
+
+@pytest.mark.asyncio
+async def test_controller_defers_legacy_config_without_persisted_models(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    controller, sdk, _ = _controller()
+    config = AnalysisConfig(name="research-agent", workspace="default", agent="research-agent")
+
+    with caplog.at_level("ERROR", logger="nemo_insights_plugin.controller"):
+        await controller._reconcile_config(config)
+
+    assert sdk.jobs.created == []
+    assert "has no model selection" in caplog.text
+    assert "nemo insights analysis enable" in caplog.text
 
 
 @pytest.mark.asyncio

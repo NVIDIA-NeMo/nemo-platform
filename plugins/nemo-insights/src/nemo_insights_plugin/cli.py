@@ -41,6 +41,7 @@ from nemo_insights_plugin.preflight import (
 from nemo_insights_plugin.profile import AnalysisProfile, load_profile, pick_agent_spec
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.nooa_model_client import configured_model_refs
 from nooa import GenerationError
 
 DEFAULT_WORKSPACE = "default"
@@ -458,12 +459,23 @@ async def _analysis_config_command(
     base_url: str,
 ) -> str:
     """Run one analysis-config CLI action and return JSON for stdout."""
+    model_refs = None
+    if action == "enable":
+        if agent is None:
+            raise ValueError("agent is required for enable")
+        model_refs = configured_model_refs()
+
     client = make_client(base_url)
     try:
         if action == "enable":
-            if agent is None:
-                raise ValueError("agent is required for enable")
-            result = await client.insights.analysis_configs.enable(workspace=workspace, agent=agent)
+            assert agent is not None
+            assert model_refs is not None
+            result = await client.insights.analysis_configs.enable(
+                workspace=workspace,
+                agent=agent,
+                default_model=model_refs.default,
+                fast_model=model_refs.fast,
+            )
             return _json(result.model_dump(mode="json"))
         if action == "disable":
             if agent is None:
