@@ -9,7 +9,7 @@ From the repository root::
     uv sync --group insights
     services/intake/scripts/spans/run_clickhouse.sh
     cd web && VITE_FF_OPTIMIZER_ENABLED=preview pnpm --filter nemo-studio-ui build:fastapi && cd ..
-    uv run nemo services run \
+    NMP_INTAKE_CLICKHOUSE_URL=http://localhost:8123 uv run nemo services run \
       --service-group all --config packages/nmp_platform/config/local.yaml
     uv run plugins/nemo-insights/scripts/insights_demo.py seed
 
@@ -36,7 +36,10 @@ import httpx
 
 DEMO_WORKSPACE = "insights-demo"
 DEFAULT_BASE_URL = "http://localhost:8080"
-CLICKHOUSE_RECOVERY_COMMAND = "services/intake/scripts/spans/run_clickhouse.sh"
+CLICKHOUSE_RECOVERY_COMMAND = (
+    "services/intake/scripts/spans/run_clickhouse.sh, then restart the platform with "
+    "NMP_INTAKE_CLICKHOUSE_URL=http://localhost:8123"
+)
 INSIGHTS_INSTALL_COMMAND = "uv sync --group insights"
 _BASE_TIME = datetime(2026, 7, 20, 12, 0, tzinfo=timezone.utc)
 _SOURCE_URL = "https://github.com/NVIDIA-NeMo/nemo-platform/commit"

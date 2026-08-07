@@ -169,9 +169,6 @@ def test_user_simulator_exports_task_env_credentials(monkeypatch: pytest.MonkeyP
         runner._configure_models(
             runner.ModelSpec(
                 aut="a",
-                experimentalist_smart="b",
-                experimentalist_mid="c",
-                experimentalist_fast="d",
                 user_simulator=user_simulator,
             )
         )
@@ -297,3 +294,28 @@ def test_optimizer_job_summary_reports_full_trial_and_usage_totals(tmp_path: Pat
     assert summary["input_tokens"] == 150
     assert summary["cost_usd"] == pytest.approx(0.2)
     assert len(summary["job_results"]) == 2
+
+
+@pytest.mark.parametrize("invalid_value", [True, 1.5, "2"])
+def test_optimizer_job_summary_rejects_non_integer_fields(tmp_path: Path, invalid_value: object) -> None:
+    runner = _load_runner()
+    job_dir = tmp_path / "agent-0-train"
+    job_dir.mkdir()
+    (job_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "n_total_trials": 2,
+                "stats": {
+                    "n_completed_trials": invalid_value,
+                    "n_errored_trials": 0,
+                    "n_input_tokens": 10,
+                    "n_cache_tokens": 0,
+                    "n_output_tokens": 5,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match="completed_trials"):
+        runner.summarize_experimentalist_jobs(tmp_path)

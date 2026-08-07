@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Dataset
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -18,7 +19,6 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match, ShellTools, TodoManager
 from pydantic import BaseModel, Field, model_validator
 
-from .model_config import get_fast_model
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -464,7 +464,7 @@ class GoalTreeGenerator(Agent):
         analysis: str,
         round_num: int,
         agent_spec: Path | None = None,
-    ) -> GoalTree:  # pyright: ignore[reportReturnType]
+    ) -> GoalTree:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Propose a reweighted goal tree informed by a round of agent analysis.
 
         # What you receive

@@ -1,12 +1,78 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-from testbed.eval import plan, prep, run_subjects
+import subprocess
+
+import pytest
+from testbed.eval import plan, prep, run_subjects, stack
 
 TAU2_CONFIG = """DEFAULT_LLM_NL_ASSERTIONS = "gpt-4.1-2025-04-14"
 DEFAULT_LLM_NL_ASSERTIONS_ARGS = {"temperature": 0.0}
 DEFAULT_LLM_ENV_INTERFACE = "gpt-4.1-2025-04-14"
 DEFAULT_LLM_EVAL_USER_SIMULATOR = "claude-opus-4-5"
 """
+
+
+@pytest.mark.parametrize(
+    ("clickhouse_url", "expected_port"),
+    [
+        (stack.CLICKHOUSE_URL, 8123),
+        ("http://localhost:55123", 55123),
+    ],
+)
+def test_stack_resolves_labeled_clickhouse_on_configured_port(monkeypatch, clickhouse_url, expected_port):
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="nmp-intake-clickhouse-managed\n", stderr="")
+
+    monkeypatch.setattr(stack.subprocess, "run", fake_run)
+
+    assert stack._intake_clickhouse_container(clickhouse_url) == "nmp-intake-clickhouse-managed"
+    assert "label=nmp.nvidia.com/managed-by=nemo-platform" in commands[0]
+    assert "label=nmp.nvidia.com/component=intake-clickhouse" in commands[0]
+    assert f"publish={expected_port}" in commands[0]
+
+
+def test_stack_rejects_nonlocal_clickhouse_url(monkeypatch):
+    monkeypatch.setattr(stack.subprocess, "run", lambda *_args, **_kwargs: pytest.fail("docker must not run"))
+
+    with pytest.raises(RuntimeError, match="ClickHouse URL is not local"):
+        stack._intake_clickhouse_container("https://clickhouse.example.internal:8443")
+
+
+def test_stack_rejects_multiple_matching_clickhouse_containers(monkeypatch):
+    monkeypatch.setattr(
+        stack.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="nmp-intake-clickhouse-one\nnmp-intake-clickhouse-two\n",
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="expected one labeled Intake ClickHouse container.*found.*one.*two"):
+        stack._intake_clickhouse_container("http://localhost:55123")
+
+
+def test_stack_does_not_select_unlabeled_same_name_container(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        # An unrelated nmp-intake-clickhouse is running, but the label query
+        # intentionally excludes it.
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(stack.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="labeled Intake ClickHouse.*none found"):
+        stack._intake_clickhouse_container()
+
+    assert len(commands) == 1
+    assert "docker" == commands[0][0] and "ps" == commands[0][1]
 
 
 def test_repoint_judge_rewrites_exactly_three():

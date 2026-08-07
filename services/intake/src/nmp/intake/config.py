@@ -3,6 +3,8 @@
 
 """Configuration for the Intake service."""
 
+import os
+from pathlib import Path
 from typing import Any, cast
 
 from nmp.common.config import EnvironmentFirstSettings, create_service_config_class
@@ -11,6 +13,10 @@ from pydantic_settings import SettingsConfigDict
 
 DEFAULT_ATIF_MAX_SUBAGENT_DEPTH = 64
 MAX_ATIF_MAX_SUBAGENT_DEPTH = 256
+DEFAULT_CLICKHOUSE_URL = "http://localhost:8123"
+DEFAULT_CLICKHOUSE_VERSION = "26.3"
+DEFAULT_CLICKHOUSE_IMAGE = f"clickhouse/clickhouse-server:{DEFAULT_CLICKHOUSE_VERSION}"
+CLICKHOUSE_URL_ENV_VAR = "NMP_INTAKE_CLICKHOUSE_URL"
 
 
 class ClickHouseConfig(EnvironmentFirstSettings):
@@ -19,7 +25,7 @@ class ClickHouseConfig(EnvironmentFirstSettings):
     model_config = SettingsConfigDict(env_prefix="NMP_INTAKE_CLICKHOUSE_")
 
     url: str = Field(
-        default="http://localhost:8123",
+        default=DEFAULT_CLICKHOUSE_URL,
         description="HTTP URL for the ClickHouse server used by Intake spans storage",
     )
     user: str = Field(
@@ -34,6 +40,25 @@ class ClickHouseConfig(EnvironmentFirstSettings):
         default="intake",
         description="ClickHouse database for Intake spans",
     )
+    image: str = Field(
+        default=DEFAULT_CLICKHOUSE_IMAGE,
+        description="Container image used only when Intake provisions local ClickHouse",
+    )
+    data_dir: Path | None = Field(
+        default=None,
+        description="Host data directory used only when Intake provisions local ClickHouse",
+    )
+
+
+def should_provision_local_clickhouse(config: ClickHouseConfig) -> bool:
+    """Return whether Intake owns the default local ClickHouse lifecycle.
+
+    An explicitly exported URL is always operator-owned, including the URL Helm
+    injects for its embedded ClickHouse. A non-default URL loaded from any other
+    configuration source is operator-owned as well.
+    """
+
+    return CLICKHOUSE_URL_ENV_VAR not in os.environ and config.url.rstrip("/") == DEFAULT_CLICKHOUSE_URL
 
 
 _BaseIntakeConfig = cast(Any, create_service_config_class("intake"))

@@ -104,8 +104,6 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
             print(f"✗ {subject_name}: unknown subject")
             continue
         unmet: list[str] = []
-        if not os.environ.get("INFERENCE_API_KEY"):
-            unmet.append("env INFERENCE_API_KEY (analyst key, in testbed/.env)")
         if shutil.which("gh") is None:
             unmet.append("gh CLI (needed for pinned/--state analyze; https://cli.github.com)")
         unmet += build_adapter(subject).check()
@@ -1019,8 +1017,6 @@ def main() -> None:
         drop_auth=not args.live,
     )
     subject = _apply_overrides(subject, args.sets)
-    if not os.environ.get("INFERENCE_API_KEY"):
-        sys.exit("Set INFERENCE_API_KEY (NVIDIA Inference Gateway sk-... key) and re-run.")
     # One backup destination per invocation: the restore's clobber-backup and the
     # fresh-insights move both park files here, so a single analyze yields at most
     # one tmp/backup-<stamp>/ dir (created lazily, only if something moves).

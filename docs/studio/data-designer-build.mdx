@@ -1,9 +1,9 @@
 ---
 title: "Data Designer in NeMo Studio"
-description: "Build, preview, and edit synthetic-data jobs visually with the Data Designer DAG builder."
+description: "Build, preview, and edit synthetic-data jobs visually with the Data Designer builder."
 ---
 
-Data Designer lets you generate and transform datasets visually — no JSON to write. You lay out columns on a canvas, wire them together by referencing one another, preview a handful of rows, then run the full job and inspect, profile, and edit the result.
+Data Designer lets you generate and transform datasets visually — no JSON to write. You lay out columns in the builder, wire them together by referencing one another, preview a handful of rows, then run the full job and inspect, profile, and edit the result.
 
 <Note>
 
@@ -15,7 +15,7 @@ This page walks through the full workflow:
 
 1. [View existing jobs](#view-jobs)
 2. [Create a new job](#create-a-new-job)
-3. [Build a recipe with the DAG builder](#the-dag-builder)
+3. [Build a recipe with the builder](#the-dag-builder)
 4. [Add columns](#add-columns)
 5. [Configure column properties](#configure-column-properties)
 6. [Add and configure models](#add-and-configure-models)
@@ -44,37 +44,49 @@ Click **New Job** on the jobs list to open the **Create a fileset** start screen
 
 | Start option              | What it does                                                                                       |
 | ------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Build from scratch**    | Opens the builder with an empty canvas.                                                            |
+| **Build from scratch**    | Opens the builder with an empty schema list.                                                       |
 | **Start from a template** | Pick a prebuilt recipe card; the builder opens pre-seeded with that template's columns and models. |
 
-Selecting a template pre-fills the canvas with its columns and models, so you can adjust an existing recipe rather than start blank. Building from scratch opens an empty canvas.
+Selecting a template pre-fills the builder with its columns and models, so you can adjust an existing recipe rather than start blank. Building from scratch opens an empty builder.
 
-Either choice lands you in the **DAG builder**.
+Either choice lands you in the **builder**.
 
 ---
 
 <a id="the-dag-builder"></a>
 
-## The DAG builder
+## The builder
 
 The builder is a three-pane layout with a toolbar across the top:
 
-- **Toolbar** (top) — fileset name, column count, template badge, row count, and the **Preview** and **Create fileset** actions.
+- **Toolbar** (top) — fileset name, column count, template badge, view toggle, row count, and the **Preview** and **Create fileset** actions.
 - **Left palette** — a segmented **Columns** / **Models** switch for adding columns or models to the recipe.
-- **Center canvas** — the directed acyclic graph (DAG) of your columns.
+- **Center pane** — your columns, shown in whichever view mode is active (see [View modes](#view-modes) below).
 - **Right config pane** — properties for whichever column or model is currently selected.
+
+### View modes
+
+A segmented control in the toolbar lets you switch between two views of your columns:
+
+| View | Icon | Description |
+| --- | --- | --- |
+| **List** (default) | List-tree icon | A flat, top-to-bottom list of columns. Each row shows the column's type badge, name, a one-line summary, and inline `{{ reference }}` tags showing its dependencies. Click a row to select it; use the trash icon at the right to delete it. |
+| **Canvas** | Spline icon | A directed acyclic graph (DAG) where columns appear as nodes and dependencies as arrows. Use this view to see the full dependency graph at a glance. |
+
+Both views open the same config pane when a column is selected. All edits made in one view are immediately reflected in the other.
 
 ### The toolbar
 
 - **Name** — the fileset name. Click the pencil icon to rename it (defaults to `untitled-dataset`, or the template id when starting from a template). A name is required to create the job.
-- **Column count** — a live count of columns on the canvas.
+- **Column count** — a live count of columns in the recipe.
+- **View toggle** — switches between the list and canvas views (see [View modes](#view-modes)).
 - **Rows** — the number of records the full run generates. Must be a whole number of at least 1.
 - **Preview** — runs a small sample (up to 10 rows). See [Preview a job](#preview-a-job).
 - **Create fileset** — validates the recipe and submits the job. See [Create the job](#create-the-job).
 
 ### How columns connect
 
-Connections between columns are drawn for you automatically. Whenever one column refers to another — for example, a prompt that mentions `{{ other_column }}` — the builder adds an arrow from the referenced column to the one that uses it. The layout always reflects how your columns depend on each other, no matter what order you added them in.
+Column dependencies are tracked automatically. Whenever one column refers to another — for example, a prompt that mentions `{{ other_column }}` — the builder records that relationship. In the **list view** these show as inline `{{ name }}` tags on the dependent row; in the **canvas view** they appear as arrows between nodes.
 
 ---
 
@@ -90,7 +102,7 @@ Open the **Columns** tab in the left palette and pick a column type. The catalog
 | **Validate**      | Validation — check target columns against rules (code, local callable, or remote validator).                                                                                                                                  |
 | **Data & custom** | Seed Dataset (bootstrap rows from a file), Custom (Python function logic).                                                                                                                                                    |
 
-Adding a column drops a node on the canvas, selects it, and centers the view on it so you can configure it immediately. A default, unique column name (for example `category_1`) is assigned; you can rename it in the config pane.
+Adding a column appends it to the list (or drops a node on the canvas in canvas view), selects it, and opens its config pane immediately. A default, unique column name (for example `category_1`) is assigned; you can rename it in the config pane.
 
 <Note>
 
@@ -98,7 +110,7 @@ Only **one Seed Dataset** column is supported per recipe. After you add one, the
 
 </Note>
 
-To remove a column, select its node and use **Remove** in the config pane, or delete the node directly on the canvas.
+To remove a column, use the trash icon on its row in list view, or select its node and use **Remove** in the config pane (both views).
 
 ---
 
@@ -140,10 +152,10 @@ Click **Preview 10 rows** in the toolbar to generate a small sample with the cur
 
 The details panel below the toolbar opens automatically and shows:
 
-- **Validation issues** — anything blocking the run (missing required fields, malformed JSON/numbers, duplicate or invalid names, empty canvas, invalid row count). Preview and Create are both blocked until these are resolved.
+- **Validation issues** — anything blocking the run (missing required fields, malformed JSON/numbers, duplicate or invalid names, no columns added, invalid row count). Preview and Create are both blocked until these are resolved.
 - **Preview logs** — the sampled output, streamed as the preview runs.
 
-You can collapse the panel to focus on the canvas; runs that produce output re-open it.
+You can collapse the panel to focus on the builder; runs that produce output re-open it.
 
 ---
 

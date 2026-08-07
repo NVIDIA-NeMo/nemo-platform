@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, Task
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -20,7 +21,6 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from . import cache
-from .model_config import get_fast_model, get_smart_model
 from .rationale import Rationale, RationaleStep
 from .tools import GuardedShellTools
 from .util import load_framework_skills
@@ -78,7 +78,7 @@ class Rationalizer(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or RationalizerConfig()
         self._workspace_path = workspace
         self.shell = GuardedShellTools(cwd=workspace)

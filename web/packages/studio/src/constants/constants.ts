@@ -21,8 +21,18 @@ export const DEFAULT_API_ERR_MSG = 'Invalid API response. Please try again later
 export const DEFAULT_TOOLS_FILE_NAME = 'tools.json';
 export const EMPTY_FIELD_VALUE = '-';
 export const EMPTY_FIELD_EMDASH_VALUE = '—';
-export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-llama-3-3-nemotron-super-49b-v1';
+export const DEFAULT_BUILD_MODEL_NAME = 'nvidia-nemotron-nano-3-30b-a3b';
 export const DEFAULT_EMBEDDER_MODEL_NAME = 'nvidia-nv-embedqa-e5-v5';
+
+export const DEFAULT_MAX_PARALLEL_REQUESTS = 2;
+export const MAX_PARALLEL_REQUESTS_MIN = 1;
+export const MAX_PARALLEL_REQUESTS_MAX = 64;
+
+export const DEFAULT_TEXT_INFERENCE_PARAMS = {
+  temperature: 0.7,
+  top_p: 0.9,
+  max_parallel_requests: DEFAULT_MAX_PARALLEL_REQUESTS,
+} as const;
 
 export const KNOWN_TEXT_EXTENSIONS = new Set([
   // Data

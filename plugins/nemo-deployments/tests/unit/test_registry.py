@@ -115,8 +115,34 @@ def test_missing_executor_raises(backend_classes: dict[str, type[DeploymentBacke
         [ExecutorSpec(name="a", backend="docker", config={})],
         backend_classes=backend_classes,
     )
-    with pytest.raises(ExecutorNotFoundError):
+    with pytest.raises(ExecutorNotFoundError, match="'missing' is not registered"):
         registry.resolve("missing")
+
+
+def test_unavailable_executor_reports_distinct_error(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    # A configured executor whose backend was skipped must resolve to a distinct,
+    # actionable error that names the backend, not the generic 'not registered'
+    # message used for a genuinely unknown name.
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+    classes = {**backend_classes, "sandbox": _MissingDepBackend}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="ok", backend="docker", config={}),
+            ExecutorSpec(name="sandbox-local", backend="sandbox", config={}),
+        ],
+        backend_classes=classes,
+    )
+    with pytest.raises(ExecutorNotFoundError) as excinfo:
+        registry.resolve("sandbox-local")
+    message = str(excinfo.value)
+    assert "is not registered" not in message
+    assert "configured but" in message
+    assert "unavailable" in message
+    assert "sandbox" in message
+    assert "openshell extra not installed" in message
 
 
 def test_unknown_backend_type_raises() -> None:

@@ -7,24 +7,11 @@ import { SyntheticQualityPanel } from '@studio/routes/SafeSynthesizerJobReportRo
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 
-// Mock the Dial component
-vi.mock('@nemo/common/src/components/Dial', () => ({
-  Dial: ({
-    value,
-    displayValue,
-    color,
-    size,
-  }: {
-    value: number;
-    displayValue: string;
-    color: string;
-    size: string;
-  }) => (
-    <div data-testid="dial">
-      <div data-testid="dial-value">{value}</div>
-      <div data-testid="dial-display">{displayValue}</div>
-      <div data-testid="dial-color">{color}</div>
-      <div data-testid="dial-size">{size}</div>
+// Mock the ScoreGauge component
+vi.mock('@nemo/common/src/components/ScoreGauge', () => ({
+  ScoreGauge: ({ score, size }: { score?: number; size: string }) => (
+    <div data-testid="score-gauge" data-size={size}>
+      {score ? score.toFixed(1) : '—'}
     </div>
   ),
 }));
@@ -194,7 +181,7 @@ describe('SyntheticQualityPanel', () => {
   });
 
   describe('Score Display', () => {
-    it('should display score value and pass correct dial props', () => {
+    it('should pass the raw SQS score to the gauge', () => {
       render(
         <SyntheticQualityPanel
           reportSummary={createMockReportSummary({ synthetic_data_quality_score: 7.5 })}
@@ -205,12 +192,7 @@ describe('SyntheticQualityPanel', () => {
       );
 
       const titledDial = screen.getByTestId('titled-dial');
-      // Verify dial displays the score
-      expect(within(titledDial).getByTestId('dial-value')).toBeInTheDocument();
-      expect(within(titledDial).getByTestId('dial-display')).toBeInTheDocument();
-      // Verify color is applied (util handles calculation)
-      const dialColors = screen.getAllByTestId('dial-color');
-      expect(dialColors[0]).toHaveTextContent('var(--color-purple-500)');
+      expect(within(titledDial).getByTestId('score-gauge')).toHaveTextContent('7.5');
     });
   });
 
@@ -379,7 +361,7 @@ describe('SyntheticQualityPanel', () => {
       ).toBeInTheDocument();
     });
 
-    it('should pass all required props to TitledDial', () => {
+    it('should pass the raw score to TitledDial', () => {
       render(
         <SyntheticQualityPanel
           reportSummary={createMockReportSummary({ synthetic_data_quality_score: 7.5 })}
@@ -389,22 +371,13 @@ describe('SyntheticQualityPanel', () => {
         { wrapper: createWrapper() }
       );
 
-      // Verify dial value (percentage)
-      const dialValues = screen.getAllByTestId('dial-value');
-      expect(dialValues[0]).toHaveTextContent('75');
-
-      // Verify display value (original score)
-      const dialDisplays = screen.getAllByTestId('dial-display');
-      expect(dialDisplays[0]).toHaveTextContent('7.5');
-
-      // Verify color
-      const dialColors = screen.getAllByTestId('dial-color');
-      expect(dialColors[0]).toHaveTextContent('var(--color-purple-500)');
+      const gauges = screen.getAllByTestId('score-gauge');
+      expect(gauges[0]).toHaveTextContent('7.5');
     });
   });
 
   describe('ScoreTable Integration', () => {
-    it('should pass correct color to ScoreTable', () => {
+    it('should render a gauge for each sub-metric', () => {
       render(
         <SyntheticQualityPanel
           reportSummary={createMockReportSummary()}
@@ -414,13 +387,9 @@ describe('SyntheticQualityPanel', () => {
         { wrapper: createWrapper() }
       );
 
-      // ScoreTable should have dials with purple color
-      const dialColors = screen.getAllByTestId('dial-color');
-      // Filter for purple colored dials (excluding the main dial)
-      const purpleDials = Array.from(dialColors).filter((dial) =>
-        dial.textContent?.includes('var(--color-purple-500)')
-      );
-      expect(purpleDials.length).toBeGreaterThan(0);
+      // One gauge for the main SQS score plus one per sub-metric
+      const gauges = screen.getAllByTestId('score-gauge');
+      expect(gauges.length).toBeGreaterThan(1);
     });
 
     it('should pass all quality scores to ScoreTable in correct order', () => {

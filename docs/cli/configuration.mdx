@@ -1,33 +1,21 @@
 ---
 title: "Configuration"
-description: ""
+description: "Reference for NeMo CLI configuration fields, precedence, telemetry, and shell completion."
 ---
-The NeMo CLI uses a configuration file to store connection settings, credentials, and preferences. This allows you to work with multiple environments and switch between them easily.
+The NeMo CLI uses a configuration file to store connection settings, credentials, and preferences for one or more contexts.
 
-## Quick Setup
+## Prerequisites
 
-The quickest way to connect to an existing deployment is:
+- Install the NeMo CLI as described in [Setup](/documentation/get-started).
+- To create connections or switch contexts, follow [Connect the CLI to Deployments](/documentation/reference/cli-reference/connect-to-deployments).
 
-```bash
-# Set base URL and authenticate in one command
-nemo auth login --base-url https://nmp.example.com
-```
-
-During interactive onboarding, `nemo setup` also offers to connect to a remote deployment when the currently configured platform is unreachable. It verifies and saves the new URL in the active context, then runs the same authentication flow.
-
-To configure a named context:
-
-```bash
-nemo --context prod auth login --base-url https://nmp.prod.example.com
-```
-
-## Configuration File
+## Configuration file
 
 The configuration is stored in `~/.config/nmp/config.yaml`. If the `XDG_CONFIG_HOME` environment variable is set, the file is stored in `$XDG_CONFIG_HOME/nmp/config.yaml` instead. You can also specify a custom location with the `NMP_CONFIG_FILE` environment variable.
 
-## Managing Configuration
+## Manage configuration
 
-### View Configuration
+### View configuration
 
 Display configuration for the current context (secrets are redacted):
 
@@ -38,36 +26,12 @@ nemo config view
 Display all contexts:
 
 ```bash
-nemo config view --all-contexts
+nemo config view --all-contexts --output-format json
 ```
 
-### Switch Contexts
+The full view includes every saved context, cluster, and user. JSON output is useful for scripts and configuration audits; omit `--output-format json` for the default table view.
 
-Inspect the currently active context and resolved references:
-
-```bash
-nemo config view
-```
-
-Or print only the current context name:
-
-```bash
-nemo config current-context
-```
-
-Switch to a different context:
-
-```bash
-nemo config use-context prod
-```
-
-Use a context for a single command without switching:
-
-```bash
-nemo --context prod workspaces list
-```
-
-### Modify Configuration
+### Modify configuration
 
 Set specific values:
 
@@ -79,7 +43,7 @@ nemo config set --access-token -
 
 When setting an access token, you'll be prompted to enter it securely (input is hidden).
 
-## Environment Variables
+## Environment variables
 
 Environment variables override configuration file settings. This is useful for CI/CD pipelines or temporary overrides.
 
@@ -99,13 +63,13 @@ Example:
 
 ```bash
 # Use a different context for this command
-NMP_CURRENT_CONTEXT=prod nemo workspaces list
+NMP_CURRENT_CONTEXT=production nemo workspaces list
 
 # Override base URL
 NMP_BASE_URL=https://nmp.example.com nemo models list
 ```
 
-## Configuration Precedence
+## Configuration precedence
 
 Settings are resolved in this order (highest priority first):
 
@@ -160,7 +124,7 @@ If completion isn't working, make sure you've restarted your shell and that your
 
 NeMo Platform collects anonymous usage data to improve the product. On your first run, the CLI prints a notice to standard error explaining what data is collected and how to opt out.
 
-For the full product disclosure, including bundled library telemetry and third-party endpoint notes, see [Telemetry and Privacy](/documentation/telemetry-and-privacy).
+For the full product disclosure, including bundled library telemetry and third-party endpoint notes, see [Telemetry and Privacy](/documentation/reference/telemetry-and-privacy).
 
 ### What Data Is Collected
 
@@ -231,3 +195,9 @@ On your first run, the CLI writes this notice to standard error:
 > NeMo Platform collects anonymous usage data to improve the product. No prompts, data, or personal information leave your machine. Turn it off at any time with NEMO_TELEMETRY_ENABLED=false.
 
 The notice appears only once, and you can opt out at any time using one of the methods above.
+
+## Next Steps
+
+- [Connect the CLI to one or more deployments](/documentation/reference/cli-reference/connect-to-deployments).
+- See the [full CLI reference](/documentation/reference/cli-reference/full-cli-reference) for every command and option.
+- Use [CLI troubleshooting](/documentation/reference/cli-reference/troubleshooting) if configuration does not resolve as expected.

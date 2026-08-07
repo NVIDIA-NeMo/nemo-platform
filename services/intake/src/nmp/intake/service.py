@@ -4,12 +4,20 @@
 """Intake service implementation."""
 
 import logging
+from dataclasses import replace
+from pathlib import Path
 from typing import ClassVar, List
 
 from nmp.common.service import RouterConfig, Service
 from nmp.intake.api.v2.experiments import endpoints as experiments
-from nmp.intake.config import IntakeConfig
+from nmp.intake.config import IntakeConfig, should_provision_local_clickhouse
 from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
+from nmp.intake.local_clickhouse import (
+    DockerUnavailableError,
+    LocalClickHouseProvisioningError,
+    reconcile_local_clickhouse,
+    stop_local_clickhouse,
+)
 from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
 from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
@@ -31,6 +39,8 @@ class IntakeService(Service[IntakeConfig]):
         self.clickhouse_client: ClickHouseSpanClient | None = None
         # Background worker that denormalizes agent/model name fields onto Evaluation entities.
         self.denormalizer: EvaluationDenormalizer | None = None
+        self._local_clickhouse_data_dir: Path | None = None
+        self._owns_local_clickhouse = False
         self._ready = False
 
     @property
@@ -74,19 +84,36 @@ class IntakeService(Service[IntakeConfig]):
     async def on_startup(self) -> None:
         """Create the trace storage client without requiring ClickHouse to be online."""
 
+        self._local_clickhouse_data_dir = None
+        self._owns_local_clickhouse = False
         cfg = self.service_config or IntakeConfig()
-        self.clickhouse_client = ClickHouseSpanClient(ClickHouseSettings.from_config(cfg))
-        logger.warning(
-            "ClickHouse schema setup was not run during Intake startup; "
-            "trace endpoints will initialize ClickHouse on first use and return 503 until it is reachable. "
-            "For local development, start ClickHouse with services/intake/scripts/spans/run_clickhouse.sh; "
-            "see services/intake/README.md#local-development.",
-            extra={
-                "service": self.name,
-                "clickhouse_url": cfg.clickhouse_config.url,
-                "clickhouse_database": cfg.clickhouse_config.database,
-            },
-        )
+        settings = ClickHouseSettings.from_config(cfg)
+        if should_provision_local_clickhouse(cfg.clickhouse_config):
+            try:
+                local_url = await reconcile_local_clickhouse(
+                    settings,
+                    image=cfg.clickhouse_config.image,
+                    data_dir=cfg.clickhouse_config.data_dir,
+                )
+                settings = replace(settings, url=local_url)
+                self._local_clickhouse_data_dir = cfg.clickhouse_config.data_dir
+                self._owns_local_clickhouse = True
+            except DockerUnavailableError as exc:
+                logger.warning(
+                    "Skipping local ClickHouse reconciliation: %s ClickHouse-backed endpoints will return 503 until "
+                    "ClickHouse is reachable.",
+                    exc,
+                    extra={"service": self.name, "clickhouse_url": settings.url},
+                )
+            except LocalClickHouseProvisioningError as exc:
+                logger.error(
+                    "Local ClickHouse reconciliation failed: %s Intake will continue starting; ClickHouse-backed "
+                    "endpoints will return 503 until ClickHouse is reachable.",
+                    exc,
+                    extra={"service": self.name, "clickhouse_url": settings.url},
+                )
+
+        self.clickhouse_client = ClickHouseSpanClient(settings)
         # Start the background denormalizer. It needs a service-principal entity client (no request
         # context) to write onto Evaluation entities; skip it if the entity client can't be built.
         entity_client = self.dependency_provider.get_entity_client(as_service=self.name)
@@ -102,17 +129,24 @@ class IntakeService(Service[IntakeConfig]):
         self._ready = True
 
     async def on_shutdown(self) -> None:
-        """Close the service-owned ClickHouse client."""
+        """Close the client and stop the managed local ClickHouse container."""
 
         self._ready = False
-        # Stop the refresher first: its final flush still needs the ClickHouse client below.
+        # Stop the denormalizer first: its final flush still needs the ClickHouse client below.
         if self.denormalizer is not None:
             await self.denormalizer.stop()
             self.denormalizer = None
-        if self.clickhouse_client is not None:
-            await self.clickhouse_client.close()
+        try:
+            if self.clickhouse_client is not None:
+                await self.clickhouse_client.close()
+        finally:
             self.clickhouse_client = None
-        await super().on_shutdown()
+            try:
+                if self._owns_local_clickhouse:
+                    await stop_local_clickhouse(data_dir=self._local_clickhouse_data_dir)
+            finally:
+                self._owns_local_clickhouse = False
+                await super().on_shutdown()
 
     async def is_ready(self) -> bool:
         return self._ready

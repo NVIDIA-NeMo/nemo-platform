@@ -30,8 +30,8 @@ from typing import Annotated, Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.functions import annotations, insights, spans
-from nemo_insights_plugin.analyst.model_config import get_fast_model, get_smart_model
 from nemo_insights_plugin.analyst.result import AnalystResult
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, hidden, strategy
 from nooa.agents import TokenBudgetSummarizer
 from nooa.config import CodeActConfig
@@ -173,7 +173,7 @@ class Analyst(Agent):
         agent_spec: str | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(llm=kwargs.pop("llm", None) or get_smart_model(), **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._deps = deps
         self.todos = TodoManager()
         TokenBudgetSummarizer.install(
