@@ -702,6 +702,8 @@ def maybe_start_preflight_mocks():
         patch(f"{SETUP_MOD}._start_services_background") as mock_start,
         patch(f"{SETUP_MOD}.prompt_choice", return_value="yes"),
         patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/data"),
+        # Docker preflight is covered separately; keep other start-path tests focused.
+        patch(f"{SETUP_MOD}.require_docker_for_default_local"),
     ):
         yield mock_start
 
@@ -814,6 +816,7 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data") as mock_db_prompt,
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._ensure_port_available_for_start", wraps=_ensure_port_available_for_start) as mock_port,
+            patch(f"{SETUP_MOD}.require_docker_for_default_local"),
             patch(f"{SETUP_MOD}._pause"),
         ):
             mock_start.return_value = MagicMock(pid=999)
@@ -834,6 +837,7 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict),
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data"),
+            patch(f"{SETUP_MOD}.require_docker_for_default_local"),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
         ):
@@ -923,7 +927,20 @@ class TestMaybeStartServices:
         captured = capsys.readouterr()
         assert "exited early (exit code 3)" in captured.err
         assert "Check /tmp/services.log for details." in captured.err
-        assert "Docker does not appear to be available" in captured.err
+        assert "Docker is required for this default local setup" in captured.err
+
+    def test_docker_preflight_blocks_before_spawn(self, maybe_start_preflight_mocks, capsys):
+        """Default-local Docker gate exits before start_background (NVBug 6537617)."""
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(
+                f"{SETUP_MOD}.require_docker_for_default_local",
+                side_effect=typer.Exit(1),
+            ),
+            pytest.raises(ClickExit),
+        ):
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        maybe_start_preflight_mocks.assert_not_called()
 
     def test_readiness_timeout_does_not_hint_docker_without_evidence(
         self, maybe_start_preflight_mocks, capsys, tmp_path
@@ -962,7 +979,7 @@ class TestMaybeStartServices:
             maybe_start_preflight_mocks.return_value = alive
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
         captured = capsys.readouterr()
-        assert "Docker does not appear to be available" in captured.err
+        assert "Docker is required for this default local setup" in captured.err
 
     def test_startup_port_conflict_prefers_live_port_probe(self, tmp_path):
         log = tmp_path / "services.log"
@@ -1273,6 +1290,7 @@ class TestLocalDataDirHelpers:
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
             patch(f"{SETUP_MOD}._prompt_data_dir") as mock_prompt,
+            patch(f"{SETUP_MOD}.require_docker_for_default_local"),
             patch(f"{SETUP_MOD}._pause"),
         ):
             mock_start.return_value = MagicMock(pid=999)
