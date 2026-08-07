@@ -76,7 +76,9 @@ configToml: |
 
   [kubernetes]
   kubeconfig_path = ""
-  namespace = "opensandbox-kata"
+  # Sandboxes land in the NMP temp workspace NS (shared with crun profile).
+  # Isolation is via [secure_runtime] / RuntimeClass + template labels, not a separate NS.
+  namespace = "nmp-temp1"
   informer_enabled = true
   informer_resync_seconds = 300
   informer_watch_timeout_seconds = 60

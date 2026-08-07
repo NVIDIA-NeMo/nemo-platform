@@ -1,7 +1,7 @@
 # nemo-rl-plugin
 
-NeMo-RL customization contributor for the NeMo Platform. Adds **DPO** training
-on a Ray cluster (via [NVIDIA NeMo-RL](https://github.com/NVIDIA-NeMo/RL)
+NeMo-RL customization contributor for the NeMo Platform. Adds **DPO** and **GRPO**
+training on a Ray cluster (via [NVIDIA NeMo-RL](https://github.com/NVIDIA-NeMo/RL)
 v0.6.0) as the `rl` backend under `/apis/customization`.
 
 Thin contributor layer only — the heavy compile glue and container tasks live in
@@ -20,10 +20,15 @@ Thin contributor layer only — the heavy compile glue and container tasks live 
   no local Docker fallback (unlike automodel/unsloth).
 - **Single-node multi-GPU and multi-node** both supported (`parallelism.num_nodes`).
   Multi-node requires `NMP_RL_MULTINODE_SHARED_STORAGE_PATH`.
-- **DPO is full-weight** (no PEFT). GRPO/PPO are headroom (`TrainingMethod` is a
-  single-member union today).
+- **DPO is full-weight** (no PEFT). **GRPO** uses NeMo Gym environments (Prime
+  Intellect hub envs packaged as `adapter-wheels-v1` FileSets).
+- **GRPO sandboxed mode** defaults from platform config (`sandboxed_gym_default=true`).
+  Compile fails closed when OpenSandbox is unavailable unless the operator sets
+  `NMP_RL_SANDBOXED_GYM_DEFAULT=false` for trusted dev smoke tests.
 
 ## Job spec
+
+### DPO
 
 `model` and `dataset` are string refs; the method lives under `training` with
 `type: "dpo"`. The `dataset` fileset holds **both** `training.jsonl` and
@@ -55,12 +60,46 @@ fields, `parallelism`, `optimizer_type`, `adam_eps`, `activation_checkpointing`,
 `sft_average_log_probs`, `max_grad_norm`. `RlJobInput` (`schema.py`) is the
 authoritative input shape; `nemo customization rl explain` prints it live.
 
+### GRPO (NeMo Gym)
+
+1. **Convert** a Prime Intellect hub environment on an internet-capable host (no cluster egress):
+
+   ```bash
+   pi-to-gym-conversion --hub-id primeintellect/ascii-tree --out-dir ./ascii-tree-pkg
+   ```
+
+   Emits an `adapter-wheels-v1` tree + Gym JSONL dataset. Upload both as FileSets
+   (`purpose=environment` and `purpose=dataset`).
+
+2. **Submit** GRPO with `environment` + Gym JSONL `dataset`:
+
+   ```json
+   {
+     "model": "default/qwen3-0.6b",
+     "dataset": "default/ascii-tree-gym-data",
+     "environment": "default/ascii-tree-env",
+     "training": {
+       "type": "grpo",
+       "epochs": 1,
+       "batch_size": 32,
+       "micro_batch_size": 1,
+       "num_generations_per_prompt": 8,
+       "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1 }
+     },
+     "output": { "name": "qwen3-0.6b-grpo" }
+   }
+   ```
+
+   The compiler downloads model + dataset + environment, emits path-only NeMo-RL
+   YAML with `env.nemo_gym.sandboxed` from platform config (default `true`), and
+   injects vLLM/broker egress env vars for sandboxed rollouts.
+
 ## Compiled job (4 steps)
 
 `submit` → `RlJobInput` → transform → `RlJobOutput` → compiled `PlatformJobSpec`:
 
-1. **download** — model fileset + preference dataset → PVC (CPU, `nmp-customizer-tasks`)
-2. **dpo-training** — Ray DPO step (GPU, `nmp-rl-training`); single-node `gpu` or
+1. **download** — model fileset + dataset (+ environment for GRPO) → PVC (CPU, `nmp-customizer-tasks`)
+2. **dpo-training** / **grpo-training** — Ray step (GPU, `nmp-rl-training`); single-node `gpu` or
    multi-node `gpu_distributed` executor, selected by `parallelism.num_nodes`
 3. **upload** — trained checkpoint → output fileset (CPU)
 4. **model-entity** — register the full-weight output `ModelEntity`

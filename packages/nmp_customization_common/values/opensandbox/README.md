@@ -3,6 +3,9 @@
 Target cluster: `nv-prd-nemo.teleport.sh-nemo-dev-blue`  
 Prerequisite: `RuntimeClass/kata-qemu` installed via `install-kata-qemu.sh` / `kata-values.yaml`.
 
+These values are the source of truth for the nemo-dev-blue layout until they are
+promoted into `k8s/helm/`.
+
 ## Why two server releases
 
 OpenSandbox `[secure_runtime]` is **server-global**. One server cannot mix `crun` and `kata-qemu` sandboxes. This layout therefore deploys:
@@ -10,8 +13,13 @@ OpenSandbox `[secure_runtime]` is **server-global**. One server cannot mix `crun
 | Component | Release | Workload NS | Isolation |
 |-----------|---------|-------------|-----------|
 | Controller + CRDs | `opensandbox-controller` | — | shared |
-| Server (shared-kernel) | `opensandbox-server-crun` | `opensandbox-crun` | cluster default (`crun`) |
-| Server (Kata QEMU) | `opensandbox-server-kata` | `opensandbox-kata` | `runtimeClassName: kata-qemu` |
+| Server (shared-kernel) | `opensandbox-server-crun` | `nmp-temp1` | cluster default (`crun`) |
+| Server (Kata QEMU) | `opensandbox-server-kata` | `nmp-temp1` | `runtimeClassName: kata-qemu` |
+
+Both profiles create BatchSandbox pods in the shared NMP temp workspace namespace
+`nmp-temp1`. Isolation is still via RuntimeClass / BatchSandbox template labels,
+not separate namespaces. Control plane (Deployments, Secrets, template
+ConfigMaps, Services) stays in `opensandbox-system`.
 
 Platform / Gym clients pick a profile by Service DNS + API key.
 
@@ -109,6 +117,14 @@ Env overrides: `READY_TIMEOUT_S`, `SANDBOX_IMAGE`, `SANDBOX_TIMEOUT_S`, `LOCAL_P
 | crun | `opensandbox-server-crun.opensandbox-system.svc.cluster.local` | No `[secure_runtime]` |
 | kata-qemu | `opensandbox-server-kata.opensandbox-system.svc.cluster.local` | Preferred strong isolation |
 
+Client / live-test workload namespace (sandboxes + test PVCs):
+
+```bash
+export OPENSANDBOX_WORKLOAD_NS=nmp-temp1
+```
+
+NeMo-RL live helpers default to `nmp-temp1` when that env is unset.
+
 Example Gym / broker provider block for Kata:
 
 ```yaml
@@ -126,3 +142,4 @@ sandbox_provider:
 - Ingress gateway is **disabled**; rely on in-cluster Service + `use_server_proxy`.
 - Control-plane pods prefer non-GPU nodes; kata sandboxes are hard-pinned to kata nodes; crun sandboxes soft-prefer non-kata / non-GPU.
 - API keys live only in Kubernetes Secrets; never commit them to values files.
+- Legacy `opensandbox-crun` / `opensandbox-kata` namespaces (from earlier installs) are left in place; clean up manually if empty.

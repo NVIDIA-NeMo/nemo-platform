@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""CLI entrypoint: convert Prime Intellect hub envs to adapter-wheels-v1 (host with internet)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
+from nmp.rl.tasks.environment.convert import ConvertEnvironmentSpec, convert_prime_environment
+from nmp.rl.tasks.environment.validate import load_manifest, validate_package_layout
+
+logger = logging.getLogger(__name__)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Convert a Prime Intellect hub environment to adapter-wheels-v1 + Gym JSONL. "
+            "Run on a machine with internet; training clusters consume the output offline. "
+            "Invoke via: uv run --package nmp-rl pi-to-gym-conversion ..."
+        ),
+    )
+    parser.add_argument("--hub-id", required=True, help="Hub slug, e.g. primeintellect/ascii-tree")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        help="Output directory for environment package (nemo-environment.yaml + wheels + configs)",
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        type=Path,
+        default=None,
+        help="Output directory for training.jsonl (default: sibling of out-dir)",
+    )
+    parser.add_argument("--vf-env-id", default=None, help="Override verifiers load id")
+    parser.add_argument("--vf-env-args", default="{}", help="JSON object of vf_env_args")
+    parser.add_argument("--dataset-size", type=int, default=-1, help="Max dataset rows (-1 = all)")
+    parser.add_argument("--dataset-seed", type=int, default=None)
+    parser.add_argument(
+        "--validation-fraction",
+        type=float,
+        default=0.0,
+        help="Fraction of rows to write to validation.jsonl (0 = train only)",
+    )
+    parser.add_argument(
+        "--wheels-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Use pre-vendored *.whl files instead of pip download "
+            "(must be non-empty; adapter-wheels-v1 always requires wheels)"
+        ),
+    )
+    parser.add_argument(
+        "--validate-only",
+        type=Path,
+        default=None,
+        metavar="ENV_ROOT",
+        help="Validate an existing environment package and exit",
+    )
+    parser.add_argument(
+        "--upload",
+        action="store_true",
+        help="Upload env + dataset FileSets to the platform Files API (requires NMP_BASE_URL)",
+    )
+    parser.add_argument("--workspace", default="default", help="Workspace for --upload")
+    parser.add_argument(
+        "--environment-name",
+        default=None,
+        help="Environment FileSet name for --upload (default: derived from hub id)",
+    )
+    parser.add_argument(
+        "--dataset-name",
+        default=None,
+        help="Dataset FileSet name for --upload (default: <environment-name>-dataset)",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    if args.validate_only is not None:
+        root = args.validate_only.resolve()
+        manifest = load_manifest(root)
+        validate_package_layout(root, manifest)
+        print(json.dumps({"valid": True, "format": manifest.format, "name": manifest.metadata.name}))
+        return 0
+
+    vf_env_args = json.loads(args.vf_env_args)
+    spec = ConvertEnvironmentSpec(
+        hub_id=args.hub_id,
+        out_dir=args.out_dir.resolve(),
+        dataset_dir=args.dataset_dir.resolve() if args.dataset_dir else None,
+        vf_env_id=args.vf_env_id,
+        vf_env_args=vf_env_args,
+        dataset_size=args.dataset_size,
+        dataset_seed=args.dataset_seed,
+        validation_fraction=args.validation_fraction,
+        wheels_dir=args.wheels_dir.resolve() if args.wheels_dir else None,
+    )
+    try:
+        result = convert_prime_environment(spec)
+    except Exception as exc:
+        logger.error("%s", exc)
+        return 1
+    payload: dict = {
+        "environment_root": str(result.environment_root),
+        "dataset_dir": str(result.dataset_dir),
+        "format": result.manifest.format,
+        "training_jsonl": str(result.training_jsonl),
+        "validation_jsonl": str(result.validation_jsonl) if result.validation_jsonl else None,
+    }
+
+    if args.upload:
+        from nmp.rl.tasks.environment.upload import upload_converted_packages
+
+        base_url = os.environ.get("NMP_BASE_URL") or os.environ.get("NMP_FILES_URL")
+        if not base_url:
+            logger.error("--upload requires NMP_BASE_URL or NMP_FILES_URL")
+            return 2
+        slug = args.hub_id.split("/")[-1].replace("_", "-")
+        env_name = args.environment_name or f"{slug}-env"
+        ds_name = args.dataset_name or f"{slug}-dataset"
+        try:
+            refs = upload_converted_packages(
+                environment_root=result.environment_root,
+                dataset_dir=result.dataset_dir,
+                workspace=args.workspace,
+                environment_name=env_name,
+                dataset_name=ds_name,
+                base_url=base_url,
+                api_key=os.environ.get("NMP_API_KEY"),
+            )
+        except Exception as exc:
+            logger.error("Upload failed: %s", exc)
+            return 1
+        payload["uploaded"] = {"environment": refs.environment, "dataset": refs.dataset}
+
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

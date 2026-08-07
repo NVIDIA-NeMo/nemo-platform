@@ -36,6 +36,7 @@ from nmp.rl.tasks.training.errors.parser import parse_error_from_output
 from nmp.rl.tasks.training.protocol import LibraryConfig, TrainingBackend
 
 from .dpo_config import compile_dpo_config
+from .grpo_config import compile_grpo_config
 from .ray_bootstrap import create_bootstrap_from_env
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,9 @@ _DRIVER_DIR = Path(__file__).parent
 
 
 class NemoRLBackend(TrainingBackend):
-    """TrainingBackend implementation for NeMo RL (DPO).
+    """TrainingBackend implementation for NeMo RL (DPO and GRPO).
 
-    This backend handles DPO (Direct Preference Optimization) training using NeMo RL.
+    This backend handles DPO and GRPO training using NeMo RL.
 
     Key responsibilities:
     - Run pre-training conversions (model to HF format) via injected converter
@@ -94,13 +95,12 @@ class NemoRLBackend(TrainingBackend):
         if training_type == TrainingType.DPO:
             return compile_dpo_config(customizer_config, self._job_ctx)
 
-        # GRPO is reserved headroom in the schema but not yet implemented. Reject
-        # it here — the earliest training-type-specific wiring point — so the job
-        # fails fast with a clear message instead of routing to an unfinished stub
-        # and crashing deep inside the training container.
+        if training_type == TrainingType.GRPO:
+            return compile_grpo_config(customizer_config, self._job_ctx)
+
         raise NotImplementedError(
-            f"NemoRLBackend does not yet support training type {training_type.value!r}. "
-            f"Only {TrainingType.DPO.value!r} is currently available."
+            f"NemoRLBackend does not support training type {training_type.value!r}. "
+            f"Supported: {TrainingType.DPO.value!r}, {TrainingType.GRPO.value!r}."
         )
 
     def execute_training(
@@ -208,9 +208,12 @@ class NemoRLBackend(TrainingBackend):
         if training_type == TrainingType.DPO:
             return _DRIVER_DIR / "dpo_driver.py"
 
+        if training_type == TrainingType.GRPO:
+            return _DRIVER_DIR / "grpo_driver.py"
+
         raise NotImplementedError(
             f"No training driver available for training type {training_type.value!r}; "
-            f"only {TrainingType.DPO.value!r} is currently supported."
+            f"supported: {TrainingType.DPO.value!r}, {TrainingType.GRPO.value!r}."
         )
 
     def find_best_checkpoint(

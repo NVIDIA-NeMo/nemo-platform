@@ -6,7 +6,7 @@ Three backend job schemas live in this skill. Each backend has its own field ref
 |--------|--------------|-------------|-----------------|
 | `automodel` | `AutomodelJobInput` (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`) | `nemo customization automodel explain` | **`hyperparameters-automodel.md`** |
 | `unsloth` | `UnslothJobInput` (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`) | `nemo customization unsloth explain` | **`hyperparameters-unsloth.md`** |
-| `rl` (DPO) | `RlJobInput` (`plugins/nemo-rl/src/nemo_rl_plugin/schema.py`) | `nemo customization rl explain` | **`hyperparameters-rl.md`** |
+| `rl` (DPO / GRPO) | `RlJobInput` (`plugins/nemo-rl/src/nemo_rl_plugin/schema.py`) | `nemo customization rl explain` | **`hyperparameters-rl.md`** |
 
 All three schemas use `extra="forbid"` — unknown keys raise validation errors. Field names are **not** interchangeable across backends (e.g. automodel uses `micro_batch_size` / `global_batch_size` / `parallelism`; unsloth uses `per_device_train_batch_size` / `gradient_accumulation_steps` / `hardware`; rl uses `batch_size` / `micro_batch_size` under `training` and takes `model` / `dataset` as plain strings). Use the right schema for the chosen plugin.
 
@@ -18,7 +18,7 @@ All three schemas use `extra="forbid"` — unknown keys raise validation errors.
 |----------------|-----|
 | **`hyperparameters-automodel.md`** | Automodel job JSON layout, full template, `training` / `schedule` / `batch` / `optimizer` / `parallelism` field reference, LR & LoRA-rank tuning, presets, distillation/KD |
 | **`hyperparameters-unsloth.md`** | Unsloth job JSON layout, full template, `model` / `dataset` / `training` / `schedule` / `batch` / `optimizer` / `hardware` / `output` field reference, LR & LoRA-rank tuning, save-method picker |
-| **`hyperparameters-rl.md`** | NeMo-RL (DPO) job JSON layout, `training` (DPOTraining) field reference — shared knobs + DPO-specific (`ref_policy_kl_penalty` = β, `sft_loss_weight`), `parallelism`, DPO tuning guide |
+| **`hyperparameters-rl.md`** | NeMo-RL (DPO + GRPO) job JSON layout, shared knobs, DPO-specific (`ref_policy_kl_penalty` = β), GRPO-specific (`num_generations_per_prompt`, environment FileSet), convert CLI |
 | **`batch-sizing.md`** | ≥48 GB VRAM batch tables, multi-GPU (data vs tensor parallel), OOM / throughput tuning (automodel + unsloth) |
 | **Integrations** (below) | W&B / MLflow `integrations` object — all three backends (automodel, unsloth, rl) |
 | **Source of truth** (below) | Schema source files, compiler mappings, fixtures per backend |
