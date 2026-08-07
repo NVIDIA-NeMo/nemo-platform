@@ -5,7 +5,7 @@ Run Harvey Labs' [Legal Agent Benchmark (LAB)](https://github.com/harveyai/harve
 This is the task-driven counterpart to [`legal_agent_bench_harbor`](../legal_agent_bench_harbor):
 execution (Fabric) and scoring (a metric) are decoupled.
 
-```
+```text
 LAB raw task ──build──▶ AgentEvalTask ──Fabric run──▶ Trial(workspace + ATIF) ──LabRubricMetric──▶ Scores
    (title, docs,          (instruction+manuals,        (agent's deliverables       (calls LAB's own
     criteria, skills)      documents/ + skills/          under output/)              evaluation.score_rubric)
@@ -15,7 +15,8 @@ LAB raw task ──build──▶ AgentEvalTask ──Fabric run──▶ Trial(
 ## Two design decisions that make it faithful
 
 **1. Scoring = LAB's own code.** [`lab_rubric_metric.py`](lab_rubric_metric.py) doesn't reimplement the
-rubric — it **vendors LAB's `evaluation/` module** (from the pinned source the prep downloads) and calls
+rubric — it **imports LAB's `evaluation/` module at runtime** (from the pinned source the prep downloads,
+never committed here) and calls
 `score_rubric(criteria, run_dir, judge, task_desc, parallel)`. LAB's code does the document→text
 extraction (incl. pandoc `--track-changes` for redlines), loads LAB's exact `rubric_criterion` judge
 prompt, and applies all-pass aggregation — so fidelity comes for free. **The grading model is
@@ -52,7 +53,7 @@ has no skill support — see the limitations log).
 | `documents/` | `inputs["files"]` seeded under `documents/` |
 | `harness/skills/{docx,pptx,xlsx}` | `inputs["files"]` seeded under `skills/<name>/` |
 | `criteria[]` | `reference["criteria"]` → scored by LAB's `score_rubric` |
-| `evaluation/scoring.py` (+ `rubric_criterion` prompt) | vendored & called by `LabRubricMetric`; grading model via a `chat.completions` judge adapter |
+| `evaluation/scoring.py` (+ `rubric_criterion` prompt) | imported at runtime & called by `LabRubricMetric`; grading model via a `chat.completions` judge adapter |
 
 ## Setup (one-time)
 
@@ -107,7 +108,7 @@ LAB. The judge endpoint is passed explicitly with `--judge-base-url` (it otherwi
 `$OPENAI_BASE_URL`). Aggregate scores print per run; a real grading of a strong deliverable (a complete
 antitrust memo, re-scored from a stored codex run) looks like:
 
-```
+```text
 lab_rubric.criteria_pass_rate: 0.76        # fraction of the rubric passed (38/50) — the primary signal
 lab_rubric.n_passed / n_criteria: 38 / 50
 lab_rubric.score:              0.0         # all-pass reward: 1.0 ONLY if every criterion passes
@@ -142,7 +143,7 @@ python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_fabric.rescore 
     --judge-parallel 4 --judge-min-interval 0.5
 ```
 
-```
+```text
 task (area)                      original   rescored   passed/total
 ----------------------------------------------------------------------
 corporate-ma                          0.68       0.81   46/57

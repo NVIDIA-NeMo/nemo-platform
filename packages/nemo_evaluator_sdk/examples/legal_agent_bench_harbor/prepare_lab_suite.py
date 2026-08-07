@@ -216,11 +216,21 @@ def build_suite(
     return out
 
 
+def _non_negative_int(raw: str) -> int:
+    """argparse type for ``--limit``: reject negatives so 0 unambiguously means "no tasks"."""
+    value = int(raw)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be non-negative, got {value}")
+    return value
+
+
 def _main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source-dir", default="./data/lab-source", help="Where LAB source is downloaded/extracted.")
     parser.add_argument("--out-dir", default="./data/lab-harbor-suite", help="Where the Harbor suite is generated.")
-    parser.add_argument("--limit", type=int, default=None, help="Generate only the first N tasks.")
+    parser.add_argument(
+        "--limit", type=_non_negative_int, default=None, help="Generate only the first N tasks (0 generates none)."
+    )
     parser.add_argument("--no-download", action="store_true", help="Fail if LAB source is not already present.")
     parser.add_argument("--run-dir", default="/logs/agent/artifacts/lab-run", help="In-container agent output dir.")
     parser.add_argument("--judge-base-url", default=None, help="Bake JUDGE_BASE_URL into each task's [verifier.env].")

@@ -30,7 +30,7 @@ endpoint such as NVIDIA). codex is the default harness because it is the only on
 LAB's skill scripts under Fabric, and it is configured closed-book (no web search) to match LAB::
 
     NVIDIA_API_KEY=... \\
-    python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_fabric.run_legal_agent_bench_fabric \\
+    .venv/bin/python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_fabric.run_legal_agent_bench_fabric \\
         --runtime host --harness codex-cli --model gpt-5.5 \\
         --judge-model openai/gpt-oss-120b \\
         --judge-base-url https://integrate.api.nvidia.com/v1 --judge-api-key-env NVIDIA_API_KEY \\
@@ -92,6 +92,14 @@ def _fabric_config(harness: str, *, provider: str, model: str, api_key_env: str)
         "harness": {"adapter_id": "nvidia.fabric.hermes", "resolution": "preinstalled"},
         "runtime": {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"},
     }
+
+
+def _non_negative_int(raw: str) -> int:
+    """argparse type for ``--limit``: reject negatives so 0 unambiguously means "no tasks"."""
+    value = int(raw)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be non-negative, got {value}")
+    return value
 
 
 def _build_runtime(args: argparse.Namespace):
@@ -175,7 +183,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("--work-root", default=None, help="Host runtime: root for per-task workspaces.")
     p.add_argument("--output-dir", default="./results/legal_agent_bench_fabric", help="Run bundle + report.html.")
-    p.add_argument("--limit", type=int, default=None, help="Score only the first N tasks.")
+    p.add_argument("--limit", type=_non_negative_int, default=None, help="Score only the first N tasks.")
     p.add_argument(
         "--task-ids", nargs="*", default=None, help="Flattened task ids to run (e.g. one per area for a diverse run)."
     )

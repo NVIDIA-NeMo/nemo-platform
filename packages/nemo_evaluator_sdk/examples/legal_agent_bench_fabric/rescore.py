@@ -19,7 +19,7 @@ We reuse the SDK's own imported-trials path rather than calling the metric by ha
 Run from the repository root, e.g. re-grade an existing run with llama-3.3-70b on inference-api::
 
     NVIDIA_API_KEY=... \\
-    python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_fabric.rescore \\
+    .venv/bin/python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_fabric.rescore \\
         --run-dir ./results/lab-fabric \\
         --judge-model nvidia/meta/llama-3.3-70b-instruct \\
         --judge-base-url https://inference-api.nvidia.com/v1 --judge-api-key-env NVIDIA_API_KEY \\

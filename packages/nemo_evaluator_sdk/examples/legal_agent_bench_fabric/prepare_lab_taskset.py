@@ -251,6 +251,13 @@ def build_lab_tasks(
     ``task_ids`` (flattened ids) selects a specific subset — e.g. one task per practice area for a
     heterogeneous run, or the exact set of trials to re-score; ``limit`` still caps the count.
     """
+    # The loop below caps *after* appending, so limit<=0 would otherwise yield one task. Settle it here,
+    # before the scorer/judge get built (which downloads nothing but does construct a judge client).
+    if limit is not None:
+        if limit < 0:
+            raise ValueError(f"limit must be non-negative, got {limit}")
+        if limit == 0:
+            return []
     # Load LAB's scorer + build the judge ONCE here (caller owns the LAB-source coupling); the metric is
     # handed the ready callable + judge and stays portable. One shared judge => a single global throttle.
     score_rubric = load_lab_score_rubric(source_root)

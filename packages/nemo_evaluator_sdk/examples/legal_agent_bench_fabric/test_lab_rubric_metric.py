@@ -10,7 +10,7 @@ package), mirroring tests/agent_eval/test_example_metrics.py.
 
 Run from the repo root::
 
-    .venv/bin/python -m pytest \\
+    uv run --frozen pytest \\
         packages/nemo_evaluator_sdk/examples/legal_agent_bench_fabric/test_lab_rubric_metric.py -q
 """
 
@@ -121,3 +121,28 @@ async def test_scorer_failure_propagates_not_a_fake_zero(tmp_path: Path) -> None
 
     with pytest.raises(RuntimeError, match="LAB scoring deps missing"):
         await metric.compute_scores(_input(_REFERENCE, workspace))
+
+
+def test_rejects_output_subdir_other_than_labs_hardcoded_output() -> None:
+    # LAB's score_rubric always reads run_dir/"output". Any other value would grade nothing and report a
+    # false zero, so the constructor must reject it rather than fail silently at scoring time.
+    with pytest.raises(ValueError, match="output_subdir must be 'output'"):
+        LabRubricMetric(score_rubric=lambda *a, **k: None, judge=object(), output_subdir="deliverables")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # A brace inside a string value must not terminate the object early.
+        ('{"verdict": "pass", "reasoning": "cites 15 U.S.C. } sec 1"}', "pass"),
+        ('```json\n{"verdict": "fail", "reasoning": "no memo"}\n```', "fail"),
+        ('Here is my verdict:\n{"verdict": "pass", "reasoning": "ok"}\nThanks!', "pass"),
+    ],
+)
+def test_parse_json_handles_braces_in_strings_and_prose(raw: str, expected: str) -> None:
+    assert lab_rubric_metric._parse_json(raw)["verdict"] == expected
+
+
+def test_parse_json_raises_when_no_object_present() -> None:
+    with pytest.raises(ValueError, match="No JSON found"):
+        lab_rubric_metric._parse_json("the model refused to answer")

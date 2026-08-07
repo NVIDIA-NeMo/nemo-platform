@@ -68,6 +68,14 @@ from .lab_criteria_metric import LabCriteriaMetric
 logger = logging.getLogger(__name__)
 
 
+def _non_negative_int(raw: str) -> int:
+    """argparse type for ``--limit``: a negative value would silently slice tasks off the END."""
+    value = int(raw)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be non-negative, got {value}")
+    return value
+
+
 def _build_config(args: argparse.Namespace) -> HarborRuntimeConfig:
     """Map the CLI onto Harbor's runtime config."""
     use_builtin = bool(args.agent_name)  # e.g. --agent-name oracle for a wiring smoke test
@@ -177,7 +185,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="./results/legal_agent_bench/run",
         help="Where the agent-eval run bundle + report.html are written.",
     )
-    parser.add_argument("--limit", type=int, default=None, help="Score only the first N tasks (handy for smoke runs).")
+    parser.add_argument(
+        "--limit", type=_non_negative_int, default=None, help="Score only the first N tasks (handy for smoke runs)."
+    )
     parser.add_argument("--n-attempts", type=int, default=1, help="Harbor trials per task.")
     parser.add_argument("--concurrency", type=int, default=4, help="Maximum concurrent Harbor trials.")
     parser.add_argument("--parallelism", type=int, default=4, help="Tasks scored concurrently by the evaluator.")

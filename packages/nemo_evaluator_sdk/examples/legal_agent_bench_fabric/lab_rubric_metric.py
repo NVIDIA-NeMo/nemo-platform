@@ -68,6 +68,10 @@ class LabRubricMetric:
         parallel: int = 4,
         metric_type: str = "lab_rubric",
     ) -> None:
+        # LAB's score_rubric hardcodes ``run_dir / "output"``, so any other value would silently grade
+        # nothing and report a false zero (see _run_dir). Fail loudly instead.
+        if output_subdir != "output":
+            raise ValueError(f"output_subdir must be 'output' (LAB's scorer hardcodes it), got {output_subdir!r}")
         # Portability: the caller loads LAB's ``score_rubric`` (the scorer callable) and builds the
         # ``judge`` (any object with ``evaluate_from_file(name, variables)``) and passes them in — so this
         # metric has no filesystem / sys.path / LAB-source coupling and can run anywhere (e.g. a backend
@@ -272,18 +276,15 @@ def _parse_json(text: str) -> dict[str, Any]:
             return json.loads(match.group(1).strip())
         except json.JSONDecodeError:
             pass
+    # raw_decode understands string literals, so a brace inside a value (e.g. {"reasoning": "a } here"})
+    # does not end the object early the way a naive brace counter would.
+    decoder = json.JSONDecoder()
     for i, ch in enumerate(text):
         if ch == "{":
-            depth = 0
-            for j in range(i, len(text)):
-                if text[j] == "{":
-                    depth += 1
-                elif text[j] == "}":
-                    depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[i : j + 1])
-                    except json.JSONDecodeError:
-                        break
-                    break
+            try:
+                obj, _ = decoder.raw_decode(text[i:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                return obj
     raise ValueError(f"No JSON found in judge response: {text[:200]}")

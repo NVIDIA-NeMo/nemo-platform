@@ -21,7 +21,7 @@ one `AgentEvaluator` call.
 ## 1. Generate the suite (self-contained)
 
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_harbor.prepare_lab_suite \
+uv run -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_harbor.prepare_lab_suite \
     --source-dir ./data/lab-source \
     --out-dir    ./data/lab-harbor-suite \
     --judge-base-url https://integrate.api.nvidia.com/v1 \
@@ -36,10 +36,12 @@ secret to disk.
 
 ## 2. Run and score it
 
+`--agent-name` picks a built-in Harbor agent; use `--agent-import-path` for your own.
+
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_harbor.run_legal_agent_bench \
+uv run -m packages.nemo_evaluator_sdk.examples.legal_agent_bench_harbor.run_legal_agent_bench \
     --dataset-path ./data/lab-harbor-suite \
-    --agent-name oracle \            # a built-in Harbor agent; use --agent-import-path for your own
+    --agent-name oracle \
     --model your-model \
     --mode components --limit 5
 ```
@@ -55,7 +57,7 @@ LAB is a **rubric** benchmark, so a single pass/fail reward per row throws away 
 [`LabCriteriaMetric`](lab_criteria_metric.py) reads the verifier's `scores.json` and reports both
 the official all-pass reward *and* the component breakdown in one run:
 
-```
+```text
 harbor_reward.reward:            mean=0.42   # all-pass reward (1.0 iff every criterion passes)
 lab_criteria.criteria_pass_rate: mean=0.78
 lab_criteria.all_criteria_pass:  mean=0.42
