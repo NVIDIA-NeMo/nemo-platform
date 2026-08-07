@@ -143,13 +143,28 @@ export const FileQuickActions: FC<Props> = ({
         />
       )}
       {openModal === 'rename' && modalFile && (
-        <RenameFileModal open onClose={() => setOpenModal(undefined)} filepath={path} />
+        <RenameFileModal
+          open
+          onClose={() => setOpenModal(undefined)}
+          filepath={path}
+          datasetId={datasetFullName}
+        />
       )}
       {openModal === 'createSplit' && modalFile && (
-        <CreateFileSplitsModal open onClose={() => setOpenModal(undefined)} filepath={path} />
+        <CreateFileSplitsModal
+          open
+          onClose={() => setOpenModal(undefined)}
+          filepath={path}
+          datasetId={datasetFullName}
+        />
       )}
       {openModal === 'transform' && modalFile && (
-        <TransformFileModal open onClose={() => setOpenModal(undefined)} filepath={path} />
+        <TransformFileModal
+          open
+          onClose={() => setOpenModal(undefined)}
+          filepath={path}
+          datasetId={datasetFullName}
+        />
       )}
       {openModal === 'addToFolder' && modalFile && workspace && name && (
         <AddToFolderModal
