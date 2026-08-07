@@ -1040,3 +1040,61 @@ def test_atif_mapping_end_time_none_when_no_timing_exists_at_all() -> None:
         for span in spans
         if span.name in {"user-1", "bash"} or (span.name == "sample-agent" and span.kind == SpanKind.LLM)
     )
+
+
+def test_atif_v17_observation_on_nested_system_step() -> None:
+    """Regression: DeepAgents emits an observation on a nested *system* step.
+
+    ``observation`` previously lived only on ``AtifStepAgent``, so a system step
+    carrying one was rejected as an extra field and Intake returned HTTP 422,
+    storing nothing. It now lives on ``AtifStepBase``; every step type accepts it,
+    validators run on all step types, and the mapper reads observations anywhere.
+    """
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "deepagents-session",
+            "trajectory_id": "root",
+            "agent": {"name": "orchestrator", "version": "1.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "classify this email"},
+                {
+                    "step_id": 2,
+                    "source": "agent",
+                    "message": "delegating to phishing-analyzer",
+                    "tool_calls": [{"tool_call_id": "task-1", "function_name": "task"}],
+                    "observation": {
+                        "results": [{"source_call_id": "task-1", "subagent_trajectory_ref": [{"trajectory_id": "sub"}]}]
+                    },
+                },
+            ],
+            "subagent_trajectories": [
+                {
+                    "schema_version": "ATIF-v1.7",
+                    "trajectory_id": "sub",
+                    "agent": {"name": "phishing-analyzer", "version": "1.0"},
+                    "steps": [
+                        {
+                            "step_id": 1,
+                            "source": "system",
+                            "message": "You are a careful email phishing analyzer.",
+                            "observation": {"results": [{"content": "is_likely_phishing: true"}]},
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    system_step = trajectory.subagent_trajectories[0].steps[0]
+    assert system_step.source == "system"
+    assert system_step.observation is not None
+    assert system_step.observation.results[0].content == "is_likely_phishing: true"
+
+    # The non-agent observation maps without error and produces spans.
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert spans
