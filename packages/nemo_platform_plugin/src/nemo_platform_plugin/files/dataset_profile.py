@@ -134,7 +134,21 @@ class PartitionClassification(BaseModel):
 
 
 class Quantiles(BaseModel):
-    """A per-row distribution summary. p99 = long-tail sequence-length signal; max = hard cap."""
+    """A per-row distribution summary. p99 = long-tail sequence-length signal; max = hard cap.
+
+    The shape is the point, not the precision. Mean and max cannot tell "uniformly medium-length"
+    apart from "mostly short with a long tail", and those call for opposite sequence budgets — set
+    one from `max` and most of the memory is wasted, set it from the mean and the tail is silently
+    truncated. Reading p50 against p99 is what answers it.
+
+    **p50 / p95 / p99 are estimates, within a couple of percent.** They are read off counters bucketed
+    by magnitude rather than from the lengths themselves, which is what keeps the profiler's memory
+    flat in rows. Every row is counted, so the *rank* is exact; only the value is rounded, and it is
+    rounded to a bound that does not grow with the dataset. That is the cheap error to accept here,
+    because whoever reads these rounds to a power of two anyway.
+
+    **`max` is exact**, always, and is the only number here safe to treat as a hard bound.
+    """
 
     p50: int
     p95: int
@@ -458,9 +472,9 @@ class PartitionProfile(BaseModel):
             "True => `features`, `stats` and `classification` were computed over every row of every "
             "file in THIS partition: proven facts, not estimates. Only then can a consumer assert "
             "enum / required in a bridged JSON Schema, or read a verifiability coverage of 1.0 as "
-            "literal. `TextQuality` is the one exception and is always an estimate — it is bounded "
-            "independently of how much was read, for cost reasons its own docstring gives — though "
-            "the two only diverge on an unbounded read of a column larger than that bound. "
+            "literal. It speaks to *rows read*, not to every number being exact: `TextQuality` and "
+            "`Quantiles` are estimates by construction however much was read, each bounded for the "
+            "cost reasons its own docstring gives, and `Quantiles.max` is exact regardless. "
             "Scoped to the partition because that is where it is decided — a corrupt shard "
             "in one partition says nothing about the measurements in another, and a fileset-wide "
             "flag quietly downgraded every partition to the worst one."

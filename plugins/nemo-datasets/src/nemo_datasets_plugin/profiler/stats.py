@@ -22,10 +22,10 @@ the same answer as one measured whole — the property that lets a caller stop m
 partition before it can measure it. The base class is the entire measurement for a dtype with no
 statistics of its own, because the probes run over every column whatever its type.
 
-Two things here are still sized by the column rather than bounded: the retained strings a quality
-stride needs to place its sample, and the lengths a quantile needs to sort. Both are what the
-reservoir and the parquet footer row counts are for, and until then they cost what materialising the
-column already cost.
+Every measurement is now O(1) in rows except one: a string column retains its strings, because the
+quality stride needs the column's row count to place its sample and that is not known until the last
+batch. Summing the parquet footers before folding is what removes it — the row count is in them, and
+reading it costs no rows. A messages column has no such term and is already bounded.
 """
 
 from __future__ import annotations
@@ -272,19 +272,25 @@ class StringAccumulator(ColumnAccumulator):
     def __init__(self) -> None:
         super().__init__()
         self._strings: list[str] = []
+        self._lengths = _LengthHistogram()
         self._vocabulary = _Vocabulary()
 
     def _observe(self, present: list[Any]) -> None:
-        # The strings are retained because the quality stride needs the column's length to place its
-        # sample, and that is not known until the last batch. Bounding this is what the reservoir and
-        # the footer row count are for; until then it costs what materialising the column already did.
-        self._strings.extend(value for value in present if isinstance(value, str))
+        for value in present:
+            if isinstance(value, str):
+                # The length folds away; the string itself is retained only because the quality
+                # stride needs the column's row count to place its sample, and that is not known
+                # until the last batch. Bounding that is the parquet footer sum's job -- it is the
+                # one term here still sized by the column, and it costs what materialising the
+                # column already cost.
+                self._strings.append(value)
+                self._lengths.add(len(value))
         self._vocabulary.update(present)
 
     def _blocks(self) -> dict[str, Any]:
         text = quality = None
         if self._strings:
-            text = TextStats(chars=_quantiles([len(value) for value in self._strings]))
+            text = TextStats(chars=self._lengths.quantiles())
             quality = _text_quality(self._strings)
         return {"text": text, "quality": quality, "categorical": self._vocabulary.finalize()}
 
@@ -341,8 +347,8 @@ class MessageAccumulator(ColumnAccumulator):
     def __init__(self) -> None:
         super().__init__()
         self._conversations = 0
-        self._turns: list[int] = []
-        self._content_chars: list[int] = []
+        self._turns = _LengthHistogram()
+        self._content_chars = _LengthHistogram()
         self._roles_seen: list[str] = []
         self._ends_with_assistant = 0
         self._valid_alternation = 0
@@ -353,7 +359,7 @@ class MessageAccumulator(ColumnAccumulator):
             if not isinstance(messages, list):
                 continue
             self._conversations += 1
-            self._turns.append(len(messages))
+            self._turns.add(len(messages))
             total_content = 0
             for message in messages:
                 if not isinstance(message, dict):
@@ -372,7 +378,7 @@ class MessageAccumulator(ColumnAccumulator):
                 # schema that merely declares tool_calls would otherwise report tool use on every row.
                 if message.get("tool_calls") or role == "tool":
                     self._has_tool_calls = True
-            self._content_chars.append(total_content)
+            self._content_chars.add(total_content)
             if messages and isinstance(messages[-1], dict) and _is_assistant_role(_role_of(messages[-1])):
                 self._ends_with_assistant += 1
             if _valid_alternation(messages):
@@ -383,8 +389,8 @@ class MessageAccumulator(ColumnAccumulator):
             return {"messages": None}
         return {
             "messages": MessageStats(
-                turns=_quantiles(self._turns),
-                content_chars=_quantiles(self._content_chars),
+                turns=self._turns.quantiles(),
+                content_chars=self._content_chars.quantiles(),
                 roles_seen=self._roles_seen,
                 ends_with_assistant_rate=self._ends_with_assistant / self._conversations,
                 valid_alternation_rate=self._valid_alternation / self._conversations,
@@ -410,18 +416,85 @@ def _is_numeric(dtype: str) -> bool:
     return dtype.startswith(("int", "uint", "float"))
 
 
-def _quantiles(values: list[int]) -> Quantiles:
-    """Nearest-rank percentiles over the sample (n is small, so this stays exact)."""
-    ordered = sorted(values)
-    n = len(ordered)
+# How finely a length distribution is recorded. Lengths below the slice count get a counter each and
+# are exact; above it, each octave is cut into this many slices, so a bucket spans a fixed *relative*
+# width of 1/32. Reporting a bucket's midpoint then puts every estimate within ~1.6% of the truth,
+# whatever the value's magnitude and however many rows there are.
+_HISTOGRAM_SLICE_BITS = 5
+_HISTOGRAM_SLICES = 1 << _HISTOGRAM_SLICE_BITS
 
-    def at(percentile: int) -> int:
-        if n == 0:
+
+def _length_bucket(value: int) -> int:
+    """The counter a length belongs to."""
+    if value < _HISTOGRAM_SLICES:
+        return value  # small lengths get a counter each, so they are recorded exactly
+    shift = value.bit_length() - 1 - _HISTOGRAM_SLICE_BITS
+    return (shift + 1) * _HISTOGRAM_SLICES + ((value >> shift) - _HISTOGRAM_SLICES)
+
+
+def _bucket_bounds(bucket: int) -> tuple[int, int]:
+    """The half-open range of lengths that land in ``bucket``. Inverse of :func:`_length_bucket`."""
+    if bucket < _HISTOGRAM_SLICES:
+        return bucket, bucket + 1
+    index, slice_index = divmod(bucket, _HISTOGRAM_SLICES)
+    shift = index - 1
+    low = (_HISTOGRAM_SLICES + slice_index) << shift
+    return low, low + (1 << shift)
+
+
+class _LengthHistogram:
+    """A per-row length distribution, held as counters rather than as the lengths themselves.
+
+    This is what lets an accumulator stay O(1) in rows. Exact quantiles need every length kept and
+    sorted, which is a list that grows with the dataset; a reservoir of sampled lengths bounds that,
+    but buys the bound with an RNG -- and so with a seed back in the contract, and two runs over the
+    same bytes disagreeing. Counting into fixed buckets bounds it with neither.
+
+    The two put their error in different places. A reservoir sees *some* rows exactly, so its error
+    is in which rows it happened to keep: probabilistic, and shrinking only with the sample size.
+    This sees *every* row imprecisely, so its error is in how finely each value was recorded: a hard
+    bound of half a bucket width, whatever the data does. Measured against exact quantiles on real
+    shards, ~2%.
+
+    Rounding the value is the cheap error to accept here, because the number is read to pick a
+    sequence budget and gets rounded to a power of two by whoever reads it. ``max`` is kept exactly
+    and separately: it is the one value here a reader may treat as a hard bound.
+    """
+
+    def __init__(self) -> None:
+        self._counts: dict[int, int] = {}
+        self._rows = 0
+        self._max = 0
+
+    def add(self, value: int) -> None:
+        bucket = _length_bucket(value)
+        self._counts[bucket] = self._counts.get(bucket, 0) + 1
+        self._rows += 1
+        if value > self._max:
+            self._max = value
+
+    def quantiles(self) -> Quantiles:
+        return Quantiles(p50=self._at(50), p95=self._at(95), p99=self._at(99), max=self._max)
+
+    def _at(self, percentile: int) -> int:
+        """Nearest-rank percentile: the bucket the p-th row falls in, reported at its midpoint.
+
+        The rank is exact -- every row was counted, none sampled -- so only the value is approximate.
+        Midpoint rather than the bucket's low edge, which sits systematically under the truth and
+        roughly doubles the average error.
+        """
+        if not self._rows:
             return 0
-        rank = math.ceil(percentile / 100 * n)
-        return ordered[min(rank, n) - 1]
-
-    return Quantiles(p50=at(50), p95=at(95), p99=at(99), max=ordered[-1] if ordered else 0)
+        target = math.ceil(percentile / 100 * self._rows)
+        seen = 0
+        for bucket in sorted(self._counts):
+            seen += self._counts[bucket]
+            if seen >= target:
+                low, high = _bucket_bounds(bucket)
+                # Never above `max`: a midpoint can overshoot the largest value actually present,
+                # and a p99 above the maximum would be nonsense.
+                return min((low + high) // 2, self._max)
+        return self._max
 
 
 # --- text quality --------------------------------------------------------------------------------
@@ -558,53 +631,6 @@ def _role_of(message: dict) -> Any:
 
 def _is_assistant_role(role: Any) -> bool:
     return isinstance(role, str) and role.lower() in _ASSISTANT_ROLES
-
-
-def _message_stats(rows_messages: list[list]) -> MessageStats | None:
-    if not rows_messages:
-        return None
-    turns: list[int] = []
-    content_chars: list[int] = []
-    roles_seen: list[str] = []
-    ends_with_assistant = 0
-    valid_alternation = 0
-    has_tool_calls = False
-
-    for messages in rows_messages:
-        turns.append(len(messages))
-        total_content = 0
-        for message in messages:
-            if not isinstance(message, dict):
-                continue
-            role = _role_of(message)
-            if role is not None:
-                # Coerced to str because roles_seen is typed list[str] and a non-string role would
-                # fail validation — aborting the whole profile from inside the one stage the pipeline
-                # does not guard. Reported verbatim otherwise: the contract is explicit that an
-                # unexpected role is the finding worth surfacing, not something to normalize away.
-                role = role if isinstance(role, str) else str(role)
-                if role not in roles_seen:
-                    roles_seen.append(role)
-            total_content += _content_len(_message_field(message, "content", "value"))
-            # `.get` truthiness, not `in`: parquet materializes every declared struct field, so a
-            # schema that merely declares tool_calls would otherwise report tool use on every row.
-            if message.get("tool_calls") or role == "tool":
-                has_tool_calls = True
-        content_chars.append(total_content)
-        if messages and isinstance(messages[-1], dict) and _is_assistant_role(_role_of(messages[-1])):
-            ends_with_assistant += 1
-        if _valid_alternation(messages):
-            valid_alternation += 1
-
-    n = len(rows_messages)
-    return MessageStats(
-        turns=_quantiles(turns),
-        content_chars=_quantiles(content_chars),
-        roles_seen=roles_seen,
-        ends_with_assistant_rate=ends_with_assistant / n,
-        valid_alternation_rate=valid_alternation / n,
-        has_tool_calls=has_tool_calls,
-    )
 
 
 def _content_len(content: Any) -> int:

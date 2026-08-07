@@ -3,6 +3,8 @@
 
 """Tests for per-column statistics."""
 
+import math
+
 import pytest
 from nemo_datasets_plugin.profiler import stats as stats_module
 from nemo_datasets_plugin.profiler.stats import (
@@ -36,6 +38,49 @@ def _feature(name, dtype):
 
 def _rows(name, values):
     return [{name: value} for value in values]
+
+
+# --- length histogram ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", [0, 1, 31, 32, 33, 63, 64, 255, 256, 1_000, 1_300, 65_535, 1_000_000, 33_554_432])
+def test_every_length_lands_in_a_bucket_that_contains_it(value):
+    # The bounds are what a quantile is read off, so they have to invert the bucketing exactly. A
+    # bucket whose range does not contain its own values would report a plausible wrong number.
+    low, high = stats_module._bucket_bounds(stats_module._length_bucket(value))
+    assert low <= value < high
+
+
+def test_short_lengths_are_recorded_exactly():
+    # Below the slice count every length gets its own counter. That is what keeps the small fixtures
+    # in this file exact, and it is why a column of short strings loses nothing to bucketing.
+    hist = stats_module._LengthHistogram()
+    for n in range(stats_module._HISTOGRAM_SLICES):
+        hist.add(n)
+    quantiles = hist.quantiles()
+    assert (quantiles.p50, quantiles.p95, quantiles.p99, quantiles.max) == (15, 30, 31, 31)
+
+
+def test_quantiles_stay_within_the_bound_on_a_heavy_tail():
+    # The shape that matters: most rows short, a thin long tail. It is also the shape a mean cannot
+    # describe, which is why the distribution is carried at all.
+    values = [10] * 5000 + [200] * 3000 + [4000] * 1500 + [90_000] * 500
+    hist = stats_module._LengthHistogram()
+    for value in values:
+        hist.add(value)
+    quantiles = hist.quantiles()
+
+    ordered = sorted(values)
+    for percentile, got in ((50, quantiles.p50), (95, quantiles.p95), (99, quantiles.p99)):
+        want = ordered[min(math.ceil(percentile / 100 * len(ordered)), len(ordered)) - 1]
+        assert abs(got - want) / want <= 0.02, (percentile, want, got)
+    assert quantiles.max == 90_000  # exact, never rounded to a bucket
+    assert quantiles.p50 <= quantiles.p95 <= quantiles.p99 <= quantiles.max
+
+
+def test_an_empty_histogram_reports_zeros():
+    quantiles = stats_module._LengthHistogram().quantiles()
+    assert (quantiles.p50, quantiles.p95, quantiles.p99, quantiles.max) == (0, 0, 0, 0)
 
 
 # --- text ----------------------------------------------------------------------------------------
