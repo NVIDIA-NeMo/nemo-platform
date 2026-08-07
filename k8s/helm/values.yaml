@@ -647,6 +647,10 @@ api:
 
   # -- Number of replicas for the API service.
   replicaCount: 1
+  # -- Platform API server settings.
+  server:
+    # -- Seconds Uvicorn keeps idle HTTP connections open. Must be greater than envoyProxy.timeouts.upstreamIdle when Envoy is enabled.
+    keepAliveTimeoutSeconds: 5
   # -- Additional arguments to pass to the Platform API service
   extraArgs: []
   # -- Additional volume mounts to add to the Platform API container.
@@ -1053,6 +1057,8 @@ envoyProxy:
     route: "0s"
     # -- Cluster connect timeout (time to establish connection to backend).
     connect: "30s"
+    # -- Positive whole-second upstream connection idle timeout. Must be less than api.server.keepAliveTimeoutSeconds when Envoy is enabled.
+    upstreamIdle: "4s"
 
   # -- Kubernetes deployment resources configuration for the Envoy service. Utilization-based autoscaling requires a matching resource request.
   resources: {}

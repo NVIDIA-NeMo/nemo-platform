@@ -1060,6 +1060,7 @@ jobs:
       !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.cpu-smoke == 'true' ||
+        needs.changes.outputs.helm == 'true' ||
         needs.changes.outputs.auth-idp == 'true'
       )
     runs-on: ubuntu-latest
@@ -1078,6 +1079,9 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Run auth-idp static tests
         run: |
+          set -euo pipefail
+          docker pull docker.io/envoyproxy/envoy:v1.37.0
+          docker pull envoyproxy/envoy:v1.36.2
           helm dependency build k8s/helm
           helm dependency build contrib/auth/authentik/helm
           uv run --frozen pytest tests/auth_idp/static -v

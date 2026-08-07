@@ -27,6 +27,21 @@ def _helm_template(*args: str) -> list[dict]:
     return [document for document in yaml.safe_load_all(completed.stdout) if document]
 
 
+def _helm_template_failure(*args: str) -> str:
+    if shutil.which("helm") is None:
+        pytest.skip("helm is required to render the NeMo Platform chart")
+
+    completed = subprocess.run(
+        ["helm", "template", "nemo-platform", str(HELM_DIR), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=HELM_TEMPLATE_TIMEOUT_SECONDS,
+    )
+    assert completed.returncode != 0, completed.stdout
+    return completed.stderr
+
+
 def _clickhouse_resources(documents: list[dict]) -> list[dict]:
     return [
         document
@@ -43,6 +58,15 @@ def _api_container(documents: list[dict]) -> dict:
         if document["kind"] == "Deployment" and document["metadata"]["name"] == "nemo-platform-api"
     )
     return deployment["spec"]["template"]["spec"]["containers"][0]
+
+
+def _envoy_config(documents: list[dict]) -> dict:
+    config_map = next(
+        document
+        for document in documents
+        if document["kind"] == "ConfigMap" and document["metadata"]["name"] == "nemo-platform-envoy"
+    )
+    return yaml.safe_load(config_map["data"]["envoy.yaml"])
 
 
 def _env_by_name(container: dict) -> dict[str, dict]:
@@ -95,3 +119,42 @@ def test_external_clickhouse_disables_embedded_dependency() -> None:
     assert env["NMP_INTAKE_CLICKHOUSE_URL"]["value"] == "http://clickhouse.example.internal:8123"
     password_ref = env["NMP_INTAKE_CLICKHOUSE_PASSWORD"]["valueFrom"]["secretKeyRef"]
     assert password_ref == {"name": "clickhouse-credentials", "key": "password"}
+
+
+def test_envoy_backend_cluster_uses_short_upstream_idle_timeout() -> None:
+    documents = _helm_template(
+        "--set",
+        "platformConfig.auth.enabled=true",
+    )
+    envoy_config = _envoy_config(documents)
+    backend_cluster = next(
+        cluster for cluster in envoy_config["static_resources"]["clusters"] if cluster["name"] == "backend_cluster"
+    )
+    http_options = backend_cluster["typed_extension_protocol_options"][
+        "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
+    ]
+
+    assert http_options["common_http_protocol_options"] == {"idle_timeout": "4s"}
+    assert http_options["explicit_http_config"] == {"http_protocol_options": {}}
+
+
+def test_envoy_upstream_idle_must_be_less_than_api_keep_alive() -> None:
+    stderr = _helm_template_failure(
+        "--set",
+        "platformConfig.auth.enabled=true",
+        "--set",
+        "api.server.keepAliveTimeoutSeconds=5",
+        "--set",
+        "envoyProxy.timeouts.upstreamIdle=5s",
+    )
+
+    assert ("envoyProxy.timeouts.upstreamIdle (5s) must be less than api.server.keepAliveTimeoutSeconds (5s)") in stderr
+
+
+def test_api_deployment_passes_keep_alive_timeout_to_services_run() -> None:
+    documents = _helm_template(
+        "--set",
+        "api.server.keepAliveTimeoutSeconds=9",
+    )
+
+    assert "--keep-alive-timeout-seconds=9" in _api_container(documents)["args"]

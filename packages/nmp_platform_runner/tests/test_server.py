@@ -3,6 +3,7 @@
 
 import asyncio
 import builtins
+import inspect
 import os
 import sys
 import threading
@@ -19,6 +20,7 @@ from nmp.common.config.base import OIDCConfig
 from nmp.common.service import RouterConfig, Service
 from nmp.platform_runner import config as runner_config
 from nmp.platform_runner import server
+from nmp.platform_runner.config import DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router
 from pydantic import BaseModel
 
@@ -351,11 +353,12 @@ def test_run_server_runs_embedded_auth_preflight():
         patch("nmp.platform_runner.server.setup_fastapi_instrumentations"),
         patch("nmp.platform_runner.server.uvicorn.run") as uvicorn_run,
     ):
-        server.run_server(services=[], host="127.0.0.1", port=9999)
+        server.run_server(services=[], host="127.0.0.1", port=9999, keep_alive_timeout_seconds=12)
 
     assert calls == [auth_cfg]
     create_app.assert_called_once_with([])
     uvicorn_run.assert_called_once()
+    assert uvicorn_run.call_args.kwargs["timeout_keep_alive"] == 12
 
 
 def test_run_server_can_bind_tcp_and_unix_domain_socket():
@@ -372,9 +375,74 @@ def test_run_server_can_bind_tcp_and_unix_domain_socket():
     run_bound_sockets.assert_called_once()
     assert run_bound_sockets.call_args.kwargs == {
         "host": "127.0.0.1",
+        "keep_alive_timeout_seconds": DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
         "port": 9999,
         "socket_path": "/tmp/nemo-platform.sock",
     }
+
+
+def test_run_server_on_bound_sockets_sets_keep_alive_timeout():
+    app = FastAPI()
+    tcp_socket = MagicMock()
+    uds_socket = MagicMock()
+    tcp_config = MagicMock()
+    uds_config = MagicMock()
+    tcp_config.bind_socket.return_value = tcp_socket
+    uds_config.bind_socket.return_value = uds_socket
+
+    with (
+        patch("nmp.platform_runner.server.uvicorn.Config", side_effect=[tcp_config, uds_config]) as config_cls,
+        patch("nmp.platform_runner.server.uvicorn.Server") as server_cls,
+        patch("nmp.platform_runner.server.asyncio.run") as asyncio_run,
+    ):
+        server._run_server_on_bound_sockets(
+            app,
+            host="127.0.0.1",
+            port=9999,
+            socket_path="/tmp/nemo-platform.sock",
+            keep_alive_timeout_seconds=12,
+        )
+
+    assert config_cls.call_args_list[0].kwargs["timeout_keep_alive"] == 12
+    assert config_cls.call_args_list[1].kwargs["timeout_keep_alive"] == 12
+    server_cls.assert_called_once_with(tcp_config)
+    server_cls.return_value.serve.assert_called_once_with(sockets=[tcp_socket, uds_socket])
+    asyncio_run.assert_called_once_with(server_cls.return_value.serve.return_value)
+    tcp_socket.close.assert_called_once_with()
+    uds_socket.close.assert_called_once_with()
+
+
+def test_run_server_with_reload_sets_keep_alive_timeout():
+    auth_cfg = _make_auth_config(enabled=True)
+    with (
+        patch("nmp.platform_runner.server.get_auth_config", return_value=auth_cfg),
+        patch("nmp.platform_runner.server.preflight_embedded_auth_policy_wasm"),
+        patch("nmp.platform_runner.server.uvicorn.run") as uvicorn_run,
+    ):
+        server.run_server_with_reload(
+            "nmp.platform_runner.server:create_default_app",
+            host="127.0.0.1",
+            port=9999,
+            keep_alive_timeout_seconds=12,
+        )
+
+    uvicorn_run.assert_called_once()
+    assert uvicorn_run.call_args.kwargs["timeout_keep_alive"] == 12
+
+
+def test_server_default_keep_alive_matches_runner_config_default():
+    assert (
+        inspect.signature(server.run_server).parameters["keep_alive_timeout_seconds"].default
+        == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+    )
+    assert (
+        inspect.signature(server._run_server_on_bound_sockets).parameters["keep_alive_timeout_seconds"].default
+        == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+    )
+    assert (
+        inspect.signature(server.run_server_with_reload).parameters["keep_alive_timeout_seconds"].default
+        == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+    )
 
 
 def test_create_default_app_raises_for_unknown_service_from_env(monkeypatch):

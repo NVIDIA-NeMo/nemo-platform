@@ -1,3 +1,4 @@
+{{- include "nemo-platform.validateEnvoyKeepAliveTimeouts" . }}
 {{- if and (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -59,6 +60,16 @@ data:
           type: STRICT_DNS
           lb_policy: ROUND_ROBIN
           connect_timeout: {{ .Values.envoyProxy.timeouts.connect | quote }}
+          # Envoy's default upstream HTTP idle timeout is 1h. The chart default
+          # stays below the API keep-alive timeout so stale pooled API
+          # connections are retired before the backend closes them.
+          typed_extension_protocol_options:
+            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+              common_http_protocol_options:
+                idle_timeout: {{ .Values.envoyProxy.timeouts.upstreamIdle | quote }}
+              explicit_http_config:
+                http_protocol_options: {}
           load_assignment:
             cluster_name: backend_cluster
             endpoints:
