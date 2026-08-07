@@ -3,8 +3,6 @@ navigation:
     contents:
       - page: Home
         path: ../../index.mdx
-      - page: Telemetry and Privacy
-        path: ../../telemetry-and-privacy.mdx
       - section: Get Started
         path: ../../get-started/setup.mdx
         contents:
@@ -480,6 +478,8 @@ navigation:
             path: ../../requirements.mdx
           - page: Support Matrix
             path: ../../support-matrix.mdx
+          - page: Telemetry and Privacy
+            path: ../../telemetry-and-privacy.mdx
           - api: API Reference
           - section: Python SDK
             path: ../../pysdk/index.mdx
