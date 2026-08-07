@@ -7,7 +7,11 @@ from typing import Self, Sequence
 
 from docker.errors import DockerException
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.capabilities import CapabilityUnavailableError, probe_docker
+from nemo_platform_plugin.capabilities import (
+    CapabilityUnavailableError,
+    probe_docker,
+    reset_capability_cache,
+)
 from nmp.core.jobs.app.profiles import ExecutionProfileT
 from nmp.core.jobs.app.schemas import BackendRef, ProfileRef, ProviderRef
 from nmp.core.jobs.controllers.backends.base import DEFAULT_PROFILE, DEFAULT_PROVIDER, JobBackend
@@ -144,7 +148,11 @@ class BackendRegistry:
                 # probe_docker(use_cache=False) so it does not pin this cache;
                 # compile shares the cached boot verdict (restart required after
                 # starting Docker mid-process).
+                # Reset before the boot probe so an earlier transient miss (e.g.
+                # deployments init probing before the daemon is ready) cannot
+                # permanently skip Docker executors for this process.
                 if docker_available is None:
+                    reset_capability_cache()
                     docker_available = probe_docker().available
                 if not docker_available:
                     logger.warning(

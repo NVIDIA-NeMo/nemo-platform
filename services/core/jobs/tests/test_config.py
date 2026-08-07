@@ -435,6 +435,42 @@ def test_backend_registry_skips_docker_when_unavailable(mock_nmp_client, caplog)
     assert "Skipping job executor profile cpu/default" in caplog.text
 
 
+def test_backend_registry_boot_probe_clears_poisoned_cache(mock_nmp_client):
+    """Registry boot must not permanently skip Docker after an earlier transient miss."""
+
+    class DummyBackend:
+        def __init__(self, nmp_sdk, execution_profile_config, profile_name):
+            self.nmp_sdk = nmp_sdk
+            self.execution_profile_config = execution_profile_config
+            self.profile_name = profile_name
+
+    profiles = [
+        DockerJobExecutionProfile(
+            provider="cpu",
+            profile="default",
+            backend="docker",
+            config=DockerJobExecutionProfileConfig(),
+        ),
+    ]
+
+    with (
+        patch("nmp.core.jobs.controllers.backends.registry.reset_capability_cache") as reset_cache,
+        patch(
+            "nmp.core.jobs.controllers.backends.registry.probe_docker",
+            return_value=ProbeResult(available=True),
+        ) as probe,
+    ):
+        registry = BackendRegistry.from_config(
+            nmp_sdk=mock_nmp_client,
+            profiles=profiles,
+            backends={BackendKey("cpu", "docker"): DummyBackend},
+        )
+
+    reset_cache.assert_called_once_with()
+    probe.assert_called_once_with()
+    assert registry.get_backend(provider="cpu", profile="default") is not None
+
+
 def test_backend_registry_registered_profile_keys_match_constructed_backends(mock_nmp_client):
     class DummyBackend:
         def __init__(self, nmp_sdk, execution_profile_config, profile_name):
