@@ -101,7 +101,7 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 **Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through mise but don't install mise themselves. On a machine that doesn't have it yet, they fail like this:
 
-```
+```text
 /bin/sh: /Users/you/.local/bin/mise: No such file or directory
 make: *** [test-unit] Error 127
 ```

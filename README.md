@@ -39,7 +39,7 @@ source .venv/bin/activate
 nemo setup
 ```
 
-`make bootstrap` installs the uv, Node.js and pnpm versions pinned in `mise.toml`, so the prerequisites above only apply to the PyPI install. Run it before other `make` targets — they call uv through mise but don't install it. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
+Source development still needs Git and GNU Make. `make bootstrap` supplies the rest of the toolchain, installing the uv, Node.js and pnpm versions pinned in `mise.toml`. Run it before other `make` targets — they call uv through mise but don't install it. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
 

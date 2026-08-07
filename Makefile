@@ -175,7 +175,7 @@ verify-python-version: verify-mise ## Verify Python version and install if neces
 	@echo "verifying python version"
 	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
 	@echo "setting up a venv with uv"
-	$(UV) venv --seed --allow-existing
+	$(UV) venv --python $(PYTHON_VERSION) --seed --allow-existing
 
 .venv: .venv/bin/python ## Create a Python virtual environment
 
@@ -184,10 +184,10 @@ verify-python-version: verify-mise ## Verify Python version and install if neces
 BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
 
 .PHONY: bootstrap-python
-bootstrap-python: verify-mise ## Bootstrap Python dependencies.
+bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
 	@echo "~~~~~~"
 	@echo "installing python dependencies"
-	$(UV) sync --frozen --all-packages
+	$(UV) sync --python $(PYTHON_VERSION) --frozen --all-packages
 	@if [ -n "$(strip $(BOOTSTRAP_LOCAL_PLUGIN_DIRS))" ]; then \
 		$(MAKE) bootstrap-plugins BOOTSTRAP_LOCAL_PLUGIN_DIRS="$(BOOTSTRAP_LOCAL_PLUGIN_DIRS)"; \
 	fi
