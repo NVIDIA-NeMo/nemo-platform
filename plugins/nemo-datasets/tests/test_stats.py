@@ -17,7 +17,6 @@ from nemo_datasets_plugin.profiler.stats import (
     _non_ascii_count,
     _quality_sample,
     _whitespace_count,
-    derive_probes,
     measure_columns,
     quote_enumerations,
 )
@@ -27,9 +26,14 @@ from nemo_platform_plugin.files.dataset_profile import ColumnStats, FeatureSchem
 def _stats(features, rows):
     """Statistics only. Asserts nothing failed: these tests measure values, not the guard, and a
     swallowed exception would surface here as a confusing KeyError instead of its own message."""
-    measured, _, errors = measure_columns(features, rows)
-    assert not errors, errors
-    return measured
+    measured = measure_columns(features, rows)
+    assert not measured.errors, measured.errors
+    return measured.stats
+
+
+def _probes(features, rows):
+    """The content probes alone. `measure_columns` measures both in one pass; these tests want one."""
+    return measure_columns(features, rows).probes
 
 
 def _feature(name, dtype):
@@ -117,7 +121,8 @@ def test_one_bad_column_costs_only_itself(monkeypatch):
     )
 
     features = [_feature("good", "string"), _feature("bad", "string")]
-    measured, probes, errors = measure_columns(features, [{"good": "x", "bad": "y"}])
+    result = measure_columns(features, [{"good": "x", "bad": "y"}])
+    measured, probes, errors = result.stats, result.probes, result.errors
 
     assert "good" in measured and "bad" not in measured
     assert "good" in probes and "bad" not in probes  # probes go with the column that failed
@@ -169,10 +174,10 @@ def test_the_typed_accumulators_probe_exactly_as_the_bare_one_does():
     features = [_feature(dtype, dtype) for dtype in sorted(_DTYPE_VALUES)]
     rows = [dict(zip(sorted(_DTYPE_VALUES), values)) for values in zip(*_DTYPE_VALUES.values())]
 
-    _, probes, errors = measure_columns(features, rows)
+    probes, errors = measure_columns(features, rows).probes, measure_columns(features, rows).errors
 
     assert errors == []
-    assert probes == derive_probes(features, rows)  # derive_probes goes through the base class
+    assert probes == _probes(features, rows)  # probes come off the base class
 
 
 def test_measure_columns_measures_every_dtype_the_dispatch_knows():
@@ -197,7 +202,8 @@ def test_measure_columns_measures_every_dtype_the_dispatch_knows():
         }
         for i in range(5)
     ]
-    measured, probes, errors = measure_columns(features, rows)
+    result = measure_columns(features, rows)
+    measured, probes, errors = result.stats, result.probes, result.errors
 
     assert errors == []
     assert measured["text"].text is not None and measured["text"].quality is not None
@@ -214,7 +220,8 @@ def test_measure_columns_measures_every_dtype_the_dispatch_knows():
 def test_a_column_with_nothing_to_measure_is_not_reported_as_an_error():
     # Absence from `stats` is the normal sparse case. Only a *failure* earns an error, or the two
     # would be indistinguishable and the guard would cry wolf on every well-formed struct column.
-    measured, probes, errors = measure_columns([_feature("s", "struct")], [{"s": {"a": 1}}])
+    result = measure_columns([_feature("s", "struct")], [{"s": {"a": 1}}])
+    measured, probes, errors = result.stats, result.probes, result.errors
     assert measured == {} and errors == []
     assert "s" in probes
 
@@ -437,7 +444,7 @@ def test_probes_are_measured_for_every_column_not_just_named_ones():
     # alias table does not know still gets its content read.
     features = [_feature("q", "string"), _feature("a", "string")]
     rows = [{"q": "what is 2+2?", "a": "add them #### 4"}, {"q": "and 3+3?", "a": "no final answer"}]
-    probes = derive_probes(features, rows)
+    probes = _probes(features, rows)
 
     assert set(probes) == {"q", "a"}
     assert probes["a"].texts == 2
@@ -447,7 +454,7 @@ def test_probes_are_measured_for_every_column_not_just_named_ones():
 
 def test_probes_read_the_final_turn_of_a_chat_column():
     rows = [{"m": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "steps #### 7"}]}]
-    probes = derive_probes([_feature("m", "messages")], rows)
+    probes = _probes([_feature("m", "messages")], rows)
     assert probes["m"].texts == 1
     assert probes["m"].extractable_answer == 1
 
@@ -456,7 +463,7 @@ def test_probes_read_the_sharegpt_message_spelling():
     # {from, value} is handled in schema derivation and message stats; reading only {role, content}
     # here cost every ShareGPT-shaped dataset its verifiability.
     rows = [{"m": [{"from": "human", "value": "q"}, {"from": "gpt", "value": "steps #### 7"}]}]
-    probes = derive_probes([_feature("m", "messages")], rows)
+    probes = _probes([_feature("m", "messages")], rows)
     assert probes["m"].texts == 1
     assert probes["m"].extractable_answer == 1
 
@@ -466,14 +473,14 @@ def test_probes_count_non_empty_across_container_dtypes():
     # target is just as often a list or struct as a string.
     features = [_feature("gt", "list")]
     rows = [{"gt": [{"in": "1"}]}, {"gt": []}, {"gt": None}]
-    probes = derive_probes(features, rows)
+    probes = _probes(features, rows)
     assert probes["gt"].rows == 3
     assert probes["gt"].non_empty == 1
 
 
 def test_probes_detect_embedded_transcripts():
     rows = [{"c": "\n\nHuman: hi\n\nAssistant: hello"}, {"c": "plain prose"}]
-    probes = derive_probes([_feature("c", "string")], rows)
+    probes = _probes([_feature("c", "string")], rows)
     assert probes["c"].transcript_marker == 1
 
 
@@ -485,9 +492,9 @@ def _quoted(name, dtype, values, role):
     feature = _feature(name, dtype)
     feature.semantic_role = role
     rows = _rows(name, values)
-    stats = _stats([feature], rows)
-    quote_enumerations([feature], stats, rows)
-    return stats[name].categorical.values
+    measured = measure_columns([feature], rows)
+    quote_enumerations([feature], measured.stats, measured.vocabularies)
+    return measured.stats[name].categorical.values
 
 
 def test_quotes_a_controlled_vocabulary_role():

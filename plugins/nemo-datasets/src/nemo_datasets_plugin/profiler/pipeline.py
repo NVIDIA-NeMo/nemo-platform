@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 import pyarrow as pa
-from nemo_datasets_plugin.profiler.classify import classify
+from nemo_datasets_plugin.profiler.classify import PrefixPairFold, classify
 from nemo_datasets_plugin.profiler.file_source import FileEntry, FileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
 from nemo_datasets_plugin.profiler.readers.base import detect_format, get_reader, is_unsupported_data
@@ -244,15 +244,25 @@ def _measure(
         # Statistics and probes together, one column at a time and each isolated. Probes cover every
         # column independent of the roles classify is about to assign, so a content signal survives
         # a column name the alias table does not know.
-        stats, probes, column_errors = measure_columns(features, partition_rows)
-        classification = classify(features, stats, partition_rows, probes=probes, column_roles=column_roles)
+        measured = measure_columns(features, partition_rows)
+        # The one probe that reads two columns against each other, so it cannot live on a column's
+        # accumulator. Folded here over the same rows.
+        prefix_pair = PrefixPairFold(features)
+        prefix_pair.update(partition_rows)
+        classification = classify(
+            features,
+            measured.stats,
+            probes=measured.probes,
+            prefix_pair=prefix_pair.result(),
+            column_roles=column_roles,
+        )
         # Last, because the roles classification assigns are what decide whether a column's values
         # may be quoted at all — cardinality only bounds how many.
-        quote_enumerations(features, stats, partition_rows)
+        quote_enumerations(features, measured.stats, measured.vocabularies)
         # After classify, so its own reasoning reads first and a column that could not be measured
         # is reported as a caveat on the result rather than as part of the case for it.
-        classification.evidence.extend(column_errors)
-        return features, stats, classification
+        classification.evidence.extend(measured.errors)
+        return features, measured.stats, classification
     except Exception as exc:
         detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
         return [], {}, PartitionClassification(dataset_type="unknown", evidence=[Evidence(kind="error", detail=detail)])
