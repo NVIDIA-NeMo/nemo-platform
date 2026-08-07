@@ -6,8 +6,8 @@ description: >-
   across many sessions, clusters similar failures, then files every finding as a
   titled Insight carrying the trace IDs that evidence the problem. Answers why
   an agent keeps failing, where it gets things wrong, and the recurring
-  problems hiding in production traces. Produces the Insight that
-  nemo-experimentalist consumes.
+  problems hiding in production traces. Produces the Insight that the
+  Experimentalist later acts on.
 triggers:
   - nemo-analyst
   - analyze my agent's traces
