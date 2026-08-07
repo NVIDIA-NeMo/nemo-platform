@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Diagnostic, linter } from '@codemirror/lint';
-import YAML, { YAMLParseError } from 'yaml';
 
-export const yamlLinter = linter((view) => {
+export const yamlLinter = linter(async (view) => {
   const diagnostics: Diagnostic[] = [];
+  const { default: YAML, YAMLParseError } = await import('yaml');
 
   try {
     YAML.parse(view.state.doc.toString());

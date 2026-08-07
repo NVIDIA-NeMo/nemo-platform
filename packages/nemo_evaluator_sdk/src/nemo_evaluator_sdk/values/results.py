@@ -22,8 +22,11 @@ AggregateFieldName = Literal[
     "mean",
     "min",
     "max",
+    "median",
     "std_dev",
     "variance",
+    "sample_std_dev",
+    "sample_variance",
     # Range-specific fields
     "score_type",
     "percentiles",
@@ -180,6 +183,15 @@ class ScoreStats(BaseModel):
         default=None,
         description="""The population standard deviation, (note: not the sample standard deviation).""",
     )
+    sample_variance: float | None = Field(
+        default=None,
+        description="The sample (Bessel-corrected, n-1) variance. None when fewer than two values.",
+    )
+    sample_stddev: float | None = Field(
+        default=None,
+        description="The sample (Bessel-corrected, n-1) standard deviation, estimating the spread of the "
+        "process the values were drawn from. None when fewer than two values (undefined, not zero).",
+    )
     stderr: float | None = Field(default=None, description="The standard error.")
     nan_count: int | None = Field(
         default=None,
@@ -189,7 +201,9 @@ class ScoreStats(BaseModel):
         default=None, description="The distribution of the rubric grading criteria for the score."
     )
 
-    @field_serializer("sum", "sum_squared", "min", "max", "mean", "variance", "stddev", "stderr")
+    @field_serializer(
+        "sum", "sum_squared", "min", "max", "mean", "variance", "stddev", "sample_variance", "sample_stddev", "stderr"
+    )
     def serialize_nan(self, v: float | None) -> float | str | None:
         """Serialize NaN stats as string values for JSON compatibility.
 
@@ -279,14 +293,42 @@ class AggregateScoreBase(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     name: str = Field(description="Name of the score.")
-    count: int = Field(description="Number of samples evaluated (excluding NaN).")
+    count: int | None = Field(
+        default=None,
+        description="Number of samples evaluated (excluding NaN). None when the sample size is unknown "
+        "— e.g. a figure imported from a backend that reports statistics without the n behind them. "
+        "Distinct from 0, which asserts that nothing was evaluated.",
+    )
     nan_count: int = Field(description="Number of samples that produced NaN scores.")
     sum: float | None = Field(default=None, description="Sum of all score values.")
     mean: float | None = Field(default=None, description="Mean score value.")
     min: float | None = Field(default=None, description="Minimum score value.")
     max: float | None = Field(default=None, description="Maximum score value.")
-    std_dev: float | None = Field(default=None, description="Standard deviation of the scores.")
-    variance: float | None = Field(default=None, description="Variance of the scores.")
+    median: float | None = Field(
+        default=None,
+        description="Median score value. Equal to percentiles.p50 when a percentile distribution is "
+        "also present; carried separately because a backend may report a median without one.",
+    )
+    std_dev: float | None = Field(
+        default=None,
+        description="Population standard deviation of the scores (divides by n). Describes the spread of "
+        "the values actually evaluated. See sample_std_dev to estimate the spread of the wider process.",
+    )
+    variance: float | None = Field(
+        default=None,
+        description="Population variance of the scores (divides by n). See sample_variance.",
+    )
+    sample_std_dev: float | None = Field(
+        default=None,
+        description="Sample standard deviation of the scores (Bessel-corrected, divides by n-1). Estimates "
+        "the spread of the process the values were drawn from — the right choice when repeated trials "
+        "sample a stochastic system. None when fewer than two values (undefined, not zero).",
+    )
+    sample_variance: float | None = Field(
+        default=None,
+        description="Sample variance of the scores (Bessel-corrected, divides by n-1). None when fewer "
+        "than two values.",
+    )
 
 
 class AggregateRangeScore(AggregateScoreBase):
@@ -339,7 +381,38 @@ class AggregateRubricScore(AggregateScoreBase):
         return data
 
 
-AggregateScore = AggregateRangeScore | AggregateRubricScore
+class AggregateScalarScore(AggregateScoreBase):
+    """A single pre-computed value with no underlying distribution available.
+
+    For figures a backend reports as one number (e.g. an environment's own ``pass@1`` or Elo) rather
+    than a set of per-sample values the SDK could aggregate itself. ``value`` carries the number;
+    ``mean``/``min``/``max`` are left unset because there is no sample to describe. Distinct from
+    :class:`AggregateRangeScore` so a reader can tell "this is the whole story" from "this summarizes
+    ``count`` samples", instead of seeing a range score with a suspicious ``count`` of 1.
+    """
+
+    score_type: Literal["scalar"] = Field(default="scalar", description="Type of score.")
+    value: float = Field(description="The reported value.")
+
+    _include_fields: frozenset[str] | None = None
+
+    def with_fields(self, fields: frozenset[AggregateFieldName]) -> Self:
+        """Return a copy configured to serialize only the specified fields."""
+        copy = self.model_copy()
+        object.__setattr__(copy, "_include_fields", {*fields, "name", "count"})
+        return copy
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler):
+        data = handler(self)
+        if self._include_fields is not None:
+            # Always include required fields (name, count, value), plus requested fields
+            fields_to_include = self._include_fields | {"name", "count", "value"}
+            return {k: v for k, v in data.items() if k in fields_to_include}
+        return data
+
+
+AggregateScore = AggregateRangeScore | AggregateRubricScore | AggregateScalarScore
 
 
 class AggregatedMetricResult(BaseModel):

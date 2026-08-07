@@ -86,6 +86,12 @@ export const getAssistantPartsFromCopilotEvent = (
       if (part.type === 'text' && typeof part.text === 'string') {
         return part.text ? { type: 'text', text: part.text } : undefined;
       }
+      // Render the model's chain of thought as ordinary assistant text, the way
+      // Claude's narration reads between tool calls, rather than tucking it into a
+      // collapsed block.
+      if (part.type === 'reasoning' && typeof part.text === 'string') {
+        return part.text ? { type: 'text', text: part.text } : undefined;
+      }
       if (part.type === 'tool_use') {
         const toolName = typeof part.name === 'string' ? part.name : 'tool';
 

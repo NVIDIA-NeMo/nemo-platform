@@ -161,12 +161,9 @@ find ~/.local/share/nemo/agents/system/default \
 ## Relay to Intake
 
 `agent-relay-intake.yaml` enables Relay ATIF export to a locally running
-Platform Intake API. Start ClickHouse for Intake, then use
+Platform Intake API. With Docker running, Intake automatically provisions its
+local ClickHouse container during platform startup. Use
 `agent-relay-intake.yaml` with the invoke directions above.
-
-```bash
-services/intake/scripts/spans/run_clickhouse.sh
-```
 
 Confirm Intake received ATIF-derived spans:
 

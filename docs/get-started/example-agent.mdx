@@ -24,17 +24,15 @@ make bootstrap
 
 ## 2. Start NeMo Platform
 
-Agent traces are stored in ClickHouse, which runs as its own container. Start it first, from the repository root:
-
-```bash
-services/intake/scripts/spans/run_clickhouse.sh
-```
-
-Then run setup. This starts the platform services in the background and walks you through the configuration required to run the platform:
+Agent traces are stored in ClickHouse. Make sure Docker Desktop or the Docker daemon is running, then
+run setup. Intake automatically provisions and reuses a local ClickHouse container. Setup starts the
+platform services in the background and walks you through the configuration required to run the platform:
 
 ```bash
 uv run nemo setup
 ```
+
+To use an external ClickHouse instead, set `NMP_INTAKE_CLICKHOUSE_URL` before running setup.
 
 You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
 

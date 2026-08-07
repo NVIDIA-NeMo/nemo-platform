@@ -2452,3 +2452,148 @@ def test_copilot_routes_are_available_by_default():
 
     assert response.status_code == 200
     uuid.UUID(response.json()["session_id"])
+
+
+def test_parse_reasoning_step_output_extracts_the_trace():
+    payload = "**Input:**\n```python\nchain of thought\n```\n\n**Output:** The user asked a math question."
+    assert copilot._parse_reasoning_step_output(payload) == "The user asked a math question."
+
+
+def test_parse_reasoning_step_output_ignores_a_start_step():
+    # The paired start step has no Output block yet.
+    assert copilot._parse_reasoning_step_output("**Input:**\n```python\nchain of thought\n```") == ""
+    assert copilot._parse_reasoning_step_output(None) == ""
+
+
+def test_reasoning_stream_event_shape():
+    event_type, payload = copilot._reasoning_stream_event("thinking out loud")
+    assert event_type == "agent"
+    block = json.loads(payload)["message"]["content"][0]
+    assert block == {"type": "reasoning", "text": "thinking out loud"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_copilot_relays_reasoning_despite_shared_step_id(monkeypatch: pytest.MonkeyPatch):
+    """A reasoning step is a start/end pair sharing one id. The tool dedup must not
+    claim that id on the start, or the end -- which carries the trace -- is dropped.
+    """
+    session_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue()
+    copilot._session_streams[session_id] = queue
+
+    start = json.dumps({"id": "step-1", "name": "Reasoning: model", "payload": "**Input:**\n```python\nx\n```"})
+    end = json.dumps(
+        {
+            "id": "step-1",
+            "name": "Reasoning: model",
+            "payload": "**Input:**\n```python\nx\n```\n\n**Output:** I thought about it.",
+        }
+    )
+    lines = [
+        f"intermediate_data: {start}",
+        f"intermediate_data: {end}",
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        "data: [DONE]",
+    ]
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            for line in lines:
+                yield line
+
+    class _Stream:
+        async def __aenter__(self):
+            return _Response()
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def stream(self, *args, **kwargs):
+            return _Stream()
+
+    monkeypatch.setattr(copilot.httpx, "AsyncClient", lambda **kwargs: _Client())
+
+    text, _ = await copilot._invoke_copilot("https://a.test", {}, [], session_id)
+
+    assert text == "done"
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    reasoning = [json.loads(payload) for _, payload in events]
+    blocks = [b for message in reasoning for b in message["message"]["content"]]
+    assert {"type": "reasoning", "text": "I thought about it."} in blocks
+
+
+@pytest.mark.asyncio
+async def test_invoke_copilot_emits_a_repeated_reasoning_step_once(monkeypatch: pytest.MonkeyPatch):
+    """A repeated completed step must not render the same trace twice, while the
+    start of the pair -- which shares its id -- must never claim that id."""
+    session_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue()
+    copilot._session_streams[session_id] = queue
+
+    start = json.dumps({"id": "step-1", "name": "Reasoning: model", "payload": "**Input:**\n```python\nx\n```"})
+    end = json.dumps(
+        {
+            "id": "step-1",
+            "name": "Reasoning: model",
+            "payload": "**Input:**\n```python\nx\n```\n\n**Output:** I thought about it.",
+        }
+    )
+    lines = [
+        f"intermediate_data: {start}",
+        f"intermediate_data: {end}",
+        f"intermediate_data: {end}",
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        "data: [DONE]",
+    ]
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            for line in lines:
+                yield line
+
+    class _Stream:
+        async def __aenter__(self):
+            return _Response()
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def stream(self, *args, **kwargs):
+            return _Stream()
+
+    monkeypatch.setattr(copilot.httpx, "AsyncClient", lambda **kwargs: _Client())
+
+    await copilot._invoke_copilot("https://a.test", {}, [], session_id)
+
+    blocks = []
+    while not queue.empty():
+        _, payload = queue.get_nowait()
+        blocks.extend(json.loads(payload)["message"]["content"])
+    reasoning_blocks = [b for b in blocks if b.get("type") == "reasoning"]
+    assert reasoning_blocks == [{"type": "reasoning", "text": "I thought about it."}]
