@@ -107,7 +107,12 @@ runs:
         python-version: "3.13"
         enable-cache: true
         version-file: pyproject.toml
-        cache-dependency-glob: uv.lock
+        cache-dependency-glob: |
+          pyproject.toml
+          uv.lock
+        cache-suffix: workspace-v1
+        prune-cache: false
+        save-cache: false
 
     - name: Start kind cluster
       shell: bash
