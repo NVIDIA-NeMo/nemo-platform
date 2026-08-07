@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
+from nmp.intake.spans.api.dependencies import DenormalizerDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import (
     IntakeSpan,
     SpanStatus,
@@ -59,6 +59,7 @@ async def ingest_otlp_traces(
     workspace: str,
     request: Request,
     service: SpansServiceDep,
+    denormalizer: DenormalizerDep,
     content_type: str = Header(default="application/octet-stream"),
     content_length: int | None = Header(default=None),
 ) -> IngestResponse:
@@ -79,6 +80,7 @@ async def ingest_otlp_traces(
     export_request = _parse_export_request(body)
     ingested_at = utc_now()
     spans: list[IntakeSpan] = []
+    evaluation_ids: set[str] = set()
     errors: list[str] = []
 
     for resource_spans in export_request.resource_spans:
@@ -91,7 +93,7 @@ async def ingest_otlp_traces(
             }
             for span in scope_spans.spans:
                 try:
-                    span_domain = _span_to_domain(
+                    span_domain, evaluation_id = _span_to_domain(
                         workspace=workspace,
                         span=span,
                         resource_attributes=resource_attributes,
@@ -103,8 +105,15 @@ async def ingest_otlp_traces(
                     errors.append(f"span {span_hex}: {exc}")
                     continue
                 spans.append(span_domain)
+                if evaluation_id:
+                    evaluation_ids.add(evaluation_id)
 
     await service.ingest_batch(TraceBatch(spans=spans))
+    # A single OTLP batch can carry spans for several evaluations (associated via the
+    # nemo.experiment.id attribute), so refresh the denormalized name facets for every one it touched.
+    if denormalizer is not None:
+        for evaluation_id in evaluation_ids:
+            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_id)
     return IngestResponse(errors=errors)
 
 
@@ -150,7 +159,9 @@ def _span_to_domain(
     resource_attributes: dict[str, Any],
     scope_data: dict[str, Any],
     ingested_at: datetime,
-) -> IntakeSpan:
+) -> tuple[IntakeSpan, str | None]:
+    """Build the domain span and surface the evaluation id it's associated with (if any), so the
+    ingest path can mark that evaluation dirty for facet denormalization."""
     trace_id = _required_otlp_id(span.trace_id, field_name="trace_id")
     trace_id_hex = trace_id.hex()
     source_span_id = _required_otlp_id(span.span_id, field_name="span_id")
@@ -206,7 +217,7 @@ def _span_to_domain(
         output=_output_payload(attributes, events, kind=kind.value) or "",
         event_ts=ingested_at,
     )
-    return span_domain
+    return span_domain, semantic_attributes.evaluation_id
 
 
 def _required_otlp_id(value: Any, *, field_name: str) -> bytes:
