@@ -14,7 +14,7 @@ constructor is not swappable, so construction through the context is asserted to
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
@@ -543,3 +543,52 @@ async def test_the_loop_carries_full_candidates_forward_not_the_selectors_slim_c
     await loop._run(ctx)
 
     assert all(c.rewards["validation"].metrics for c in await ctx.candidates())
+
+
+@pytest.mark.asyncio
+async def test_the_analyzer_is_built_with_the_runs_platform_handles(tmp_path, isolated_registry: None) -> None:
+    """Without them the analyzer cannot load `intake://` traces, and a trace-starved
+    diagnosis reads as a finding about the agent rather than about the analyzer.
+
+    Observed: it reported the agent's root cause as "the analyzer lacks the Intake
+    client/workspace configuration", and the round built a candidate against that.
+    """
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    seen: dict[str, Any] = {}
+
+    class RecordingAnalyzer(Analyzer):
+        name = "acme-recording-analyzer"
+
+        def __init__(self, **kwargs: Any) -> None:
+            seen.update(kwargs)
+
+        async def run(self, **kwargs: Any) -> Any:
+            raise AssertionError("construction is what this pins")
+
+    config = EvolutionaryOptimizerConfig(analyzer="acme-recording-analyzer")
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    baseline = await _one(ctx)
+    with pytest.raises(AssertionError):
+        await loop._analyze_round(
+            analysis_dir=tmp_path,
+            dataset=ctx.datasets["train"],
+            evaluations={baseline.label: cast(Any, object())},
+            survivors=[baseline],
+            round_num=0,
+            config=config,
+            client=ctx.platform_client,
+            nmp_workspace=ctx.workspace,
+            agent_spec_path=None,
+        )
+
+    assert "client" in seen, "analyzer built without a platform client; intake traces are unreadable"
+    assert seen["nmp_workspace"] == ctx.workspace
+
+
+async def _one(ctx: Any) -> Any:
+    proposal = Proposal(ancestor=None, description="baseline", kind="import", payload={})
+    return await ctx.component("builder", "import").build(ctx, proposal, generation=0)

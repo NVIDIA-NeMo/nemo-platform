@@ -949,6 +949,8 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     config=config.analyzer_config,
                     framework_skills_dirs=self._framework_skills_dirs,
                     models=self._models,
+                    client=client,
+                    nmp_workspace=nmp_workspace,
                 ).run(
                     candidate=s,
                     dataset=dataset,
