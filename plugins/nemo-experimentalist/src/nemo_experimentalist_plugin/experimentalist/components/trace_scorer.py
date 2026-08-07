@@ -26,7 +26,11 @@ class GroupLeafScore(BaseModel):
     reason: str
     span_ids: list[str] = Field(
         default_factory=list,
-        description="Span IDs from the trace that contain the key evidence cited in `reason`.",
+        description=(
+            "Span IDs from the trace that contain the key evidence cited in `reason`. "
+            "Empty when the trace has no turns to look them up from, which is the normal "
+            "case for an agent that makes no LLM calls."
+        ),
     )
 
 
@@ -120,6 +124,14 @@ class GroupLeafScorer(Agent):
         the turn's contents — and copied verbatim from the returned values, never abbreviated, guessed,
         or constructed from the overview text.  Include only spans that directly support the score —
         not every span.
+
+        A trace with no turns is expected, not a failure. Both lookups above are indexed by
+        turn, so an agent that makes no LLM calls — deterministic, rule-based, or purely
+        tool-driven — has nothing for them to return, and they yield `None` however many times
+        you call them. When `get_overview()` reports `Turns: 0`, leave `span_ids` empty and
+        ground the reason in the call graph instead: name the methods that ran, the order they
+        ran in, and their status. That is sufficient evidence for such a trace. Do not retry the
+        turn lookups, and do not put the abbreviated ids from the overview text into `span_ids`.
 
         Returns:
             dict[str, GroupLeafScore]: scores indexed by agent ID; each entry includes a numeric
