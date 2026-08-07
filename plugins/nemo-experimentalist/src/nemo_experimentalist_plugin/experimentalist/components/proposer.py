@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from pathlib import Path
 from typing import Any, Literal, get_args
 
@@ -20,6 +21,8 @@ from .cards import Optimize
 from .model_config import get_fast_model, get_smart_model
 from .tools import WorkspaceTool
 from .util import load_framework_skills
+
+logger = logging.getLogger(__name__)
 
 
 class Improvement(BaseModel):
@@ -157,41 +160,75 @@ class Proposer(Agent):
             phase=phase,
             max_candidates=max_candidates,
         )
-        self._validate_improvements(
+        # allowed_types is every type, not just the untried ones. available_types
+        # still reaches the prompt, so novelty stays a *preference*: a type that
+        # worked in an earlier round can be used again when it is the right tool.
+        return self._filter_improvements(
             improvements=improvements,
             max_candidates=max_candidates,
-            allowed_types=set(available_types) or all_types,
+            allowed_types=all_types,
         )
-        return improvements
 
     @staticmethod
-    def _validate_improvements(
+    def _filter_improvements(
         *,
         improvements: list[Improvement],
         max_candidates: int,
         allowed_types: set[str],
-    ) -> None:
+    ) -> list[Improvement]:
+        """Return the usable improvements, dropping the rest.
+
+        A proposal round is expensive and everything before it is already paid
+        for, so imperfect output is salvaged rather than fatal: surplus
+        improvements are truncated, unusable ones are dropped, and the round
+        continues with fewer candidates. Only an empty result is fatal, because
+        there is then nothing to build.
+
+        Repeated ``optimization_type`` is fine. Two candidates may need the same
+        kind of edit in different places, and the collision grows *more* likely as
+        optimization succeeds -- each problem closed removes a distinct kind of
+        remaining work, so what is left tends to need the same treatment.
+
+        Drops are logged rather than silent: a Proposer that consistently emits
+        unusable output would otherwise look healthy while doing a fraction of the
+        work.
+        """
         if not improvements:
             raise ValueError("Proposer returned no improvements")
+
         if len(improvements) > max_candidates:
-            raise ValueError(f"Proposer returned {len(improvements)} improvements; maximum is {max_candidates}")
-        seen_types: set[str] = set()
+            logger.warning(
+                "Proposer returned %d improvements; keeping the first %d",
+                len(improvements),
+                max_candidates,
+            )
+            improvements = improvements[:max_candidates]
+
+        kept: list[Improvement] = []
         seen_descriptions: set[str] = set()
         for improvement in improvements:
             optimization_type = improvement.optimization_type
             if optimization_type not in allowed_types:
-                raise ValueError(
-                    f"Proposer returned disallowed optimization_type "
-                    f"{optimization_type!r}; allowed: {sorted(allowed_types)}"
+                logger.warning(
+                    "dropping improvement with disallowed optimization_type %r; allowed: %s",
+                    optimization_type,
+                    sorted(allowed_types),
                 )
-            if optimization_type in seen_types:
-                raise ValueError(f"Proposer returned duplicate optimization_type {optimization_type!r}")
-            seen_types.add(optimization_type)
+                continue
 
             description = improvement.optimization.strip()
             if description in seen_descriptions:
-                raise ValueError(f"Proposer returned duplicate optimization text: {description!r}")
+                logger.warning("dropping improvement with duplicate optimization text: %r", description)
+                continue
             seen_descriptions.add(description)
+            kept.append(improvement)
+
+        if not kept:
+            raise ValueError(
+                f"Proposer returned {len(improvements)} improvements, none of them usable; "
+                "see the warnings above for why each was dropped"
+            )
+        return kept
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)))
     async def _run_with_context(
