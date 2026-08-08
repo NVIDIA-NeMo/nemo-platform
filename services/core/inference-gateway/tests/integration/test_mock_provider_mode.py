@@ -1225,7 +1225,7 @@ def test_fixture_add_provider_with_error_status(mock_provider_test_clients: Clie
     provider = add_mock_provider(
         mock_provider_test_clients.sdk,
         workspace=DEFAULT_WORKSPACE,
-        name="error-provider",  # Becomes "igw-mock-error-provider"
+        name="fixture-error-provider",  # Becomes "igw-mock-fixture-error-provider"
         mock_response_body={"error": "rate limited"},
         mock_status=429,
     )
