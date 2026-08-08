@@ -218,14 +218,14 @@ def publish_row_eval_result(
     key published sessions on and the run cannot be published.
     """
     if run_id is None:
-        outcome = _failed(
-            spec.evaluation_id,
+        error = (
             "No job id to publish under (platformless local run); a dataset-driven evaluation takes "
-            "its run identity from the job.",
-            None,
+            "its run identity from the job."
         )
+        outcome = _failed(spec.evaluation_id, error, None)
         if spec.required:
             raise PublicationFailedError(outcome)
+        logger.warning("Publication to Intake failed for evaluation %r: %s", spec.evaluation_id, error)
         return outcome
 
     try:
