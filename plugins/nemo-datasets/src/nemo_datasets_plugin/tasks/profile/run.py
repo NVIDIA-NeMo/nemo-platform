@@ -110,13 +110,14 @@ def _build_source(config: dict) -> FileSource:
 def _resolve_row_budget(config: dict) -> int | None:
     """Rows the profiler may read per partition, from the step config.
 
-    Defaults to the profiler's budget rather than an exhaustive read: uncapped, a partition holds
-    every row of every file in memory at roughly 20x the on-disk parquet size, which is what makes a
-    large fileset kill the job outright. A budgeted profile keeps exact row counts from the parquet
-    footers and reports ``stats_complete: false`` for the measurements, which is the trade the
-    sampling contract exists to describe.
+    Defaults to reading everything, which it did not used to. A partition was materialised before it
+    was measured, so an uncapped run held every row of every file at roughly 20x the on-disk parquet
+    size and a large fileset killed the job outright. The profiler folds now: memory is flat in rows,
+    so the only thing a budget buys is a shorter run, and the default should not be to answer a
+    question worse than it can be answered.
 
-    ``0`` asks for every row; use it when a proven value enumeration matters more than the cost.
+    ``0`` and ``null`` both ask for every row -- the same thing the default does -- and are kept so a
+    caller that was setting them explicitly still means what it meant.
     """
     if "row_budget" not in config:
         return DEFAULT_ROW_BUDGET

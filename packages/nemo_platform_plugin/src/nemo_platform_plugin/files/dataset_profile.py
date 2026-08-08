@@ -304,7 +304,7 @@ class CategoricalStats(BaseModel):
             "vocabulary (label | provenance | meta | rank) and it holds at most 32 of them. Cardinality "
             "alone cannot be the gate: it inverts on small data, where every column holds few distinct "
             "values — free text included — so a three-row dataset had its prompts stored verbatim. A role "
-            "says what a column *is*, at any size. Read `PartitionProfile.stats_complete` to know whether "
+            "says what a column *is*, at any size. Read `PartitionProfile.rows_complete` to know whether "
             "this is the whole vocabulary or only what the sampled rows showed."
         ),
     )
@@ -469,17 +469,19 @@ class PartitionProfile(BaseModel):
             "omitted); keys are a subset of the top-level `features` names."
         ),
     )
-    stats_complete: bool = Field(
+    rows_complete: bool = Field(
         description=(
-            "True => `features`, `stats` and `classification` were computed over every row of every "
-            "file in THIS partition: proven facts, not estimates. Only then can a consumer assert "
-            "enum / required in a bridged JSON Schema, or read a verifiability coverage of 1.0 as "
-            "literal. It speaks to *rows read*, not to every number being exact: `TextQuality` and "
-            "`Quantiles` are estimates by construction however much was read, each bounded for the "
-            "cost reasons its own docstring gives, and `Quantiles.max` is exact regardless. "
-            "Scoped to the partition because that is where it is decided — a corrupt shard "
-            "in one partition says nothing about the measurements in another, and a fileset-wide "
-            "flag quietly downgraded every partition to the worst one."
+            "True => every row of every file in THIS partition was read. Only then can a consumer "
+            "assert enum / required in a bridged JSON Schema, or read a verifiability coverage of "
+            "1.0 as literal.\n\n"
+            "Named for what it measures. It was `stats_complete`, which promised more than it "
+            "delivered: `Quantiles` and `TextQuality` are estimates by construction however much was "
+            "read, each bounded for the cost reasons its own docstring gives. Whether a number is "
+            "exact is a property of that number, and every one of them says so; this says only "
+            "whether anything was missed on the way in.\n\n"
+            "Scoped to the partition because that is where it is decided — a corrupt shard in one "
+            "partition says nothing about the measurements in another, and a fileset-wide flag "
+            "quietly downgraded every partition to the worst one."
         ),
     )
     classification: PartitionClassification
@@ -501,15 +503,20 @@ class SamplingInfo(BaseModel):
     """How much of the data the profile is based on — coverage, stated as numbers.
 
     Deliberately carries no ``exhaustive`` flag. That bit was answering two questions at once: "are
-    these measurements facts or estimates?", which is a property of a *partition* and now lives on
-    ``PartitionProfile.stats_complete``, and "did I see all the data?", which is this block's job and
-    needs numerators and denominators rather than a boolean. It also folded together causes that
-    call for different people to act — a row cap is the caller's choice, a corrupt shard is the data
+    these measurements facts or estimates?", which is a property of each measurement and is now
+    stated by each of them, and "did I see all the data?", which is this block's job and needs
+    numerators and denominators rather than a boolean. It also folded together causes that call for
+    different people to act — a short read is the caller's choice, a corrupt shard is the data
     owner's problem, and a missing reader is ours.
 
-    The dataset-wide question is still one expression away, and now says which half failed::
+    Nor does it record the caller's row limit. Reading everything is now the default and costs what
+    reading some of it costs, so a short read is unusual — and when it happens ``rows_scanned``
+    against ``rows_present`` already says so. *Why* is not the profile's business: a limit is an
+    input, and the only other cause is a file that failed, which is named on ``file_errors``.
 
-        all(p.stats_complete for p in profile.partitions) and not profile.file_errors
+    The dataset-wide question is still one expression away, and still says which half failed::
+
+        all(p.rows_complete for p in profile.partitions) and not profile.file_errors
     """
 
     rows_scanned: int = Field(description="Total rows actually parsed across all files.")
@@ -546,17 +553,6 @@ class SamplingInfo(BaseModel):
             "directory of .csv shards beside one .parquet would otherwise weigh in at the parquet "
             "alone. Same reason `files_present` is kept alongside the per-split counts — a denominator "
             "stops being derivable the moment coverage is partial, which is the only time it is read."
-        ),
-    )
-    row_budget: int | None = Field(
-        default=None,
-        description=(
-            "Rows the caller allowed per partition, None for an unbounded read. A budget rather than a "
-            "per-file cap because the cost is per partition: a per-file cap made peak memory scale with "
-            "shard count, so the same dataset resharded from 100 files to 10,000 went from megabytes to "
-            "gigabytes without holding any more data. Not a hard ceiling: every file is still read at "
-            "least a few rows, since one sampled too thinly cannot contribute the columns it alone "
-            "witnesses, so a partition with very many files may exceed its budget."
         ),
     )
 
