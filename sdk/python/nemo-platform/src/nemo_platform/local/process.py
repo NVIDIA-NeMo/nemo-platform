@@ -288,7 +288,7 @@ def format_port_conflict(err: PortConflict) -> list[str]:
             "Or restart with:    nemo services restart",
         ]
     return [
-        f"Port {err.port} is already in use by another process.",
+        f"Port {err.port} is already in use by another process (EADDRINUSE).",
         "Free the port or choose a different one:",
         f"lsof -i :{err.port}          (see what's listening)",
         f"nemo services run --port {SUGGESTED_ALT_PORT}",
