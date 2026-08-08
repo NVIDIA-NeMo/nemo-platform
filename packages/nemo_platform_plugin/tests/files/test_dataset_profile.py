@@ -36,11 +36,11 @@ profile_schema_version: "1.0"
 created_at: 2026-07-08T22:05:12Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 2112, rows_present: 3201061,
-           files_read: 33, files_present: 33, bytes_present: 31821490182, row_budget: 4096}
+           files_read: 33, files_present: 33, bytes_present: 31821490182}
 partitions:
   - name: ""
     file_formats: [parquet]
-    stats_complete: false
+    rows_complete: false
     splits:
       - {name: train, canonical: train, num_examples: 3200861, num_files: 32,
          size_bytes: 31819412254, data_files: 'train*.parquet'}
@@ -77,11 +77,11 @@ profile_schema_version: "1.0"
 created_at: 2026-07-08T22:41:37Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 46189,
-           files_read: 2, files_present: 2, bytes_present: 27055195, row_budget: 1024}
+           files_read: 2, files_present: 2, bytes_present: 27055195}
 partitions:
   - name: ""
     file_formats: [parquet]
-    stats_complete: false
+    rows_complete: false
     splits:
       - {name: train, canonical: train, num_examples: 43835, num_files: 1,
          size_bytes: 25670988, data_files: 'train*.parquet'}
@@ -118,11 +118,11 @@ profile_schema_version: "1.0"
 created_at: 2026-07-09T10:12:45Z
 profiler_info: {name: nemo-dataset-profiler, version: 0.1.0}
 sampling: {rows_scanned: 1024, rows_present: 21362,
-           files_read: 2, files_present: 2, bytes_present: 19459677, row_budget: 1024}
+           files_read: 2, files_present: 2, bytes_present: 19459677}
 partitions:
   - name: ""
     file_formats: [parquet]
-    stats_complete: false
+    rows_complete: false
     splits:
       - {name: train, canonical: train, num_examples: 20324, num_files: 1,
          size_bytes: 18495985, data_files: 'train*.parquet'}
@@ -180,7 +180,7 @@ def _build_profile() -> DatasetProfile:
         partitions=[
             PartitionProfile(
                 file_formats=["parquet"],
-                stats_complete=False,
+                rows_complete=False,
                 splits=[
                     SplitProfile(
                         name="train",

@@ -10,7 +10,6 @@ from typing import cast
 import nemo_datasets_plugin.tasks.profile.run as run_mod
 import pyarrow as pa
 import pyarrow.parquet as pq
-from nemo_datasets_plugin.profiler.pipeline import DEFAULT_ROW_BUDGET
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_results import ResultRef
 from nemo_platform_plugin.jobs.constants import (
@@ -85,12 +84,13 @@ def test_task_passes_column_role_hints_to_the_profiler(tmp_path, monkeypatch):
     assert classification["dataset_type"] == "prompt_completion"
 
 
-def test_task_defaults_to_the_profilers_row_budget(tmp_path, monkeypatch):
+def test_task_reads_everything_by_default(tmp_path, monkeypatch):
     data = _dataset(tmp_path / "data")
     published = _install(monkeypatch, tmp_path, {"path": str(data)})
 
     assert run_mod.run(_SDK) == 0
-    assert published["profile"]["sampling"]["row_budget"] == DEFAULT_ROW_BUDGET
+    sampling = published["profile"]["sampling"]
+    assert sampling["rows_scanned"] == sampling["rows_present"]  # nothing left unread
 
 
 def test_task_honours_an_explicit_row_budget(tmp_path, monkeypatch):
@@ -98,7 +98,7 @@ def test_task_honours_an_explicit_row_budget(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": 5})
 
     assert run_mod.run(_SDK) == 0
-    assert published["profile"]["sampling"]["row_budget"] == 5
+    assert published["profile"]["sampling"]["rows_scanned"] == 5
     assert published["profile"]["sampling"]["rows_scanned"] == 5
 
 
@@ -107,8 +107,9 @@ def test_row_budget_zero_asks_for_every_row(tmp_path, monkeypatch):
     published = _install(monkeypatch, tmp_path, {"path": str(data), "row_budget": 0})
 
     assert run_mod.run(_SDK) == 0
-    assert published["profile"]["sampling"]["row_budget"] is None
-    assert published["profile"]["partitions"][0]["stats_complete"] is True
+    sampling = published["profile"]["sampling"]
+    assert sampling["rows_scanned"] == sampling["rows_present"]  # 0 means "all of them"
+    assert published["profile"]["partitions"][0]["rows_complete"] is True
 
 
 def test_task_fails_when_the_step_config_says_nothing_to_profile(tmp_path, monkeypatch):

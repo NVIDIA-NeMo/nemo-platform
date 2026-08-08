@@ -13,8 +13,8 @@ Every file is opened — sampling a *subset of files* would hide columns that ap
 shards.
 
 Every partition is **folded**: batches are measured and let go, and nothing kept grows with the file.
-An exhaustive read therefore costs what a budgeted one costs, and ``row_budget`` is a limit on *work*
-rather than the memory guard it used to be.
+An exhaustive read therefore costs what a short one costs, which is why reading everything is the
+default. ``row_budget`` survives only as a way to ask for a shorter run.
 
 What a declared schema buys is not the fold but its sharpness. Parquet footers are read first, so
 the columns are known before a row is parsed and each accumulator is chosen up front, and the exact
@@ -25,11 +25,11 @@ back-filled with the rows they were absent for, and each carries every shape at 
 row has gone by and the dtype resolves. That costs a deferred type per column and nothing else; it
 does not cost a second pass, and it does not decide from a prefix.
 
-The budget is a target rather than a ceiling. :data:`MIN_ROWS_PER_FILE` is the floor every file is
-read to however thin its share gets, since one sampled below it cannot contribute the columns it
-alone witnesses. Files smaller than their share are read to the end and keep exact row counts, so a
-budgeted profile of a small dataset is still complete. Pass ``row_budget=None`` for a genuinely
-exhaustive scan.
+A caller who does ask for one gets a target rather than a ceiling. :data:`MIN_ROWS_PER_FILE` is the
+floor every file is read to however thin its share gets, since one sampled below it cannot
+contribute the columns it alone witnesses. That division outlived the memory problem it was invented
+for: reading files in order until a total ran out would leave the later ones unopened, which is the
+same coverage hole by another route.
 """
 
 from __future__ import annotations
@@ -70,18 +70,17 @@ from nemo_platform_plugin.files.dataset_profile import (
 PROFILER_NAME = "nemo-dataset-profiler"
 PROFILER_VERSION = "0.1.0"
 
-# Rows a partition may read, in total, by default. Every file is still opened — head-sampling a
-# *subset of files* would hide columns that appear only in later shards — but the budget is divided
-# across them, so peak memory tracks the budget rather than the shard count. A per-file cap put the
-# knob on the wrong axis: at 1000 rows each, resharding a dataset from 100 files to 10,000 took peak
-# heap from 135 MB to 13.5 GB while describing exactly the same data. Ten thousand rows is ample for
-# the statistics computed here (length quantiles, rates, cardinality); pass ``row_budget=None`` for a
-# genuinely exhaustive scan.
-DEFAULT_ROW_BUDGET = 10_000
+# Read everything. The budget existed to keep a materialised partition off the heap, and nothing is
+# materialised any longer -- a fold's memory is flat in rows, so an exhaustive read costs what a
+# short one costs. What it bounded was never really rows, it was risk.
+DEFAULT_ROW_BUDGET = None
 
-# Rows read from a file however thin the budget gets. Below this a file cannot contribute the columns
-# it alone witnesses, which is the whole reason every file is opened rather than a subset sampled. It
-# is what makes the budget a target rather than a ceiling: 10,000 shards read this many each.
+# Rows read from a file however thin a caller-supplied budget gets. Below this a file cannot
+# contribute the columns it alone witnesses, which is the whole reason every file is opened rather
+# than a subset sampled. It is what makes a budget a target rather than a ceiling: 10,000 shards read
+# this many each. It survives the default going unbounded because it never had anything to do with
+# memory -- dividing a budget across files is about *coverage*, and reading files in order until a
+# total ran out would leave the later ones unopened.
 MIN_ROWS_PER_FILE = 10
 
 
@@ -103,9 +102,10 @@ def profile(
 ) -> DatasetProfile:
     """Profile the dataset behind ``source`` into a ``DatasetProfile``.
 
-    ``row_budget`` bounds how many rows each *partition* reads in total, divided across its files;
-    ``None`` reads every row, which is exact but scales memory with the dataset. Files smaller than
-    their share are read to the end, so a budgeted profile of a small dataset stays complete.
+    ``row_budget`` bounds how many rows each *partition* reads in total, divided across its files.
+    It defaults to ``None``, which reads every row: memory is flat in rows either way, so the only
+    thing a budget buys now is a shorter run. Files smaller than their share are read to the end, so
+    a budgeted profile of a small dataset is still complete.
 
     ``column_roles`` maps a column name to a role the caller is asserting, for datasets whose column
     names the role table does not recognize. Hints take precedence over name detection but still have
@@ -173,7 +173,6 @@ def profile(
         # Summing the splits would miss the unreadable files, which never reach a partition.
         bytes_present=sum(entry.size_bytes for entry in data_entries)
         + sum(entry.size_bytes for entry in unreadable_entries),
-        row_budget=row_budget,
     )
     return DatasetProfile(
         created_at=created_at,
@@ -468,7 +467,7 @@ def _profile_partition(
         stats=stats,
         # Scoped to this partition, which is where it was decided all along: `partition_scanned` is
         # the value that already gated whether `categorical.values` could quote a proven enumeration.
-        stats_complete=partition_scanned,
+        rows_complete=partition_scanned,
         classification=classification,
     )
     return _PartitionOutcome(
