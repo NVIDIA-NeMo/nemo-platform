@@ -12,15 +12,18 @@ partitions, splits with their counts and sizes, the files it could not use, and 
 Every file is opened — sampling a *subset of files* would hide columns that appear only in later
 shards.
 
-A partition whose files all declare a schema is **folded**: the footers are read first, which gives
-the columns and the exact row count before a single row is parsed, and batches are then measured and
-let go. Nothing grows with the file, so an exhaustive read costs what a budgeted one costs —
-measured at 10.4 MB against 65.1 MB for the same 21,362 rows materialised. ``row_budget`` is a limit
-on *work*, not the memory guard it used to be.
+Every partition is **folded**: batches are measured and let go, and nothing kept grows with the file.
+An exhaustive read therefore costs what a budgeted one costs, and ``row_budget`` is a limit on *work*
+rather than the memory guard it used to be.
 
-A partition whose files do not all declare a schema is **materialised**, as before: the schema has
-to be inferred from the rows, so the rows have to be kept until it has been. That is line-delimited
-formats, and folding them needs accumulators created lazily as columns appear, which is still to do.
+What a declared schema buys is not the fold but its sharpness. Parquet footers are read first, so
+the columns are known before a row is parsed and each accumulator is chosen up front, and the exact
+row count is known too, which is what lets a quality stride be placed over a column not yet seen.
+
+Without one — line-delimited data — both wait for the data. Columns are created on first sight and
+back-filled with the rows they were absent for, and each carries every shape at once until the last
+row has gone by and the dtype resolves. That costs a deferred type per column and nothing else; it
+does not cost a second pass, and it does not decide from a prefix.
 
 The budget is a target rather than a ceiling. :data:`MIN_ROWS_PER_FILE` is the floor every file is
 read to however thin its share gets, since one sampled below it cannot contribute the columns it
@@ -47,7 +50,11 @@ from nemo_datasets_plugin.profiler.readers.base import (
 )
 from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, columns_were_capped, derive_features
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
-from nemo_datasets_plugin.profiler.stats import ColumnFold, measure_columns, quote_enumerations
+from nemo_datasets_plugin.profiler.stats import (
+    ColumnFold,
+    InferredColumnFold,
+    quote_enumerations,
+)
 from nemo_platform_plugin.files.dataset_profile import (
     ColumnStats,
     DatasetProfile,
@@ -228,59 +235,6 @@ def _unify_schemas(schemas: list[pa.Schema]) -> pa.Schema | None:
         return None
 
 
-def _measure(
-    partition_rows: list[dict],
-    arrow_schemas: list[pa.Schema],
-    *,
-    all_declared: bool,
-    column_roles: dict[str, str],
-) -> tuple[list[FeatureSchema], dict[str, ColumnStats], PartitionClassification]:
-    """Derive schema, stats and classification, degrading to structure-only if any of it fails.
-
-    ``all_declared`` says whether *every* file that contributed rows carried a declared schema. When
-    one did not, the unified schema describes only some of the rows, and using it would erase any
-    column the schemaless files were the sole witness for — so infer from the rows instead, which
-    sees all of them. Declared type fidelity (int32 widening to int64) is the cost, and it is the
-    honest one: a declared schema cannot be asserted over files that declare nothing.
-
-    These stages are pure computation over rows already in memory, so a failure here is either a
-    profiler bug or data shaped in a way no detector anticipated. Reads are already isolated per
-    file; leaving this stage unguarded meant one odd value — a chat message whose ``role`` is a number
-    — could abort an otherwise complete profile from the one place nothing was catching. The
-    partition's structure (files, splits, row counts) is established by then and stays useful, so the
-    failure costs its measurements and says so, rather than the entire run.
-    """
-    try:
-        declared = _unify_schemas(arrow_schemas) if all_declared else None
-        features = derive_features(partition_rows, declared)
-        # Statistics and probes together, one column at a time and each isolated. Probes cover every
-        # column independent of the roles classify is about to assign, so a content signal survives
-        # a column name the alias table does not know.
-        measured = measure_columns(features, partition_rows)
-        # The one probe that reads two columns against each other, so it cannot live on a column's
-        # accumulator. Folded here over the same rows.
-        prefix_pair = PrefixPairFold(features)
-        prefix_pair.update(partition_rows)
-        classification = classify(
-            features,
-            measured.stats,
-            probes=measured.probes,
-            prefix_pair=prefix_pair.result(),
-            column_roles=column_roles,
-        )
-        # Last, because the roles classification assigns are what decide whether a column's values
-        # may be quoted at all — cardinality only bounds how many.
-        quote_enumerations(features, measured.stats, measured.vocabularies)
-        # After classify, so its own reasoning reads first and a column that could not be measured
-        # is reported as a caveat on the result rather than as part of the case for it.
-        classification.evidence.extend(_capped_columns_evidence(features))
-        classification.evidence.extend(measured.errors)
-        return features, measured.stats, classification
-    except Exception as exc:
-        detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
-        return [], {}, PartitionClassification(dataset_type="unknown", evidence=[Evidence(kind="error", detail=detail)])
-
-
 @dataclass(frozen=True)
 class _PartitionOutcome:
     """One partition plus what it contributes to the dataset-level sampling envelope."""
@@ -348,10 +302,15 @@ class _PartitionFolds:
     neither. Keeping them side by side is what lets the file loop hand over a batch and forget it.
     """
 
-    def __init__(self, features: list[FeatureSchema], expected_rows: int | None) -> None:
-        self.features = features
-        self._columns = ColumnFold(features, expected_rows)
-        self._prefix = PrefixPairFold(features)
+    def __init__(self, features: list[FeatureSchema] | None, expected_rows: int | None) -> None:
+        # Declared: the columns are known, so the accumulators are chosen now. Inferred: they are
+        # discovered as they appear and typed once every row has gone by.
+        self.features = features or []
+        self._declared = features is not None
+        self._columns: ColumnFold | InferredColumnFold = (
+            ColumnFold(features, expected_rows) if features is not None else InferredColumnFold(expected_rows)
+        )
+        self._prefix = PrefixPairFold()
 
     def update(self, rows: list[dict]) -> None:
         self._columns.update(rows)
@@ -360,13 +319,17 @@ class _PartitionFolds:
     def measure(
         self, column_roles: dict[str, str]
     ) -> tuple[list[FeatureSchema], dict[str, ColumnStats], PartitionClassification]:
-        """Schema, stats and classification from what was folded. Guarded like :func:`_measure`.
+        """Schema, stats and classification from what was folded.
 
         The columns have their own per-column guard inside the fold; this is the wide one, for
-        anything structural that no single column owns.
+        anything structural that no single column owns -- a schema that cannot be resolved,
+        a classifier that trips over a shape no detector anticipated.
         """
         try:
-            measured = self._columns.finalize()
+            if isinstance(self._columns, InferredColumnFold):
+                self.features, measured = self._columns.finalize()
+            else:
+                measured = self._columns.finalize()
             classification = classify(
                 self.features,
                 measured.stats,
@@ -400,9 +363,8 @@ def _profile_partition(
 
     The reader is resolved per file rather than per partition. Format is a property of a file, and
     a directory holding two of them is a stray file, not a second dataset; splitting the partition
-    to keep one scalar ``file_format`` true is what made partition names unstable. Mixed formats
-    instead flow through to ``_measure``, which infers the schema from rows when not every file
-    declared one.
+    to keep one scalar ``file_format`` true is what made partition names unstable. A partition whose
+    files do not all declare a schema simply infers one, from the rows, as it folds them.
 
     An unreadable file (or a format with no registered reader) is isolated: it is named on a
     :class:`FileError` the envelope collects, contributes no rows, and flips ``scanned_all`` off — it
@@ -414,21 +376,15 @@ def _profile_partition(
     # accumulators must exist before the first batch, and the quality stride must be placed before
     # the column it strides has been seen.
     previews = _peek_files(source, entries)
-    can_fold = all(preview is not None and preview.arrow_schema is not None for preview in previews.values())
-
-    partition_rows: list[dict] = []
-    arrow_schemas: list[pa.Schema] = [
-        preview.arrow_schema for preview in previews.values() if preview is not None and preview.arrow_schema
-    ]
-    all_declared = True  # every file that contributed rows carried a declared schema
-    folds: _PartitionFolds | None = None
-    if can_fold:
-        declared = _unify_schemas(arrow_schemas)
-        if declared is not None:
-            folds = _PartitionFolds(
-                derive_features([], declared),
-                expected_rows=_expected_rows(previews, _per_file_cap(row_budget, len(entries))),
-            )
+    arrow_schemas = [preview.arrow_schema for preview in previews.values() if preview.arrow_schema is not None]
+    declared = _unify_schemas(arrow_schemas) if len(arrow_schemas) == len(entries) and arrow_schemas else None
+    # Declared or not, the partition folds. With a schema the accumulators are chosen up front and
+    # the exact row count places the quality stride; without one both wait for the data, which costs
+    # a deferred dtype per column and nothing else.
+    folds = _PartitionFolds(
+        derive_features([], declared) if declared is not None else None,
+        expected_rows=_expected_rows(previews, _per_file_cap(row_budget, len(entries))),
+    )
     rows_scanned = 0
     files_read = 0
     rows_present: int | None = 0
@@ -450,32 +406,26 @@ def _profile_partition(
                 # Inside the guard: resolving the reader can fail too, and a format with no reader
                 # registered is a file the profiler could not use like any other.
                 reader = get_reader(_format_of(entry.path))
-                if folds is not None:
-                    # Streamed: batches are folded and let go, so nothing here grows with the file.
-                    num_rows = previews[entry.path].num_rows  # from the footer, read before any row
-                    scanned = 0
-                    for batch in reader.batches(source, entry, row_cap=row_cap):
-                        folds.update(batch)
-                        scanned += len(batch)
-                    files_read += 1
-                    rows_scanned += scanned
-                    scanned_all = num_rows is not None and scanned >= num_rows
-                else:
-                    # Materialised: no declared schema, so the schema has to be inferred from the rows
-                    # and the rows have to be kept until it has been. Phase 4 folds this path too.
-                    result = reader.read(source, entry, row_cap=row_cap)
-                    files_read += 1
-                    error = result.error
-                    num_rows = result.num_rows
-                    rows_scanned += result.rows_scanned
-                    partition_rows.extend(result.rows)
-                    if result.arrow_schema is None and result.rows:
-                        # Rows with no schema behind them: the unified schema no longer covers the
-                        # partition, so _measure must infer from rows rather than trust a partial one.
-                        all_declared = False
-                    # Exhaustive requires parsing every row; a known footer count alone is not enough,
-                    # and a partial read (corrupt lines skipped) is not exhaustive however many it got.
-                    scanned_all = num_rows is not None and result.rows_scanned >= num_rows and error is None
+                preview = previews[entry.path]
+                scanned = 0
+                read_errors: list[str] = []
+                for batch in reader.batches(source, entry, row_cap=row_cap, errors=read_errors):
+                    folds.update(batch)
+                    scanned += len(batch)
+                files_read += 1
+                rows_scanned += scanned
+                # A file the reader only partly understood is named, the same as one it could not
+                # open at all. Folding it silently would make a corrupt shard look complete.
+                error = "; ".join(read_errors) or None
+                # A footer knows the count before the read; a line-delimited file only knows it by
+                # reaching the end, which a capped read does not do.
+                if preview.num_rows is not None:
+                    num_rows = preview.num_rows
+                elif row_cap is None or scanned < row_cap:
+                    num_rows = scanned
+                # Exhaustive requires parsing every row. A known count alone is not enough, and a
+                # partial read is not exhaustive however many rows it managed to get.
+                scanned_all = num_rows is not None and scanned >= num_rows and error is None
             except Exception as exc:
                 # Failure isolation: an unreadable file (or missing reader) keeps its identity,
                 # skips its rows, and does not abort the profile. The reason is recorded rather than
@@ -507,12 +457,7 @@ def _profile_partition(
                 num_examples=split_examples if split_counts_known else None,
             )
         )
-    if folds is not None:
-        features, stats, classification = folds.measure(column_roles)
-    else:
-        features, stats, classification = _measure(
-            partition_rows, arrow_schemas, all_declared=all_declared, column_roles=column_roles
-        )
+    features, stats, classification = folds.measure(column_roles)
     partition = PartitionProfile(
         name=name,
         # Observed, not chosen: the partition reports the formats its files turned out to be in

@@ -20,7 +20,7 @@ def _probes(features, rows):
 
 def classify_rows(features, stats, rows, **kwargs):
     """Classify from rows the way the pipeline does: fold first, then interpret the folds."""
-    prefix = PrefixPairFold(features)
+    prefix = PrefixPairFold()
     prefix.update(rows)
     return classify(features, stats, probes=_probes(features, rows), prefix_pair=prefix.result(), **kwargs)
 

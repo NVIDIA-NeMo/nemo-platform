@@ -63,9 +63,20 @@ class FormatReader(Protocol):
         ...
 
     def batches(
-        self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None
+        self,
+        source: FileSource,
+        entry: FileEntry,
+        *,
+        row_cap: int | None = None,
+        errors: list[str] | None = None,
     ) -> Iterator[list[dict[str, Any]]]:
-        """The same rows :meth:`read` would return, handed over in chunks and never all at once."""
+        """The same rows :meth:`read` would return, handed over in chunks and never all at once.
+
+        ``errors`` collects any reason the read understood less than the whole file, the way
+        :attr:`ReadResult.error` does for the batched-up path. A generator cannot return one --
+        by the time it knows, the caller has consumed everything it yielded -- and the caller has
+        to know, or a partially parsed file would fold silently and look complete.
+        """
         ...
 
 

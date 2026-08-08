@@ -47,14 +47,30 @@ class JsonlReader:
         a partition holding one cannot be folded without reading it first."""
         return FilePreview()
 
-    def batches(self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None) -> Iterator[list[dict]]:
-        """Rows in chunks. Parse errors are silent here -- :meth:`read` is the path that accounts for
-        them, and the fold path does not reach a file with no declared schema."""
+    def batches(
+        self,
+        source: FileSource,
+        entry: FileEntry,
+        *,
+        row_cap: int | None = None,
+        errors: list[str] | None = None,
+    ) -> Iterator[list[dict]]:
+        """Rows in chunks, reporting any line it could not read into ``errors``.
+
+        A corrupt line costs that line, never the file -- dropping the whole file would erase its
+        row count and every column it was the only witness for -- but the caller has to be told, or
+        a partially parsed file would fold silently and look complete.
+        """
         rows: list[dict] = []
         scanned = 0
+        unparseable = 0
+        first_failure: str | None = None
         with source.open(entry.path) as stream:
-            for record, _ in _records(stream):
+            for record, failure in _records(stream):
                 if record is None:
+                    unparseable += 1
+                    if first_failure is None:
+                        first_failure = failure
                     continue
                 rows.append(record)
                 scanned += 1
@@ -65,6 +81,8 @@ class JsonlReader:
                     break
         if rows:
             yield rows
+        if unparseable and errors is not None:
+            errors.append(f"skipped {unparseable} unparseable line(s); first at {first_failure}")
 
     def read(self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None) -> ReadResult:
         rows: list[dict] = []

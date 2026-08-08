@@ -26,8 +26,19 @@ class ParquetReader:
             parquet_file = pq.ParquetFile(stream)
             return FilePreview(arrow_schema=parquet_file.schema_arrow, num_rows=parquet_file.metadata.num_rows)
 
-    def batches(self, source: FileSource, entry: FileEntry, *, row_cap: int | None = None) -> Iterator[list[dict]]:
-        """Rows in chunks, so the caller can fold them and let each chunk go."""
+    def batches(
+        self,
+        source: FileSource,
+        entry: FileEntry,
+        *,
+        row_cap: int | None = None,
+        errors: list[str] | None = None,
+    ) -> Iterator[list[dict]]:
+        """Rows in chunks, so the caller can fold them and let each chunk go.
+
+        ``errors`` is never appended to: parquet either decodes a batch or raises, so there is no
+        partial understanding to report.
+        """
         scanned = 0
         with source.open(entry.path) as stream:
             parquet_file = pq.ParquetFile(stream)
