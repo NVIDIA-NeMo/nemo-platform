@@ -66,6 +66,7 @@ DEFAULT_FILE_NAME = "evaluation-results.json"
 ARTIFACTS_RESULT_NAME = "artifacts"
 AGGREGATE_SCORES_RESULT_NAME = "aggregate-scores"
 ROW_SCORES_RESULT_NAME = "row-scores"
+RUN_METADATA_RESULT_NAME = "run-metadata"
 AGGREGATE_SCORES_FILE_NAME = "aggregate-scores.json"
 ROW_SCORES_FILE_NAME = "row-scores.jsonl"
 RUN_METADATA_FILE_NAME = "run-metadata.json"
@@ -354,6 +355,7 @@ class EvaluateJob(NemoJob):
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
         ctx.results.save(ROW_SCORES_RESULT_NAME, result_files.row_scores)
+        ctx.results.save(RUN_METADATA_RESULT_NAME, result_files.run_metadata)
         ctx.results.save(ARTIFACTS_RESULT_NAME, result_files.artifacts_dir, ignore_patterns=RESULT_IGNORE_PATTERNS)
 
         # Persist the queryable result record (aggregate scores); per-row detail lives in the fileset

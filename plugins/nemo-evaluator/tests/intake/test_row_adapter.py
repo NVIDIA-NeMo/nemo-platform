@@ -189,8 +189,21 @@ def test_inference_failure_becomes_a_failed_trial() -> None:
 
 
 def test_empty_sample_becomes_a_failed_trial() -> None:
-    result = _adapt([_row(sample={"output_text": None, "response": {}})])
+    # The generation path omits `output_text`/`response` entirely when falsy, so a row that produced
+    # nothing carries neither key.
+    result = _adapt([_row(sample={})])
     assert result.trials[0].status == AgentEvalTrialStatus.FAILED
+    assert result.trials[0].output is None
+
+
+@pytest.mark.parametrize("response", [False, 0, [], {}])
+def test_falsy_response_is_still_an_output(response: object) -> None:
+    # `AgentOutput.response` is any JSON value, so a falsy one is data, not absence — publishing it
+    # as a failed trial would drop a completed row's output.
+    result = _adapt([_row(sample={"output_text": None, "response": response})])
+    assert result.trials[0].status == AgentEvalTrialStatus.COMPLETED
+    assert result.trials[0].output is not None
+    assert result.trials[0].output.response == response
 
 
 def test_metric_error_becomes_a_failed_score_reporting_why() -> None:

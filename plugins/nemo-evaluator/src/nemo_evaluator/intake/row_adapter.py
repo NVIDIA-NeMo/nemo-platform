@@ -75,7 +75,7 @@ def _output(row: RowScore) -> AgentOutput | None:
         return None
     output_text = row.sample.get("output_text")
     response = row.sample.get("response")
-    if output_text is None and not response:
+    if output_text is None and response is None:
         return None
     return AgentOutput(output_text=output_text, response=response)
 

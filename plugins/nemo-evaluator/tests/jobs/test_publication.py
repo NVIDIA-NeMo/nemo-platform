@@ -522,7 +522,16 @@ def test_job_publication_requires_a_run_start_time(tmp_path: Path, mocker: Mocke
 class _FakeRowEvaluator:
     """Stand-in for the row Evaluator, returning one scored row."""
 
+    def __init__(self) -> None:
+        self.loop: asyncio.AbstractEventLoop | None = None
+
     def run_sync(self, **kwargs: Any) -> EvaluationResult:
+        # Drives a real loop to completion the way the row `Evaluator` does, so publication
+        # afterwards runs against an already-closed loop.
+        return run_sync(self._run)
+
+    async def _run(self) -> EvaluationResult:
+        self.loop = asyncio.get_running_loop()
         return EvaluationResult(
             row_scores=[
                 RowScore(
@@ -572,6 +581,11 @@ def test_evaluate_job_persists_the_run_identity_it_published_under(tmp_path: Pat
 
     EvaluateJob().run(_evaluate_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNeMoPlatform, client))
 
+    # Registered as its own artifact, like the sibling score files — a re-publish should not have to
+    # unpack the artifacts directory to recover the identity it must reuse.
+    registered = ctx.storage.persistent / "results" / "run-metadata"
+    assert registered.exists()
+
     persisted = json.loads((ctx.storage.persistent / "artifacts" / "run-metadata.json").read_text())
     assert persisted["run_id"] == "job-1"
     published_session = client.atif_calls[0]["session_id"]
@@ -580,10 +594,8 @@ def test_evaluate_job_persists_the_run_identity_it_published_under(tmp_path: Pat
 
 
 def test_evaluate_job_publishes_rows_through_the_real_sync_bridge(tmp_path: Path, mocker: MockerFixture) -> None:
-    # `run` has already driven one event loop via `evaluator.run_sync`; publication drives another
-    # through `run_sync` on the same injected SDK. Nothing patched out, so a loop-binding regression
-    # surfaces as "Event loop is closed".
-    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    evaluator = _FakeRowEvaluator()
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
     client = _FakeClient()
 
     result = EvaluateJob().run(
@@ -591,6 +603,16 @@ def test_evaluate_job_publishes_rows_through_the_real_sync_bridge(tmp_path: Path
         ctx=_job_context(tmp_path, job_id="job-1"),
         async_sdk=cast(AsyncNeMoPlatform, client),
     )
+
+    # The evaluator drove a loop to completion first; publication then ran on a different one,
+    # reusing the same injected SDK. That crossing is what raises "Event loop is closed" when the
+    # client is bound to a dead loop. It does not distinguish `run_sync` from a bare `asyncio.run` —
+    # no loop is running at this point, so both behave the same here.
+    ingest_loop = client.intake.ingest.atif.loop
+    assert evaluator.loop is not None
+    assert evaluator.loop.is_closed()
+    assert ingest_loop is not None
+    assert ingest_loop is not evaluator.loop
 
     assert result["publication"]["status"] == PlatformJobStatus.COMPLETED
     assert result["publication"]["trial_count"] == 1
