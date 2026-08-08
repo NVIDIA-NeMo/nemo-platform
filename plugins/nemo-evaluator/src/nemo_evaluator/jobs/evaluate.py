@@ -68,6 +68,7 @@ AGGREGATE_SCORES_RESULT_NAME = "aggregate-scores"
 ROW_SCORES_RESULT_NAME = "row-scores"
 AGGREGATE_SCORES_FILE_NAME = "aggregate-scores.json"
 ROW_SCORES_FILE_NAME = "row-scores.jsonl"
+RUN_METADATA_FILE_NAME = "run-metadata.json"
 RESULT_IGNORE_PATTERNS = ["cache.db", "cache/"]
 
 
@@ -78,6 +79,7 @@ class EvaluationResultFiles:
     full_result: Path
     aggregate_scores: Path
     row_scores: Path
+    run_metadata: Path
     artifacts_dir: Path
 
 
@@ -215,8 +217,10 @@ class EvaluateJob(NemoJob):
         return compile_evaluate_job(canonical_spec, profile=profile)
 
     @staticmethod
-    def _write_result_files(result: EvaluationArtifactResult, persistent_dir: Path) -> EvaluationResultFiles:
-        """Write full, aggregate, and row-level evaluator artifacts."""
+    def _write_result_files(
+        result: EvaluationArtifactResult, persistent_dir: Path, *, run_id: str | None, started_at: datetime
+    ) -> EvaluationResultFiles:
+        """Write full, aggregate, row-level and run-metadata evaluator artifacts."""
         result_payload = result.model_dump(mode="json")
         full_result_path = persistent_dir / DEFAULT_FILE_NAME
         full_result_path.write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
@@ -230,10 +234,21 @@ class EvaluateJob(NemoJob):
             for row_score in result.row_scores:
                 f.write(row_score.model_dump_json() + "\n")
 
+        # `EvaluationResult` has nowhere to carry timings, so the run identity Intake publishes
+        # under is written beside the scores. A re-publish must reuse these: `session_id` is
+        # `{run_id}:{trial id}` and the span key includes `start_time`, so minting either afresh
+        # writes a second trajectory instead of replacing the first.
+        run_metadata_path = artifacts_dir / RUN_METADATA_FILE_NAME
+        run_metadata_path.write_text(
+            json.dumps({"run_id": run_id, "started_at": started_at.isoformat()}, indent=2),
+            encoding="utf-8",
+        )
+
         return EvaluationResultFiles(
             full_result=full_result_path,
             aggregate_scores=aggregate_path,
             row_scores=row_scores_path,
+            run_metadata=run_metadata_path,
             artifacts_dir=artifacts_dir,
         )
 
@@ -333,7 +348,9 @@ class EvaluateJob(NemoJob):
                 field_mapping=spec.field_mapping,
                 prompt_template=None,
             )
-        result_files = self._write_result_files(result, ctx.storage.persistent)
+        result_files = self._write_result_files(
+            result, ctx.storage.persistent, run_id=ctx.job_id, started_at=started_at
+        )
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
         ctx.results.save(ROW_SCORES_RESULT_NAME, result_files.row_scores)

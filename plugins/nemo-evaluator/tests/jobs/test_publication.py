@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -559,6 +560,23 @@ def test_evaluate_job_does_not_publish_without_a_publication_spec(tmp_path: Path
 
     assert "publication" not in result
     assert client.atif_calls == []
+
+
+def test_evaluate_job_persists_the_run_identity_it_published_under(tmp_path: Path, mocker: MockerFixture) -> None:
+    # `EvaluationResult` carries no timings, so without this artifact a re-publish would have to mint
+    # a new `started_at` — a different span `start_time` for the same session, which writes a second
+    # trajectory rather than replacing the first.
+    mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=_FakeRowEvaluator())
+    client = _FakeClient()
+    ctx = _job_context(tmp_path, job_id="job-1")
+
+    EvaluateJob().run(_evaluate_spec().model_dump(), ctx=ctx, async_sdk=cast(AsyncNeMoPlatform, client))
+
+    persisted = json.loads((ctx.storage.persistent / "artifacts" / "run-metadata.json").read_text())
+    assert persisted["run_id"] == "job-1"
+    published_session = client.atif_calls[0]["session_id"]
+    assert published_session.startswith(f"{persisted['run_id']}:")
+    assert client.atif_calls[0]["steps"][0]["timestamp"] == datetime.fromisoformat(persisted["started_at"])
 
 
 def test_evaluate_job_publishes_rows_through_the_real_sync_bridge(tmp_path: Path, mocker: MockerFixture) -> None:
