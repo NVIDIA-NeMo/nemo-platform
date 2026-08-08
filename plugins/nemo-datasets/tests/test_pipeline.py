@@ -682,6 +682,33 @@ def test_a_measurement_failure_is_scoped_to_its_own_partition(tmp_path, monkeypa
     assert partitions["good"].stats  # a neighbour's bad data costs this partition nothing
 
 
+def test_a_file_that_fails_partway_still_counts_what_it_contributed(tmp_path, monkeypatch):
+    # A read used to be all-or-nothing, so a failure meant no rows at all and the envelope could be
+    # written after it. A fold cannot give rows back: batches already folded are in the statistics
+    # whatever happens next, and counting the file as unread left `rows_scanned` describing fewer
+    # rows than the stats were built from.
+    from nemo_datasets_plugin.profiler import pipeline as pipeline_module
+
+    _write_parquet(tmp_path / "train.parquet", [{"a": i} for i in range(4000)])
+    real_update = pipeline_module._PartitionFolds.update
+    calls = {"n": 0}
+
+    def fail_on_the_third_batch(self, rows):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise RuntimeError("boom mid-file")
+        return real_update(self, rows)
+
+    monkeypatch.setattr(pipeline_module._PartitionFolds, "update", fail_on_the_third_batch)
+    result = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME)
+
+    assert result.sampling.rows_scanned == 2048  # two batches of 1024 were folded before it failed
+    assert result.sampling.files_read == 1  # the file *was* read from, just not to its end
+    assert result.partitions[0].stats["a"].numeric is not None  # and those rows shaped the stats
+    assert [e.path for e in result.file_errors] == ["train.parquet"]
+    assert result.partitions[0].rows_complete is False
+
+
 def test_reading_everything_is_the_default(tmp_path):
     # The point of the whole exercise. The budget existed to keep a materialised partition off the
     # heap; nothing is materialised, so the default should not answer the question worse than it can

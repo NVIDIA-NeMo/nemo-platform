@@ -18,7 +18,8 @@ default. ``row_budget`` survives only as a way to ask for a shorter run.
 
 What a declared schema buys is not the fold but its sharpness. Parquet footers are read first, so
 the columns are known before a row is parsed and each accumulator is chosen up front, and the exact
-row count is known too, which is what lets a quality stride be placed over a column not yet seen.
+row count is known too, which is what lets the quality sample be spread across a column not yet
+seen.
 
 Without one — line-delimited data — both wait for the data. Columns are created on first sight and
 back-filled with the rows they were absent for, and each carries every shape at once until the last
@@ -283,7 +284,7 @@ def _peek_files(source: FileSource, entries: list[FileEntry]) -> dict[str, FileP
 def _expected_rows(previews: dict[str, FilePreview], row_cap: int | None) -> int | None:
     """How many rows the fold is about to see, if every file said.
 
-    Capped per file the same way the read will be, so a budgeted run strides its quality sample over
+    Capped per file the same way the read will be, so a budgeted run spreads its quality sample over
     what it will actually scan rather than over what the dataset holds.
     """
     total = 0
@@ -305,15 +306,25 @@ class _PartitionFolds:
         # Declared: the columns are known, so the accumulators are chosen now. Inferred: they are
         # discovered as they appear and typed once every row has gone by.
         self.features = features or []
-        self._declared = features is not None
         self._columns: ColumnFold | InferredColumnFold = (
             ColumnFold(features, expected_rows) if features is not None else InferredColumnFold(expected_rows)
         )
         self._prefix = PrefixPairFold()
+        self._prefix_error: Evidence | None = None
 
     def update(self, rows: list[dict]) -> None:
         self._columns.update(rows)
-        self._prefix.update(rows)
+        # Guarded like the columns are. Unguarded, the only thing that would catch this is the
+        # per-file handler, which would report odd *data* as a bad *file* -- collapsing the one
+        # distinction the two failure domains exist to keep.
+        if self._prefix_error is None:
+            try:
+                self._prefix.update(rows)
+            except Exception as exc:
+                self._prefix_error = Evidence(
+                    kind="error",
+                    detail=f"the chosen/rejected prefix probe could not run: {type(exc).__name__}: {exc}",
+                )
 
     def measure(
         self, column_roles: dict[str, str]
@@ -339,6 +350,8 @@ class _PartitionFolds:
             quote_enumerations(self.features, measured.stats, measured.vocabularies)
             classification.evidence.extend(_capped_columns_evidence(self.features))
             classification.evidence.extend(measured.errors)
+            if self._prefix_error is not None:
+                classification.evidence.append(self._prefix_error)
             return self.features, measured.stats, classification
         except Exception as exc:
             detail = f"could not measure this partition: {type(exc).__name__}: {exc}"
@@ -380,15 +393,15 @@ def _profile_partition(
     # Declared or not, the partition folds. With a schema the accumulators are chosen up front and
     # the exact row count places the quality stride; without one both wait for the data, which costs
     # a deferred dtype per column and nothing else.
+    row_cap = _per_file_cap(row_budget, len(entries))
     folds = _PartitionFolds(
         derive_features([], declared) if declared is not None else None,
-        expected_rows=_expected_rows(previews, _per_file_cap(row_budget, len(entries))),
+        expected_rows=_expected_rows(previews, row_cap),
     )
     rows_scanned = 0
     files_read = 0
     rows_present: int | None = 0
     partition_scanned = True
-    row_cap = _per_file_cap(row_budget, len(entries))
     file_errors: list[FileError] = []
     file_formats: set[str] = set()
     split_profiles: list[SplitProfile] = []
@@ -401,18 +414,16 @@ def _profile_partition(
             error: str | None = None
             num_rows: int | None = None
             scanned_all = False
+            scanned = 0
             try:
                 # Inside the guard: resolving the reader can fail too, and a format with no reader
                 # registered is a file the profiler could not use like any other.
                 reader = get_reader(_format_of(entry.path))
                 preview = previews[entry.path]
-                scanned = 0
                 read_errors: list[str] = []
                 for batch in reader.batches(source, entry, row_cap=row_cap, errors=read_errors):
                     folds.update(batch)
                     scanned += len(batch)
-                files_read += 1
-                rows_scanned += scanned
                 # A file the reader only partly understood is named, the same as one it could not
                 # open at all. Folding it silently would make a corrupt shard look complete.
                 error = "; ".join(read_errors) or None
@@ -427,11 +438,18 @@ def _profile_partition(
                 scanned_all = num_rows is not None and scanned >= num_rows and error is None
             except Exception as exc:
                 # Failure isolation: an unreadable file (or missing reader) keeps its identity,
-                # skips its rows, and does not abort the profile. The reason is recorded rather than
-                # swallowed, so a consumer can tell corrupt input from a profiler bug.
+                # skips the rest of its rows, and does not abort the profile. The reason is recorded
+                # rather than swallowed, so a consumer can tell corrupt input from a profiler bug.
                 error = f"{type(exc).__name__}: {exc}"
                 num_rows = None
                 scanned_all = False
+            # Counted for what was actually consumed, outside the guard, because a read is no longer
+            # all-or-nothing: a fold cannot give rows back, so a file that failed on its fifth batch
+            # still contributed four and the envelope has to say so. Accounting for it as unread
+            # would leave `rows_scanned` describing fewer rows than the stats were built from.
+            rows_scanned += scanned
+            if scanned or error is None:
+                files_read += 1
             if error is not None:
                 file_errors.append(FileError(path=entry.path, error=error))
             rows_present = _add_known(rows_present, num_rows)

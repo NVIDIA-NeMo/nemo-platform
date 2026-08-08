@@ -21,10 +21,10 @@ the same answer as one measured whole — the property that lets a caller stop m
 partition before it can measure it. The base class is the entire measurement for a dtype with no
 statistics of its own, because the probes run over every column whatever its type.
 
-Every measurement is now O(1) in rows except one: a string column retains its strings, because the
-quality stride needs the column's row count to place its sample and that is not known until the last
-batch. Summing the parquet footers before folding is what removes it — the row count is in them, and
-reading it costs no rows. A messages column has no such term and is already bounded.
+Every measurement is O(1) in rows. Nothing is retained: the one thing that used to be — a string
+column's values, held so a quality sample could be placed across them — went when the sample learned
+to place itself as it goes, in contiguous blocks whose size does not depend on how long the column
+turns out to be.
 """
 
 from __future__ import annotations
@@ -357,24 +357,25 @@ class StringAccumulator(ColumnAccumulator):
         self._quality = _TextQualityCounters()
         self._seen = 0
         self._sampled = 0
-        # With the row count known -- parquet footers give it before a row is read -- the stride is
-        # fixed now and the sample is spread evenly over the whole column. Without it there is no
-        # length to stride over yet, so the stride starts at one and doubles each time the sample
+        # With the row count known -- parquet footers give it before a row is read -- the cycle is
+        # fixed now and the blocks spread evenly over the whole column. Without it there is no length
+        # to spread over yet, so the cycle starts at one block and doubles each time the sample
         # fills: every row eligible at first, thinning as the column turns out to be long. Each
-        # sampled row then stands for `stride` rows, which is what keeps the estimate unbiased
-        # rather than weighted toward the head where sampling was densest.
-        self._stride = _quality_stride(expected_rows) if expected_rows is not None else 1
+        # sampled row then stands for `cycle / block` rows, which is what keeps the estimate
+        # unbiased rather than weighted toward the head where sampling was densest.
+        self._block = _QUALITY_SAMPLE_BLOCK
+        self._cycle = _quality_cycle(expected_rows) if expected_rows is not None else self._block
         self._adaptive = expected_rows is None
 
     def _observe(self, present: list[Any]) -> None:
         for value in present:
             if isinstance(value, str):
                 self._lengths.add(len(value))
-                if self._seen % self._stride == 0:
-                    self._quality.add(value, self._stride)
+                if self._seen % self._cycle < self._block:
+                    self._quality.add(value, self._cycle / self._block)
                     self._sampled += 1
                     if self._adaptive and self._sampled >= _QUALITY_SAMPLE_ROWS:
-                        self._stride *= 2
+                        self._cycle *= 2
                         self._sampled = 0
                 self._seen += 1
         self._vocabulary.update(present)
@@ -504,7 +505,8 @@ def _accumulator_for(feature: FeatureSchema, expected_rows: int | None = None) -
     """The accumulator that knows how to measure this column, dispatched once on its dtype.
 
     ``expected_rows`` is the partition's row count when it is known before reading -- only a string
-    column uses it, to place its quality stride without retaining the column.
+    column uses it, to space its quality blocks across the whole of itself rather than thinning
+    as it goes.
     """
     if feature.dtype == "string":
         return StringAccumulator(expected_rows)
@@ -759,6 +761,19 @@ _ASCII_WHITESPACE = " \t\n\r\f\v"
 # the precision anyone reads them to. Bounding them is what makes reading every row affordable.
 _QUALITY_SAMPLE_ROWS = 50_000
 
+# ...and the sample is taken in contiguous blocks of this many rows, not at an even step.
+#
+# A step aliases. Data is periodic more often than it looks -- a set that round-robins over ten
+# sources, or carries k responses per prompt, is periodic by construction -- and a step that shares a
+# factor with the period samples one phase and only that phase. Measured before this was blocks:
+# 500,000 rows with every tenth corrupt gives a step of ten, which reported a repetition score of
+# 1.000 against a truth of 0.100. Not noise; the wrong answer.
+#
+# A block longer than the period sees every phase of it, whatever the period is, and costs exactly
+# the same. 512 covers anything plausible -- k-per-prompt is single digits, round-robin over sources
+# is tens to low hundreds.
+_QUALITY_SAMPLE_BLOCK = 512
+
 
 def _whitespace_count(text: str) -> int:
     """Whitespace characters, matching ``\\s`` exactly.
@@ -787,7 +802,7 @@ def _non_ascii_count(text: str) -> int:
 
 
 class _TextQualityCounters:
-    """The three corruption ratios as running sums, so a strided sample needs no storage.
+    """The three corruption ratios as running sums, so a sampled subset needs no storage.
 
     Every denominator is the sample's own, never the column's: each ratio is an estimate over the
     rows actually scanned, which is what keeps it unbiased rather than diluted.
@@ -800,7 +815,7 @@ class _TextQualityCounters:
         self._repetition = 0.0
         self._rows = 0
 
-    def add(self, text: str, weight: int = 1) -> None:
+    def add(self, text: str, weight: float = 1.0) -> None:
         """Fold one sampled row in, standing for ``weight`` rows of the column.
 
         The weight is what keeps a *varying* sample rate honest. Sampling one row in four and
@@ -821,9 +836,13 @@ class _TextQualityCounters:
         )
 
 
-def _quality_stride(rows: int) -> int:
-    """How many rows to step between quality samples, given the column's length."""
-    return max(1, rows // _QUALITY_SAMPLE_ROWS)
+def _quality_cycle(rows: int) -> int:
+    """How many rows one sampled block stands in for, when the column's length is known.
+
+    Every ``cycle`` rows, the first ``_QUALITY_SAMPLE_BLOCK`` of them are measured. Sized so the
+    blocks add up to the sample budget and spread across the whole column.
+    """
+    return max(_QUALITY_SAMPLE_BLOCK, rows * _QUALITY_SAMPLE_BLOCK // _QUALITY_SAMPLE_ROWS)
 
 
 def _count_matches(pattern: re.Pattern[str], text: str) -> int:

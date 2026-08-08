@@ -206,9 +206,12 @@ class TextQuality(BaseModel):
     tens of thousands of rows pins down far past the precision anyone reads them to. Bounding them
     is what makes reading every row of a dataset affordable.
 
-    The sample is evenly strided: deterministic, so two runs over the same bytes agree, and spread
-    across the column rather than taken from its head, so a sorted shard does not decide the answer.
-    A column smaller than the bound is measured in full.
+    The sample is contiguous blocks, spaced evenly across the column: deterministic, so two runs over
+    the same bytes agree, and spread rather than taken from the head, so a sorted shard does not
+    decide the answer. Blocks rather than every n-th row because an even step aliases against
+    periodic data — a set that round-robins over sources, or carries k responses per prompt, is
+    periodic by construction, and a step sharing a factor with that period samples one phase and
+    only that phase. A column smaller than the bound is measured in full.
     """
 
     whitespace_ratio: float = Field(ge=0.0, le=1.0, description="Padding / bad scraping.")
@@ -420,7 +423,8 @@ class SplitProfile(BaseModel):
     num_examples: int | None = Field(
         default=None,
         description=(
-            "Rows in this split, counting every file in `files` whether or not its rows were read. Always "
+            "Rows in this split, counting every one of its files whether or not that file's rows were "
+            "read. Always "
             "exact — summed from parquet footers or from files read to their end — and None the moment any "
             "one file's count is unknown. Never an estimate, so it carries no accuracy caveat: a capped run "
             "still reports the true total whenever the footers knew it."
@@ -531,7 +535,12 @@ class SamplingInfo(BaseModel):
         ),
     )
     files_read: int = Field(
-        description="Files actually opened and read from (a count; the files themselves are `SplitProfile.files`)."
+        description=(
+            "Files actually opened and read from. A count, not a list -- the paths of healthy "
+            "shards are the one part of a profile that grows without bound and informs no "
+            "decision; `SplitProfile.num_files` counts them per split, and only the ones that "
+            "went wrong are named, on `DatasetProfile.file_errors`."
+        )
     )
     files_present: int = Field(
         description=(

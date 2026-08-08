@@ -257,6 +257,26 @@ def test_quality_fast_paths_are_the_same_measurement_as_the_regexes(text):
     assert _non_ascii_count(text) == sum(1 for _ in _NON_ASCII_RUN.finditer(text))
 
 
+def test_the_quality_sample_does_not_alias_against_periodic_data(monkeypatch):
+    # A set that round-robins over sources, or carries k responses per prompt, is periodic by
+    # construction. An evenly-spaced step whose spacing shares a factor with that period samples one
+    # phase and only that phase: 500,000 rows with every tenth corrupt gave a step of ten and a
+    # repetition score of 1.000 against a truth of 0.100. A contiguous block longer than the period
+    # sees every phase of it, whatever the period turns out to be.
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 1_000)
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_BLOCK", 64)
+    period, n = 10, 100_000
+    values = ["aaaaaaaaaaaa" if i % period == 0 else "the quick brown fox" for i in range(n)]
+
+    known = stats_module.StringAccumulator(n)
+    known.update(values)
+    assert known.finalize()[0].quality.repetition_score == pytest.approx(1 / period, abs=0.02)
+
+    unknown = stats_module.StringAccumulator(None)
+    unknown.update(values)
+    assert unknown.finalize()[0].quality.repetition_score == pytest.approx(1 / period, abs=0.02)
+
+
 def test_a_known_row_count_strides_evenly_and_deterministically(monkeypatch):
     # With the row count known up front the stride is fixed, so the sample is spread evenly over the
     # whole column -- and two runs over the same bytes agree, which is why no RNG is involved.
@@ -274,17 +294,18 @@ def test_a_known_row_count_strides_evenly_and_deterministically(monkeypatch):
 
 
 def test_an_unknown_row_count_thins_as_it_goes_and_stays_unbiased(monkeypatch):
-    # No footer, so no length to stride over: the stride starts at one and doubles as the sample
-    # fills. Sampling is then densest at the head, which would skew the answer -- weighting each
-    # sampled row by the stride it stood for is what corrects it.
-    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 10)
+    # No footer, so no length to spread blocks over: the cycle starts at one block and doubles as the
+    # sample fills. Sampling is then densest at the head, which would skew the answer -- weighting
+    # each sampled row by the rows its block stood for is what corrects it.
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 40)
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_BLOCK", 8)
     values = ["clean text"] * 500 + ["aaaaaaaaaaaa"] * 500
 
     acc = stats_module.StringAccumulator(None)
     acc.update(values)
     score = acc.finalize()[0].quality.repetition_score
 
-    assert acc._stride > 1  # it did thin
+    assert acc._cycle > acc._block  # it did thin
     assert 0.35 <= score <= 0.65  # ...and still found roughly half the column corrupt
 
 
