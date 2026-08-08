@@ -34,6 +34,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from nemo_datasets_plugin.profiler.schema import MAX_COLUMNS, SchemaFold
 from nemo_platform_plugin.files.dataset_profile import (
     CategoricalStats,
     ColumnStats,
@@ -272,6 +273,16 @@ class ColumnAccumulator:
         """The dtype-specific ``ColumnStats`` blocks. The base column contributes none."""
         return {}
 
+    def backfill_nulls(self, count: int) -> None:
+        """Charge this column ``count`` rows in which it was absent.
+
+        A column that first appears in the fiftieth batch was null for every row before it, which is
+        exactly what a materialising reader computes with ``row.get(name)``. Counted rather than fed
+        as values, so discovering a column late costs a pair of additions and not a pass.
+        """
+        self.rows += count
+        self._nulls += count
+
     def vocabulary(self) -> set[Any] | None:
         """The distinct values, for a column that is a bounded vocabulary. None for one that is not,
         which is every dtype without a notion of cardinality."""
@@ -343,24 +354,28 @@ class StringAccumulator(ColumnAccumulator):
         super().__init__()
         self._lengths = _LengthHistogram()
         self._vocabulary = _Vocabulary()
-        # With the row count known -- parquet footers give it before a row is read -- the quality
-        # stride can be placed now and each string measured or skipped as it goes by, retaining
-        # nothing. Without it there is no stride to compute yet, so the strings are held and strided
-        # at the end. That is the one term here still sized by the column, and it is exactly the
-        # partitions that have no footer to read.
-        self._stride = _quality_stride(expected_rows) if expected_rows is not None else None
         self._quality = _TextQualityCounters()
-        self._strings: list[str] = []
         self._seen = 0
+        self._sampled = 0
+        # With the row count known -- parquet footers give it before a row is read -- the stride is
+        # fixed now and the sample is spread evenly over the whole column. Without it there is no
+        # length to stride over yet, so the stride starts at one and doubles each time the sample
+        # fills: every row eligible at first, thinning as the column turns out to be long. Each
+        # sampled row then stands for `stride` rows, which is what keeps the estimate unbiased
+        # rather than weighted toward the head where sampling was densest.
+        self._stride = _quality_stride(expected_rows) if expected_rows is not None else 1
+        self._adaptive = expected_rows is None
 
     def _observe(self, present: list[Any]) -> None:
         for value in present:
             if isinstance(value, str):
                 self._lengths.add(len(value))
-                if self._stride is None:
-                    self._strings.append(value)
-                elif self._seen % self._stride == 0:
-                    self._quality.add(value)
+                if self._seen % self._stride == 0:
+                    self._quality.add(value, self._stride)
+                    self._sampled += 1
+                    if self._adaptive and self._sampled >= _QUALITY_SAMPLE_ROWS:
+                        self._stride *= 2
+                        self._sampled = 0
                 self._seen += 1
         self._vocabulary.update(present)
 
@@ -368,7 +383,7 @@ class StringAccumulator(ColumnAccumulator):
         text = quality = None
         if self._seen:
             text = TextStats(chars=self._lengths.quantiles())
-            quality = _text_quality(self._strings) if self._stride is None else self._quality.finalize()
+            quality = self._quality.finalize()
         return {"text": text, "quality": quality, "categorical": self._vocabulary.finalize()}
 
     def vocabulary(self) -> set[Any] | None:
@@ -502,6 +517,143 @@ def _accumulator_for(feature: FeatureSchema, expected_rows: int | None = None) -
     return ColumnAccumulator()
 
 
+class DeferredAccumulator(ColumnAccumulator):
+    """A column whose dtype is not known until the last row has gone by.
+
+    An accumulator is normally chosen *by* dtype, which a declared schema gives up front. An inferred
+    one does not: the observed types are unioned over the whole column and a disagreement widens to
+    ``json``, so the choice cannot be made while the choosing still matters. Deferring it is the only
+    resolution that neither reads the data twice nor decides from a prefix and hopes.
+
+    So every shape is measured at once and the answer picked at the end. It costs no more per value
+    than choosing would have -- a string only ever reaches the string state, an int only the numeric
+    -- and the state it costs is four bounded structures per column rather than one. A column that
+    resolves to a shape nothing measured, or to ``json``, simply has no blocks, which is what the
+    dispatch would have produced for it anyway.
+    """
+
+    def __init__(self, name: str, expected_rows: int | None = None) -> None:
+        super().__init__()
+        self._schema = SchemaFold(name)
+        self._string = StringAccumulator(expected_rows)
+        self._numeric = NumericAccumulator()
+        self._bool = BoolAccumulator()
+        self._messages = MessageAccumulator()
+
+    def _observe(self, present: list[Any]) -> None:
+        self._schema.update(present)
+        # Routed by python type. Where a dtype resolves to something measurable, every present value
+        # is of that type by construction -- `_resolve_scalar` only returns `string` when the whole
+        # column was strings -- so this sees exactly what the chosen accumulator would have seen.
+        strings = [value for value in present if isinstance(value, str)]
+        if strings:
+            self._string._observe(strings)
+        numbers = [value for value in present if isinstance(value, (int, float)) and not isinstance(value, bool)]
+        if numbers:
+            self._numeric._observe(numbers)
+        bools = [value for value in present if isinstance(value, bool)]
+        if bools:
+            self._bool._observe(bools)
+        lists = [value for value in present if isinstance(value, list)]
+        if lists:
+            self._messages._observe(lists)
+
+    def feature(self) -> FeatureSchema:
+        """The column's schema, as folded."""
+        return self._schema.finalize()
+
+    def _blocks(self) -> dict[str, Any]:
+        dtype = self.feature().dtype
+        if dtype == "string":
+            return self._string._blocks()
+        if dtype == "bool":
+            return self._bool._blocks()
+        if dtype == "messages":
+            return self._messages._blocks()
+        if _is_numeric(dtype):
+            return self._numeric._blocks()
+        return {}
+
+    def vocabulary(self) -> set[Any] | None:
+        dtype = self.feature().dtype
+        if dtype == "string":
+            return self._string.vocabulary()
+        if dtype == "bool":
+            return self._bool.vocabulary()
+        if _is_numeric(dtype):
+            return self._numeric.vocabulary()
+        return None
+
+
+class InferredColumnFold:
+    """A partition's columns, discovered as they appear and typed once they have all gone by.
+
+    The counterpart to :class:`ColumnFold` for data that declares no schema. Columns are created on
+    first sight and back-filled with the rows they were absent for, which is what makes the result
+    identical to inferring the schema first and measuring second -- a row without the key genuinely
+    holds a null for it.
+    """
+
+    def __init__(self, expected_rows: int | None = None) -> None:
+        self._expected_rows = expected_rows
+        self._accumulators: dict[str, DeferredAccumulator] = {}
+        self._order: list[str] = []
+        self._failed: dict[str, Evidence] = {}
+        self._rows_seen = 0
+
+    def update(self, rows: list[dict[str, Any]]) -> None:
+        for row in rows:
+            for name in row:
+                if name in self._accumulators or len(self._accumulators) >= MAX_COLUMNS:
+                    continue
+                accumulator = DeferredAccumulator(name, self._expected_rows)
+                accumulator.backfill_nulls(self._rows_seen)
+                self._accumulators[name] = accumulator
+                self._order.append(name)
+        for name in self._order:
+            if name in self._failed:
+                continue
+            try:
+                self._accumulators[name].update([row.get(name) for row in rows])
+            except Exception as exc:
+                self._failed[name] = Evidence(
+                    kind="error",
+                    detail=f"column {name!r} could not be measured: {type(exc).__name__}: {exc}",
+                )
+        self._rows_seen += len(rows)
+
+    def finalize(self) -> tuple[list[FeatureSchema], ColumnMeasurements]:
+        features: list[FeatureSchema] = []
+        stats: dict[str, ColumnStats] = {}
+        probes: dict[str, ColumnProbes] = {}
+        vocabularies: dict[str, set[Any]] = {}
+        errors: list[Evidence] = []
+        for name in self._order:
+            failure = self._failed.get(name)
+            if failure is not None:
+                errors.append(failure)
+                continue
+            accumulator = self._accumulators[name]
+            try:
+                features.append(accumulator.feature())
+                column, probe = accumulator.finalize()
+            except Exception as exc:
+                errors.append(
+                    Evidence(
+                        kind="error",
+                        detail=f"column {name!r} could not be summarised: {type(exc).__name__}: {exc}",
+                    )
+                )
+                continue
+            probes[name] = probe
+            vocabulary = accumulator.vocabulary()
+            if vocabulary is not None:
+                vocabularies[name] = vocabulary
+            if column is not None:
+                stats[name] = column
+        return features, ColumnMeasurements(stats=stats, probes=probes, vocabularies=vocabularies, errors=errors)
+
+
 def _is_numeric(dtype: str) -> bool:
     return dtype.startswith(("int", "uint", "float"))
 
@@ -608,28 +760,6 @@ _ASCII_WHITESPACE = " \t\n\r\f\v"
 _QUALITY_SAMPLE_ROWS = 50_000
 
 
-def _quality_sample(strings: list[str]) -> list[str]:
-    """The rows to measure quality over: all of them, or an evenly strided subset.
-
-    Strided rather than random, because two runs over the same bytes must agree. Randomness is what
-    ``SamplingInfo.seed`` existed to make reproducible, and that field was deleted on the grounds
-    that the profiler makes no random choices and a seed would be theatre -- which should stay true.
-
-    Strided rather than the head, because shards arrive sorted often enough that the first rows of a
-    large column are not a sample of it. A stride costs the same, needs no state, and spreads the
-    sample across the whole column.
-
-    A stride can in principle alias against periodic data: a set with two rows per prompt, sampled
-    at stride two, sees one phase of every pair. Measured on exactly that shape -- HelpSteer2 rates
-    two responses per prompt -- the two phases agree to 0.35% on `whitespace_ratio` and differ by at
-    most 8% on the other two, whose values there are 0.0003 and 0.0025. That is well inside the band
-    these estimates already carry near zero, and does not buy a block-sampling scheme to avoid.
-    """
-    if len(strings) <= _QUALITY_SAMPLE_ROWS:
-        return strings
-    return strings[:: len(strings) // _QUALITY_SAMPLE_ROWS]
-
-
 def _whitespace_count(text: str) -> int:
     """Whitespace characters, matching ``\\s`` exactly.
 
@@ -670,12 +800,18 @@ class _TextQualityCounters:
         self._repetition = 0.0
         self._rows = 0
 
-    def add(self, text: str) -> None:
-        self._chars += len(text)
-        self._whitespace += _whitespace_count(text)
-        self._non_ascii += _non_ascii_count(text)
-        self._repetition += _repetition_score(text)
-        self._rows += 1
+    def add(self, text: str, weight: int = 1) -> None:
+        """Fold one sampled row in, standing for ``weight`` rows of the column.
+
+        The weight is what keeps a *varying* sample rate honest. Sampling one row in four and
+        counting it once would let a densely sampled stretch outvote a sparsely sampled one; counting
+        it four times estimates the population sums instead, and the ratios come out unbiased.
+        """
+        self._chars += weight * len(text)
+        self._whitespace += weight * _whitespace_count(text)
+        self._non_ascii += weight * _non_ascii_count(text)
+        self._repetition += weight * _repetition_score(text)
+        self._rows += weight
 
     def finalize(self) -> TextQuality:
         return TextQuality(
@@ -688,26 +824,6 @@ class _TextQualityCounters:
 def _quality_stride(rows: int) -> int:
     """How many rows to step between quality samples, given the column's length."""
     return max(1, rows // _QUALITY_SAMPLE_ROWS)
-
-
-def _text_quality(strings: list[str]) -> TextQuality:
-    sample = _quality_sample(strings)
-    total_chars = 0
-    whitespace = 0
-    non_ascii = 0
-    repetition_sum = 0.0
-    for value in sample:
-        total_chars += len(value)
-        whitespace += _whitespace_count(value)
-        non_ascii += _non_ascii_count(value)
-        repetition_sum += _repetition_score(value)
-    return TextQuality(
-        whitespace_ratio=whitespace / total_chars if total_chars else 0.0,
-        non_ascii_ratio=non_ascii / total_chars if total_chars else 0.0,
-        # Every denominator is the sample's own, never the column's: each ratio is an estimate over
-        # the rows that were actually scanned, which is what keeps it unbiased rather than diluted.
-        repetition_score=repetition_sum / len(sample) if sample else 0.0,
-    )
 
 
 def _count_matches(pattern: re.Pattern[str], text: str) -> int:

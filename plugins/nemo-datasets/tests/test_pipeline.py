@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 from nemo_datasets_plugin.profiler.file_source import FileEntry, LocalFileSource
 from nemo_datasets_plugin.profiler.partition import group_partitions
-from nemo_datasets_plugin.profiler.pipeline import _expected_rows, _measure, _peek_files, profile
+from nemo_datasets_plugin.profiler.pipeline import _expected_rows, _peek_files, profile
 from nemo_datasets_plugin.profiler.readers.base import FilePreview
 from nemo_datasets_plugin.profiler.splits import infer_data_files, resolve_splits
 from nemo_platform_plugin.files.dataset_profile import DatasetProfile
@@ -777,20 +777,28 @@ def test_profile_isolates_detected_format_with_no_reader(tmp_path, monkeypatch):
     assert result.partitions[0].stats_complete is False
 
 
-def test_measure_infers_from_rows_when_some_files_declared_no_schema():
-    # derive_features uses the declared schema *if present at all*, so a group where only some files
-    # declare one erased every column the schemaless files were the sole witness for. That is the
-    # defect `_split_by_format` worked around by making partitions format-homogeneous; the fix
-    # belongs in schema derivation, and dropping that homogeneity is what makes this path reachable.
-    declared = pa.schema([pa.field("prompt", pa.string())])
-    rows = [{"prompt": "a"}, {"prompt": "b", "extra": "only in the schemaless file"}]
+def test_a_column_only_a_schemaless_file_witnessed_survives(tmp_path):
+    # A group where only some files declare a schema used to trust that schema and erase every column
+    # the schemaless files were the sole witness for. Now the partition infers its schema from the
+    # rows as it folds them, so the sole witness is heard.
+    _write_parquet(tmp_path / "train-00000-of-00002.parquet", [{"prompt": "a"}])
+    (tmp_path / "train-00001-of-00002.jsonl").write_text(json.dumps({"prompt": "b", "extra": "only here"}))
 
-    features, stats, _ = _measure(rows, [declared], all_declared=False, column_roles={})
-    assert [f.name for f in features] == ["prompt", "extra"]  # the sole witness survives
-    assert set(stats) <= {f.name for f in features}
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
 
-    features, _, _ = _measure(rows, [declared], all_declared=True, column_roles={})
-    assert [f.name for f in features] == ["prompt"]  # declared schema trusted when it covers everything
+    assert [f.name for f in part.features] == ["prompt", "extra"]
+    assert set(part.stats) <= {f.name for f in part.features}
+
+
+def test_a_declared_schema_is_trusted_when_it_covers_every_file(tmp_path):
+    # The other half: when every file declares one, the schema is authoritative and the rows are not
+    # consulted for it. That is what lets the partition fold with its accumulators chosen up front.
+    _write_parquet(tmp_path / "train-00000-of-00002.parquet", [{"prompt": "a"}])
+    _write_parquet(tmp_path / "train-00001-of-00002.parquet", [{"prompt": "b"}])
+
+    part = profile(LocalFileSource(tmp_path), created_at=FIXED_TIME).partitions[0]
+
+    assert [f.name for f in part.features] == ["prompt"]
 
 
 def test_stats_completeness_is_per_partition(tmp_path):

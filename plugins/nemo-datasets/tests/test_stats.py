@@ -12,10 +12,8 @@ from nemo_datasets_plugin.profiler.stats import (
     _MAX_VOCABULARY_VALUE_CHARS,
     _MAX_VOCABULARY_VALUES,
     _NON_ASCII_RUN,
-    _QUALITY_SAMPLE_ROWS,
     _WHITESPACE_RUN,
     _non_ascii_count,
-    _quality_sample,
     _whitespace_count,
     measure_columns,
     quote_enumerations,
@@ -259,16 +257,35 @@ def test_quality_fast_paths_are_the_same_measurement_as_the_regexes(text):
     assert _non_ascii_count(text) == sum(1 for _ in _NON_ASCII_RUN.finditer(text))
 
 
-def test_quality_sample_is_bounded_strided_and_deterministic():
-    under = [f"r{i}" for i in range(_QUALITY_SAMPLE_ROWS)]
-    assert _quality_sample(under) is under  # nothing to sample: measured in full
+def test_a_known_row_count_strides_evenly_and_deterministically(monkeypatch):
+    # With the row count known up front the stride is fixed, so the sample is spread evenly over the
+    # whole column -- and two runs over the same bytes agree, which is why no RNG is involved.
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 10)
+    values = ["clean text"] * 100 + ["aaaaaaaaaaaa"] * 100
 
-    over = [f"r{i}" for i in range(_QUALITY_SAMPLE_ROWS * 3)]
-    sample = _quality_sample(over)
-    assert len(sample) <= _QUALITY_SAMPLE_ROWS + 1
-    assert _quality_sample(over) == sample  # no RNG, so no seed to record and no run-to-run drift
-    # Spans the column rather than its head: the last sampled row is near the end.
-    assert over.index(sample[-1]) >= len(over) - 3
+    def quality(expected_rows):
+        acc = stats_module.StringAccumulator(expected_rows)
+        acc.update(values)
+        return acc.finalize()[0].quality.repetition_score
+
+    assert quality(len(values)) == quality(len(values))  # deterministic
+    # Half the column is corrupt and the stride spans it, so the estimate lands near a half.
+    assert 0.4 <= quality(len(values)) <= 0.6
+
+
+def test_an_unknown_row_count_thins_as_it_goes_and_stays_unbiased(monkeypatch):
+    # No footer, so no length to stride over: the stride starts at one and doubles as the sample
+    # fills. Sampling is then densest at the head, which would skew the answer -- weighting each
+    # sampled row by the stride it stood for is what corrects it.
+    monkeypatch.setattr(stats_module, "_QUALITY_SAMPLE_ROWS", 10)
+    values = ["clean text"] * 500 + ["aaaaaaaaaaaa"] * 500
+
+    acc = stats_module.StringAccumulator(None)
+    acc.update(values)
+    score = acc.finalize()[0].quality.repetition_score
+
+    assert acc._stride > 1  # it did thin
+    assert 0.35 <= score <= 0.65  # ...and still found roughly half the column corrupt
 
 
 def test_quality_is_measured_across_the_column_not_its_head(monkeypatch):

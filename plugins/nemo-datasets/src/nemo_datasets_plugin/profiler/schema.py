@@ -143,21 +143,93 @@ def _infer_feature(name: str, values: list[Any]) -> FeatureSchema:
     return FeatureSchema(name=name, dtype=_scalar_dtype(present))
 
 
-def _scalar_dtype(values: list[Any]) -> str:
-    dtypes: set[str] = set()
-    for value in values:
-        if isinstance(value, bool):  # bool before int: bool is a subclass of int
-            dtypes.add("bool")
-        elif isinstance(value, int):
-            dtypes.add("int64")
-        elif isinstance(value, float):
-            dtypes.add("float64")
-        elif isinstance(value, str):
-            dtypes.add("string")
-        else:
-            dtypes.add("json")
+def _python_dtype(value: Any) -> str:
+    """The dtype one value implies, on its own."""
+    if isinstance(value, bool):  # bool before int: bool is a subclass of int
+        return "bool"
+    if isinstance(value, int):
+        return "int64"
+    if isinstance(value, float):
+        return "float64"
+    if isinstance(value, str):
+        return "string"
+    return "json"
+
+
+def _resolve_scalar(dtypes: set[str]) -> str:
+    """The one dtype a column of these observed types has. Ints and floats widen; anything else in
+    disagreement is ``json``, which is the honest answer for a column that holds two shapes."""
     if dtypes <= {"int64", "float64"} and dtypes:
         return "float64" if "float64" in dtypes else "int64"
     if len(dtypes) == 1:
-        return dtypes.pop()
+        # `next(iter(...))`, never `pop()`: this set belongs to a SchemaFold that is still using it,
+        # and emptying it made a second call resolve the same column to `json`.
+        return next(iter(dtypes))
     return "json"
+
+
+def _scalar_dtype(values: list[Any]) -> str:
+    return _resolve_scalar({_python_dtype(value) for value in values})
+
+
+class SchemaFold:
+    """One column's schema, folded from values as they arrive rather than decided over all of them.
+
+    The dtype of an inferred column is a whole-column question -- the observed types are unioned and
+    a disagreement widens to ``json`` -- which is why a partition with no declared schema could not
+    be folded: an accumulator is chosen *by* dtype, and the dtype is not known until the last row.
+
+    It is a fold, though, and always was. :func:`_infer_feature` is a set union over observed types,
+    a union over a struct's child keys, and a recursion over a list's flattened elements: state
+    proportional to the *schema*, not to the row count. This is that computation written incrementally
+    so a caller can hand over batches and keep none of them.
+    """
+
+    def __init__(self, name: str = "") -> None:
+        self._name = name
+        self._present = 0
+        self._dicts = 0
+        self._lists = 0
+        self._dtypes: set[str] = set()
+        self._fields: dict[str, SchemaFold] = {}
+        self._field_order: list[str] = []
+        self._item: SchemaFold | None = None
+
+    def update(self, values: list[Any]) -> None:
+        for value in values:
+            if value is None:
+                continue  # a null says nothing about the type; an all-null column resolves to json
+            self._present += 1
+            self._dtypes.add(_python_dtype(value))
+            if isinstance(value, dict):
+                self._dicts += 1
+                for key, child in value.items():
+                    fold = self._fields.get(key)
+                    if fold is None:
+                        fold = SchemaFold(key)
+                        self._fields[key] = fold
+                        self._field_order.append(key)
+                    fold.update([child])
+            elif isinstance(value, list):
+                self._lists += 1
+                if self._item is None:
+                    self._item = SchemaFold()
+                self._item.update(value)
+
+    def finalize(self) -> FeatureSchema:
+        if not self._present:
+            return FeatureSchema(name=self._name, dtype="json")
+        if self._dicts == self._present:
+            return FeatureSchema(
+                name=self._name,
+                dtype="struct",
+                fields=[self._fields[key].finalize() for key in self._field_order],
+            )
+        if self._lists == self._present:
+            item = (self._item or SchemaFold()).finalize()
+            return FeatureSchema(
+                name=self._name,
+                dtype="messages" if _is_message_struct(item) else "list",
+                items=item,
+            )
+        return FeatureSchema(name=self._name, dtype=_resolve_scalar(self._dtypes))

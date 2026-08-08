@@ -341,6 +341,12 @@ class PrefixPair:
     shared: int = 0
 
 
+# The column names the alias table maps to the two sides of a preference pair. Looked up directly
+# rather than resolved through roles, because this fold runs before classification has assigned any.
+_CHOSEN_NAMES = tuple(name for name, role in _ALIAS_ROLES.items() if role == "chosen")
+_REJECTED_NAMES = tuple(name for name, role in _ALIAS_ROLES.items() if role == "rejected")
+
+
 class PrefixPairFold:
     """The one probe that reads two columns against each other rather than each on its own.
 
@@ -348,31 +354,25 @@ class PrefixPairFold:
     between them, and no per-column measurement can see that. Being relational, it also cannot live
     on a column accumulator, so it folds separately over the same batches.
 
-    Resolved by column *name*, not by role, because the fold runs before classification has assigned
-    any roles -- the same inversion the content probes made when they stopped being role-gated. The
-    names are the ones the alias table maps to these two roles.
+    It takes no schema. Resolving by name straight off each row is what lets it run over a partition
+    whose columns are not known yet, which is every partition with no declared schema. Values that
+    are not text contribute nothing, so a `chosen` column that turns out to hold chat rather than
+    strings simply never counts a pair -- the same answer the dtype check used to give up front.
     """
 
-    def __init__(self, features: list[FeatureSchema]) -> None:
-        self._left = self._column_named(features, "chosen")
-        self._right = self._column_named(features, "rejected")
+    def __init__(self) -> None:
         self._pairs = 0
         self._shared = 0
 
-    @staticmethod
-    def _column_named(features: list[FeatureSchema], role: str) -> str | None:
-        wanted = {name for name, aliased in _ALIAS_ROLES.items() if aliased == role}
-        return next((f.name for f in features if f.name in wanted and f.dtype == "string"), None)
-
     def update(self, rows: list[dict]) -> None:
-        if self._left is None or self._right is None:
-            return
         for row in rows:
-            left, right = row.get(self._left), row.get(self._right)
-            if isinstance(left, str) and isinstance(right, str):
-                self._pairs += 1
-                if _common_prefix_len(left, right) >= _EMBEDDED_PROMPT_PREFIX_CHARS:
-                    self._shared += 1
+            left = next((row.get(name) for name in _CHOSEN_NAMES if isinstance(row.get(name), str)), None)
+            right = next((row.get(name) for name in _REJECTED_NAMES if isinstance(row.get(name), str)), None)
+            if left is None or right is None:
+                continue
+            self._pairs += 1
+            if _common_prefix_len(left, right) >= _EMBEDDED_PROMPT_PREFIX_CHARS:
+                self._shared += 1
 
     def result(self) -> PrefixPair:
         return PrefixPair(pairs=self._pairs, shared=self._shared)
