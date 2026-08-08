@@ -2,6 +2,9 @@
 name: nemo-intake
 description: Instrument agents, ingest telemetry into NeMo Intake, and query spans, traces, sessions, and evaluator results. Use when connecting agent code or existing telemetry to Intake, choosing among OTLP, chat-completions, or ATIF, checking Intake and ClickHouse readiness, inspecting agent runs, or attaching evaluation scores outside the Experiments leaderboard workflow.
 license: Apache-2.0
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
 allowed-tools: [Bash, Read]
 ---
 

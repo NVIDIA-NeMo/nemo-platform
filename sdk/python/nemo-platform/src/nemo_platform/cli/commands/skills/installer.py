@@ -6,7 +6,7 @@
 import shutil
 from pathlib import Path
 
-from nemo_platform.cli.commands.skills.base import Scope, Skill
+from nemo_platform.cli.commands.skills.base import Scope, Skill, validate_skill_name
 
 
 class BaseAgentInstaller:
@@ -26,8 +26,16 @@ class BaseAgentInstaller:
     def install(self, scope: Scope, project_root: Path, skills: dict[str, Skill]) -> list[Path]:
         """Install all skills. Returns list of paths written."""
         paths: list[Path] = []
+        pending: list[tuple[Skill, Path]] = []
+        destinations: dict[Path, str] = {}
         for skill_name, skill in skills.items():
+            validate_skill_name(skill_name)
             path = self.get_install_path(scope, project_root, skill_name)
+            if path in destinations:
+                raise ValueError(f"Multiple skills resolve to {path}: {destinations[path]!r} and {skill_name!r}")
+            destinations[path] = skill_name
+            pending.append((skill, path))
+        for skill, path in pending:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(self.format_content(skill))
             self._copy_companion_files(skill, path)

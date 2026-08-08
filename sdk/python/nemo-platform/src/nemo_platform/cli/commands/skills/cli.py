@@ -192,6 +192,7 @@ def list_skills(
             "name": skill.name,
             "version": skill.version,
             "description": skill.description,
+            "preconditions": skill.preconditions,
             # `source` is the human-friendly column shown in `list` output:
             # the distribution name that registered the skill's entry point,
             # collapsed to `nemo-platform` for the platform's own packages.
