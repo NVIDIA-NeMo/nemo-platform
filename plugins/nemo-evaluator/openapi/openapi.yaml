@@ -4935,8 +4935,10 @@ components:
           description: Agent name recorded on each published trajectory. Derived from
             the target when it names one; required otherwise.
           type: string
+          minLength: 1
         agent_version:
           type: string
+          minLength: 1
           title: Agent Version
           description: Agent version recorded on each published trajectory. Neither
             a Model nor an Agent carries a version, so this defaults to 'unknown'
@@ -4954,12 +4956,14 @@ components:
         test_case_id_field:
           title: Test Case Id Field
           description: "Dataset column identifying each row, recorded as the published\
-            \ test case id. Defaults to the row's position in the run, which is only\
-            \ stable for a single-file dataset evaluated in full \u2014 a multi-file\
-            \ or glob dataset is concatenated in filesystem order, so positions shift\
-            \ between runs and re-published rows would not line up. Name a column\
-            \ here when the dataset has a real identifier."
+            \ test case id. Defaults to a hash of the row's content, which keeps a\
+            \ row's id stable across dataset reorderings and revisions so the same\
+            \ test case can be compared run over run; editing a row makes it a new\
+            \ test case. Name a column here when the dataset has a real identifier\
+            \ \u2014 it reads better and survives content edits. Values must be unique\
+            \ per row; the run is rejected if they are not."
           type: string
+          minLength: 1
       additionalProperties: false
       type: object
       required:

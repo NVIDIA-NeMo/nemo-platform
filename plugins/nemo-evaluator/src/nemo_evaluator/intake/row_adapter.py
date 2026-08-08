@@ -9,11 +9,15 @@ single step carrying the final output text (see ``mapping.trial_to_atif_ingest``
 So rather than a second mapping and a second publish loop, a row result is adapted to an
 ``AgentEvalResult`` and goes through the same publisher, inheriting its idempotency guarantees.
 
-The row vocabulary maps as: one row -> one trial, one (row, metric key) -> one score.
+The row vocabulary maps as: one row -> one trial, one (row, metric key) -> one score. A row's
+test case identity is its content hash by default, so repeated rows become repeated trials of a
+single test case — which is what the trial/task split already expresses.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
@@ -24,31 +28,45 @@ from nemo_evaluator_sdk.agent_eval.scores import (
     AgentEvalTaskScore,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.values.dataset_schemas import _KNOWN_BINDING_FIELDS
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult, RowScore
 
 #: Key ``sample`` carries when generation itself failed, rather than the metric.
 _INFERENCE_ERROR = "inference_error"
 
+#: Canonical evaluator fields that ``field_mapping`` copies into a row alongside its own columns.
+_CANONICAL_FIELDS = frozenset(_KNOWN_BINDING_FIELDS)
+
 
 class RowIdentityError(ValueError):
     """A row's published identity is unusable — missing, or shared with another row."""
 
 
-def _test_case_id(row: RowScore, index: int, test_case_id_field: str | None) -> str:
-    """Stable identity for a row, used as both trial id and published test case id."""
-    if test_case_id_field is not None:
-        # Deliberately not falling back to the positional id: the whole point of naming a column is
-        # that positions are not stable, so a silent fallback would publish rows that never line up
-        # with the previous run and give no indication of why.
-        if test_case_id_field not in row.item:
-            raise RowIdentityError(
-                f"Row {index} has no {test_case_id_field!r} column; "
-                f"available columns: {sorted(row.item)}. "
-                "Fix `publication.intake.test_case_id_field` or remove it to use row position."
-            )
-        return str(row.item[test_case_id_field])
-    return f"row-{row.row_index if row.row_index is not None else index}"
+def _canonical_row_hash(row: RowScore) -> str:
+    """Stable ``sha256`` of a row's dataset content, excluding field-mapping's canonical aliases.
+
+    Mirrors ``gym_runtime._canonical_row_hash``: identity is the row content alone, so a row keeps
+    its id across dataset revisions and reorderings and a changed row becomes a new test case. The
+    aliases are excluded because they duplicate values already in the row, so hashing them would
+    change the id whenever only the ``field_mapping`` changed.
+    """
+    payload = {key: value for key, value in row.item.items() if key not in _CANONICAL_FIELDS}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _task_id(row: RowScore, index: int, test_case_id_field: str | None) -> str:
+    """The row's test case identity — stable run over run, so rollups line up."""
+    if test_case_id_field is None:
+        return _canonical_row_hash(row)
+    if test_case_id_field not in row.item:
+        raise RowIdentityError(
+            f"Row {index} has no {test_case_id_field!r} column; "
+            f"available columns: {sorted(row.item)}. "
+            "Fix `publication.intake.test_case_id_field` or remove it to identify rows by content."
+        )
+    return str(row.item[test_case_id_field])
 
 
 def _output(row: RowScore) -> AgentOutput | None:
@@ -62,7 +80,7 @@ def _output(row: RowScore) -> AgentOutput | None:
     return AgentOutput(output_text=output_text, response=response)
 
 
-def _scores(row: RowScore, *, run_id: str, test_case_id: str) -> list[AgentEvalTaskScore]:
+def _scores(row: RowScore, *, run_id: str, task_id: str, trial_id: str) -> list[AgentEvalTaskScore]:
     """One score per metric key on the row; ``metrics`` values are already ``MetricOutput``."""
     errors = row.metric_errors or {}
     diagnostics = row.metric_diagnostics or {}
@@ -79,10 +97,10 @@ def _scores(row: RowScore, *, run_id: str, test_case_id: str) -> list[AgentEvalT
             row_diagnostics.insert(0, AgentEvalDiagnostic(severity=AgentEvalDiagnosticSeverity.ERROR, message=error))
         scores.append(
             AgentEvalTaskScore(
-                id=f"{run_id}:{test_case_id}:{metric_key}",
+                id=f"{run_id}:{trial_id}:{metric_key}",
                 run_id=run_id,
-                task_id=test_case_id,
-                trial_id=test_case_id,
+                task_id=task_id,
+                trial_id=trial_id,
                 metric_type=metric_key,
                 status=AgentEvalScoreStatus.FAILED if error else AgentEvalScoreStatus.COMPLETED,
                 outputs=list(outputs),
@@ -110,35 +128,33 @@ def row_result_to_agent_eval_result(
     """
     trials: list[AgentEvalTrial] = []
     scores: list[AgentEvalTaskScore] = []
-    # Published session ids are `{run_id}:{trial id}`, so two rows sharing an id are one session:
-    # the second trajectory replaces the first and its scores land on the same span. That loses a row
-    # with nothing to show for it, so refuse the whole run instead — a column that is not unique is a
-    # misconfiguration, and publishing 1 of 1000 rows silently is the worst way to find out.
-    seen: dict[str, int] = {}
+    first_seen: dict[str, int] = {}
+    occurrences: dict[str, int] = {}
     for index, row in enumerate(result.row_scores):
-        test_case_id = _test_case_id(row, index, test_case_id_field)
-        if test_case_id in seen:
-            source = (
-                f"column {test_case_id_field!r}"
-                if test_case_id_field is not None
-                else "row position (rows carry inconsistent `row_index` values)"
-            )
+        task_id = _task_id(row, index, test_case_id_field)
+        repeat = occurrences.get(task_id, 0)
+        # A named column that repeats is a misconfiguration — the submitter said it identifies rows.
+        # Identical content under the content hash is just the same test case evaluated twice.
+        if repeat and test_case_id_field is not None:
             raise RowIdentityError(
-                f"Rows {seen[test_case_id]} and {index} both resolve to test case id "
-                f"{test_case_id!r} from {source}. Ids must be unique or the rows overwrite each "
-                "other in Intake."
+                f"Rows {first_seen[task_id]} and {index} share test case id {task_id!r} from column "
+                f"{test_case_id_field!r}. Name a column whose values are unique per row."
             )
-        seen[test_case_id] = index
+        occurrences[task_id] = repeat + 1
+        first_seen.setdefault(task_id, index)
+        # Session ids are `{run_id}:{trial id}`, so repeats need distinct trial ids or the second
+        # trajectory would replace the first. They keep one `task_id`, which is what rollups group on.
+        trial_id = task_id if repeat == 0 else f"{task_id}#{repeat + 1}"
         output = _output(row)
         trials.append(
             AgentEvalTrial(
-                id=test_case_id,
-                task_id=test_case_id,
+                id=trial_id,
+                task_id=task_id,
                 status=AgentEvalTrialStatus.COMPLETED if output is not None else AgentEvalTrialStatus.FAILED,
                 output=output,
             )
         )
-        scores.extend(_scores(row, run_id=run_id, test_case_id=test_case_id))
+        scores.extend(_scores(row, run_id=run_id, task_id=task_id, trial_id=trial_id))
 
     return AgentEvalResult(
         run_id=run_id,

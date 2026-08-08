@@ -578,7 +578,10 @@ def test_evaluate_job_publishes_rows_through_the_real_sync_bridge(tmp_path: Path
     assert result["publication"]["trial_count"] == 1
     assert len(client.atif_calls) == 1
     # The run identity is the job id, so re-publishing the same job replaces rather than duplicates.
-    assert client.atif_calls[0]["session_id"] == "job-1:row-0"
+    # The trial half is the row content hash, stable across runs and dataset reorderings.
+    session_id = client.atif_calls[0]["session_id"]
+    assert session_id.startswith("job-1:")
+    assert len(session_id.removeprefix("job-1:")) == 64
 
 
 def test_evaluate_job_uses_the_configured_test_case_id_column(tmp_path: Path, mocker: MockerFixture) -> None:

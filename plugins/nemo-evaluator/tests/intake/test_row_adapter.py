@@ -112,18 +112,35 @@ def test_benchmark_result_rows_are_not_published_once_per_metric() -> None:
 # --- identity ---------------------------------------------------------------
 
 
-def test_defaults_to_row_position() -> None:
-    result = _adapt([_row(row_index=0), _row(row_index=1)])
-    assert [trial.id for trial in result.trials] == ["row-0", "row-1"]
-    assert [trial.task_id for trial in result.trials] == ["row-0", "row-1"]
+def test_identity_defaults_to_a_content_hash() -> None:
+    result = _adapt([_row(item={"qid": "a"}), _row(item={"qid": "b"})])
+    ids = [trial.task_id for trial in result.trials]
+    assert ids[0] != ids[1]
+    assert all(len(i) == 64 for i in ids)
 
 
-def test_falls_back_to_enumeration_when_row_index_is_absent() -> None:
-    result = _adapt([_row(row_index=None), _row(row_index=None)])
-    assert [trial.id for trial in result.trials] == ["row-0", "row-1"]
+def test_identity_ignores_row_position() -> None:
+    # The whole point of hashing: a reordered or renumbered dataset keeps its ids.
+    first = _adapt([_row(row_index=0, item={"qid": "a"}), _row(row_index=1, item={"qid": "b"})])
+    reordered = _adapt([_row(row_index=7, item={"qid": "b"}), _row(row_index=9, item={"qid": "a"})])
+    assert {t.task_id for t in first.trials} == {t.task_id for t in reordered.trials}
 
 
-def test_test_case_id_field_overrides_position() -> None:
+def test_identity_ignores_field_mapping_aliases() -> None:
+    # `field_mapping` copies columns into canonical keys on `item`; hashing them would churn ids
+    # whenever only the mapping changed.
+    bare = _adapt([_row(item={"question": "2+2?"})])
+    mapped = _adapt([_row(item={"question": "2+2?", "input": "2+2?", "reference": "4"})])
+    assert bare.trials[0].task_id == mapped.trials[0].task_id
+
+
+def test_changed_content_becomes_a_new_test_case() -> None:
+    before = _adapt([_row(item={"question": "2+2?"})])
+    after = _adapt([_row(item={"question": "3+3?"})])
+    assert before.trials[0].task_id != after.trials[0].task_id
+
+
+def test_test_case_id_field_overrides_the_hash() -> None:
     result = _adapt(
         [_row(item={"qid": "q-42"}), _row(row_index=1, item={"qid": "q-7"})],
         test_case_id_field="qid",
@@ -137,22 +154,27 @@ def test_non_string_id_column_is_coerced() -> None:
 
 
 def test_duplicate_id_column_values_are_rejected() -> None:
-    # Two rows sharing an id publish as one session, the second silently replacing the first. A
-    # non-unique column is a misconfiguration, so fail the run rather than lose rows.
-    with pytest.raises(RowIdentityError, match="both resolve to test case id 'q-1'"):
+    # A named column that repeats is a misconfiguration: the submitter said it identifies rows.
+    with pytest.raises(RowIdentityError, match="share test case id 'q-1'"):
         _adapt([_row(item={"qid": "q-1"}), _row(row_index=1, item={"qid": "q-1"})], test_case_id_field="qid")
 
 
-def test_duplicate_positional_ids_are_rejected() -> None:
-    # `row_index` is optional, so a mix of set and unset values can collide against the enumeration
-    # fallback: here row 0 has no index (-> "row-0") and row 1 carries row_index=0 (-> "row-0").
-    with pytest.raises(RowIdentityError, match="both resolve to test case id 'row-0'"):
-        _adapt([_row(row_index=None), _row(row_index=0)])
+def test_identical_rows_are_trials_of_one_test_case() -> None:
+    # Repeated rows are the same test case evaluated twice, which the model already expresses as
+    # N trials per task. Distinct trial ids keep their sessions apart; the shared task_id groups them.
+    result = _adapt([_row(item={"qid": "a"}), _row(row_index=1, item={"qid": "a"})])
+    task_ids = [trial.task_id for trial in result.trials]
+    trial_ids = [trial.id for trial in result.trials]
+    assert task_ids[0] == task_ids[1]
+    assert trial_ids[0] != trial_ids[1]
+    assert trial_ids[1] == f"{task_ids[0]}#2"
+    assert [score.trial_id for score in result.scores] == trial_ids
+    assert len({score.id for score in result.scores}) == 2
 
 
 def test_missing_id_column_raises_instead_of_falling_back() -> None:
-    # A silent fallback to row position would reinstate exactly the instability the field exists to
-    # remove, and the caller would have no way to notice.
+    # Falling back to the hash would silently ignore an explicit request and give no indication why
+    # the expected ids never appeared.
     with pytest.raises(RowIdentityError, match="no 'qid' column"):
         _adapt([_row(item={"question": "2+2?"})], test_case_id_field="qid")
 

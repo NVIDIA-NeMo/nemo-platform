@@ -71,11 +71,13 @@ class RowIntakePublicationSpec(IntakePublicationSpec):
 
     test_case_id_field: str | None = Field(
         default=None,
+        min_length=1,
         description="Dataset column identifying each row, recorded as the published test case id. "
-        "Defaults to the row's position in the run, which is only stable for a single-file dataset "
-        "evaluated in full — a multi-file or glob dataset is concatenated in filesystem order, so "
-        "positions shift between runs and re-published rows would not line up. Name a column here "
-        "when the dataset has a real identifier.",
+        "Defaults to a hash of the row's content, which keeps a row's id stable across dataset "
+        "reorderings and revisions so the same test case can be compared run over run; editing a "
+        "row makes it a new test case. Name a column here when the dataset has a real identifier — "
+        "it reads better and survives content edits. Values must be unique per row; the run is "
+        "rejected if they are not.",
     )
 
 
