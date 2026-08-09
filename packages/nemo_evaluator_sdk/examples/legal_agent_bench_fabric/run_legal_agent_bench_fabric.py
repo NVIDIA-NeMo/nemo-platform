@@ -142,8 +142,9 @@ async def _main(args: argparse.Namespace) -> None:
     result = await AgentEvaluator().run(
         tasks=tasks,
         target=runtime,
-        config=AgentEvalRunConfig(output_dir=Path(args.output_dir), parallelism=args.parallelism),
+        config=AgentEvalRunConfig(work_dir=Path(args.output_dir), parallelism=args.parallelism),
     )
+    result.persist()
 
     print(f"run_id: {result.run_id}  tasks: {result.summary.task_count}  trials: {result.summary.trial_count}")
     print("Aggregate scores:")

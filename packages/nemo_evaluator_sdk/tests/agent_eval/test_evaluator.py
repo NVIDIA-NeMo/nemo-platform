@@ -299,15 +299,37 @@ def test_run_rejects_trials_and_target_together() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_writes_nothing_until_persist_is_called(tmp_path: Path) -> None:
+    # The point of the change: computing an evaluation and storing one are separate decisions, so a
+    # run given a work_dir still leaves it empty until the caller asks for a bundle.
+    result = await AgentEvaluator().run(
+        tasks=[_task()],
+        trials=[_candidate_trial()],
+        config=AgentEvalRunConfig(work_dir=tmp_path, parallelism=1),
+    )
+
+    assert not (tmp_path / "run.json").exists()
+    assert not (tmp_path / "report.html").exists()
+    # work_dir comes from the config, so it is known at construction — never patched on afterwards.
+    assert result.work_dir == tmp_path
+
+    result.persist()
+    assert (tmp_path / "run.json").is_file()
+
+
+@pytest.mark.asyncio
 async def test_scores_imported_trials_with_metric_and_persists_bundle(tmp_path: Path) -> None:
     result = await AgentEvaluator().run(
         tasks=[_task()],
         trials=[_candidate_trial()],
-        config=AgentEvalRunConfig(output_dir=tmp_path, parallelism=1),
+        config=AgentEvalRunConfig(work_dir=tmp_path, parallelism=1),
     )
+    # run() no longer writes anything; persisting is the caller's call and defaults to the work_dir.
+    location = result.persist()
 
     assert _score(result.summary, "constant_metric.score").mean == 0.75
-    assert result.dashboard_path == tmp_path / "report.html"
+    assert location.output_dir == tmp_path
+    assert location.dashboard_path == tmp_path / "report.html"
     assert (tmp_path / "run.json").exists()
     assert (tmp_path / "scores.jsonl").exists()
     assert "run_id" not in json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
@@ -656,7 +678,6 @@ async def test_generation_boundary_names_agent_eval_context() -> None:
             config=AgentEvalRunConfig(
                 run_id="run-123",
                 params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
             ),
         )
 
@@ -692,10 +713,9 @@ async def test_default_agent_invocation_receives_run_context_and_evidence_dir(tm
             target=agent,
             config=AgentEvalRunConfig(
                 run_id="run-123",
-                output_dir=tmp_path,
+                work_dir=tmp_path,
                 prompt_template=prompt_template,
                 params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
             ),
         )
 
@@ -736,9 +756,8 @@ async def test_default_agent_evidence_dirs_are_confined_and_unique(tmp_path: Pat
             target=agent,
             config=AgentEvalRunConfig(
                 run_id="run-123",
-                output_dir=tmp_path,
+                work_dir=tmp_path,
                 params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
             ),
         )
 
@@ -776,9 +795,8 @@ async def test_agent_inference_factory_receives_per_task_context(tmp_path: Path)
         target=agent,
         config=AgentEvalRunConfig(
             run_id="run-123",
-            output_dir=tmp_path,
+            work_dir=tmp_path,
             params=RunConfigOnline(parallelism=1),
-            write_dashboard=False,
         ),
     )
 

@@ -291,6 +291,9 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
                 trials=[trial],
                 scores=[score],
                 summary=AgentEvalSummary.from_scores([score], tasks=tasks),
+                # The real evaluator carries the config's work_dir onto the result; the trial
+                # evaluator persists into it, so the fake has to do the same to stay faithful.
+                work_dir=config.work_dir,
             )
 
     monkeypatch.setattr("nemo_optimization.backends.optuna.fabric_trial.FabricAgentRuntime", FakeRuntime)
@@ -322,6 +325,10 @@ def test_fabric_trial_evaluator_invokes_agent_evaluator(monkeypatch: pytest.Monk
     assert "optimizer" not in captured["runtime"]["config"]
     assert "eval" not in captured["runtime"]["config"]
     assert (tmp_path / "out" / "trial_trace_map.json").is_file()
+    # Storing is now an explicit persist() call, so assert the per-trial bundle still lands.
+    bundle = tmp_path / "out" / "agent_eval" / "trial-007" / "rep-000"
+    assert (bundle / "run.json").is_file()
+    assert not (bundle / "report.html").exists()  # write_dashboard=False
     trace_map = json.loads((tmp_path / "out" / "trial_trace_map.json").read_text(encoding="utf-8"))
     assert trace_map[0]["experiment_id"] == "exp-test"
     assert trace_map[0]["row_id"] == "1"

@@ -14,7 +14,7 @@ import pytest
 from nemo_evaluator_sdk.agent_eval import workspace_seeds
 from nemo_evaluator_sdk.agent_eval.runtimes.codex import runtime as codex_runtime
 from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
-from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
+from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from pydantic import BaseModel
 
 # The runtime *selection* (local vs docker-cli vs docker-sandbox) is generic and lives here; only the
@@ -67,6 +67,22 @@ def test_resolve_codex_runtime_docker_falls_back_to_cli_without_sdk_key(tmp_path
     assert target._work_root == tmp_path / "run" / "evidence" / "codex-docker"
     assert target._prompt_builder is _prompt_builder
     assert effective == codex_runtime.EffectiveCodexRuntime.DOCKER_CLI
+
+
+def test_evidence_dir_prefers_an_explicit_work_root_over_the_run_config(tmp_path: Path) -> None:
+    # An explicit ``work_root`` is a caller decision about where evidence goes, so it wins over the
+    # run's ``work_dir``; without one the runtime derives ``<work_dir>/evidence/codex``. Pointing
+    # ``work_root`` outside ``work_dir`` is legal and keeps working -- persist() leaves such refs
+    # absolute (test_persist_and_read_keep_external_evidence_refs_absolute) rather than dropping them,
+    # so the bundle resolves for as long as that directory is there.
+    task = AgentEvalTask(id="taskA", intent="do a thing", inputs={})
+    config = AgentEvalRunConfig(work_dir=tmp_path / "run")
+
+    explicit = codex_runtime.CodexCliAgentRuntime(work_root=tmp_path / "elsewhere")
+    assert explicit._evidence_dir(0, task, config) == tmp_path / "elsewhere" / "000000-taskA"
+
+    derived = codex_runtime.CodexCliAgentRuntime()
+    assert derived._evidence_dir(0, task, config) == tmp_path / "run" / "evidence" / "codex" / "000000-taskA"
 
 
 def test_list_codex_agent_models_prints_visible_models(
