@@ -7,7 +7,7 @@ from mcps.iocs import extract_iocs
 def test_url_and_its_host_are_both_reported():
     result = extract_iocs("Click http://malicious-link.example.com/claim to continue.")
     assert result["urls"] == ["http://malicious-link.example.com/claim"]
-    assert "malicious-link.example.com" in result["domains"]
+    assert result["domains"] == ["malicious-link.example.com"]
 
 
 def test_trailing_sentence_punctuation_is_not_part_of_the_url():
@@ -24,8 +24,7 @@ def test_url_wrapped_in_brackets_or_parens_is_bounded():
 def test_sender_domain_is_found_in_a_from_line():
     # The sender is a top phishing tell; extract_iocs must surface its domain.
     result = extract_iocs("From: security-alerts@bank-verify.example.net\nVisit corp.example.org")
-    assert "bank-verify.example.net" in result["domains"]
-    assert "corp.example.org" in result["domains"]
+    assert result["domains"] == ["bank-verify.example.net", "corp.example.org"]
     assert result["urls"] == []
 
 
