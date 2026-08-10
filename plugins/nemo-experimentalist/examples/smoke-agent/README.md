@@ -43,7 +43,7 @@ agent/harbor_wrapper.py        Harbor upload + exec adapter
 AGENT-SPEC.md                  behaviour contract read by the LLM components
 optimizer.yaml                 profile: agent source, spec, g1 datasets
 optimizer-generalization.yaml  profile: same agent, g4 datasets (see Scenarios)
-configs/single-round.yaml      loop settings for both single-round scenarios
+configs/short.yaml            loop settings shared by the per-group gate checks
 configs/full.yaml              loop settings for the multi-round scenario
 dataset/_shared/               canonical Dockerfile, records, verifier
 dataset/groups/<group>/        train/ and validation/ task sets
@@ -104,7 +104,7 @@ sbx exec --workdir "$repo" \
       --profile plugins/nemo-experimentalist/examples/smoke-agent/optimizer.yaml \
       --no-insight \
       --base-url http://host.docker.internal:8080 \
-      --config plugins/nemo-experimentalist/examples/smoke-agent/configs/single-round.yaml \
+      --config plugins/nemo-experimentalist/examples/smoke-agent/configs/short.yaml \
       --experiment-dir /tmp/smoke-repair'
 ```
 
@@ -139,8 +139,8 @@ profile:
 
 | Profile | Config | Rounds | A healthy run ends with |
 | --- | --- | --- | --- |
-| `optimizer.yaml` | `single-round.yaml` | 1 | the winner beating the baseline |
-| `optimizer-generalization.yaml` | `single-round.yaml` | 1 | the baseline correctly retained |
+| `optimizer.yaml` | `short.yaml` | 2 | the winner beating the baseline |
+| `optimizer-generalization.yaml` | `short.yaml` | 2 | the baseline correctly retained |
 | `optimizer.yaml` | `full.yaml` | up to 5 | every task in the combined group passing |
 
 The first two are opposite tests, so a run is only meaningful once you know which
@@ -151,7 +151,7 @@ so the profile is what decides the question.
 
 ```bash
 # generalization: same agent, held-out split, baseline expected to win
---profile optimizer-generalization.yaml --config configs/single-round.yaml
+--profile optimizer-generalization.yaml --config configs/short.yaml
 ```
 
 `full.yaml` is the only one that exercises the evolutionary machinery — survivors
@@ -190,11 +190,11 @@ a group's score can fall as well as rise.
 
 | Group | What a run against it tests | Backs | In `_all` |
 | --- | --- | --- | --- |
-| `g1-aggregation` | **Repair.** Train shows two kinds of filter, so a general fix is reachable — and a hardcoded one fails validation. | `single-round.yaml` | yes |
+| `g1-aggregation` | **Repair.** Train shows two kinds of filter, so a general fix is reachable — and a hardcoded one fails validation. | `short.yaml` | yes |
 | `g2-name-patterns` | Widening a pattern that is too narrow. Train shows two kinds of awkward name, validation a third. | `full.yaml` | yes |
 | `g3-long-inputs` | A constant rather than logic — the one `edit_config` in the set, so a run exercises a different path through the Coder. | `full.yaml` | yes |
-| `g4-dispatch-order` | **Generalization.** The tempting fix passes train and fails validation, so a healthy run *keeps the baseline*. | `single-round.yaml` | no |
-| `g5-edge-cases` | Several changes that score only when all are made, whose partial states are indistinguishable in the output. The hardest here. | `single-round.yaml` | no |
+| `g4-dispatch-order` | **Generalization.** The tempting fix passes train and fails validation, so a healthy run *keeps the baseline*. | `short.yaml` | no |
+| `g5-edge-cases` | Several changes that score only when all are made, whose partial states are indistinguishable in the output. The hardest here. | `short.yaml` | no |
 
 Two groups are held out of the combined set, for different reasons.
 
@@ -206,7 +206,7 @@ scenario runs with it off: measured over runs made after the spec stated the
 sentinel, no candidate closed it without a goal tree and most did with one.
 Trajectory scoring is not dependable enough to leave on yet, so the group is out
 until it is. `build_all_group.py` records the numbers and the condition for
-putting it back. Run it on its own with `single-round.yaml` in the meantime — it is a
+putting it back. Run it on its own with `short.yaml` in the meantime — it is a
 repair-shaped split.
 
 The groups are not interchangeable and not redundant. Each was built so that a
