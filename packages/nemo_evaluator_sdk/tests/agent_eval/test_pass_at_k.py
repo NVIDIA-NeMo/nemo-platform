@@ -136,9 +136,7 @@ def test_population_and_sample_stats_are_both_reported() -> None:
     values = [1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]  # n=10, mean=0.6, sum_sq_dev=2.4
     scores = [_score(f"t{1 + index % 2}", f"a{index}", "reward", "reward", value) for index, value in enumerate(values)]
 
-    aggregate = next(
-        s for s in AgentEvalSummary.from_scores(scores, tasks=tasks).scores.scores if s.name == "reward.reward"
-    )
+    aggregate = AgentEvalSummary.from_scores(scores, tasks=tasks).score("reward.reward")
 
     assert aggregate.count == 10
     assert aggregate.mean == pytest.approx(0.6)
@@ -153,9 +151,7 @@ def test_sample_stats_undefined_for_a_single_value() -> None:
     tasks = [_task("t1", _ScoreMetric("reward"))]
     scores = [_score("t1", "a0", "reward", "reward", 1.0)]
 
-    aggregate = next(
-        s for s in AgentEvalSummary.from_scores(scores, tasks=tasks).scores.scores if s.name == "reward.reward"
-    )
+    aggregate = AgentEvalSummary.from_scores(scores, tasks=tasks).score("reward.reward")
 
     assert aggregate.std_dev == 0.0  # population is well-defined for one value
     assert aggregate.sample_std_dev is None

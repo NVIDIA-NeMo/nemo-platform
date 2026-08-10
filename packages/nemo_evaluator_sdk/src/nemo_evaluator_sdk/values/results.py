@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
+from difflib import get_close_matches
 from typing import Any, Literal, Self
 
 import pyarrow as pa
@@ -417,11 +419,71 @@ class AggregateScalarScore(AggregateScoreBase):
 AggregateScore = AggregateRangeScore | AggregateRubricScore | AggregateScalarScore
 
 
+#: Names listed in a lookup-miss message when nothing resembles what was asked for. Enough to spot a
+#: naming-convention mistake, few enough to read; a run with several metrics times pass@k can carry
+#: dozens, and a wall of them buries the answer rather than giving it.
+_MISS_NAME_LIMIT = 10
+
+
 class AggregatedMetricResult(BaseModel):
     """Result of aggregating metric scores with full statistics."""
 
     model_config = ConfigDict(extra="forbid")
     scores: list[AggregateScore] = Field(description="The list of aggregated scores.")
+
+    @property
+    def scores_by_name(self) -> Mapping[str, AggregateScore]:
+        """Aggregates keyed by :attr:`AggregateScoreBase.name`, for ``in``, ``.get()``, and iteration.
+
+        Reach for this when a score's absence is a legitimate outcome ("did this metric run?"); use
+        :meth:`score` when it isn't. Names are expected unique, but runner-contributed extras are
+        appended as-is, so a collision is possible: the first wins, matching the ``next(...)`` scans
+        this replaces.
+        """
+        by_name: dict[str, AggregateScore] = {}
+        for score in self.scores:
+            by_name.setdefault(score.name, score)
+        return by_name
+
+    def score(self, name: str) -> AggregateScore:
+        """Return the aggregate named ``name``, raising :class:`KeyError` if there isn't one.
+
+        Raises rather than returning ``None`` because an unknown name is nearly always a typo or a
+        metric that didn't run. Both are bugs worth surfacing at the lookup, where the name is in
+        hand, instead of as an ``AttributeError`` on ``.mean`` further downstream. When absence is a
+        real possibility, use ``scores_by_name.get(...)``.
+        """
+        # A direct scan rather than a lookup into `scores_by_name`: building the whole mapping to
+        # return one element allocates a dict per call, and the score list is short enough that the
+        # scan wins outright.
+        for score in self.scores:
+            if score.name == name:
+                return score
+        raise KeyError(self._unknown_score_message(name))
+
+    def _unknown_score_message(self, name: str) -> str:
+        """Explain a lookup miss, leading with near-misses when the name looks like a typo."""
+        available = sorted(score.name for score in self.scores)
+        if not available:
+            return f"no aggregate score named {name!r}: this result has no aggregates at all"
+        # Suggestions beat enumeration for the common case (a typo, or the wrong pass@k), and stay
+        # useful when a run carries dozens of names.
+        close = get_close_matches(name, available, n=3)
+        if close:
+            suggestions = ", ".join(repr(match) for match in close)
+            message = f"no aggregate score named {name!r}; did you mean {suggestions}?"
+            # Say how many others there are, so a wrong guess isn't a dead end: without this the
+            # caller can't tell whether the suggestions are the whole set or three of forty.
+            others = len(available) - len(close)
+            if others == 0:
+                return message
+            noun = "aggregate" if others == 1 else "aggregates"
+            return f"{message} ({others} other {noun} in this result)"
+        shown = ", ".join(repr(score_name) for score_name in available[:_MISS_NAME_LIMIT])
+        remainder = len(available) - _MISS_NAME_LIMIT
+        if remainder > 0:
+            shown = f"{shown}, ... ({remainder} more)"
+        return f"no aggregate score named {name!r}; available: {shown}"
 
 
 class RowScore(BaseModel):
