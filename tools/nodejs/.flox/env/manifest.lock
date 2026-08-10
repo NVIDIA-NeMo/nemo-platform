@@ -1,7 +1,7 @@
 {
   "lockfile-version": 1,
   "manifest": {
-    "schema-version": "1.13.0",
+    "schema-version": "1.14.0",
     "install": {
       "nodejs": {
         "pkg-path": "nodejs_22",

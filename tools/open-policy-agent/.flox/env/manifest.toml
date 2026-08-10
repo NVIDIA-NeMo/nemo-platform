@@ -1,4 +1,4 @@
-schema-version = "1.13.0"
+schema-version = "1.14.0"
 
 [install]
 open-policy-agent = { pkg-path = "open-policy-agent", version = "1.8.0", pkg-group = "open-policy-agent" }

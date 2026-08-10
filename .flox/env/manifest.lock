@@ -1,7 +1,7 @@
 {
   "lockfile-version": 1,
   "manifest": {
-    "schema-version": "1.13.0",
+    "schema-version": "1.14.0",
     "install": {
       "actionlint": {
         "pkg-path": "actionlint",
@@ -1551,7 +1551,7 @@
   ],
   "compose": {
     "composer": {
-      "schema-version": "1.13.0",
+      "schema-version": "1.14.0",
       "profile": {
         "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
       },
@@ -1591,7 +1591,7 @@
     "include": [
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "diffutils": {
               "pkg-path": "diffutils"
@@ -1631,7 +1631,7 @@
       },
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "helm-docs": {
               "pkg-path": "helm-docs",
@@ -1664,7 +1664,7 @@
       },
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "actionlint": {
               "pkg-path": "actionlint",
@@ -1686,7 +1686,7 @@
       },
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "uv": {
               "pkg-path": "uv",
@@ -1713,7 +1713,7 @@
       },
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "nodejs": {
               "pkg-path": "nodejs_22",
@@ -1744,7 +1744,7 @@
       },
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "osv-scanner": {
               "pkg-path": "osv-scanner",
@@ -1761,7 +1761,7 @@
       },
       {
         "manifest": {
-          "schema-version": "1.13.0",
+          "schema-version": "1.14.0",
           "install": {
             "open-policy-agent": {
               "pkg-path": "open-policy-agent",

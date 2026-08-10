@@ -1,4 +1,4 @@
-schema-version = "1.13.0"
+schema-version = "1.14.0"
 
 [install]
 actionlint = { pkg-path = "actionlint", version = "1.7.12", pkg-group = "actionlint" }
