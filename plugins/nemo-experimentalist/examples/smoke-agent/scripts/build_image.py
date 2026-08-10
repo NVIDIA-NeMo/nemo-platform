@@ -47,7 +47,7 @@ def ensure_environment_dirs(dataset_dir: Path) -> list[Path]:
     prebuilt image.
     """
     created: list[Path] = []
-    for task_toml in sorted((dataset_dir / "groups").rglob("task.toml")):
+    for task_toml in sorted(dataset_dir.rglob("task.toml")):
         keep = task_toml.parent / "environment" / ".gitkeep"
         if not keep.exists():
             keep.parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +59,7 @@ def ensure_environment_dirs(dataset_dir: Path) -> list[Path]:
 def stamp_tasks(dataset_dir: Path, tag: str) -> list[Path]:
     """Rewrite every task.toml's docker_image to *tag*; return the ones changed."""
     changed: list[Path] = []
-    for task_toml in sorted((dataset_dir / "groups").rglob("task.toml")):
+    for task_toml in sorted(dataset_dir.rglob("task.toml")):
         text = task_toml.read_text(encoding="utf-8")
         updated = _DOCKER_IMAGE_RE.sub(rf'\1"{tag}"', text)
         if updated != text:

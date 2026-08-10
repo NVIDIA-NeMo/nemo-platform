@@ -37,8 +37,16 @@ def _expected_tag() -> str:
 
 
 def _task_tomls() -> list[Path]:
-    groups = _EXAMPLE_DIR / "dataset" / "groups"
-    return sorted(groups.rglob("task.toml")) if groups.is_dir() else []
+    """Every task in the dataset, the task template included.
+
+    Scoped to `groups/` once, which quietly exempted `task-template/` from all three
+    checks below. It went stale: its image tag drifted from the content hash while the
+    real tasks stayed current, and a Mode 1 run then generated tasks referencing an
+    image that does not exist -- `pull access denied for smoke-agent-env` -- so the
+    whole Insight suite failed to run and was silently dropped from scoring.
+    """
+    dataset = _EXAMPLE_DIR / "dataset"
+    return sorted(dataset.rglob("task.toml")) if dataset.is_dir() else []
 
 
 _EXPECTED_METRIC_KEYS = ("reward", "shape_ok")
@@ -184,6 +192,25 @@ def test_every_task_carries_the_current_verifier() -> None:
     for task_toml in tasks:
         actual = (task_toml.parent / "tests" / "test.sh").read_bytes()
         assert actual == canonical, f"{task_toml.parent.name}/tests/test.sh is stale; run scripts/sync_verifier.py"
+
+
+def test_the_task_template_carries_the_current_records() -> None:
+    """Insight mode needs the answer computable, so the template ships the records.
+
+    A trace holds the question and the agent's wrong answer, never the right one, so
+    Eval Author cannot infer `<EXPECTED>` from it -- and an unfilled expectation scores
+    0 for every agent, making a healthy run read as a failed repair. The records make
+    the answer derivable.
+
+    A second copy, so it needs a second guard: a drifted one would have Eval Author
+    compute answers from records the container does not have. Run scripts/sync_verifier.py.
+    """
+    template_records = _EXAMPLE_DIR / "dataset" / "task-template" / "records.json"
+    if not template_records.is_file():
+        return  # optional; only insight mode needs it
+    assert template_records.read_bytes() == (_SHARED / "records.json").read_bytes(), (
+        f"{template_records} has drifted from the canonical records; run scripts/sync_verifier.py"
+    )
 
 
 def test_every_task_has_an_empty_environment_dir() -> None:
