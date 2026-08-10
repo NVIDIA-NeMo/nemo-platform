@@ -142,9 +142,7 @@ def test_trial_to_atif_ingest_adds_invocation_window_when_ended_at_given() -> No
 
 
 def test_trial_to_atif_ingest_omits_invocation_window_without_ended_at() -> None:
-    body = trial_to_atif_ingest(
-        _trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT
-    )
+    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
     assert "extra" not in body["steps"][0]
 
 
