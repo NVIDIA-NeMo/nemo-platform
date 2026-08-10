@@ -5,14 +5,10 @@ SPDX-License-Identifier: Apache-2.0
 
 # Eval Author
 
-> **Active development. Not intended for external use.**
+> **Eval Author is in active development and is not intended for external use.**
 >
-> This plugin is incomplete and its interfaces will change without notice. It also
-> runs code from the repository you point it at: validating a config imports that
-> repository's agent module into the running process, which executes that module's
-> top level. Treat pointing Eval Author at a repository as equivalent to running that
-> repository's code yourself, and only do it for code you already trust. Sandboxing is
-> not implemented yet.
+> **WARNING:** Use Eval Author only with a trusted repository.
+> An agent import executes module top-level code.
 
 The top-level `nemo_eval_author_plugin.eval_author` package is the canonical Eval Author
 implementation. It turns an Experimentalist Insight and its production trace refs into
@@ -115,83 +111,33 @@ asyncio.run(main())
 
 ## Discovery CLI
 
-`nemo agents eval-author discover` is the only implemented CLI command. It
-answers whether Harbor can run a repository's evals and records the answer.
+`nemo agents eval-author discover` validates one repository-owned Harbor config and writes no repository files.
 
-The command assembles a candidate Harbor `JobConfig` from the strongest source
-the repository offers: a Harbor config file it already maintains, a `config.json`
-from a prior job Harbor resolved and ran, an Experimentalist `optimizer.yaml`
-profile plus the agent wrapper, or the Harbor task directory layout alone.
+The command accepts these flags:
 
-It validates that candidate through a ladder of Harbor's own calls rather than
-reimplemented rules: schema, job resolution, task validity and coverage,
-required host variables, the agent class, the environment backend, and a round
-trip of the persisted bytes through `harbor job start --print-config`.
-[`discovery/validate.py`](../discovery/validate.py) names the Harbor API behind
-each rung. Findings that Harbor returned carry a `harbor_call`; the two checks
-that are discovery's own carry none and can only warn. Whether each test script
-names a reward file is read from the repository, because a script that builds
-the path in a variable is indistinguishable from one that writes nothing.
-Whether the agent subclasses `BaseAgent` is a judgement Harbor deliberately
-does not make — it is strict for verifiers and not for agents — so failing it
-would block a repository Harbor's own gate accepts.
+- `--repo` selects the repository. The current directory is the default.
+- `--agent` sets the name. Without it, a string `agent` in root `optimizer.yaml` takes precedence over the repository directory slug.
+- `--dry-run` prints the report and uploads no files.
 
-The result is recorded to the `nemo-eval-author` fileset as
-`<agent>/discovery.md`. A `<agent>/harbor-job.yaml` is published alongside the
-report only when discovery authored the config; when the repository maintains
-its own valid config file, the report points at that file instead. Nothing is
-written into the repository under inspection.
+Discovery does not infer or generate a config. The preflight includes:
 
-When the config's agent is a `harbor_wrapper.py` in the repository, the run
-command carries the wrapper's directory as `PYTHONPATH`:
+- Harbor validates the schema, agent concurrency limits, task directories, and dataset coverage. Harbor also resolves the job.
+- Discovery identifies required environment variables. Harbor imports the agent and validates the environment backend.
+- `harbor job start --print-config` loads the config file.
 
-```bash
-PYTHONPATH=src/myagent harbor job start -c harbor-job.yaml
-```
+The `ETHOS.md` and trace checks are advisory.
+Each invocation repeats the preflight and records one `sha256:<digest>` fingerprint plus the input file count. The fingerprint never skips validation.
 
-This is not a convenience. Harbor imports an agent with plain
-`importlib.import_module` and never adds the working directory to `sys.path`, so
-a config naming `harbor_wrapper:WrappedAgent` fails at the first trial with
-`No module named 'harbor_wrapper'` without it. A Harbor `JobConfig` has no field
-for a module search path, so it is recorded beside the config as
-`run_config.pythonpath` in the report's front matter, repo-relative like every
-other path in the artifact — `.` for a wrapper at the repository root. The agent
-rung imports with exactly that search path and nothing else, so a rung that
-passes is a rung the recorded command will pass too.
+Without `--dry-run`, the command uploads only `<agent>/discovery.md` to the `nemo-eval-author` fileset.
+Only a runnable report includes `cd <repo-root> && harbor job start -c <repo-relative-path>`.
 
-A dataset the profile declares as a registry ref alongside a `registry_url` is
-recorded as a ref Harbor downloads rather than as a local directory, and
-reported as a warning because resolving it needs the registry to be reachable.
-
-Every run revalidates from scratch. The report is a record of what was true when
-it was written, not a cache that a later run consults.
-
-Exit code 0 means a config was validated and recorded. Every other outcome exits
-non-zero, including a config Harbor accepted but that could not be uploaded,
-which is what makes the command usable as a gate.
-
-`discover` takes these flags:
-
-- `--repo`: agent repository to inspect. Defaults to the current directory.
-- `--agent`: name the artifacts are stored under. Defaults to the agent named in
-  `optimizer.yaml`, else a slug of the directory name.
-- `--dry-run`: print the findings and the config without uploading anything.
-
-There are no flags for platform state. The workspace and cluster come from the
-active `nemo` context, `NMP_WORKSPACE` still overrides the workspace, and the
-Harbor environment backend comes from the repository's own config or Harbor's
-default.
-
-The other verbs are registered in [`cli.py`](../cli.py) so the command tree is
-discoverable. Each one exits non-zero with a not-implemented message.
+A standard run returns exit code 0 only for a runnable report and a successful upload.
+A dry run returns exit code 0 only if the report is runnable.
+All other outcomes return exit code 1. The command still uploads a report for an absent or rejected config.
 
 ## Planned Commands
 
-- `nemo agents eval-author audit`: report coverage gaps in an existing Harbor suite
-  against `ETHOS.md`, without changing the suite.
-- `nemo agents eval-author propose`: draft reviewable Harbor tasks and verifier
-  patches for the gaps the audit found.
-- `nemo agents eval-author run`: run `discover`, `audit`, and `propose` as one
-  pipeline.
-- `nemo agents eval-author doctor`: check the credentials, platform access, and
-  runtime the other commands need.
+- `nemo agents eval-author audit` will report coverage gaps against `ETHOS.md` and will not change the current Harbor suite.
+- `nemo agents eval-author propose` will draft Harbor tasks and verifier patches for review.
+- `nemo agents eval-author run` will run `discover`, `audit`, and `propose` as one pipeline.
+- `nemo agents eval-author doctor` will check credentials, platform access, and the runtime for the other commands.

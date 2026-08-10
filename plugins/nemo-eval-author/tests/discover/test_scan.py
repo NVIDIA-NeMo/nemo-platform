@@ -1,128 +1,153 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Repo-shape probes: context for authoring evals, never a reason a run cannot happen.
-
-The invariant these defend is the meaning of ``runnable``. It answers exactly one question,
-"can Harbor run this config", so a repo with no traces yet or no doctrine document must not
-be reported as unrunnable. Only the validation ladder is allowed to fail a report.
-"""
+"""Repository scan contract tests."""
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from harbor_fixtures import StubClient
 from nemo_eval_author_plugin.discovery import scan
 
 
-def test_ethos_is_preferred_over_the_name_it_replaced(tmp_path):
-    (tmp_path / "AGENT-SPEC.md").write_text("# Old\n")
-    (tmp_path / "ETHOS.md").write_text("# New\n")
-    (tmp_path / "README.md").write_text("# Readme\n")
-
-    finding = scan.find_doctrine(tmp_path)
-
-    assert finding.path == tmp_path / "ETHOS.md"
-    assert finding.status == "pass"
-    assert finding.hint is None
+def _config(path: Path, text: str = "datasets:\n- path: evals\n") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
-def test_the_old_name_still_works_and_says_so(tmp_path):
-    """Both names are honored while the rename is in flight, so the report is the signal."""
-    (tmp_path / "AGENT-SPEC.md").write_text("# Old\n")
-    (tmp_path / "README.md").write_text("# Readme\n")
-
-    finding = scan.find_doctrine(tmp_path)
-
-    assert finding.path == tmp_path / "AGENT-SPEC.md"
-    assert finding.hint is not None and "predates the rename" in finding.hint
+def _task(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "task.toml").write_text('version = "1.0"\n', encoding="utf-8")
 
 
-def test_readme_is_the_last_resort(tmp_path):
-    (tmp_path / "README.md").write_text("# Readme\n")
+def test_selects_the_first_config_and_warns_about_extras(tmp_path):
+    first = _config(tmp_path / "configs" / "a.yaml")
+    _config(tmp_path / "harbor" / "b.yaml")
 
-    finding = scan.find_doctrine(tmp_path)
+    result = scan.scan_repository(tmp_path)
 
-    assert finding.path == tmp_path / "README.md"
-    assert finding.status == "pass"
-
-
-def test_no_doctrine_is_a_warning_not_a_failure(tmp_path):
-    finding = scan.find_doctrine(tmp_path)
-
-    assert finding.path is None
-    assert finding.status == "warn"
+    assert result.config is not None
+    assert result.config.path == first
+    assert {check.status for check in result.checks if check.name == "config"} == {"pass", "warn"}
+    assert any(check.name == "ethos" and check.status == "warn" for check in result.checks)
 
 
-def test_skill_bundles_are_found_by_their_marker_file(tmp_path):
-    for name in ("triage", "escalate"):
-        (tmp_path / "skills" / name).mkdir(parents=True)
-        (tmp_path / "skills" / name / "SKILL.md").write_text(f"# {name}\n")
-
-    finding = scan.find_skills(tmp_path)
-
-    assert finding.status == "pass"
-    assert "2 Harbor skill bundle(s)" in finding.message
-    assert finding.hint is not None and "AgentConfig.skills" in finding.hint
-
-
-def test_vendored_trees_are_not_searched(tmp_path):
-    """A dependency's skills are not the repo's, and .venv dwarfs everything else."""
-    vendored = tmp_path / ".venv" / "lib" / "pkg"
-    vendored.mkdir(parents=True)
-    (vendored / "SKILL.md").write_text("# not ours\n")
-
-    finding = scan.find_skills(tmp_path)
-
-    assert finding.status == "warn"
-    assert finding.path is None
-
-
-def test_the_optimizer_s_own_output_is_not_part_of_the_repo(tmp_path):
-    """Experimentalist writes into ``.nemo-optimizer`` and ``eval-and-optimize``.
-
-    What it leaves there is candidate agent copies and its own Harbor job dirs: results of
-    evaluating this repo, not declarations of how to evaluate it. Every probe that walks the
-    tree would otherwise read them as the repo's own setup.
-    """
-    for relative in (
-        Path(".nemo-optimizer") / "experiments" / "run-1" / "candidate",
-        Path("eval-and-optimize") / "results" / "job-1",
+def test_reads_yaml_yml_and_json_configs(tmp_path):
+    for suffix, text in (
+        (".yaml", "datasets:\n- path: evals\n"),
+        (".yml", "datasets:\n- path: evals\n"),
+        (".json", '{"datasets": [{"path": "evals"}]}'),
     ):
-        (tmp_path / relative).mkdir(parents=True)
-        (tmp_path / relative / "SKILL.md").write_text("# a candidate's copy\n")
+        repo = tmp_path / suffix[1:]
+        expected = _config(repo / "configs" / f"job{suffix}", text)
 
-    walked = list(scan.walk_dirs(tmp_path))
+        result = scan.scan_repository(repo)
 
-    assert walked == [tmp_path]
-    assert scan.find_skills(tmp_path).status == "warn"
-
-
-async def test_available_traces_are_counted():
-    finding = await scan.probe_traces(StubClient(trace_total=7), agent="ticket-triage", workspace="default")
-
-    assert finding.status == "pass"
-    assert "7 trace session(s)" in finding.message
+        assert result.config is not None and result.config.path == expected
 
 
-async def test_no_traces_is_a_warning_with_a_next_step():
-    finding = await scan.probe_traces(StubClient(trace_total=0), agent="ticket-triage", workspace="default")
+def test_rejects_a_config_symlink_that_resolves_outside_the_repository(tmp_path):
+    repo = tmp_path / "repo"
+    outside = _config(tmp_path / "outside.yaml")
+    link = repo / "configs" / "eval.yaml"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(outside)
 
-    assert finding.status == "warn"
-    assert finding.hint is not None and "telemetry" in finding.hint
+    result = scan.scan_repository(repo)
+
+    assert result.config is None
+    assert next(check for check in result.checks if check.name == "config").status == "fail"
 
 
-async def test_an_unreachable_platform_never_blocks_a_run():
-    finding = await scan.probe_traces(StubClient(trace_total=None), agent="ticket-triage", workspace="default")
+def test_profile_prior_job_and_task_layout_never_become_config_candidates(tmp_path):
+    (tmp_path / "optimizer.yaml").write_text(
+        "agent: ticket-triage\ndatasets:\n  validation: evals/validation\n",
+        encoding="utf-8",
+    )
+    prior_job = tmp_path / "jobs" / "run-1"
+    _config(prior_job / "config.json", '{"datasets": [{"path": "evals/validation"}]}')
+    (prior_job / "lock.json").write_text('{"harbor_version": "0.18.0"}\n', encoding="utf-8")
+    dataset = tmp_path / "evals" / "validation"
+    _task(dataset / "task-0")
 
-    assert finding.status == "warn"
-    assert finding.hint is not None and "Harbor runs fine without them" in finding.hint
+    result = scan.scan_repository(tmp_path)
+
+    assert (result.config, result.dataset_paths) == (None, [dataset])
 
 
-def test_a_path_above_the_repo_is_rendered_absolute_rather_than_crashing(tmp_path):
-    """``discover_profile`` walks upward, so this is a real case and not a defensive guess."""
-    outside = tmp_path.parent / "optimizer.yaml"
+def test_uses_only_ethos_for_the_doctrine_contract(tmp_path):
+    _config(tmp_path / "harbor-job.yaml")
+    (tmp_path / "README.md").write_text("# Readme\n", encoding="utf-8")
+    (tmp_path / "AGENT-SPEC.md").write_text("# Old\n", encoding="utf-8")
 
-    assert scan.display_path(outside, tmp_path) == str(outside)
-    assert scan.display_path(tmp_path / "evals" / "task", tmp_path) == "evals/task"
-    # The sentinel used for values declared inline rather than in a file.
-    assert scan.display_path(Path("<job config>"), tmp_path) == "<job config>"
+    without_ethos = scan.scan_repository(tmp_path)
+    assert without_ethos.ethos_path is None
+    assert any(check.name == "ethos" and check.status == "warn" for check in without_ethos.checks)
+
+    ethos = tmp_path / "ETHOS.md"
+    ethos.write_text("# Agent doctrine\n", encoding="utf-8")
+    with_ethos = scan.scan_repository(tmp_path)
+
+    assert with_ethos.ethos_path == ethos
+    assert any(check.name == "ethos" and check.status == "pass" for check in with_ethos.checks)
+
+
+def test_discovers_local_datasets_and_prunes_generated_trees(tmp_path):
+    _config(tmp_path / "harbor-job.yaml")
+    _task(tmp_path)
+    _task(tmp_path / "evals" / "suite" / "task-one")
+    _task(tmp_path / "evals" / "suite" / "task_template")
+    _task(tmp_path / ".nemo-optimizer" / "output" / "task-two")
+    _task(tmp_path / "node_modules" / "package" / "task-three")
+    _task(tmp_path / "vendor" / "package" / "task-four")
+    _task(tmp_path / "cache" / "package" / "task-five")
+
+    result = scan.scan_repository(tmp_path)
+
+    assert result.dataset_paths == [tmp_path / "evals" / "suite"]
+    assert result.input_file_count == 3
+
+
+def test_fingerprint_covers_config_ethos_optimizer_and_dataset_files(tmp_path):
+    config = _config(tmp_path / "harbor-job.yaml")
+    ethos = tmp_path / "ETHOS.md"
+    optimizer = tmp_path / "optimizer.yaml"
+    ethos.write_text("# One\n", encoding="utf-8")
+    optimizer.write_text("model: one\n", encoding="utf-8")
+    task = tmp_path / "evals" / "suite" / "task-one"
+    _task(task)
+    dataset_file = task / "notes.txt"
+    dataset_file.write_text("one\n", encoding="utf-8")
+
+    first = scan.scan_repository(tmp_path)
+
+    assert first.input_file_count == 5
+    assert first.config is not None and first.config.path == config
+    for path, replacement in (
+        (config, "datasets:\n- path: another-evals\n"),
+        (ethos, "# Two\n"),
+        (optimizer, "model: two\n"),
+        (task / "task.toml", 'version = "2.0"\n'),
+        (dataset_file, "two\n"),
+    ):
+        original = path.read_text(encoding="utf-8")
+        path.write_text(replacement, encoding="utf-8")
+        assert scan.scan_repository(tmp_path).fingerprint != first.fingerprint
+        path.write_text(original, encoding="utf-8")
+
+
+async def test_trace_probe_handles_exception_empty_and_positive_totals():
+    for total, status in ((None, "warn"), (0, "warn"), (2, "pass")):
+        list_groups = (
+            AsyncMock(side_effect=RuntimeError("intake unavailable"))
+            if total is None
+            else AsyncMock(return_value=SimpleNamespace(pagination=SimpleNamespace(total_results=total)))
+        )
+        client = SimpleNamespace(
+            intake=SimpleNamespace(spans=SimpleNamespace(groups=SimpleNamespace(list=list_groups)))
+        )
+
+        finding = await scan.probe_traces(client, agent="ticket-triage", workspace="default")
+
+        assert (finding.status, finding.severity) == (status, "advisory")

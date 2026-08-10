@@ -1,19 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Eval Author plugin CLI — ``nemo agents eval-author ...`` subcommands.
-
-Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
-``nemo agents eval-author <verb>``.
-
-Every verb is registered under its final name so the command tree is discoverable
-and the child tickets have a landing spot. The ones still unimplemented exit
-non-zero.
-
-This module imports nothing from ``eval_author`` while the command bodies remain
-placeholders. The completed runner resolves the active Platform model pair at run
-time. ``discovery.run`` builds no model client at import, so it is safe to load here.
-"""
+"""Eval Author commands under ``nemo agents eval-author``."""
 
 import asyncio
 from pathlib import Path
@@ -21,70 +9,41 @@ from typing import Annotated, ClassVar, NoReturn
 
 import typer
 from nemo_eval_author_plugin.discovery import run as discovery
-from nemo_eval_author_plugin.discovery.models import FILESET_NAME, Finding
-from nemo_eval_author_plugin.discovery.report import run_command, run_target
+from nemo_insights_plugin.contracts.checks import format_report
 from nemo_platform_plugin.cli import NemoCLI
-
-_STATUS_MARK = {"pass": "  ok  ", "warn": " warn ", "fail": " FAIL "}
-
-# Order the ladder's own sequence, so the printed report reads the way validation ran
-# rather than the way findings happened to accumulate.
-_GROUP_ORDER = ("config", "validation", "repo", "memory")
 
 
 def _not_implemented(ctx: typer.Context, ticket: str) -> NoReturn:
-    """Fail loudly, so a placeholder verb can never be mistaken for a successful run.
-
-    The message quotes ``ctx.command_path`` rather than a hardcoded path.
-    """
     typer.echo(f"`{ctx.command_path}` is not implemented yet ({ticket}).", err=True)
     raise typer.Exit(code=1)
 
 
-def _echo_finding(finding: Finding) -> None:
-    typer.echo(f"[{_STATUS_MARK[finding.status]}] {finding.group}/{finding.name}: {finding.message}")
-
-
 def _report_discovery(result: discovery.DiscoverResult) -> None:
-    """Print the run, then the verdict, because the verdict is what the reader came for."""
-    record = result.report
-    findings = [*record.findings, *result.memory_findings]
-    for group in _GROUP_ORDER:
-        for finding in (item for item in findings if item.group == group):
-            _echo_finding(finding)
+    status = format_report(result.report.checks)
+    if status:
+        typer.echo(status)
+    if result.report.run_command:
+        typer.echo("")
+        typer.echo(f"Run: {result.report.run_command}")
 
     typer.echo("")
-    target = run_target(record)
-    if target is not None:
-        source = record.config_source
-        typer.echo(f"Harbor can run this repo's evals ({source.detail if source else 'unknown source'}).")
-        if target.location == "repo":
-            typer.echo(f"Run it from {record.repo_root}, using the config this repo already maintains:")
-        else:
-            typer.echo(f"Discovery wrote the config to fileset '{FILESET_NAME}' at {target.path}.")
-            typer.echo(f"Fetch it into {record.repo_root}, then:")
-        typer.echo(f"  {run_command(target)}")
-        if target.pythonpath is not None:
-            typer.echo(f"  PYTHONPATH is required: Harbor imports the agent module from {target.pythonpath}.")
-        if record.required_env_vars:
-            typer.echo(f"  Needs: {', '.join(item.name for item in record.required_env_vars)}")
-    else:
-        typer.echo("Harbor cannot run this repo's evals. Blocking:", err=True)
-        for finding in record.blocking:
-            call = f" ({finding.harbor_call})" if finding.harbor_call else ""
-            typer.echo(f"  - {finding.name}: {finding.message}{call}", err=True)
-            if finding.hint:
-                typer.echo(f"    {finding.hint}", err=True)
-
     if result.dry_run:
+        typer.echo("Dry run: no files were uploaded.")
         typer.echo("")
-        typer.echo("Dry run: nothing was uploaded.")
-    elif result.persisted:
-        typer.echo("")
-        typer.echo(f"Recorded to fileset '{FILESET_NAME}' under {record.agent}/.")
+        typer.echo(result.markdown, nl=False)
+    elif result.uploaded:
+        remote_path = f"{result.report.agent}/{discovery.REPORT_FILENAME}"
+        typer.echo(f"Uploaded {remote_path} to fileset '{discovery.FILESET_NAME}'.")
     else:
-        typer.echo("")
-        typer.echo("Discovery could not be recorded, so a later run has nothing to read.", err=True)
+        typer.echo(f"Upload failed: {result.upload_error or 'unknown error'}", err=True)
+
+    failures = sum(check.status == "fail" for check in result.report.checks)
+    failures += not result.dry_run and not result.uploaded
+    warnings = sum(check.status == "warn" for check in result.report.checks)
+    failure_label = "failure" if failures == 1 else "failures"
+    warning_label = "warning" if warnings == 1 else "warnings"
+    status = "passed" if result.ok else "failed"
+    typer.echo(f"Final overview: Discovery {status} with {failures} {failure_label} and {warnings} {warning_label}.")
 
 
 class EvalAuthorCLI(NemoCLI):
@@ -98,27 +57,27 @@ class EvalAuthorCLI(NemoCLI):
 
         @app.callback()
         def _root() -> None:
-            """Force subcommand dispatch even when only one verb is registered."""
+            """Select an Eval Author command."""
 
         @app.command("discover")
         def discover(
             repo: Annotated[
                 Path,
-                typer.Option("--repo", help="Agent repository to inspect.", exists=True, file_okay=False),
+                typer.Option("--repo", help="Repository that contains the agent.", exists=True, file_okay=False),
             ] = Path(),
             agent: Annotated[
                 str | None,
-                typer.Option("--agent", help="Agent name. Defaults to optimizer.yaml, else the directory name."),
+                typer.Option("--agent", help="Agent name. The default comes from optimizer.yaml or the directory."),
             ] = None,
             dry_run: Annotated[
                 bool,
-                typer.Option("--dry-run", help="Print the findings and config without uploading anything."),
+                typer.Option("--dry-run", help="Print discovery.md without an upload."),
             ] = False,
         ) -> None:
-            """Find and validate how this repo runs Harbor evals, then record it.
+            """Inspect the repository and record its Harbor preflight.
 
-            Validating a config imports the repo's agent module into this process, which runs
-            that module's top level. Only point this at a repo you trust.
+            WARNING: Use this command only with a trusted repository.
+            Agent imports execute module top-level code.
             """
             result = asyncio.run(
                 discovery.discover(
@@ -130,17 +89,11 @@ class EvalAuthorCLI(NemoCLI):
                 )
             )
             _report_discovery(result)
-            if result.dry_run:
-                typer.echo("")
-                typer.echo(result.markdown)
-                if result.job_config:
-                    typer.echo(result.job_config)
-            # Non-zero on an unrunnable config is what makes this usable as a gate in CI.
             raise typer.Exit(code=0 if result.ok else 1)
 
         @app.command("audit")
         def audit(ctx: typer.Context) -> None:
-            """Audit an existing eval suite for coverage gaps."""
+            """Report coverage gaps in an existing eval suite."""
             # TODO(ASE-676): declare flags and wire the audit.
             _not_implemented(ctx, "ASE-676")
 
@@ -152,13 +105,13 @@ class EvalAuthorCLI(NemoCLI):
 
         @app.command("run")
         def run(ctx: typer.Context) -> None:
-            """Run the Eval Author pipeline end to end."""
+            """Run the Eval Author pipeline."""
             # TODO(ASE-673): declare flags and wire the pipeline to run_eval_author.
             _not_implemented(ctx, "ASE-673")
 
         @app.command("doctor")
         def doctor(ctx: typer.Context) -> None:
-            """Diagnose Eval Author setup: credentials, platform, runtime."""
+            """Diagnose credentials, platform access, and the runtime."""
             # TODO(ASE-678): report the prerequisites the other verbs gate on.
             _not_implemented(ctx, "ASE-678")
 
