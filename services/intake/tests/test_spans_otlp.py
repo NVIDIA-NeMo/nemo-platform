@@ -72,7 +72,7 @@ def test_span_to_domain_filters_resource_raw_attributes():
         "user.id": "user-a",
     }
 
-    domain_span, _ = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes=raw_resource_attributes,
@@ -88,7 +88,7 @@ def test_span_to_domain_filters_resource_raw_attributes():
 def test_span_to_domain_skips_empty_scope_data():
     span = _make_span()
 
-    domain_span, _ = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes={},
@@ -108,7 +108,7 @@ def test_span_to_domain_does_not_duplicate_model_aliases():
     response_model.key = "gen_ai.response.model"
     response_model.value.string_value = "response-model"
 
-    domain_span, _ = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes={},
@@ -130,7 +130,7 @@ def test_span_to_domain_promotes_pydantic_ai_model_messages():
         span, "gen_ai.system_instructions", json.dumps([{"type": "text", "content": "You are an analyst."}])
     )
 
-    domain_span, _ = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes={"gen_ai.agent.name": "nemo-optimizer-analyst"},
@@ -155,7 +155,7 @@ def test_span_to_domain_promotes_pydantic_ai_agent_run_result():
     _add_string_attr(span, "pydantic_ai.all_messages", json.dumps(all_messages))
     _add_string_attr(span, "final_result", json.dumps(final_result))
 
-    domain_span, _ = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes={"gen_ai.agent.name": "nemo-optimizer-analyst"},
@@ -174,7 +174,7 @@ def test_span_to_domain_promotes_pydantic_ai_tool_arguments_and_response():
     _add_string_attr(span, "gen_ai.tool.call.arguments", '{"code":"await fetch_spans()"}')
     _add_string_attr(span, "tool_response", '{"return_value":{"count":3}}')
 
-    domain_span, _ = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes={"gen_ai.agent.name": "nemo-optimizer-analyst"},
@@ -186,30 +186,30 @@ def test_span_to_domain_promotes_pydantic_ai_tool_arguments_and_response():
     assert json.loads(domain_span.output) == {"return_value": {"count": 3}}
 
 
-def test_span_to_domain_surfaces_evaluation_id() -> None:
-    # OTLP associates a span with an evaluation via the nemo.experiment.id attribute; _span_to_domain
-    # surfaces it so the ingest path can mark that evaluation dirty for facet denormalization.
+def test_span_to_domain_carries_evaluation_id_attribute() -> None:
+    # OTLP associates a span with an evaluation via the nemo.experiment.id attribute; the ingest path
+    # reads it off the built span to mark that evaluation dirty for facet denormalization.
     span = _make_span()
     _add_string_attr(span, "nemo.experiment.id", "my-eval")
-    _, evaluation_id = _span_to_domain(
+    domain_span = _span_to_domain(
         workspace="default",
         span=span,
         resource_attributes={},
         scope_data={},
         ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    assert evaluation_id == "my-eval"
+    assert domain_span.attributes_string.get("nemo.experiment.id") == "my-eval"
 
 
-def test_span_to_domain_without_evaluation_attribute_surfaces_no_id() -> None:
-    _, evaluation_id = _span_to_domain(
+def test_span_to_domain_without_evaluation_attribute_has_no_id() -> None:
+    domain_span = _span_to_domain(
         workspace="default",
         span=_make_span(),
         resource_attributes={},
         scope_data={},
         ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    assert evaluation_id is None
+    assert domain_span.attributes_string.get("nemo.experiment.id") is None
 
 
 def _make_span(

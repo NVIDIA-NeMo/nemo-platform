@@ -5,51 +5,99 @@
 
 Ingest marks ``(workspace, evaluation_id)`` dirty; a background loop recomputes each touched
 evaluation's rollup and writes the distinct ``agent_names``/``agent_versions``/``model_names`` sets onto
-the (system-managed) fields of its Evaluation entity. That lets the workspace-wide Evaluations list
-filter by agent/model name against the entity store (``$contains``) instead of scanning the ClickHouse
-session table on every request.
+the (system-managed) fields of its Evaluation entity. That lets the Evaluations list filter by
+agent/model name against the entity store (``$contains``) instead of scanning the ClickHouse session
+table on every request.
 
-This is a deliberately narrowed descendant of the closed PR #424 rollup refresher: it denormalizes only
-the name fields, not the computed metric rollups. Names are raw observed strings with no formula, so a
-change to how any aggregate is computed never invalidates them — the staleness/backfill hazard that made
-denormalizing metrics not worth it (ASE-319) does not apply here.
+Only the name fields are denormalized, never the computed metric rollups: names are raw observed
+strings with no formula, so a change to how an aggregate is computed can never invalidate them.
 
-The *how it runs* (the debounced coalescing loop + start/stop lifecycle) lives in the generic
-:class:`nmp.intake.debounced_refresher.DebouncedRefresher`; this class carries only the evaluation
-business logic — compute the rollup and write the name fields.
+The start/stop lifecycle comes from :class:`nmp.intake.background_worker.BackgroundWorker`; the
+debouncing (a coalescing dirty set drained on a fixed cadence) lives here because it is specific to how
+this worker refreshes evaluations.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.intake.debounced_refresher import DebouncedRefresher
+from nmp.intake.background_worker import BackgroundWorker
 from nmp.intake.entities.experiments import Experiment
 from nmp.intake.repository.evaluation_rollup import EvaluationRollup, EvaluationRollupRepository
 
 logger = logging.getLogger(__name__)
 
+# stop()'s final flush can itself re-queue keys (a transient failure/conflict that would clear on
+# retry), so it drains up to this many passes; anything still queued afterwards is logged.
+_STOP_DRAIN_PASSES = 3
 
-class EvaluationDenormalizer(DebouncedRefresher[tuple[str, str]]):
-    """Refreshes each dirty evaluation's denormalized name fields from its ClickHouse rollup."""
+
+class EvaluationDenormalizer(BackgroundWorker):
+    """Coalesces dirty evaluation ids and refreshes their denormalized name fields on a fixed cadence.
+
+    A burst of :meth:`mark_dirty` calls for one evaluation within an interval collapses to a single
+    refresh, and marking is a plain, non-blocking set add — so the ingest and read hot paths are never
+    gated on the refresh work.
+    """
 
     def __init__(
         self,
         *,
         rollup_repository: EvaluationRollupRepository,
         entity_client: EntityClient,
-        interval_seconds: float = 10.0,
+        interval_seconds: float = 60.0,
     ) -> None:
-        super().__init__(interval_seconds=interval_seconds)
+        super().__init__()
         self._rollup_repository = rollup_repository
         self._entity_client = entity_client
+        self._interval_seconds = interval_seconds
+        self._dirty: set[tuple[str, str]] = set()
 
     def mark_dirty(self, *, workspace: str, evaluation_id: str) -> None:
         """Queue an evaluation for refresh. Cheap and non-blocking; safe to call from the ingest path."""
-        self._enqueue((workspace, evaluation_id))
+        self._dirty.add((workspace, evaluation_id))
 
-    async def _process(self, batch: set[tuple[str, str]]) -> None:
+    def pending(self) -> set[tuple[str, str]]:
+        """Return a copy of the currently-queued ``(workspace, evaluation_id)`` pairs (observability/tests)."""
+        return set(self._dirty)
+
+    async def _run(self) -> None:
+        while not self._stopping.is_set():
+            try:
+                # Interruptible sleep: wakes early when stop() sets the event so shutdown is prompt.
+                await asyncio.wait_for(self._stopping.wait(), timeout=self._interval_seconds)
+            except asyncio.TimeoutError:
+                pass  # interval elapsed; time for a periodic flush
+            try:
+                await self.flush()
+            except Exception:
+                logger.exception("Evaluation denormalization cycle failed")
+
+    async def stop(self) -> None:
+        await super().stop()
+        # The loop may have exited before a final flush, and a flush can itself re-queue keys (a
+        # transient failure/conflict), so drain what's left — bounded, so a persistent failure can't
+        # hang shutdown.
+        for _ in range(_STOP_DRAIN_PASSES):
+            if not self._dirty:
+                return
+            await self.flush()
+        if self._dirty:
+            logger.warning(
+                "Evaluation denormalizer stopped with %d evaluation(s) still queued after %d drain "
+                "passes; not retried before shutdown",
+                len(self._dirty),
+                _STOP_DRAIN_PASSES,
+            )
+
+    async def flush(self) -> None:
+        """Drain the dirty set and refresh each evaluation's name fields. Directly callable for tests."""
+        if not self._dirty:
+            return
+        batch = self._dirty
+        self._dirty = set()
         by_workspace: dict[str, list[str]] = {}
         for workspace, evaluation_id in batch:
             by_workspace.setdefault(workspace, []).append(evaluation_id)

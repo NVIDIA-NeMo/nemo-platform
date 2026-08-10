@@ -14,13 +14,17 @@ from nmp.intake.spans.domain import (
     SpanStatus,
     TraceBatch,
 )
-from nmp.intake.spans.span_attribute_catalog import SpanAttributeField
+from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, normalize_span_kind, stable_id, utc_now
 from pydantic import BaseModel, Field
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
+
+# Bag key the evaluation id lands under on a built span (from the attribute catalog). The ingest loop
+# reads it back off each span to learn which evaluations a batch touched, for the denormalizer.
+_EVALUATION_ID_BAG_KEY = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
 
 # Ordered by precedence. Keep direct input.value/output.value first so existing
 # OpenInference/LangChain payloads continue to win over framework-specific fallbacks.
@@ -93,7 +97,7 @@ async def ingest_otlp_traces(
             }
             for span in scope_spans.spans:
                 try:
-                    span_domain, evaluation_id = _span_to_domain(
+                    span_domain = _span_to_domain(
                         workspace=workspace,
                         span=span,
                         resource_attributes=resource_attributes,
@@ -105,6 +109,7 @@ async def ingest_otlp_traces(
                     errors.append(f"span {span_hex}: {exc}")
                     continue
                 spans.append(span_domain)
+                evaluation_id = span_domain.attributes_string.get(_EVALUATION_ID_BAG_KEY)
                 if evaluation_id:
                     evaluation_ids.add(evaluation_id)
 
@@ -159,9 +164,7 @@ def _span_to_domain(
     resource_attributes: dict[str, Any],
     scope_data: dict[str, Any],
     ingested_at: datetime,
-) -> tuple[IntakeSpan, str | None]:
-    """Build the domain span and surface the evaluation id it's associated with (if any), so the
-    ingest path can mark that evaluation dirty for facet denormalization."""
+) -> IntakeSpan:
     trace_id = _required_otlp_id(span.trace_id, field_name="trace_id")
     trace_id_hex = trace_id.hex()
     source_span_id = _required_otlp_id(span.span_id, field_name="span_id")
@@ -217,7 +220,7 @@ def _span_to_domain(
         output=_output_payload(attributes, events, kind=kind.value) or "",
         event_ts=ingested_at,
     )
-    return span_domain, semantic_attributes.evaluation_id
+    return span_domain
 
 
 def _required_otlp_id(value: Any, *, field_name: str) -> bytes:

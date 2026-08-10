@@ -87,7 +87,7 @@ class IntakeConfig(_BaseIntakeConfig):
         description="Maximum number of trajectory levels accepted for recursive ATIF subagents.",
     )
     denormalization_interval_seconds: float = Field(
-        default=10.0,
+        default=60.0,
         gt=0,
         description=(
             "How often the background worker drains the dirty set and denormalizes the distinct "
