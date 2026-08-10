@@ -52,8 +52,10 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     restore_heldout_splits,
 )
 from nemo_experimentalist_plugin.experimentalist.components.models import (
+    EvolutionNode,
     EvolutionTree,
     OptimizationType,
+    pareto_front,
     pareto_sort,
 )
 from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
@@ -127,6 +129,25 @@ def _coerce_optimization_type(optimization_type: str | None) -> OptimizationType
     if optimization_type in get_args(OptimizationType):
         return cast(OptimizationType, optimization_type)
     return None
+
+
+def select_winner_node(
+    eligible: list[EvolutionNode],
+    objective_function: list[MetricTarget],
+) -> EvolutionNode | None:
+    """Return the run's winner: non-dominated, oldest candidate wins ties.
+
+    Deliberately *not* ``select_diverse_survivors``. Picking a winner and picking a
+    set to carry into the next round are different questions. The selector is told to
+    always include a candidate created this round, so at ``k=1`` that rule consumes the
+    only slot and the round-0 baseline can never be returned -- meaning a run always
+    ships a diff, even one that measured no better than doing nothing.
+
+    Preferring the lowest round only decides ties: a candidate that genuinely improves
+    dominates its ancestor and removes it from the front before this is consulted.
+    """
+    front = pareto_front(eligible, lambda node: pareto_objectives(node.val_reward, objective_function))
+    return min(front, key=lambda node: node.round) if front else None
 
 
 def _with_insight_objective(
@@ -1786,17 +1807,8 @@ class EvolutionaryOptimizer(Agent):
         # Only survivors that actually have a validation reward are eligible winners.
         scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
         eligible = [node for node in scored if has_metric_dimensions(node.val_reward, self.config.objective_function)]
-        ranked_nodes = pareto_sort(
-            eligible,
-            lambda node: pareto_objectives(node.val_reward, self.config.objective_function),
-        )
-        finalists = await self.select_diverse_survivors(
-            [node.candidate for node in ranked_nodes],
-            1,
-            self.config.objective_function,
-            self.config.regression_metrics,
-        )
-        best_id = finalists[0].label if finalists else None
+        best = select_winner_node(eligible, self.config.objective_function)
+        best_id = best.label if best else None
 
         restore_heldout_splits(self.working_dir)
 
