@@ -73,7 +73,7 @@ SUMMARY_FILE_NAME = "summary.json"
 
 # Shared tail for every Harbor backend-compatibility rejection
 _HARBOR_BACKEND_REQUIREMENT = (
-    "Harbor targets currently require local execution or the subprocess backend with access to the host Docker daemon."
+    "Harbor targets currently require the subprocess backend with access to the host Docker daemon."
 )
 _SUBPROCESS_PROVIDER: Literal["subprocess"] = "subprocess"
 
@@ -304,8 +304,7 @@ class AgentEvalJob(NemoJob):
 
         ``platform`` is the SDK handle injected into ``run`` — a real ``NeMoPlatform`` in a submitted
         job (built by ``get_task_sdk``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
-        only for a platformless local run (e.g. offline ``run_local``), which has no identity to
-        forward.
+        only in unit-level calls that do not have a platform identity to forward.
 
         NOTE: bearer-token auth for platform routes in an auth-enabled deployment is not yet
         forwarded (the local/internal path relies on the ``X-NMP-*`` identity headers); see
@@ -397,7 +396,7 @@ class AgentEvalJob(NemoJob):
         sdk: NeMoPlatform | None = None,
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
-        """Run the agent evaluation locally and persist its result bundle as artifacts."""
+        """Run the agent evaluation in a task process and persist its result bundle as artifacts."""
         spec = AgentEvalSpec.model_validate(config)
         tasks = [_to_runtime_task(task) for task in spec.tasks]
         target, prompt_template, params = self._resolve_target(spec.target, ctx)

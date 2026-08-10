@@ -127,7 +127,7 @@ def _build_evaluate_spec(
     prompt_template: str | dict[str, Any] | None = None,
     metric_bundle_packager: MetricBundlePackager | None = None,
 ) -> EvaluateInputSpec:
-    """Build the evaluator plugin input spec shared by local and remote execution."""
+    """Build the evaluator plugin input spec for remote submission."""
     effective_packager = _require_metric_bundle_packager(metric_bundle_packager)
     runtime_bundles = bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager)
     spec = {

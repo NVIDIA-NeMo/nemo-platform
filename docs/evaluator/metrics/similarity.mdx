@@ -71,7 +71,7 @@ BLEU (Bilingual Evaluation Understudy) measures the similarity between machine-g
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -98,6 +98,8 @@ result = LocalEvaluator().run_sync(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -172,7 +174,7 @@ Exact Match compares the candidate text with the reference text for perfect equa
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -193,6 +195,8 @@ result = LocalEvaluator().run_sync(
         {"correct_answer": "Berlin", "model_answer": "Munich"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -254,7 +258,7 @@ F1 measures token-level overlap between candidate and reference text. It balance
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -276,6 +280,8 @@ result = LocalEvaluator().run_sync(
         {"reference": "a red apple", "answer": "red apple"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -346,7 +352,7 @@ Number Check performs numerical comparisons and operations on extracted values. 
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -369,6 +375,8 @@ result = LocalEvaluator().run_sync(
         {"expected": "99", "predicted": "101"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -433,7 +441,7 @@ ROUGE (Recall-Oriented Understudy for Gisting Evaluation) measures overlap betwe
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -458,6 +466,8 @@ result = LocalEvaluator().run_sync(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -545,7 +555,7 @@ String Check performs various string operations and comparisons. Supports equali
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -566,6 +576,8 @@ result = LocalEvaluator().run_sync(
         {"output": "Error occurred", "must_contain": "Success"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")

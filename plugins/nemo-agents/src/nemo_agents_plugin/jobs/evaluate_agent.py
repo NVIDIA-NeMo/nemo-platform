@@ -47,7 +47,7 @@ from nemo_platform_plugin.refs import (
     OutputTarget,
     classify_output_target,
 )
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -229,17 +229,14 @@ class EvaluateAgentJob(NemoJob):
         Args:
             config: Dict matching :class:`EvaluateAgentSpec`.
             sdk: Platform SDK handle, injected by the
-                :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler` (locally) or
                 :func:`~nemo_platform_plugin.tasks.dispatcher.run_task`
-                (in-container) from the ambient SDK handle.  Required when
+                from the ambient SDK handle.  Required when
                 ``cfg.eval_config_fileset`` or a fileset-shaped ``cfg.output``
                 is set (download / upload respectively); a local-directory
                 output runs without it, so the parameter is declared optional
                 and validated at the point of use.
-            ctx: Runtime context bound by signature DI.  Both
-                :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`
-                and :func:`~nemo_platform_plugin.tasks.dispatcher.run_task`
-                always supply one; the no-output fallback writes to
+            ctx: Runtime context bound by signature DI. The task dispatcher
+                supplies one; the no-output fallback writes to
                 ``ctx.storage.persistent / "results"`` and tempdirs land
                 under ``ctx.storage.ephemeral`` so they sit on the
                 platform-injected scratch volume.
@@ -340,7 +337,7 @@ class EvaluateAgentJob(NemoJob):
         ``cfg.eval_config`` relative to it.  Otherwise pass through verbatim.
         ``sdk`` is required on the fileset branch — when the scheduler can't
         supply one and the spec asks for a fileset, raise
-        :class:`LocalRunError` early so the caller sees an actionable error
+        :class:`RunDependencyError` early so the caller sees an actionable error
         instead of failing later inside the subprocess.
         """
         if not cfg.eval_config_fileset:
@@ -348,10 +345,11 @@ class EvaluateAgentJob(NemoJob):
             return
 
         if sdk is None:
-            raise LocalRunError(
+            raise RunDependencyError(
                 "EvaluateAgentJob.run requires a 'sdk: NeMoPlatform' to download "
                 "eval_config_fileset contents, but no platform SDK was available. "
-                "Set NMP_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
+                "Submit the job through the Jobs API/SDK, or pass sdk to "
+                "nemo_platform_plugin.tasks.dispatcher.run_task(...) in tests."
             )
 
         ref = FilesetRef(cfg.eval_config_fileset)
@@ -409,7 +407,7 @@ class EvaluateAgentJob(NemoJob):
 
         *sdk* is required only on the fileset branch.  When the
         scheduler can't supply one (no SDK handle in scope) and the
-        output points at a fileset, we raise :class:`LocalRunError`
+        output points at a fileset, we raise :class:`RunDependencyError`
         early — before the subprocess runs — so the user gets an
         actionable message instead of losing the eval artifacts.
         """
@@ -434,11 +432,11 @@ class EvaluateAgentJob(NemoJob):
             return
 
         if sdk is None:
-            raise LocalRunError(
+            raise RunDependencyError(
                 "EvaluateAgentJob.run requires a 'sdk: NeMoPlatform' to upload "
                 "results to a fileset, but no platform SDK was available. "
-                "Set NMP_BASE_URL (so the local CLI can build a default SDK), "
-                "pass an explicit sdk via NemoJobScheduler.run_local(sdk=...), "
+                "Submit the job through the Jobs API/SDK, pass sdk to "
+                "nemo_platform_plugin.tasks.dispatcher.run_task(...) in tests, "
                 "or use --output <path> to write results to a local directory instead."
             )
 

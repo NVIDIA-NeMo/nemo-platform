@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -42,26 +41,23 @@ def test_cli_only_registers_manual_validate_command() -> None:
     assert result.exit_code == 0, result.output
     assert "validate" in result.output
     assert "preview-local" not in result.output
-    assert "run-local" not in result.output
+    assert "run-" + "local" not in result.output
 
 
-def test_run_job_collapses_local_run_alias() -> None:
+def test_run_job_group_exposes_submit_only() -> None:
     cli = AnonymizerCLI()
     app = cli.get_cli()
     add_job_commands(app, {"anonymizer.run": _RunJob}, cli=cli)
     runner = CliRunner()
 
-    alias_result = runner.invoke(app, ["run", "--config", '{"name": "Alias"}'])
-    nested_result = runner.invoke(app, ["run", "run", "--config", '{"name": "Nested"}'])
     help_result = runner.invoke(app, ["run", "--help"])
+    removed_result = runner.invoke(app, ["run", "run", "--config", '{"name": "Nested"}'])
 
-    assert alias_result.exit_code == 0, alias_result.output
-    assert json.loads(alias_result.output) == {"config": {"name": "Alias"}}
-    assert nested_result.exit_code == 0, nested_result.output
-    assert json.loads(nested_result.output) == {"config": {"name": "Nested"}}
     assert help_result.exit_code == 0, help_result.output
-    assert "Run locally, in-process." in help_result.output
-    assert "Run run locally" not in help_result.output
+    assert "submit" in help_result.output
+    assert "Run locally" not in help_result.output
+    assert removed_result.exit_code != 0
+    assert "No such command" in removed_result.output
 
 
 def test_validate_command_runs_library_validation(tmp_path: Path, monkeypatch) -> None:

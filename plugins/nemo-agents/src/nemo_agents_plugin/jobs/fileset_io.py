@@ -32,7 +32,7 @@ from nemo_platform_plugin.refs import (
     classify_output_target,
     parse_entity_ref,
 )
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +69,10 @@ def resolve_staged_config(
     ws, name = split_fileset_ref(ref, workspace)
 
     if sdk is None:
-        raise LocalRunError(
+        raise RunDependencyError(
             f"Staging {kind} from a fileset requires a 'sdk: NeMoPlatform', but no "
-            "platform SDK was available.  Set NMP_BASE_URL or pass sdk via "
-            "NemoJobScheduler.run_local(sdk=...)."
+            "platform SDK was available. Submit the job through the Jobs API/SDK, "
+            "or pass sdk to nemo_platform_plugin.tasks.dispatcher.run_task(...) in tests."
         )
 
     with tempfile.TemporaryDirectory(prefix=f".{kind}-{name}-", dir=str(ctx.storage.ephemeral)) as tmp:
@@ -132,10 +132,11 @@ def resolve_output(
     ws, name = split_fileset_ref(ref, workspace)
 
     if sdk is None:
-        raise LocalRunError(
+        raise RunDependencyError(
             f"Uploading {kind} results to a fileset requires a 'sdk: NeMoPlatform', but no "
-            "platform SDK was available.  Set NMP_BASE_URL, pass sdk via "
-            "NemoJobScheduler.run_local(sdk=...), or use a local output directory instead."
+            "platform SDK was available. Submit the job through the Jobs API/SDK, "
+            "pass sdk to nemo_platform_plugin.tasks.dispatcher.run_task(...) in tests, "
+            "or use a local output directory instead."
         )
 
     with tempfile.TemporaryDirectory(prefix=f".{kind}-output-{name}-", dir=str(ctx.storage.ephemeral)) as tmp:

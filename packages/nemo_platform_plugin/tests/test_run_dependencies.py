@@ -12,7 +12,7 @@ from nemo_platform_plugin import run_dependencies
 
 
 def test_run_dependencies_exports_public_run_dependency_helpers() -> None:
-    assert run_dependencies.__all__ == ["LocalRunError", "resolve_run_kwargs"]
+    assert run_dependencies.__all__ == ["RunDependencyError", "resolve_run_kwargs"]
 
 
 def test_dispatcher_import_does_not_import_scheduler() -> None:

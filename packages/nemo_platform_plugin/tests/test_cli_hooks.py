@@ -1,23 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for NemoCLI.update_function_cli / update_job_cli hooks.
-
-Covers the override-by-replacement contract:
-- No-op default leaves the auto-generated CLI surface unchanged.
-- Hook fires once per primitive after default verb registration and
-  before the sub-group is mounted.
-- Override-by-replacement (Typer's last-write-wins materialization) lets
-  a plugin author add, drop, or replace verbs and flags.
-- Both jobs and functions are covered symmetrically.
-"""
+"""Tests for NemoCLI.update_function_cli / update_job_cli submit hooks."""
 
 from __future__ import annotations
 
 import json
 from typing import ClassVar
 
+import pytest
 import typer
+from nemo_platform_plugin import commands
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.commands import add_function_commands, add_job_commands
 from nemo_platform_plugin.function import NemoFunction
@@ -28,29 +21,26 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+class _GreetSpec(BaseModel):
+    name: str
 
 
 class _GreetJob(NemoJob):
     name: ClassVar[str] = "greet"
-    description: ClassVar[str] = "Return a greeting."
+    description: ClassVar[str] = "Submit a greeting."
+    spec_schema: ClassVar[type[_GreetSpec]] = _GreetSpec
 
     def run(self, config: dict) -> dict:
-        return {"message": f"Hello, {config.get('name', 'world')}!"}
+        return {"message": f"Hello, {config['name']}!"}
 
 
 class _ByeJob(NemoJob):
     name: ClassVar[str] = "bye"
-    description: ClassVar[str] = "Return a farewell."
+    description: ClassVar[str] = "Submit a farewell."
+    spec_schema: ClassVar[type[_GreetSpec]] = _GreetSpec
 
     def run(self, config: dict) -> dict:
-        return {"message": f"Bye, {config.get('name', 'world')}!"}
-
-
-class _GreetSpec(BaseModel):
-    name: str
+        return {"message": f"Bye, {config['name']}!"}
 
 
 class _GreetResponse(BaseModel):
@@ -59,7 +49,7 @@ class _GreetResponse(BaseModel):
 
 class _GreetFunction(NemoFunction[_GreetSpec]):
     name: ClassVar[str] = "greet"
-    description: ClassVar[str] = "Say hello to a name."
+    description: ClassVar[str] = "Submit a greeting function."
     spec_schema: ClassVar[type[_GreetSpec]] = _GreetSpec
 
     async def run(self, spec: _GreetSpec) -> _GreetResponse:
@@ -68,16 +58,18 @@ class _GreetFunction(NemoFunction[_GreetSpec]):
 
 class _ByeFunction(NemoFunction[_GreetSpec]):
     name: ClassVar[str] = "bye"
-    description: ClassVar[str] = "Say bye to a name."
+    description: ClassVar[str] = "Submit a farewell function."
     spec_schema: ClassVar[type[_GreetSpec]] = _GreetSpec
 
     async def run(self, spec: _GreetSpec) -> _GreetResponse:
         return _GreetResponse(message=f"Bye, {spec.name}!")
 
 
-class _NoOpCLI(NemoCLI):
-    """Minimal NemoCLI subclass with no hook overrides."""
+_GreetFunction.__module__ = "nemo_plugin.functions.greet"
+_ByeFunction.__module__ = "nemo_plugin.functions.bye"
 
+
+class _NoOpCLI(NemoCLI):
     name: ClassVar[str] = "test-plugin"
 
     def get_cli(self) -> typer.Typer:
@@ -108,25 +100,38 @@ def _app_with_functions(*fn_classes: type[NemoFunction], cli: NemoCLI | None = N
     return app
 
 
-# ---------------------------------------------------------------------------
-# update_job_cli
-# ---------------------------------------------------------------------------
+def _stub_job_submit(monkeypatch: pytest.MonkeyPatch) -> None:
+    def submit_remote(self, job_cls, spec_data, **kwargs):  # type: ignore[no-untyped-def]
+        del self, job_cls, kwargs
+        return {"submitted": spec_data}
+
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", submit_remote)
+
+
+def _stub_function_submit(monkeypatch: pytest.MonkeyPatch) -> None:
+    def post_function_submit(url, body, **kwargs):  # type: ignore[no-untyped-def]
+        del url, body, kwargs
+
+    monkeypatch.setattr(commands, "_post_function_submit", post_function_submit)
 
 
 class TestUpdateJobCli:
     def test_default_noop_leaves_subcommands_unchanged(self) -> None:
         app = _app_with_jobs(_GreetJob, cli=_NoOpCLI())
         result = runner.invoke(app, ["greet", "--help"])
+
         assert result.exit_code == 0
-        assert "run" in result.output
         assert "submit" in result.output
         assert "explain" in result.output
+        assert "Run locally" not in result.output
 
-    def test_no_cli_argument_means_no_hook_called(self) -> None:
-        # Smoke: the default no-cli path still works (backwards compat).
+    def test_no_cli_argument_uses_default_submit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _stub_job_submit(monkeypatch)
         app = _app_with_jobs(_GreetJob)
-        result = runner.invoke(app, ["greet", "run", "--config", '{"name": "X"}'])
+        result = runner.invoke(app, ["greet", "submit", "--name", "X"])
+
         assert result.exit_code == 0
+        assert json.loads(result.output) == {"submitted": {"name": "X"}}
 
     def test_hook_invoked_once_per_job(self) -> None:
         seen: list[str] = []
@@ -138,36 +143,35 @@ class TestUpdateJobCli:
         _app_with_jobs(_GreetJob, _ByeJob, cli=_CLI())
         assert sorted(seen) == ["bye", "greet"]
 
-    def test_hook_can_replace_run_with_a_new_signature(self) -> None:
+    def test_hook_can_replace_submit_with_a_new_signature(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _stub_job_submit(monkeypatch)
+
         class _CLI(_NoOpCLI):
             def update_job_cli(self, job_cls, group) -> None:
                 if job_cls is not _GreetJob:
                     return
-                original = next(c for c in group.registered_commands if c.name == "run").callback
+                original = next(c for c in group.registered_commands if c.name == "submit").callback
                 assert original is not None
 
-                @group.command("run")
-                def run(
+                @group.command("submit")
+                def submit(
                     typer_ctx: typer.Context,
                     name: str = typer.Option(..., "--name"),
                     spec: str = typer.Option("{}", "--spec"),
                 ) -> None:
                     merged = json.dumps({**json.loads(spec), "name": name})
-                    original(typer_ctx, spec=merged, spec_file=None, config=None, config_file=None)
+                    original(typer_ctx, spec=merged, spec_file=None)
 
         app = _app_with_jobs(_GreetJob, cli=_CLI())
-
-        # The new flag shows up in --help.
-        help_result = runner.invoke(app, ["greet", "run", "--help"])
+        help_result = runner.invoke(app, ["greet", "submit", "--help"])
         assert help_result.exit_code == 0
         assert "--name" in help_result.output
 
-        # Invoking with --name calls wrapper -> original chain.
-        result = runner.invoke(app, ["greet", "run", "--name", "Wrapped"])
+        result = runner.invoke(app, ["greet", "submit", "--name", "Wrapped"])
         assert result.exit_code == 0
-        assert json.loads(result.output) == {"message": "Hello, Wrapped!"}
+        assert json.loads(result.output) == {"submitted": {"name": "Wrapped"}}
 
-    def test_hook_can_drop_a_verb(self) -> None:
+    def test_hook_can_drop_submit(self) -> None:
         class _CLI(_NoOpCLI):
             def update_job_cli(self, job_cls, group) -> None:  # noqa: ARG002
                 group.registered_commands = [c for c in group.registered_commands if c.name != "submit"]
@@ -175,8 +179,8 @@ class TestUpdateJobCli:
         app = _app_with_jobs(_GreetJob, cli=_CLI())
         result = runner.invoke(app, ["greet", "--help"])
         assert result.exit_code == 0
-        assert "run" in result.output
         assert "submit" not in result.output
+        assert "explain" in result.output
 
     def test_hook_can_add_a_verb(self) -> None:
         class _CLI(_NoOpCLI):
@@ -193,8 +197,6 @@ class TestUpdateJobCli:
         assert "canceled" in result.output
 
     def test_hook_dispatches_per_job(self) -> None:
-        """A hook that only modifies _GreetJob leaves _ByeJob untouched."""
-
         class _CLI(_NoOpCLI):
             def update_job_cli(self, job_cls, group) -> None:
                 if job_cls is not _GreetJob:
@@ -205,32 +207,25 @@ class TestUpdateJobCli:
                     typer.echo("greet-only")
 
         app = _app_with_jobs(_GreetJob, _ByeJob, cli=_CLI())
-
-        greet_help = runner.invoke(app, ["greet", "--help"])
-        assert "custom" in greet_help.output
-
-        bye_help = runner.invoke(app, ["bye", "--help"])
-        assert "custom" not in bye_help.output
-
-
-# ---------------------------------------------------------------------------
-# update_function_cli
-# ---------------------------------------------------------------------------
+        assert "custom" in runner.invoke(app, ["greet", "--help"]).output
+        assert "custom" not in runner.invoke(app, ["bye", "--help"]).output
 
 
 class TestUpdateFunctionCli:
-    def test_default_noop_leaves_subcommands_unchanged(self) -> None:
+    def test_default_noop_leaves_submit_only(self) -> None:
         app = _app_with_functions(_GreetFunction, cli=_NoOpCLI())
         result = runner.invoke(app, ["greet", "--help"])
-        assert result.exit_code == 0
-        assert "run" in result.output
-        assert "submit" in result.output
 
-    def test_no_cli_argument_means_no_hook_called(self) -> None:
-        app = _app_with_functions(_GreetFunction)
-        result = runner.invoke(app, ["greet", "run", "--name", "World"])
         assert result.exit_code == 0
-        assert json.loads(result.output) == {"message": "Hello, World!"}
+        assert "submit" in result.output
+        assert "Run locally" not in result.output
+
+    def test_no_cli_argument_uses_default_submit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _stub_function_submit(monkeypatch)
+        app = _app_with_functions(_GreetFunction)
+        result = runner.invoke(app, ["greet", "submit", "--name", "World"])
+
+        assert result.exit_code == 0
 
     def test_hook_invoked_once_per_function(self) -> None:
         seen: list[str] = []
@@ -242,16 +237,18 @@ class TestUpdateFunctionCli:
         _app_with_functions(_GreetFunction, _ByeFunction, cli=_CLI())
         assert sorted(seen) == ["bye", "greet"]
 
-    def test_hook_can_replace_run_with_a_new_signature(self) -> None:
+    def test_hook_can_replace_submit_with_a_new_signature(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _stub_function_submit(monkeypatch)
+
         class _CLI(_NoOpCLI):
             def update_function_cli(self, fn_cls, group) -> None:
                 if fn_cls is not _GreetFunction:
                     return
-                original = next(c for c in group.registered_commands if c.name == "run").callback
+                original = next(c for c in group.registered_commands if c.name == "submit").callback
                 assert original is not None
 
-                @group.command("run")
-                def run(
+                @group.command("submit")
+                def submit(
                     typer_ctx: typer.Context,
                     nickname: str = typer.Option(..., "--nickname"),
                 ) -> None:
@@ -259,23 +256,20 @@ class TestUpdateFunctionCli:
                     original(typer_ctx, spec=spec_json, spec_file=None, workspace="default")
 
         app = _app_with_functions(_GreetFunction, cli=_CLI())
-
-        help_result = runner.invoke(app, ["greet", "run", "--help"])
+        help_result = runner.invoke(app, ["greet", "submit", "--help"])
         assert help_result.exit_code == 0
         assert "--nickname" in help_result.output
 
-        result = runner.invoke(app, ["greet", "run", "--nickname", "Wrapped"])
+        result = runner.invoke(app, ["greet", "submit", "--nickname", "Wrapped"])
         assert result.exit_code == 0
-        assert json.loads(result.output) == {"message": "Hello, Wrapped!"}
 
-    def test_hook_can_drop_a_verb(self) -> None:
+    def test_hook_can_drop_submit(self) -> None:
         class _CLI(_NoOpCLI):
             def update_function_cli(self, fn_cls, group) -> None:  # noqa: ARG002
                 group.registered_commands = [c for c in group.registered_commands if c.name != "submit"]
 
         app = _app_with_functions(_GreetFunction, cli=_CLI())
         result = runner.invoke(app, ["greet", "--help"])
-        assert "run" in result.output
         assert "submit" not in result.output
 
     def test_hook_can_add_a_verb(self) -> None:
@@ -303,9 +297,5 @@ class TestUpdateFunctionCli:
                     typer.echo("greet-only")
 
         app = _app_with_functions(_GreetFunction, _ByeFunction, cli=_CLI())
-
-        greet_help = runner.invoke(app, ["greet", "--help"])
-        assert "custom" in greet_help.output
-
-        bye_help = runner.invoke(app, ["bye", "--help"])
-        assert "custom" not in bye_help.output
+        assert "custom" in runner.invoke(app, ["greet", "--help"]).output
+        assert "custom" not in runner.invoke(app, ["bye", "--help"]).output

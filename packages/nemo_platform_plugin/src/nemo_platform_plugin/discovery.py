@@ -307,10 +307,9 @@ def discover_jobs() -> dict[str, type[NemoJob]]:
     """Typed wrapper: discover ``nemo.jobs`` → :class:`~nemo_platform_plugin.job.NemoJob` subclass.
 
     Entry-point key convention: ``<plugin-name>.<job-name>`` (e.g.
-    ``"example.say-hello"``).  The platform instantiates each class and calls
-    :meth:`~nemo_platform_plugin.job.NemoJob.run` with the job config dict — programmatic
-    callers drive that through
-    :meth:`nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`.
+    ``"example.say-hello"``). Platform workers instantiate each class and call
+    :meth:`~nemo_platform_plugin.job.NemoJob.run` through
+    :func:`nemo_platform_plugin.tasks.dispatcher.run_task`.
 
     Validates that each class's ``name`` attribute matches the job-name suffix
     of its entry-point key (the part after the first ``"."``).

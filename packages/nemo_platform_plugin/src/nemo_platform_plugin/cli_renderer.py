@@ -12,11 +12,10 @@ echoing each NDJSON frame as JSON to stdout.
 Lifecycle:
 
 - :meth:`CLIRenderer.on_start` — called once before iteration begins.
-- :meth:`CLIRenderer.on_frame` — called once per frame as it arrives. For
-  local ``run`` the frame is a :class:`~pydantic.BaseModel` (the value yielded
-  by :meth:`~nemo_platform_plugin.function.NemoFunction.run`). For remote ``submit`` the
-  frame is a ``dict`` (parsed JSON for one NDJSON line). Plugin renderers that
-  want typed frames are responsible for parsing the dict themselves.
+- :meth:`CLIRenderer.on_frame` — called once per frame as it arrives. Generated
+  framework commands now pass remote ``submit`` frames as ``dict`` values
+  parsed from NDJSON lines. Plugin renderers that want typed frames are
+  responsible for parsing the dict themselves.
 - :meth:`CLIRenderer.on_complete` — called once after the stream closes
   cleanly.
 - :meth:`CLIRenderer.on_error` — called once when iteration raises (and the
@@ -48,12 +47,10 @@ class RendererContext:
             so renderers don't fight for the terminal.
         cli_kwargs: The original CLI kwargs the verb was invoked with.
             Renderers can branch on flags here (e.g. ``--non-interactive``).
-        verb: ``"run"`` (in-process) or ``"submit"`` (HTTP). Lets one renderer
-            class drive both verbs while branching when the verbs need
-            different output (e.g. show a request id only for submit).
-        is_local: ``True`` for in-process invocation (``run`` from a CLI with
-            local SDKs), ``False`` for HTTP ``submit``. Distinct from ``verb``
-            because future plugin types could blur the in-process/remote line.
+        verb: Generated framework commands now pass ``"submit"``. The wider
+            literal remains for third-party renderer compatibility.
+        is_local: Generated framework commands now pass ``False``. The field
+            remains for third-party renderer compatibility.
     """
 
     console: Console
@@ -76,9 +73,8 @@ class CLIRenderer(ABC):
     def on_frame(self, frame: Any, *, ctx: RendererContext) -> None:
         """Called once per frame as it arrives. Default: no-op.
 
-        ``frame`` is a :class:`~pydantic.BaseModel` for local ``run`` and a
-        ``dict`` for remote ``submit``. Renderers that want typed frames in
-        both cases parse the dict themselves.
+        Generated framework ``submit`` frames are ``dict`` values parsed from
+        remote NDJSON lines.
         """
 
     def on_complete(self, *, ctx: RendererContext) -> None:

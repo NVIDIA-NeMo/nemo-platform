@@ -5,12 +5,9 @@
 
 The top-level ``nemo`` CLI populates ``typer.Context.obj`` with a state object
 that exposes per-invocation handles to the platform SDK clients (sync and
-async). The auto-generated ``run`` / ``submit`` verbs in
-:mod:`nemo_platform_plugin.commands` consume that state through these helpers,
-and **plugin-authored** Typer commands (i.e. anything a plugin registers via
+async). **Plugin-authored** Typer commands (i.e. anything a plugin registers via
 :meth:`~nemo_platform_plugin.cli.NemoCLI.get_cli` rather than the
-auto-generated verbs) should use the same surface so they participate in the
-same protocol.
+auto-generated verbs) use this surface when they need the active SDK handles.
 
 Example::
 

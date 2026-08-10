@@ -206,7 +206,7 @@ Measures the fraction of relevant content retrieved compared to the total releva
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -215,6 +215,8 @@ metric = ContextRecallMetric(judge_model=judge_model)
 
 result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
+job.wait_until_done()
+result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
@@ -284,7 +286,7 @@ Measures the proportion of relevant chunks in the retrieved contexts (precision@
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -293,6 +295,8 @@ metric = ContextPrecisionMetric(judge_model=judge_model)
 
 result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
+job.wait_until_done()
+result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
@@ -356,7 +360,7 @@ Measures how relevant the retrieved contexts are to the user input.
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -373,6 +377,8 @@ result = LocalEvaluator().run_sync(
     ],
     config=RunConfig(parallelism=8),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -423,7 +429,7 @@ Measures how many important entities from the reference are present in the retri
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -440,6 +446,8 @@ result = LocalEvaluator().run_sync(
     ],
     config=RunConfig(parallelism=8),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -491,7 +499,7 @@ Measures factual consistency of the response with the retrieved context.
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -500,6 +508,8 @@ metric = FaithfulnessMetric(judge_model=judge_model)
 
 result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
+job.wait_until_done()
+result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
@@ -566,7 +576,7 @@ Evaluates whether the response is grounded in the retrieved context without hall
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -575,6 +585,8 @@ metric = ResponseGroundednessMetric(judge_model=judge_model)
 
 result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
+job.wait_until_done()
+result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
@@ -650,7 +662,7 @@ Noise Sensitivity uses RAGAS mode-qualified outputs internally. The SDK normaliz
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -672,6 +684,8 @@ result = LocalEvaluator().run_sync(
     ],
     config=RunConfig(parallelism=8),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -734,7 +748,7 @@ Measures how relevant a response is to the user input using generated questions 
 
 <Tabs>
 
-<Tab title="Local Evaluation">
+<Tab title="Submit Inline Rows">
 
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
@@ -747,6 +761,8 @@ metric = ResponseRelevancyMetric(
 
 result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
+job.wait_until_done()
+result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```

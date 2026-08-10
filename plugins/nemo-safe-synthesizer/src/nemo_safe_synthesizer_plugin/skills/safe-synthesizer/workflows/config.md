@@ -56,6 +56,4 @@ Use `hf_token_secret` at the top level of the job spec when model initialization
 
 ## Reusing a Previously Trained NSS Model
 
-For **`nemo safe-synthesizer run-local`**, set `config.training.pretrained_model` to the adapter directory from a prior run (for example `./nss-output/adapter`). The plugin reuses that adapter for **generation only** (no retraining). See `docs/safe-synthesizer/about/host-local-development.mdx`.
-
 For **platform jobs**, set `pretrained_model_job` at the top level of the job spec; the plugin resolves that job's `adapter` result from Files for generation-only reuse. Use either `pretrained_model_job` or `config.training.pretrained_model`, not both.

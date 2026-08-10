@@ -123,7 +123,7 @@ async def test_run_submit_requires_model_configs(
 
 
 @pytest.mark.asyncio
-async def test_run_local_allows_missing_model_configs(
+async def test_to_spec_with_local_flag_allows_missing_model_configs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -151,7 +151,7 @@ async def test_run_local_allows_missing_model_configs(
 
 
 @pytest.mark.asyncio
-async def test_run_local_model_configs_uses_injected_async_sdk(
+async def test_to_spec_with_local_flag_uses_injected_async_sdk(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -187,7 +187,7 @@ async def test_run_local_model_configs_uses_injected_async_sdk(
 
 
 @pytest.mark.asyncio
-async def test_run_local_serialized_step_config_can_be_revalidated(
+async def test_to_spec_with_local_flag_serialized_step_config_can_be_revalidated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

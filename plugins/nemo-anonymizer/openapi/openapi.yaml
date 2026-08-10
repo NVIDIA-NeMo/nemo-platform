@@ -1285,7 +1285,7 @@ components:
       - kind
       - records
       title: PreviewDatasetFrame
-      description: Final user-visible dataframe produced by the preview run.
+      description: Final user-visible dataframe produced by preview.
     PreviewRequest:
       properties:
         config:

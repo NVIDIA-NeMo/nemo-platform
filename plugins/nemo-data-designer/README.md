@@ -7,7 +7,7 @@ A NeMo Platform plugin that brings Data Designer into the platform.
 
 ## Validate a Config
 
-`nemo data-designer validate` checks whether a Data Designer config is fit to run locally and/or to submit to the platform. By default it runs every applicable execution context and reports each independently:
+`nemo data-designer validate` checks whether a Data Designer config is fit for local library compatibility and/or platform submission. By default it runs every applicable execution context and reports each independently:
 
 ```bash
 nemo data-designer validate config.yaml
@@ -16,7 +16,7 @@ nemo data-designer validate config.yaml
 Limit the check to one context with `--execution-context`:
 
 ```bash
-# Only the local-execution checks
+# Only the local-library checks
 nemo data-designer validate config.yaml --execution-context local
 
 # Only the platform/remote checks
@@ -27,7 +27,7 @@ The exit code is `0` only when every requested context validates cleanly. JSON o
 
 ### Local vs. remote
 
-- **Local** mirrors what `nemo data-designer <preview|create> run` accepts: the engine compiles the config and resolves model providers. Providers can be defined locally **or** referenced by name from the Inference Gateway — both are first-class.
+- **Local** checks library-level compatibility: the engine compiles the config and resolves model providers. Providers can be defined locally **or** referenced by name from the Inference Gateway — both are first-class.
 - **Remote** mirrors what `nemo data-designer <preview|create> submit` accepts: unsupported seed types and `tool_configs` are rejected, IGW providers are resolved against the platform, Files-service seeds are looked up, and Nemotron Personas filesets are checked. The remote pass is a client-side simulation of those checks; it does not contact the data-designer service.
 
 ### Programmatic use

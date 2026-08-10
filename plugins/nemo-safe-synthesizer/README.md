@@ -1,81 +1,42 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Run Safe Synthesizer Locally
+# Run Safe Synthesizer Jobs
 
-Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the platform `safe-synthesizer` API prefix.
+Use the Safe Synthesizer plugin to submit jobs through the platform Jobs service.
 
 ## Prerequisites
 
-- A CUDA-capable host with compatible NVIDIA drivers.
-- The Safe Synthesizer plugin installed as a local editable plugin.
-- The separate Safe Synthesizer runtime venv created with the engine/CUDA dependencies.
+- A GPU-capable Jobs backend.
+- The Safe Synthesizer plugin installed in the NeMo Platform environment.
 - A Safe Synthesizer job spec, such as `nss-job.json`.
-- A running platform only if you use platform filesets, Jobs APIs, or `pretrained_model_job`. Pure `run-local` with `--data-source` does not require it.
+- A running platform with access to the required filesets and secrets.
 
 ## Steps
 
-=== "Managed local subprocess"
+1. Start NeMo Platform and confirm readiness:
 
-    1. Sync the workspace and install this plugin outside the root lock:
+   ```bash
+   curl -s http://localhost:8080/health/ready
+   ```
 
-       ```bash
-       BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
-       ```
+2. Optionally register model filesets:
 
-    2. Create the separate runtime venv with the NSS engine/CUDA dependencies:
+   ```bash
+   uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
+   ```
 
-       ```bash
-       uv run nemo safe-synthesizer runtime setup
-       ```
-
-    3. (Optional, platform jobs only) After `curl -s http://localhost:8080/health/ready`, register model filesets:
-
-       ```bash
-       uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
-       ```
-
-    4. Run the job locally through the public plugin CLI:
-
-       ```bash
-       uv run nemo safe-synthesizer run-local \
-         --workspace default \
-         --spec-file nss-job.json \
-         --data-source ./input.csv \
-         --output-dir ./nss-output
-       ```
-
-=== "Direct local task"
-
-    1. Sync the workspace, install this plugin outside the root lock, and create the runtime venv:
-
-       ```bash
-       BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
-       uv run nemo safe-synthesizer runtime setup
-       ```
-
-    2. Run the task module directly with the configured runtime Python:
-
-       ```bash
-       $(uv run nemo safe-synthesizer runtime info | awk -F': ' '/^python:/ {print $2}') \
-         -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer run-local \
-         --workspace default \
-         --spec-file nss-job.json \
-         --data-source ./input.csv \
-         --output-dir ./nss-output
-       ```
-
-The command writes generated data, summaries, and any adapter output under `./nss-output`.
+3. Submit jobs through the SDK builder or Jobs API. See `docs/safe-synthesizer/sdk-resources.mdx`.
 
 ## Troubleshooting
 
 - If model downloads fail, confirm the Files API URL is reachable and the model filesets exist in the selected workspace.
-- If CUDA initialization fails, run `uv run nemo safe-synthesizer runtime info` and verify the runtime package matches the installed driver/runtime.
-- If the job cannot load input data, pass `--data-source` with a local file or confirm the fileset reference in the job spec.
+- If CUDA initialization fails, inspect the job logs and verify the task image matches the cluster driver/runtime.
+- If the job cannot load input data, confirm the fileset reference in the job spec.
 
 ## Related Links
 
-- `docs/safe-synthesizer/about/host-local-development.md` — host-local runs, adapter reuse, and tests
+- `docs/safe-synthesizer/about/host-local-development.mdx` - runtime setup and inspection
 - `docs/safe-synthesizer/about/reference.md`
 - `plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py`
 
@@ -83,4 +44,4 @@ The command writes generated data, summaries, and any adapter output under `./ns
 
 - Review the architecture reference: `docs/safe-synthesizer/about/reference.md`.
 - Run the model setup script: `plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py`.
-- Inspect local artifacts: `plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin/skills/safe-synthesizer/workflows/artifacts.md`.
+- Retrieve job artifacts: `plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin/skills/safe-synthesizer/workflows/artifacts.md`.

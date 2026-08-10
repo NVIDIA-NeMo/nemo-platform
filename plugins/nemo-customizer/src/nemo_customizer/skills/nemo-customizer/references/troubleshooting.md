@@ -285,7 +285,7 @@ Set `jobs.executors.docker.launcher_tool_path` in `~/.nemo/config.yaml` to the *
 
 | Error / symptom | Cause | Fix |
 |-----------------|-------|-----|
-| `Unsloth does not support local run` | Used `run` instead of `submit` | `nemo customization unsloth submit <job.json> -w <workspace>` |
+| `No such command 'run'` | Used the removed local run command instead of `submit` | `nemo customization unsloth submit <job.json> -w <workspace>` |
 | `Unsloth training requires platform.runtime: docker` | Platform not configured for Docker GPU jobs | Start platform with Docker runtime and a GPU execution profile |
 | Unknown execution profile | Default `gpu` profile missing or wrong | Re-list profiles; pass `--profile <exact-name>` on submit |
 | Missing `nmp-unsloth-training` image / `Failed to pull image` / `manifest unknown` | Image not on the **platform host's** Docker daemon | **Remote platform** (`NMP_BASE_URL` not localhost): tell user to build on the target — **do not** `docker build` locally. **Local platform**: build on same host; see **Missing training images** above and `docker/unsloth/README.md` |
