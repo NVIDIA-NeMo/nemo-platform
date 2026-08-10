@@ -78,6 +78,7 @@ def _ref(metric: MetricRef | MetricInline) -> MetricRef:
 def _task_input() -> TaskInput:
     return TaskInput(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Answer the question.",
             inputs=TaskInputs(instruction="What is 2+2?"),
             metrics=[MetricRef("default/stored-metric")],
@@ -116,6 +117,7 @@ async def test_create_normalizes_inline_metrics_to_refs(
     inline = _inline_metric()
     task_input = TaskInput(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Answer the question.",
             inputs=TaskInputs(instruction="What is 2+2?"),
             metrics=[MetricRef("default/stored-metric"), inline],
@@ -142,6 +144,7 @@ async def test_create_preserves_grader_only_reference(service: TaskService) -> N
     reference = {"expected": "Paris", "held_out_tests": ["test_capital.py"]}
     task_input = TaskInput(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Answer the question.",
             inputs=TaskInputs(instruction="What is the capital of France?"),
             reference=reference,
@@ -159,7 +162,7 @@ async def test_create_preserves_grader_only_reference(service: TaskService) -> N
 async def test_create_rejects_missing_metric_ref(service: TaskService) -> None:
     task_input = TaskInput(
         spec=EvaluatorTaskDefinition(
-            intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/nope")]
+            kind="evaluator", intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/nope")]
         )
     )
     with pytest.raises(MetricRefNotFoundError, match="not found"):
@@ -170,7 +173,7 @@ async def test_create_canonicalizes_bare_metric_ref(service: TaskService) -> Non
     # A bare "stored-metric" ref resolves against the task workspace and is persisted as "default/stored-metric".
     task_input = TaskInput(
         spec=EvaluatorTaskDefinition(
-            intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("stored-metric")]
+            kind="evaluator", intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("stored-metric")]
         )
     )
     created, _ = await service.create_task("task-1", task_input, workspace="default")
@@ -272,7 +275,10 @@ async def test_replace_leaves_no_uncovered_head_content_when_publishing_fails(
 
     changed = TaskInput(
         spec=EvaluatorTaskDefinition(
-            intent="Rewritten.", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/stored-metric")]
+            kind="evaluator",
+            intent="Rewritten.",
+            inputs=TaskInputs(instruction="?"),
+            metrics=[MetricRef("default/stored-metric")],
         )
     )
     with pytest.raises(RuntimeError):
@@ -386,6 +392,7 @@ async def test_resolve_revision_raises_for_a_missing_task(service: TaskService) 
 def _harbor_input(digest: str = "a" * 64) -> TaskInput:
     return TaskInput(
         spec=HarborTaskDefinition(
+            kind="harbor",
             archive_ref="default/harbor-tasks#packages/org-name/abc/dist.tar.gz",
             archive_digest=digest,
             instruction="Fix the failing test.",
@@ -449,6 +456,7 @@ async def test_harbor_config_is_stored_but_not_hashed(service: TaskService) -> N
 
     reserialized = TaskInput(
         spec=HarborTaskDefinition(
+            kind="harbor",
             archive_ref="default/harbor-tasks#packages/org-name/abc/dist.tar.gz",
             archive_digest="a" * 64,
             instruction="Fix the failing test.",
@@ -483,6 +491,7 @@ async def test_reference_only_change_publishes_a_revision(service: TaskService) 
     def _graded(expected: str) -> TaskInput:
         return TaskInput(
             spec=EvaluatorTaskDefinition(
+                kind="evaluator",
                 intent="Answer the question.",
                 inputs=TaskInputs(instruction="What is the capital of France?"),
                 reference={"expected": expected},

@@ -3467,7 +3467,7 @@ components:
           type: string
           const: evaluator
           title: Kind
-          default: evaluator
+          description: Task kind discriminator.
         intent:
           type: string
           title: Intent
@@ -3505,6 +3505,7 @@ components:
       additionalProperties: false
       type: object
       required:
+      - kind
       - intent
       title: EvaluatorTaskDefinition
       description: "What the agent should do, and how the platform scores it.\n\n\
@@ -3827,7 +3828,7 @@ components:
           type: string
           const: harbor
           title: Kind
-          default: harbor
+          description: Task kind discriminator.
         archive_ref:
           type: string
           pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
@@ -3859,6 +3860,7 @@ components:
       additionalProperties: false
       type: object
       required:
+      - kind
       - archive_ref
       - archive_digest
       title: HarborTaskDefinition

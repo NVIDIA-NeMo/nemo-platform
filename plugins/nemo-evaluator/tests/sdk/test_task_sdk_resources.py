@@ -26,6 +26,7 @@ def _task_payload(name: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     return Task(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Answer the question.",
             inputs={"instruction": "What is 2+2?"},
             metrics=[MetricRef("default/stored-metric")],
@@ -43,7 +44,10 @@ def _task_payload(name: str) -> dict[str, Any]:
 def _task_input() -> TaskInput:
     return TaskInput(
         spec=EvaluatorTaskDefinition(
-            intent="Answer.", inputs={"instruction": "x"}, metrics=[MetricRef("default/stored-metric")]
+            kind="evaluator",
+            intent="Answer.",
+            inputs={"instruction": "x"},
+            metrics=[MetricRef("default/stored-metric")],
         )
     )
 

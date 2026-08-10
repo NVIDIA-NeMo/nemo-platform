@@ -41,7 +41,7 @@ _MEMBERS = [TaskRef(f"default/task-a#{_DIGEST}")]
 
 def _task_head(*, intent: str = _INTENT, latest_revision: int = 0, tags: dict[str, int] | None = None) -> TaskEntity:
     return TaskEntity(
-        spec=EvaluatorTaskDefinition(intent=intent, inputs=_INPUTS, metrics=_METRICS),
+        spec=EvaluatorTaskDefinition(kind="evaluator", intent=intent, inputs=_INPUTS, metrics=_METRICS),
         name="task-1",
         workspace="default",
         metadata=_ANNOTATIONS,
@@ -52,7 +52,7 @@ def _task_head(*, intent: str = _INTENT, latest_revision: int = 0, tags: dict[st
 
 def _task_revision(*, intent: str = _INTENT, revision: int = 1, digest: str = _DIGEST) -> TaskRevisionEntity:
     return TaskRevisionEntity(
-        spec=EvaluatorTaskDefinition(intent=intent, inputs=_INPUTS, metrics=_METRICS),
+        spec=EvaluatorTaskDefinition(kind="evaluator", intent=intent, inputs=_INPUTS, metrics=_METRICS),
         name=f"rev.{revision}",
         workspace="default",
         content_hash=digest,

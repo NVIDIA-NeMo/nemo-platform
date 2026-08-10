@@ -28,7 +28,7 @@ class EvaluatorTaskDefinition(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["evaluator"] = "evaluator"
+    kind: Literal["evaluator"] = Field(description="Task kind discriminator.")
     intent: str = Field(description="Human-readable description of the desired agent behavior.")
     inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
     metrics: list[MetricRefOrInline] = Field(

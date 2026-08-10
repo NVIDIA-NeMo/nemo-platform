@@ -54,6 +54,7 @@ def _task(
 ) -> TaskEntity:
     return TaskEntity(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent=intent,
             inputs=inputs if inputs is not None else TaskInputs(instruction="What is 2+2?"),
             reference=reference if reference is not None else {},
@@ -70,6 +71,7 @@ def _task(
 def _harbor_task(*, config: dict[str, Any] | None = None, archive_digest: str = "a" * 64) -> TaskEntity:
     return TaskEntity(
         spec=HarborTaskDefinition(
+            kind="harbor",
             archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz",
             archive_digest=archive_digest,
             config=config if config is not None else {},

@@ -52,7 +52,8 @@ def _unique(prefix: str) -> str:
 
 def _task_input(intent: str = "Answer the question.", *, tags: list[str] | None = None) -> TaskInput:
     return TaskInput(
-        spec=EvaluatorTaskDefinition(intent=intent, inputs={"instruction": "What is 2+2?"}), tags=tags or []
+        spec=EvaluatorTaskDefinition(kind="evaluator", intent=intent, inputs={"instruction": "What is 2+2?"}),
+        tags=tags or [],
     )
 
 
@@ -266,6 +267,7 @@ def test_republishing_a_taskset_after_a_member_moves_cuts_a_revision(subprocess_
 def _harbor_input(digest: str = "a" * 64, *, config: dict | None = None) -> TaskInput:
     return TaskInput(
         spec=HarborTaskDefinition(
+            kind="harbor",
             archive_ref="default/harbor-tasks#packages/org-name/abc/dist.tar.gz",
             archive_digest=digest,
             instruction="Fix the failing test.",

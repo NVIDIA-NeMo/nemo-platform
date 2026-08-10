@@ -556,6 +556,7 @@ def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -
             name,
             task=TaskInput(
                 spec=EvaluatorTaskDefinition(
+                    kind="evaluator",
                     intent="Obtain a one-word reply from the model.",
                     inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
                     metrics=[MetricRef(f"{WORKSPACE}/{metric_name}")],

@@ -203,7 +203,10 @@ class FakeStore:
 def _head(store: FakeStore, *, intent: str = "Answer the question.") -> TaskEntity:
     head = TaskEntity(
         spec=EvaluatorTaskDefinition(
-            intent=intent, inputs=TaskInputs(instruction="What is 2+2?"), metrics=[MetricRef("default/stored-metric")]
+            kind="evaluator",
+            intent=intent,
+            inputs=TaskInputs(instruction="What is 2+2?"),
+            metrics=[MetricRef("default/stored-metric")],
         ),
         name="task-1",
         workspace="default",
@@ -224,6 +227,7 @@ def _head_named(store: FakeStore, name: str) -> TaskEntity:
     """A second record with content identical to :func:`_head`'s — same digest, different parent."""
     head = TaskEntity(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Answer the question.",
             inputs=TaskInputs(instruction="What is 2+2?"),
             metrics=[MetricRef("default/stored-metric")],

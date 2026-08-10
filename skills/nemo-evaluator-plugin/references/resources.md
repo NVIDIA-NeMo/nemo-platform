@@ -45,6 +45,7 @@ client.evaluator.tasks.create(
     "capital-france",
     task=TaskInput(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Name the capital of France.",
             inputs=TaskInputs(instruction="What is the capital of France?"),
             metrics=[MetricRef("answer-exact")],
@@ -80,6 +81,7 @@ client.evaluator.tasks.create(
     "capital-france-graded",
     task=TaskInput(
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Name the capital of France.",
             inputs=TaskInputs(instruction="What is the capital of France?"),
             reference={"expected": "Paris"},

@@ -36,7 +36,10 @@ _EntityT = TypeVar("_EntityT", bound=EntityBase)
 def _task(name: str, *, workspace: str = "default", metric: str = "default/m") -> TaskEntity:
     return TaskEntity(
         spec=EvaluatorTaskDefinition(
-            intent=f"Do {name}.", inputs=TaskInputs(instruction=f"instruction for {name}"), metrics=[MetricRef(metric)]
+            kind="evaluator",
+            intent=f"Do {name}.",
+            inputs=TaskInputs(instruction=f"instruction for {name}"),
+            metrics=[MetricRef(metric)],
         ),
         name=name,
         workspace=workspace,
@@ -373,7 +376,9 @@ async def test_expansion_rejects_a_task_whose_runner_the_target_cannot_run(entit
     harbor_task = TaskEntity(
         name="fix-test",
         workspace="default",
-        spec=HarborTaskDefinition(archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz", archive_digest="a" * 64),
+        spec=HarborTaskDefinition(
+            kind="harbor", archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz", archive_digest="a" * 64
+        ),
     )
     client = await _store(entity_store, harbor_task)
     await _create_published(client, _taskset("mixed", [f"default/fix-test#{head_digest(harbor_task)}"]))

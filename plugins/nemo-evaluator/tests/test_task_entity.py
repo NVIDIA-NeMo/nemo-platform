@@ -23,6 +23,7 @@ def _entity() -> TaskEntity:
         name="task-1",
         workspace="default",
         spec=EvaluatorTaskDefinition(
+            kind="evaluator",
             intent="Answer the question.",
             inputs={"instruction": "What is 2+2?"},
             # A persisted task holds metric references only — a workspace-qualified ref and a bare name.

@@ -49,7 +49,10 @@ def client(entity_store) -> TestClient:
 def _body(*, intent: str = "Answer the question.", tags: list[str] | None = None) -> dict:
     return TaskInput(
         spec=EvaluatorTaskDefinition(
-            intent=intent, inputs=TaskInputs(instruction="What is 2+2?"), metrics=[MetricRef("default/stored-metric")]
+            kind="evaluator",
+            intent=intent,
+            inputs=TaskInputs(instruction="What is 2+2?"),
+            metrics=[MetricRef("default/stored-metric")],
         ),
         tags=tags or [],
     ).model_dump(mode="json")
@@ -88,6 +91,25 @@ def test_create_missing_metric_ref_returns_422(client: TestClient) -> None:
     body = _body()
     body["spec"]["metrics"] = ["default/missing-metric"]
     assert client.post(f"{_BASE}/task-1", json=body).status_code == 422
+
+
+@pytest.mark.parametrize("method", ["post", "put"])
+def test_write_without_a_spec_kind_returns_422(client: TestClient, method: str) -> None:
+    """``spec`` is a discriminated union, so a raw body that omits ``kind`` has no variant to
+    validate against. ``kind`` is therefore required in both definitions — a schema that defaulted
+    it would tell a generated client it may be omitted, and every such request would 422."""
+    body = _body()
+    del body["spec"]["kind"]
+    response = getattr(client, method)(f"{_BASE}/task-1", json=body)
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "union_tag_not_found"
+
+
+@pytest.mark.parametrize("definition", [EvaluatorTaskDefinition, HarborTaskDefinition])
+def test_published_schema_requires_the_kind_discriminator(definition: type) -> None:
+    """The generated spec has to agree with the validator above: a default on ``kind`` would leave
+    it out of ``required``, and a client generated from that spec would omit it."""
+    assert "kind" in definition.model_json_schema()["required"]
 
 
 def test_create_duplicate_returns_409(client: TestClient) -> None:
@@ -287,7 +309,7 @@ def test_list_includes_harbor_tasks(client: TestClient) -> None:
         f"{_BASE}/harbor-task",
         json=TaskInput(
             spec=HarborTaskDefinition(
-                archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz", archive_digest="a" * 64
+                kind="harbor", archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz", archive_digest="a" * 64
             )
         ).model_dump(mode="json"),
     )

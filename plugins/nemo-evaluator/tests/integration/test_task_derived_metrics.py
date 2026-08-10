@@ -57,7 +57,7 @@ def _inline_metric(marker: str) -> MetricInline:
 def _task_input(metric: MetricInline) -> TaskInput:
     return TaskInput(
         spec=EvaluatorTaskDefinition(
-            intent="Answer the question.", inputs={"instruction": "What is 2+2?"}, metrics=[metric]
+            kind="evaluator", intent="Answer the question.", inputs={"instruction": "What is 2+2?"}, metrics=[metric]
         )
     )
 

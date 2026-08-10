@@ -74,6 +74,7 @@ def store_resources(client: Any) -> None:
         "capital-france",
         task=TaskInput(
             spec=EvaluatorTaskDefinition(
+                kind="evaluator",
                 intent="Name the capital of France.",
                 inputs=TaskInputs(instruction="What is the capital of France?"),
                 metrics=[MetricRef("answer-exact")],

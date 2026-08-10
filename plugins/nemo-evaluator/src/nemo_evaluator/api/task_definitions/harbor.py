@@ -29,7 +29,7 @@ class HarborTaskDefinition(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["harbor"] = "harbor"
+    kind: Literal["harbor"] = Field(description="Task kind discriminator.")
     archive_ref: str = Field(
         pattern=FILESET_REF_PATTERN,
         description="Files reference to the task's packaged directory (format: workspace/fileset#path).",
