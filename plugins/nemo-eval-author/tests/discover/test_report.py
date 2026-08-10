@@ -30,7 +30,7 @@ def _record(tmp_path, *, config: bool = True, checks: list[CheckResult] | None =
         repo_root=root,
         config_path=root / "configs" / "eval.yaml" if config else None,
         dataset_paths=[root / "evals" / "validation"],
-        ethos_path=root / "ETHOS.md",
+        ethos_path="ETHOS.md",
         harbor_version="0.18.0",
         required_env_vars=[
             RequiredEnvVar(name="HF_TOKEN", default=None, declared_in=root / "evals" / "validation" / "task.toml")

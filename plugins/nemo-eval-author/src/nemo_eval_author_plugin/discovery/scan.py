@@ -54,7 +54,7 @@ class RepositoryScan:
 
     config: ConfigCandidate | None
     dataset_paths: list[Path]
-    ethos_path: Path | None
+    ethos_path: str | None
     fingerprint: str
     input_file_count: int
     checks: list[CheckResult]
@@ -78,7 +78,7 @@ def walk_dirs(root: Path) -> Iterator[Path]:
         yield Path(current)
 
 
-def scan_repository(repo_root: Path) -> RepositoryScan:
+def scan_repository(repo_root: Path, *, platform_ethos: tuple[str, bytes] | None = None) -> RepositoryScan:
     """Find one repo-owned config and local Harbor datasets."""
     repo_root = repo_root.resolve()
     candidates = _config_candidates(repo_root)
@@ -107,11 +107,12 @@ def scan_repository(repo_root: Path) -> RepositoryScan:
             )
         )
 
-    ethos_path = repo_root / "ETHOS.md"
-    if ethos_path.is_file():
-        checks.append(_check("ethos", "pass", "ETHOS.md defines the agent doctrine.", severity="advisory"))
+    ethos = platform_ethos
+    if ethos is None and (repo_root / "ETHOS.md").is_file():
+        ethos = ("ETHOS.md", (repo_root / "ETHOS.md").read_bytes())
+    if ethos is not None:
+        checks.append(_check("ethos", "pass", f"{ethos[0]} defines the agent doctrine.", severity="advisory"))
     else:
-        ethos_path = None
         checks.append(
             _check(
                 "ethos",
@@ -123,8 +124,8 @@ def scan_repository(repo_root: Path) -> RepositoryScan:
         )
 
     datasets = _dataset_paths(repo_root)
-    fingerprint, count = _fingerprint(repo_root, config.path if config else None, ethos_path, datasets)
-    return RepositoryScan(config, datasets, ethos_path, fingerprint, count, checks)
+    fingerprint, count = _fingerprint(repo_root, config.path if config else None, ethos, datasets)
+    return RepositoryScan(config, datasets, ethos[0] if ethos else None, fingerprint, count, checks)
 
 
 def _config_candidates(repo_root: Path) -> list[ConfigCandidate]:
@@ -171,17 +172,16 @@ def _dataset_paths(repo_root: Path) -> list[Path]:
 def _fingerprint(
     repo_root: Path,
     config_path: Path | None,
-    ethos_path: Path | None,
+    ethos: tuple[str, bytes] | None,
     datasets: list[Path],
 ) -> tuple[str, int]:
-    files: set[Path] = {
-        path for path in (config_path, ethos_path, repo_root / "optimizer.yaml") if path and path.is_file()
-    }
+    files: set[Path] = {path for path in (config_path, repo_root / "optimizer.yaml") if path and path.is_file()}
     for dataset in datasets:
         if not dataset.is_relative_to(repo_root):
             continue
         for directory in walk_dirs(dataset):
             files.update(path for path in directory.iterdir() if path.is_file())
+    files.discard(repo_root / "ETHOS.md")
 
     digest = hashlib.sha256()
     for path in sorted(files):
@@ -189,7 +189,9 @@ def _fingerprint(
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
-    return digest.hexdigest(), len(files)
+    if ethos is not None:
+        digest.update(ethos[0].encode() + b"\0" + ethos[1] + b"\0")
+    return digest.hexdigest(), len(files) + (ethos is not None)
 
 
 async def probe_traces(client: Any, *, agent: str, workspace: str) -> CheckResult:

@@ -61,6 +61,9 @@ class StubFiles:
         self.uploads: list[dict[str, Any]] = []
         self.fail = fail
 
+    async def download_content(self, *, remote_path: str) -> bytes:
+        raise FileNotFoundError(remote_path)
+
     async def upload_content(self, *, content: bytes, remote_path: str, **kwargs: Any) -> None:
         if self.fail:
             raise RuntimeError("fileset unavailable")

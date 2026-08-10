@@ -25,7 +25,7 @@ class DiscoveryReport:
     repo_root: Path
     config_path: Path | None
     dataset_paths: list[Path]
-    ethos_path: Path | None
+    ethos_path: str | None
     harbor_version: str
     required_env_vars: list[RequiredEnvVar]
     discovered_at: datetime
@@ -105,7 +105,7 @@ def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
         "config_path": _display_path(report.config_path, report.repo_root),
         "dataset_paths": [_display_path(path, report.repo_root) for path in report.dataset_paths],
         "run_command": report.run_command,
-        "ethos_path": _display_path(report.ethos_path, report.repo_root),
+        "ethos_path": report.ethos_path,
         "harbor_version": report.harbor_version,
         "required_env_vars": [
             {

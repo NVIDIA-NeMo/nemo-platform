@@ -65,6 +65,24 @@ def _snapshot(root: Path) -> list[tuple[str, bytes | None]]:
     ]
 
 
+def test_command_reads_the_canonical_platform_agent_spec(app, client, monkeypatch, tmp_path):
+    repo = _healthy_repo(tmp_path / "agent-repo")
+    (repo / "ETHOS.md").write_text("# Local\n", encoding="utf-8")
+    ref = f"default/{AGENT}-spec#AGENT-SPEC.md"
+    download = AsyncMock(side_effect=[b"# Platform one\n", b"# Platform two\n"])
+    monkeypatch.setattr(client.files, "download_content", download)
+
+    first = _invoke(app, repo, "--agent", AGENT)
+    first_front = read_front_matter(client.files.stored[f"{AGENT}/discovery.md"])
+    second = _invoke(app, repo, "--agent", AGENT)
+    second_front = read_front_matter(client.files.stored[f"{AGENT}/discovery.md"])
+
+    assert (first.exit_code, second.exit_code) == (0, 0)
+    assert first_front["ethos_path"] == ref
+    assert first_front["fingerprint"] != second_front["fingerprint"]
+    assert [awaited.kwargs for awaited in download.await_args_list] == [{"remote_path": ref}] * 2
+
+
 def test_healthy_config_uploads_only_discovery_report_and_does_not_write_to_repo(app, client, tmp_path):
     repo = _healthy_repo(tmp_path / "agent-repo")
     before = _snapshot(repo)

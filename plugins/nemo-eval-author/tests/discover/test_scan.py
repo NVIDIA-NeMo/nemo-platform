@@ -89,7 +89,7 @@ def test_uses_only_ethos_for_the_doctrine_contract(tmp_path):
     ethos.write_text("# Agent doctrine\n", encoding="utf-8")
     with_ethos = scan.scan_repository(tmp_path)
 
-    assert with_ethos.ethos_path == ethos
+    assert with_ethos.ethos_path == "ETHOS.md"
     assert any(check.name == "ethos" and check.status == "pass" for check in with_ethos.checks)
 
 

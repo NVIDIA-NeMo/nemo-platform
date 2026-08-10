@@ -63,7 +63,12 @@ async def _discover(
     agent: str,
     workspace: str,
 ) -> DiscoverResult:
-    scan_result = scan.scan_repository(repo_root)
+    ref = f"{workspace}/{agent}-spec#AGENT-SPEC.md"
+    try:
+        platform_ethos = (ref, await client.files.download_content(remote_path=ref))
+    except Exception:
+        platform_ethos = None
+    scan_result = scan.scan_repository(repo_root, platform_ethos=platform_ethos)
     validation = validate.ValidationOutcome()
     if scan_result.config is not None:
         validation = await validate.run_ladder(scan_result.config, repo_root)
