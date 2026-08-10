@@ -18,7 +18,7 @@ from nmp.intake.spans.ingest.atif_domain import (
     AtifSubagentTrajectoryRef,
     AtifTrajectory,
 )
-from nmp.intake.spans.ingest.atif_mapping import AtifTrajectoryDepthError, trajectory_to_spans
+from nmp.intake.spans.ingest.atif_mapping import AtifTrajectoryDepthError, _step_observation, trajectory_to_spans
 from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from pydantic import ValidationError
 
@@ -1091,10 +1091,19 @@ def test_atif_v17_observation_on_nested_system_step() -> None:
     assert system_step.observation is not None
     assert system_step.observation.results[0].content == "is_likely_phishing: true"
 
-    # The non-agent observation maps without error and produces spans.
+    # Map the whole tree. The nested system step is emitted as its own span;
+    # previously the entire POST 422'd before any span could be stored.
     spans = trajectory_to_spans(
         workspace="default",
         trajectory=trajectory,
         ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    assert spans
+    system_span = next((s for s in spans if s.name == "system-1"), None)
+    assert system_span is not None, "nested system step should map to a span"
+
+    # Guard the mapper fix: `_step_observation` must read observations on
+    # non-agent steps. If it regresses to agent-only (returns None), the
+    # observation is lost even though the POST is now accepted.
+    observation = _step_observation(system_step)
+    assert observation is not None
+    assert observation.results[0].content == "is_likely_phishing: true"
