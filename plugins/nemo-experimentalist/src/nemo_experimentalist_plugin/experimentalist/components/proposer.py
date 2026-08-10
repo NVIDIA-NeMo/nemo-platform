@@ -284,19 +284,17 @@ class Proposer(Agent, roles.Proposer):
         Deduplicates by optimization text and truncates to the round's budget — the cut
         falls on the kept list, since a surplus improvement past it may be the only
         usable one.
+
+        A repeated ``optimization_type`` is fine (#1163): there are twenty of them and
+        two genuinely different changes to the same method share one, so it is not
+        evidence of a malformed batch. Duplicate *text* is, and is dropped below.
         """
-        seen_types: set[str] = set()
         if not improvements:
             raise ValueError("Proposer returned no improvements")
 
         kept: list[Improvement] = []
         seen_descriptions: set[str] = set()
         for improvement in improvements:
-            optimization_type = improvement.optimization_type
-            if optimization_type in seen_types:
-                raise ValueError(f"Proposer returned duplicate optimization_type {optimization_type!r}")
-            seen_types.add(optimization_type)
-
             description = improvement.optimization.strip()
             if description in seen_descriptions:
                 logger.warning("dropping improvement with duplicate optimization text: %r", description)

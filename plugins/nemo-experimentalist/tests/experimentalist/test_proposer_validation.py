@@ -69,3 +69,42 @@ def test_a_near_miss_optimization_type_is_dropped_not_fatal() -> None:
     )
 
     assert [improvement.optimization_type for improvement in usable] == ["add_method"]
+
+
+def test_two_improvements_may_share_an_optimization_type() -> None:
+    """#1163: a repeated type is not evidence of a malformed batch.
+
+    There are twenty optimization types and two genuinely different edits to the same
+    method share one, so raising here ends a paid-for round over nothing. A real
+    duplicate is caught by the text check below instead. This killed a live
+    generalization run, where the Proposer returned two distinct fixes both typed
+    `edit_concrete_method`.
+    """
+    kept = Proposer._validate_improvements(
+        improvements=[
+            _improvement("id-agent-0", optimization_type="edit_concrete_method"),
+            Improvement(
+                ancestor="id-agent-0",
+                optimization="reorder the dispatch chain",
+                root_cause="the list handler shadows the count handler",
+                optimization_type="edit_concrete_method",
+                task_ids=["task-2"],
+            ),
+        ],
+        max_candidates=2,
+    )
+
+    assert [improvement.optimization for improvement in kept] == [
+        "add a retrieval step",
+        "reorder the dispatch chain",
+    ]
+
+
+def test_the_same_optimization_text_twice_is_dropped_to_one() -> None:
+    """Identical text is a real duplicate: building it twice buys nothing."""
+    kept = Proposer._validate_improvements(
+        improvements=[_improvement("id-agent-0"), _improvement("id-agent-0", optimization_type="add_tool")],
+        max_candidates=2,
+    )
+
+    assert len(kept) == 1
