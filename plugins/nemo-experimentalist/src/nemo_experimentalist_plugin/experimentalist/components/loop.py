@@ -131,23 +131,60 @@ def _coerce_optimization_type(optimization_type: str | None) -> OptimizationType
     return None
 
 
+def _creation_order(node: EvolutionNode) -> tuple[int, str]:
+    """Order candidates by creation, independently of how the caller ordered them.
+
+    Labels are run-scoped and assigned in sequence (``agent-0``, ``agent-1``, ...), so
+    the numeric suffix recovers creation order. The label itself is the final component
+    so the key stays total if a label ever stops matching that shape.
+    """
+    _, _, suffix = node.label.rpartition("-")
+    return (int(suffix) if suffix.isdigit() else 0, node.label)
+
+
+def _regresses(
+    node: EvolutionNode,
+    baseline: EvolutionNode,
+    regression_metrics: list[MetricTarget],
+) -> bool:
+    """Whether *node* is worse than *baseline* on any metric that must not regress.
+
+    A target missing from either side is skipped: absent evidence is not a regression.
+    """
+    if node is baseline:
+        return False
+    for target in regression_metrics:
+        before = baseline.val_reward.get(target.name)
+        after = node.val_reward.get(target.name)
+        if before is None or after is None:
+            continue
+        if after < before if target.direction == "maximize" else after > before:
+            return True
+    return False
+
+
 def select_winner_node(
     eligible: list[EvolutionNode],
     objective_function: list[MetricTarget],
+    regression_metrics: list[MetricTarget] | None = None,
 ) -> EvolutionNode | None:
-    """Return the run's winner: non-dominated, oldest candidate wins ties.
+    """Return the run's winner, or None when there is nothing eligible.
 
-    Deliberately *not* ``select_diverse_survivors``. Picking a winner and picking a
-    set to carry into the next round are different questions. The selector is told to
-    always include a candidate created this round, so at ``k=1`` that rule consumes the
-    only slot and the round-0 baseline can never be returned -- meaning a run always
-    ships a diff, even one that measured no better than doing nothing.
+    Candidates that worsen a ``regression_metrics`` target against the baseline are
+    dropped before ranking, so a gain on the objectives cannot pay for a regression.
+    The winner is then taken from the Pareto front over ``objective_function``, with
+    ties going to the lowest round and then to creation order.
 
-    Preferring the lowest round only decides ties: a candidate that genuinely improves
-    dominates its ancestor and removes it from the front before this is consulted.
+    The baseline is the oldest eligible candidate and is never dropped, so a run whose
+    candidates all regress -- or all merely tie -- keeps it rather than shipping a diff
+    that bought nothing.
     """
-    front = pareto_front(eligible, lambda node: pareto_objectives(node.val_reward, objective_function))
-    return min(front, key=lambda node: node.round) if front else None
+    if not eligible:
+        return None
+    baseline = min(eligible, key=lambda node: (node.round, _creation_order(node)))
+    kept = [node for node in eligible if not _regresses(node, baseline, regression_metrics or [])]
+    front = pareto_front(kept, lambda node: pareto_objectives(node.val_reward, objective_function))
+    return min(front, key=lambda node: (node.round, _creation_order(node))) if front else None
 
 
 def _with_insight_objective(
@@ -1807,7 +1844,7 @@ class EvolutionaryOptimizer(Agent):
         # Only survivors that actually have a validation reward are eligible winners.
         scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
         eligible = [node for node in scored if has_metric_dimensions(node.val_reward, self.config.objective_function)]
-        best = select_winner_node(eligible, self.config.objective_function)
+        best = select_winner_node(eligible, self.config.objective_function, self.config.regression_metrics)
         best_id = best.label if best else None
 
         restore_heldout_splits(self.working_dir)
