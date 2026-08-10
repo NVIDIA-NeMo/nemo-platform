@@ -14,6 +14,7 @@ import json
 import logging
 import shutil
 import subprocess
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Iterator, Optional
@@ -37,6 +38,10 @@ OVERRIDES_FILE = overrides_file = Path(__file__).parent / "overrides.yaml"
 _PYPI_JSON_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 SAFE_URL_SCHEMES = {"http", "https"}
+GO_LICENSE_LOCKFILES = (
+    Path("services/core/jobs/jobs-launcher/go.mod"),
+    Path("services/guardrails/callouts/go.mod"),
+)
 
 PROJECT_URL_REPOSITORY_KEYS = (
     "Source",
@@ -213,6 +218,41 @@ def _sanitize_osv_json(output_file: Path) -> None:
         json.dump(data, f, indent=2)
 
 
+def _merge_osv_json_files(output_file: Path, input_files: list[Path]) -> None:
+    """Merge OSV JSON scan result arrays into a single JSON artifact."""
+    merged: dict[str, Any] = {"results": []}
+    license_summary: Counter[str] = Counter()
+
+    for input_file in input_files:
+        with open(input_file, encoding="utf-8") as f:
+            data = json.load(f)
+
+        merged["results"].extend(data.get("results", []))
+        for entry in data.get("license_summary", []):
+            name = entry.get("name", "")
+            count = entry.get("count", 0)
+            if name and isinstance(count, int):
+                license_summary[name] += count
+
+        if "experimental_config" in data and "experimental_config" not in merged:
+            merged["experimental_config"] = data["experimental_config"]
+
+    if license_summary:
+        merged["license_summary"] = [
+            {"name": name, "count": count}
+            for name, count in sorted(license_summary.items(), key=lambda item: (-item[1], item[0]))
+        ]
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(merged, f, indent=2)
+
+
+def _iter_osv_package_entries(data: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Yield package entries across all OSV scanner results."""
+    for result in data.get("results", []):
+        yield from result.get("packages", [])
+
+
 def _sanitize_requirements_file(requirements_file: Path) -> None:
     """
     Remove machine-specific absolute paths from requirements file comments.
@@ -344,7 +384,14 @@ def _get_requirements_with_overrides(
         if override_key not in overrides:
             continue
 
-        packages.append({"name": name, "version": version, "license": overrides[override_key].upper()})
+        packages.append(
+            {
+                "name": name,
+                "version": version,
+                "ecosystem": "PyPI",
+                "license": overrides[override_key].upper(),
+            }
+        )
 
     return packages
 
@@ -399,46 +446,60 @@ def format_licenses(
 
             # Extract package info from OSV data
             packages = []
-            if "results" in data and len(data["results"]) > 0:
-                for pkg_data in data["results"][0].get("packages", []):
-                    pkg = pkg_data.get("package", {})
-                    name = pkg.get("name", "")
-                    version = pkg.get("version", "")
-                    licenses = pkg_data.get("licenses", [])
-                    normalized_name = normalize_package_name(name)
+            for pkg_data in _iter_osv_package_entries(data):
+                pkg = pkg_data.get("package", {})
+                name = pkg.get("name", "")
+                version = pkg.get("version", "")
+                ecosystem = pkg.get("ecosystem", "")
+                licenses = pkg_data.get("licenses", [])
+                normalized_name = normalize_package_name(name)
 
-                    # Skip local packages
-                    if normalized_name in local_packages:
-                        continue
+                # Skip local packages
+                if normalized_name in local_packages:
+                    continue
 
-                    # OSV can include conditional transitive dependencies that
-                    # uv did not export for this environment.
-                    if exported_requirement_names and normalized_name not in exported_requirement_names:
-                        continue
+                # OSV can include conditional transitive Python dependencies that
+                # uv did not export for this environment. Other ecosystems are
+                # scanned directly from their own lockfiles and should not be
+                # filtered through requirements-main.txt.
+                if (
+                    ecosystem.lower() in {"", "pypi"}
+                    and exported_requirement_names
+                    and normalized_name not in exported_requirement_names
+                ):
+                    continue
 
-                    # Check overrides (use base name so +cu129 variants match)
-                    override_key = get_override_key_for_package(name, version)
-                    if override_key in overrides:
-                        license_str = overrides[override_key]
-                    elif not licenses:
-                        continue
-                    else:
-                        # Resolve to a single license, preferring allowed ones
-                        license_str = resolve_license(licenses, ALLOWED_LICENSES)
+                # Check overrides (use base name so +cu129 variants match)
+                override_key = get_override_key_for_package(name, version)
+                if override_key in overrides:
+                    license_str = overrides[override_key]
+                elif not licenses:
+                    continue
+                else:
+                    # Resolve to a single license, preferring allowed ones
+                    license_str = resolve_license(licenses, ALLOWED_LICENSES)
 
-                    packages.append({"name": name, "version": version, "license": license_str.upper()})
+                packages.append(
+                    {
+                        "name": name,
+                        "version": version,
+                        "ecosystem": ecosystem,
+                        "license": license_str.upper(),
+                    }
+                )
 
             # OSV can emit a partial package list when the service is degraded.
             # Keep output stable for reviewed licenses by filling only packages
             # that are present in the exported requirements and overrides.yaml.
             packages.extend(_get_requirements_with_overrides(requirements_file, overrides, local_packages))
 
-            # Deduplicate by name (keep first occurrence)
+            # Deduplicate by ecosystem/name (keep first occurrence)
             seen_names = set()
             unique_packages = []
             for pkg in packages:
-                if pkg["name"] not in seen_names:
-                    seen_names.add(pkg["name"])
+                package_key = (str(pkg.get("ecosystem", "")).lower(), normalize_package_name(pkg["name"]))
+                if package_key not in seen_names:
+                    seen_names.add(package_key)
                     unique_packages.append(pkg)
 
             # Sort by name
@@ -538,6 +599,7 @@ def generate_project_licenses(
     format_type: str = "table",
     extras: Optional[list[str]] = None,
     packages: Optional[list[str]] = None,
+    additional_lockfiles: Optional[list[Path]] = None,
 ) -> str:
     """
     Generate licenses for a single project.
@@ -553,6 +615,7 @@ def generate_project_licenses(
         format_type: Output format (table, jsonl, json, csv, markdown, text)
         extras: Optional list of extras to include (e.g., ["cu129"])
         packages: Optional list of workspace packages to include via --package flag
+        additional_lockfiles: Optional lockfiles to scan and merge into osv_json
 
     Returns:
         Success message
@@ -565,8 +628,17 @@ def generate_project_licenses(
 
         generate_lockfile_without_dev_dependencies(lockfile_dir, output_lockfile, extras=extras, packages=packages)
 
-        # Run osv-scanner
+        # Run osv-scanner for the Python export.
         run_osv_scanner(output_lockfile, osv_json, cwd=cwd)
+
+        osv_json_files = [osv_json]
+        for lockfile in additional_lockfiles or []:
+            scan_output = osv_json.with_name(f"{osv_json.stem}-{lockfile.parent.name}{osv_json.suffix}")
+            run_osv_scanner(lockfile, scan_output, cwd=cwd)
+            osv_json_files.append(scan_output)
+
+        if len(osv_json_files) > 1:
+            _merge_osv_json_files(osv_json, osv_json_files)
 
         # Format output
         format_licenses(osv_json, output_file, overrides_file, format_type=format_type)
@@ -599,6 +671,7 @@ def get_projects(workspace_root: Path, output_file: Optional[Path] = None) -> li
             "cwd": workspace_root,
             "overrides_file": OVERRIDES_FILE,
             "packages": ["nemoplatform"],
+            "additional_lockfiles": [workspace_root / lockfile for lockfile in GO_LICENSE_LOCKFILES],
         },
     ]
     return projects
@@ -637,6 +710,7 @@ def generate_all_licenses(
                     format_type,
                     proj.get("extras"),
                     proj.get("packages"),
+                    proj.get("additional_lockfiles"),
                 ): proj["name"]
                 for proj in projects
             }
@@ -663,6 +737,7 @@ def generate_all_licenses(
                 format_type,
                 proj.get("extras"),
                 proj.get("packages"),
+                proj.get("additional_lockfiles"),
             )
             logger.info(message)
 
