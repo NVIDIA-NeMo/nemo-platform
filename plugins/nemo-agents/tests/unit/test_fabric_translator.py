@@ -113,7 +113,10 @@ class TestTranslateAgentConfig:
         assert fabric_config.environment.artifacts == "./artifacts"
         assert fabric_config.relay is None
 
-    def test_selected_harness_uses_default_model(self) -> None:
+    def test_selected_harness_uses_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEMO_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_WORKSPACE", raising=False)
         config = AgentConfig.model_validate(_example_yaml_config())
 
         fabric_config = translate_agent_config(config, harness_name="codex")
