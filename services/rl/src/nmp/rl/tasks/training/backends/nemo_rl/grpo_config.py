@@ -301,8 +301,8 @@ def compile_grpo_config(
         "logprob_chunk_size": 2048,
         "offload_optimizer_for_logprob": False,
         "max_grad_norm": grpo_hp.max_grad_norm,
+        # Do not set `_v2`: selects DTensorPolicyWorkerV2, whose `automodel` extra the image does not build.
         "dtensor_cfg": {
-            "_v2": True,
             "enabled": True,
             "cpu_offload": False,
             "sequence_parallel": parallelism.sequence_parallel,
