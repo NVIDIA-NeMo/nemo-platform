@@ -237,7 +237,10 @@ function "sha_and_maybe_latest_tags" {
 function "maybe_registry_cache_to" {
   params = [name]
   result = [
-    and(notequal(BAKE_CACHE_TARGET_BRANCH, ""), notequal(BUILD_ARCH, "")) ? "type=registry,ref=${CACHE_REGISTRY}/${name}:${CACHE_VERSION}-${BAKE_CACHE_TARGET_BRANCH}-${get_arch_tag()},mode=max,compression=zstd,force-compression=true" : ""
+    # BUILD_ARCH is empty for the multi-platform GitHub Actions build, which
+    # writes one aggregate cache manifest. Per-architecture builders retain
+    # their existing suffixed cache tags.
+    notequal(BAKE_CACHE_TARGET_BRANCH, "") ? "type=registry,ref=${CACHE_REGISTRY}/${name}:${CACHE_VERSION}-${BAKE_CACHE_TARGET_BRANCH}${notequal(BUILD_ARCH, "") ? "-${get_arch_tag()}" : ""},mode=max,compression=zstd,force-compression=true" : ""
   ]
 }
 
@@ -249,8 +252,12 @@ function "image_output" {
 function "maybe_registry_cache_from" {
   params = [name]
   result = [
+    # Prefer the aggregate multi-platform cache, then fall back to the legacy
+    # per-architecture caches populated by split builders.
+    notequal(BAKE_CACHE_SOURCE_BRANCH, "") ? "type=registry,ref=${CACHE_REGISTRY}/${name}:${CACHE_VERSION}-${BAKE_CACHE_SOURCE_BRANCH}" : "",
     notequal(BAKE_CACHE_SOURCE_BRANCH, "") ? "type=registry,ref=${CACHE_REGISTRY}/${name}:${CACHE_VERSION}-${BAKE_CACHE_SOURCE_BRANCH}-linux-arm64" : "",
     notequal(BAKE_CACHE_SOURCE_BRANCH, "") ? "type=registry,ref=${CACHE_REGISTRY}/${name}:${CACHE_VERSION}-${BAKE_CACHE_SOURCE_BRANCH}-linux-amd64" : "",
+    and(notequal(CACHE_REGISTRY_BACKUP, ""), notequal(BAKE_CACHE_SOURCE_BRANCH, "")) ? "type=registry,ref=${CACHE_REGISTRY_BACKUP}/${name}:${CACHE_VERSION}-${BAKE_CACHE_SOURCE_BRANCH}" : "",
     and(notequal(CACHE_REGISTRY_BACKUP, ""), notequal(BAKE_CACHE_SOURCE_BRANCH, "")) ? "type=registry,ref=${CACHE_REGISTRY_BACKUP}/${name}:${CACHE_VERSION}-${BAKE_CACHE_SOURCE_BRANCH}-linux-arm64" : "",
     and(notequal(CACHE_REGISTRY_BACKUP, ""), notequal(BAKE_CACHE_SOURCE_BRANCH, "")) ? "type=registry,ref=${CACHE_REGISTRY_BACKUP}/${name}:${CACHE_VERSION}-${BAKE_CACHE_SOURCE_BRANCH}-linux-amd64" : "",
   ]

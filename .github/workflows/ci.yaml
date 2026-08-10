@@ -34,6 +34,11 @@ env:
   # required-version out of pyproject.toml, actions/setup-node pins Node), so
   # the Makefile should call those rather than a mise it never installed.
   NMP_SKIP_MISE: 1
+  # Repository events consume the cache maintained by full main-push CI. Fork
+  # pull requests cannot authenticate to private GHCR packages, so leave their
+  # cache source empty. Only trusted main pushes may update the shared cache.
+  BAKE_CACHE_SOURCE_BRANCH: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'main' || '' }}
+  BAKE_CACHE_TARGET_BRANCH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || '' }}
 
 jobs:
   changes:
@@ -175,6 +180,25 @@ jobs:
           make docker-print TARGET=nmp-automodel-gpu-wheels
           make docker-print TARGET=nmp-automodel
           make docker-print TARGET=nmp-unsloth
+      - name: Verify multi-platform registry cache graph
+        shell: bash
+        env:
+          BAKE_CACHE_SOURCE_BRANCH: main
+          BAKE_CACHE_TARGET_BRANCH: main
+          CACHE_REGISTRY: ghcr.io/example/nemo-platform
+        run: |
+          set -euo pipefail
+          graph="${RUNNER_TEMP}/docker-bake-cache-graph.json"
+          docker buildx bake -f docker-bake.hcl --print nmp-api-docker > "$graph"
+          jq -e --arg ref "${CACHE_REGISTRY}/nmp-api:cache-main" \
+            '.target["nmp-api-docker"]["cache-to"] | any(.type == "registry" and .ref == $ref and .mode == "max")' \
+            "$graph"
+          jq -e --arg ref "${CACHE_REGISTRY}/nmp-api:cache-main" \
+            '.target["nmp-api-docker"]["cache-from"] | any(.type == "registry" and .ref == $ref)' \
+            "$graph"
+          jq -e \
+            '.target["nmp-api-docker"].platforms == ["linux/amd64", "linux/arm64"]' \
+            "$graph"
 
   build-cpu-smoke-images:
     name: Build CPU smoke images
@@ -288,7 +312,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           version-file: pyproject.toml
-          cache-dependency-glob: uv.lock
+          enable-cache: false
 
       - name: Populate fastembed model cache
         if: steps.fastembed-cache.outputs.cache-hit != 'true'
@@ -304,7 +328,7 @@ jobs:
             -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q .
 
       - name: Log in to GHCR
-        if: env.PUBLISH_IMAGES == 'true'
+        if: env.PUBLISH_IMAGES == 'true' || env.BAKE_CACHE_SOURCE_BRANCH != ''
         shell: bash
         env:
           GHCR_TOKEN: ${{ github.token }}
@@ -346,6 +370,7 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -389,6 +414,15 @@ jobs:
             printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
           } >> "$GITHUB_ENV"
 
+      - name: Log in to GHCR for registry cache
+        if: env.BAKE_CACHE_SOURCE_BRANCH != ''
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
       - name: Print Docker bake graph
         shell: bash
         run: make docker-print TARGET=docker-auditor
@@ -409,6 +443,7 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -455,6 +490,15 @@ jobs:
             printf 'BAKE_TAG=%s\n' "$bake_tag"
             printf 'CI_COMMIT_SHA=%s\n' "$source_sha"
           } >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR for registry cache
+        if: env.BAKE_CACHE_SOURCE_BRANCH != ''
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       - name: Print Docker bake graph
         shell: bash
@@ -786,7 +830,13 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.12"
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          # Isolate full-workspace installs from lightweight jobs. The versioned,
+          # unpruned profile also replaces the undersized exact-hit cache.
+          cache-suffix: workspace-v1
+          prune-cache: false
       - name: Check uv lockfile
         run: uv lock --check
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -858,7 +908,12 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
+          save-cache: false
       - name: Run tools unit tests
         run: uv run pytest tools -v --junit-xml=report.xml
       - name: Upload test artifacts
@@ -890,7 +945,11 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
       - name: Run unit tests
         run: make test-unit-ci
         env:
@@ -1021,7 +1080,11 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
       - name: Log in to Docker Hub
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -1076,7 +1139,12 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
+          save-cache: false
       - name: Run auth-idp static tests
         run: |
           set -euo pipefail
@@ -1148,7 +1216,12 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
+          save-cache: false
       - name: Setup Kind cluster
         if: matrix.backend == 'kubernetes'
         uses: ./.github/actions/setup-kind-cluster
@@ -1383,7 +1456,11 @@ jobs:
         with:
           python-version: "3.13"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
       - name: Run e2e tests
         run: make test-e2e
         env:
@@ -1447,7 +1524,12 @@ jobs:
         with:
           python-version: "3.13"
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+          cache-suffix: workspace-v1
+          prune-cache: false
+          save-cache: false
       - name: Log in to GHCR
         shell: bash
         env:
