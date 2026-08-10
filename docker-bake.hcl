@@ -33,7 +33,9 @@ variable "NMP_PYTHON_IMAGE" {
 }
 
 variable "NMP_API_RUNTIME_BASE" {
-  default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
+  # Keep the default API runtime on the Python base because local subprocess
+  # jobs rely on shell/coreutils. Override this to test distroless explicitly.
+  default = "nmp-python-base"
 }
 
 variable "AUTOMODEL_BASE_CONTEXT" {

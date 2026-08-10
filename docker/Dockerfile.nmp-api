@@ -2,7 +2,7 @@
 # NMP API - All Python services (core + application)
 
 ARG NMP_PYTHON_BASE=nmp-python-base
-ARG NMP_API_RUNTIME_BASE=nvcr.io/nvidia/distroless/python:3.13-v4.0.9
+ARG NMP_API_RUNTIME_BASE=nmp-python-base
 
 FROM ${NMP_PYTHON_BASE} AS builder
 COPY --from=nmp-workspace . .
