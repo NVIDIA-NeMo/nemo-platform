@@ -103,9 +103,7 @@ def assemble_master_egress_allow(
     host_vllm = vllm_host or os.environ.get(NMP_VLLM_HOST_ENVVAR) or "127.0.0.1"
     port_vllm = vllm_port if vllm_port is not None else int(os.environ.get(NMP_VLLM_PORT_ENVVAR, "8000"))
     host_broker = broker_host or os.environ.get(NMP_BROKER_HOST_ENVVAR) or "127.0.0.1"
-    port_broker = (
-        broker_port if broker_port is not None else int(os.environ.get(NMP_BROKER_PORT_ENVVAR, "51234"))
-    )
+    port_broker = broker_port if broker_port is not None else int(os.environ.get(NMP_BROKER_PORT_ENVVAR, "51234"))
     return [
         GymHostEgressRule(host=host_vllm, port=port_vllm),
         GymHostEgressRule(host=host_broker, port=port_broker),

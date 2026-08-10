@@ -8,14 +8,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-
 from nmp.rl.schemas.environment import (
     ENVIRONMENT_MANIFEST_ADAPTER,
     AdapterWheelsV1Manifest,
     EnvironmentFormat,
     EnvironmentManifest,
     GymVerifiersDatasetRow,
-    WheelsV1Manifest,
 )
 from nmp.rl.tasks.environment.allowlist import IMAGE_ADAPTER_ALLOWLIST
 
@@ -27,9 +25,7 @@ class EnvironmentPackageValidationError(ValueError):
 def load_manifest(env_root: Path) -> EnvironmentManifest:
     manifest_path = env_root / "nemo-environment.yaml"
     if not manifest_path.is_file():
-        raise EnvironmentPackageValidationError(
-            f"Missing nemo-environment.yaml at environment root: {env_root}"
-        )
+        raise EnvironmentPackageValidationError(f"Missing nemo-environment.yaml at environment root: {env_root}")
     raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise EnvironmentPackageValidationError("nemo-environment.yaml must be a mapping")
@@ -89,9 +85,7 @@ def validate_dataset_rows(
                 f"agent_ref.name {item.agent_ref.name!r} != expected {expected_agent!r}"
             )
         if expected_vf_env_id and item.vf_env_id != expected_vf_env_id:
-            raise EnvironmentPackageValidationError(
-                f"vf_env_id {item.vf_env_id!r} != expected {expected_vf_env_id!r}"
-            )
+            raise EnvironmentPackageValidationError(f"vf_env_id {item.vf_env_id!r} != expected {expected_vf_env_id!r}")
         parsed.append(item)
     return parsed
 

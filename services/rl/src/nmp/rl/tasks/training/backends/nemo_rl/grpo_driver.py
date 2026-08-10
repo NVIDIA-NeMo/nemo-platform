@@ -50,9 +50,7 @@ def _maybe_bootstrap_environment(config: MasterConfig) -> None:
         sandbox = nemo_gym.get("sandbox")
         if isinstance(sandbox, dict):
             policy = sandbox.setdefault("network_policy", {})
-            policy["egress_allow"] = [
-                {"host": rule.host, "port": rule.port} for rule in assemble_master_egress_allow()
-            ]
+            policy["egress_allow"] = [{"host": rule.host, "port": rule.port} for rule in assemble_master_egress_allow()]
             logger.info("Applied master egress allowlist: %s", policy["egress_allow"])
         return
 
