@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 
 import pytest
@@ -169,4 +170,17 @@ async def test_rollup_query_failure_requeues() -> None:
     refresher = _refresher(repo, _FakeEntityClient())
     refresher.mark_dirty(workspace="default", evaluation_id="eval-a")
     await refresher.flush()
+    assert refresher.pending() == {("default", "eval-a")}
+
+
+@pytest.mark.asyncio
+async def test_stop_bounded_drain_does_not_hang_on_persistent_requeue() -> None:
+    # A persistent optimistic-lock conflict re-queues the evaluation on every flush. stop() must
+    # terminate (bounded drain) rather than loop forever, leaving the key queued.
+    entity_client = _FakeEntityClient(update_error=EntityConflictError("version mismatch"))
+    refresher = _refresher(_FakeRollupRepo(), entity_client)
+    refresher.mark_dirty(workspace="default", evaluation_id="eval-a")
+    refresher.start()
+    # wait_for turns a (regressed) infinite drain into a failure instead of a hung test.
+    await asyncio.wait_for(refresher.stop(), timeout=5)
     assert refresher.pending() == {("default", "eval-a")}

@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 KeyT = TypeVar("KeyT")
 
+# stop()'s final flush can itself re-queue keys (a transient failure/conflict in _process that would
+# clear on retry), so it drains up to this many passes; keys still queued afterwards are logged.
+_STOP_DRAIN_PASSES = 3
+
 
 class DebouncedRefresher(ABC, Generic[KeyT]):
     """Coalesces dirty keys and processes them in batches on a fixed cadence.
@@ -53,13 +57,23 @@ class DebouncedRefresher(ABC, Generic[KeyT]):
 
     async def stop(self) -> None:
         # Signal the loop to exit and let it finish any in-flight flush — we never cancel mid-flush, so a
-        # detached batch can't be dropped before it's written. Then a final drain covers the cases the loop
-        # can't (it saw the stop flag before its first flush, or items were enqueued during the last flush).
+        # detached batch can't be dropped before it's written. Then drain what's left in a bounded number
+        # of passes, since the final flush can re-queue keys itself.
         self._stopping.set()
         if self._task is not None:
             await self._task
             self._task = None
-        await self.flush()
+        for _ in range(_STOP_DRAIN_PASSES):
+            if not self._dirty:
+                return
+            await self.flush()
+        if self._dirty:
+            logger.warning(
+                "%s stopped with %d key(s) still queued after %d drain passes; not retried before shutdown",
+                type(self).__name__,
+                len(self._dirty),
+                _STOP_DRAIN_PASSES,
+            )
 
     async def _run(self) -> None:
         while not self._stopping.is_set():
