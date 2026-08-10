@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { VerticalNavListItem, VerticalNavSubList } from '@nvidia/foundations-react-core';
+import { Button, VerticalNavListItem, VerticalNavSubList } from '@nvidia/foundations-react-core';
 import { NavSubItem } from '@studio/components/Layouts/NavigationDrawer/components/NavItem/NavSubItem';
 import { StudioNavItem } from '@studio/components/Layouts/NavigationDrawer/components/StudioNavItem';
 import { SUB_LIST_CLASS } from '@studio/components/Layouts/NavigationDrawer/styles';
@@ -54,25 +54,33 @@ export const ExpandableNavItem: FC<ExpandableNavItemProps> = ({
           {...item.attributes?.VerticalNavItem}
         >
           {href === undefined ? (
-            <button type="button" onClick={toggle} {...disclosure}>
+            <Button
+              kind="tertiary"
+              size="tiny"
+              onClick={toggle}
+              data-active-state="disabled"
+              {...disclosure}
+            >
               {item.slotLabel}
-            </button>
+            </Button>
           ) : (
             <NavLink to={href}>{item.slotLabel}</NavLink>
           )}
         </StudioNavItem>
         {href !== undefined && (
-          <button
-            type="button"
+          <Button
+            kind="tertiary"
+            size="tiny"
+            data-active-state="disabled"
             onClick={toggle}
-            className="absolute right-1 h-full cursor-pointer px-3"
+            className=" h-full px-3 py-1"
             aria-label={
               labelText ? `${isOpen ? 'Collapse' : 'Expand'} ${labelText}` : 'Toggle submenu'
             }
             {...disclosure}
           >
             {chevron}
-          </button>
+          </Button>
         )}
       </div>
       {isOpen && (
