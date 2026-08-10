@@ -735,6 +735,7 @@ resources:
       # them under `files`, which would break ``from nemo_platform.types.shared import
       # FilesetMetadata`` imports downstream (models service tests).
       fileset_metadata: FilesetMetadata
+      environment_metadata_content: EnvironmentMetadataContent
       dataset_metadata_content: DatasetMetadataContent
       # Every FilesetMetadata member has to live in $shared alongside it. Left under
       # `files`, sync-models homes this one there and FilesetMetadata's import of it

@@ -16,6 +16,7 @@ from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.rl.schemas import (
     DPOTraining,
     GRPOTraining,
+    LoRAParams,
     OutputResponse,
     ParallelismParams,
     RlJobOutput,
@@ -27,6 +28,7 @@ from pydantic import ConfigDict, Field
 __all__ = [
     "DPOTraining",
     "GRPOTraining",
+    "LoRAParams",
     "OutputRequest",
     "OutputResponse",
     "ParallelismParams",

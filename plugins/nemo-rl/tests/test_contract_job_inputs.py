@@ -42,6 +42,18 @@ def test_minimal_grpo_fixture_validates() -> None:
     assert spec.training.type == "grpo"
     assert spec.environment == "default/ascii-tree-env"
     assert spec.training.num_generations_per_prompt == 4
+    assert spec.training.finetuning_type == "all_weights"
+
+
+def test_minimal_grpo_lora_fixture_validates() -> None:
+    path = FIXTURES_DIR / "minimal_grpo_lora.json"
+    spec = RlJobInput.model_validate(json.loads(path.read_text()))
+    assert spec.training.type == "grpo"
+    assert spec.training.finetuning_type == "lora"
+    assert spec.training.lora is not None
+    assert spec.training.lora.rank == 32
+    assert spec.training.lora.alpha == 32
+    assert spec.environment == "default/ascii-tree-env"
 
 
 def test_output_name_cannot_exceed_response_limit() -> None:

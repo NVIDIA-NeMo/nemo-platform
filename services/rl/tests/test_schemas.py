@@ -139,3 +139,47 @@ def test_grpo_training_discriminator() -> None:
     t = GRPOTraining(type="grpo")
     assert t.type == "grpo"
     assert t.num_generations_per_prompt == 8
+    assert t.finetuning_type == "all_weights"
+    assert t.lora is None
+
+
+def test_grpo_lora_defaults_params() -> None:
+    t = GRPOTraining(finetuning_type="lora")
+    assert t.lora is not None
+    assert t.lora.rank == 16
+    assert t.lora.alpha == 32
+
+
+def test_grpo_lora_rejects_params_with_all_weights() -> None:
+    from nmp.rl.schemas import LoRAParams
+
+    with pytest.raises(ValueError, match="lora must be omitted"):
+        GRPOTraining(finetuning_type="all_weights", lora=LoRAParams(rank=8))
+
+
+def test_grpo_lora_rejects_lora_merged() -> None:
+    with pytest.raises(ValueError):
+        GRPOTraining(finetuning_type="lora_merged")  # type: ignore[arg-type]
+
+
+def test_grpo_lora_requires_adapter_output() -> None:
+    with pytest.raises(ValueError, match="adapter"):
+        RlJobOutput(
+            model="default/base",
+            dataset="default/gym-data",
+            environment="default/env",
+            training=GRPOTraining(finetuning_type="lora"),
+            output=_make_output(out_type=OutputNameType.MODEL),
+        )
+
+
+def test_grpo_lora_accepts_adapter_output() -> None:
+    job = RlJobOutput(
+        model="default/base",
+        dataset="default/gym-data",
+        environment="default/env",
+        training=GRPOTraining(finetuning_type="lora", lora=None),
+        output=_make_output(out_type=OutputNameType.ADAPTER),
+    )
+    assert job.output.type is OutputNameType.ADAPTER
+    job.validate_for_training()
