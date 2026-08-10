@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from nemo_evaluator.intake.mapping import (
@@ -126,6 +126,24 @@ def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
         final_metrics={"total_prompt_tokens": 10},
     )
     assert body["final_metrics"] == {"total_prompt_tokens": 10}
+
+
+def test_trial_to_atif_ingest_adds_invocation_window_when_ended_at_given() -> None:
+    # ended_at gives the single-step trajectory a real duration (via the invocation window) so Intake's
+    # root-span latency is the trial's runtime instead of 0.
+    ended = STARTED_AT + timedelta(seconds=12.5)
+    body = trial_to_atif_ingest(
+        _trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT, ended_at=ended
+    )
+    (step,) = body["steps"]
+    assert step["extra"] == {
+        "invocation": {"start_timestamp": STARTED_AT.timestamp(), "end_timestamp": ended.timestamp()}
+    }
+
+
+def test_trial_to_atif_ingest_omits_invocation_window_without_ended_at() -> None:
+    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
+    assert "extra" not in body["steps"][0]
 
 
 # --- score_to_evaluator_results: data_type coercions ------------------------
