@@ -63,9 +63,7 @@ class TestRequestLogging:
             "prompts": [
                 {
                     "task": "self_check_input",
-                    "content": (
-                        "Should the user message be blocked?\n\nUser: {{ user_input }}\nAnswer yes or no:"
-                    ),
+                    "content": ("Should the user message be blocked?\n\nUser: {{ user_input }}\nAnswer yes or no:"),
                 },
                 {
                     "task": "self_check_output",
