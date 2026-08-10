@@ -1,38 +1,11 @@
 schema-version = "1.13.0"
 
 [install]
-fnm = { pkg-path = "fnm", pkg-group = "node" }
+nodejs = { pkg-path = "nodejs_22", version = "22.23.2", pkg-group = "node" }
+pnpm = { pkg-path = "pnpm_10", version = "10.34.5", pkg-group = "node" }
 
 [vars]
-FNM_DIR="${FLOX_ENV_CACHE}/fnm"
-FNM_VERSION_FILE_STRATEGY="recursive"
-NPM_CONFIG_STORE_DIR="${FLOX_ENV_CACHE}/npm-cache"
+PNPM_HOME="${FLOX_ENV_CACHE}/pnpm"
 
-[hook]
-on-activate = '''
-  set -euo pipefail
-
-  echo "NodeJS Setup... Starting"
-  echo "Current Directory: $(pwd)"
-
-  eval "$(fnm env --shell bash)"
-  fnm install --use --corepack-enabled
-  corepack enable
-
-  package_manager="$(node -p "require('./web/package.json').packageManager")"
-  corepack prepare "${package_manager}" --activate
-  CI=true pnpm install -C "./web" --frozen-lockfile
-
-  echo "NodeJS Setup... Complete"
-'''
-
-[profile]
-bash = '''
-  eval "$(fnm env --shell bash --use-on-cd --version-file-strategy=recursive)"
-'''
-zsh = '''
-  eval "$(fnm env --shell zsh --use-on-cd --version-file-strategy=recursive)"
-'''
-fish = '''
-  fnm env --shell fish --use-on-cd --version-file-strategy=recursive | source
-'''
+[options]
+systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux"]

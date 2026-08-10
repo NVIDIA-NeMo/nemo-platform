@@ -3,142 +3,198 @@
   "manifest": {
     "schema-version": "1.13.0",
     "install": {
-      "fnm": {
-        "pkg-path": "fnm",
-        "pkg-group": "node"
+      "nodejs": {
+        "pkg-path": "nodejs_22",
+        "pkg-group": "node",
+        "version": "22.23.2"
+      },
+      "pnpm": {
+        "pkg-path": "pnpm_10",
+        "pkg-group": "node",
+        "version": "10.34.5"
       }
     },
     "vars": {
-      "FNM_DIR": "${FLOX_ENV_CACHE}/fnm",
-      "FNM_VERSION_FILE_STRATEGY": "recursive",
-      "NPM_CONFIG_STORE_DIR": "${FLOX_ENV_CACHE}/npm-cache"
+      "PNPM_HOME": "${FLOX_ENV_CACHE}/pnpm"
     },
-    "hook": {
-      "on-activate": "  set -euo pipefail\n\n  echo \"NodeJS Setup... Starting\"\n  echo \"Current Directory: $(pwd)\"\n\n  eval \"$(fnm env --shell bash)\"\n  fnm install --use --corepack-enabled\n  corepack enable\n\n  package_manager=\"$(node -p \"require('./web/package.json').packageManager\")\"\n  corepack prepare \"${package_manager}\" --activate\n  CI=true pnpm install -C \"./web\" --frozen-lockfile\n\n  echo \"NodeJS Setup... Complete\"\n"
-    },
-    "profile": {
-      "bash": "  eval \"$(fnm env --shell bash --use-on-cd --version-file-strategy=recursive)\"\n",
-      "zsh": "  eval \"$(fnm env --shell zsh --use-on-cd --version-file-strategy=recursive)\"\n",
-      "fish": "  fnm env --shell fish --use-on-cd --version-file-strategy=recursive | source\n"
-    },
-    "options": {}
+    "options": {
+      "systems": [
+        "aarch64-darwin",
+        "aarch64-linux",
+        "x86_64-linux"
+      ]
+    }
   },
   "packages": [
     {
-      "attr_path": "fnm",
+      "attr_path": "nodejs_22",
       "broken": false,
-      "derivation": "/nix/store/m4s0894j2dj2k375c7dns2ib8nk5krpw-fnm-1.39.0.drv",
-      "description": "Fast and simple Node.js version manager",
-      "install_id": "fnm",
-      "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
-      "name": "fnm-1.39.0",
-      "pname": "fnm",
-      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
-      "rev_count": 1027867,
-      "rev_date": "2026-07-05T04:06:12Z",
-      "scrape_date": "2026-07-06T03:12:55.889515Z",
+      "derivation": "/nix/store/98iw9769gchj4vs8vkfvkdnxczaarami-nodejs-22.23.2.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "nodejs-22.23.2",
+      "pname": "nodejs_22",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T04:55:15.826463Z",
       "stabilities": [
-        "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.39.0",
+      "version": "22.23.2",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/fp3ndk75i6c1c31a9zqkz3pk61gz294h-fnm-1.39.0"
+        "out": "/nix/store/s0qzknz77k3lzikgywx2piilfp8w0581-nodejs-22.23.2"
       },
       "system": "aarch64-darwin",
       "group": "node",
       "priority": 5
     },
     {
-      "attr_path": "fnm",
+      "attr_path": "nodejs_22",
       "broken": false,
-      "derivation": "/nix/store/zh7xw7li0b92r9cx25f4j19qdp1kqvdz-fnm-1.39.0.drv",
-      "description": "Fast and simple Node.js version manager",
-      "install_id": "fnm",
-      "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
-      "name": "fnm-1.39.0",
-      "pname": "fnm",
-      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
-      "rev_count": 1027867,
-      "rev_date": "2026-07-05T04:06:12Z",
-      "scrape_date": "2026-07-06T03:41:22.827979Z",
+      "derivation": "/nix/store/i9h6nligglciwssrc0zdri9zji0hx20c-nodejs-22.23.2.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "nodejs-22.23.2",
+      "pname": "nodejs_22",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T05:24:46.217099Z",
       "stabilities": [
-        "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.39.0",
+      "version": "22.23.2",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/1312sbdkqvdp0m5gak0dfgz0bf2p1kgj-fnm-1.39.0"
+        "out": "/nix/store/i7dq81ramvcyrzasgv8qbf07rgfiqiai-nodejs-22.23.2"
       },
       "system": "aarch64-linux",
       "group": "node",
       "priority": 5
     },
     {
-      "attr_path": "fnm",
+      "attr_path": "nodejs_22",
       "broken": false,
-      "derivation": "/nix/store/0ib0kdcx3a11klp8pjjz6a2z474bf820-fnm-1.39.0.drv",
-      "description": "Fast and simple Node.js version manager",
-      "install_id": "fnm",
-      "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
-      "name": "fnm-1.39.0",
-      "pname": "fnm",
-      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
-      "rev_count": 1027867,
-      "rev_date": "2026-07-05T04:06:12Z",
-      "scrape_date": "2026-07-06T04:09:01.365196Z",
+      "derivation": "/nix/store/1x2rjyk2j93jmsl6myl8nrv7b95viv21-nodejs-22.23.2.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "nodejs-22.23.2",
+      "pname": "nodejs_22",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T05:59:03.273842Z",
       "stabilities": [
-        "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.39.0",
+      "version": "22.23.2",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/m6mcghc8bqzaal27zkqrp0a9mpk98hld-fnm-1.39.0"
+        "out": "/nix/store/3vm4j8im8bzdal3dsgmhv9gb5kvanbp1-nodejs-22.23.2"
       },
-      "system": "x86_64-darwin",
+      "system": "x86_64-linux",
       "group": "node",
       "priority": 5
     },
     {
-      "attr_path": "fnm",
+      "attr_path": "pnpm_10",
       "broken": false,
-      "derivation": "/nix/store/isdxp3dj73n1j6zzxjnjg20f4016h7ia-fnm-1.39.0.drv",
-      "description": "Fast and simple Node.js version manager",
-      "install_id": "fnm",
-      "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
-      "name": "fnm-1.39.0",
-      "pname": "fnm",
-      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
-      "rev_count": 1027867,
-      "rev_date": "2026-07-05T04:06:12Z",
-      "scrape_date": "2026-07-06T04:40:25.581588Z",
+      "derivation": "/nix/store/1x2hdyi7z35mpsb40q1c99rzzli3lyd1-pnpm-10.34.5.drv",
+      "description": "Fast, disk space efficient package manager for JavaScript",
+      "install_id": "pnpm",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "pnpm-10.34.5",
+      "pname": "pnpm_10",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T04:55:29.248162Z",
       "stabilities": [
-        "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "1.39.0",
+      "version": "10.34.5",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/1dih2h4sxfqkkg32db7753m02d9q54hk-fnm-1.39.0"
+        "out": "/nix/store/mqihmbwcawwpgwnwfg2hwyx4y8577991-pnpm-10.34.5"
+      },
+      "system": "aarch64-darwin",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "pnpm_10",
+      "broken": false,
+      "derivation": "/nix/store/ykmg9frmp7x4dni86raf9m10xjb9hpz1-pnpm-10.34.5.drv",
+      "description": "Fast, disk space efficient package manager for JavaScript",
+      "install_id": "pnpm",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "pnpm-10.34.5",
+      "pname": "pnpm_10",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T05:25:05.998051Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "10.34.5",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/z4vxcxkfb4mh4ajc7gvwihqqawcnd7qs-pnpm-10.34.5"
+      },
+      "system": "aarch64-linux",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "pnpm_10",
+      "broken": false,
+      "derivation": "/nix/store/a4s9ni15m40b0iwglfmdrhnjwd0bab4n-pnpm-10.34.5.drv",
+      "description": "Fast, disk space efficient package manager for JavaScript",
+      "install_id": "pnpm",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "pnpm-10.34.5",
+      "pname": "pnpm_10",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T05:59:22.852600Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "10.34.5",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1y1j3774v84329m42q0sjy3f89n5p1fx-pnpm-10.34.5"
       },
       "system": "x86_64-linux",
       "group": "node",

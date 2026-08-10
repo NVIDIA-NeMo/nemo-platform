@@ -96,11 +96,17 @@ repos:
         files: 'pyproject\.toml$'
         pass_filenames: false
         verbose: true
-      - id: uv-version-constraint
-        name: Check uv version constraints
+      - id: uv-version-consistency
+        name: Check CI and Flox uv versions
         entry: ./tools/lint/check-uv-version.sh
         language: system
-        files: '^(pyproject\.toml|tools/python/\.flox/env/manifest\.toml)$'
+        files: '^(\.github/workflows/.*\.ya?ml|tools/python/\.flox/env/manifest\.toml)$'
+        pass_filenames: false
+      - id: node-version-consistency
+        name: Check Node.js and pnpm versions
+        entry: ./tools/lint/check-node-version.sh
+        language: system
+        files: '^(\.nvmrc|web/package\.json|tools/nodejs/\.flox/env/manifest\.toml|\.github/workflows/ci\.yaml|\.github/actions/build-nemo-platform-wheel/action\.yaml)$'
         pass_filenames: false
       - id: copyright-fix
         name: Fix copyright headers
@@ -157,11 +163,9 @@ repos:
 # Flox
   - repo: local
     hooks:
-      - id: flox-include-check
-        name: Flox Include Upgrade
-        entry: |-
-          bash -c 'set -e
-          flox include upgrade 2>/dev/null'
+      - id: flox-lock-consistency
+        name: Check Flox locks
+        entry: ./tools/lint/check-flox-locks.sh
         language: system
         files: '(^\.flox/env/manifest\.toml$|^tools/[^/]+/\.flox/env/manifest\.toml$)'
         pass_filenames: false

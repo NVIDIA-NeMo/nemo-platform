@@ -248,7 +248,7 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 - **uv version:** Root `pyproject.toml` requires and supports `uv>=0.9.14` for source checkout bootstrap. `uv.lock` updates must use uv `0.9.14`, matching the platform containers and CI lock check. CI separately validates latest uv compatibility.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
-- **Studio (optional):** `make bootstrap-studio` resolves the Node.js/pnpm versions pinned in `mise.toml`, so a VM shipping an older Node doesn't need upgrading. API services still run without Studio assets. Pass `NMP_SKIP_MISE=1` to bootstrap against the toolchain already on PATH.
+- **Studio (optional):** `make bootstrap-studio` uses the Node.js/pnpm versions pinned in the Flox environment, so a VM shipping an older Node does not need upgrading. API services still run without Studio assets. Pass `NMP_SKIP_FLOX=1` to bootstrap against the toolchain already on PATH.
 
 ### Running the platform
 

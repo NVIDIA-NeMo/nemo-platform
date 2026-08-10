@@ -62,11 +62,10 @@ For complete Studio setup instructions, see the [Getting Started section in the 
 
 ##### Prerequisites
 
-1. **Node.js matching the Studio workspace engine**: Install a Node version that satisfies the `engines.node` range in `web/package.json`.
-2. **pnpm**: Install via corepack (included with Node.js 16.13+)
+1. **Flox**: Activate the repository environment, which provides the pinned Node.js and pnpm versions:
 
 ```bash
-corepack enable pnpm
+flox activate
 ```
 
 #### Initialize the Repository

@@ -4,22 +4,13 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 
 ## Getting Started
 
-1. Get Node.js and pnpm satisfying the `engines` in `package.json` onto your PATH. Either let [mise](https://mise.jdx.dev/) manage them from the versions pinned in `mise.toml` at the repo root:
+1. Get Node.js and pnpm satisfying the `engines` in `package.json` onto your PATH. The root Flox environment provides the pinned versions:
 
    ```bash
-   make verify-mise   # from the repo root, installs mise + the pinned versions
+   flox activate      # from the repository root
    ```
 
-   mise installs to `~/.local/bin`, so make sure that's on your PATH, then add the matching line for your shell to its startup file:
-
-   ```bash
-   export PATH="$HOME/.local/bin:$PATH"
-
-   eval "$(mise activate bash)"   # ~/.bashrc
-   eval "$(mise activate zsh)"    # ~/.zshrc
-   ```
-
-   or install Node.js and pnpm yourself. `make bootstrap-studio` and the other `make` targets use the mise-managed versions by default, whatever you pick here — pass `NMP_SKIP_MISE=1` to make them use your PATH instead.
+   or install Node.js and pnpm yourself. `make bootstrap-studio` and the other `make` targets use the Flox-managed versions by default.
 
 2. Install workspace deps and copy `.env` files, from `web/`:
 

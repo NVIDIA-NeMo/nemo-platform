@@ -17,3 +17,6 @@ environments = [
     { dir = "tools/osv-scanner" },
     { dir = "tools/open-policy-agent" },
 ]
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux"]
