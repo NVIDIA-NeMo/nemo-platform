@@ -58,7 +58,7 @@ async def test_create_existing_matching_container_returns_read_status(
     )
 
     assert update.status == "READY"
-    mock_docker_client.containers.run.assert_not_called()
+    mock_docker_client.containers.create.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -85,7 +85,7 @@ async def test_create_exited_one_shot_container_is_removed_and_recreated(
         fresh.wait.return_value = {"StatusCode": 0}
     else:
         fresh.status = "running"
-    mock_docker_client.containers.run.return_value = fresh
+    mock_docker_client.containers.create.return_value = fresh
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -103,7 +103,7 @@ async def test_create_exited_one_shot_container_is_removed_and_recreated(
         assert update.status == "STARTING"
         fresh.wait.assert_not_called()
     existing.remove.assert_called_once_with(force=True)
-    mock_docker_client.containers.run.assert_called_once()
+    mock_docker_client.containers.create.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -130,7 +130,7 @@ async def test_create_running_one_shot_container_still_returns_status(
     )
 
     assert update.status == "STARTING"
-    mock_docker_client.containers.run.assert_not_called()
+    mock_docker_client.containers.create.assert_not_called()
     existing.remove.assert_not_called()
 
 
@@ -155,4 +155,4 @@ async def test_create_exited_one_shot_returns_failed_when_removal_fails(
 
     assert update.status == "FAILED"
     assert "remove exited container" in update.status_message
-    mock_docker_client.containers.run.assert_not_called()
+    mock_docker_client.containers.create.assert_not_called()

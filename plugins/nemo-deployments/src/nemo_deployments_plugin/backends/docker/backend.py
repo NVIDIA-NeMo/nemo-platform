@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
+import tarfile
 from typing import TYPE_CHECKING, Any
 
 from nemo_deployments_plugin.backends.base import (
@@ -57,7 +59,7 @@ from nemo_deployments_plugin.backends.labels import (
     managed_by_filter,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
+from nemo_deployments_plugin.entities import ConfigFile, Container, Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
 from nemo_platform_plugin.capabilities import docker_from_env_kwargs, probe_docker
@@ -91,6 +93,30 @@ NGC_IMAGE_REGISTRY_USER_NAME = os.getenv("NGC_IMAGE_REGISTRY_USER_NAME", "$oauth
 def _is_ngc_image(image: str) -> bool:
     """Return whether an image belongs to the configured NGC registry."""
     return image == NGC_IMAGE_REGISTRY or image.startswith(f"{NGC_IMAGE_REGISTRY}/")
+
+
+def _config_files_tar(config_files: list[ConfigFile]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        seen_dirs: set[str] = set()
+        for cf in config_files:
+            rel = cf.path.lstrip("/")
+            parts = rel.split("/")
+            for i in range(1, len(parts)):
+                d = "/".join(parts[:i])
+                if d in seen_dirs:
+                    continue
+                seen_dirs.add(d)
+                info = tarfile.TarInfo(name=d)
+                info.type = tarfile.DIRTYPE
+                info.mode = 0o755
+                tar.addfile(info)
+            data = cf.content.encode("utf-8")
+            info = tarfile.TarInfo(name=rel)
+            info.size = len(data)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
 
 
 class DockerDeploymentBackend(DeploymentBackend):
@@ -329,7 +355,9 @@ class DockerDeploymentBackend(DeploymentBackend):
                 network=f"container:{c_name}",
             )
             try:
-                await asyncio.to_thread(self._client.containers.run, **sidecar_run_kwargs)
+                sidecar_create_kwargs = {k: v for k, v in sidecar_run_kwargs.items() if k != "detach"}
+                sidecar_container = await asyncio.to_thread(self._client.containers.create, **sidecar_create_kwargs)
+                await asyncio.to_thread(sidecar_container.start)
             except Exception as exc:
                 logger.exception("Failed to start sidecar container %s", sidecar_name)
                 # Tear the whole group down so we don't leave a half-started deployment.
@@ -421,10 +449,15 @@ class DockerDeploymentBackend(DeploymentBackend):
                 gpu_ids=gpu_ids,
                 network=network,
             )
+            create_kwargs = {k: v for k, v in run_kwargs.items() if k != "detach"}
             try:
-                container = await asyncio.to_thread(self._client.containers.run, **run_kwargs)
+                container = await asyncio.to_thread(self._client.containers.create, **create_kwargs)
+                if config.config_files:
+                    await self._deliver_config_files(container, config.config_files)
+                await asyncio.to_thread(container.start)
                 return container, host_ports, ""
             except Exception as exc:
+                await self._remove_container_by_name(name)
                 last_attempt = attempt == _PORT_CONFLICT_ATTEMPTS
                 if not host_ports or last_attempt or _PORT_CONFLICT_MARKER not in str(exc):
                     logger.exception("Failed to start container %s", name)
@@ -438,9 +471,6 @@ class DockerDeploymentBackend(DeploymentBackend):
                     _PORT_CONFLICT_ATTEMPTS,
                     sorted(rejected_ports),
                 )
-                # containers.run() creates then starts, so a failed start leaves the
-                # created container holding the name and blocking the retry.
-                await self._remove_container_by_name(name)
                 try:
                     reallocated = await self._allocate_host_ports(container_spec, exclude_ports=rejected_ports)
                 except PortEnumerationError as port_exc:
@@ -448,6 +478,14 @@ class DockerDeploymentBackend(DeploymentBackend):
                 if reallocated is None:
                     return None, host_ports, "No host ports available in configured range"
                 host_ports = reallocated
+
+    async def _deliver_config_files(
+        self,
+        container: DockerContainer,
+        config_files: list[ConfigFile],
+    ) -> None:
+        archive = _config_files_tar(config_files)
+        await asyncio.to_thread(container.put_archive, "/", archive)
 
     def _build_run_kwargs(
         self,
@@ -553,7 +591,9 @@ class DockerDeploymentBackend(DeploymentBackend):
             run_kwargs["volumes"] = volume_bindings
 
         def _run_and_wait() -> int:
-            container = self._client.containers.run(**run_kwargs)
+            create_kwargs = {k: v for k, v in run_kwargs.items() if k != "detach"}
+            container = self._client.containers.create(**create_kwargs)
+            container.start()
             result = container.wait(timeout=self._executor_config.docker_timeout)
             exit_code = self._exit_code_from_wait_result(result)
             try:
