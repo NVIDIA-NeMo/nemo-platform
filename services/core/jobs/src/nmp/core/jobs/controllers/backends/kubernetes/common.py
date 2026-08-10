@@ -14,6 +14,7 @@ from kubernetes.client.rest import ApiException
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.jobs.client import JobsClient
+from nemo_platform_plugin.jobs.constants import job_storage_subpath as build_job_storage_subpath
 from nemo_platform_plugin.jobs.execution_profiles import (
     BaseKubernetesExecutionProfileConfig as PluginBaseKubernetesExecutionProfileConfig,
 )
@@ -854,7 +855,7 @@ def cleanup_job_persistent_storage(
         pod_security_context: Same pod security context as workload jobs (runAsUser/fsGroup, etc.) so cleanup
             can remove files on NFS and similar storage where the workload user owns the data.
     """
-    job_storage_subpath = f"jobs/{workspace}/{job_id}"
+    job_storage_subpath = build_job_storage_subpath(workspace, job_id)
     cleanup_job_name = f"cleanup-{workspace}-{job_id}-{uuid.uuid4().hex[:8]}"[:63].rstrip("-")
 
     # Use same common labels as regular jobs (app, managed-by, backend, profile) plus cleanup-specific labels
@@ -1142,7 +1143,7 @@ def create_pod_template_spec(
             workspace=step.workspace,
             job_id=step.job,
         )
-        job_storage_subpath = f"jobs/{step.workspace}/{step.job}"
+        job_storage_subpath = build_job_storage_subpath(step.workspace, step.job)
         volume_mounts.append(
             client.V1VolumeMount(
                 name=JOB_STORAGE_VOLUME_NAME, mount_path=job_storage_mount, sub_path=job_storage_subpath
