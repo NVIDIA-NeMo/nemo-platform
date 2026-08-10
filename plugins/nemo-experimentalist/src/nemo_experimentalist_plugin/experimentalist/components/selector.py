@@ -7,7 +7,13 @@ from typing import Any
 
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.models import pareto_front, pareto_sort
+from nemo_experimentalist_plugin.experimentalist.components.models import (
+    MetricTarget,
+    has_metric_dimensions,
+    pareto_front,
+    pareto_objectives,
+    pareto_sort,
+)
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agents import TokenBudgetSummarizer
@@ -42,34 +48,90 @@ class ParetoDiversitySelector(Agent, roles.Selector):
     def __init__(
         self,
         config: SelectorConfig | None = None,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the selector."""
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or SelectorConfig()
+        self._objective_metrics = objective_metrics or [MetricTarget(name="reward", direction="maximize")]
+        self._regression_metrics = regression_metrics or []
         TokenBudgetSummarizer.install(
             self, llm=get_fast_model(), config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens)
         )
 
     def rank(self, candidates: list[Candidate]) -> list[Candidate]:
-        """Sort by non-domination rank over the configured objective channels."""
-        return pareto_sort(candidates, self._objective_metrics)
+        """Sort by non-domination rank over the configured objectives."""
+        return pareto_sort(candidates, self._objectives_of)
 
     async def survivors(self, candidates: list[Candidate], *, k: int) -> list[Candidate]:
         """Up to *k* candidates to carry into the next round as parents."""
         return await self.select_diverse_survivors(self.rank(candidates), k)
 
     def winner(self, candidates: list[Candidate]) -> Candidate | None:
-        """The best of the still-alive candidates that carry a measured objective.
+        """The run's winner, or None when nothing carries a comparable measurement.
 
-        A candidate eliminated in an earlier round cannot win, and one with no measurement
-        on the ranked channel cannot be compared.
+        Finalization asks a different question from survivor selection. `survivors` is
+        told to keep a candidate created this round, and the generation-0 baseline never
+        is one, so a baseline can be killed mid-loop. But "is any of this better than
+        shipping nothing?" has to be able to answer *no*, so the baseline is re-admitted
+        here regardless, and anchors the regression comparison even when it does not win.
+
+        A candidate that worsens a `regression_metrics` target against that baseline is
+        dropped before ranking, so a gain on the objectives cannot pay for a regression.
+        Ties go to the oldest candidate: equal score means the diff bought nothing.
         """
-        eligible = [c for c in candidates if c.killed_generation is None and self._objective_metrics(c)]
-        front = pareto_front(eligible, self._objective_metrics) if eligible else []
-        return front[0] if front else None
+        measured = [c for c in candidates if has_metric_dimensions(self._ranked_metrics(c), self._objective_metrics)]
+        baseline = next((c for c in measured if c.generation == 0), None)
+        eligible = [c for c in measured if c.killed_generation is None]
+        if baseline is not None and all(c is not baseline for c in eligible):
+            eligible.insert(0, baseline)
+        if not eligible:
+            return None
+        reference = baseline if baseline is not None else min(eligible, key=self._creation_order)
+        kept = [c for c in eligible if not self._regresses(c, reference)]
+        front = pareto_front(kept or eligible, self._objectives_of)
+        return min(front, key=self._creation_order) if front else None
 
-    def _objective_metrics(self, candidate: Candidate) -> dict[str, float]:
+    def _objectives_of(self, candidate: Candidate) -> dict[str, float]:
+        """The candidate's ranked metrics projected onto the objectives.
+
+        Ranking is uniformly "higher is better", so a minimized target is negated and
+        anything outside the objectives is dropped — a protected metric must not sway
+        the front, only disqualify through :meth:`_regresses`.
+        """
+        return pareto_objectives(self._ranked_metrics(candidate), self._objective_metrics)
+
+    def _regresses(self, candidate: Candidate, baseline: Candidate) -> bool:
+        """Whether *candidate* is worse than *baseline* on a metric that must not regress.
+
+        A target missing from either side is skipped: absent evidence is not a regression.
+        """
+        if candidate is baseline:
+            return False
+        before, after = self._ranked_metrics(baseline), self._ranked_metrics(candidate)
+        for target in self._regression_metrics:
+            was, now = before.get(target.name), after.get(target.name)
+            if was is None or now is None:
+                continue
+            if now < was if target.direction == "maximize" else now > was:
+                return True
+        return False
+
+    @staticmethod
+    def _creation_order(candidate: Candidate) -> tuple[int, int, str]:
+        """Order by creation, independently of how the caller ordered the list.
+
+        Labels are run-scoped and handed out in sequence (``agent-0``, ``agent-1``, ...),
+        so the numeric suffix recovers creation order within a generation. The label
+        itself is the final component, keeping the key total if a label ever stops
+        matching that shape.
+        """
+        _, _, suffix = candidate.label.rpartition("-")
+        return (candidate.generation, int(suffix) if suffix.isdigit() else 0, candidate.label)
+
+    def _ranked_metrics(self, candidate: Candidate) -> dict[str, float]:
         """The metrics this selector ranks on, merged across its objective channels."""
         merged: dict[str, float] = {}
         for channel in self._config.objectives:

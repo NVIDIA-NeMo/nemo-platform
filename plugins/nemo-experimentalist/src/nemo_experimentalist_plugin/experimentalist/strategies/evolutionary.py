@@ -356,7 +356,13 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             if config.terminator is not None:
                 terminator = cast(
                     "roles.Terminator",
-                    ctx.component("terminator", config.terminator, config=config.terminator_config),
+                    ctx.component(
+                        "terminator",
+                        config.terminator,
+                        config=config.terminator_config,
+                        objective_metrics=config.objective_function,
+                        regression_metrics=config.regression_metrics,
+                    ),
                 )
                 decision = await terminator.run(
                     round_num=round_num, candidates=candidates, prior_analysis=prior_analysis
@@ -904,6 +910,8 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             config.proposer,
             workspace=self.working_dir,
             config=config.proposer_config,
+            objective_metrics=config.objective_function,
+            regression_metrics=config.regression_metrics,
             framework_skills_dirs=self._framework_skills_dirs,
         )
         return await proposer.run(
@@ -983,7 +991,13 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
 
     def _selector(self, config: EvolutionaryOptimizerConfig) -> roles.Selector:
         """Resolve this run's selector."""
-        return get_component("selector", config.selector, config=config.selector_config)
+        return get_component(
+            "selector",
+            config.selector,
+            config=config.selector_config,
+            objective_metrics=config.objective_function,
+            regression_metrics=config.regression_metrics,
+        )
 
     def _new_builder(
         self, *, ctx: StrategyContext, dataset: Dataset, config: EvolutionaryOptimizerConfig
