@@ -65,7 +65,7 @@ export const ExpandableNavItem: FC<ExpandableNavItemProps> = ({
           <button
             type="button"
             onClick={toggle}
-            className="absolute right-0 h-full cursor-pointer px-3 text-subtle"
+            className="absolute right-1 h-full cursor-pointer px-3"
             aria-label={
               labelText ? `${isOpen ? 'Collapse' : 'Expand'} ${labelText}` : 'Toggle submenu'
             }
