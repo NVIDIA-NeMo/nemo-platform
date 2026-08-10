@@ -174,9 +174,23 @@ class K8sDeploymentConfig(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class OpenShellDeploymentConfig(BaseModel):
+    policy_path: str | None = Field(
+        default=None,
+        alias="policyPath",
+        description=(
+            "Path to a sandbox policy YAML file inside the sandbox image. "
+            "Overrides the executor-level default_policy_path for this deployment only."
+        ),
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 class DeploymentBackendConfig(BaseModel):
     docker: DockerDeploymentConfig | None = None
     k8s: K8sDeploymentConfig | None = None
+    openshell: OpenShellDeploymentConfig | None = None
 
 
 class DockerVolumeConfig(BaseModel):
