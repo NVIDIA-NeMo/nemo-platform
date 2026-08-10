@@ -1208,7 +1208,7 @@ class TestEvaluateJobRun:
         http_client = mocker.AsyncMock(name="http_client")
         http_client.__aenter__.return_value = http_client
         http_client.__aexit__.return_value = None
-        mocker.patch("nemo_evaluator.jobs.evaluate.DefaultAsyncHttpxClient", return_value=http_client)
+        mocker.patch("nemo_evaluator.jobs.utils.DefaultAsyncHttpxClient", return_value=http_client)
         ctx = _make_job_context(tmp_path)
         dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
         config = {**_exact_match_spec(), "dataset": dataset}
