@@ -3,45 +3,44 @@
 #
 # FROZEN ANALYST OUTPUT -- do not hand-edit.
 #
-# Generated 2026-08-05 by:
+# Regenerated 2026-08-10 by:
 #   nemo agents analyst run --workspace smoke-agent --agent smoke-agent \
 #     --insights-file-output <this file>
 #
-# over three g1-aggregation/train traces recorded by scripts/record_traces.py:
-#   cb4eafc955233b5e249173ff16912b15  lookup-ada            (passing, not referenced)
-#   bdb897d4701b43a5d2fabfe5320717dd  total-hours-ops       (failing)
-#   9299f49567a3f79adc5a4e817e9e6a57  total-hours-research  (failing)
+# over the g1-aggregation/train traces recorded by scripts/record_traces.py:
+#   0d8355d6b2af9436b1532c3b5cfcdcee  lookup-ada             (passing, not referenced)
+#   0193ed2c47b54179d201a3a461a6d5fc  total-hours-engineers  (failing)
+#   9815f6448f0b6217ad1f3e124e980128  total-hours-research   (failing)
 #
-# It is frozen so the analyst's nondeterminism stays out of a fixture that
-# measures the Experimentalist. Regenerating means re-recording the traces
-# first, since trace_refs must resolve in the target workspace.
+# Frozen so the analyst's nondeterminism stays out of a fixture that measures the
+# Experimentalist. Regenerating means re-recording the traces first: trace_refs must
+# resolve in the target workspace, and the previous version of this file was stale in
+# two ways at once -- the ids had expired, and one referenced `total-hours-ops`, which
+# the g1 restructure moved into *validation*.
+#
+# **trace_refs must come from the train split.** Eval Author materializes one task per
+# trace, so a validation trace would have it generate a copy of a held-out task and
+# quietly undermine the split the fixture depends on.
 #
 # This file lives under dataset/ because _AGENT_COPY_EXCLUDE_NAMES excludes that
-# directory: an Insight describes the weakness in prose, and the Coder must not
-# read it.
+# directory: an Insight describes the weakness in prose, and the Coder must not read it.
 insights:
-- id: insight-632f7e00e110446db5b616ba25b4a50e
+- id: insights-insight-Ax2i7YNQTeDLen9JC9i2cn
   workspace: smoke-agent
-  title: Agent has no handler for 'total hours' sum-aggregation queries and returns
-    the 'I do not know' fallback
+  name: insights-insight-59jp3
+  title: Total-hours questions fall through to the fallback answer
   agent: smoke-agent
-  description: 'In the `g1-aggregation` evaluation, instructions of the form ''What
-    is the total hours for the <department> department?'' (expecting a `total=<result>`
-    line) are not answered. `solve` dispatches through its handler chain — `handle_lookup`,
-    `handle_list`, `handle_count` — none of which recognizes a request to SUM a numeric
-    field (hours) across the records for a department, so each returns None and `solve`
-    falls back to the literal string ''I do not know how to answer that.'' This is
-    written to `/app/artifacts/output.txt` instead of the required `total=<n>` line,
-    failing the test case. Affected component: `agent.py` `solve`/handler dispatch
-    — there is a `handle_count` (record counting) but no `handle_sum`/total handler,
-    so any aggregation that requires summing a field is unsupported. Contrast with
-    single-record lookups (e.g. ''department of Ada Lovelace''), which succeed. Hypothesis:
-    the routing regexes and handlers cover lookup/list/count but omit sum/total aggregation,
-    so all ''total <field>'' style questions fall through to the fallback. Observed
-    in test cases total-hours-ops and total-hours-research.'
+  description: When the prompt asks for the total hours for a selected group (for
+    example, by role or department), smoke-agent's ordered handler dispatch runs handle_lookup,
+    handle_list, and handle_count, but none of them match the aggregate-total form.
+    The top-level solve span then returns the fixed fallback string 'I do not know
+    how to answer that.' instead of writing the required single-line `total=<result>`
+    answer. This diverges from the contract that sums over records must be reported
+    with the canonical `total=` key, and suggests the deterministic regex handler
+    set is missing a total/sum-hours handler for grouped selections.
   status: open
   trace_refs:
-  - bdb897d4701b43a5d2fabfe5320717dd
-  - 9299f49567a3f79adc5a4e817e9e6a57
-  created_at: '2026-08-05T10:03:23.929608+00:00'
-  updated_at: '2026-08-05T10:03:23.929608+00:00'
+  - 0193ed2c47b54179d201a3a461a6d5fc
+  - 9815f6448f0b6217ad1f3e124e980128
+  created_at: '2026-08-10T13:47:28.289641'
+  updated_at: '2026-08-10T13:47:28.289646'
