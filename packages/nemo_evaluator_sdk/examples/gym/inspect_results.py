@@ -17,7 +17,7 @@ temporary directory by default, so give it an explicit ``--output-dir`` and poin
 same path. From the repository root::
 
     uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval \\
-        --gym-root /path/to/Gym --output-dir /tmp/gym-eval
+        --output-dir /tmp/gym-eval
     uv run python -m packages.nemo_evaluator_sdk.examples.gym.inspect_results --bundle /tmp/gym-eval
 
 Any agent-eval bundle works, not just a Gym one: pass ``--metric-type``/``--output-name`` for the

@@ -31,12 +31,25 @@ means a caller can run a **subset** of tasks without Gym rolling out the rest.
 without triggering Gym's split-driven data-prep): ``gym env start`` brings up the
 resources-server + agent + model servers, then ``gym eval run --no-serve --input
 <materialized dataset>`` collects rollouts against them. The runtime shells out
-to the ``gym`` executable in the caller-provided ``gym_root`` checkout — Gym
-resolves its environments from that repo and reads credentials from its
-(gitignored) ``env.yaml`` — so this SDK never imports ``nemo_gym`` and never
-handles secrets. Subprocess output is streamed to log files under the run's work
-dir *and* mirrored to this module's logger at ``DEBUG``, so callers choose
-terminal visibility through ordinary ``logging`` configuration.
+to the ``gym`` CLI on PATH, so this SDK never imports ``nemo_gym``. Subprocess
+output is streamed to log files under the run's work dir *and* mirrored to this
+module's logger at ``DEBUG``, so callers choose terminal visibility through
+ordinary ``logging`` configuration.
+
+**Where Gym finds things.** NeMo Gym must be installed in the same environment as
+this SDK, along with the target environment's own dependencies. There is no
+config field naming a checkout, a venv, or a search root: these runner configs
+become serialized job specs, and a local filesystem path means nothing on the
+other side of that boundary. Environments ship in the ``nemo-gym`` wheel
+(``resources_servers`` and friends install beside ``nemo_gym``, configs and
+example data included), so an install is sufficient to run them.
+
+The subprocesses inherit this process's working directory, which is where Gym
+looks for the gitignored ``env.yaml`` holding the collector's credentials before
+falling back to its install root — so credentials never pass through this SDK.
+Run from the directory holding that file; a Gym checkout there also has its
+components take precedence, which is how you reach an environment the wheel does
+not carry.
 
 **Boundaries**: the caller is responsible for a
 Gym runtime whose deps are installed (each Gym env ships its own
@@ -54,6 +67,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import signal
 import tempfile
 from collections import deque
@@ -72,6 +86,9 @@ logger = logging.getLogger(__name__)
 
 #: Reward key read from each Gym rollout record.
 DEFAULT_REWARD_KEY = "reward"
+#: Gym's CLI, expected on PATH. Not configurable: these runner configs become serialized job specs,
+#: and a path into somebody's venv is meaningless on the other side of that boundary.
+_GYM_CLI = "gym"
 #: Gym's index fields on each rollout record. ``_ng_task_index`` is the only join back to the input
 #: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and
 #: copies only a fixed allowlist of row keys onto the result, so no field we invent comes back. Gym
@@ -205,13 +222,6 @@ class GymRuntimeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gym_root: Path = Field(
-        description="NeMo Gym checkout directory; the CLI resolves envs/agents/models from here and "
-        "reads credentials from its gitignored env.yaml.",
-    )
-    gym_bin: Path | None = Field(
-        default=None, description="Path to the `gym` executable; defaults to <gym_root>/.venv/bin/gym."
-    )
     agent: str = Field(description="Agent name to collect rollouts with, e.g. 'simple_agent'.")
     agent_config: str = Field(description="Repo-relative agent config passed to `gym env start` (--config).")
     resources_server: str = Field(description="Resources-server (environment) name, e.g. 'mcqa' (--resources-server).")
@@ -253,8 +263,24 @@ class GymRuntimeConfig(BaseModel):
     )
     reward_key: str = Field(default=DEFAULT_REWARD_KEY, description="Key read from each rollout record.")
 
-    def gym_executable(self) -> Path:
-        return self.gym_bin if self.gym_bin is not None else self.gym_root / ".venv" / "bin" / "gym"
+
+def _gym_executable() -> str:
+    """Locate the ``gym`` CLI on PATH, or fail saying what to do about it.
+
+    Gym is expected to be installed in the same environment as this SDK — there is deliberately no
+    config field pointing at a checkout or another venv, because these runner configs become
+    serialized job specs and a local filesystem path cannot cross that boundary. Resolving here
+    rather than at spawn time turns a missing Gym into one legible error instead of an ``ENOENT``
+    out of ``create_subprocess_exec`` after the run has already started.
+    """
+    resolved = shutil.which(_GYM_CLI)
+    if resolved is None:
+        raise RuntimeError(
+            f"The {_GYM_CLI!r} CLI was not found on PATH. NeMo Gym must be installed in the same "
+            "environment as this SDK: `pip install nemo-gym`, plus the target environment's own "
+            "dependencies (each resources-server ships a requirements.txt)."
+        )
+    return resolved
 
 
 class GymRewardMetric:
@@ -442,7 +468,7 @@ class GymAgentTaskRunner:
     async def _run_two_step(self, input_path: Path, output_path: Path, work_dir: Path) -> None:
         """Start the Gym servers, collect against them with ``--no-serve``, then tear them down."""
         cfg = self._config
-        gym = str(cfg.gym_executable())
+        gym = _gym_executable()
         env_log = work_dir / "gym_env.log"
 
         # Gym launches each server from its own subdir with its own .venv. Ray (>=2.56) otherwise
@@ -477,7 +503,6 @@ class GymAgentTaskRunner:
         # to land on a particular stream.
         env_proc = await asyncio.create_subprocess_exec(
             *env_cmd,
-            cwd=str(cfg.gym_root),
             env=subprocess_env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -526,7 +551,6 @@ class GymAgentTaskRunner:
         stderr_log = work_dir / "gym_eval.stderr.log"
         eval_proc = await asyncio.create_subprocess_exec(
             *eval_cmd,
-            cwd=str(cfg.gym_root),
             env=subprocess_env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
