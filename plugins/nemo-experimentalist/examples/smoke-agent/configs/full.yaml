@@ -11,9 +11,11 @@
 # reachable, so a run that leaves one failing is a finding rather than an
 # expected shortfall.
 #
-# This is the only scenario that exercises the evolutionary machinery -- survivors
-# carried between rounds, ranking over more than two candidates, and the
-# convergence check. The single-round configs leave all of it inert.
+# What only this scenario exercises: more than one survivor, ranking over more
+# than two candidates, and the convergence check deciding when to stop. short.yaml
+# now runs two rounds, so carrying a survivor forward is no longer the difference
+# between them -- depth is. It keeps a single survivor, a fixed two rounds, and no
+# terminator, so none of the machinery above is reached.
 #
 # EXPECT HOURS, NOT MINUTES. Roughly 25 min per round at three candidates: a bit
 # over an hour if the terminator stops at three rounds, around two if it reaches

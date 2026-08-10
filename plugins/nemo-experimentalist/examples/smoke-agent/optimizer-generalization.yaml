@@ -6,7 +6,7 @@
 # generalization one is the split, not any tuning knob.
 #
 #   nemo agents experimentalist run --profile optimizer-generalization.yaml \
-#     --no-insight --config configs/single-round.yaml
+#     --no-insight --config configs/short.yaml
 #
 # g4-dispatch-order's train split shows only plain department counts, so the
 # reachable fix -- reordering the handler chain -- passes train. Validation asks
