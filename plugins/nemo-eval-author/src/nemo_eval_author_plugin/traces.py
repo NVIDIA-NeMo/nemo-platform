@@ -63,6 +63,15 @@ def _explain(exc: Exception, *, doing: str, workspace: str) -> TraceQueryError:
                 f"Intake rejected the query: {exc}. Check the filter fields and operators against the "
                 "vocabulary in the docstring of the query you called."
             )
+        elif exc.status_code == 500:
+            # Intake advertises five span filters it cannot serve: the dataset and prompt
+            # fields have no entry in its attribute catalog, so they raise instead of
+            # returning 400. Name that first, because the message itself says nothing.
+            hint = (
+                f"Intake failed internally: {exc}. If the filter used dataset_id, dataset_name, "
+                "dataset_version, prompt_name, or prompt_version, that is the cause: Intake publishes "
+                "those span filters but cannot serve them. Remove them and query again."
+            )
         else:
             hint = f"Intake returned HTTP {exc.status_code}: {exc}"
         return TraceQueryError(f"{doing} failed. {hint}")
@@ -111,15 +120,23 @@ async def query_spans(
     Args:
         client: Platform client.
         workspace: Workspace to search.
-        filter: Intake span filter, sent to the server. Supported fields:
-            ``agent_name``, ``agent_id``, ``session_id``, ``trace_id``,
-            ``parent_span_id`` (direct children of a span), ``project``, ``source``,
-            ``kind`` (``LLM``, ``TOOL``, ``AGENT``, ``CHAIN``, ``EVALUATOR``),
-            ``status`` (``success``, ``error``, ``cancelled``, ``unknown``), ``model``,
-            ``provider``, ``tool_name``, ``prompt_name``, ``prompt_version``,
-            ``evaluation_id``, ``dataset_id``, ``dataset_name``, ``dataset_version``,
-            ``test_case_id``, and ``started_at`` as a range such as
-            ``{"gte": "2026-06-01T00:00:00"}``. Combine fields to narrow server-side.
+        filter: Intake span filter, sent to the server. Combine fields to narrow
+            server-side. Every field takes one exact value, except ``started_at``:
+
+            - identity: ``trace_id``, ``session_id``, ``parent_span_id`` (the direct
+              children of one span)
+            - agent: ``agent_name``, ``agent_id``
+            - call: ``kind`` (``LLM``, ``TOOL``, ``AGENT``, ``CHAIN``, ``EVALUATOR``),
+              ``status`` (``success``, ``error``, ``cancelled``, ``unknown``),
+              ``tool_name``, ``model``, ``provider``
+            - context: ``project``, ``source``, ``evaluation_id``, ``test_case_id``
+            - time: ``started_at`` as ``{"gte": ..., "lte": ...}``, either bound or both
+
+            No other field is filterable, and ``$in`` is not accepted here: only
+            ``id`` on ``query_traces`` takes a list. Note that ``dataset_id``,
+            ``dataset_name``, ``dataset_version``, ``prompt_name``, and
+            ``prompt_version`` appear in the published schema but return HTTP 500
+            today, so do not filter on them.
         group_by: When set, roll the matching spans up server-side into one row per
             group. Only ``"trace_id"`` and ``"session_id"`` are groupable. Use this to
             get the distinct traces of any filter, then pass those ids to
@@ -173,10 +190,16 @@ async def query_traces(
     Args:
         client: Platform client.
         workspace: Workspace to search.
-        filter: Intake trace filter, sent to the server. Supported fields: ``id``
-            (a single id, or many as ``{"id": {"$in": [...]}}``), ``session_id``,
-            ``status``, ``evaluation_id``, ``test_case_id``, and ``started_at`` as a
-            range. There is no ``agent_name`` field, because only spans carry it. To
+        filter: Intake trace filter, sent to the server. Six fields are filterable:
+            ``id``, ``session_id``, ``status``, ``evaluation_id``, ``test_case_id``,
+            and ``started_at`` as ``{"gte": ..., "lte": ...}``.
+
+            ``id`` is the only field in Intake that takes a list, as
+            ``{"id": {"$in": [...]}}``. That makes it the way to resolve many trace
+            ids at once. Keep a batch near 50 ids, because the filter travels in the
+            query string. Every other field takes one exact value.
+
+            There is no ``agent_name`` field here, because only spans carry it. To
             scope by agent, use ``find_agent_traces``, or group ``query_spans`` by
             ``trace_id`` and pass the ids here.
         sort: ``"-started_at"`` (default, newest first) or ``"started_at"``.

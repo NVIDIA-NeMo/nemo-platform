@@ -305,6 +305,15 @@ async def test_bad_filter_points_at_the_vocabulary() -> None:
         await traces.query_spans(client, workspace="ws", filter={"nonsense": 1})
 
 
+async def test_internal_error_names_the_filters_intake_cannot_serve() -> None:
+    # Intake publishes five span filters that raise instead of returning 400, so a bare
+    # 500 is the only signal the agent gets. The message must name them.
+    client = _client(error=_status_error(500))
+
+    with pytest.raises(traces.TraceQueryError, match="prompt_name"):
+        await traces.query_spans(client, workspace="ws", filter={"dataset_name": "x"})
+
+
 async def test_unreachable_platform_names_the_base_url() -> None:
     request = httpx.Request("GET", "https://example.invalid/spans")
     client = _client(error=APIConnectionError(request=request))
