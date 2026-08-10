@@ -36,13 +36,16 @@ output is streamed to log files under the run's work dir *and* mirrored to this
 module's logger at ``DEBUG``, so callers choose terminal visibility through
 ordinary ``logging`` configuration.
 
-**Where Gym finds things.** NeMo Gym must be installed in the same environment as
-this SDK, along with the target environment's own dependencies. There is no
-config field naming a checkout, a venv, or a search root: these runner configs
+**Where Gym finds things.** NeMo Gym must be installed and its ``gym`` on PATH,
+along with the target environment's own dependencies. Generally that means a
+*separate* environment: Gym imports Ray at module load, and nemo-platform
+excludes Ray by constraint over an unfixed CVE, so the two cannot share one. In a
+job image the image owns PATH and this is unremarkable. There is deliberately no
+config field naming a checkout, a venv, or a search root — these runner configs
 become serialized job specs, and a local filesystem path means nothing on the
-other side of that boundary. Environments ship in the ``nemo-gym`` wheel
-(``resources_servers`` and friends install beside ``nemo_gym``, configs and
-example data included), so an install is sufficient to run them.
+other side of that boundary. Environments themselves ship in the ``nemo-gym``
+wheel (``resources_servers`` and friends install beside ``nemo_gym``, configs and
+example data included), so no checkout is needed to reach them.
 
 The subprocesses inherit this process's working directory, which is where Gym
 looks for the gitignored ``env.yaml`` holding the collector's credentials before
@@ -87,7 +90,10 @@ logger = logging.getLogger(__name__)
 #: Reward key read from each Gym rollout record.
 DEFAULT_REWARD_KEY = "reward"
 #: Gym's CLI, expected on PATH. Not configurable: these runner configs become serialized job specs,
-#: and a path into somebody's venv is meaningless on the other side of that boundary.
+#: and a path into somebody's venv is meaningless on the other side of that boundary. Note this name
+#: is only ever *resolved*, never executed: :func:`_gym_executable` turns it into an absolute path
+#: once, and that path is what the subprocesses run — so a child whose PATH differs from ours cannot
+#: end up executing a different Gym.
 _GYM_CLI = "gym"
 #: Gym's index fields on each rollout record. ``_ng_task_index`` is the only join back to the input
 #: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and

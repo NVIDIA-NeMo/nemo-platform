@@ -91,13 +91,23 @@ def _packaged_dataset(resources_server: str) -> Path:
     except ImportError as exc:  # pragma: no cover - importlib.resources is stdlib
         raise SystemExit(f"cannot resolve a packaged dataset: {exc}") from exc
     try:
-        return Path(str(resources.files(f"resources_servers.{resources_server}") / "data" / "example.jsonl"))
+        dataset = Path(str(resources.files(f"resources_servers.{resources_server}") / "data" / "example.jsonl"))
     except ModuleNotFoundError as exc:
         raise SystemExit(
             f"resources_servers.{resources_server} is not importable here, so its bundled dataset cannot be "
-            "located. Install Gym in this environment (`pip install nemo-gym`), or pass --dataset with the "
-            "path to the jsonl you want to run."
+            "located. Install Gym in this environment, or pass --dataset with the path to the jsonl you "
+            "want to run."
         ) from exc
+    # An importable environment does not guarantee bundled data: only git-tracked files ship in the
+    # wheel, so an environment whose splits are downloaded at runtime has no example.jsonl. Checking
+    # here keeps the guidance identical to the import failure, rather than letting
+    # `discover_gym_tasks` raise a bare FileNotFoundError on a path the caller never chose.
+    if not dataset.is_file():
+        raise SystemExit(
+            f"{resources_server} ships no bundled dataset at {dataset}. Pass --dataset with the path to "
+            "the jsonl you want to run."
+        )
+    return dataset
 
 
 async def _main(args: argparse.Namespace) -> int:

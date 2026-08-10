@@ -76,7 +76,7 @@ The runner uses Gym's **two-step** flow, which reads a dataset file directly (no
 1. `gym env start …` — brings up the resources-server + agent + model servers.
 2. `gym eval run --no-serve --input <dataset> …` — collects rollouts against them.
 
-It does **not** import `nemo_gym` and does **not** handle secrets — it invokes the `gym` executable in your checkout, and Gym reads credentials from that checkout's `env.yaml`.
+It does **not** import `nemo_gym` and does **not** handle secrets — it invokes whichever `gym` executable is on `PATH`, resolved once to an absolute path so the subprocesses cannot pick up a different one, and Gym reads credentials from the `env.yaml` in the directory you run from.
 
 The dataset handed to step 2 is not your source file. The runner **materializes** a normalized one into the run's work directory: one row per requested task, with `_ng_task_index` stamped explicitly. Gym honors a caller-supplied `_ng_task_index` (it only assigns one when a row lacks it) and echoes it back on every rollout record, so rollouts join back to tasks through a map the runner owns rather than a guess about Gym's internal row ordering. It also means running a *subset* of tasks only rolls out that subset.
 
