@@ -11,6 +11,7 @@ serialized response.
 import json
 from typing import Any
 
+import nemo_platform
 import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_DATA_MESSAGE_ROLE
 from nmp.core.inference_gateway.testing.harness import IGWPluginHarness
@@ -38,30 +39,8 @@ class TestRequestLogging:
     USER_INPUT = "What is the capital of France?"
     BACKEND_RESPONSE = "Paris is the capital of France."
 
-    SELF_CHECK_INPUT_PROMPT_TEMPLATE = "Should the user message be blocked?\n\nUser: {user_input}\nAnswer yes or no:"
-    SELF_CHECK_OUTPUT_PROMPT_TEMPLATE = (
-        "Your task is to check if the bot message below is harmful or inappropriate.\n\n"
-        'Bot message: "{bot_response}"\n\n'
-        "Question: Should the message be blocked?\n"
-        "Answer yes or no:"
-    )
-
     INPUT_RAIL_NAME = "self check input"
     OUTPUT_RAIL_NAME = "self check output"
-
-    @classmethod
-    def _build_self_check_input_prompt(cls) -> dict[str, Any]:
-        return {
-            "task": "self_check_input",
-            "content": cls.SELF_CHECK_INPUT_PROMPT_TEMPLATE.replace("{user_input}", "{{ user_input }}"),
-        }
-
-    @classmethod
-    def _build_self_check_output_prompt(cls) -> dict[str, Any]:
-        return {
-            "task": "self_check_output",
-            "content": cls.SELF_CHECK_OUTPUT_PROMPT_TEMPLATE.replace("{bot_response}", "{{ bot_response }}"),
-        }
 
     @classmethod
     def _config_data(cls, *, main_base_url: str) -> dict[str, Any]:
@@ -82,8 +61,21 @@ class TestRequestLogging:
                 },
             },
             "prompts": [
-                cls._build_self_check_input_prompt(),
-                cls._build_self_check_output_prompt(),
+                {
+                    "task": "self_check_input",
+                    "content": (
+                        "Should the user message be blocked?\n\nUser: {{ user_input }}\nAnswer yes or no:"
+                    ),
+                },
+                {
+                    "task": "self_check_output",
+                    "content": (
+                        "Your task is to check if the bot message below is harmful or inappropriate.\n\n"
+                        'Bot message: "{{ bot_response }}"\n\n'
+                        "Question: Should the message be blocked?\n"
+                        "Answer yes or no:"
+                    ),
+                },
             ],
         }
 
@@ -99,71 +91,50 @@ class TestRequestLogging:
         assert isinstance(log, dict), "expected guardrails_data.log to be present"
         return log
 
-    @staticmethod
-    def _assert_only_requested_log_fields(log: dict[str, Any], requested_fields: set[str]) -> None:
-        assert set(log.keys()) == requested_fields
-
-    @staticmethod
-    def _assert_activated_rails_populated(log: dict[str, Any]) -> None:
-        activated_rails = log["activated_rails"]
-        assert isinstance(activated_rails, list)
-        assert activated_rails, "activated_rails should not be empty"
-
-        rail_names = {rail["name"] for rail in activated_rails}
-        assert TestRequestLogging.INPUT_RAIL_NAME in rail_names
-        assert TestRequestLogging.OUTPUT_RAIL_NAME in rail_names
-
-        for rail in activated_rails:
-            assert isinstance(rail.get("name"), str)
-            assert isinstance(rail.get("type"), str)
-
-    @staticmethod
-    def _assert_llm_calls_populated(log: dict[str, Any]) -> None:
-        llm_calls = log["llm_calls"]
-        assert isinstance(llm_calls, list)
-        assert llm_calls, "llm_calls should not be empty"
-
-        first_call = llm_calls[0]
-        assert isinstance(first_call.get("llm_model_name"), str)
-        assert first_call.get("prompt") or first_call.get("completion")
-
-    @staticmethod
-    def _assert_internal_events_populated(log: dict[str, Any]) -> None:
-        internal_events = log["internal_events"]
-        assert isinstance(internal_events, list)
-        assert internal_events, "internal_events should not be empty"
-        assert isinstance(internal_events[0], dict)
-
-    @staticmethod
-    def _assert_stats_populated(log: dict[str, Any]) -> None:
-        stats = log["stats"]
-        assert isinstance(stats, dict)
-
-        numeric_fields = (
-            "total_duration",
-            "llm_calls_count",
-            "llm_calls_total_tokens",
-            "input_rails_duration",
-            "output_rails_duration",
-        )
-        assert any(isinstance(stats.get(field), (int, float)) for field in numeric_fields)
-
-    @staticmethod
-    def _assert_colang_history_populated(log: dict[str, Any]) -> None:
-        colang_history = log["colang_history"]
-        assert isinstance(colang_history, str)
-        assert colang_history.strip(), "colang_history should not be empty"
-
     @classmethod
-    def _assert_requested_field_populated(cls, field: str, log: dict[str, Any]) -> None:
-        assertions = {
-            "activated_rails": cls._assert_activated_rails_populated,
-            "llm_calls": cls._assert_llm_calls_populated,
-            "internal_events": cls._assert_internal_events_populated,
-            "stats": cls._assert_stats_populated,
-            "colang_history": cls._assert_colang_history_populated,
-        }
-        assertions[field](log)
+    def _assert_log_includes_fields(cls, log: dict[str, Any], *, fields: set[str]) -> None:
+        """Assert ``log`` contains exactly ``fields``, each with a populated value."""
+        assert set(log.keys()) == fields
+
+        if "activated_rails" in fields:
+            activated_rails = log["activated_rails"]
+            assert isinstance(activated_rails, list) and activated_rails
+            rail_names = {rail["name"] for rail in activated_rails}
+            assert cls.INPUT_RAIL_NAME in rail_names
+            assert cls.OUTPUT_RAIL_NAME in rail_names
+            for rail in activated_rails:
+                assert isinstance(rail.get("name"), str)
+                assert isinstance(rail.get("type"), str)
+
+        if "llm_calls" in fields:
+            llm_calls = log["llm_calls"]
+            assert isinstance(llm_calls, list) and llm_calls
+            first_call = llm_calls[0]
+            assert isinstance(first_call.get("llm_model_name"), str)
+            assert first_call.get("prompt") or first_call.get("completion")
+
+        if "internal_events" in fields:
+            internal_events = log["internal_events"]
+            assert isinstance(internal_events, list) and internal_events
+            assert isinstance(internal_events[0], dict)
+
+        if "stats" in fields:
+            stats = log["stats"]
+            assert isinstance(stats, dict)
+            assert any(
+                isinstance(stats.get(field), (int, float))
+                for field in (
+                    "total_duration",
+                    "llm_calls_count",
+                    "llm_calls_total_tokens",
+                    "input_rails_duration",
+                    "output_rails_duration",
+                )
+            )
+
+        if "colang_history" in fields:
+            colang_history = log["colang_history"]
+            assert isinstance(colang_history, str) and colang_history.strip()
 
     def _invoke_all_safe_request(
         self,
@@ -236,23 +207,17 @@ class TestRequestLogging:
 
         assert response["choices"][0]["message"]["content"] == self.BACKEND_RESPONSE
 
-        log = self._log_dict(response)
-        self._assert_only_requested_log_fields(log, {requested_field})
-        self._assert_requested_field_populated(requested_field, log)
+        self._assert_log_includes_fields(self._log_dict(response), fields={requested_field})
 
         guardrails_data = self._guardrails_data(response)
         assert guardrails_data["config_ids"] == [f"<inline:{test_data_names.guardrail_config_name}>"]
 
     def test_all_log_fields_requested_together(self, igw_plugin_harness: IGWPluginHarness) -> None:
         """Requesting every log flag should populate every log field."""
-        log_options = dict.fromkeys(REQUEST_LOG_FIELDS, True)
+        log_options: dict[str, bool] = dict.fromkeys(REQUEST_LOG_FIELDS, True)
         response, _ = self._invoke_all_safe_request(igw_plugin_harness, log_options=log_options)
 
-        log = self._log_dict(response)
-        self._assert_only_requested_log_fields(log, set(REQUEST_LOG_FIELDS))
-
-        for field in REQUEST_LOG_FIELDS:
-            self._assert_requested_field_populated(field, log)
+        self._assert_log_includes_fields(self._log_dict(response), fields=set(REQUEST_LOG_FIELDS))
 
     def test_log_omitted_when_not_requested(self, igw_plugin_harness: IGWPluginHarness) -> None:
         """Omitting guardrails.options.log should not include guardrails_data.log."""
@@ -274,7 +239,7 @@ class TestRequestLogging:
         activated_rail_types = {rail["type"] for rail in log["activated_rails"]}
         assert "input" in activated_rail_types
         assert "output" in activated_rail_types
-        assert len(log["llm_calls"]) >= 2
+        assert len(log["llm_calls"]) == 2
         assert len(log["internal_events"]) >= 2
 
     def test_return_choice_includes_requested_log_fields(self, igw_plugin_harness: IGWPluginHarness) -> None:
@@ -294,11 +259,7 @@ class TestRequestLogging:
 
         guardrails_data = json.loads(guardrails_choices[0]["message"]["content"])
         assert guardrails_data["config_ids"] == [f"<inline:{test_data_names.guardrail_config_name}>"]
-
-        log = guardrails_data["log"]
-        self._assert_only_requested_log_fields(log, {"activated_rails", "llm_calls"})
-        self._assert_activated_rails_populated(log)
-        self._assert_llm_calls_populated(log)
+        self._assert_log_includes_fields(guardrails_data["log"], fields={"activated_rails", "llm_calls"})
 
     def test_unknown_log_field_rejected(self, igw_plugin_harness: IGWPluginHarness) -> None:
         """Unsupported log options should fail request validation."""
@@ -328,7 +289,7 @@ class TestRequestLogging:
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
             )
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(nemo_platform.APIStatusError) as exc_info:
                 harness.chat_completions(
                     workspace=harness.workspace,
                     body={
@@ -338,4 +299,4 @@ class TestRequestLogging:
                     },
                 )
 
-        assert "422" in str(exc_info.value)
+        assert exc_info.value.status_code == 422
