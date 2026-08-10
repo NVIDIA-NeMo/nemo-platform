@@ -85,7 +85,7 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 
 | Patch | Purpose |
 |-------|---------|
-| `3d98f6e3.diff` | Drop old media deps (`decord`, `imageio-ffmpeg`) from Automodel extras and remove Automodel's unconditional `opencv-python-headless` dependency. The container skips Automodel's VLM extra, so FFmpeg-bearing `av` / `opencv-python-headless` wheels are not installed. |
+| `3d98f6e3.diff` | Drop old media deps (`decord`, `imageio-ffmpeg`) from Automodel extras, remove Automodel's unconditional `opencv-python-headless` dependency, and stop selecting `mistral-common`'s image extra for text training. The container skips Automodel's VLM extra, so FFmpeg-bearing `av` / `opencv-python-headless` wheels are not installed. |
 
 **Customizer tasks image (`nmp-customizer-tasks`):** `uv sync --package nmp-customization-common --package nmp-models --no-dev --inexact` from the customizer workspace slice (`docker/customizer/`). Hosts shared CPU steps (`file_io`, `model_entity`, `model_spec`, LoRA sidecar) for all customization backends.
 
