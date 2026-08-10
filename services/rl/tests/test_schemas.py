@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from nmp.customization_common.schemas.values import OutputNameType
 from nmp.rl.app.jobs.training.schemas import OptimizerType
@@ -76,8 +78,9 @@ def test_adam_eps_must_be_positive(bad: float) -> None:
     ],
 )
 def test_optimizer_bounds(field: str, bad: float) -> None:
+    kwargs: dict[str, Any] = {field: bad}
     with pytest.raises(ValueError):
-        DPOTraining(**{field: bad})
+        DPOTraining(**kwargs)
 
 
 def test_keep_top_k_must_be_positive() -> None:
