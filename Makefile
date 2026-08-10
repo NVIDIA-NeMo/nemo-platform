@@ -215,7 +215,15 @@ bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
 # Set NMP_SKIP_FLOX=1 when CI has already provisioned the required tools.
 NMP_SKIP_FLOX ?=
 FLOX ?= flox
-FLOX_EXEC := $(if $(NMP_SKIP_FLOX),,$(FLOX) activate --dir "$(CURDIR)" --)
+ifeq ($(NMP_SKIP_FLOX),)
+ifeq ($(FLOX_ENV_PROJECT),$(CURDIR))
+FLOX_EXEC :=
+else
+FLOX_EXEC := $(FLOX) activate --dir "$(CURDIR)" --
+endif
+else
+FLOX_EXEC :=
+endif
 UV := $(FLOX_EXEC) uv
 FLOX_PNPM := $(FLOX_EXEC) bash -c 'node "$$(command -v pnpm)" "$$@"' --
 
@@ -223,6 +231,8 @@ FLOX_PNPM := $(FLOX_EXEC) bash -c 'node "$$(command -v pnpm)" "$$@"' --
 verify-flox: ## Verify Flox is available for the repository toolchain
 	@if [ -n "$(NMP_SKIP_FLOX)" ]; then \
 		echo "NMP_SKIP_FLOX set, using the CI-provisioned toolchain"; \
+	elif [ "$(FLOX_ENV_PROJECT)" = "$(CURDIR)" ]; then \
+		echo "Using the active Flox environment"; \
 	elif ! command -v "$(FLOX)" >/dev/null 2>&1; then \
 		echo "flox is required. Install it, then rerun this command."; \
 		exit 1; \
