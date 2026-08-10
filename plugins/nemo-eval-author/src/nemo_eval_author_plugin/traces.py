@@ -3,25 +3,27 @@
 
 """Intake trace querying for standalone Eval Author.
 
-Eval Author must find the production traces of an agent under test, slice that
-population to decide what is worth reading, then read one trace in full.
+Two raw queries and one composite.
 
-Intake has no endpoint for the first step. Only spans carry ``agent_name``, so
-``traces.list`` cannot be scoped to an agent, and ``spans.groups.list`` sorts
-only by span count. ``list_traces`` therefore works in two steps. It walks one
-newest-first span stream to collect the distinct trace ids of the agent, then
-asks ``traces.list`` for the summary of exactly those ids. The second step
-matters: a span scan sees only its own window, so counts taken from it are
-lower bounds, while ``traces.list`` returns the counts that the server holds.
+``query_spans`` and ``query_traces`` pass a filter straight to Intake and return
+plain rows. The agent writes its own filters, so it can ask for error spans of
+one tool, or the traces of one evaluation case, without a new method here.
+Server-side filtering is exact, which client-side counting over a capped page
+never is.
 
-Reading and diagnosis are not rebuilt here. ``read_trace`` delegates to
-``TraceExplorer`` and ``analyze_trace`` delegates to ``TraceAnalyzer``.
+``find_agent_traces`` exists because no single endpoint answers "the recent
+traces of this agent". Only spans carry ``agent_name``, so ``traces.list``
+cannot be scoped to an agent, and ``spans.groups.list`` sorts only by span
+count. The composite scans spans newest first for the distinct trace ids, then
+reads the summary of exactly those ids. It is built on the two raw queries, so
+it is also a worked example of composing them.
 
-Failure-mode discovery stays with the Analyst. ``facets`` counts exact field
-values so that a caller can choose what to read. It does not cluster.
+Reading and diagnosis are delegated, not rebuilt: ``read_trace`` calls
+``TraceExplorer`` and ``analyze_trace`` calls ``TraceAnalyzer``.
+
+Failure-mode discovery stays with the Analyst. Nothing here clusters traces.
 """
 
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -31,6 +33,8 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer impor
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 from nemo_platform import APIConnectionError, APIStatusError, AsyncNeMoPlatform
 
+DEFAULT_ROW_LIMIT = 100
+MAX_ROW_LIMIT = 1000
 DEFAULT_TRACE_LIMIT = 50
 MAX_TRACE_LIMIT = 200
 DEFAULT_SPAN_BUDGET = 1000
@@ -38,10 +42,6 @@ _MAX_PAGE_SIZE = 100
 # Trace ids travel in the query string, so one wide ``$in`` can overrun the URL limit
 # of the server. At 50 ids the query stays near 2 KB.
 _TRACE_ID_CHUNK = 50
-
-# Facet name -> the ``Span`` attribute it reads. Intake groups server-side only by
-# trace_id and session_id, so every other cut is counted client-side.
-_FACETS = {"error_type": "error_type", "tool": "tool_name", "model": "model"}
 
 
 class TraceQueryError(RuntimeError):
@@ -58,6 +58,11 @@ def _explain(exc: Exception, *, doing: str, workspace: str) -> TraceQueryError:
             )
         elif exc.status_code == 404:
             hint = f"Intake returned 404. Confirm that workspace '{workspace}' exists and that the trace id is correct."
+        elif exc.status_code == 400:
+            hint = (
+                f"Intake rejected the query: {exc}. Check the filter fields and operators against the "
+                "vocabulary in the docstring of the query you called."
+            )
         else:
             hint = f"Intake returned HTTP {exc.status_code}: {exc}"
         return TraceQueryError(f"{doing} failed. {hint}")
@@ -75,117 +80,134 @@ def _explain(exc: Exception, *, doing: str, workspace: str) -> TraceQueryError:
     return TraceQueryError(f"{doing} failed: {type(exc).__name__}: {exc}")
 
 
-async def _scan_agent_spans(
+def _page_size(limit: int) -> int:
+    return max(1, min(limit, _MAX_PAGE_SIZE))
+
+
+async def _drain(paginator: Any, *, limit: int) -> tuple[list[dict[str, Any]], bool]:
+    """Pull up to ``limit`` rows as plain dicts. The flag reports that more matched."""
+    rows: list[dict[str, Any]] = []
+    truncated = False
+    async for item in paginator:
+        if len(rows) >= limit:
+            truncated = True
+            break
+        rows.append(item.model_dump(mode="json", exclude_none=True))
+    return rows, truncated
+
+
+async def query_spans(
     client: AsyncNeMoPlatform,
     *,
-    agent: str,
     workspace: str,
-    since: datetime | None,
-    limit: int,
-    span_budget: int,
-) -> tuple[dict[str, dict[str, Any]], bool]:
-    """Collect the distinct traces of one agent by walking spans newest first.
+    filter: dict[str, Any] | None = None,
+    group_by: str | None = None,
+    sort: str | None = None,
+    mode: str = "summary",
+    limit: int = DEFAULT_ROW_LIMIT,
+) -> dict[str, Any]:
+    """Query the spans of Intake, flat or rolled up into groups.
 
-    Only spans carry ``agent_name``, which is the reason this scan exists. It also
-    collects the facet values, because Intake groups server-side only by trace_id
-    and session_id.
+    Args:
+        client: Platform client.
+        workspace: Workspace to search.
+        filter: Intake span filter, sent to the server. Supported fields:
+            ``agent_name``, ``agent_id``, ``session_id``, ``trace_id``,
+            ``parent_span_id`` (direct children of a span), ``project``, ``source``,
+            ``kind`` (``LLM``, ``TOOL``, ``AGENT``, ``CHAIN``, ``EVALUATOR``),
+            ``status`` (``success``, ``error``, ``cancelled``, ``unknown``), ``model``,
+            ``provider``, ``tool_name``, ``prompt_name``, ``prompt_version``,
+            ``evaluation_id``, ``dataset_id``, ``dataset_name``, ``dataset_version``,
+            ``test_case_id``, and ``started_at`` as a range such as
+            ``{"gte": "2026-06-01T00:00:00"}``. Combine fields to narrow server-side.
+        group_by: When set, roll the matching spans up server-side into one row per
+            group. Only ``"trace_id"`` and ``"session_id"`` are groupable. Use this to
+            get the distinct traces of any filter, then pass those ids to
+            ``query_traces``. Groups sort by span count only, never by time.
+        sort: ``"-started_at"`` (default, newest first) or ``"started_at"``. Ignored
+            when ``group_by`` is set.
+        mode: ``"summary"`` omits payloads, ``"preview"`` truncates them, ``"detailed"``
+            returns them in full. Stay on ``"summary"`` while exploring.
+        limit: Maximum rows to return. Clamped to ``MAX_ROW_LIMIT``.
 
     Returns:
-        The traces in encounter order, and a flag for whether the scan stopped early.
+        Flat: ``{"spans": [...], "count": int, "truncated": bool}``. Grouped:
+        ``{"groups": [...], "grouped_by": str, "count": int, "truncated": bool}``,
+        where a group is ``{"group": {...}, "span_count": int}``. ``truncated`` means
+        that more rows matched than ``limit``, so narrow the filter or raise ``limit``.
+
+    Raises:
+        TraceQueryError: The Intake read failed.
     """
-    span_filter: dict[str, Any] = {"agent_name": agent}
-    if since is not None:
-        span_filter["started_at"] = {"gte": since.isoformat()}
-
-    found: dict[str, dict[str, Any]] = {}
-    trace: dict[str, Any] | None
-    truncated = False
-    scanned = 0
-    paginator = client.intake.spans.list(
-        workspace=workspace,
-        filter=cast(Any, span_filter),
-        sort="-started_at",
-        mode="summary",
-        page_size=max(1, min(span_budget, _MAX_PAGE_SIZE)),
-    )
+    limit = max(1, min(limit, MAX_ROW_LIMIT))
+    kwargs: dict[str, Any] = {"workspace": workspace, "page_size": _page_size(limit)}
+    if filter is not None:
+        kwargs["filter"] = cast(Any, filter)
     try:
-        async for span in paginator:
-            if scanned >= span_budget:
-                truncated = True
-                break
-            scanned += 1
-            trace_id = span.trace_id
-            if not trace_id:
-                continue
-            trace = found.get(trace_id)
-            if trace is None:
-                if len(found) >= limit:
-                    truncated = True
-                    break
-                # Every field here is a fallback for a trace that traces.list does not
-                # return, which happens when the root span of the trace was never ingested.
-                trace = {
-                    "trace_ref": f"intake://{trace_id}",
-                    "started_at": span.started_at.isoformat(),
-                    "status": "unknown",
-                    "span_count": None,
-                    "error_count": None,
-                    "duration_ms": None,
-                    "name": None,
-                    **{facet: set() for facet in _FACETS},
-                }
-                found[trace_id] = trace
-            # Spans arrive newest first, so the last one seen for a trace is its oldest,
-            # which is the closest this scan can get to the start time of the trace.
-            trace["started_at"] = span.started_at.isoformat()
-            for facet, attribute in _FACETS.items():
-                value = getattr(span, attribute, None)
-                if value:
-                    trace[facet].add(str(value))
+        if group_by is not None:
+            rows, truncated = await _drain(client.intake.spans.groups.list(by=group_by, **kwargs), limit=limit)
+            return {"groups": rows, "grouped_by": group_by, "count": len(rows), "truncated": truncated}
+        kwargs["mode"] = mode
+        kwargs["sort"] = sort or "-started_at"
+        rows, truncated = await _drain(client.intake.spans.list(**kwargs), limit=limit)
+        return {"spans": rows, "count": len(rows), "truncated": truncated}
     except Exception as exc:
-        raise _explain(exc, doing=f"Listing traces for agent '{agent}'", workspace=workspace) from exc
-    return found, truncated
+        raise _explain(exc, doing="Querying spans", workspace=workspace) from exc
 
 
-async def _merge_trace_summaries(
+async def query_traces(
     client: AsyncNeMoPlatform,
-    found: dict[str, dict[str, Any]],
     *,
     workspace: str,
-) -> None:
-    """Replace the scanned fields of each trace with the server-computed summary.
+    filter: dict[str, Any] | None = None,
+    sort: str | None = None,
+    mode: str = "preview",
+    limit: int = DEFAULT_ROW_LIMIT,
+) -> dict[str, Any]:
+    """Query whole traces, with the rollups that the server computes.
 
-    The span scan sees only its own window, so any count taken from it is a lower
-    bound. ``traces.list`` returns the real status, span count, and error count.
+    Prefer this over counting spans yourself. A trace row carries the exact
+    ``span_count`` and ``error_count`` of the whole trace, which a capped span query
+    cannot give you.
+
+    Args:
+        client: Platform client.
+        workspace: Workspace to search.
+        filter: Intake trace filter, sent to the server. Supported fields: ``id``
+            (a single id, or many as ``{"id": {"$in": [...]}}``), ``session_id``,
+            ``status``, ``evaluation_id``, ``test_case_id``, and ``started_at`` as a
+            range. There is no ``agent_name`` field, because only spans carry it. To
+            scope by agent, use ``find_agent_traces``, or group ``query_spans`` by
+            ``trace_id`` and pass the ids here.
+        sort: ``"-started_at"`` (default, newest first) or ``"started_at"``.
+        mode: ``"summary"`` omits both payloads and rollups, ``"preview"`` (default)
+            adds the rollups and 300-character payload previews, ``"detailed"`` returns
+            full payloads. The rollups need ``"preview"`` or ``"detailed"``.
+        limit: Maximum rows to return. Clamped to ``MAX_ROW_LIMIT``.
+
+    Returns:
+        ``{"traces": [...], "count": int, "truncated": bool}``.
+
+    Raises:
+        TraceQueryError: The Intake read failed.
     """
-    ids = list(found)
+    limit = max(1, min(limit, MAX_ROW_LIMIT))
+    kwargs: dict[str, Any] = {
+        "workspace": workspace,
+        "mode": mode,
+        "sort": sort or "-started_at",
+        "page_size": _page_size(limit),
+    }
+    if filter is not None:
+        kwargs["filter"] = cast(Any, filter)
     try:
-        for start in range(0, len(ids), _TRACE_ID_CHUNK):
-            chunk = ids[start : start + _TRACE_ID_CHUNK]
-            paginator = client.intake.traces.list(
-                workspace=workspace,
-                filter=cast(Any, {"id": {"$in": chunk}}),
-                sort="-started_at",
-                # preview is the cheapest mode that carries the rollups. Its payload
-                # previews are read off the wire and dropped.
-                mode="preview",
-                page_size=len(chunk),
-            )
-            async for summary in paginator:
-                trace = found.get(summary.id)
-                if trace is None:
-                    continue
-                trace["started_at"] = summary.started_at.isoformat()
-                trace["status"] = summary.status
-                trace["span_count"] = summary.span_count
-                trace["error_count"] = summary.error_count
-                trace["duration_ms"] = summary.duration_ms
-                trace["name"] = summary.name
+        rows, truncated = await _drain(client.intake.traces.list(**kwargs), limit=limit)
     except Exception as exc:
-        raise _explain(exc, doing="Reading trace summaries", workspace=workspace) from exc
+        raise _explain(exc, doing="Querying traces", workspace=workspace) from exc
+    return {"traces": rows, "count": len(rows), "truncated": truncated}
 
 
-async def list_traces(
+async def find_agent_traces(
     client: AsyncNeMoPlatform,
     *,
     agent: str,
@@ -194,45 +216,75 @@ async def list_traces(
     limit: int = DEFAULT_TRACE_LIMIT,
     span_budget: int = DEFAULT_SPAN_BUDGET,
 ) -> dict[str, Any]:
-    """List the most recent traces of one agent, newest first.
+    """Find the most recent traces of one agent, newest first.
+
+    No single endpoint answers this. The scan walks spans newest first for the
+    distinct trace ids, because only spans carry ``agent_name`` and span groups do
+    not sort by time. It then reads the summary of exactly those ids, because counts
+    taken from the scanned window alone would be lower bounds.
 
     Args:
         client: Platform client.
         agent: Value that the agent reports to Intake as ``agent_name``.
         workspace: Workspace to search.
         since: Optional lower bound on span start time.
-        limit: Maximum number of traces to return. Clamped to ``MAX_TRACE_LIMIT``.
-        span_budget: Maximum number of spans to read. Stops one wide query from
-            flooding the caller's context.
+        limit: Maximum traces to return. Clamped to ``MAX_TRACE_LIMIT``.
+        span_budget: Maximum spans to scan before stopping.
 
     Returns:
-        ``{"traces": [...], "count": int, "truncated": bool}``, and a ``note`` key
-        when no trace matched. ``truncated`` is True when the limit or the span
-        budget stopped the scan, so more traces exist than the ones returned.
-
-        Each trace carries ``trace_ref``, ``started_at``, ``status``, ``span_count``,
-        ``error_count``, ``duration_ms``, ``name``, and one sorted list per facet.
-        Every field except the facets comes from the server and is exact.
+        ``{"traces": [...], "count": int, "truncated": bool}``, and a ``note`` when
+        nothing matched. Each trace carries ``trace_ref`` for ``read_trace``,
+        ``trace_id`` for a follow-up ``query_spans``, and the server summary:
+        ``started_at``, ``status``, ``span_count``, ``error_count``, ``duration_ms``,
+        and ``name``.
 
     Raises:
         TraceQueryError: The Intake read failed.
     """
     limit = max(1, min(limit, MAX_TRACE_LIMIT))
-    found, truncated = await _scan_agent_spans(
-        client,
-        agent=agent,
-        workspace=workspace,
-        since=since,
-        limit=limit,
-        span_budget=span_budget,
-    )
-    if found:
-        await _merge_trace_summaries(client, found, workspace=workspace)
+    span_filter: dict[str, Any] = {"agent_name": agent}
+    if since is not None:
+        span_filter["started_at"] = {"gte": since.isoformat()}
 
-    traces = sorted(found.values(), key=lambda entry: entry["started_at"], reverse=True)
-    for entry in traces:
-        for facet in _FACETS:
-            entry[facet] = sorted(entry[facet])
+    scan = await query_spans(
+        client,
+        workspace=workspace,
+        filter=span_filter,
+        sort="-started_at",
+        mode="summary",
+        limit=span_budget,
+    )
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    truncated = scan["truncated"]
+    for row in scan["spans"]:
+        trace_id = row.get("trace_id")
+        if not trace_id or trace_id in seen:
+            continue
+        if len(ordered) >= limit:
+            truncated = True
+            break
+        seen.add(trace_id)
+        ordered.append(trace_id)
+
+    summaries: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(ordered), _TRACE_ID_CHUNK):
+        chunk = ordered[start : start + _TRACE_ID_CHUNK]
+        page = await query_traces(
+            client,
+            workspace=workspace,
+            filter={"id": {"$in": chunk}},
+            sort="-started_at",
+            # preview is the cheapest mode that carries the rollups.
+            mode="preview",
+            limit=len(chunk),
+        )
+        for row in page["traces"]:
+            summaries[row["id"]] = row
+
+    traces = [_trace_entry(trace_id, summaries.get(trace_id)) for trace_id in ordered]
+    traces.sort(key=lambda entry: entry["started_at"] or "", reverse=True)
 
     result: dict[str, Any] = {"traces": traces, "count": len(traces), "truncated": truncated}
     if not traces:
@@ -245,30 +297,23 @@ async def list_traces(
     return result
 
 
-def facets(result: dict[str, Any], by: str) -> dict[str, int]:
-    """Count the traces of a ``list_traces`` result per distinct value of ``by``.
+def _trace_entry(trace_id: str, summary: dict[str, Any] | None) -> dict[str, Any]:
+    """Build one result row. A trace whose root span was never ingested has no summary.
 
-    Args:
-        result: A ``list_traces`` return value.
-        by: ``"status"``, or one of ``"error_type"``, ``"tool"``, ``"model"``. A trace
-            that holds two values of a field counts once against each.
-
-    Returns:
-        Value to trace count, largest count first.
-
-    Raises:
-        ValueError: ``by`` is not a supported facet.
+    Its unknown fields stay ``None`` rather than zero, so an unknown never reads as a
+    healthy trace.
     """
-    traces = result["traces"]
-    if by == "status":
-        counts = Counter(trace["status"] for trace in traces)
-    elif by in _FACETS:
-        # ponytail: the facet values come from the scanned span window, so a trace can
-        # hold a tool or model that this count misses. Raise span_budget to see more.
-        counts = Counter(value for trace in traces for value in trace[by])
-    else:
-        raise ValueError(f"Unsupported facet '{by}'. Use 'status', {', '.join(repr(name) for name in _FACETS)}.")
-    return dict(counts.most_common())
+    summary = summary or {}
+    return {
+        "trace_ref": f"intake://{trace_id}",
+        "trace_id": trace_id,
+        "started_at": summary.get("started_at"),
+        "status": summary.get("status", "unknown"),
+        "span_count": summary.get("span_count"),
+        "error_count": summary.get("error_count"),
+        "duration_ms": summary.get("duration_ms"),
+        "name": summary.get("name"),
+    }
 
 
 async def read_trace(client: AsyncNeMoPlatform, ref: str, *, workspace: str) -> TraceExplorer:
@@ -277,7 +322,7 @@ async def read_trace(client: AsyncNeMoPlatform, ref: str, *, workspace: str) -> 
     Args:
         client: Platform client.
         ref: A bare trace id, ``intake://<id>``, or ``intake://traces/<id>``. The first
-            two are what ``list_traces`` and ``Insight.trace_refs`` produce.
+            two are what ``find_agent_traces`` and ``Insight.trace_refs`` produce.
         workspace: Workspace that holds the trace.
 
     Returns:

@@ -3,9 +3,9 @@
 
 """Tests for Eval Author's Intake trace tools.
 
-Only the logic this module owns: the span scan, the merge of the server summary over
-it, the client-side facet counts, ref normalization, and the error messages. Reading
-and diagnosing a trace belong to Experimentalist, so those seams are faked.
+Only the logic this module owns: what the raw queries send and return, how the
+composite dedupes and merges, ref normalization, and the error messages. Reading and
+diagnosing a trace belong to Experimentalist, so those seams are faked.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -22,39 +22,36 @@ from nemo_platform import APIConnectionError, APIStatusError
 _BASE = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
 
-def _at(minute: int) -> datetime:
-    return _BASE + timedelta(minutes=minute)
+def _at(minute: int) -> str:
+    return (_BASE + timedelta(minutes=minute)).isoformat()
 
 
-def _span(trace_id: str, *, minute: int, **fields: Any) -> SimpleNamespace:
-    """One Intake span row, with only the fields the scan reads."""
-    return SimpleNamespace(
-        trace_id=trace_id,
-        started_at=_at(minute),
-        status=fields.pop("status", "success"),
-        error_type=fields.pop("error_type", None),
-        name=fields.pop("name", None),
-        tool_name=fields.pop("tool_name", None),
-        model=fields.pop("model", None),
-        **fields,
-    )
+class _Row:
+    """A stand-in for an SDK model. Only ``model_dump`` is used."""
+
+    def __init__(self, **fields: Any) -> None:
+        self._fields = fields
+
+    def model_dump(self, **_: Any) -> dict[str, Any]:
+        return {name: value for name, value in self._fields.items() if value is not None}
 
 
-def _summary(trace_id: str, *, minute: int, **fields: Any) -> SimpleNamespace:
-    """One ``traces.list`` row: the server-computed summary of a whole trace."""
-    return SimpleNamespace(
+def _span(trace_id: str | None, *, minute: int, **fields: Any) -> _Row:
+    return _Row(trace_id=trace_id, started_at=_at(minute), span_id=f"s-{minute}", **fields)
+
+
+def _summary(trace_id: str, *, minute: int, **fields: Any) -> _Row:
+    return _Row(
         id=trace_id,
         started_at=_at(minute),
         status=fields.pop("status", "success"),
         span_count=fields.pop("span_count", 1),
         error_count=fields.pop("error_count", 0),
-        duration_ms=fields.pop("duration_ms", None),
-        name=fields.pop("name", None),
         **fields,
     )
 
 
-def _pages(items: list[SimpleNamespace], error: Exception | None) -> Any:
+def _pages(items: list[Any], error: Exception | None) -> Any:
     async def stream() -> Any:
         if error is not None:
             raise error
@@ -65,21 +62,27 @@ def _pages(items: list[SimpleNamespace], error: Exception | None) -> Any:
 
 
 class _FakeClient:
-    """Stands in for the two Intake reads that ``list_traces`` makes."""
+    """Stands in for the three Intake reads these tools make."""
 
     def __init__(
         self,
-        spans: list[SimpleNamespace],
-        summaries: list[SimpleNamespace],
+        spans: list[_Row],
+        summaries: list[_Row],
+        groups: list[_Row],
         error: Exception | None,
     ) -> None:
         self._spans = spans
         self._summaries = summaries
+        self._groups = groups
         self._error = error
         self.span_calls: list[dict[str, Any]] = []
         self.trace_calls: list[dict[str, Any]] = []
+        self.group_calls: list[dict[str, Any]] = []
         self.intake = SimpleNamespace(
-            spans=SimpleNamespace(list=self._list_spans),
+            spans=SimpleNamespace(
+                list=self._list_spans,
+                groups=SimpleNamespace(list=self._list_groups),
+            ),
             traces=SimpleNamespace(list=self._list_traces),
         )
 
@@ -87,19 +90,27 @@ class _FakeClient:
         self.span_calls.append(kwargs)
         return _pages(self._spans, self._error)
 
+    def _list_groups(self, **kwargs: Any) -> Any:
+        self.group_calls.append(kwargs)
+        return _pages(self._groups, self._error)
+
     def _list_traces(self, **kwargs: Any) -> Any:
         self.trace_calls.append(kwargs)
-        wanted = set(kwargs["filter"]["id"]["$in"])
-        return _pages([row for row in self._summaries if row.id in wanted], None)
+        rows = self._summaries
+        wanted = kwargs.get("filter", {}).get("id", {}).get("$in")
+        if wanted is not None:
+            rows = [row for row in rows if row.model_dump()["id"] in set(wanted)]
+        return _pages(rows, self._error)
 
 
 def _client(
-    spans: list[SimpleNamespace] | None = None,
-    summaries: list[SimpleNamespace] | None = None,
+    spans: list[_Row] | None = None,
+    summaries: list[_Row] | None = None,
+    groups: list[_Row] | None = None,
     error: Exception | None = None,
 ) -> Any:
     """A fake platform client, typed ``Any`` so call sites need no cast."""
-    return _FakeClient(spans or [], summaries or [], error)
+    return _FakeClient(spans or [], summaries or [], groups or [], error)
 
 
 def _status_error(code: int) -> APIStatusError:
@@ -107,107 +118,168 @@ def _status_error(code: int) -> APIStatusError:
     return APIStatusError("boom", response=httpx.Response(code, request=request), body=None)
 
 
-async def test_scan_dedupes_trace_ids_and_orders_newest_first() -> None:
-    # Interleaved on purpose: one trace id must produce one entry, whichever order
-    # its spans arrive in.
+# --- raw queries -------------------------------------------------------------------
+
+
+async def test_query_spans_sends_the_filter_and_returns_plain_rows() -> None:
+    client = _client(spans=[_span("t-1", minute=5, tool_name="search")])
+
+    result = await traces.query_spans(
+        client,
+        workspace="ws",
+        filter={"agent_name": "aut", "tool_name": "search", "status": "error"},
+        mode="detailed",
+        limit=10,
+    )
+
+    call = client.span_calls[0]
+    assert call["filter"] == {"agent_name": "aut", "tool_name": "search", "status": "error"}
+    assert call["mode"] == "detailed"
+    assert call["sort"] == "-started_at"
+    assert result["count"] == 1
+    assert result["truncated"] is False
+    assert result["spans"][0]["tool_name"] == "search"
+
+
+async def test_query_spans_omits_an_absent_filter() -> None:
+    # The SDK uses an omit sentinel, so a None filter must not be sent as null.
+    client = _client()
+
+    await traces.query_spans(client, workspace="ws")
+
+    assert "filter" not in client.span_calls[0]
+
+
+async def test_query_spans_truncates_at_the_limit() -> None:
+    client = _client(spans=[_span(f"t-{index}", minute=index) for index in range(10)])
+
+    result = await traces.query_spans(client, workspace="ws", limit=4)
+
+    assert result["count"] == 4
+    assert result["truncated"] is True
+
+
+async def test_query_spans_groups_server_side() -> None:
+    client = _client(groups=[_Row(group={"trace_id": "t-1"}, span_count=12)])
+
+    result = await traces.query_spans(client, workspace="ws", filter={"tool_name": "search"}, group_by="trace_id")
+
+    assert client.group_calls[0]["by"] == "trace_id"
+    assert client.group_calls[0]["filter"] == {"tool_name": "search"}
+    assert client.span_calls == []
+    assert result["grouped_by"] == "trace_id"
+    assert result["groups"][0]["span_count"] == 12
+
+
+async def test_query_traces_defaults_to_preview_for_the_rollups() -> None:
+    client = _client(summaries=[_summary("t-1", minute=5, span_count=40, error_count=3)])
+
+    result = await traces.query_traces(client, workspace="ws", filter={"id": {"$in": ["t-1"]}})
+
+    assert client.trace_calls[0]["mode"] == "preview"
+    assert client.trace_calls[0]["sort"] == "-started_at"
+    assert result["traces"][0]["span_count"] == 40
+    assert result["traces"][0]["error_count"] == 3
+
+
+# --- the composite -----------------------------------------------------------------
+
+
+async def test_find_agent_traces_dedupes_and_orders_newest_first() -> None:
     client = _client(
         spans=[
             _span("t-new", minute=50),
             _span("t-old", minute=20),
             _span("t-new", minute=40),
-            _span("t-old", minute=10),
+            _span(None, minute=15),
         ],
         summaries=[_summary("t-new", minute=40), _summary("t-old", minute=10)],
     )
 
-    result = await traces.list_traces(client, agent="aut", workspace="ws")
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws")
 
     assert [trace["trace_ref"] for trace in result["traces"]] == ["intake://t-new", "intake://t-old"]
+    assert result["traces"][0]["trace_id"] == "t-new"
     assert result["count"] == 2
     assert result["truncated"] is False
-    assert result["traces"][0]["started_at"] == _at(40).isoformat()
 
 
-async def test_server_summary_overrides_the_scanned_window() -> None:
+async def test_find_agent_traces_uses_the_server_summary() -> None:
     # The scan sees two spans and no error. The server knows the trace holds 40 spans
-    # and three errors. Counting from the window alone would report a healthy trace.
+    # and three errors. Counting the window alone would report a healthy trace.
     client = _client(
-        spans=[_span("t-1", minute=50, tool_name="search"), _span("t-1", minute=49, model="gpt")],
-        summaries=[
-            _summary("t-1", minute=10, status="error", span_count=40, error_count=3, name="run", duration_ms=99.5)
-        ],
+        spans=[_span("t-1", minute=50), _span("t-1", minute=49)],
+        summaries=[_summary("t-1", minute=10, status="error", span_count=40, error_count=3, name="run")],
     )
 
-    result = await traces.list_traces(client, agent="aut", workspace="ws")
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws")
 
     trace = result["traces"][0]
     assert trace["status"] == "error"
     assert trace["span_count"] == 40
     assert trace["error_count"] == 3
     assert trace["name"] == "run"
-    assert trace["duration_ms"] == 99.5
-    assert trace["started_at"] == _at(10).isoformat()
+    assert trace["started_at"] == _at(10)
     assert client.trace_calls[0]["filter"] == {"id": {"$in": ["t-1"]}}
 
 
-async def test_missing_summary_falls_back_to_the_scan() -> None:
+async def test_find_agent_traces_keeps_a_trace_with_no_summary() -> None:
     # A trace whose root span was never ingested has no traces.list row. It must still
     # be returned, and its unknown fields must not read as zero.
     client = _client(spans=[_span("t-1", minute=30)], summaries=[])
 
-    result = await traces.list_traces(client, agent="aut", workspace="ws")
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws")
 
     trace = result["traces"][0]
     assert trace["trace_ref"] == "intake://t-1"
     assert trace["status"] == "unknown"
     assert trace["span_count"] is None
     assert trace["error_count"] is None
-    assert trace["started_at"] == _at(30).isoformat()
 
 
-async def test_trace_ids_are_chunked() -> None:
-    spans = [_span(f"t-{index}", minute=index) for index in range(120)]
-    client = _client(spans=spans, summaries=[_summary(f"t-{index}", minute=index) for index in range(120)])
+async def test_find_agent_traces_chunks_trace_ids() -> None:
+    client = _client(
+        spans=[_span(f"t-{index}", minute=index) for index in range(120)],
+        summaries=[_summary(f"t-{index}", minute=index) for index in range(120)],
+    )
 
-    result = await traces.list_traces(client, agent="aut", workspace="ws", limit=120, span_budget=200)
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws", limit=120, span_budget=200)
 
     assert result["count"] == 120
     assert [len(call["filter"]["id"]["$in"]) for call in client.trace_calls] == [50, 50, 20]
 
 
-async def test_span_budget_truncates() -> None:
+async def test_find_agent_traces_truncates_on_the_span_budget() -> None:
     client = _client(spans=[_span(f"t-{index}", minute=index) for index in range(10)])
 
-    result = await traces.list_traces(client, agent="aut", workspace="ws", span_budget=4)
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws", span_budget=4)
 
     assert result["count"] == 4
     assert result["truncated"] is True
 
 
-async def test_limit_truncates_and_clamps_page_size() -> None:
+async def test_find_agent_traces_truncates_on_the_trace_limit() -> None:
     client = _client(spans=[_span(f"t-{index}", minute=index) for index in range(10)])
 
-    result = await traces.list_traces(client, agent="aut", workspace="ws", limit=3)
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws", limit=3)
 
     assert result["count"] == 3
     assert result["truncated"] is True
-    assert client.span_calls[0]["page_size"] <= 100
 
 
-async def test_since_reaches_the_filter() -> None:
+async def test_find_agent_traces_sends_since() -> None:
     client = _client()
-    since = _at(30)
+    since = _BASE + timedelta(minutes=30)
 
-    await traces.list_traces(client, agent="aut", workspace="ws", since=since)
+    await traces.find_agent_traces(client, agent="aut", workspace="ws", since=since)
 
     assert client.span_calls[0]["filter"] == {"agent_name": "aut", "started_at": {"gte": since.isoformat()}}
-    assert client.span_calls[0]["sort"] == "-started_at"
 
 
-async def test_empty_result_is_not_an_error() -> None:
+async def test_find_agent_traces_empty_result_is_not_an_error() -> None:
     client = _client()
 
-    result = await traces.list_traces(client, agent="typo-agent", workspace="ws")
+    result = await traces.find_agent_traces(client, agent="typo-agent", workspace="ws")
 
     assert result["count"] == 0
     assert "typo-agent" in result["note"]
@@ -216,38 +288,21 @@ async def test_empty_result_is_not_an_error() -> None:
     assert client.trace_calls == []
 
 
-async def test_facets_count_traces() -> None:
-    client = _client(
-        spans=[
-            _span("t-1", minute=50, error_type="Timeout", tool_name="search", model="gpt"),
-            _span("t-1", minute=49, tool_name="search", model="gpt"),
-            _span("t-2", minute=30, tool_name="fetch", model="gpt"),
-        ],
-        summaries=[
-            _summary("t-1", minute=49, status="error", error_count=1),
-            _summary("t-2", minute=30),
-        ],
-    )
-
-    result = await traces.list_traces(client, agent="aut", workspace="ws")
-
-    assert result["traces"][0]["tool"] == ["search"]
-    assert traces.facets(result, "status") == {"error": 1, "success": 1}
-    assert traces.facets(result, "model") == {"gpt": 2}
-    assert traces.facets(result, "tool") == {"search": 1, "fetch": 1}
-    assert traces.facets(result, "error_type") == {"Timeout": 1}
-
-
-def test_unknown_facet_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Unsupported facet"):
-        traces.facets({"traces": []}, "kind")
+# --- errors ------------------------------------------------------------------------
 
 
 async def test_auth_failure_says_how_to_recover() -> None:
     client = _client(error=_status_error(401))
 
     with pytest.raises(traces.TraceQueryError, match="nemo auth login"):
-        await traces.list_traces(client, agent="aut", workspace="ws")
+        await traces.find_agent_traces(client, agent="aut", workspace="ws")
+
+
+async def test_bad_filter_points_at_the_vocabulary() -> None:
+    client = _client(error=_status_error(400))
+
+    with pytest.raises(traces.TraceQueryError, match="filter fields and operators"):
+        await traces.query_spans(client, workspace="ws", filter={"nonsense": 1})
 
 
 async def test_unreachable_platform_names_the_base_url() -> None:
@@ -255,7 +310,10 @@ async def test_unreachable_platform_names_the_base_url() -> None:
     client = _client(error=APIConnectionError(request=request))
 
     with pytest.raises(traces.TraceQueryError, match="NMP_BASE_URL"):
-        await traces.list_traces(client, agent="aut", workspace="ws")
+        await traces.query_traces(client, workspace="ws")
+
+
+# --- reading and analysis ----------------------------------------------------------
 
 
 @pytest.mark.parametrize("ref", ["t-1", "intake://t-1", "intake://traces/t-1"])
@@ -323,6 +381,9 @@ async def test_synthesized_task_starts_no_dependencies(monkeypatch: pytest.Monke
         assert runtime is None
 
 
+# --- agent surface -----------------------------------------------------------------
+
+
 def _agent(client: Any, workspace: str | None) -> Any:
     """An EvalAuthor with only the trace-tool attributes set.
 
@@ -339,18 +400,19 @@ async def test_agent_trace_tools_say_what_is_missing() -> None:
     eval_author = _agent(None, None)
 
     with pytest.raises(traces.TraceQueryError, match="EvalAuthor.client"):
-        await eval_author.list_traces("aut")
+        await eval_author.find_agent_traces("aut")
 
 
 async def test_agent_trace_tools_delegate() -> None:
     client = _client(
-        spans=[_span("t-1", minute=10, tool_name="search")],
+        spans=[_span("t-1", minute=10)],
         summaries=[_summary("t-1", minute=10, span_count=7)],
     )
     eval_author = _agent(client, "ws")
 
-    result = await eval_author.list_traces("aut")
+    found = await eval_author.find_agent_traces("aut")
+    queried = await eval_author.query_spans(filter={"trace_id": "t-1"}, limit=5)
 
-    assert result["traces"][0]["trace_ref"] == "intake://t-1"
-    assert result["traces"][0]["span_count"] == 7
-    assert eval_author.facets(result, "tool") == {"search": 1}
+    assert found["traces"][0]["span_count"] == 7
+    assert client.span_calls[-1]["filter"] == {"trace_id": "t-1"}
+    assert queried["count"] == 1

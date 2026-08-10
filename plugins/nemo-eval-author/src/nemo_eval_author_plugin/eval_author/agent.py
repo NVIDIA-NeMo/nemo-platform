@@ -107,16 +107,63 @@ class EvalAuthor(Agent):
             )
         return self.client, self.workspace
 
-    async def list_traces(
+    async def query_spans(
+        self,
+        filter: dict[str, Any] | None = None,
+        group_by: str | None = None,
+        sort: str | None = None,
+        mode: str = "summary",
+        limit: int = traces.DEFAULT_ROW_LIMIT,
+    ) -> dict[str, Any]:
+        """Query production spans from Intake, flat or rolled up into groups.
+
+        Write your own filter. The server does the narrowing, which is exact, so
+        prefer one precise filter over counting a wide result yourself. Group by
+        ``trace_id`` to turn any filter into the set of traces that match it, then
+        pass those ids to ``query_traces``.
+
+        See ``nemo_eval_author_plugin.traces.query_spans`` for the filter vocabulary.
+        """
+        client, workspace = self._intake()
+        return await traces.query_spans(
+            client,
+            workspace=workspace,
+            filter=filter,
+            group_by=group_by,
+            sort=sort,
+            mode=mode,
+            limit=limit,
+        )
+
+    async def query_traces(
+        self,
+        filter: dict[str, Any] | None = None,
+        sort: str | None = None,
+        mode: str = "preview",
+        limit: int = traces.DEFAULT_ROW_LIMIT,
+    ) -> dict[str, Any]:
+        """Query whole traces, with the rollups that the server computes.
+
+        A trace row carries the exact ``span_count`` and ``error_count`` of the whole
+        trace, which a capped span query cannot give you. There is no ``agent_name``
+        filter here, because only spans carry it; use ``find_agent_traces`` instead.
+
+        See ``nemo_eval_author_plugin.traces.query_traces`` for the filter vocabulary.
+        """
+        client, workspace = self._intake()
+        return await traces.query_traces(client, workspace=workspace, filter=filter, sort=sort, mode=mode, limit=limit)
+
+    async def find_agent_traces(
         self,
         agent: str,
         since: datetime | None = None,
         limit: int = traces.DEFAULT_TRACE_LIMIT,
     ) -> dict[str, Any]:
-        """List the most recent production traces of one agent, newest first.
+        """Find the most recent production traces of one agent, newest first.
 
-        Start here when you need real traces and hold no trace refs. Read the result
-        with ``facets`` to decide which traces are worth opening with ``read_trace``.
+        Start here when you need real traces and hold no trace refs. No single
+        endpoint answers this, so it scans spans for the trace ids and then reads
+        their summaries. Open the ones worth reading with ``read_trace``.
 
         Args:
             agent: Value that the agent reports to Intake as ``agent_name``.
@@ -124,34 +171,18 @@ class EvalAuthor(Agent):
             limit: Maximum number of traces to return.
 
         Returns:
-            ``{"traces": [...], "count": int, "truncated": bool}``. ``truncated`` means
-            that more traces exist, so raise ``limit`` or narrow ``since``. Each trace
-            carries ``trace_ref``, ``started_at``, ``status``, ``span_count``,
-            ``error_count``, ``duration_ms``, ``name``, ``error_type``, ``tool``, and
-            ``model``.
+            ``{"traces": [...], "count": int, "truncated": bool}``. Each trace carries
+            ``trace_ref``, ``trace_id``, ``started_at``, ``status``, ``span_count``,
+            ``error_count``, ``duration_ms``, and ``name``.
         """
         client, workspace = self._intake()
-        return await traces.list_traces(client, agent=agent, workspace=workspace, since=since, limit=limit)
-
-    def facets(self, result: dict[str, Any], by: str) -> dict[str, int]:
-        """Count the traces of a ``list_traces`` result per distinct field value.
-
-        This counts exact values. It does not group traces by failure mode.
-
-        Args:
-            result: A ``list_traces`` return value.
-            by: ``"status"``, ``"error_type"``, ``"tool"``, or ``"model"``.
-
-        Returns:
-            Value to trace count, largest count first.
-        """
-        return traces.facets(result, by)
+        return await traces.find_agent_traces(client, agent=agent, workspace=workspace, since=since, limit=limit)
 
     async def read_trace(self, ref: str) -> TraceExplorer:
         """Read one production trace in full.
 
         Args:
-            ref: A ``trace_ref`` from ``list_traces``, or a trace ref from an Insight.
+            ref: A ``trace_ref`` from ``find_agent_traces``, or one from an Insight.
 
         Returns:
             A ``TraceExplorer`` over the trace. See the trace documentation in context.
