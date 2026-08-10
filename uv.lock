@@ -22,6 +22,7 @@ members = [
     "garak-api",
     "models",
     "nemo-agent-config-example-calculator",
+    "nemo-agent-config-example-email-phishing",
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
     "nemo-agents-example-email-security",
@@ -4024,6 +4025,17 @@ wheels = [
 name = "nemo-agent-config-example-calculator"
 version = "0.1.0"
 source = { editable = "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent" }
+dependencies = [
+    { name = "mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "mcp", specifier = ">=1.28.1,<2" }]
+
+[[package]]
+name = "nemo-agent-config-example-email-phishing"
+version = "0.1.0"
+source = { editable = "plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent" }
 dependencies = [
     { name = "mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
