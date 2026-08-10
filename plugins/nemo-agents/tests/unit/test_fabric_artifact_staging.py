@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 import yaml
 from nemo_agents_plugin.runner.fabric_artifact_staging import (
@@ -17,6 +18,7 @@ from nemo_agents_plugin.runner.fabric_artifact_staging import (
 )
 from nemo_deployments_plugin.entities import ConfigFile
 from nemo_platform import NotFoundError
+from nemo_platform_plugin.client.errors import NotFoundError as PluginClientNotFoundError
 
 
 def _fabric_config(*, skills_paths: list[str] | None = None) -> dict[str, Any]:
@@ -80,6 +82,29 @@ async def test_stage_fabric_spec_config_files_not_found_error_falls_back() -> No
     config = _fabric_config()
     sdk = AsyncMock()
     sdk.download = AsyncMock(side_effect=NotFoundError("missing fileset", response=MagicMock(), body=None))
+
+    result = await stage_fabric_spec_config_files(
+        workspace="default",
+        agent_name="fabric-agent",
+        rewritten_agent_config=config,
+        agent_yaml_path="/workspace/agent.yaml",
+        sdk=sdk,
+    )
+
+    assert len(result) == 1
+    assert result[0].path == "/workspace/agent.yaml"
+
+
+@pytest.mark.asyncio
+async def test_stage_fabric_spec_config_files_plugin_client_not_found_error_falls_back() -> None:
+    config = _fabric_config()
+    sdk = AsyncMock()
+    response = httpx.Response(
+        404,
+        request=httpx.Request("GET", "http://platform/filesets/fabric-agent-spec"),
+        json={"detail": "Fileset not found"},
+    )
+    sdk.download = AsyncMock(side_effect=PluginClientNotFoundError(response))
 
     result = await stage_fabric_spec_config_files(
         workspace="default",
