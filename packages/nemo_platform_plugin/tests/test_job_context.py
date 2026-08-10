@@ -6,7 +6,7 @@
 Pin the :class:`JobContext` contract:
 
 - Concrete dataclass — construction is always explicit.
-- ``job_id`` is ``str | None``; ``None`` means "purely local run".
+- ``job_id`` is ``str | None``; ``None`` means no platform job id was supplied.
 - ``results`` is typed :class:`JobResults` (sync) — there is no async
   twin; ``NemoJob.run`` runs in the task container where ``save`` is
   invoked synchronously.
@@ -29,7 +29,7 @@ def _make_storage(tmp_path: Path) -> StoragePaths:
 
 
 class TestJobContext:
-    def test_job_id_defaults_to_none_for_local_runs(self, tmp_path: Path) -> None:
+    def test_job_id_defaults_to_none_when_not_supplied(self, tmp_path: Path) -> None:
         ctx = JobContext(
             workspace="ws",
             storage=_make_storage(tmp_path),
@@ -37,7 +37,7 @@ class TestJobContext:
         )
         assert ctx.job_id is None
 
-    def test_job_id_can_be_set_for_platform_runs(self, tmp_path: Path) -> None:
+    def test_job_id_can_be_set_for_platform_jobs(self, tmp_path: Path) -> None:
         ctx = JobContext(
             workspace="ws",
             storage=_make_storage(tmp_path),

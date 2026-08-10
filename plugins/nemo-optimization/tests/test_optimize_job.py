@@ -14,7 +14,7 @@ from nemo_optimization.schemas.optimize import OptimizeSpec
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 
 FABRIC_AGENT = {
     "schema_version": "fabric.agent/v1alpha1",
@@ -144,7 +144,7 @@ def test_run_rejects_endpoint_agent(tmp_path: Path, ctx: JobContext) -> None:
     optimize_yaml = tmp_path / "optimize.yml"
     optimize_yaml.write_text("optimizer:\n  numeric:\n    enabled: true\n")
 
-    with pytest.raises(LocalRunError, match="Endpoint URL / URI optimize mode has been removed"):
+    with pytest.raises(RunDependencyError, match="Endpoint URL / URI optimize mode has been removed"):
         OptimizeJob().run(
             {
                 "optimize_config": str(optimize_yaml),

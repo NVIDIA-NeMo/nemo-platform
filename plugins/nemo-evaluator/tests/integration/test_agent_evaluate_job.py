@@ -10,10 +10,10 @@ matter for this work:
   IGW mock provider (canned response, so no real model or key);
 * metric form — an inline metric bundle, plus a stored ``MetricRef`` resolved against
   the live entity store;
-* execution mode — in-process ``run_local`` and service-side ``submit`` on both the
-  subprocess and docker backends, against the session ``subprocess_platform`` /
-  ``docker_platform`` fixtures in ``conftest.py``. (Docker submit is xfail today — the
-  cpu-tasks image predates this work; tracked in AALGO-301.)
+* execution mode — task ``run`` hook and service-side ``submit`` on both the subprocess
+  and docker backends, against the session ``subprocess_platform`` / ``docker_platform``
+  fixtures in ``conftest.py``. (Docker submit is xfail today — the cpu-tasks image
+  predates this work; tracked in AALGO-301.)
 
 Marked ``integration`` (auto-applied to ``/integration/`` paths). Codex-dependent tests
 gate on ``@requires_codex`` (skip when the ``codex`` CLI is absent, needs a logged-in
@@ -26,6 +26,7 @@ Run directly::
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -65,6 +66,8 @@ from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.job_context import JobContext, StoragePaths
+from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.testing import add_mock_provider
 from nmp.testing.e2e import wait_for_platform_job
@@ -157,8 +160,26 @@ class _OutputScoreMetric:
         )
 
 
+def _job_context(tmp_path: Path) -> JobContext:
+    storage = StoragePaths(ephemeral=tmp_path / "ephemeral", persistent=tmp_path / "persistent")
+    storage.ephemeral.mkdir()
+    storage.persistent.mkdir()
+    return JobContext(
+        workspace=WORKSPACE,
+        storage=storage,
+        results=LocalJobResults(root=storage.persistent / "results"),
+    )
+
+
+def _run_agent_eval_job(input_spec: AgentEvalInputSpec, tmp_path: Path, *, sdk: NeMoPlatform | None = None) -> dict:
+    spec = asyncio.run(
+        AgentEvalJob.to_spec(input_spec, workspace=WORKSPACE, entity_client=None, async_sdk=None, is_local=False)
+    )
+    return AgentEvalJob().run(spec.model_dump(mode="json"), ctx=_job_context(tmp_path), sdk=sdk)
+
+
 def _bundle_dir(run_result: dict) -> Path:
-    """The persisted run bundle directory (trials/scores/summary) from a run_local result."""
+    """The persisted run bundle directory with trials/scores/summary."""
     return Path(run_result["artifact"]["artifact_url"].removeprefix("file://"))
 
 
@@ -187,7 +208,7 @@ def _unique(prefix: str) -> str:
 
 
 @pytest.mark.timeout(300)
-def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) -> None:
+def test_task_run_model_target_scores_a_real_trial(subprocess_platform: str, tmp_path: Path) -> None:
     # dim 1 (Model endpoint target): generate a trial against an IGW mock provider that returns
     # "DONE" (no real model/key), then score the trial output with the inline metric.
     sdk = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
@@ -213,7 +234,7 @@ def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) ->
         ),
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    result = _run_agent_eval_job(input_spec, tmp_path, sdk=sdk)
 
     assert result["status"] == "completed"
     bundle = _bundle_dir(result)
@@ -224,7 +245,7 @@ def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) ->
 
 
 @pytest.mark.timeout(300)
-def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) -> None:
+def test_task_run_agent_target_scores_a_real_trial(subprocess_platform: str, tmp_path: Path) -> None:
     # dim 1 (Agent endpoint target): a generic-HTTP agent posts to an IGW mock provider returning
     # "DONE"; response_path extracts the assistant content, then the inline metric scores it.
     sdk = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
@@ -251,7 +272,7 @@ def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) ->
         target=AgentTarget(agent=agent, params=RunConfigOnline()),
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    result = _run_agent_eval_job(input_spec, tmp_path, sdk=sdk)
 
     assert result["status"] == "completed"
     bundle = _bundle_dir(result)
@@ -263,7 +284,7 @@ def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) ->
 
 @requires_codex
 @pytest.mark.timeout(300)
-def test_run_local_codex_runner_scores_a_real_trial() -> None:
+def test_task_run_codex_runner_scores_a_real_trial(tmp_path: Path) -> None:
     # One real Codex run covering dim 1 (runner) x dim 2 (inline metric) x dim 3 (run): the CLI
     # produces a trial and a user-defined inline metric scores its output. (Every task must declare
     # >=1 metric — the SDK evaluator rejects a metric-less task — so this is the minimal real run.)
@@ -279,7 +300,7 @@ def test_run_local_codex_runner_scores_a_real_trial() -> None:
         target=CodexRunnerTarget(model=CODEX_MODEL),
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    result = _run_agent_eval_job(input_spec, tmp_path)
 
     assert result["status"] == "completed"
     bundle = _bundle_dir(result)
@@ -677,7 +698,7 @@ def test_submit_harbor_target_to_docker_backend_fails_fast(docker_platform: str)
     detail = response.json()["detail"]
     assert "profile 'default'" in detail
     assert "backend 'docker'" in detail
-    assert "Harbor targets currently require local execution or the subprocess backend" in detail
+    assert "Harbor targets currently require the subprocess backend" in detail
 
     jobs = httpx.get(
         f"{docker_platform}/apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs",

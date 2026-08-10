@@ -31,14 +31,15 @@ def test_contributor_mounts_job_collection() -> None:
     assert "/v2/workspaces/{workspace}/automodel/jobs" in paths
 
 
-def test_contributor_get_cli_exposes_flat_verbs() -> None:
+def test_contributor_get_cli_exposes_remote_flat_verbs() -> None:
     import typer
 
     cli = AutomodelContributor().get_cli()
     assert isinstance(cli, typer.Typer)
     assert cli.info.name == "automodel"
     assert not any(g.name == "jobs" for g in cli.registered_groups)
-    assert {cmd.name for cmd in cli.registered_commands} >= {"run", "submit", "explain"}
+    assert {cmd.name for cmd in cli.registered_commands} >= {"submit", "explain"}
+    assert "run" not in {cmd.name for cmd in cli.registered_commands}
 
 
 def test_contributor_exposes_sdk_resources() -> None:

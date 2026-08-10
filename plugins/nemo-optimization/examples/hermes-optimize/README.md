@@ -116,7 +116,7 @@ client = NeMoPlatform(
     workspace=WORKSPACE,
 )
 print(
-    NemoJobScheduler().run_local(
+    NemoJobScheduler().submit_remote(
         OptimizeJob,
         {"optimize_config": str(optimize_config), "workspace": WORKSPACE},
         workspace=WORKSPACE,
@@ -276,7 +276,7 @@ client = NeMoPlatform(
     workspace=WORKSPACE,
 )
 print(
-    NemoJobScheduler().run_local(
+    NemoJobScheduler().submit_remote(
         OptimizeJob,
         {"optimize_config": str(optimize_config), "workspace": WORKSPACE},
         workspace=WORKSPACE,

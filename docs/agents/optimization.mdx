@@ -237,7 +237,7 @@ from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 spec = yaml.safe_load(Path(".agent-improver.yml").read_text())
-NemoJobScheduler().run_local(
+NemoJobScheduler().submit_remote(
     OptimizeSkillsJob,
     spec,
     workspace="default",
@@ -342,7 +342,7 @@ client = NeMoPlatform(
     workspace=WORKSPACE,
 )
 
-result = NemoJobScheduler().run_local(
+result = NemoJobScheduler().submit_remote(
     OptimizeJob,
     {
         "optimize_config": str(optimize_config),
@@ -414,7 +414,7 @@ client = NeMoPlatform(
     workspace=WORKSPACE,
 )
 
-result = NemoJobScheduler().run_local(
+result = NemoJobScheduler().submit_remote(
     OptimizeJob,
     {
         "optimize_config": str(optimize_config),

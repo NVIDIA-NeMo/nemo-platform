@@ -153,6 +153,8 @@ job = evaluator.submit(metric=metric, dataset=[{"input": "test"}])
 job.wait_until_done()
 result = job.get_result()
 ```
+job.wait_until_done()
+result = job.get_result()
 
 The API key is sent in the `Authorization: Bearer <key>` header. The job runtime resolves `api_key_secret` as a platform secret in the target workspace and receives it securely.
 

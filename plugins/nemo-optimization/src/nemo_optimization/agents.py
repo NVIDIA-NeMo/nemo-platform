@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 
 from nemo_optimization.fabric import FABRIC_AGENT_SCHEMA_VERSION, is_fabric_agent_config
 
@@ -33,7 +33,7 @@ def resolve_agent_config(
         return None
 
     if "://" in agent:
-        raise LocalRunError(
+        raise RunDependencyError(
             "Endpoint URL / URI optimize mode has been removed. Pass a platform-managed "
             "Fabric agent name (e.g. --agent hermes-optimize-chatonly or "
             "--agent default/hermes-optimize-chatonly), not an http(s):// or file:// URL. "
@@ -46,9 +46,10 @@ def resolve_agent_config(
         ws, name = workspace, agent
 
     if sdk is None:
-        raise LocalRunError(
+        raise RunDependencyError(
             f"An optimize study with --agent {agent!r} requires a platform SDK to fetch the "
-            "stored agent config. Set NEMO_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
+            "stored agent config. Submit the job through the Jobs API/SDK, or pass sdk to "
+            "nemo_platform_plugin.tasks.dispatcher.run_task(...) in tests."
         )
 
     agent_dict = sdk.agents.get(name=name, workspace=ws)
@@ -66,7 +67,7 @@ def _to_fabric_agent_package(agent_config: dict[str, Any], *, label: str) -> dic
 
     config_format = agent_config.get("config_format")
     if config_format != _PLATFORM_AGENT_FORMAT:
-        raise LocalRunError(
+        raise RunDependencyError(
             f"Agent {label!r} has unsupported config_format {config_format!r}. "
             f"Expected {_PLATFORM_AGENT_FORMAT!r} or schema_version {FABRIC_AGENT_SCHEMA_VERSION!r}."
         )
@@ -76,7 +77,7 @@ def _to_fabric_agent_package(agent_config: dict[str, Any], *, label: str) -> dic
         from nemo_agents_plugin.fabric.gateway_credentials import bind_platform_gateway_model_credential
         from nemo_agents_plugin.fabric.translator import translate_agent_config
     except ImportError as exc:  # pragma: no cover - agents plugin always present for CLI path
-        raise LocalRunError(
+        raise RunDependencyError(
             "Resolving a platform agent for optimize requires nemo-agents-plugin "
             "(nemo agents optimize / NemoJobScheduler with agents installed)."
         ) from exc

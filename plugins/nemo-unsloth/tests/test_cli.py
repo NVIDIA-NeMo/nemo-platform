@@ -5,8 +5,7 @@
 
 Pins the post-2026 submit-only contract: ``submit`` accepts a positional
 ``JOB_JSON`` and delegates to the auto-generated callback with ``--spec``
-set to the validated JSON; ``run`` hard-fails with an "use submit"
-message.
+set to the validated JSON.
 """
 
 from __future__ import annotations
@@ -34,16 +33,14 @@ def _plain(text: str) -> str:
 
 
 def _build_app() -> typer.Typer:
-    """Build a Typer app with the contributor's overridden run/submit/explain."""
+    """Build a Typer app with the contributor's overridden submit/explain."""
     from nemo_platform_plugin.commands import (
         _add_explain_command,
-        _add_run_command,
         _add_submit_command,
     )
 
     app = typer.Typer(no_args_is_help=True)
     scheduler = NemoJobScheduler()
-    _add_run_command(app, UnslothJob, scheduler)
     _add_submit_command(app, UnslothJob, scheduler)
     _add_explain_command(app, UnslothJob, scheduler)
     apply_unsloth_job_cli_overrides(app)
@@ -80,20 +77,6 @@ class TestSubmitPath:
     def test_submit_path_includes_workspace(self) -> None:
         path = submit_path_for(UnslothJob, workspace="acme-corp")
         assert path == "/apis/customization/v2/workspaces/acme-corp/unsloth/jobs"
-
-
-class TestRunHardFail:
-    def test_run_exits_1_with_submit_pointer(self, tmp_path: Path) -> None:
-        path = tmp_path / "job.json"
-        path.write_text(json.dumps(_minimal_payload()))
-
-        app = _build_app()
-        runner = CliRunner()
-        result = runner.invoke(app, ["run", str(path)])
-        assert result.exit_code == 1
-        plain = _plain(result.output)
-        assert "submit" in plain
-        assert "does not support local run" in plain
 
 
 class TestSubmitOverride:

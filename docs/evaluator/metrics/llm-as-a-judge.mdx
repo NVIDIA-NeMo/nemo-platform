@@ -127,6 +127,8 @@ result = LocalEvaluator().run_sync(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean:.2f}, count={score.count}")
@@ -232,6 +234,8 @@ result = LocalEvaluator().run_sync(
     ],
     aggregate_fields=("rubric_distribution", "mode_category"),
 )
+job.wait_until_done()
+result = job.get_result()
 
 print(result.aggregate_scores.model_dump(exclude_none=True))
 ```
@@ -251,6 +255,8 @@ result = LocalEvaluator().run_sync(
     ],
     aggregate_fields=("std_dev", "variance"),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}:")

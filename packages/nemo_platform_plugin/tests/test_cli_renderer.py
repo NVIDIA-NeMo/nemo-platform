@@ -1,31 +1,21 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for NemoCLI.get_function_renderer / get_job_renderer hooks.
-
-Covers:
-- Default no-op (returns None) leaves the auto-generated echo behavior intact.
-- A renderer's lifecycle methods fire in the expected order.
-- The ``--output-format json`` global flag bypasses the renderer entirely.
-- The "delegate to use the renderer" contract: an update_*_cli wrapper that
-  delegates to the original callback fires the renderer; a wrapper that does
-  its own iteration without calling original does not.
-- on_error fires on exception (and the exception still propagates).
-"""
+"""Tests for NemoCLI submit renderer hooks."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any, ClassVar
 
+import pytest
 import typer
+from nemo_platform_plugin import commands
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_renderer import CLIRenderer, RendererContext
 from nemo_platform_plugin.commands import add_function_commands, add_job_commands
 from nemo_platform_plugin.function import NemoFunction
-from nemo_platform_plugin.functions.frames import Done, Heartbeat
 from nemo_platform_plugin.job import NemoJob
 from pydantic import BaseModel
 from typer.testing import CliRunner
@@ -33,50 +23,29 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 
-# ---------------------------------------------------------------------------
-# Fixture primitives
-# ---------------------------------------------------------------------------
-
-
 class _GreetSpec(BaseModel):
     name: str
 
 
-class _GreetResponse(BaseModel):
-    message: str
+class _GreetJob(NemoJob):
+    name: ClassVar[str] = "greet"
+    description: ClassVar[str] = "Submit a greeting."
+    spec_schema: ClassVar[type[_GreetSpec]] = _GreetSpec
+
+    def run(self, config: dict) -> dict:
+        return {"message": f"Hello, {config['name']}!"}
 
 
 class _GreetFunction(NemoFunction[_GreetSpec]):
     name: ClassVar[str] = "greet"
-    description: ClassVar[str] = "Say hello to a name."
+    description: ClassVar[str] = "Submit a greeting function."
     spec_schema: ClassVar[type[_GreetSpec]] = _GreetSpec
 
-    async def run(self, spec: _GreetSpec) -> _GreetResponse:
-        return _GreetResponse(message=f"Hello, {spec.name}!")
+    async def run(self, spec: _GreetSpec) -> dict:
+        return {"message": f"Hello, {spec.name}!"}
 
 
-class _CountSpec(BaseModel):
-    upto: int
-
-
-class _CountFunction(NemoFunction[_CountSpec]):
-    """Streaming function — yields heartbeats then Done."""
-
-    name: ClassVar[str] = "count"
-    spec_schema: ClassVar[type[_CountSpec]] = _CountSpec
-
-    async def run(self, spec: _CountSpec) -> AsyncIterator[BaseModel]:
-        for _ in range(spec.upto):
-            yield Heartbeat()
-        yield Done()
-
-
-class _GreetJob(NemoJob):
-    name: ClassVar[str] = "greet"
-    description: ClassVar[str] = "Return a greeting."
-
-    def run(self, config: dict) -> dict:
-        return {"message": f"Hello, {config.get('name', 'world')}!"}
+_GreetFunction.__module__ = "nemo_plugin.functions.greet"
 
 
 class _NoOpCLI(NemoCLI):
@@ -89,12 +58,9 @@ class _NoOpCLI(NemoCLI):
 class _RecordingRenderer(CLIRenderer):
     """Renderer that records lifecycle events for assertions."""
 
-    events: list[tuple[str, Any]] = []  # noqa: RUF012 — class state shared across instances by design
+    events: list[tuple[str, Any]] = []
 
     def __init__(self) -> None:
-        # Reset at the start of each renderer instance.
-        # Renderers are constructed once per verb invocation, so this clears
-        # between scenarios when scenarios use a fresh CLI build.
         type(self).events = []
 
     def on_start(self, *, ctx: RendererContext) -> None:
@@ -114,23 +80,10 @@ class _RecordingRenderer(CLIRenderer):
 
 
 def _typer_context_with_overrides(output_format: str | None = None) -> object:
-    """Stand-in for CLIContext: just an object with .overrides dict."""
     overrides: dict[str, Any] = {}
     if output_format is not None:
         overrides["output_format"] = output_format
     return SimpleNamespace(overrides=overrides)
-
-
-def _build_function_app(*fn_classes: type[NemoFunction], cli: NemoCLI | None = None) -> typer.Typer:
-    app = typer.Typer()
-
-    @app.callback()
-    def _noop() -> None:
-        pass
-
-    fns = {f"plugin.{cls.name}": cls for cls in fn_classes}
-    add_function_commands(app, fns, cli=cli)
-    return app
 
 
 def _build_job_app(*job_classes: type[NemoJob], cli: NemoCLI | None = None) -> typer.Typer:
@@ -145,200 +98,159 @@ def _build_job_app(*job_classes: type[NemoJob], cli: NemoCLI | None = None) -> t
     return app
 
 
-# ---------------------------------------------------------------------------
-# Streaming function: get_function_renderer for `run`
-# ---------------------------------------------------------------------------
+def _build_function_app(*fn_classes: type[NemoFunction], cli: NemoCLI | None = None) -> typer.Typer:
+    app = typer.Typer()
+
+    @app.callback()
+    def _noop() -> None:
+        pass
+
+    functions = {f"plugin.{cls.name}": cls for cls in fn_classes}
+    add_function_commands(app, functions, cli=cli)
+    return app
 
 
-class TestStreamingFunctionRunRenderer:
-    def test_no_renderer_falls_through_to_default_echo(self) -> None:
-        app = _build_function_app(_CountFunction, cli=_NoOpCLI())
-        result = runner.invoke(app, ["count", "run", "--upto", "2"])
-        assert result.exit_code == 0
-        # Default behavior echoes each frame as JSON; verify by counting lines
-        # that look like a JSON object.
-        json_lines = [ln for ln in result.output.splitlines() if ln.strip().startswith("{")]
-        assert len(json_lines) >= 3  # 2 heartbeats + 1 Done
+def test_job_submit_no_renderer_falls_through_to_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    def submit_remote(self, job_cls, spec_data, **kwargs):  # type: ignore[no-untyped-def]
+        del self, job_cls, kwargs
+        return {"submitted": spec_data}
 
-    def test_renderer_lifecycle_fires_in_order(self) -> None:
-        class _CLI(_NoOpCLI):
-            def get_function_renderer(self, fn_cls, *, verb):
-                return _RecordingRenderer if fn_cls is _CountFunction else None
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", submit_remote)
+    app = _build_job_app(_GreetJob, cli=_NoOpCLI())
+    result = runner.invoke(app, ["greet", "submit", "--name", "World"])
 
-        app = _build_function_app(_CountFunction, cli=_CLI())
-        result = runner.invoke(app, ["count", "run", "--upto", "2"])
-        assert result.exit_code == 0, result.output
-
-        events = _RecordingRenderer.events
-        names = [name for name, _ in events]
-        # Lifecycle: start → frames → complete.
-        assert names[0] == "start"
-        assert names[-1] == "complete"
-        assert names.count("frame") == 3  # 2 heartbeats + 1 Done
-
-        # on_start receives the right context.
-        start_meta = events[0][1]
-        assert start_meta == {"verb": "run", "is_local": True}
-
-    def test_output_format_json_bypasses_renderer(self) -> None:
-        class _CLI(_NoOpCLI):
-            def get_function_renderer(self, fn_cls, *, verb):
-                return _RecordingRenderer
-
-        app = _build_function_app(_CountFunction, cli=_CLI())
-        ctx_obj = _typer_context_with_overrides(output_format="json")
-
-        # Reset before invocation.
-        _RecordingRenderer.events = []
-        result = runner.invoke(app, ["count", "run", "--upto", "1"], obj=ctx_obj)
-        assert result.exit_code == 0, result.output
-
-        # Renderer was never instantiated.
-        assert _RecordingRenderer.events == []
-
-        # And the default echo behavior fired.
-        json_lines = [ln for ln in result.output.splitlines() if ln.strip().startswith("{")]
-        assert len(json_lines) >= 1
-
-    def test_renderer_dispatches_per_function_and_verb(self) -> None:
-        seen: list[tuple[str, str]] = []
-
-        class _CLI(_NoOpCLI):
-            def get_function_renderer(self, fn_cls, *, verb):
-                seen.append((fn_cls.name, verb))
-                return None  # decline to render; just observe the dispatch
-
-        app = _build_function_app(_CountFunction, _GreetFunction, cli=_CLI())
-        runner.invoke(app, ["count", "run", "--upto", "1"])
-
-        # The hook fires per-verb on the invoked function only.
-        assert ("count", "run") in seen
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"submitted": {"name": "World"}}
 
 
-# ---------------------------------------------------------------------------
-# Job: get_job_renderer for `run`
-# ---------------------------------------------------------------------------
+def test_job_submit_renderer_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    def submit_remote(self, job_cls, spec_data, **kwargs):  # type: ignore[no-untyped-def]
+        del self, job_cls, kwargs
+        return {"submitted": spec_data}
+
+    class _CLI(_NoOpCLI):
+        def get_job_renderer(self, job_cls, *, verb):
+            return _RecordingRenderer if job_cls is _GreetJob and verb == "submit" else None
+
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", submit_remote)
+    app = _build_job_app(_GreetJob, cli=_CLI())
+    _RecordingRenderer.events = []
+    result = runner.invoke(app, ["greet", "submit", "--name", "Renderer"])
+
+    assert result.exit_code == 0, result.output
+    assert _RecordingRenderer.events == [
+        ("start", {"verb": "submit", "is_local": False}),
+        ("frame", {"submitted": {"name": "Renderer"}}),
+        ("complete", None),
+    ]
 
 
-class TestJobRunRenderer:
-    def test_no_renderer_falls_through_to_default(self) -> None:
-        app = _build_job_app(_GreetJob, cli=_NoOpCLI())
-        result = runner.invoke(app, ["greet", "run", "--config", '{"name": "World"}'])
-        assert result.exit_code == 0
-        assert json.loads(result.output) == {"message": "Hello, World!"}
+def test_output_format_json_bypasses_job_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    def submit_remote(self, job_cls, spec_data, **kwargs):  # type: ignore[no-untyped-def]
+        del self, job_cls, kwargs
+        return {"submitted": spec_data}
 
-    def test_renderer_lifecycle_for_synchronous_run(self) -> None:
-        class _CLI(_NoOpCLI):
-            def get_job_renderer(self, job_cls, *, verb):
-                return _RecordingRenderer
+    class _CLI(_NoOpCLI):
+        def get_job_renderer(self, job_cls, *, verb):
+            del job_cls, verb
+            return _RecordingRenderer
 
-        app = _build_job_app(_GreetJob, cli=_CLI())
-        _RecordingRenderer.events = []
-        result = runner.invoke(app, ["greet", "run", "--config", '{"name": "Renderer"}'])
-        assert result.exit_code == 0, result.output
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", submit_remote)
+    app = _build_job_app(_GreetJob, cli=_CLI())
+    ctx_obj = _typer_context_with_overrides(output_format="json")
+    _RecordingRenderer.events = []
+    result = runner.invoke(app, ["greet", "submit", "--name", "X"], obj=ctx_obj)
 
-        events = _RecordingRenderer.events
-        names = [name for name, _ in events]
-        # start → one frame (the dict result) → complete.
-        assert names == ["start", "frame", "complete"]
-        # The frame is the dict the job returned.
-        _, frame = events[1]
-        assert frame == {"message": "Hello, Renderer!"}
-
-    def test_output_format_json_bypasses_job_renderer(self) -> None:
-        class _CLI(_NoOpCLI):
-            def get_job_renderer(self, job_cls, *, verb):
-                return _RecordingRenderer
-
-        app = _build_job_app(_GreetJob, cli=_CLI())
-        ctx_obj = _typer_context_with_overrides(output_format="json")
-        _RecordingRenderer.events = []
-        result = runner.invoke(app, ["greet", "run", "--config", '{"name": "X"}'], obj=ctx_obj)
-        assert result.exit_code == 0
-        assert _RecordingRenderer.events == []
-        # Default echo fired:
-        assert json.loads(result.output) == {"message": "Hello, X!"}
+    assert result.exit_code == 0
+    assert _RecordingRenderer.events == []
+    assert json.loads(result.output) == {"submitted": {"name": "X"}}
 
 
-# ---------------------------------------------------------------------------
-# "Delegate to use the renderer" contract
-# ---------------------------------------------------------------------------
+def test_function_submit_forwards_renderer_to_http_streamer(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def post_function_submit(url, body, **kwargs):  # type: ignore[no-untyped-def]
+        captured["url"] = url
+        captured["body"] = body
+        captured["renderer_cls"] = kwargs["renderer_cls"]
+
+    class _CLI(_NoOpCLI):
+        def get_function_renderer(self, fn_cls, *, verb):
+            return _RecordingRenderer if fn_cls is _GreetFunction and verb == "submit" else None
+
+    monkeypatch.setattr(commands, "_post_function_submit", post_function_submit)
+    app = _build_function_app(_GreetFunction, cli=_CLI())
+    result = runner.invoke(app, ["greet", "submit", "--name", "Fn", "--base-url", "https://nmp.test"])
+
+    assert result.exit_code == 0
+    assert captured["url"] == "https://nmp.test/apis/plugin/v2/workspaces/default/greet"
+    assert captured["body"] == {"name": "Fn"}
+    assert captured["renderer_cls"] is _RecordingRenderer
 
 
-class TestDelegateContract:
-    """A wrapper from update_function_cli that delegates to the original
-    callback gets the renderer for free; a wrapper that takes over the verb
-    body wholesale claims rendering responsibility too."""
+def test_function_submit_output_format_json_bypasses_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
 
-    def test_delegating_wrapper_still_drives_renderer(self) -> None:
-        """When the wrapper calls original(...), the framework's renderer
-        loop runs through the original's body — so the renderer fires."""
+    def post_function_submit(url, body, **kwargs):  # type: ignore[no-untyped-def]
+        del url, body
+        captured["renderer_cls"] = kwargs["renderer_cls"]
 
-        class _CLI(_NoOpCLI):
-            def update_function_cli(self, fn_cls, group):
-                if fn_cls is not _CountFunction:
-                    return
-                original = next(c for c in group.registered_commands if c.name == "run").callback
-                assert original is not None
+    class _CLI(_NoOpCLI):
+        def get_function_renderer(self, fn_cls, *, verb):
+            del fn_cls, verb
+            return _RecordingRenderer
 
-                @group.command("run")
-                def run(typer_ctx: typer.Context, count: int = typer.Option(2, "--count")) -> None:
-                    spec_json = json.dumps({"upto": count})
-                    original(typer_ctx, spec=spec_json, spec_file=None, workspace="default")
+    monkeypatch.setattr(commands, "_post_function_submit", post_function_submit)
+    app = _build_function_app(_GreetFunction, cli=_CLI())
+    ctx_obj = _typer_context_with_overrides(output_format="json")
+    result = runner.invoke(app, ["greet", "submit", "--name", "Fn"], obj=ctx_obj)
 
-            def get_function_renderer(self, fn_cls, *, verb):
-                return _RecordingRenderer if fn_cls is _CountFunction else None
-
-        app = _build_function_app(_CountFunction, cli=_CLI())
-        _RecordingRenderer.events = []
-        result = runner.invoke(app, ["count", "run", "--count", "1"])
-        assert result.exit_code == 0, result.output
-
-        # Renderer fired for the delegated invocation.
-        events = _RecordingRenderer.events
-        names = [name for name, _ in events]
-        assert names[0] == "start"
-        assert names[-1] == "complete"
-        assert names.count("frame") == 2  # 1 heartbeat + 1 Done
+    assert result.exit_code == 0
+    assert captured["renderer_cls"] is None
 
 
-# ---------------------------------------------------------------------------
-# on_error
-# ---------------------------------------------------------------------------
+def test_delegating_job_submit_wrapper_still_drives_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
+    def submit_remote(self, job_cls, spec_data, **kwargs):  # type: ignore[no-untyped-def]
+        del self, job_cls, kwargs
+        return {"submitted": spec_data}
+
+    class _CLI(_NoOpCLI):
+        def update_job_cli(self, job_cls, group):
+            if job_cls is not _GreetJob:
+                return
+            original = next(c for c in group.registered_commands if c.name == "submit").callback
+            assert original is not None
+
+            @group.command("submit")
+            def submit(typer_ctx: typer.Context, name: str = typer.Option(..., "--name")) -> None:
+                original(typer_ctx, spec=json.dumps({"name": name}), spec_file=None)
+
+        def get_job_renderer(self, job_cls, *, verb):
+            return _RecordingRenderer if job_cls is _GreetJob and verb == "submit" else None
+
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", submit_remote)
+    app = _build_job_app(_GreetJob, cli=_CLI())
+    _RecordingRenderer.events = []
+    result = runner.invoke(app, ["greet", "submit", "--name", "Wrapped"])
+
+    assert result.exit_code == 0, result.output
+    assert [name for name, _ in _RecordingRenderer.events] == ["start", "frame", "complete"]
 
 
-class _ExplodingSpec(BaseModel):
-    pass
-
-
-class _ExplodingFunction(NemoFunction[_ExplodingSpec]):
-    name: ClassVar[str] = "explode"
-    spec_schema: ClassVar[type[_ExplodingSpec]] = _ExplodingSpec
-
-    async def run(self, spec: _ExplodingSpec) -> AsyncIterator[BaseModel]:
-        del spec
-        yield Heartbeat()
+def test_job_submit_renderer_on_error_fires(monkeypatch: pytest.MonkeyPatch) -> None:
+    def submit_remote(self, job_cls, spec_data, **kwargs):  # type: ignore[no-untyped-def]
+        del self, job_cls, spec_data, kwargs
         raise RuntimeError("boom")
 
+    class _CLI(_NoOpCLI):
+        def get_job_renderer(self, job_cls, *, verb):
+            return _RecordingRenderer if job_cls is _GreetJob and verb == "submit" else None
 
-class TestOnError:
-    def test_on_error_fires_when_iteration_raises(self) -> None:
-        class _CLI(_NoOpCLI):
-            def get_function_renderer(self, fn_cls, *, verb):
-                return _RecordingRenderer
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", submit_remote)
+    app = _build_job_app(_GreetJob, cli=_CLI())
+    _RecordingRenderer.events = []
+    result = runner.invoke(app, ["greet", "submit", "--name", "Err"])
 
-        app = _build_function_app(_ExplodingFunction, cli=_CLI())
-        _RecordingRenderer.events = []
-        result = runner.invoke(app, ["explode", "run"])
-
-        assert result.exit_code != 0  # exception still propagates
-        events = _RecordingRenderer.events
-        names = [name for name, _ in events]
-        assert "start" in names
-        assert "frame" in names  # got the heartbeat before the explosion
-        assert "error" in names
-        # Exception type is RuntimeError.
-        error_payload = next(payload for name, payload in events if name == "error")
-        assert error_payload == "RuntimeError"
-        # on_complete should NOT fire on the error path.
-        assert "complete" not in names
+    assert result.exit_code != 0
+    assert ("error", "RuntimeError") in _RecordingRenderer.events
+    assert "complete" not in [name for name, _ in _RecordingRenderer.events]

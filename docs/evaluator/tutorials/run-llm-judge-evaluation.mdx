@@ -295,8 +295,7 @@ def create_helpfulness_metric(prompt_template: str, judge_model: Model) -> LLMJu
 PROMPT_V1 = """You are an evaluator. Rate the response's helpfulness from 0-4.
 Respond with JSON only: {"helpfulness": <0-4>}"""
 
-metric_v1_local = create_helpfulness_metric(PROMPT_V1, LOCAL_JUDGE_MODEL)
-metric_v1_remote = create_helpfulness_metric(PROMPT_V1, REMOTE_JUDGE_MODEL)
+metric_v1 = create_helpfulness_metric(PROMPT_V1, JUDGE_MODEL)
 
 ```
 
@@ -307,7 +306,7 @@ Use low temperature for evaluation tasks. Low or zero temperature produces outpu
 </Tip>
 ---
 
-## 6. Test with Local Evaluation
+## 6. Test with a Small Submitted Job
 
 Before running a durable job, test your metric with a few examples using `nemo_evaluator_sdk.Evaluator`. It runs locally in-process and returns results immediately, which is useful for prompt iteration.
 
@@ -328,6 +327,8 @@ quick_test_result = LocalEvaluator().run_sync(
     ],
     config=RunConfig(parallelism=1),
 )
+quick_test_job.wait_until_done()
+quick_test_result = quick_test_job.get_result()
 
 def score_value(row_score, score_name: str) -> float | None:
     """Return one named score from an evaluator row result."""
@@ -390,7 +391,7 @@ def wait_for_job(label: str, job):
     return result
 
 job_v1 = evaluator.submit(
-    metric=metric_v1_remote,
+    metric=metric_v1,
     dataset=dataset_ref,
     config=sample_config,
 )
@@ -491,15 +492,14 @@ A shorter response that directly solves the problem can score higher than a long
 
 Respond with JSON only: {"helpfulness": <0-4>}"""
 
-metric_v2_local = create_helpfulness_metric(PROMPT_V2, LOCAL_JUDGE_MODEL)
-metric_v2_remote = create_helpfulness_metric(PROMPT_V2, REMOTE_JUDGE_MODEL)
+metric_v2 = create_helpfulness_metric(PROMPT_V2, JUDGE_MODEL)
 ```
 
 Run evaluation with the improved prompt:
 
 ```python
 job_v2 = evaluator.submit(
-    metric=metric_v2_remote,
+    metric=metric_v2,
     dataset=dataset_ref,
     config=sample_config,
 )
@@ -706,30 +706,12 @@ If you're re-running the tutorial, delete the existing workspace first:
 client.workspaces.delete(name=WORKSPACE)
 ```
 
-### Local NVIDIA Build authentication fails
+### NVIDIA Build authentication fails
 
-Local evaluator runs resolve `api_key_secret` from environment variables. For NVIDIA Build, make sure `NVIDIA_API_KEY` is exported in the environment where the notebook or Python process is running:
-
-```python
-import os
-
-assert os.environ["NVIDIA_API_KEY"]
-```
-
-The local model should use the environment variable name:
+Submitted evaluator jobs resolve `api_key_secret` from platform secrets. For NVIDIA Build, make sure the secret exists in the workspace and the model uses that secret name:
 
 ```python
-LOCAL_JUDGE_MODEL = Model(
-    url=JUDGE_MODEL_URL,
-    name=JUDGE_MODEL_NAME,
-    api_key_secret="NVIDIA_API_KEY",
-)
-```
-
-Remote jobs should use the platform secret name instead:
-
-```python
-REMOTE_JUDGE_MODEL = Model(
+JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
     api_key_secret=nvidia_api_key_secret.name,

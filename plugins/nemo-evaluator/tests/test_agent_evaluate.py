@@ -71,7 +71,6 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfileConfig,
 )
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
-from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pytest_mock import MockerFixture
 
 
@@ -592,7 +591,7 @@ async def test_compile_rejects_harbor_target_for_docker_profile(mocker: MockerFi
     message = str(exc_info.value)
     assert "profile 'default'" in message
     assert "backend 'docker'" in message
-    assert "Harbor targets currently require local execution or the subprocess backend" in message
+    assert "Harbor targets currently require the subprocess backend" in message
 
 
 @pytest.mark.parametrize(
@@ -747,7 +746,7 @@ async def test_compile_rejects_reserved_secret_env_name() -> None:
         )
 
 
-# --- run_local: the in-process run path, across target types ----------------
+# --- task run hook across target types --------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -766,9 +765,9 @@ async def test_compile_rejects_reserved_secret_env_name() -> None:
         ),
     ],
 )
-def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixture) -> None:
-    # run_local drives the full validate -> to_spec -> run path. The evaluator is faked so the target
-    # is threaded (a runner resolved to its runtime, an endpoint passed through) without real inference.
+async def test_task_run_executes_each_target_type(target: Target, tmp_path: Path, mocker: MockerFixture) -> None:
+    # Explicitly drive validate -> to_spec -> run. The evaluator is faked so the target
+    # is threaded without real inference.
     fake = _FakeEvaluator()
     mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=fake)
     input_spec = AgentEvalInputSpec(
@@ -780,7 +779,14 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
         target=target,
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    spec = await AgentEvalJob.to_spec(
+        input_spec,
+        workspace="default",
+        entity_client=None,
+        async_sdk=None,
+        is_local=False,
+    )
+    result = AgentEvalJob().run(spec.model_dump(mode="json"), ctx=_job_context(tmp_path))
 
     assert result["status"] == "completed"
     assert result["artifact"]["name"] == DEFAULT_RESULT_NAME
@@ -798,7 +804,7 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
         assert getattr(fake.received_target, "name", None) == target.agent.name
 
 
-def test_run_local_scores_precomputed_trials_offline(mocker: MockerFixture) -> None:
+async def test_task_run_scores_precomputed_trials_offline(tmp_path: Path, mocker: MockerFixture) -> None:
     # Offline eval: precomputed trials are scored directly, with no target / no generation.
     fake = _FakeEvaluator()
     mocker.patch.object(AgentEvalJob, "_build_evaluator", return_value=fake)
@@ -812,7 +818,14 @@ def test_run_local_scores_precomputed_trials_offline(mocker: MockerFixture) -> N
         trials=precomputed,
     )
 
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
+    spec = await AgentEvalJob.to_spec(
+        input_spec,
+        workspace="default",
+        entity_client=None,
+        async_sdk=None,
+        is_local=False,
+    )
+    result = AgentEvalJob().run(spec.model_dump(mode="json"), ctx=_job_context(tmp_path))
 
     assert result["status"] == "completed"
     assert fake.received_target is None

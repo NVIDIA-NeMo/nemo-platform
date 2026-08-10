@@ -31,15 +31,12 @@ def test_runtime_task_command_uses_configured_python(tmp_path):
     python.touch()
     config = SafeSynthesizerConfig.model_validate({"runtime_python": str(python)})
 
-    command = runtime.runtime_task_command(config, ["run-local", "--workspace", "default"])
+    command = runtime.runtime_task_command(config)
 
     assert command == [
         str(python),
         "-m",
         runtime.TASK_MODULE,
-        "run-local",
-        "--workspace",
-        "default",
     ]
 
 

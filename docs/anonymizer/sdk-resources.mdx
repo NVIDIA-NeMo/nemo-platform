@@ -78,7 +78,7 @@ The async variant (`AsyncAnonymizerJobResource`) exposes the same surface with `
 
 ## AnonymizerJobResults
 
-`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory. The same class also works for the local `run run` flow — point it at the artifact directory the local job results manager logs:
+`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory. You can also point it at an extracted artifact directory:
 
 ```python
 from pathlib import Path

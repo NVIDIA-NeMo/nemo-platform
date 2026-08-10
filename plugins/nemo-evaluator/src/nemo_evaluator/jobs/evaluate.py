@@ -300,7 +300,7 @@ class EvaluateJob(NemoJob):
         sdk: NeMoPlatform | None = None,
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
-        """Run the evaluator job locally and persist its result artifact."""
+        """Run the evaluator job in a task process and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
         # Stamped here because the row evaluator records no timing at all and `EvaluationResult` has
         # nowhere to put it. Publication needs a start time that is a function of the run, not of

@@ -204,9 +204,9 @@ job.wait_until_done()
 result = job.get_result()
 ```
 
-### `ModelRef` (supported by `evaluator.submit(...)`)
+### `ModelRef`
 
-Durable remote `evaluator.submit(...)` jobs additionally accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing. A `ModelRef` target generates outputs online, so it requires an online run config (`RunConfigOnlineModel`):
+`evaluator.submit(...)` jobs also accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing. A `ModelRef` target generates outputs online, so it requires an online run config (`RunConfigOnlineModel`):
 
 ```python
 from nemo_evaluator_sdk import ModelRef, RunConfigOnlineModel

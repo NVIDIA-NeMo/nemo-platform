@@ -86,7 +86,7 @@ dataset = [
 config = RunConfig(limit_samples=100, parallelism=8)
 ```
 
-### 2. Run it — three dataset-driven modes
+### 2. Run it — two dataset-driven modes
 
 The same `metric`, `dataset`, and `config` run in two places. What changes is the **caller** — a
 bare SDK evaluator for local iteration, or the platform's `client.evaluator` resource for durable
@@ -139,14 +139,14 @@ the same and execution gains platform capabilities:
 | **Inference** | Direct model or agent endpoint calls | The same, and can route through the NeMo Platform [Inference Gateway](/documentation/models-and-inference) and platform-managed endpoints |
 | **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
 | **Results** | Returned in memory | Platform artifact storage with typed result download |
-| **Authentication** | Local environment variables | Local env vars for local runs; NeMo Platform [Secrets](/documentation/get-started/core-concepts/manage-secrets) for remote jobs |
+| **Authentication** | Local environment variables | NeMo Platform [Secrets](/documentation/get-started/core-concepts/manage-secrets) for jobs |
 
 ### Live vs. jobs, online vs. offline
 
 Two more distinctions cut across the modes above:
 
-- **Live (synchronous) vs. jobs (asynchronous).** `run()` returns results immediately — best for fast
-  iteration, metric development, and small payloads. `submit()` creates a durable job you monitor and
+- **Live (synchronous) vs. jobs (asynchronous).** The standalone SDK `run()` returns results immediately — best for fast
+  iteration, metric development, and small payloads. Platform `submit()` creates a durable job you monitor and
   fetch results from — best for production workloads, larger datasets, and recurring regression
   checks.
 - **Offline vs. online.** *Offline* scores dataset rows that already contain outputs. *Online*

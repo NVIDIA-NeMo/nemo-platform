@@ -91,7 +91,7 @@ class TestRouters:
 
 
 class TestCLI:
-    def test_cli_root_help_lists_three_verbs(self, contributor: object) -> None:
+    def test_cli_root_help_lists_submit_and_explain(self, contributor: object) -> None:
         try:
             cli = contributor.get_cli()
         except ImportError as exc:
@@ -100,21 +100,19 @@ class TestCLI:
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
         plain = _plain(result.output)
-        assert "run" in plain
         assert "submit" in plain
         assert "explain" in plain
 
-    def test_run_hard_fails(self, contributor: object) -> None:
+    def test_run_is_not_registered(self, contributor: object) -> None:
         try:
             cli = contributor.get_cli()
         except ImportError as exc:
             pytest.skip(f"CLI deps unavailable in this env: {exc}")
         runner = CliRunner()
         result = runner.invoke(cli, ["run"])
-        assert result.exit_code == 1
+        assert result.exit_code != 0
         plain = _plain(result.output)
-        assert "does not support local run" in plain
-        assert "submit" in plain
+        assert "No such command" in plain
 
     def test_submit_help_shows_job_json_positional(self, contributor: object) -> None:
         try:

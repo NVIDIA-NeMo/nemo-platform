@@ -46,7 +46,7 @@ class LogFrame(FrameModel):
 
 
 class PreviewDatasetFrame(FrameModel):
-    """Final user-visible dataframe produced by the preview run."""
+    """Final user-visible dataframe produced by preview."""
 
     kind: Literal["preview_dataset"] = "preview_dataset"
     records: list[dict[str, Any]]

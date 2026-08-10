@@ -117,7 +117,7 @@ nemo my-plugin greet --name Alice
 
 ## Step 4: Add a job
 
-Declare the spec with Pydantic, implement `run()` for local execution, and override `compile()` for remote execution:
+Declare the spec with Pydantic, implement `run()` for task execution, and override `compile()` for job submission:
 
 ```python
 # src/nemo_my_plugin/jobs/process.py

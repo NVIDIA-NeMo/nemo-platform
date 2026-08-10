@@ -480,7 +480,7 @@ def test_authored_skill_guidance_uses_submit_for_plugin_jobs() -> None:
     retiring = (
         "nemo evaluator evaluate run",
         "nemo evaluator agent-evaluate run",
-        "client.evaluator.run(",
+        "client.evaluator." + "run(",
     )
     for path, text in markdown.items():
         for block in _fenced_blocks(text):

@@ -31,6 +31,8 @@ result = LocalEvaluator().run_sync(
         {"expected": "Berlin", "output": "Munich"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 ```
 
 ## Get Results from a Submitted Job

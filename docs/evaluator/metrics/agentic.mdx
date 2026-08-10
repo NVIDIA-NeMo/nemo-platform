@@ -1259,7 +1259,7 @@ Use `RunConfig(limit_samples=...)` when you want to test a small slice of a larg
 
 ## Important Notes
 
-1. **Execution choice**: Use `run` for local in-process evaluation and `submit` for durable remote jobs with `wait_until_done()` and `get_result()`.
+1. **Execution choice**: Use `submit` for durable platform jobs with `wait_until_done()` and `get_result()`.
 
 2. **Column Names**: RAGAS metrics use specific column names:
  - `user_input` (not `question`)

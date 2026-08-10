@@ -40,8 +40,8 @@ The same configuration source can usually be used with `run` or `submit`. Resour
 
 | Command | Workload execution | NeMo Services required? |
 |---------|--------------------|-------------------------|
-| `preview run` | Local CLI process | Optional |
-| `create run` | Local CLI process | Optional |
+| `preview submit` | Local CLI process | Optional |
+| `create submit` | Local CLI process | Optional |
 | `preview submit` | Data Designer API | Yes |
 | `create submit` | Jobs worker | Yes |
 
@@ -50,7 +50,7 @@ The same configuration source can usually be used with `run` or `submit`. Resour
 Use local preview for fast iteration:
 
 ```bash
-nemo data-designer preview run product_reviews.py --num-records 5
+nemo data-designer preview submit product_reviews.py --num-records 5
 ```
 
 The workload runs in your current Python environment. It can use local-only resources, NeMo resources, or both.
@@ -60,7 +60,7 @@ The workload runs in your current Python environment. It can use local-only reso
 Use local create when you want to generate a larger dataset without submitting work to NeMo Services:
 
 ```bash
-nemo data-designer create run product_reviews.py --num-records 1000
+nemo data-designer create submit product_reviews.py --num-records 1000
 ```
 
 This executes the plugin job locally. It is useful for development and for workloads that should stay in the local environment.
@@ -89,7 +89,7 @@ NeMo Services creates and runs a job. Job logs, status, and artifacts are manage
 
 The plugin also provides commands for Nemotron Personas datasets.
 
-Install personas locally for local execution:
+List or download personas for inspection:
 
 ```bash
 nemo data-designer personas download --list
@@ -115,4 +115,4 @@ nemo data-designer personas make-fileset \
 
 ## SDK Relationship
 
-The SDK currently executes through the Data Designer API. If you need local in-process execution today, use `nemo data-designer ... run`.
+The SDK executes through the Data Designer API and Jobs API, matching the CLI `submit` paths.

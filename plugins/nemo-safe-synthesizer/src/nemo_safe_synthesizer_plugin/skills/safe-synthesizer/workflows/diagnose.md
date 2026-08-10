@@ -7,14 +7,14 @@
 
 - NeMo CLI access through `nemo` or repo development invocation `uv run nemo`.
 - Python dependencies synced into the active virtual environment.
-- A GPU-capable Jobs backend for platform container jobs, or a compatible CUDA-capable GPU and driver for host-local generation.
+- A GPU-capable Jobs backend for platform container jobs.
 - Files API URL access when the run uses filesets or model fileset setup.
 - Workspace access to the input fileset, output job, `hf_token_secret`, and any PII classification provider.
 
 ## First Checks
 
 1. Resolve the CLI with `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bin/nemo) || echo CLI_NOT_FOUND`.
-2. Confirm whether the user is running a platform container job through the Jobs API or SDK, or host-local (`nemo safe-synthesizer run-local`).
+2. Confirm the user is running a platform container job through the Jobs API or SDK.
 3. Inspect the spec file before changing commands.
 
 ## Common Failures
@@ -26,10 +26,8 @@ Tell the user that the NeMo CLI or the Safe Synthesizer plugin is not installed 
 ### CUDA or GPU initialization fails
 
 - For platform jobs, confirm the job executor profile targets GPU-capable workers.
-- Confirm the host has a compatible NVIDIA GPU and driver with `nvidia-smi`.
 - For repo development, verify the plugin runtime with `uv run nemo safe-synthesizer runtime info`.
 - Recreate the runtime with `uv run nemo safe-synthesizer runtime setup --force` if the engine/CUDA packages are missing or stale.
-- Host-local Safe Synthesizer training runs directly on the host GPU; a GPU inside another service container is not enough.
 
 ### Container image cannot be pulled or is the wrong tag
 
@@ -43,12 +41,10 @@ Tell the user that the NeMo CLI or the Safe Synthesizer plugin is not installed 
 
 - For platform jobs, verify `data_source` is a fileset URL: `<workspace>/<fileset>#<path>`.
 - Confirm the fileset exists and the workspace is correct.
-- For local runs, prefer `--data-source <local-file-or-dir>` when the input is on disk.
-- Supported local file forms include CSV, Parquet, JSON, JSONL, and Hugging Face datasets paths.
 
 ### Model or fileset downloads fail
 
-Run the model fileset setup when local tasks need model filesets:
+Run the model fileset setup when jobs need model filesets:
 
 ```bash
 uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
