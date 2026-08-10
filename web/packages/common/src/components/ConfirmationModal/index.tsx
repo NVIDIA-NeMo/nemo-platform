@@ -4,7 +4,7 @@
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
-import { NotifyFn } from '@nemo/common/src/providers/toast/types';
+import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
 import { getErrorMessage } from '@nemo/common/src/utils/error';
 import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';

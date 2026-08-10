@@ -197,6 +197,35 @@ describe('WorkspaceSideNav', () => {
     expect(screen.getByRole('link', { name: 'Probes' })).toBeInTheDocument();
   });
 
+  it('keeps a plugin item whose id matches a core item in the merged group', () => {
+    const duplicateKeyWarning = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderWithPlugins([
+      makePlugin('red-team', [
+        {
+          group: 'Governance',
+          items: [
+            {
+              id: 'guardrails',
+              iconName: 'shield',
+              label: 'Red Team Models',
+              href: '/workspaces/test-workspace/red-team-models',
+            },
+          ],
+        },
+      ]),
+    ]);
+
+    expect(screen.getByRole('link', { name: 'Guardrails' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Red Team Models' })).toBeInTheDocument();
+    const keyWarnings = duplicateKeyWarning.mock.calls
+      .map((args) => args.map(String).join(' '))
+      .filter((message) => message.includes('same key'));
+    expect(keyWarnings).toEqual([]);
+
+    duplicateKeyWarning.mockRestore();
+  });
+
   it('merges groups of the same name across two plugins', () => {
     renderWithPlugins([
       makePlugin('one', [

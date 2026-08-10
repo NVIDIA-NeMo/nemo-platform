@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ToastProvider } from '@nemo/common/src/providers/toast/ToastProvider';
-import { MessageFnOptions, NotifyFn } from '@nemo/common/src/providers/toast/types';
+import type { MessageFnOptions, NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
 import { logger } from '@nemo/common/src/utils/logger';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { FC } from 'react';
+import type { FC } from 'react';
 
-const Notifier: FC<{ onNotify?: NotifyFn; options?: MessageFnOptions }> = ({
-  onNotify,
-  options,
-}) => {
+interface NotifierProps {
+  onNotify?: NotifyFn;
+  options?: MessageFnOptions;
+}
+
+const Notifier: FC<NotifierProps> = ({ onNotify, options }) => {
   const notify = useNotify(onNotify);
   return <button onClick={() => notify('All done', 'success', options)}>Notify</button>;
 };

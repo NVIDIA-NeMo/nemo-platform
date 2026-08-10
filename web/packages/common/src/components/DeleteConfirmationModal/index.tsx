@@ -3,7 +3,7 @@
 
 import { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
 import { FormModalProps } from '@nemo/common/src/components/FormModal';
-import { NotifyFn } from '@nemo/common/src/providers/toast/types';
+import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { FC } from 'react';
 
 interface DeleteModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {

@@ -384,7 +384,9 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             items: group.items.map((item) => {
               const Icon = getPluginIcon(item.iconName);
               return {
-                id: item.id,
+                // Namespaced: ids are React keys and accordion-state keys, and
+                // merging puts plugin items in the same array as core ones.
+                id: `${plugin.name}:${item.id}`,
                 slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
                 slotLabel: item.label,
                 href: item.href,

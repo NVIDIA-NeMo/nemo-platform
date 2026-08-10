@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { NotifyFn } from '@nemo/common/src/providers/toast/types';
+import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { ToastContext } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
 import { useCallback, useContext } from 'react';
