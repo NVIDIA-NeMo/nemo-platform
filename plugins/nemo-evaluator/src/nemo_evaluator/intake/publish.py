@@ -19,13 +19,16 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from datetime import timedelta
 
 from nemo_evaluator.intake import mapping
 from nemo_evaluator.sdk import http_utils
+from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -93,6 +96,24 @@ class PublishReport(BaseModel):
         return sum(trial.evaluator_result_count for trial in self.published_trials)
 
 
+def _token_final_metrics(measurements: TrialMeasurements) -> AtifFinalMetricsParam | None:
+    """Project the trial's recorded token usage onto ATIF ``final_metrics``.
+
+    Intake promotes these root totals onto the trajectory's root span, where the evaluation rollup
+    reads them — so publishing them is what makes token counts show up under the Evaluation. Only the
+    token fields the trial actually recorded are set; a trial whose harness recorded no usage yields
+    ``None`` (no ``final_metrics`` block). Cost is not captured here.
+    """
+    final_metrics: AtifFinalMetricsParam = {}
+    if measurements.prompt_tokens is not None:
+        final_metrics["total_prompt_tokens"] = measurements.prompt_tokens
+    if measurements.completion_tokens is not None:
+        final_metrics["total_completion_tokens"] = measurements.completion_tokens
+    if measurements.cache_read_tokens is not None:
+        final_metrics["total_cached_tokens"] = measurements.cache_read_tokens
+    return final_metrics or None
+
+
 async def publish_to_intake(
     result: AgentEvalResult,
     *,
@@ -154,6 +175,14 @@ async def publish_to_intake(
 
     async def _publish_trial(trial: AgentEvalTrial) -> PublishedTrial:
         async with semaphore:
+            measurements = TrialMeasurements.from_metadata(trial.metadata)
+            # A recorded runtime gives the trajectory a real end so Intake's latency rollup sees the
+            # trial's wall-clock duration instead of 0; absent → no window, latency stays unmeasured.
+            ended_at = (
+                started_at + timedelta(seconds=measurements.runtime_sec)
+                if measurements.runtime_sec is not None
+                else None
+            )
             body = mapping.trial_to_atif_ingest(
                 trial,
                 run_id=result.run_id,
@@ -162,6 +191,8 @@ async def publish_to_intake(
                 started_at=started_at,
                 agent_version=agent_version,
                 model_name=model_name,
+                final_metrics=_token_final_metrics(measurements),
+                ended_at=ended_at,
             )
             body["workspace"] = resolved_workspace
             await platform.intake.ingest.atif.create(**body)

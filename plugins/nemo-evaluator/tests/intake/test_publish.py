@@ -12,7 +12,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from nemo_evaluator.intake.publish import PublishError, publish_to_intake
+from nemo_evaluator.intake.publish import PublishError, _token_final_metrics, publish_to_intake
+from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
@@ -126,6 +127,21 @@ def _result(trials: list[AgentEvalTrial], scores: list[AgentEvalTaskScore]) -> A
         summary=AgentEvalSummary(),
         metadata=RunMetadata(started_at=STARTED_AT),
     )
+
+
+def test_token_final_metrics_projects_recorded_token_usage() -> None:
+    # Recorded token usage becomes ATIF final_metrics, which Intake promotes onto the root span.
+    measurements = TrialMeasurements(prompt_tokens=120, completion_tokens=45, cache_read_tokens=30)
+    assert _token_final_metrics(measurements) == {
+        "total_prompt_tokens": 120,
+        "total_completion_tokens": 45,
+        "total_cached_tokens": 30,
+    }
+
+
+def test_token_final_metrics_is_none_without_recorded_usage() -> None:
+    # No recorded token usage → no final_metrics block (rather than zeros).
+    assert _token_final_metrics(TrialMeasurements()) is None
 
 
 # --- tests ------------------------------------------------------------------
