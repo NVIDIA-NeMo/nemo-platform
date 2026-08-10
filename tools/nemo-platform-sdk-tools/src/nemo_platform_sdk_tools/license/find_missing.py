@@ -52,8 +52,8 @@ def get_packages_needing_overrides(
 
     packages_needing_overrides = []
 
-    if "results" in data and len(data["results"]) > 0:
-        for pkg_data in data["results"][0].get("packages", []):
+    for result in data.get("results", []):
+        for pkg_data in result.get("packages", []):
             pkg = pkg_data.get("package", {})
             name = pkg.get("name", "")
             version = pkg.get("version", "")

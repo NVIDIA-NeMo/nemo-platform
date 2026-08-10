@@ -1,0 +1,324 @@
+{
+  "results": [
+    {
+      "source": {
+        "type": "lockfile"
+      },
+      "packages": [
+        {
+          "package": {
+            "name": "github.com/cenkalti/backoff/v5",
+            "version": "5.0.3",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/cespare/xxhash/v2",
+            "version": "2.3.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "MIT"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/go-logr/logr",
+            "version": "1.4.3",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/go-logr/stdr",
+            "version": "1.2.2",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/google/uuid",
+            "version": "1.6.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/grpc-ecosystem/grpc-gateway/v2",
+            "version": "2.29.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/inconshreveable/mousetrap",
+            "version": "1.1.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/spf13/cobra",
+            "version": "1.10.1",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "github.com/spf13/pflag",
+            "version": "1.0.9",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/auto/sdk",
+            "version": "1.2.1",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/contrib/bridges/otelslog",
+            "version": "0.19.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel",
+            "version": "1.44.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp",
+            "version": "0.20.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/exporters/stdout/stdoutlog",
+            "version": "0.20.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/log",
+            "version": "0.20.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/metric",
+            "version": "1.44.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/sdk",
+            "version": "1.44.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/sdk/log",
+            "version": "0.20.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/otel/trace",
+            "version": "1.44.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "go.opentelemetry.io/proto/otlp",
+            "version": "1.10.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "golang.org/x/net",
+            "version": "0.56.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "golang.org/x/sys",
+            "version": "0.46.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "golang.org/x/text",
+            "version": "0.39.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "google.golang.org/genproto/googleapis/api",
+            "version": "0.0.0-20260526163538-3dc84a4a5aaa",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "google.golang.org/genproto/googleapis/rpc",
+            "version": "0.0.0-20260526163538-3dc84a4a5aaa",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "google.golang.org/grpc",
+            "version": "1.83.0",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "google.golang.org/protobuf",
+            "version": "1.36.11",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "BSD-3-Clause"
+          ]
+        },
+        {
+          "package": {
+            "name": "stdlib",
+            "version": "1.25.12",
+            "ecosystem": "Go"
+          },
+          "licenses": [
+            "UNKNOWN"
+          ]
+        }
+      ]
+    }
+  ],
+  "experimental_config": {
+    "licenses": {
+      "summary": true,
+      "allowlist": []
+    }
+  },
+  "license_summary": [
+    {
+      "name": "Apache-2.0",
+      "count": 18
+    },
+    {
+      "name": "BSD-3-Clause",
+      "count": 16
+    },
+    {
+      "name": "MIT",
+      "count": 2
+    },
+    {
+      "name": "UNKNOWN",
+      "count": 1
+    }
+  ]
+}
