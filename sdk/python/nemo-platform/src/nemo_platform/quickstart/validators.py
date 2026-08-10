@@ -9,6 +9,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from nemo_platform_plugin.capabilities import probe_docker
+
 from .config import QuickstartConfig
 
 
@@ -25,19 +27,16 @@ class ValidationResult:
 
 
 def validate_docker_available() -> ValidationResult:
-    """Check if Docker daemon is available.
+    """Check if Docker daemon is available via an uncached reachability probe (≤5s).
 
     Returns:
         ValidationResult indicating success or failure.
     """
-    try:
-        import docker
-
-        client = docker.from_env()
-        client.ping()
+    # CLI may re-run after the user starts Docker; do not pin a prior miss.
+    result = probe_docker(use_cache=False)
+    if result.available:
         return ValidationResult(True, "Docker is available")
-    except Exception as e:
-        return ValidationResult(False, f"Docker is not available: {e}")
+    return ValidationResult(False, result.detail or "Docker is not available")
 
 
 def validate_ngc_credentials(api_key: str) -> ValidationResult:

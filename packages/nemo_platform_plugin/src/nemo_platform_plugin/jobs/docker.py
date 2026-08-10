@@ -6,6 +6,7 @@
 import logging
 
 from nemo_platform.types.jobs import PlatformJobSpecParam
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.config import Configuration, NemoPlatformConfig, Runtime
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from pydantic import ValidationError
@@ -36,8 +37,22 @@ def spec_has_gpu_step(job: PlatformJobSpecParam) -> bool:
     return False
 
 
+def _docker_gpu_validation_applies(runtime: Runtime) -> bool:
+    """Whether reserved-GPU checks apply for this platform runtime.
+
+    ``Runtime.DOCKER`` always applies. Soft-downgraded ``Runtime.NONE`` still
+    runs Docker-backed jobs when the daemon is reachable, so reserved-GPU
+    checks must not be skipped solely because runtime is not DOCKER.
+    """
+    if runtime == Runtime.DOCKER:
+        return True
+    if runtime == Runtime.NONE:
+        return probe_docker().available
+    return False
+
+
 def validate_gpu_available_for_docker(job: PlatformJobSpecParam) -> None:
-    """Fail fast when job requires GPU but platform is Docker with no GPUs configured.
+    """Fail fast when job requires GPU but platform Docker has no GPUs configured.
 
     platform_config.docker.get_reserved_gpu_ids() returns:
     - None when reserved_gpu_device_ids is "all" (auto-detect GPUs)
@@ -58,7 +73,7 @@ def validate_gpu_available_for_docker(job: PlatformJobSpecParam) -> None:
         logger.debug("Skipping GPU availability validation: could not load platform config")
         return
 
-    if platform_config.runtime != Runtime.DOCKER:
+    if not _docker_gpu_validation_applies(platform_config.runtime):
         return
 
     # None = "all" (auto-detect), [] = "none"/empty (no GPUs), list[int] = explicit IDs.

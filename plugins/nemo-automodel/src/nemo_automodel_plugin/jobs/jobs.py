@@ -11,6 +11,7 @@ schema (automodel-specific).
 
 from __future__ import annotations
 
+import asyncio
 from typing import ClassVar, cast
 
 from nemo_automodel_plugin.config import get_config
@@ -51,12 +52,19 @@ class AutomodelJob(BaseSubmitJob):
         options: dict | None = None,
     ) -> PlatformJobSpec:
         del entity_client, options
+        if not isinstance(async_sdk, AsyncNeMoPlatform):
+            raise TypeError(f"async_sdk must be AsyncNeMoPlatform, got {type(async_sdk).__name__}")
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
         )
         # Multi-node jobs compile to a gpu_distributed (Volcano) executor, which
         # only exists on Kubernetes; gate here so docker platforms fail fast.
-        require_container_runtime(cls.runtime_label, num_nodes=canonical.parallelism.num_nodes)
+        # Probe is sync (≤5s); keep it off the event loop.
+        await asyncio.to_thread(
+            require_container_runtime,
+            cls.runtime_label,
+            num_nodes=canonical.parallelism.num_nodes,
+        )
         try:
             canonical.validate_for_training()
         except ValidationError as e:
@@ -70,7 +78,7 @@ class AutomodelJob(BaseSubmitJob):
         platform_spec = await platform_job_config_compiler(
             canonical,
             workspace,
-            cast(AsyncNeMoPlatform, async_sdk),
+            async_sdk,
             job_name=job_name,
             profile=execution_profile,
         )
