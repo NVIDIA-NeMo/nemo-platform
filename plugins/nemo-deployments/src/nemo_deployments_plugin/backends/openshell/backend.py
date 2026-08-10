@@ -56,7 +56,7 @@ from nemo_deployments_plugin.backends.openshell.policy import (
     normalize_loaded_policy,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, DeploymentConfig, OpenShellDeploymentConfig
+from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig, OpenShellDeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint
 from nemo_platform_plugin.client.adapter import client_from_platform
