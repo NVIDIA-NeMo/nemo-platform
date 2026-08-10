@@ -63,6 +63,10 @@ def test_agent_config_translates_to_fabric_deepagents() -> None:
     assert config.models["default"].model == "nvidia-nemotron-3-super-120b-a12b"
     assert translated.harness.adapter_id == "nvidia.fabric.langchain.deepagents"
     assert translated.models["default"].provider == "nvidia"
+    assert config.mcp is not None
+    assert config.mcp.servers["nemo_studio"].url == (
+        "env NMP_BASE_URL=$NMP_BASE_URL NMP_WORKSPACE=$NMP_WORKSPACE nemo-studio-copilot-mcp"
+    )
 
 
 def test_canonical_registration_config_translates_to_same_runtime() -> None:

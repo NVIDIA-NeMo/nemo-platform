@@ -56,7 +56,7 @@ mcp:
   servers:
     nemo_studio:
       transport: stdio
-      url: nemo-studio-copilot-mcp
+      url: env NMP_BASE_URL=$NMP_BASE_URL NMP_WORKSPACE=$NMP_WORKSPACE nemo-studio-copilot-mcp
       exposure: harness_native
 
 tools:

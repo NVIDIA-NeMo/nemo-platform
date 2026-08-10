@@ -36,14 +36,19 @@ WORKDIR /workspace
 # relative to the packaged config directory.
 COPY ./ /workspace
 
+# Fabric resolves skill sources against the bundle, while Deep Agents reads
+# those resolved paths through the isolated virtual workspace backend.
+RUN mkdir -p /workspace/workspace/workspace && \
+    cp -R /workspace/skills /workspace/workspace/workspace/skills
+
 # Install the release-matched NeMo Agents runtime and the packaged project in
 # one resolution so incompatible project constraints fail during image build.
 RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \
     uv venv --python ${PYTHON_VERSION} /workspace/.venv && \
     . /workspace/.venv/bin/activate && \
-    uv pip install --constraint /workspace/constraints.fabric-local.txt \
-      "/workspace/wheelhouse/nemo_platform-0.3.0.post145.dev0+55876bbd3-py3-none-any.whl[nemo-agents-plugin]" \
-      "nemo-fabric==0.1.0" . && \
+    uv pip install --no-sources --constraint /workspace/constraints.fabric-local.txt \
+      "/workspace/wheelhouse/nemo_platform-0.3.0.post217.dev0+b6f22880a-py3-none-any.whl[nemo-agents-plugin]" \
+      "nemo-fabric==0.1.1" . && \
     chmod -R a+rX /opt/uv /workspace/.venv
 
 
