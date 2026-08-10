@@ -4907,7 +4907,16 @@ paths:
       tags:
       - Jobs
       summary: Get Execution Profiles
-      description: Get all currently configured execution profiles.
+      description: 'Get all currently configured execution profiles.
+
+
+        Returns the capability-filtered merge from jobs config. In local standalone
+
+        the controller may prune the shared list further after registry boot; in
+
+        split topologies the API advertises its own merge result (not controller
+
+        process memory).'
       operationId: get_execution_profiles_apis_jobs_v2_execution_profiles_get
       responses:
         '200':

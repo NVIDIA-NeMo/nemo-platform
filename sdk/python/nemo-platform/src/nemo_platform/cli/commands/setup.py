@@ -27,7 +27,6 @@ import httpx
 import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
-from nemo_platform.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.secrets.client import SecretsClient
@@ -44,6 +43,7 @@ from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform.cli.telemetry import emit
 from nemo_platform.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
 from nemo_platform.client.tls import client_verify_from_env

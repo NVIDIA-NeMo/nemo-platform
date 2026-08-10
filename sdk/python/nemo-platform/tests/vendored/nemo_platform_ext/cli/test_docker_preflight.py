@@ -132,25 +132,34 @@ def test_require_docker_exits_without_spawn_when_probe_false(stock_local_yaml: P
     cfg = PlatformAppConfig(config_path=str(stock_local_yaml))
     with (
         patch(
-            "nemo_platform.cli.docker_preflight.default_local_needs_docker",
-            return_value=True,
+            "nemo_platform.cli.docker_preflight.resolve_run_configuration",
+            return_value=MagicMock(
+                services={"deployments"},
+                controllers={"deployments"},
+                config_path=str(stock_local_yaml),
+            ),
         ),
         patch(
             "nemo_platform.cli.docker_preflight.probe_docker",
             return_value=ProbeResult(available=False, detail="down"),
-        ),
+        ) as probe,
         pytest.raises(typer.Exit) as exc,
     ):
         require_docker_for_default_local(cfg)
     assert exc.value.exit_code == 1
+    probe.assert_called_once_with(docker_host=None, use_cache=False)
 
 
 def test_require_docker_noop_when_probe_true(stock_local_yaml: Path) -> None:
     cfg = PlatformAppConfig(config_path=str(stock_local_yaml))
     with (
         patch(
-            "nemo_platform.cli.docker_preflight.default_local_needs_docker",
-            return_value=True,
+            "nemo_platform.cli.docker_preflight.resolve_run_configuration",
+            return_value=MagicMock(
+                services={"deployments"},
+                controllers={"deployments"},
+                config_path=str(stock_local_yaml),
+            ),
         ),
         patch(
             "nemo_platform.cli.docker_preflight.probe_docker",
@@ -158,6 +167,41 @@ def test_require_docker_noop_when_probe_true(stock_local_yaml: Path) -> None:
         ),
     ):
         require_docker_for_default_local(cfg)
+
+
+def test_require_docker_probes_executor_docker_host(tmp_path: Path) -> None:
+    path = tmp_path / "remote-docker.yaml"
+    path.write_text(
+        """
+platform:
+  runtime: docker
+deployments:
+  executors:
+    - name: remote-docker
+      backend: docker
+      config:
+        docker_host: tcp://docker.example:2375
+  default_executor: remote-docker
+""",
+        encoding="utf-8",
+    )
+    cfg = PlatformAppConfig(config_path=str(path))
+    with (
+        patch(
+            "nemo_platform.cli.docker_preflight.resolve_run_configuration",
+            return_value=MagicMock(
+                services={"deployments"},
+                controllers={"deployments"},
+                config_path=str(path),
+            ),
+        ),
+        patch(
+            "nemo_platform.cli.docker_preflight.probe_docker",
+            return_value=ProbeResult(available=True),
+        ) as probe,
+    ):
+        require_docker_for_default_local(cfg)
+    probe.assert_called_once_with(docker_host="tcp://docker.example:2375", use_cache=False)
 
 
 def test_preflight_message_names_docker() -> None:
