@@ -66,9 +66,9 @@ scores separately.
 
 ## SDK Execution Patterns
 
-Use `Evaluator` directly for local, completed-result evaluation. It accepts one
-metric or a sequence of metrics and returns either `EvaluationResult` or a
-multi-metric benchmark result.
+Use `Evaluator` directly for local, completed-result evaluation. `run` and
+`run_sync` take a sequence of metrics — pass `metrics=[metric]` even for a
+single one — and always return a `BenchmarkEvaluationResult`.
 
 ```python
 from nemo_evaluator_sdk import Evaluator, RunConfig, StringCheckMetric
