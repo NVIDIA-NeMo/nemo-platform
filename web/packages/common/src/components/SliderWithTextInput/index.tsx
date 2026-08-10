@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { toScientificNotation } from '@nemo/common/src/utils/formatters';
+import { clamp } from '@nemo/common/src/utils/math';
 import {
   Block,
   Button,
@@ -59,10 +60,8 @@ export const SliderWithTextInput = ({
 }: SliderWithTextInputProps) => {
   const [draftValue, setDraftValue] = useState<string | null>(null);
 
-  const clamp = (value: number) => Math.min(Math.max(value, min), max);
-
   const handleSliderChange = (newValue: number) => {
-    const clampedValue = clamp(newValue);
+    const clampedValue = clamp(newValue, min, max);
     setDraftValue(null);
     field.onChange(clampedValue);
     attributes?.Slider?.onValueChange?.(clampedValue);
@@ -88,7 +87,7 @@ export const SliderWithTextInput = ({
     if (rawValue === null || rawValue === '') return;
     const numberValue = parseFloat(rawValue);
     if (Number.isNaN(numberValue)) return;
-    const clampedValue = clamp(numberValue);
+    const clampedValue = clamp(numberValue, min, max);
     if (clampedValue === field.value) return;
     field.onChange(clampedValue);
     attributes?.Slider?.onValueChange?.(clampedValue);
