@@ -89,6 +89,16 @@ def _resolve_run_dataset(
         return dataset
 
     destination = str(ctx.storage.persistent / "dataset")
+    # Prefer the sync SDK so Files download does not bind the shared async
+    # httpx client to a short-lived asyncio.run() loop. Result persistence later
+    # reuses async_sdk via a second run_sync; reusing the same client across two
+    # closed loops raises "Event loop is closed" and silently drops the entity.
+    if sdk is not None:
+        return download_dataset_sync(
+            sdk=sdk,
+            dataset=dataset,
+            destination=destination,
+        )
     if async_sdk is not None:
         return run_sync(
             lambda: download_dataset(
@@ -96,12 +106,6 @@ def _resolve_run_dataset(
                 dataset=dataset,
                 destination=destination,
             )
-        )
-    if sdk is not None:
-        return download_dataset_sync(
-            sdk=sdk,
-            dataset=dataset,
-            destination=destination,
         )
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
 
