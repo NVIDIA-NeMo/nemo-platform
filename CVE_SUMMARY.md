@@ -28,7 +28,7 @@ The bundled `address-cves` summarizer was run against the CSV, but it skipped th
 - `docker/Dockerfile.safe-synthesizer-tasks`: added `aiohttp>=3.14.3,<4` to the Safe Synthesizer runtime override set.
 - `docker/Dockerfile.nmp-unsloth-training`: raised the `/opt/venv` `aiohttp` floor to `>=3.14.3,<4`.
 - `docker/Dockerfile.nmp-unsloth-training`: added cleanup of stale NGC system `GitPython` and `jupyterlab` copies under `/usr/local/lib/python3.12/dist-packages`; the image already installs patched runtime deps in `/opt/venv`.
-- `docker/Dockerfile.nmp-api`: changed the final runtime stage from the shared slim Python base to NVIDIA distroless Python `nvcr.io/nvidia/distroless/python:3.13-v4.0.9`, while keeping the builder on the existing slim Python base.
+- `docker/Dockerfile.nmp-api`: changed the final runtime stage from the shared slim Python base to NVIDIA distroless Python `nvcr.io/nvidia/distroless/python:3.13-v4.0.9`, while keeping the builder on the existing slim Python base and preserving the previous root runtime UID for mounted storage compatibility.
 - `docker-bake.hcl`: added `NMP_API_RUNTIME_BASE` so the API runtime base can be overridden without changing the build base.
 
 ## Findings Addressed
@@ -63,7 +63,7 @@ The bundled `address-cves` summarizer was run against the CSV, but it skipped th
 ## Findings Not Addressed Or Still Needing Owner Decision
 
 - `nmp-automodel-training`: 99 High rows are intentionally not addressed here because they are owned by the Automodel remediation workstream.
-- `nmp-api` distroless runtime: expected to clear the Perl/libssh2 rows, but still needs a successful image build, runtime smoke, and rescan before closure.
+- `nmp-api` distroless runtime: expected to clear the Perl/libssh2 rows, but still needs a successful image build, runtime smoke, and rescan before closure; the image intentionally preserves the previous root runtime UID until Docker/Kubernetes storage mounts are consistently writable by a non-root user.
 - `nmp-rl-training` `mooncake/libetcd_wrapper.so`: eleven High rows for Go stdlib, `golang.org/x/net`, and `google.golang.org/grpc` are inside an external bundled binary under `/opt/uv_cache`; repo search found no NeMo Platform source references to `mooncake` or `libetcd_wrapper`, but fixing requires an upstream NeMo-RL/mooncake dependency bump or proving/removing the unused cached binary.
 - Full remediation proof still requires rebuilding and rescanning affected images; static Dockerfile and bake parsing cannot prove final scanner disappearance.
 
@@ -99,6 +99,7 @@ Use these as row-level text where a CVE cannot be fully addressed in this pass.
 - `docker buildx bake --print safe-synthesizer-tasks-docker` - passed bake parse.
 - `docker buildx bake --print nmp-unsloth-training` - passed bake parse.
 - `docker run --rm --entrypoint python nvcr.io/nvidia/distroless/python:3.13-v4.0.9 ...` - confirmed Python 3.13.14, user `nvs`, writable `/tmp`, and absence of `/bin/sh`, `/usr/bin/git`, `/usr/bin/perl`, and libssh2.
+- `docker run --rm --user 1000:1000 ... pathlib.Path("/data/files_storage").stat()` against a root-only mounted child directory - reproduced the CI `PermissionError`; the same check with `--user 0:0` passed.
 - `BUILD_ARCH=linux/amd64 docker buildx bake --load nmp-api-docker` - attempted, but failed before reaching project layers because this environment cannot pull `ghcr.io/astral-sh/uv:0.9.14` (`failed to fetch oauth token: denied`); direct `docker pull ghcr.io/astral-sh/uv:0.9.14` fails with the same registry denial.
 
 Not run: successful full image rebuilds and rescans, for example `docker buildx bake nmp-api-docker auditor-tasks-docker safe-synthesizer-tasks-docker nmp-unsloth-training` followed by the Pulse/container scan. Those are the required final verification steps for scanner closure.

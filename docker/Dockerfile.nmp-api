@@ -73,7 +73,9 @@ ARG NMP_CODE_REVISION=
 ENV NMP_PLATFORM_VERSION=${NMP_PLATFORM_VERSION}
 ENV NMP_CODE_REVISION=${NMP_CODE_REVISION}
 EXPOSE 8080
-USER 1000:1000
+# Keep runtime UID aligned with the previous API image until Docker/K8s
+# storage mounts are consistently writable by the non-root nvs user.
+USER 0
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready')"]
 ENTRYPOINT ["nemo", "services", "run"]
