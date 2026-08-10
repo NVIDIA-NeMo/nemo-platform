@@ -1512,6 +1512,27 @@ async def test_fetch_proxy_response_decodes_deflate_json(mock_proxy_client, mock
 
 
 @pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_chained_json(mock_proxy_client, mock_proxy_response, next_request_info):
+    """Content codings are decoded in reverse application order."""
+    expected = {"id": "response", "choices": [{"message": {"content": "ok"}}]}
+    encoded = zlib.compress(gzip.compress(json.dumps(expected).encode()))
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/json"),
+                ("content-encoding", " gzip, deflate "),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=encoded)
+
+    result, _, status_code = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert status_code == 200
+    assert result == expected
+
+
+@pytest.mark.asyncio
 async def test_fetch_proxy_response_reports_content_decoding_failure(
     mock_proxy_client, mock_proxy_response, next_request_info
 ):
@@ -1525,6 +1546,29 @@ async def test_fetch_proxy_response_reports_content_decoding_failure(
         )
     )
     mock_proxy_response.read = AsyncMock(return_value=b"not-gzip")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Inference Gateway could not decode the upstream response with Content-Encoding 'gzip'."
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rejects_truncated_gzip(mock_proxy_client, mock_proxy_response, next_request_info):
+    """A gzip body without its checksum trailer is not accepted as valid JSON."""
+    encoded = gzip.compress(b'{"id":"response"}')
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/json"),
+                ("content-encoding", "gzip"),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=encoded[:-8])
 
     with pytest.raises(HTTPException) as exc_info:
         await fetch_proxy_response(mock_proxy_client, next_request_info)
@@ -1583,6 +1627,68 @@ async def test_fetch_proxy_response_decodes_gzip_sse(mock_proxy_client, mock_pro
     assert status_code == 200
     assert not isinstance(result, dict)
     assert [chunk async for chunk in result] == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_chained_fragmented_sse(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """Fragmented SSE supports multiple content codings in application order."""
+    expected = [
+        {"id": "chunk-1", "choices": [{"delta": {"content": "hello"}}]},
+        {"id": "chunk-2", "choices": [{"delta": {"content": " world"}}]},
+    ]
+    body = ("\n".join(f"data: {json.dumps(chunk)}" for chunk in expected) + "\ndata: [DONE]\n").encode()
+    encoded = zlib.compress(gzip.compress(body))
+
+    async def _iter_compressed_fragments():
+        for offset in range(0, len(encoded), 7):
+            yield encoded[offset : offset + 7]
+
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "text/event-stream"),
+                ("content-encoding", "gzip, deflate"),
+            ]
+        )
+    )
+    mock_proxy_response.content.iter_any = Mock(return_value=_iter_compressed_fragments())
+
+    result, _, status_code = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert status_code == 200
+    assert not isinstance(result, dict)
+    assert [chunk async for chunk in result] == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_rejects_corrupt_gzip_sse_before_returning_response(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """A compressed SSE decoding error becomes a 502 before any stream is returned."""
+
+    async def _iter_corrupt_body():
+        yield b"not-gzip"
+
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "text/event-stream"),
+                ("content-encoding", "gzip"),
+            ]
+        )
+    )
+    mock_proxy_response.content.iter_any = Mock(return_value=_iter_corrupt_body())
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Inference Gateway could not decode the upstream response with Content-Encoding 'gzip'."
+    )
+    mock_proxy_response.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

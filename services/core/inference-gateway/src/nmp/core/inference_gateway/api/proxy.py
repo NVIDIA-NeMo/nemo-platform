@@ -2,16 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
+import gzip
 import json
 import logging
 import uuid
+import zlib
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Union
 
 import aiohttp
-from aiohttp import ClientSession
-from aiohttp.compression_utils import BrotliDecompressor, ZLibDecompressor, ZSTDDecompressor
+from aiohttp import ClientSession, compression_utils
 from fastapi import HTTPException, Request
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -452,76 +453,100 @@ class UpstreamContentDecodingError(Exception):
         super().__init__(f"Could not decode upstream Content-Encoding {content_encoding!r}")
 
 
-ContentDecoder = ZLibDecompressor | BrotliDecompressor | ZSTDDecompressor
+def _parse_content_codings(content_encoding: str) -> tuple[str, ...]:
+    """Parse the ordered content codings from a ``Content-Encoding`` value."""
+    if not content_encoding.strip():
+        return ()
+
+    codings = tuple(part.strip().lower() for part in content_encoding.split(","))
+    if any(not coding for coding in codings):
+        raise UpstreamContentDecodingError(content_encoding)
+    return tuple(coding for coding in codings if coding != "identity")
 
 
-def _build_content_decoder(content_encoding: str) -> ContentDecoder | None:
-    """Build a streaming decoder for an upstream ``Content-Encoding`` value."""
-    normalized = content_encoding.strip().lower()
-    if not normalized or normalized == "identity":
-        return None
-    if normalized == "gzip":
-        return ZLibDecompressor(encoding="gzip")
-    if normalized == "deflate":
-        return ZLibDecompressor(encoding="deflate")
-    if normalized == "br":
-        return BrotliDecompressor()
-    if normalized == "zstd":
-        return ZSTDDecompressor()
-    raise UpstreamContentDecodingError(content_encoding)
+def _decode_zstd_body(body: bytes, content_encoding: str) -> bytes:
+    """Decode one or more complete Zstandard frames."""
+    decompressor_type = getattr(compression_utils, "ZstdDecompressor", None)
+    if decompressor_type is None or not body:
+        raise UpstreamContentDecodingError(content_encoding)
+
+    decoded = bytearray()
+    remaining = body
+    while remaining:
+        decompressor = decompressor_type()
+        decoded.extend(decompressor.decompress(remaining))
+        if not decompressor.eof:
+            raise UpstreamContentDecodingError(content_encoding)
+        remaining = decompressor.unused_data
+    return bytes(decoded)
 
 
-async def _decode_content_chunks(chunks: AsyncIterable[bytes], content_encoding: str) -> AsyncIterator[bytes]:
-    """Decode an upstream response body incrementally from its content coding."""
+def _decode_content_body_sync(body: bytes, content_encoding: str) -> bytes:
+    """Decode a complete body by applying content codings in reverse order."""
     try:
-        decoder = _build_content_decoder(content_encoding)
-    except (RuntimeError, UpstreamContentDecodingError) as exc:
-        raise UpstreamContentDecodingError(content_encoding) from exc
-
-    if decoder is None:
-        async for chunk in chunks:
-            yield chunk
-        return
-
-    async for chunk in chunks:
-        try:
-            decoded = await decoder.decompress(chunk)
-        except Exception as exc:
-            raise UpstreamContentDecodingError(content_encoding) from exc
-        if decoded:
-            yield decoded
-
-    try:
-        trailing = decoder.flush()
+        decoded = body
+        for coding in reversed(_parse_content_codings(content_encoding)):
+            if coding == "gzip":
+                decoded = gzip.decompress(decoded)
+            elif coding == "deflate":
+                decoded = zlib.decompress(decoded)
+            elif coding == "br":
+                brotli = getattr(compression_utils, "brotli", None)
+                if brotli is None:
+                    raise UpstreamContentDecodingError(content_encoding)
+                decoded = brotli.decompress(decoded)
+            elif coding == "zstd":
+                decoded = _decode_zstd_body(decoded, content_encoding)
+            else:
+                raise UpstreamContentDecodingError(content_encoding)
+        return decoded
+    except UpstreamContentDecodingError:
+        raise
     except Exception as exc:
         raise UpstreamContentDecodingError(content_encoding) from exc
-    if trailing:
-        yield trailing
 
 
 async def _decode_content_body(body: bytes, content_encoding: str) -> bytes:
-    """Decode a buffered upstream response body from its content coding."""
+    """Decode and validate a complete upstream response body."""
+    return await asyncio.to_thread(_decode_content_body_sync, body, content_encoding)
 
-    async def _body_chunks() -> AsyncIterator[bytes]:
-        yield body
 
-    return b"".join([chunk async for chunk in _decode_content_chunks(_body_chunks(), content_encoding)])
+async def _decode_upstream_body(body: bytes, content_encoding: str, upstream_url: str) -> bytes:
+    """Decode an upstream body or raise the gateway's public 502 error."""
+    try:
+        return await _decode_content_body(body, content_encoding)
+    except UpstreamContentDecodingError as exc:
+        logger.warning(
+            "Inference Gateway failed to decode upstream response from %s with Content-Encoding %r",
+            upstream_url,
+            content_encoding,
+            exc_info=exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"Inference Gateway could not decode the upstream response with Content-Encoding {content_encoding!r}."
+            ),
+        ) from exc
+
+
+async def _iter_response_chunks(chunks: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+    """Yield already parsed response chunks through the streaming middleware API."""
+    for chunk in chunks:
+        yield chunk
 
 
 async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[dict[str, Any]]:
     """Yield parsed JSON objects from an SSE (text/event-stream) response.
 
-    The response body is decoded according to ``Content-Encoding`` before each
-    ``data:`` line is parsed and yielded as a dict. ``data: [DONE]`` terminates
-    the stream. Malformed or non-JSON data lines are silently skipped. The
-    underlying aiohttp response is always closed when the generator exits.
+    Each ``data:`` line is parsed and yielded as a dict. ``data: [DONE]``
+    terminates the stream. Malformed or non-JSON data lines are silently skipped.
+    Compressed SSE responses are decoded eagerly by :func:`fetch_proxy_response`
+    instead so decoding failures can become a 502 before response output starts.
+    The underlying aiohttp response is always closed when the generator exits.
     """
     try:
-        decoded_chunks = _decode_content_chunks(
-            response.content.iter_any(),
-            response.headers.get("content-encoding", ""),
-        )
-        async for parsed in _parse_sse_chunks(decoded_chunks):
+        async for parsed in _parse_sse_chunks(response.content.iter_any()):
             yield parsed
     finally:
         _close_response(response)
@@ -538,11 +563,12 @@ async def fetch_proxy_response(
     responsible for applying response middleware and then streaming via
     :func:`stream_response_result`.
 
-    For ``Content-Type: text/event-stream`` responses the decoded result is an
-    ``AsyncIterator[dict]`` backed by the live aiohttp response — the iterator
-    **must** be fully consumed or the underlying connection will leak. For all
-    other responses the body is buffered, decoded according to
-    ``Content-Encoding``, and parsed as a JSON object.
+    Unencoded ``Content-Type: text/event-stream`` responses remain backed by the
+    live aiohttp response, so the iterator **must** be fully consumed or the
+    underlying connection will leak. Compressed SSE responses are buffered and
+    validated before an iterator is returned, allowing decoding failures to be
+    reported as a 502 before response output begins. All other responses are
+    buffered, decoded according to ``Content-Encoding``, and parsed as JSON.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -586,30 +612,32 @@ async def fetch_proxy_response(
         content_type = response.headers.get("content-type", "")
 
         if "text/event-stream" in content_type:
-            # Streaming — return a live async generator; ownership of the
-            # aiohttp response is transferred to the generator.
-            result: ResponseResult = _parse_sse_stream(response)
+            content_encoding = response.headers.get("content-encoding", "")
+            if content_encoding.strip().lower() not in {"", "identity"}:
+                # A compressed stream must be complete before its checksum and
+                # framing can be validated. Buffer it so a corrupt stream becomes
+                # a 502 instead of failing after successful headers were sent.
+                try:
+                    raw = b"".join([chunk async for chunk in response.content.iter_any()])
+                finally:
+                    _close_response(response)
+                decoded = await _decode_upstream_body(raw, content_encoding, next_request_info.url)
+
+                async def _decoded_body() -> AsyncIterator[bytes]:
+                    yield decoded
+
+                parsed_chunks = [chunk async for chunk in _parse_sse_chunks(_decoded_body())]
+                result: ResponseResult = _iter_response_chunks(parsed_chunks)
+            else:
+                # Ownership of the live aiohttp response is transferred to the
+                # generator for unencoded streaming responses.
+                result = _parse_sse_stream(response)
         else:
             # Non-streaming — buffer and decode the full body before parsing it.
             raw = await response.read()
             _close_response(response)
             content_encoding = response.headers.get("content-encoding", "")
-            try:
-                decoded = await _decode_content_body(raw, content_encoding)
-            except UpstreamContentDecodingError as exc:
-                logger.warning(
-                    "Inference Gateway failed to decode upstream response from %s with Content-Encoding %r",
-                    next_request_info.url,
-                    content_encoding,
-                    exc_info=exc,
-                )
-                raise HTTPException(
-                    status_code=502,
-                    detail=(
-                        "Inference Gateway could not decode the upstream response "
-                        f"with Content-Encoding {content_encoding!r}."
-                    ),
-                ) from exc
+            decoded = await _decode_upstream_body(raw, content_encoding, next_request_info.url)
             try:
                 result = json.loads(decoded)
             except (json.JSONDecodeError, ValueError) as exc:
