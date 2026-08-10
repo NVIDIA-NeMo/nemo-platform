@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  Tooltip,
-  VerticalNavItem as KuiVerticalNavItem,
-  VerticalNavListItem,
-} from '@nvidia/foundations-react-core';
+import { Tooltip, VerticalNavListItem } from '@nvidia/foundations-react-core';
+import { StudioNavItem } from '@studio/components/Layouts/NavigationDrawer/components/StudioNavItem';
 import type { NavItem as NavItemData } from '@studio/components/Layouts/NavigationDrawer/types';
+import { resolveActive } from '@studio/components/Layouts/NavigationDrawer/utils';
 import type { FC } from 'react';
 import { NavLink } from 'react-router';
 
@@ -16,23 +14,29 @@ interface CollapsedNavItemProps {
 }
 
 export const CollapsedNavItem: FC<CollapsedNavItemProps> = ({ item, isActive }) => {
-  const href = item.href ?? item.subItems?.[0]?.href;
-  if (!href || !item.slotIcon) return null;
-  const active = item.active ?? isActive(href);
+  const { href } = item;
+  if (href === undefined) return null;
+
+  // The rail is icon-only, so an item without one falls back to its initial rather than vanishing.
+  const icon = item.slotIcon ?? (
+    <span aria-hidden className="w-4 text-center text-xs">
+      {typeof item.slotLabel === 'string' ? item.slotLabel.charAt(0).toUpperCase() : '•'}
+    </span>
+  );
 
   return (
     <VerticalNavListItem>
       <Tooltip slotContent={item.slotLabel} side="right">
-        <KuiVerticalNavItem
-          active={active}
-          disabled={!href}
-          slotStart={item.slotIcon}
+        <StudioNavItem
+          active={resolveActive(item, isActive)}
+          slotStart={icon}
           {...item.attributes?.VerticalNavItem}
-          className="py-3 px-4"
-          asChild
         >
-          <NavLink to={href} />
-        </KuiVerticalNavItem>
+          <NavLink
+            to={href}
+            aria-label={typeof item.slotLabel === 'string' ? item.slotLabel : undefined}
+          />
+        </StudioNavItem>
       </Tooltip>
     </VerticalNavListItem>
   );

@@ -9,9 +9,8 @@ import {
   agentsRoutes,
   getAgentEvaluationsListRoute,
   getAgentMonitorRoute,
-  getAgentsListRoute,
 } from '@studio/routes/utils';
-import { Activity, FlaskConical, HatGlasses } from 'lucide-react';
+import { Form, DatabaseCheck } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -83,20 +82,14 @@ export const getAgentSideNavItems = (workspace: string) =>
   AGENTS_ENABLED
     ? [
         {
-          id: 'agents',
-          slotIcon: <HatGlasses className={iconColorClass} />,
-          slotLabel: 'Agents',
-          href: getAgentsListRoute(workspace),
-        },
-        {
           id: 'agent-evaluations',
-          slotIcon: <FlaskConical className={iconColorClass} />,
+          slotIcon: <Form className={iconColorClass} />,
           slotLabel: 'Evaluations',
           href: getAgentEvaluationsListRoute(workspace),
         },
         {
           id: 'agent-monitor',
-          slotIcon: <Activity className={iconColorClass} />,
+          slotIcon: <DatabaseCheck className={iconColorClass} />,
           slotLabel: 'Monitor',
           href: getAgentMonitorRoute(workspace),
         },

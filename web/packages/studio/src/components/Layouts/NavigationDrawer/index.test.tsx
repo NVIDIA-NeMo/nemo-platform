@@ -81,12 +81,14 @@ describe('NavigationDrawer', () => {
       expect(await screen.findByText('Traces')).toBeInTheDocument();
       expect(await screen.findByText('Entries')).toBeInTheDocument();
       expect(await screen.findByText('Export Jobs')).toBeInTheDocument();
+      // Expanded, a group is a heading; only the rail turns it into a divider.
+      expect(await screen.findByText('Evaluate')).toBeInTheDocument();
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
     });
 
     it('respects the local storage if it exists', async () => {
       const NavigationDrawer = await importNavigationDrawer();
 
-      // Mock getItem to return 'false', which will make drawer closed
       const prevLocalStorage = window.localStorage;
       const localStorageMock = {
         getItem: vi.fn().mockImplementation((key) => {
@@ -107,11 +109,84 @@ describe('NavigationDrawer', () => {
           sideNav={(collapsed) => <NavigationDrawer items={mockItems} collapsed={collapsed} />}
         />
       );
-      // Text is collapsed
-      expect(screen.queryByText('Projects')).not.toBeInTheDocument();
+      // In the rail a label is only ever exposed via its tooltip.
+      expect(
+        screen.queryByText('Projects', { ignore: '[role="tooltip"]' })
+      ).not.toBeInTheDocument();
       Object.defineProperty(window, 'localStorage', {
         value: prevLocalStorage,
       });
+    });
+
+    it('keeps every link reachable when collapsed, parents and children alike', async () => {
+      const NavigationDrawer = await importNavigationDrawer();
+      renderWithProjectRoute(
+        <NavigationDrawer
+          collapsed
+          items={[
+            { id: 'projects', slotLabel: 'Projects', href: ROUTES.workspace.index },
+            {
+              group: 'Components',
+              items: [
+                {
+                  // Links somewhere itself — stays in the rail alongside its children.
+                  id: 'models',
+                  slotLabel: 'Models',
+                  href: ROUTES.workspace.baseModels,
+                  subItems: [
+                    {
+                      id: 'virtual',
+                      slotLabel: 'Virtual Models',
+                      href: ROUTES.workspace.virtualModels,
+                    },
+                  ],
+                },
+                {
+                  // Container only — not a link, so only its children appear.
+                  id: 'datasets',
+                  slotLabel: 'Datasets',
+                  subItems: [
+                    {
+                      id: 'designer',
+                      slotLabel: 'Data Designer',
+                      href: ROUTES.workspace.dataDesignerJobList,
+                    },
+                  ],
+                },
+              ],
+            },
+          ]}
+        />
+      );
+
+      for (const label of ['Projects', 'Models', 'Virtual Models', 'Data Designer']) {
+        expect(await screen.findByRole('link', { name: label })).toBeInTheDocument();
+      }
+      expect(screen.queryByRole('link', { name: 'Datasets' })).not.toBeInTheDocument();
+    });
+
+    it('replaces a group heading with a named divider when collapsed', async () => {
+      const NavigationDrawer = await importNavigationDrawer();
+      renderWithProjectRoute(<NavigationDrawer collapsed items={mockItems} />);
+
+      expect(await screen.findByRole('separator', { name: 'Evaluate' })).toBeInTheDocument();
+      expect(screen.queryByText('Evaluate')).not.toBeInTheDocument();
+    });
+
+    it('does not open the collapsed rail with a divider', async () => {
+      const NavigationDrawer = await importNavigationDrawer();
+      renderWithProjectRoute(
+        <NavigationDrawer
+          collapsed
+          items={[
+            { group: 'Evaluate', items: [{ id: 'traces', slotLabel: 'Traces', href: '/traces' }] },
+            { group: 'System', items: [{ id: 'jobs', slotLabel: 'Jobs', href: '/jobs' }] },
+          ]}
+        />
+      );
+
+      expect(await screen.findByRole('separator', { name: 'System' })).toBeInTheDocument();
+      expect(screen.queryByRole('separator', { name: 'Evaluate' })).not.toBeInTheDocument();
     });
 
     it('renders subitems and chevron open/close icons', async () => {
@@ -123,21 +198,55 @@ describe('NavigationDrawer', () => {
       expect(await screen.findByText('Entries')).toBeInTheDocument();
       expect(await screen.findByText('Export Jobs')).toBeInTheDocument();
 
-      // KUI v1.0 collapsible uses native <details><summary> — find the summary via text.
-      // eslint-disable-next-line testing-library/no-node-access
-      const accordionTrigger = screen.getByText('Traces').closest('summary');
-      expect(accordionTrigger).not.toBeNull();
+      // This parent has no href of its own, so the whole row is the disclosure control.
+      const trigger = screen.getByRole('button', { name: 'Traces' });
 
-      // Starts expanded
-      expect(accordionTrigger).toHaveAttribute('data-state', 'open');
-      // eslint-disable-next-line testing-library/no-node-access
-      expect(document.querySelector('.lucide-chevron-up')).toBeInTheDocument();
-
-      // Clicking closes it (chevron-down icon visible)
-      await user.click(accordionTrigger as HTMLElement);
-      expect(accordionTrigger).toHaveAttribute('data-state', 'closed');
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
       // eslint-disable-next-line testing-library/no-node-access
       expect(document.querySelector('.lucide-chevron-down')).toBeInTheDocument();
+
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('Entries')).not.toBeInTheDocument();
+      // eslint-disable-next-line testing-library/no-node-access
+      expect(document.querySelector('.lucide-chevron-left')).toBeInTheDocument();
+    });
+
+    it('renders a sub-item with nowhere to go as text rather than a link', async () => {
+      const NavigationDrawer = await importNavigationDrawer();
+      renderWithProjectRoute(<NavigationDrawer items={mockItems} />);
+
+      // 'Entries' carries no href, so it must not become an anchor back to the current page.
+      expect(await screen.findByText('Entries')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Entries' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the label a link and the chevron the sole toggle when a parent has an href', async () => {
+      const user = userEvent.setup();
+
+      const NavigationDrawer = await importNavigationDrawer();
+      renderWithProjectRoute(
+        <NavigationDrawer
+          items={[
+            {
+              id: 'traces',
+              slotLabel: 'Traces',
+              href: ROUTES.workspace.index,
+              subItems: [{ id: 'entries', slotLabel: 'Entries', href: ROUTES.workspace.index }],
+            },
+          ]}
+        />
+      );
+
+      // Clicking the label navigates rather than collapsing the sub-list.
+      const chevron = screen.getByRole('button', { name: /traces/i });
+      await user.click(screen.getByRole('link', { name: 'Traces' }));
+      expect(chevron).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('Entries')).toBeInTheDocument();
+
+      await user.click(chevron);
+      expect(chevron).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByText('Entries')).not.toBeInTheDocument();
     });
   });
 });

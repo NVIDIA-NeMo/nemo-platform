@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
-import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
   ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
@@ -34,6 +32,7 @@ import {
 import { iconColorClass } from '@studio/routes/constants';
 import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
+  getAgentsListRoute,
   getWorkspaceAnonymizerRoute,
   getDataDesignerJobListRoute,
   getEvaluationResultsRoute,
@@ -54,26 +53,39 @@ import {
 } from '@studio/routes/utils';
 import { logger } from '@studio/util/logger';
 import {
-  Beaker,
+  Bot,
   Boxes,
   ChartBar,
   Database,
   ListChecks,
-  Home,
-  ShieldCheck,
-  Sliders,
-  Activity,
-  Cog,
-  Columns3,
   Rocket,
-  VenetianMask,
-  Gauge,
   Waypoints,
+  LayoutDashboard,
+  Lightbulb,
+  ListTree,
+  CirclePlay,
+  Metronome,
+  FlaskConical,
+  Form,
+  DatabaseCheck,
+  UserPen,
+  ShieldKeyhole,
+  FileStack,
+  Settings,
 } from 'lucide-react';
 import { useMemo } from 'react';
+import { useLocation } from 'react-router';
+
+/** Whether the current path sits on or under any of these items, so its parent starts expanded. */
+const isUnder = (pathname: string, items: { href?: string }[]) =>
+  items.some(
+    (item) =>
+      item.href !== undefined && (pathname === item.href || pathname.startsWith(`${item.href}/`))
+  );
 
 export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
+  const { pathname } = useLocation();
   const plugins = usePlugins();
   const agentsInstalled = usePluginInstalled('agents');
   const pluginsLoaded = usePluginsLoaded();
@@ -87,28 +99,18 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ? [
             {
               id: 'dashboard',
-              slotIcon: <Home className={iconColorClass} />,
+              slotIcon: <LayoutDashboard className={iconColorClass} />,
               slotLabel: 'Dashboard',
               href: getWorkspaceDashboardRoute(workspace),
             },
           ]
         : [];
-    const jobsNav = JOBS_ENABLED
-      ? [
-          {
-            id: 'jobs',
-            slotIcon: <ListChecks className={iconColorClass} />,
-            slotLabel: 'Jobs',
-            href: getWorkspaceJobsRoute(workspace),
-          },
-        ]
-      : [];
     const customizerNav = CUSTOMIZER_ENABLED
       ? [
           {
             id: 'custom-models',
-            slotIcon: <Sliders className={iconColorClass} />,
-            slotLabel: 'Custom Models',
+            slotIcon: <Metronome className={iconColorClass} />,
+            slotLabel: 'Fine-tune',
             href: getWorkspaceCustomizationJobListRoute(workspace),
           },
         ]
@@ -129,7 +131,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'traces',
-            slotIcon: <Activity className={iconColorClass} />,
+            slotIcon: <ListTree className={iconColorClass} />,
             slotLabel: 'Traces',
             href: getIntakeTracesRoute(workspace),
           },
@@ -140,7 +142,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'experiment',
-            slotIcon: <Beaker className={iconColorClass} />,
+            slotIcon: <FlaskConical className={iconColorClass} />,
             slotLabel: 'Experiments',
             href: getExperimentRoute(workspace),
           },
@@ -151,7 +153,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'safeSynthesizer',
-            slotIcon: <SafeSynthesizerLogo className={iconColorClass} />,
+            slotIcon: <DatabaseCheck className={iconColorClass} />,
             slotLabel: 'Safe Synthesizer',
             href: getWorkspaceSafeSynthesizerRoute(workspace),
           },
@@ -162,7 +164,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'data-designer',
-            slotIcon: <DataDesignerIconFc className={iconColorClass} />,
+            slotIcon: <Form className={iconColorClass} />,
             slotLabel: 'Data Designer',
             href: getDataDesignerJobListRoute(workspace),
           },
@@ -173,7 +175,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'anonymizer',
-            slotIcon: <VenetianMask className={iconColorClass} />,
+            slotIcon: <UserPen className={iconColorClass} />,
             slotLabel: 'Anonymizer',
             href: getWorkspaceAnonymizerRoute(workspace),
           },
@@ -186,7 +188,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'optimizer',
-            slotIcon: <Gauge className={iconColorClass} />,
+            slotIcon: <Lightbulb className={iconColorClass} />,
             slotLabel: 'Insights',
             href: getOptimizerRoute(workspace),
           },
@@ -205,35 +207,84 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ? [
           {
             id: 'playground',
-            slotIcon: <Columns3 className={iconColorClass} />,
+            slotIcon: <CirclePlay className={iconColorClass} />,
             slotLabel: 'Playground',
             href: getModelCompareRoute(workspace),
           },
         ]
       : [];
 
-    const dataItems = [
-      ...(DATASETS_ENABLED
+    const deploymentsNav = DEPLOYMENTS_ENABLED
+      ? [
+          {
+            id: 'deployments',
+            slotIcon: <Rocket className={iconColorClass} />,
+            slotLabel: 'Deployments',
+            href: getWorkspaceDeploymentsRoute(workspace),
+          },
+        ]
+      : [];
+
+    const observabilityItems = [...optimizerNav, ...tracesNav];
+
+    const modelSubItems = [
+      ...modelCompareNav,
+      ...evalNav,
+      ...customizerNav,
+      ...virtualModelsNav,
+      ...deploymentsNav,
+    ];
+    const datasetSubItems = [...dataDesignerNav, ...safeSynthesizerNav, ...anonymizerNav];
+
+    // Agents and Models link to their own entity list page; the chevron expands the rest.
+    const agentsHref = agentItems.length > 0 ? getAgentsListRoute(workspace) : undefined;
+    const modelsHref = BASE_MODELS_ENABLED ? getWorkspaceBaseModelsRoute(workspace) : undefined;
+
+    const componentItems = [
+      ...(agentsHref !== undefined
         ? [
             {
-              id: 'datasets',
-              slotIcon: <Database className={iconColorClass} />,
-              slotLabel: 'Filesets',
-              href: getWorkspaceFilesetsRoute(workspace),
+              id: 'agents-group',
+              slotIcon: <Bot className={iconColorClass} />,
+              slotLabel: 'Agents',
+              href: agentsHref,
+              defaultOpen: isUnder(pathname, [{ href: agentsHref }, ...agentItems]),
+              subItems: agentItems,
             },
           ]
         : []),
-      ...safeSynthesizerNav,
-      ...dataDesignerNav,
-      ...anonymizerNav,
+      ...(modelsHref !== undefined || modelSubItems.length > 0
+        ? [
+            {
+              id: 'models-group',
+              slotIcon: <Boxes className={iconColorClass} />,
+              slotLabel: 'Models',
+              href: modelsHref,
+              defaultOpen: isUnder(pathname, [{ href: modelsHref }, ...modelSubItems]),
+              subItems: modelSubItems,
+            },
+          ]
+        : []),
     ];
-    const evaluateItems = [...evalNav, ...tracesNav, ...experimentNav];
 
-    const safetyItems = GUARDRAILS_ENABLED
+    const dataItems =
+      datasetSubItems.length > 0
+        ? [
+            {
+              id: 'datasets-group',
+              slotIcon: <Database className={iconColorClass} />,
+              slotLabel: 'Datasets',
+              defaultOpen: isUnder(pathname, datasetSubItems),
+              subItems: datasetSubItems,
+            },
+          ]
+        : [];
+
+    const governanceItems = GUARDRAILS_ENABLED
       ? [
           {
             id: 'guardrails',
-            slotIcon: <ShieldCheck className={iconColorClass} />,
+            slotIcon: <ShieldKeyhole className={iconColorClass} />,
             slotLabel: 'Guardrails',
             href: getGuardrailsRoute(workspace),
           },
@@ -242,71 +293,51 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
 
     return [
       ...dashboardNav,
-      ...modelCompareNav,
-      ...(agentItems.length > 0 || optimizerNav.length > 0
-        ? [
-            {
-              group: 'Agents',
-              items: [...agentItems, ...optimizerNav],
-            },
-          ]
+      ...(observabilityItems.length > 0
+        ? [{ group: 'Observability', items: observabilityItems }]
         : []),
-      ...(jobsNav.length > 0
-        ? [
-            {
-              group: 'Jobs',
-              items: jobsNav,
-            },
-          ]
-        : []),
-      {
-        group: 'Models',
-        items: [
-          ...(BASE_MODELS_ENABLED
-            ? [
-                {
-                  id: 'models',
-                  slotIcon: <Boxes className={iconColorClass} />,
-                  slotLabel: 'Base Models',
-                  href: getWorkspaceBaseModelsRoute(workspace),
-                },
-              ]
-            : []),
-          ...customizerNav,
-          ...(DEPLOYMENTS_ENABLED
-            ? [
-                {
-                  id: 'deployments',
-                  slotIcon: <Rocket className={iconColorClass} />,
-                  slotLabel: 'Deployments',
-                  href: getWorkspaceDeploymentsRoute(workspace),
-                },
-              ]
-            : []),
-          ...virtualModelsNav,
-        ],
-      },
+      ...(componentItems.length > 0 ? [{ group: 'Components', items: componentItems }] : []),
+      ...(experimentNav.length > 0 ? [{ group: 'Evaluations', items: experimentNav }] : []),
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
-      ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
-      ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),
+      ...(governanceItems.length > 0 ? [{ group: 'Governance', items: governanceItems }] : []),
     ];
-  }, [workspace, showAgents]);
+  }, [workspace, showAgents, pathname]);
 
-  const bottomItems = useMemo(
-    () => [
+  const systemNavGroup = useMemo(() => {
+    const systemItems = [
+      ...(JOBS_ENABLED
+        ? [
+            {
+              id: 'jobs',
+              slotIcon: <ListChecks className={iconColorClass} />,
+              slotLabel: 'Jobs',
+              href: getWorkspaceJobsRoute(workspace),
+            },
+          ]
+        : []),
+      ...(DATASETS_ENABLED
+        ? [
+            {
+              id: 'datasets',
+              slotIcon: <FileStack className={iconColorClass} />,
+              slotLabel: 'Filesets',
+              href: getWorkspaceFilesetsRoute(workspace),
+            },
+          ]
+        : []),
       ...(SETTINGS_ENABLED
         ? [
             {
               id: 'settings',
-              slotIcon: <Cog className={iconColorClass} />,
+              slotIcon: <Settings className={iconColorClass} />,
               slotLabel: 'Settings',
               href: getWorkspaceSettingsRoute(workspace),
             },
           ]
         : []),
-    ],
-    [workspace]
-  );
+    ];
+    return systemItems.length > 0 ? [{ group: 'System', items: systemItems }] : [];
+  }, [workspace]);
 
   const pluginNavGroups = useMemo(
     () =>
@@ -334,8 +365,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
 
   return (
     <NavigationDrawer
-      items={[...items, ...pluginNavGroups]}
-      bottomItems={bottomItems}
+      items={[...items, ...pluginNavGroups, ...systemNavGroup]}
       collapsed={collapsed}
     />
   );
