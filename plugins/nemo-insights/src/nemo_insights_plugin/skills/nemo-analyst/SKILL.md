@@ -118,6 +118,33 @@ nemo agents analyst run --agent <agent-name> --insights-file-output .nemo-optimi
 That path is what the Experimentalist reads by default, so it is the
 conventional choice when handing off locally.
 
+## Standing context: agent memory
+
+Alongside the Insights it files, each run reads and updates a per-agent
+`AGENT-MEMORY.md` on the `nemo-agent-memory` fileset. Everything above its
+`nemo:auto:start` marker is yours and is never rewritten; the Analyst replaces
+only the section between the markers, with what it has learned about the
+agent's telemetry.
+
+Reach for it when someone wants the Analyst to stop rediscovering something, or
+to know something that is nowhere in the traces — "the 30s `search_web` timeout
+is deliberate", "`source=eval` traffic is synthetic". Unlike `AGENT-SPEC.md`,
+which is local and therefore invisible to scheduled runs, memory reaches
+periodic analysis too, so it is the only way to give the background Analyst
+context.
+
+```bash
+nemo files download nemo-agent-memory \
+  --remote-path <agent-name>/AGENT-MEMORY.md -o AGENT-MEMORY.md --workspace <workspace>
+
+nemo files upload AGENT-MEMORY.md nemo-agent-memory \
+  --remote-path <agent-name>/ --workspace <workspace>
+```
+
+Do not use it as a place to record failures — those are Insights. A run prints
+`- memory: wrote <n> note(s) ...`, `- memory: unchanged (no notes returned)`, or
+a warning when the fileset could not be written, which never fails the run.
+
 ## Verify
 
 Do not report success on an exit code. The run prints a line per operation —

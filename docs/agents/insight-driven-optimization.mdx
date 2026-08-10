@@ -214,6 +214,62 @@ Insights and evidence appended to existing ones. Give the Analyst an optional
 agent spec (`--agent-spec AGENT-SPEC.md`) so it can flag divergence from
 intended behavior.
 
+#### Analyst Memory
+
+Apart from its incremental cursor, an Analyst run carries nothing forward, so
+it re-derives an agent's telemetry conventions every time. Memory is a small
+Markdown document per agent that closes that gap and doubles as the way to give
+*scheduled* analysis standing context, which it otherwise has no channel for:
+the periodic controller cannot pass `AGENT-SPEC.md`, because that file lives on
+your machine.
+
+The document has two halves, and the split is the point:
+
+- Everything before the `nemo:auto:start` marker is yours. The Analyst never
+  rewrites it. Put durable context here: what is deliberate rather than broken,
+  domain vocabulary, caveats about a data source.
+- The section between the markers belongs to the Analyst. It replaces that
+  section wholesale on each run that returns notes, which is how the document
+  stays de-duplicated and current without a separate cleanup pass.
+
+```markdown
+# Agent memory: research-agent
+
+## Context from the developer
+- `search_web` times out at 30s deliberately. Not a bug.
+
+<!-- nemo:auto:start -->
+- Spans with `source=eval` are synthetic replay traffic, not production. (2026-08-03; traces: abc123)
+<!-- nemo:auto:end -->
+```
+
+Memory lives at `<agent>/AGENT-MEMORY.md` on the workspace fileset
+`nemo-agent-memory`, so manual and scheduled runs read and write the same
+document. Nothing else writes to it: memory changes only at the end of an
+Analyst run, and resolving or deleting an Insight in Studio does not touch it.
+The Analyst creates the fileset on the first run that returns notes, and a run
+that returns none leaves the document alone rather than clearing it. If the
+fileset cannot be written, the run reports a warning instead of failing, since
+the Insights have already been stored by that point.
+
+Read or edit it from Studio under **Filesets**, which previews the document and
+accepts a replacement upload, or from the command line:
+
+```bash
+nemo files download nemo-agent-memory \
+  --remote-path "$AGENT/AGENT-MEMORY.md" -o AGENT-MEMORY.md --workspace "$WORKSPACE"
+
+# edit AGENT-MEMORY.md, keeping your notes above the nemo:auto:start marker
+
+nemo files upload AGENT-MEMORY.md nemo-agent-memory \
+  --remote-path "$AGENT/" --workspace "$WORKSPACE"
+```
+
+Only the first 40 notes are kept, and the maintained section is capped at 8,000
+bytes; the run reports anything it dropped. The whole document is loaded into
+the Analyst's context on every run, so that ceiling is a budget you pay
+continuously rather than a storage limit.
+
 ### Experimenter
 
 The Experimenter turns an Insight into an empirically validated candidate.
