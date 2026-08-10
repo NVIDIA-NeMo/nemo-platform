@@ -1,0 +1,251 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Keep the smoke agent's task image, its NOOA pin, and its verifier honest.
+
+No Docker here on purpose: the image tag is a content hash, so a forgotten
+rebuild is a string comparison rather than something only a container run can
+reveal.
+"""
+
+from __future__ import annotations
+
+import functools
+import hashlib
+import importlib.util
+import re
+import tomllib
+from pathlib import Path
+from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
+_SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
+_HASHED = ("Dockerfile", "records.json")
+
+
+def _root_nooa_rev() -> str:
+    data = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return data["tool"]["uv"]["sources"]["nooa"]["rev"]
+
+
+def _expected_tag() -> str:
+    digest = hashlib.sha256()
+    for name in _HASHED:
+        digest.update((_SHARED / name).read_bytes())
+    return f"smoke-agent-env:sha-{digest.hexdigest()[:12]}"
+
+
+def _task_tomls() -> list[Path]:
+    groups = _EXAMPLE_DIR / "dataset" / "groups"
+    return sorted(groups.rglob("task.toml")) if groups.is_dir() else []
+
+
+_EXPECTED_METRIC_KEYS = ("reward", "shape_ok")
+
+
+def test_verifier_emits_exactly_the_two_metric_keys() -> None:
+    """The Experimentalist averages metrics across trials and rejects inconsistent sets.
+
+    Asserting only that both names appear somewhere would also accept a third
+    key, or a second write, either of which changes the metric set every trial
+    reports. Parse what is actually emitted instead.
+    """
+    code = _verifier_code()
+    writes = [line.strip() for line in code.splitlines() if "reward.json" in line and "printf" in line]
+    assert len(writes) == 1, f"expected exactly one line writing reward.json, found {len(writes)}: {writes}"
+    keys = tuple(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:', writes[0]))
+    assert keys == _EXPECTED_METRIC_KEYS, f"verifier emits {keys}, expected exactly {_EXPECTED_METRIC_KEYS}"
+
+
+def _verifier_code() -> str:
+    """Return test.sh with comment lines dropped.
+
+    Every guard below is a substring check, and the script documents each choice
+    in a comment that names the rejected alternative. Checking raw text would
+    match those comments rather than the code.
+    """
+    lines = (_SHARED / "test.sh").read_text(encoding="utf-8").splitlines()
+    return "\n".join(line for line in lines if not line.lstrip().startswith("#"))
+
+
+def _shell_options(code: str) -> tuple[set[str], set[str]]:
+    """Return (short flags, `-o` long options) enabled across every `set` line.
+
+    Parsed rather than string-matched so the contract holds however it is spelled:
+    ``set -uo pipefail``, ``set -u -o pipefail`` and ``set -euo pipefail`` all
+    resolve to the same options.
+    """
+    short: set[str] = set()
+    long: set[str] = set()
+    for raw in code.splitlines():
+        line = raw.strip()
+        if not line.startswith("set "):
+            continue
+        tokens = line.split()[1:]
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            index += 1
+            if not token.startswith("-") or token.startswith("--"):
+                continue
+            for flag in token[1:]:
+                if flag == "o" and index < len(tokens):
+                    long.add(tokens[index])
+                    index += 1
+                else:
+                    short.add(flag)
+    return short, long
+
+
+def test_verifier_sets_exactly_the_intended_shell_options() -> None:
+    """`set -uo pipefail` is the contract: nounset and pipefail on, errexit off.
+
+    Checking only that errexit is absent would also pass a verifier with no
+    `set` options at all. Both of the others earn their place: without nounset an
+    unset variable expands to empty and a comparison can succeed against nothing,
+    and without pipefail a failing stage of a pipeline is invisible.
+    """
+    short, long = _shell_options(_verifier_code())
+    assert "u" in short, "nounset is off; an unset variable expands to empty and can score a wrong answer"
+    assert "pipefail" in long, "pipefail is off; a failing stage of a pipeline would go unnoticed"
+    assert "e" not in short, (
+        "errexit is on; aborting before reward.json is written turns a legitimate 0 into a missing metric"
+    )
+
+
+def test_verifier_keeps_its_reward_hacking_guards() -> None:
+    """Each of these was a deliberate choice; losing one reopens a way to score without solving."""
+    code = _verifier_code()
+
+    assert "tr -d" not in code, "tr -d '\\r' deletes every CR, collapsing sum=4<CR>2 into a passing sum=42"
+    assert "cmp -s" in code, "whole-file compare; command substitution strips trailing newlines"
+    assert "refusing to score" in code, "must fail closed when the expected fixture is unreadable"
+
+
+def test_verifier_does_not_echo_answers() -> None:
+    """Expected/actual values in the verifier log would let a candidate hardcode them."""
+    code = _verifier_code()
+    for forbidden in ('cat "$EXPECTED_NORM"', 'cat "$ACTUAL_NORM"'):
+        assert forbidden not in code, f"{forbidden} publishes ground truth to the trial log"
+
+
+def test_dockerfile_nooa_rev_matches_workspace() -> None:
+    """A second copy of the revision string; drift means the fixture tests a different NOOA."""
+    dockerfile_path = _SHARED / "Dockerfile"
+    if not dockerfile_path.is_file():
+        return  # Task 4 creates it.
+    found = re.search(r"labs-OO-Agents\.git@([0-9a-f]{40})", dockerfile_path.read_text(encoding="utf-8"))
+    assert found is not None, "Dockerfile must pin NOOA to an explicit revision"
+    assert found.group(1) == _root_nooa_rev()
+
+
+def test_every_task_references_the_current_image() -> None:
+    """A stale tag means containers run against different records than the repo has."""
+    tasks = _task_tomls()
+    if not tasks:
+        return  # Task 6 creates them.
+    expected = _expected_tag()
+    for task_toml in tasks:
+        actual = tomllib.loads(task_toml.read_text(encoding="utf-8"))["environment"]["docker_image"]
+        assert actual == expected, (
+            f"{task_toml.parent.name} references {actual}, current content is {expected}. "
+            "Run scripts/build_image.py after changing the Dockerfile or records.json."
+        )
+
+
+def test_every_task_carries_the_current_verifier() -> None:
+    """Harbor copies tests/ per task, so test.sh is duplicated; keep the copies identical."""
+    tasks = _task_tomls()
+    if not tasks:
+        return  # Task 6 creates them.
+    canonical = (_SHARED / "test.sh").read_bytes()
+    for task_toml in tasks:
+        actual = (task_toml.parent / "tests" / "test.sh").read_bytes()
+        assert actual == canonical, f"{task_toml.parent.name}/tests/test.sh is stale; run scripts/sync_verifier.py"
+
+
+def test_every_task_has_an_empty_environment_dir() -> None:
+    """Harbor requires environment/ to exist, but it must stay empty here.
+
+    ``TaskModel.is_valid_dir`` returns False when environment/ is absent, and a
+    dataset whose tasks all fail that check loads with *zero tasks* rather than
+    raising -- so a missing directory looks like an empty dataset, not an error.
+    ``[environment].docker_image`` only makes the Dockerfile inside it optional.
+
+    A Dockerfile there would shadow the prebuilt image and reintroduce the
+    per-task build the content-hash tag exists to avoid.
+    """
+    for task_toml in _task_tomls():
+        environment = task_toml.parent / "environment"
+        assert environment.is_dir(), (
+            f"{task_toml.parent.name} has no environment/; Harbor will not see it as a task. "
+            "Run scripts/build_image.py."
+        )
+        contents = {p.name for p in environment.iterdir()} - {".gitkeep"}
+        assert not contents, f"{task_toml.parent.name}/environment must stay empty, found {sorted(contents)}"
+
+
+@functools.cache
+def _builder() -> Any:
+    """Import scripts/build_all_group.py by path; scripts/ is not a package.
+
+    The exclusion list lives there, so the test reads it rather than repeating
+    it -- a second copy would drift the moment a group is added or removed.
+    """
+    path = _EXAMPLE_DIR / "scripts" / "build_all_group.py"
+    spec = importlib.util.spec_from_file_location("_smoke_build_all_group", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_excluded_groups_stay_out_of_the_combined_set() -> None:
+    """A group whose scenario expects the baseline to win cannot share a run with one that expects a fix.
+
+    Combining them leaves the full scenario with no reachable pass criterion, so
+    an accidental re-inclusion has to fail loudly rather than just lower the score.
+    """
+    combined = _EXAMPLE_DIR / "dataset" / "groups" / "_all"
+    if not combined.is_dir():
+        return  # optional; only the full scenario needs it
+
+    excluded_keys = {name.split("-")[0] for name in _builder().EXCLUDED_GROUPS}
+    assert excluded_keys, "the exclusion list should not be empty; see build_all_group.py"
+    present = {task.parent.name.split("-")[0] for task in combined.rglob("task.toml")}
+    assert not (present & excluded_keys), (
+        f"combined group contains excluded group(s) {sorted(present & excluded_keys)}; run scripts/build_all_group.py"
+    )
+
+
+def test_combined_group_matches_its_sources() -> None:
+    """`_all` is generated from the other groups; a stale copy runs old tasks silently.
+
+    Rebuild with scripts/build_all_group.py after changing any group.
+    """
+    groups = _EXAMPLE_DIR / "dataset" / "groups"
+    combined = groups / "_all"
+    if not combined.is_dir():
+        return  # optional; only the full scenario needs it
+
+    builder = _builder()
+    expected: dict[str, Path] = {}
+    for group_name in builder.source_groups(_EXAMPLE_DIR / "dataset"):
+        group = groups / group_name
+        key = builder.group_key(group_name)
+        for split in ("train", "validation"):
+            for task in sorted((group / split).iterdir()):
+                if (task / "task.toml").is_file():
+                    expected[f"{split}/{key}-{task.name}"] = task
+
+    actual = {f"{t.parent.parent.name}/{t.parent.name}": t.parent for t in combined.rglob("task.toml")}
+    assert set(actual) == set(expected), (
+        "combined group is stale; run scripts/build_all_group.py. "
+        f"missing={sorted(set(expected) - set(actual))} unexpected={sorted(set(actual) - set(expected))}"
+    )
+    for rel, src in expected.items():
+        for name in ("instruction.md", "task.toml", "tests/expected.txt"):
+            assert (actual[rel] / name).read_bytes() == (src / name).read_bytes(), (
+                f"combined {rel}/{name} differs from its source; run scripts/build_all_group.py"
+            )
