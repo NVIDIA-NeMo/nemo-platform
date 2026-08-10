@@ -2,6 +2,7 @@
 # NMP API - All Python services (core + application)
 
 ARG NMP_PYTHON_BASE=nmp-python-base
+ARG NMP_API_RUNTIME_BASE=nvcr.io/nvidia/distroless/python:3.13-v4.0.9
 
 FROM ${NMP_PYTHON_BASE} AS builder
 COPY --from=nmp-workspace . .
@@ -54,31 +55,25 @@ RUN if find /tmp/fastembed_cache/models--qdrant--all-MiniLM-L6-v2-onnx/snapshots
         uv run --no-sync python -c 'import os, tempfile; from huggingface_hub import snapshot_download; snapshot_download(repo_id="qdrant/all-MiniLM-L6-v2-onnx", cache_dir=os.path.join(tempfile.gettempdir(), "fastembed_cache"))'; \
     fi
 
-FROM ${NMP_PYTHON_BASE} AS runtime
-ARG USERNAME=nvs
-ARG USER_UID=1000
-ARG USER_GID=1000
+FROM ${NMP_API_RUNTIME_BASE} AS runtime
 WORKDIR /app
-RUN groupadd --gid ${USER_GID} ${USERNAME} && \
-    useradd --uid ${USER_UID} --gid ${USER_GID} --create-home --shell /bin/bash ${USERNAME}
 ENV USERNAME=nvs \
     HOME=/home/nvs
 # DuckDB extension cache (aws, httpfs) for S3 log storage
-COPY --chown=nvs:nvs --from=builder /root/.duckdb /root/.duckdb
-COPY --chown=nvs:nvs --from=builder /root/.duckdb /home/nvs/.duckdb
-COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
+COPY --chown=1000:1000 --from=builder /root/.duckdb /home/nvs/.duckdb
+COPY --chown=1000:1000 --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
-COPY --chown=nvs:nvs --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
-COPY --chown=nvs:nvs --from=nmp-studio-ui /artifacts /static/studio
-COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
+COPY --chown=1000:1000 --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
+COPY --chown=1000:1000 --from=nmp-studio-ui /artifacts /static/studio
+COPY --chown=1000:1000 --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
-COPY --chown=nvs:nvs --from=builder /tmp/fastembed_cache /tmp/fastembed_cache
+COPY --chown=1000:1000 --from=builder /tmp/fastembed_cache /tmp/fastembed_cache
 ARG NMP_PLATFORM_VERSION=dev
 ARG NMP_CODE_REVISION=
 ENV NMP_PLATFORM_VERSION=${NMP_PLATFORM_VERSION}
 ENV NMP_CODE_REVISION=${NMP_CODE_REVISION}
 EXPOSE 8080
-USER 0
+USER 1000:1000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health/ready')"]
 ENTRYPOINT ["nemo", "services", "run"]

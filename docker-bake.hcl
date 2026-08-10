@@ -32,6 +32,10 @@ variable "NMP_PYTHON_IMAGE" {
   default = "python:3.13.14-slim-trixie"
 }
 
+variable "NMP_API_RUNTIME_BASE" {
+  default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
+}
+
 variable "AUTOMODEL_BASE_CONTEXT" {
   default = ""
 }
@@ -602,6 +606,7 @@ target "nmp-api-docker" {
   args = {
     NMP_PLATFORM_VERSION = notequal(BAKE_TAG, "") ? BAKE_TAG : "dev"
     NMP_CODE_REVISION   = notequal(CI_COMMIT_SHA, "") ? CI_COMMIT_SHA : "dev"
+    NMP_API_RUNTIME_BASE = NMP_API_RUNTIME_BASE
   }
   cache-to   = maybe_registry_cache_to("nmp-api")
   cache-from = maybe_registry_cache_from("nmp-api")
