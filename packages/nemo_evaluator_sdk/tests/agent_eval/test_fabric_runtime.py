@@ -652,6 +652,101 @@ async def test_fabric_runtime_maps_failed_result_to_failed_trial(
     assert "error" in trial.evidence.descriptors
 
 
+# NVBug 6562846: Relay keeps one process-global LIFO scope stack, LangGraph shares it across the child
+# tasks it schedules with ``copy_context()``, and overlapping chain callbacks therefore close out of
+# order. The Fabric adapter catches that teardown error in the same ``try`` that guards the invocation,
+# so a completed DeepAgents turn comes back as ``status=failed`` with the full response still in
+# ``output``. Verbatim adapter error string from the bug's reproduction.
+_RELAY_TEARDOWN_ERROR = "RuntimeError: invalid argument: scope handle is not at the top of the stack"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_recovers_trial_when_only_relay_teardown_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(
+            status="failed",
+            output={
+                "response": "Both files are done",
+                "completed": False,
+                "failed": True,
+                "error": _RELAY_TEARDOWN_ERROR,
+            },
+            error=_FakeError(stage="invoke", code="adapter_reported_failure", message=_RELAY_TEARDOWN_ERROR),
+        )
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", capture_trajectory=False)
+
+    trial = (await runtime.run_tasks([_TASK]))[0]
+
+    assert trial.status == "completed"
+    assert trial.output is not None
+    assert trial.output.output_text == "Both files are done"
+    # The recovery is explicit, never silent: the original Fabric verdict and the telemetry error are
+    # both retained so a recovered trial can be audited (and its trajectory treated as suspect).
+    assert trial.metadata["recovered_from_telemetry_fault"] is True
+    assert trial.metadata["fabric_status"] == "failed"
+    assert trial.metadata["telemetry_error"] == _RELAY_TEARDOWN_ERROR
+    # AgentPhaseSuccessMetric reads agent_ok; the agent phase did finish cleanly.
+    assert trial.metadata["agent_ok"] is True
+    assert trial.evidence is not None
+    assert "result" in trial.evidence.descriptors
+    assert "workspace" in trial.evidence.descriptors
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_keeps_relay_teardown_failure_without_a_final_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Half the evidence is not enough: without a final assistant message the agent never reached a
+    # terminal answer, so the trial stays failed even though the error is the telemetry one.
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(
+            status="failed",
+            output={"response": "  ", "completed": False, "failed": True, "error": _RELAY_TEARDOWN_ERROR},
+            error=_FakeError(stage="invoke", code="adapter_reported_failure", message=_RELAY_TEARDOWN_ERROR),
+        )
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", capture_trajectory=False)
+
+    trial = (await runtime.run_tasks([_TASK]))[0]
+
+    assert trial.status == "failed"
+    assert trial.metadata["agent_ok"] is False
+    assert "recovered_from_telemetry_fault" not in trial.metadata
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_keeps_non_telemetry_failure_with_a_final_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Guard against the recovery widening into general failure suppression: a real agent failure that
+    # happens to carry a response must still fail.
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(
+            status="failed",
+            output={
+                "response": "partial answer",
+                "completed": False,
+                "failed": True,
+                "error": "RuntimeError: model call failed",
+            },
+            error=_FakeError(stage="invoke", code="adapter_reported_failure", message="model call failed"),
+        )
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", capture_trajectory=False)
+
+    trial = (await runtime.run_tasks([_TASK]))[0]
+
+    assert trial.status == "failed"
+    assert trial.metadata["error"] == "model call failed"
+    assert "recovered_from_telemetry_fault" not in trial.metadata
+
+
 @pytest.mark.asyncio
 async def test_fabric_runtime_maps_timeout_to_failed_trial(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:

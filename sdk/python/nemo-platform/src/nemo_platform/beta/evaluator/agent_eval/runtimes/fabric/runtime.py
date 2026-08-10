@@ -110,6 +110,13 @@ _ATIF_FILENAME_TEMPLATE = "trajectory-{session_id}.atif.json"
 _ATOF_FILENAME = "events.atof.jsonl"
 # ``kind`` Fabric stamps on the promoted Relay ATIF artifact; used to surface it as trace evidence.
 _ATIF_ARTIFACT_KIND = "atif"
+# Signature of a NeMo Relay telemetry-teardown fault (NVBug 6562846). Relay keeps one process-global
+# LIFO scope stack in a ``ContextVar``; LangGraph schedules child tasks with ``copy_context()``, which
+# shares that same mutable stack, so overlapping chain callbacks close out of LIFO order and Relay's
+# scope validator rejects the pop with exactly this message. The Fabric adapter catches it in the same
+# ``try`` that guards the invocation, so a purely observability-side fault is reported as an agent
+# failure. The string is emitted only by Relay's scope validation, so matching it is unambiguous.
+_RELAY_SCOPE_STACK_ERROR = "scope handle is not at the top of the stack"
 
 
 class FabricAgentRuntime:
@@ -446,7 +453,26 @@ class FabricAgentRuntime:
                     evidence=self._evidence(result, result_path, workspace_dir),
                     metadata={**base_metadata, "generated": True, "agent_ok": True},
                 )
-            return self._failed_trial(task, evidence_dir, _result_error(result), extra_metadata=base_metadata)
+            telemetry_error = _telemetry_teardown_error(result)
+            if telemetry_error is None:
+                return self._failed_trial(task, evidence_dir, _result_error(result), extra_metadata=base_metadata)
+            # The agent finished its turn and produced a final response; only Relay's telemetry teardown
+            # failed, and the Fabric adapter's single try/except rewrote that into an invocation failure
+            # (NVBug 6562846). Treat the trial as completed rather than scoring a false negative, and
+            # record the fault so the recovery is auditable and the (possibly truncated) trajectory
+            # evidence is not read as complete. Fall through to the success path so the recovered trial
+            # carries the same output and evidence any other completed trial would.
+            logger.warning(
+                "Fabric task %s completed but Relay telemetry teardown failed; recovering the trial: %s",
+                task.id,
+                telemetry_error,
+            )
+            base_metadata = {
+                **base_metadata,
+                "fabric_status": result.status,
+                "recovered_from_telemetry_fault": True,
+                "telemetry_error": telemetry_error,
+            }
 
         # Fabric wraps the output in a ``RunOutput`` mapping (RunOutput response contract, #52),
         # which is not itself a JSON value; normalize it to a plain mapping so it round-trips through the
@@ -706,6 +732,33 @@ def _extract_output_text(output: object) -> str | None:
             if isinstance(value, str):
                 return value
     return json.dumps(output, default=str)
+
+
+def _telemetry_teardown_error(result: RunResult) -> str | None:
+    """Return the adapter error when a Fabric failure is only a Relay telemetry-teardown fault.
+
+    ``None`` means the failure is not recoverable here and the trial must stay failed. Recovery needs
+    both halves of the evidence, so this deliberately stays narrow:
+
+    * the adapter's own ``output.error`` carries the Relay scope-stack signature — a failure raised
+      while closing the telemetry scope, not while running the agent; and
+    * ``output.response`` holds a non-empty final assistant message, so the agent phase did reach a
+      terminal answer. A run that died mid-turn has no final response and stays failed.
+
+    Note ``output.error`` is read rather than ``result.error``: Fabric normalizes any adapter-reported
+    failure to the same top-level ``adapter_reported_failure`` code, so only the adapter's own error
+    string distinguishes a telemetry teardown from a real agent failure.
+    """
+    output = result.output
+    if not isinstance(output, Mapping):
+        return None
+    error = output.get("error")
+    if not isinstance(error, str) or _RELAY_SCOPE_STACK_ERROR not in error:
+        return None
+    response = output.get("response")
+    if not isinstance(response, str) or not response.strip():
+        return None
+    return error
 
 
 def _result_error(result: RunResult) -> Mapping[str, Any]:
