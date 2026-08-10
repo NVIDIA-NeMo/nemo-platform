@@ -179,7 +179,7 @@ class OpenShellDeploymentConfig(BaseModel):
         default=None,
         alias="policyPath",
         description=(
-            "Path to a sandbox policy YAML file inside the sandbox image. "
+            "Path to a sandbox policy YAML file on the backend host. "
             "Overrides the executor-level default_policy_path for this deployment only."
         ),
     )
