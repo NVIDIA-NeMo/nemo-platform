@@ -152,3 +152,35 @@ def test_compile_grpo_config_disables_validation_without_val_split(
     assert cfg["grpo"]["val_at_start"] is False
     assert cfg["checkpointing"]["metric_name"] is None
     assert cfg["checkpointing"]["save_period"] > 0
+
+
+def test_compiled_config_selects_only_prefetched_actors(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guard the config -> Ray actor -> venv coupling.
+
+    NeMo-RL picks the policy actor from the compiled config, and
+    ray_actor_environment_registry maps each actor to a py_executable (a `uv run
+    --extra <X>` venv). Only the extras prefetched in
+    docker/rl/Dockerfile.nmp-rl-base exist in the image; anything else is built on
+    the node at job startup, which on a deny-egress training cluster fails outright.
+
+    Each assertion below corresponds to a prefetch filter in that Dockerfile. If you
+    flip one, add the matching actor to the prefetch filter list *and* its
+    verification loop first.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    dataset_pvc = tmp_path / "dataset"
+    dataset_pvc.mkdir()
+    _write_gym_dataset(dataset_pvc)
+    (tmp_path / "workspace").mkdir()
+
+    cfg = compile_grpo_config(_sandboxed_step(tmp_path, dataset_pvc), job_ctx)
+
+    # _v2 selects DTensorPolicyWorkerV2 -> PY_EXECUTABLES.AUTOMODEL, which is neither
+    # built nor prefetched. Unset (or False) keeps DTensorPolicyWorker -> `fsdp`.
+    assert not cfg["policy"]["dtensor_cfg"].get("_v2", False)
+    # megatron_cfg would select MegatronPolicyWorker -> `mcore`, also excluded.
+    assert cfg["policy"]["megatron_cfg"]["enabled"] is False
+    # vLLM is the only prefetched generation backend (`vllm`); sglang/trtllm are not.
+    assert cfg["policy"]["generation"]["backend"] == "vllm"
