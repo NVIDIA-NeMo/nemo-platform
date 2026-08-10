@@ -84,7 +84,8 @@ export const getAgentSideNavItems = (workspace: string) =>
         {
           id: 'agent-evaluations',
           slotIcon: <Form className={iconColorClass} />,
-          slotLabel: 'Evaluations',
+          // Qualified: the rail hoists this out of Agents, next to the model evaluations link.
+          slotLabel: 'Agent Evaluations',
           href: getAgentEvaluationsListRoute(workspace),
         },
         {

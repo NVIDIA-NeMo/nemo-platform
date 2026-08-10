@@ -32,16 +32,22 @@ export const ExpandableNavItem: FC<ExpandableNavItemProps> = ({
   const isOpen = accordionOpen ?? item.defaultOpen !== false;
   const subListId = `${item.id}-submenu`;
   const chevron = isOpen ? <ChevronDown /> : <ChevronLeft />;
-  const disclosure = { 'aria-expanded': isOpen, 'aria-controls': subListId };
+  // The sub-list only exists while open; a closed chevron must not point at an id that isn't there.
+  const disclosure = { 'aria-expanded': isOpen, ...(isOpen && { 'aria-controls': subListId }) };
   const labelText = typeof item.slotLabel === 'string' ? item.slotLabel : undefined;
   const toggle = () => onAccordionChange(item.id, !isOpen);
+  // Closed, the parent stands in for the children it hides, so collapsing the section that holds
+  // the current page never leaves the drawer with nothing highlighted.
+  const active =
+    resolveActive(item, isActive) ||
+    (!isOpen && subItems.some((sub) => resolveActive(sub, isActive)));
 
   return (
     <VerticalNavListItem {...item.attributes?.VerticalNavListItem}>
       {/* The chevron overlays the row so the row's highlight still spans its full width. */}
       <div className="relative flex items-center">
         <StudioNavItem
-          active={resolveActive(item, isActive)}
+          active={active}
           slotStart={item.slotIcon}
           slotEnd={href === undefined ? chevron : undefined}
           padding={href === undefined ? 'fullWidth' : 'trailingToggle'}

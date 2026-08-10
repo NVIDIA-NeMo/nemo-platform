@@ -6,10 +6,10 @@
 export const ACTIVE_NAV_ITEM_CLASS =
   'bg-transparent! bg-[image:linear-gradient(90deg,color-mix(in_srgb,var(--color-brand)_24%,transparent)_0%,var(--color-translucent-white-000)_50%)]!';
 
-// An open sub-list lifts off the drawer, both ends theme tokens so it follows the theme. `pl-0`
-// hands KUI's indent to the rows (NAV_ROW_PADDING.subItem) so their fill reaches the drawer edge.
+// The fade ends are picked per theme because semantic surface tokens all collapse to #fff in light.
+// `px-0` drops KUI's inset so a sub-item's hover spans the same width as a top-level row.
 export const SUB_LIST_CLASS =
-  'pl-0 bg-[image:linear-gradient(270deg,var(--background-color-surface-navigation),var(--background-color-surface-overlay))]';
+  'px-0 [--nav-sub-list-lift:var(--color-gray-100)] dark:[--nav-sub-list-lift:var(--color-gray-900)] bg-[image:linear-gradient(270deg,var(--background-color-surface-navigation),var(--nav-sub-list-lift))]';
 
 // Under `asChild` KUI still wraps the label in its own span, so the type token targets that span
 // rather than the row — which also outranks the (0,4,0) rule that bolds an active sub-item's label.

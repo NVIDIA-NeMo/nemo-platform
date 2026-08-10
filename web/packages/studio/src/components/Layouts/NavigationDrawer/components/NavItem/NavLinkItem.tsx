@@ -13,7 +13,6 @@ interface NavLinkItemProps {
   isActive: (href: string) => boolean;
 }
 
-/** A leaf row: one link, no children. */
 export const NavLinkItem: FC<NavLinkItemProps> = ({ item, isActive }) => {
   const { href } = item;
   if (href === undefined) return null;

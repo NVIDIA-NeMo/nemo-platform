@@ -79,7 +79,6 @@ describe('WorkspaceSideNav', () => {
     await user.click(disclosure('Agents'));
     expect(disclosure('Agents')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('link', { name: 'Monitor' })).not.toBeInTheDocument();
-    // Collapsing the sub-list leaves the parent's own link intact.
     expect(screen.getByRole('link', { name: 'Agents' })).toBeInTheDocument();
   });
 
@@ -98,5 +97,32 @@ describe('WorkspaceSideNav', () => {
 
     expect(disclosure('Agents')).toHaveAttribute('aria-expanded', 'true');
     expect(disclosure('Models')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('collapses a manually opened Datasets once the route moves elsewhere', async () => {
+    const user = userEvent.setup();
+    renderSideNav();
+
+    // Datasets has no landing page of its own, so its whole row is the disclosure control and a
+    // plain click on the label opens it.
+    expect(disclosure('Datasets')).toHaveAttribute('aria-expanded', 'false');
+    await user.click(disclosure('Datasets'));
+    expect(disclosure('Datasets')).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(screen.getByRole('link', { name: 'Agents' }));
+    expect(disclosure('Agents')).toHaveAttribute('aria-expanded', 'true');
+    expect(disclosure('Datasets')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('reopens a chevron-collapsed parent when the route comes back to it', async () => {
+    const user = userEvent.setup();
+    renderSideNav('/workspaces/test-workspace/agents');
+
+    await user.click(disclosure('Agents'));
+    expect(disclosure('Agents')).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('link', { name: 'Models' }));
+    await user.click(screen.getByRole('link', { name: 'Agents' }));
+    expect(disclosure('Agents')).toHaveAttribute('aria-expanded', 'true');
   });
 });

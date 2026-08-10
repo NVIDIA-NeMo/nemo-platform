@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ACTIVE_NAV_ITEM_CLASS } from '@studio/components/Layouts/NavigationDrawer/styles';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { PageLayout } from '@studio/routes/PageLayout';
@@ -9,7 +10,7 @@ import { TestProviders } from '@studio/tests/util/TestProviders';
 import { SIDE_NAV_OPEN_KEY } from '@studio/util/localStorage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
 
 const mockItems = [
   { id: 'projects', slotLabel: 'Projects', icon: 'ProjectsIcon', href: ROUTES.workspace.index },
@@ -40,9 +41,6 @@ const mockItems = [
   },
 ];
 
-/**
- * Renders an element within a router context at the project index route
- */
 const renderWithProjectRoute = (element: React.ReactElement) => {
   const router = createMemoryRouter([{ path: ROUTES.workspace.index, element }], {
     initialEntries: [getWorkspaceIndexRoute(workspace1.workspace)],
@@ -54,9 +52,7 @@ const renderWithProjectRoute = (element: React.ReactElement) => {
   );
 };
 
-/**
- * Fixes act warnings by awaiting and asserting the component is defined
- */
+/** Awaited so the dynamic import doesn't fire act warnings. */
 const importNavigationDrawer = async () => {
   let NavigationDrawer;
   await act(async () => {
@@ -167,10 +163,53 @@ describe('NavigationDrawer', () => {
 
     it('replaces a group heading with a named divider when collapsed', async () => {
       const NavigationDrawer = await importNavigationDrawer();
-      renderWithProjectRoute(<NavigationDrawer collapsed items={mockItems} />);
+      // Its own fixture: the rail only keeps items that link somewhere, and `mockItems`' Evaluate
+      // group is label-only.
+      renderWithProjectRoute(
+        <NavigationDrawer
+          collapsed
+          items={[
+            { id: 'projects', slotLabel: 'Projects', href: ROUTES.workspace.index },
+            {
+              group: 'Evaluate',
+              items: [
+                { id: 'traces', slotLabel: 'Traces', href: ROUTES.workspace.customizationJobList },
+              ],
+            },
+          ]}
+        />
+      );
 
       expect(await screen.findByRole('separator', { name: 'Evaluate' })).toBeInTheDocument();
       expect(screen.queryByText('Evaluate')).not.toBeInTheDocument();
+    });
+
+    it('drops a group heading the rail has nothing to put under', async () => {
+      const NavigationDrawer = await importNavigationDrawer();
+      renderWithProjectRoute(
+        <NavigationDrawer
+          collapsed
+          items={[
+            { group: 'Reachable', items: [{ id: 'jobs', slotLabel: 'Jobs', href: '/jobs' }] },
+            {
+              // Nothing here can be a rail link, so the heading must go rather than leave a
+              // divider over empty space.
+              group: 'Unreachable',
+              items: [
+                {
+                  id: 'traces',
+                  slotLabel: 'Traces',
+                  subItems: [{ id: 'entries', slotLabel: 'Entries' }],
+                },
+              ],
+            },
+          ]}
+        />
+      );
+
+      expect(await screen.findByRole('link', { name: 'Jobs' })).toBeInTheDocument();
+      expect(screen.queryByRole('separator', { name: 'Unreachable' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
     });
 
     it('does not open the collapsed rail with a divider', async () => {
@@ -187,6 +226,48 @@ describe('NavigationDrawer', () => {
 
       expect(await screen.findByRole('separator', { name: 'System' })).toBeInTheDocument();
       expect(screen.queryByRole('separator', { name: 'Evaluate' })).not.toBeInTheDocument();
+    });
+
+    it('moves the highlight onto a parent that is hiding the active child', async () => {
+      const user = userEvent.setup();
+      const NavigationDrawer = await importNavigationDrawer();
+
+      const router = createMemoryRouter(
+        [
+          {
+            path: '*',
+            element: (
+              <NavigationDrawer
+                items={[
+                  {
+                    id: 'traces',
+                    slotLabel: 'Traces',
+                    href: '/traces',
+                    subItems: [{ id: 'entries', slotLabel: 'Entries', href: '/traces/entries' }],
+                  },
+                ]}
+              />
+            ),
+          },
+        ],
+        { initialEntries: ['/traces/entries'] }
+      );
+      render(
+        <TestProviders>
+          <RouterProvider router={router} />
+        </TestProviders>
+      );
+
+      // Expanded, the child that matched owns the highlight and the parent stays plain.
+      expect(await screen.findByRole('link', { name: 'Entries' })).toHaveClass(
+        ACTIVE_NAV_ITEM_CLASS
+      );
+      expect(screen.getByRole('link', { name: 'Traces' })).not.toHaveClass(ACTIVE_NAV_ITEM_CLASS);
+
+      // Collapsed, the child is gone, so the parent has to carry it.
+      await user.click(screen.getByRole('button', { name: /traces/i }));
+      expect(screen.queryByRole('link', { name: 'Entries' })).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Traces' })).toHaveClass(ACTIVE_NAV_ITEM_CLASS);
     });
 
     it('renders subitems and chevron open/close icons', async () => {
@@ -247,6 +328,51 @@ describe('NavigationDrawer', () => {
       await user.click(chevron);
       expect(chevron).toHaveAttribute('aria-expanded', 'false');
       expect(screen.queryByText('Entries')).not.toBeInTheDocument();
+    });
+
+    it('hands a manually toggled parent back to the route on the next navigation', async () => {
+      const user = userEvent.setup();
+      const NavigationDrawer = await importNavigationDrawer();
+
+      // `defaultOpen` follows the route, the way WorkspaceSideNav computes it.
+      const Drawer = () => {
+        const { pathname } = useLocation();
+        return (
+          <NavigationDrawer
+            items={[
+              {
+                id: 'traces',
+                slotLabel: 'Traces',
+                href: '/traces',
+                defaultOpen: pathname.startsWith('/traces'),
+                subItems: [{ id: 'entries', slotLabel: 'Entries', href: '/traces/entries' }],
+              },
+              { id: 'jobs', slotLabel: 'Jobs', href: '/jobs' },
+            ]}
+          />
+        );
+      };
+      const router = createMemoryRouter([{ path: '*', element: <Drawer /> }], {
+        initialEntries: ['/traces'],
+      });
+      render(
+        <TestProviders>
+          <RouterProvider router={router} />
+        </TestProviders>
+      );
+
+      const chevron = () => screen.getByRole('button', { name: /traces/i });
+      expect(chevron()).toHaveAttribute('aria-expanded', 'true');
+
+      // The pin holds for as long as the user stays put.
+      await user.click(chevron());
+      expect(chevron()).toHaveAttribute('aria-expanded', 'false');
+
+      // Navigating drops it, so the parent owning the new page expands on its own again.
+      await user.click(screen.getByRole('link', { name: 'Jobs' }));
+      await user.click(screen.getByRole('link', { name: 'Traces' }));
+      expect(chevron()).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('Entries')).toBeInTheDocument();
     });
   });
 });

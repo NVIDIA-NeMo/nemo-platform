@@ -19,9 +19,17 @@ export const NavigationDrawer: FC<Props> = ({ items, collapsed = false }) => {
   const { pathname } = useLocation();
   const [accordionState, setAccordionState] = useState<Record<string, boolean>>({});
 
+  // A chevron's pin lasts until the next navigation, then `defaultOpen` decides again. Resetting
+  // during render rather than in an effect keeps the stale pin from painting for a frame.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (lastPathname !== pathname) {
+    setLastPathname(pathname);
+    setAccordionState({});
+  }
+
   const groups = useMemo(() => toGroups(items), [items]);
 
-  // Active item = the nav href that's the longest prefix of the current
+  // Active item = the nav href that is the longest prefix of the current path.
   const matchedHref = useMemo(() => {
     const hrefs = groups
       .flatMap((g) => g.items)
@@ -58,24 +66,31 @@ export const NavigationDrawer: FC<Props> = ({ items, collapsed = false }) => {
     );
 
   const renderGroups = (groupList: ReturnType<typeof toGroups>) =>
-    groupList.map((group, groupIndex) => (
-      <Fragment key={groupIndex}>
-        {group.groupLabel !== undefined && renderGroupLabel(group.groupLabel, groupIndex)}
-        {collapsed
-          ? flattenForRail(group.items).map((item) => (
-              <CollapsedNavItem key={item.id} item={item} isActive={isActive} />
-            ))
-          : group.items.map((item) => (
-              <NavItem
-                key={item.id}
-                item={item}
-                isActive={isActive}
-                accordionOpen={accordionState[item.id]}
-                onAccordionChange={handleAccordionChange}
-              />
-            ))}
-      </Fragment>
-    ));
+    groupList
+      .map((group) => ({
+        groupLabel: group.groupLabel,
+        items: collapsed ? flattenForRail(group.items) : group.items,
+      }))
+      // Resolve items before the heading, so a group the rail empties out takes its heading too.
+      .filter((group) => group.items.length > 0)
+      .map((group, groupIndex) => (
+        <Fragment key={groupIndex}>
+          {group.groupLabel !== undefined && renderGroupLabel(group.groupLabel, groupIndex)}
+          {collapsed
+            ? group.items.map((item) => (
+                <CollapsedNavItem key={item.id} item={item} isActive={isActive} />
+              ))
+            : group.items.map((item) => (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  isActive={isActive}
+                  accordionOpen={accordionState[item.id]}
+                  onAccordionChange={handleAccordionChange}
+                />
+              ))}
+        </Fragment>
+      ));
 
   return (
     <VerticalNavRoot

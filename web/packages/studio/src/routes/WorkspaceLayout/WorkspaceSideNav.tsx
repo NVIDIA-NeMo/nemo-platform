@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
+import type {
+  NavInputItem,
+  NavItem as NavItemData,
+} from '@studio/components/Layouts/NavigationDrawer/types';
+import { isGroup } from '@studio/components/Layouts/NavigationDrawer/utils';
 import {
   ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
@@ -76,12 +81,42 @@ import {
 import { useMemo } from 'react';
 import { useLocation } from 'react-router';
 
-/** Whether the current path sits on or under any of these items, so its parent starts expanded. */
+/** Whether the path is on, or nested under, one of these items. */
 const isUnder = (pathname: string, items: { href?: string }[]) =>
   items.some(
     (item) =>
       item.href !== undefined && (pathname === item.href || pathname.startsWith(`${item.href}/`))
   );
+
+const eachItem = (entries: NavInputItem[]): NavItemData[] =>
+  entries.flatMap((entry) => (isGroup(entry) ? entry.items : [entry]));
+
+/** A parent starts expanded when the current page is its own landing page or one of its children. */
+const ownsCurrentPage = (item: NavItemData, pathname: string) =>
+  isUnder(pathname, [{ href: item.href }, ...(item.subItems ?? [])]);
+
+/**
+ * The ids of every expanded parent, joined into one string. Navigating deeper inside a section
+ * leaves this untouched, which is what lets `withDefaultOpen` hand back the identical tree.
+ */
+const openParentKey = (entries: NavInputItem[], pathname: string): string =>
+  eachItem(entries)
+    .filter((item) => item.subItems !== undefined && ownsCurrentPage(item, pathname))
+    .map((item) => item.id)
+    .join('|');
+
+/**
+ * Stamp `defaultOpen` onto the parents named by `openIds`. Kept apart from building the tree so a
+ * navigation rewrites a few parent objects instead of rebuilding every leaf and icon.
+ */
+const withDefaultOpen = (entries: NavInputItem[], openIds: string): NavInputItem[] => {
+  const open = new Set(openIds.split('|'));
+  const stamp = (item: NavItemData): NavItemData =>
+    item.subItems === undefined ? item : { ...item, defaultOpen: open.has(item.id) };
+  return entries.map((entry) =>
+    isGroup(entry) ? { ...entry, items: entry.items.map(stamp) } : stamp(entry)
+  );
+};
 
 export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
@@ -93,7 +128,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const manifestResolved = pluginsLoaded && !pluginsError;
   const showAgents = agentsInstalled || !manifestResolved;
 
-  const items = useMemo(() => {
+  const baseItems = useMemo<NavInputItem[]>(() => {
     const dashboardNav =
       DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED
         ? [
@@ -121,7 +156,8 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           {
             id: 'evaluation-results',
             slotIcon: <ChartBar className={iconColorClass} />,
-            slotLabel: 'Evaluations',
+            // Qualified: the rail hoists this out of Models, next to the agent evaluations link.
+            slotLabel: 'Model Evaluations',
             href: getEvaluationResultsRoute(workspace),
           },
         ]
@@ -248,7 +284,6 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
               slotIcon: <Bot className={iconColorClass} />,
               slotLabel: 'Agents',
               href: agentsHref,
-              defaultOpen: isUnder(pathname, [{ href: agentsHref }, ...agentItems]),
               subItems: agentItems,
             },
           ]
@@ -260,7 +295,6 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
               slotIcon: <Boxes className={iconColorClass} />,
               slotLabel: 'Models',
               href: modelsHref,
-              defaultOpen: isUnder(pathname, [{ href: modelsHref }, ...modelSubItems]),
               subItems: modelSubItems,
             },
           ]
@@ -274,7 +308,6 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
               id: 'datasets-group',
               slotIcon: <Database className={iconColorClass} />,
               slotLabel: 'Datasets',
-              defaultOpen: isUnder(pathname, datasetSubItems),
               subItems: datasetSubItems,
             },
           ]
@@ -301,7 +334,10 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
       ...(governanceItems.length > 0 ? [{ group: 'Governance', items: governanceItems }] : []),
     ];
-  }, [workspace, showAgents, pathname]);
+  }, [workspace, showAgents]);
+
+  const openIds = useMemo(() => openParentKey(baseItems, pathname), [baseItems, pathname]);
+  const items = useMemo(() => withDefaultOpen(baseItems, openIds), [baseItems, openIds]);
 
   const systemNavGroup = useMemo(() => {
     const systemItems = [
@@ -363,10 +399,11 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     [plugins, workspace]
   );
 
-  return (
-    <NavigationDrawer
-      items={[...items, ...pluginNavGroups, ...systemNavGroup]}
-      collapsed={collapsed}
-    />
+  // A fresh array literal here would re-run NavigationDrawer's own memos on every render.
+  const allItems = useMemo(
+    () => [...items, ...pluginNavGroups, ...systemNavGroup],
+    [items, pluginNavGroups, systemNavGroup]
   );
+
+  return <NavigationDrawer items={allItems} collapsed={collapsed} />;
 };
