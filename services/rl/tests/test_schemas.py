@@ -28,7 +28,7 @@ def _make_job_output(training: DPOTraining, out_type: OutputNameType = OutputNam
 
 def test_dpo_training_defaults_preserve_prior_behavior() -> None:
     """The newly exposed knobs default to the values the compiler used to hardcode."""
-    t = DPOTraining()
+    t = DPOTraining(type="dpo")
     assert t.type == "dpo"
     # Newly exposed configurability.
     assert t.optimizer_type is None  # → AdamW + cosine annealing
@@ -45,6 +45,7 @@ def test_dpo_training_defaults_preserve_prior_behavior() -> None:
 
 def test_dpo_training_accepts_overrides() -> None:
     t = DPOTraining(
+        type="dpo",
         optimizer_type=OptimizerType.ADAM_WITH_FLAT_LR,
         adam_eps=1e-8,
         activation_checkpointing=True,
@@ -61,7 +62,7 @@ def test_dpo_training_accepts_overrides() -> None:
 @pytest.mark.parametrize("bad", [0.0, -1e-5])
 def test_adam_eps_must_be_positive(bad: float) -> None:
     with pytest.raises(ValueError):
-        DPOTraining(adam_eps=bad)
+        DPOTraining(type="dpo", adam_eps=bad)
 
 
 @pytest.mark.parametrize(
@@ -80,24 +81,24 @@ def test_adam_eps_must_be_positive(bad: float) -> None:
 def test_optimizer_bounds(field: str, bad: float) -> None:
     kwargs: dict[str, Any] = {field: bad}
     with pytest.raises(ValueError):
-        DPOTraining(**kwargs)
+        DPOTraining(type="dpo", **kwargs)
 
 
 def test_keep_top_k_must_be_positive() -> None:
     with pytest.raises(ValueError):
-        DPOTraining(keep_top_k=0)
+        DPOTraining(type="dpo", keep_top_k=0)
 
 
 def test_validate_for_training_accepts_consistent_single_gpu() -> None:
     # 1 GPU, no model parallelism, gb divisible by micro*dp → no error.
-    job = _make_job_output(DPOTraining(batch_size=32, micro_batch_size=1))
+    job = _make_job_output(DPOTraining(type="dpo", batch_size=32, micro_batch_size=1))
     job.validate_for_training()
 
 
 def test_validate_for_training_rejects_indivisible_model_parallel() -> None:
     # total_gpus=1 but tensor_parallel_size=2 → 1 % 2 != 0.
     job = _make_job_output(
-        DPOTraining(parallelism=ParallelismParams(num_gpus_per_node=1, tensor_parallel_size=2)),
+        DPOTraining(type="dpo", parallelism=ParallelismParams(num_gpus_per_node=1, tensor_parallel_size=2)),
     )
     with pytest.raises(ValueError, match="must be divisible by tensor_parallel_size"):
         job.validate_for_training()
@@ -107,6 +108,7 @@ def test_validate_for_training_rejects_indivisible_batch() -> None:
     # total_gpus=2, mp=1 → data_parallel=2; batch_size=3 not divisible by micro(1)*dp(2).
     job = _make_job_output(
         DPOTraining(
+            type="dpo",
             parallelism=ParallelismParams(num_gpus_per_node=2),
             batch_size=3,
             micro_batch_size=1,
@@ -119,14 +121,14 @@ def test_validate_for_training_rejects_indivisible_batch() -> None:
 def test_dpo_output_must_be_full_weight_model() -> None:
     # DPO is full-weight; an adapter output is rejected at construction time.
     with pytest.raises(ValueError, match="full-weight model"):
-        _make_job_output(DPOTraining(), out_type=OutputNameType.ADAPTER)
+        _make_job_output(DPOTraining(type="dpo"), out_type=OutputNameType.ADAPTER)
 
 
 def test_grpo_requires_environment() -> None:
     job = RlJobOutput(
         model="default/base",
         dataset="default/gym-data",
-        training=GRPOTraining(),
+        training=GRPOTraining(type="grpo"),
         output=_make_output(),
     )
     with pytest.raises(ValueError, match="environment fileset"):
@@ -134,6 +136,6 @@ def test_grpo_requires_environment() -> None:
 
 
 def test_grpo_training_discriminator() -> None:
-    t = GRPOTraining()
+    t = GRPOTraining(type="grpo")
     assert t.type == "grpo"
     assert t.num_generations_per_prompt == 8

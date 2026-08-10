@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
     GymHostEgressRule,
@@ -13,8 +15,10 @@ from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
     apply_master_egress_to_sandbox_config,
     assemble_master_egress_allow,
     bootstrap_env_from_job,
+    build_sandbox_mounts,
     resolve_ephemeral_work_path,
 )
+from pydantic import ValidationError
 
 
 def test_assemble_master_egress_allow_defaults() -> None:
@@ -43,11 +47,41 @@ def test_assemble_master_egress_allow_explicit_overrides_env(monkeypatch: pytest
     assert [(r.host, r.port) for r in rules] == [("explicit", 1), ("b", 2)]
 
 
-def test_apply_master_egress_to_sandbox_config() -> None:
-    sandbox = SandboxConfig(
+def _sandbox_config() -> SandboxConfig:
+    return SandboxConfig(
         image="nvcr.io/example/rl:latest",
         network_policy=SandboxNetworkPolicy(egress_allow=[GymHostEgressRule(host="placeholder", port=1)]),
+        environment_pvc_claim="nmp-job-storage",
+        workspace_pvc_claim="nmp-job-storage",
     )
+
+
+def test_sandbox_config_requires_pvc_claims() -> None:
+    """Upstream declares these with no defaults; omitting them fails the Gym host
+    at provisioning time rather than at compile time."""
+    with pytest.raises(ValidationError) as exc:
+        SandboxConfig.model_validate({"image": "nvcr.io/example/rl:latest"})
+    missing = {e["loc"][0] for e in exc.value.errors()}
+    assert {"environment_pvc_claim", "workspace_pvc_claim"} <= missing
+
+
+def test_build_sandbox_mounts_maps_paths_to_pvc_subpaths() -> None:
+    mounts = build_sandbox_mounts(
+        pvc_claim="nmp-job-storage",
+        workspace="default",
+        job_id="job-9",
+        storage_root=Path("/var/run/scratch/job"),
+        environment_path="/var/run/scratch/job/environment",
+        dataset_path="/var/run/scratch/job/dataset",
+    )
+    assert mounts.environment_sub_path == "jobs/default/job-9/environment"
+    assert mounts.dataset_sub_path == "jobs/default/job-9/dataset"
+    assert mounts.workspace_sub_path == "jobs/default/job-9/gym-work"
+    assert mounts.environment_pvc_claim == "nmp-job-storage"
+
+
+def test_apply_master_egress_to_sandbox_config() -> None:
+    sandbox = _sandbox_config()
     updated = apply_master_egress_to_sandbox_config(sandbox)
     assert updated.network_policy.egress_allow == assemble_master_egress_allow()
     # original unchanged (pydantic copy)

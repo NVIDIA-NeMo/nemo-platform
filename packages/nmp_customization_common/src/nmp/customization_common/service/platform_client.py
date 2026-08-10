@@ -25,13 +25,13 @@ async def check_fileset_access(
     default_workspace: str,
     *,
     label: str = "fileset",
-) -> None:
-    """Verify the caller can access a fileset reference."""
+):
+    """Verify the caller can access a fileset reference and return the fileset."""
     ref = FileSetRef.model_validate(fileset_uri)
     workspace = ref.workspace or default_workspace
     files = client_from_platform(sdk, AsyncFilesClient)
     try:
-        await files.get_fileset(workspace=workspace, name=ref.name)
+        return await files.get_fileset(workspace=workspace, name=ref.name)
     except PermissionDeniedError:
         raise PermissionError(f"Access denied to {label} fileset '{workspace}/{ref.name}'") from None
     except NotFoundError:
@@ -59,16 +59,7 @@ async def check_environment_access(
     """Verify the caller can access the environment fileset (GRPO)."""
     ref = FileSetRef.model_validate(environment_uri)
     workspace = ref.workspace or default_workspace
-    files = client_from_platform(sdk, AsyncFilesClient)
-    try:
-        response = await files.get_fileset(workspace=workspace, name=ref.name)
-    except PermissionDeniedError:
-        raise PermissionError(f"Access denied to environment fileset '{workspace}/{ref.name}'") from None
-    except NotFoundError:
-        raise ValueError(
-            f"Environment fileset '{ref.name}' not found in workspace '{workspace}'. "
-            "Verify the fileset exists."
-        ) from None
+    response = await check_fileset_access(sdk, environment_uri, default_workspace, label="environment")
 
     fs = response.data() if hasattr(response, "data") and callable(response.data) else response
     purpose = getattr(fs, "purpose", None)
@@ -78,8 +69,7 @@ async def check_environment_access(
         FilesetPurpose.GENERIC.value,
     ):
         raise ValueError(
-            f"Environment fileset '{workspace}/{ref.name}' has purpose {purpose_val!r}; "
-            "expected purpose='environment'."
+            f"Environment fileset '{workspace}/{ref.name}' has purpose {purpose_val!r}; expected purpose='environment'."
         )
 
 

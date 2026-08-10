@@ -60,7 +60,8 @@ def upload_converted_packages(
     """
     manifest = load_manifest(environment_root)
     env_meta = environment_metadata_from_manifest(manifest.model_dump(mode="python"))
-    client = FilesClient(base_url=base_url, workspace=workspace, api_key=api_key)
+    # NemoClient takes the bearer token as `auth`; passing `api_key` raises TypeError.
+    client = FilesClient(base_url=base_url, workspace=workspace, auth=api_key)
 
     client.create_fileset(
         workspace=workspace,
