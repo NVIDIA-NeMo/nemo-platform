@@ -192,7 +192,7 @@ class WorkflowAgentRuntime:
         return [substitutions.get(token, token) for token in self.config.command]
 
     def _run_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
-        root = (config.output_dir or Path.cwd()) / "evidence" / RUNTIME_NAME
+        root = (config.work_dir or Path.cwd()) / "evidence" / RUNTIME_NAME
         return root / (_safe_name(task.id) or f"task-{index}")
 
 

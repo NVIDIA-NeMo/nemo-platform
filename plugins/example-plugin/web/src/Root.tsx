@@ -3,6 +3,8 @@
 
 import { Button, Flex, Stack, Text } from "@nvidia/foundations-react-core";
 import { Routes, Route, NavLink, Navigate, Outlet } from "react-router";
+import { PAGE_LABELS, PAGES, pluginPath } from "./paths";
+import { SharedUiPage } from "./SharedUiPage";
 import type { PluginHost, PluginRootProps } from "./types";
 
 /**
@@ -29,8 +31,13 @@ import type { PluginHost, PluginRootProps } from "./types";
 export function Root({ host }: PluginRootProps) {
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Navigate to="overview" replace />} />
+      <Route element={<Layout workspaceId={host.workspaceId} />}>
+        <Route
+          index
+          element={
+            <Navigate to={pluginPath(host.workspaceId, "overview")} replace />
+          }
+        />
         <Route path="overview" element={<OverviewPage host={host} />} />
         <Route
           path="auth"
@@ -40,6 +47,7 @@ export function Root({ host }: PluginRootProps) {
           path="workspace"
           element={<WorkspacePage workspaceId={host.workspaceId} />}
         />
+        <Route path="shared-ui" element={<SharedUiPage host={host} />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
@@ -47,7 +55,7 @@ export function Root({ host }: PluginRootProps) {
 }
 
 /** Shared shell with an in-plugin tab bar demonstrating client-side navigation. */
-function Layout() {
+function Layout({ workspaceId }: { workspaceId: string }) {
   // Active/inactive styling uses Studio's semantic tokens so it tracks the theme.
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-1 rounded text-sm font-medium transition-colors ${
@@ -58,17 +66,18 @@ function Layout() {
 
   return (
     <Stack gap="4" className="h-full p-4">
-      {/* In-plugin tab bar — uses Studio's shared react-router <NavLink>. */}
+      {/* Absolute hrefs — a relative `to` resolves against Studio's splat mount
+          and would append to the current page rather than replace it. */}
       <Flex gap="2" className="border-b border-subtle pb-2">
-        <NavLink to="overview" className={linkClass}>
-          Overview
-        </NavLink>
-        <NavLink to="auth" className={linkClass}>
-          Auth
-        </NavLink>
-        <NavLink to="workspace" className={linkClass}>
-          Workspace
-        </NavLink>
+        {PAGES.map((page) => (
+          <NavLink
+            key={page}
+            to={pluginPath(workspaceId, page)}
+            className={linkClass}
+          >
+            {PAGE_LABELS[page]}
+          </NavLink>
+        ))}
       </Flex>
       <div className="flex-1">
         <Outlet />

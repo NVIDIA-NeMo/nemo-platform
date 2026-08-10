@@ -22,21 +22,34 @@ from nemo_deployments_plugin.backends.labels import (
 )
 from nemo_deployments_plugin.backends.openshell.backend import (
     _CONFIG_DELIVERED_MARKER,
+    _DEFAULT_READINESS_TIMEOUT_SECONDS,
     _LAUNCH_MARKER,
     _LIVENESS_PROBE,
     _MAX_ROUTABLE_NAME_LEN,
+    _READINESS_EXEC_TIMEOUT_MARGIN_SECONDS,
     _SERVE_DEAD_EXIT,
     _SERVE_PENDING_EXIT,
     _SERVE_PID_GRACE_SECONDS,
     _SERVE_PIDFILE,
     OpenShellDeploymentBackend,
     _delivery_script,
+    _readiness_probe_command,
     _sandbox_name,
     _service_name,
 )
 from nemo_deployments_plugin.backends.registry import BACKEND_CLASSES
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import ConfigFile, Container, ContainerPort, DeploymentConfig, EnvVar
+from nemo_deployments_plugin.entities import (
+    ConfigFile,
+    Container,
+    ContainerPort,
+    DeploymentConfig,
+    EnvVar,
+    ExecAction,
+    HTTPGetAction,
+    Probe,
+    TCPSocketAction,
+)
 from nemo_deployments_plugin.secrets import SecretResolutionError
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
@@ -124,6 +137,12 @@ def _stream_without_exit(stdout: str = "") -> list[MagicMock]:
         out.stdout.data = stdout.encode()
         events.append(out)
     return events
+
+
+def _config_with_readiness(probe: Probe) -> DeploymentConfig:
+    cfg = _config()
+    cfg.containers[0].readiness_probe = probe
+    return cfg
 
 
 def _config_with_env(env: list[EnvVar]) -> DeploymentConfig:
@@ -452,6 +471,104 @@ async def test_read_status_exposes_after_launch(
     assert [e.url for e in update.endpoints] == ["http://nmp-x--http.openshell.localhost:17670/"]
 
 
+async def test_read_status_starting_until_default_tcp_probe_passes(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # No declared probe: the port must accept a connection before we expose it. Alive but
+    # not yet reachable -> STARTING, and no port is exposed (exposing reads as READY).
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(0),  # marker present
+        _exec_events(0),  # liveness: alive
+        _exec_events(1),  # readiness: port not yet accepting connections
+    ]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "readiness" in update.status_message.lower()
+    mock_stub.ExposeService.assert_not_called()
+
+
+async def test_read_status_starting_when_readiness_probe_yields_no_exit(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # Readiness fails closed: a probe whose exec stream ends without an exit event cannot
+    # prove reachability, so it must not expose the port and flip to sticky READY. It
+    # stays STARTING and self-heals on the next poll -- driven here by polling read_status
+    # twice, undecidable then reachable, and asserting the second poll exposes and reads
+    # READY. (Liveness fails open on the same undecidable signal; readiness gates
+    # admission the other way.)
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    stdout_only = MagicMock()
+    stdout_only.HasField.side_effect = lambda field: field == "stdout"
+    stdout_only.stdout.data = b"partial"
+    mock_stub.ExecSandbox.side_effect = [
+        # First poll: alive but readiness stream ends with no exit event -> undecidable.
+        _exec_events(0),  # marker present
+        _exec_events(0),  # liveness: alive
+        [stdout_only],  # readiness: no exit event
+        # Second poll: still unexposed (first poll withheld the port), now reachable.
+        _exec_events(0),  # marker present
+        _exec_events(0),  # liveness: alive
+        _exec_events(0),  # readiness: reachable
+    ]
+    mock_stub.ExposeService.return_value = MagicMock(url="http://nmp-x--http.openshell.localhost:17670/")
+
+    first = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert first.status == "STARTING"
+    assert "readiness" in first.status_message.lower()
+    mock_stub.ExposeService.assert_not_called()
+
+    second = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert second.status == "READY"
+    mock_stub.ExposeService.assert_called_once()
+
+
+async def test_read_status_ready_when_default_tcp_probe_connects(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # Alive and the port now accepts a connection -> expose -> READY.
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(0),  # marker present
+        _exec_events(0),  # liveness: alive
+        _exec_events(0),  # readiness: reachable
+    ]
+    mock_stub.ExposeService.return_value = MagicMock(url="http://nmp-x--http.openshell.localhost:17670/")
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "READY"
+    assert [e.url for e in update.endpoints] == ["http://nmp-x--http.openshell.localhost:17670/"]
+
+
+async def test_read_status_gates_on_declared_httpget_probe(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    # A declared httpGet readinessProbe is honoured against loopback; a failing probe
+    # keeps the deployment STARTING and unexposed, and the probe hits the declared path.
+    mock_entities.get.return_value = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/health", port=8000)))
+    mock_stub.GetSandbox.return_value = _sandbox(pb.SANDBOX_PHASE_READY)
+    mock_stub.ExecSandbox.side_effect = [
+        _exec_events(0),  # marker present
+        _exec_events(0),  # liveness: alive
+        _exec_events(1),  # readiness: /health not answering yet
+    ]
+
+    update = await openshell_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    mock_stub.ExposeService.assert_not_called()
+    probe_scripts = [" ".join(c.args[0].command) for c in mock_stub.ExecSandbox.call_args_list]
+    assert any("http://127.0.0.1:8000/health" in script for script in probe_scripts)
+
+
 async def test_read_status_fails_when_serve_process_died(
     openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock
 ) -> None:
@@ -604,6 +721,86 @@ async def test_read_status_cleanup_swallows_delete_error(
     assert update.status == "FAILED"
     assert "expose" in update.status_message.lower()
     mock_stub.DeleteSandbox.assert_called_once()
+
+
+def _require_probe_command(container: Container) -> tuple[list[str], str, int]:
+    """Return the container's readiness probe command, asserting it exists (narrows None)."""
+    probe_command = _readiness_probe_command(container)
+    assert probe_command is not None
+    return probe_command
+
+
+def test_readiness_probe_command_defaults_to_tcp_on_the_first_port() -> None:
+    command, description, timeout = _require_probe_command(_config().containers[0])
+    assert command[:2] == ["/bin/sh", "-c"]
+    assert "127.0.0.1" in command[2]
+    assert description == "tcp 127.0.0.1:8000"
+    # A network probe self-times in python; the RPC gets that timeout plus headroom.
+    assert timeout == _DEFAULT_READINESS_TIMEOUT_SECONDS + _READINESS_EXEC_TIMEOUT_MARGIN_SECONDS
+
+
+def test_readiness_probe_command_uses_declared_httpget() -> None:
+    container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/ready", port=8000))).containers[0]
+    command, description, _timeout = _require_probe_command(container)
+    assert "http://127.0.0.1:8000/ready" in command[2]
+    assert description == "httpGet http://127.0.0.1:8000/ready"
+
+
+def test_readiness_probe_command_runs_declared_exec_directly() -> None:
+    probe = Probe(exec=ExecAction(command=["/bin/true"]), timeoutSeconds=4)
+    container = _config_with_readiness(probe).containers[0]
+    command, description, timeout = _require_probe_command(container)
+    assert command == ["/bin/true"]
+    assert description == "exec readiness probe"
+    # An exec probe is bounded by its own timeoutSeconds, not the control-plane deadline,
+    # so a hung probe cannot stall the serial reconcile loop.
+    assert timeout == 4
+
+
+def test_readiness_probe_command_resolves_named_tcp_socket_port() -> None:
+    container = _config_with_readiness(Probe(tcpSocket=TCPSocketAction(port="http"))).containers[0]
+    _command, description, _timeout = _require_probe_command(container)
+    assert description == "tcp 127.0.0.1:8000"
+
+
+def test_readiness_probe_command_is_none_without_probe_or_ports() -> None:
+    assert _readiness_probe_command(_config(with_port=False).containers[0]) is None
+
+
+def test_readiness_probe_command_https_uses_unverified_context() -> None:
+    container = _config_with_readiness(
+        Probe(httpGet=HTTPGetAction(path="/health", port=8000, scheme="HTTPS"))
+    ).containers[0]
+    command, _description, _timeout = _require_probe_command(container)
+    assert "https://127.0.0.1:8000/health" in command[2]
+    # An https probe against a loopback/self-signed cert must not fail verification.
+    assert "_create_unverified_context" in command[2]
+
+
+def test_readiness_probe_command_normalizes_httpget_path_without_leading_slash() -> None:
+    container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="ready", port=8000))).containers[0]
+    _command, description, _timeout = _require_probe_command(container)
+    assert description == "httpGet http://127.0.0.1:8000/ready"
+
+
+def test_readiness_probe_command_skips_udp_only_ports() -> None:
+    container = Container(
+        name="web",
+        image="img:latest",
+        command=["serve"],
+        ports=[ContainerPort(containerPort=9000, name="udp", protocol="UDP")],
+    )
+    assert _readiness_probe_command(container) is None
+
+
+def test_readiness_probe_command_falls_back_when_declared_port_unresolvable() -> None:
+    # A declared probe naming a port absent from the container falls back to the first
+    # TCP port rather than skipping the gate (which would re-open the bind race).
+    container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/health", port="does-not-exist"))).containers[
+        0
+    ]
+    _command, description, _timeout = _require_probe_command(container)
+    assert description == "httpGet http://127.0.0.1:8000/health"
 
 
 def _run_probe(tmp_path: Path, *, pid: str | None, marker: str | None) -> int:

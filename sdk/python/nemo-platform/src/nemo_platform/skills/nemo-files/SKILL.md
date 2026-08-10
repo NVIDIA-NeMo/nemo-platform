@@ -4,6 +4,9 @@ description: >
   NeMo files CLI reference for filesets, file upload/download, and dataset management.
   Use when the task involves filesets, file uploads, file downloads, datasets,
   JSONL files, or `nemo files` CLI commands.
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
 user-invocable: true
 allowed-tools: Bash, Read, Grep
 ---

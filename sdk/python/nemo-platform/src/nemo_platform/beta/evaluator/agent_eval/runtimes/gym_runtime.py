@@ -412,8 +412,8 @@ class GymAgentTaskRunner:
         # phases — parallelism bounds concurrent scoring (SDK-side, cheap), while Gym's `--concurrency`
         # bounds concurrent rollouts against the model endpoint during collection (tuned to that endpoint's
         # limits via GymRuntimeConfig.concurrency).
-        if config is not None and config.output_dir is not None:
-            work_dir = Path(config.output_dir) / "gym_run"
+        if config is not None and config.work_dir is not None:
+            work_dir = Path(config.work_dir) / "gym_run"
         else:
             work_dir = Path(tempfile.mkdtemp(prefix="gym_run_"))
         work_dir.mkdir(parents=True, exist_ok=True)

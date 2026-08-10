@@ -4,6 +4,7 @@ set -xeo pipefail
 
 HELM_FOLDER=${HELM_FOLDER:-k8s/helm}
 HELM_RELEASE_NAME=${HELM_RELEASE_NAME:-nemo-platform}
+HELM_ENVOY_IMAGE=${HELM_ENVOY_IMAGE:-docker.io/envoyproxy/envoy:v1.37.0}
 OPENSHIFT_VERSION=${OPENSHIFT_VERSION:-4.1.0}
 
 # Cache dir for kubeconform so schemas are downloaded once per run instead of per file
@@ -11,16 +12,59 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${CI_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 KUBECONFORM_CACHE="${KUBECONFORM_CACHE:-${PROJECT_ROOT}/.kubeconform-cache}"
 mkdir -p "${KUBECONFORM_CACHE}"
+lint_tmp=$(mktemp -d)
+trap 'rm -rf "${lint_tmp}"' EXIT
+
+validate_rendered_envoy_config() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Docker is unavailable; skipping Envoy config validation" >&2
+    return
+  fi
+
+  docker pull "${HELM_ENVOY_IMAGE}"
+
+  local envoy_config_map="${lint_tmp}/envoy-configmap.yaml"
+  local envoy_config="${lint_tmp}/envoy.yaml"
+
+  helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+    --set platformConfig.auth.enabled=true \
+    --show-only templates/proxy/envoy-configmap.yaml \
+    > "${envoy_config_map}"
+
+  awk '
+    $0 == "  envoy.yaml: |" { in_block = 1; next }
+    in_block && /^  [^[:space:]][^:]*:/ { exit }
+    in_block {
+      if ($0 == "") {
+        print ""
+        next
+      }
+      if (substr($0, 1, 4) != "    ") {
+        print "unexpected indentation while extracting envoy.yaml: " $0 > "/dev/stderr"
+        exit 1
+      }
+      print substr($0, 5)
+    }
+  ' "${envoy_config_map}" > "${envoy_config}"
+  test -s "${envoy_config}"
+
+  docker run --rm \
+    -v "${envoy_config}:/etc/envoy/envoy.yaml:ro" \
+    "${HELM_ENVOY_IMAGE}" \
+    --mode validate \
+    -c /etc/envoy/envoy.yaml
+}
 
 # Fetch chart dependencies so subchart templates (e.g. postgresql) are available during lint/template
 helm dependency update "${HELM_FOLDER}"
 
 # Lint the Helm chart
 helm lint --strict "${HELM_FOLDER}"
+validate_rendered_envoy_config
 
 # StatefulSet volumeClaimTemplates are immutable, so chart metadata must not change them.
-postgres_claim_tmp=$(mktemp -d)
-trap 'rm -rf "${postgres_claim_tmp}"' EXIT
+postgres_claim_tmp="${lint_tmp}/postgres-claim"
+mkdir -p "${postgres_claim_tmp}"
 
 for version in 1 2; do
   helm package "${HELM_FOLDER}" \

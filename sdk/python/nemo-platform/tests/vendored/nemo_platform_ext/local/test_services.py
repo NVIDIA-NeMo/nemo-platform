@@ -55,6 +55,7 @@ def test_service_run_config_converts_to_platform_app_config(tmp_path: Path) -> N
         sidecars=["adapters"],
         config_path=tmp_path / "local.yaml",
         socket_path=tmp_path / "nemo.sock",
+        keep_alive_timeout_seconds=12,
         mode="embedded",
     )
 
@@ -69,6 +70,12 @@ def test_service_run_config_converts_to_platform_app_config(tmp_path: Path) -> N
     assert app_config.runtime_dir() == tmp_path
     assert app_config.host == "127.0.0.1"
     assert app_config.port == 8080
+    assert app_config.keep_alive_timeout_seconds == 12
+
+
+def test_service_run_config_rejects_non_positive_keep_alive_timeout() -> None:
+    with pytest.raises(ValueError, match="keep_alive_timeout_seconds must be greater than 0"):
+        ServiceRunConfig(keep_alive_timeout_seconds=0)
 
 
 def test_instance_descriptor_converts_from_service_run_config(
@@ -862,14 +869,46 @@ def test_run_services_serves_embedded_app_with_socket_path(monkeypatch: pytest.M
 
 
 def test_serve_embedded_app_with_socket_path_listens_on_tcp_and_uds(tmp_path: Path) -> None:
-    cfg = ServiceRunConfig(transport="tcp", host="127.0.0.1", port=9090)
+    cfg = ServiceRunConfig(
+        transport="tcp",
+        host="127.0.0.1",
+        port=9090,
+        keep_alive_timeout_seconds=12,
+    )
     app = object()
     socket_path = tmp_path / "nemo.sock"
 
     with patch("nmp.platform_runner.server._run_server_on_bound_sockets") as run_bound_sockets:
         services.serve_embedded_app(app, cfg, socket_path)
 
-    run_bound_sockets.assert_called_once_with(app, host="127.0.0.1", port=9090, socket_path=str(socket_path))
+    run_bound_sockets.assert_called_once_with(
+        app,
+        host="127.0.0.1",
+        port=9090,
+        socket_path=str(socket_path),
+        keep_alive_timeout_seconds=12,
+    )
+
+
+def test_serve_embedded_app_without_socket_path_sets_keep_alive_timeout() -> None:
+    cfg = ServiceRunConfig(
+        transport="tcp",
+        host="127.0.0.1",
+        port=9090,
+        keep_alive_timeout_seconds=12,
+    )
+    app = object()
+
+    with patch("uvicorn.run") as uvicorn_run:
+        services.serve_embedded_app(app, cfg, None)
+
+    uvicorn_run.assert_called_once_with(
+        app,
+        host="127.0.0.1",
+        port=9090,
+        log_config=None,
+        timeout_keep_alive=12,
+    )
 
 
 def test_run_services_cleans_lock_when_log_path_resolution_fails(

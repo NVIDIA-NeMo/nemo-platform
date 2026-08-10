@@ -63,7 +63,7 @@ async def main() -> int:
     )
 
     output_dir = Path(os.environ.get("FABRIC_OUTPUT_DIR", "/tmp/fabric-container-e2e"))
-    (trial,) = await runtime.run_tasks([task], AgentEvalRunConfig(output_dir=output_dir))
+    (trial,) = await runtime.run_tasks([task], AgentEvalRunConfig(work_dir=output_dir))
 
     print("=== TRIAL ===")
     print("status:", trial.status)

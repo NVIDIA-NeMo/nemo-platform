@@ -12,13 +12,19 @@ from nemo_platform_ext.cli.core.api import build_kwargs
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
-from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform_ext.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 app = create_typer_app(name="versions", help="Manage versions")
@@ -61,10 +67,12 @@ def list_versions(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """List all versions of a ModelDeploymentConfig."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -94,6 +102,7 @@ def list_versions(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
 
 

@@ -12,6 +12,8 @@ description: >
   or debugging routing and translation failures locally. For platform startup,
   Switchyard install, and DB-reset prerequisites, see the setup playbook
   (`SETUP.md` at the repo root).
+preconditions:
+  - nemo_setup_complete
 user-invocable: true
 allowed-tools: Bash, Read, Grep
 ---
@@ -75,7 +77,7 @@ For platform startup (`nemo services run`), Switchyard install, and state reset,
 - **`nemo secrets create`** uses `--from-file` (pipe key in). No `--value` flag.
 - **`nemo inference providers create`** takes `<name>` as a **positional** arg.
   Same for `update-status`, `get`, `delete`.
-- **`nemo virtual-models create`** is a **top-level** command (not under `nemo inference`) and takes `<name>` as positional.
+- **`nemo inference virtual-models create`** takes `<name>` as positional.
 - **There is no `nemo inference chat completions create` command.** Use
   `nemo inference gateway model post <path> <vm-name> --workspace <ws> --body '<json>'`.
 - **`example` is not a valid `--services` arg.** Valid services: `audit`,
@@ -250,7 +252,7 @@ instead of resolving it from a registered entity.
 ### Random routing — same format (deterministic test: `strong_probability=1.0`)
 
 ```bash
-nemo virtual-models create vm-random-strong --workspace my-workspace \
+nemo inference virtual-models create vm-random-strong --workspace my-workspace \
   --models '[
     {"model":"my-workspace/nvidia-mistralai-mixtral-8x22b-instruct-v01","backend_format":"OPENAI_CHAT"},
     {"model":"my-workspace/nvidia-qwen-qwen3-32b","backend_format":"OPENAI_CHAT"}
@@ -271,7 +273,7 @@ Order matters: routing first, translate second. Use `response_middleware` too
 for full round-trip translation back to the client's format.
 
 ```bash
-nemo virtual-models create vm-random-cross --workspace my-workspace \
+nemo inference virtual-models create vm-random-cross --workspace my-workspace \
   --models '[
     {"model":"my-workspace/aws-anthropic-claude-opus-4-5","backend_format":"ANTHROPIC_MESSAGES"},
     {"model":"my-workspace/nvidia-nvidia-nemotron-nano-31b-v3","backend_format":"OPENAI_CHAT"}
@@ -294,7 +296,7 @@ Client sends OpenAI shape, backend is Anthropic, response comes back as OpenAI.
 **Must list translate in BOTH `request_middleware` and `response_middleware`.**
 
 ```bash
-nemo virtual-models create vm-translate-cross --workspace my-workspace \
+nemo inference virtual-models create vm-translate-cross --workspace my-workspace \
   --models '[{"model":"my-workspace/aws-anthropic-claude-opus-4-5","backend_format":"ANTHROPIC_MESSAGES"}]' \
   --request-middleware '[{"name":"nemo-switchyard","config_type":"translate","config":{"target_format":"anthropic","enable_stats":false}}]' \
   --response-middleware '[{"name":"nemo-switchyard","config_type":"translate","config":{"target_format":"anthropic","enable_stats":false}}]'
@@ -315,7 +317,7 @@ rails only.
 **Output rails only** — block bad bot responses (most common):
 
 ```bash
-nemo virtual-models create vm-guarded --workspace my-workspace \
+nemo inference virtual-models create vm-guarded --workspace my-workspace \
   --models '[{"model":"my-workspace/<backend-entity-id>","backend_format":"OPENAI_CHAT"}]' \
   --response-middleware '[{
     "name":"nemo-guardrails",
@@ -327,7 +329,7 @@ nemo virtual-models create vm-guarded --workspace my-workspace \
 **Input + output rails** — full coverage. Include the call in **both** lists:
 
 ```bash
-nemo virtual-models create vm-guarded-full --workspace my-workspace \
+nemo inference virtual-models create vm-guarded-full --workspace my-workspace \
   --models '[{"model":"my-workspace/<backend-entity-id>","backend_format":"OPENAI_CHAT"}]' \
   --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"my-workspace/content-safety"}]' \
   --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"my-workspace/content-safety"}]'
@@ -356,7 +358,7 @@ OpenAI form on both sides:
   guardrails' input rails because the plugin can't parse them.
 
 ```bash
-nemo virtual-models create vm-guarded-translate --workspace my-workspace \
+nemo inference virtual-models create vm-guarded-translate --workspace my-workspace \
   --models '[{"model":"my-workspace/aws-anthropic-claude-opus-4-5","backend_format":"ANTHROPIC_MESSAGES"}]' \
   --request-middleware '[
     {"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"my-workspace/content-safety"},
@@ -550,10 +552,25 @@ nemo inference providers get nvidia-inference --workspace my-workspace \
 ## Cleanup
 
 ```bash
-# Delete all switchyard test VMs
-for vm in $(nemo virtual-models list --workspace my-workspace --output-format json \
-  | jq -r '.data[].name' | grep vm-); do
-  nemo virtual-models delete "$vm" --workspace my-workspace
+# Delete only the VirtualModels created by the examples in this skill.
+created_vms=(
+  vm-random-strong
+  vm-random-cross
+  vm-translate-cross
+  vm-guarded
+  vm-guarded-full
+  vm-guarded-translate
+)
+
+printf 'Delete example resources in my-workspace (VirtualModels: %s; provider: nvidia-inference; secret: nvidia-inference-key; workspace: my-workspace)? Type DELETE to continue: ' "${created_vms[*]}"
+read -r confirmation
+if [ "$confirmation" != "DELETE" ]; then
+  echo "Cleanup cancelled." >&2
+  exit 1
+fi
+
+for vm in "${created_vms[@]}"; do
+  nemo inference virtual-models delete "$vm" --workspace my-workspace
 done
 
 nemo inference providers delete nvidia-inference --workspace my-workspace

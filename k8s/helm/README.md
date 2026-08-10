@@ -160,6 +160,8 @@ and
 | api.replicaCount | int | `1` | Number of replicas for the API service. |
 | api.resources | object | `{}` | Kubernetes deployment resources configuration for the API service. Utilization-based autoscaling requires a matching resource request. |
 | api.securityContext | object | `{}` | Container-level security context settings for the API service. |
+| api.server | object | `{"keepAliveTimeoutSeconds":5}` | Platform API server settings. |
+| api.server.keepAliveTimeoutSeconds | int | `5` | Seconds Uvicorn keeps idle HTTP connections open. Must be greater than envoyProxy.timeouts.upstreamIdle when Envoy is enabled. |
 | api.service | object | This object has the following default values for the service configuration. | Service configuration for the API service. |
 | api.service.annotations | object | `{}` | Annotations for the API service. |
 | api.service.port | int | `8080` | The port number to expose for the service. |
@@ -331,6 +333,7 @@ and
 | envoyProxy.timeouts.requestHeaders | string | `"60s"` | Time to receive full request headers. 0 = disabled. |
 | envoyProxy.timeouts.route | string | `"0s"` | Per-route timeout for the passthrough to backend. 0 = disabled. |
 | envoyProxy.timeouts.streamIdle | string | `"0s"` | Stream idle timeout. Time with no activity before stream is closed. 0 = disabled (required for long-lived streams). |
+| envoyProxy.timeouts.upstreamIdle | string | `"4s"` | Positive whole-second upstream connection idle timeout. Must be less than api.server.keepAliveTimeoutSeconds when Envoy is enabled. |
 | envoyProxy.tolerations | list | `[]` | Tolerations configuration for the Envoy pods. |
 | envoyProxy.topologySpreadConstraints | list | `[]` | Topology spread constraints for the Envoy pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
 | existingSecret | string | `"ngc-api"` | You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string. |

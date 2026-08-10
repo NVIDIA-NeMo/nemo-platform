@@ -5,7 +5,7 @@
 
 from pathlib import Path
 
-from nemo_platform_ext.cli.commands.skills.base import Scope
+from nemo_platform_ext.cli.commands.skills.base import Scope, installed_skill_name
 from nemo_platform_ext.cli.commands.skills.installer import BaseAgentInstaller
 
 
@@ -15,6 +15,7 @@ class OpenCodeInstaller(BaseAgentInstaller):
     supported_scopes = [Scope.PROJECT, Scope.USER]
 
     def get_install_path(self, scope: Scope, project_root: Path, skill_name: str) -> Path:
+        target_name = installed_skill_name(skill_name)
         if scope == Scope.PROJECT:
-            return project_root / ".opencode" / "commands" / f"nemo-{skill_name}" / "SKILL.md"
-        return Path.home() / ".opencode" / "commands" / f"nemo-{skill_name}" / "SKILL.md"
+            return project_root / ".opencode" / "commands" / target_name / "SKILL.md"
+        return Path.home() / ".opencode" / "commands" / target_name / "SKILL.md"

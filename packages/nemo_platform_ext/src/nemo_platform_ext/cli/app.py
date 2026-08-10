@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from importlib.metadata import EntryPoint
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 
 import typer
 
@@ -24,6 +24,7 @@ from nemo_platform_ext.cli.manifest import (
     TopLevelEntry,
     build_top_level_entries,
 )
+from nemo_platform_ext.config.types import OutputFormat as ConfigOutputFormat
 
 if TYPE_CHECKING:
     from nemo_platform_plugin.cli import NemoCLI
@@ -173,6 +174,7 @@ def main(
         ListOutputFormat | None,
         typer.Option(
             "--output-format",
+            "--output",
             "-f",
             help="Output format for how results are printed.",
             rich_help_panel="Global Options",
@@ -242,6 +244,12 @@ def main(
     [green]Examples:[/]
     nemo workspaces list --output-format markdown
     nemo workspaces get default -f json
+
+    [green]Exit codes:[/]
+    - 0: Success
+    - 1: Local or unexpected error
+    - 2: Command usage error
+    - 3: Remote/API error
     """
     # Lazy imports for performance (avoid loading pydantic_settings for --help)
     from nemo_platform_ext.cli.core.context import CLIContext
@@ -274,7 +282,7 @@ def main(
     if base_url is not None:
         overrides["base_url"] = base_url
     if output_format is not None:
-        overrides["output_format"] = output_format
+        overrides["output_format"] = cast(ConfigOutputFormat, output_format)
     elif agent_mode:
         overrides["output_format"] = "markdown"
     if timestamp_format is not None:

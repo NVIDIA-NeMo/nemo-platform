@@ -36,6 +36,25 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 - Install dependencies: `pnpm add <package>`
 - Run scripts: `pnpm <script-name>`
 
+### Bumping a shared singleton also means bumping the plugins
+
+Everything in `VENDOR_IMPORT_MAP` (`packages/studio/vite.config.ts`) is served to
+plugin bundles from Studio's vendor build, so plugins must leave it external and
+never ship their own copy:
+
+| Shared                                                                                          | In the plugin's `package.json`?                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `react`, `react-dom`, `react-router`, `@nvidia/foundations-react-core`, `@tanstack/react-query` | Yes — versions must match the `catalog:` block                                                                                                                                   |
+| `@nemo/common` (Studio's shared UI)                                                             | **No** — unpublished, has no catalog entry, and must not be added as a dependency. Externalized in the plugin's `vite.config.ts`; types come from `paths` in its `tsconfig.json` |
+
+Plugin web dirs are **standalone pnpm roots** and cannot reference the
+`catalog:` block, so they restate the versions by hand. When you change one of
+those catalog entries, update the matching `dependencies` in every
+`plugins/*/web/package.json` in the same change — otherwise a plugin keeps
+typechecking against the old version while Studio serves the new one, and
+nothing fails until it breaks at runtime. See
+[plugins/example-plugin/web/AGENTS.md](../plugins/example-plugin/web/AGENTS.md).
+
 ## Running Tests Locally
 
 - **Never invoke `vitest` directly** (e.g. `pnpm vitest --run`). Always go through a package's `test` script so env/config (e.g. `NODE_OPTIONS=--max-old-space-size=10240` in `studio`) is applied.

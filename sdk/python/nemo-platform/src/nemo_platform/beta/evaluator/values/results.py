@@ -295,9 +295,10 @@ class AggregateScoreBase(BaseModel):
     name: str = Field(description="Name of the score.")
     count: int | None = Field(
         default=None,
-        description="Number of samples evaluated (excluding NaN). None when the sample size is unknown "
+        description="Number of samples evaluated (excluding NaN). Omitted when the sample size is unknown "
         "— e.g. a figure imported from a backend that reports statistics without the n behind them. "
-        "Distinct from 0, which asserts that nothing was evaluated.",
+        "Distinct from 0, which asserts that nothing was evaluated. (``None`` on the model; the result "
+        "routes serialize with exclude_none, so the field is absent from the response rather than null.)",
     )
     nan_count: int = Field(description="Number of samples that produced NaN scores.")
     sum: float | None = Field(default=None, description="Sum of all score values.")
@@ -322,11 +323,11 @@ class AggregateScoreBase(BaseModel):
         default=None,
         description="Sample standard deviation of the scores (Bessel-corrected, divides by n-1). Estimates "
         "the spread of the process the values were drawn from — the right choice when repeated trials "
-        "sample a stochastic system. None when fewer than two values (undefined, not zero).",
+        "sample a stochastic system. Omitted when fewer than two values (undefined, not zero).",
     )
     sample_variance: float | None = Field(
         default=None,
-        description="Sample variance of the scores (Bessel-corrected, divides by n-1). None when fewer "
+        description="Sample variance of the scores (Bessel-corrected, divides by n-1). Omitted when fewer "
         "than two values.",
     )
 
@@ -386,7 +387,8 @@ class AggregateScalarScore(AggregateScoreBase):
 
     For figures a backend reports as one number (e.g. an environment's own ``pass@1`` or Elo) rather
     than a set of per-sample values the SDK could aggregate itself. ``value`` carries the number;
-    ``mean``/``min``/``max`` are left unset because there is no sample to describe. Distinct from
+    ``mean``/``min``/``max`` are optional and normally unset, since there is no sample to describe —
+    a producer may still supply them, but readers key off ``score_type`` and read ``value``. Distinct from
     :class:`AggregateRangeScore` so a reader can tell "this is the whole story" from "this summarizes
     ``count`` samples", instead of seeing a range score with a suspicious ``count`` of 1.
     """

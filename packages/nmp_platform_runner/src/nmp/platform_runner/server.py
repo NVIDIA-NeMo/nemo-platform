@@ -19,6 +19,7 @@ import uvicorn
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from nmp.common.api.utils import install_query_param_schema_openapi_hook
 from nmp.common.auth import AuthorizationMiddleware
 from nmp.common.config import get_auth_config, get_platform_config
 from nmp.common.http_clients import close_shared_http_clients
@@ -26,7 +27,7 @@ from nmp.common.observability import initialize_obs, setup_fastapi_instrumentati
 from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
-from nmp.platform_runner.config import PlatformAppConfig
+from nmp.platform_runner.config import DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS, PlatformAppConfig
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router, get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -275,6 +276,7 @@ def create_app(
         if service_instance._service_config is not None:
             app.state.service_configs[type(service_instance._service_config)] = service_instance._service_config
 
+    install_query_param_schema_openapi_hook(app)
     app.add_exception_handler(Exception, platform_global_exception_handler)
     return app
 
@@ -338,20 +340,51 @@ def run_server(
     host: str = "0.0.0.0",
     port: int = 8080,
     socket_path: str | None = None,
+    keep_alive_timeout_seconds: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
 ) -> None:
     """Run the platform API server."""
     preflight_embedded_auth_policy_wasm(get_auth_config())
     app = create_app(services or [])
     setup_fastapi_instrumentations(app)
     if socket_path:
-        _run_server_on_bound_sockets(app, host=host, port=port, socket_path=socket_path)
+        _run_server_on_bound_sockets(
+            app,
+            host=host,
+            port=port,
+            socket_path=socket_path,
+            keep_alive_timeout_seconds=keep_alive_timeout_seconds,
+        )
     else:
-        uvicorn.run(app, host=host, port=port, log_config=None)
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_config=None,
+            timeout_keep_alive=keep_alive_timeout_seconds,
+        )
 
 
-def _run_server_on_bound_sockets(app: FastAPI, *, host: str, port: int, socket_path: str) -> None:
-    tcp_config = uvicorn.Config(app, host=host, port=port, log_config=None)
-    uds_config = uvicorn.Config(app, uds=socket_path, log_config=None)
+def _run_server_on_bound_sockets(
+    app: FastAPI,
+    *,
+    host: str,
+    port: int,
+    socket_path: str,
+    keep_alive_timeout_seconds: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
+) -> None:
+    tcp_config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_config=None,
+        timeout_keep_alive=keep_alive_timeout_seconds,
+    )
+    uds_config = uvicorn.Config(
+        app,
+        uds=socket_path,
+        log_config=None,
+        timeout_keep_alive=keep_alive_timeout_seconds,
+    )
     sockets = [tcp_config.bind_socket(), uds_config.bind_socket()]
     try:
         asyncio.run(uvicorn.Server(tcp_config).serve(sockets=sockets))
@@ -360,7 +393,12 @@ def _run_server_on_bound_sockets(app: FastAPI, *, host: str, port: int, socket_p
             sock.close()
 
 
-def run_server_with_reload(app_factory: str, host: str = "0.0.0.0", port: int = 8080) -> None:
+def run_server_with_reload(
+    app_factory: str,
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    keep_alive_timeout_seconds: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
+) -> None:
     """Run the platform API server with uvicorn reload enabled."""
     preflight_embedded_auth_policy_wasm(get_auth_config())
     reload_dirs = [
@@ -380,6 +418,7 @@ def run_server_with_reload(app_factory: str, host: str = "0.0.0.0", port: int = 
         access_log=False,
         log_level="warning",
         factory=True,
+        timeout_keep_alive=keep_alive_timeout_seconds,
     )
 
 
