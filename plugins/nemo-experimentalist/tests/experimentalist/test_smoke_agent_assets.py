@@ -121,6 +121,27 @@ def test_verifier_keeps_its_reward_hacking_guards() -> None:
     assert "tr -d" not in code, "tr -d '\\r' deletes every CR, collapsing sum=4<CR>2 into a passing sum=42"
     assert "cmp -s" in code, "whole-file compare; command substitution strips trailing newlines"
     assert "refusing to score" in code, "must fail closed when the expected fixture is unreadable"
+    assert '[ -L "$OUTPUT" ]' in code, (
+        "the agent owns /app/artifacts, so without a -L check it can point output.txt at "
+        "the expected fixture and have the answer key compared against itself"
+    )
+
+
+def test_verifier_rejects_a_symlinked_output_before_reading_it() -> None:
+    """`-f` follows symlinks, so the order of these branches is the whole guard.
+
+    A `-L` test placed after `-f` never runs: `-f` follows the link, finds a regular
+    file at the other end, and scores it.
+    """
+    code = _verifier_code()
+    branches = [line for line in code.splitlines() if line.lstrip().startswith(("if ", "elif "))]
+    symlink_at = next((i for i, line in enumerate(branches) if '-L "$OUTPUT"' in line), None)
+    regular_at = next((i for i, line in enumerate(branches) if '-f "$OUTPUT"' in line), None)
+    assert symlink_at is not None, "verifier must test for a symlinked output"
+    assert regular_at is not None, "verifier must still test for a regular output file"
+    assert symlink_at < regular_at, (
+        "the -L branch must precede the -f branch, or it is dead code and the symlink-to-answer-key hack scores 1.0"
+    )
 
 
 def test_verifier_does_not_echo_answers() -> None:

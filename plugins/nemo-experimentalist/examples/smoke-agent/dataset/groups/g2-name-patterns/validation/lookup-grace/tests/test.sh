@@ -28,6 +28,18 @@ shape_ok=0.0
 # score 1.0.
 if [ ! -r "$EXPECTED_FILE" ]; then
   echo "FAIL: ${EXPECTED_FILE} is missing or unreadable; refusing to score"
+elif [ -L "$OUTPUT" ] || [ -L /app/artifacts ]; then
+  # The agent owns /app/artifacts and this runs afterwards, so it could replace the
+  # answer with a symlink at the expected fixture: `-f`, `head`, `sed` and `cmp` all
+  # follow links, so the answer key would be compared against itself and score 1.0
+  # without anything being solved. `-L` is the one test that does not follow, and it
+  # has to come first for the same reason. The directory is checked too, since
+  # linking it moves the whole path somewhere else.
+  #
+  # This catches symlinks, not hard links -- one of those is indistinguishable from a
+  # regular file here. It needs both paths on one filesystem, which separate mounts
+  # prevent, so it is left as a known limit rather than guessed at.
+  echo "FAIL: ${OUTPUT} is a symlink; refusing to score"
 elif [ -f "$OUTPUT" ]; then
   # Shape check on the first line only: right form, value not considered. `grep -q`
   # is silent on purpose — echoing the line would put answers in the trial log,
