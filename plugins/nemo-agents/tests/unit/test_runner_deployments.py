@@ -949,8 +949,8 @@ async def test_create_deployment_fabric_docker_stages_fileset_artifacts() -> Non
         "harnesses": {"main": {"kind": "codex", "settings": {}}},
     }
     staged_files = [
-        ConfigFile(path="/workspace/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
-        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+        ConfigFile(path="/tmp/nemo/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
+        ConfigFile(path="/tmp/nemo/skills/review/SKILL.md", content="# Review\n"),
     ]
     sdk = MagicMock()
 
@@ -999,8 +999,8 @@ async def test_create_deployment_fabric_k8s_stages_fileset_artifacts() -> None:
         "harnesses": {"main": {"kind": "codex", "settings": {}}},
     }
     staged_files = [
-        ConfigFile(path="/workspace/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
-        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+        ConfigFile(path="/tmp/nemo/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
+        ConfigFile(path="/tmp/nemo/skills/review/SKILL.md", content="# Review\n"),
     ]
     sdk = MagicMock()
 

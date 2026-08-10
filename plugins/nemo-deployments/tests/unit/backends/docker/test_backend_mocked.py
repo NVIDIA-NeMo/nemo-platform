@@ -146,10 +146,9 @@ async def test_create_deployment_reallocates_port_after_docker_conflict(
 ) -> None:
     """Docker's port reservations are invisible to the probe, so a publish can still lose a race."""
     first_port = docker_backend._executor_config.port_range_start
-    leftover = MagicMock()
     server_container = MagicMock(id="abc123")
     mock_entities.get.return_value = published_port_config()
-    mock_docker_client.containers.get.side_effect = [NotFound("missing"), leftover]
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
     mock_docker_client.containers.create.return_value = server_container
     server_container.start.side_effect = [_port_conflict_error(first_port), None]
 
@@ -163,7 +162,7 @@ async def test_create_deployment_reallocates_port_after_docker_conflict(
 
     assert update.status == "STARTING"
     assert _published_host_ports(mock_docker_client.containers.create) == [first_port, first_port + 1]
-    leftover.remove.assert_called_once_with(force=True)
+    server_container.remove.assert_called_once_with(force=True)
 
 
 @pytest.mark.asyncio

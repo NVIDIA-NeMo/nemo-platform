@@ -450,14 +450,16 @@ class DockerDeploymentBackend(DeploymentBackend):
                 network=network,
             )
             create_kwargs = {k: v for k, v in run_kwargs.items() if k != "detach"}
+            created: DockerContainer | None = None
             try:
-                container = await asyncio.to_thread(self._client.containers.create, **create_kwargs)
+                created = await asyncio.to_thread(self._client.containers.create, **create_kwargs)
                 if config.config_files:
-                    await self._deliver_config_files(container, config.config_files)
-                await asyncio.to_thread(container.start)
-                return container, host_ports, ""
+                    await self._deliver_config_files(created, config.config_files)
+                await asyncio.to_thread(created.start)
+                return created, host_ports, ""
             except Exception as exc:
-                await self._remove_container_by_name(name)
+                if created is not None:
+                    await asyncio.to_thread(created.remove, force=True)
                 last_attempt = attempt == _PORT_CONFLICT_ATTEMPTS
                 if not host_ports or last_attempt or _PORT_CONFLICT_MARKER not in str(exc):
                     logger.exception("Failed to start container %s", name)
@@ -593,14 +595,15 @@ class DockerDeploymentBackend(DeploymentBackend):
         def _run_and_wait() -> int:
             create_kwargs = {k: v for k, v in run_kwargs.items() if k != "detach"}
             container = self._client.containers.create(**create_kwargs)
-            container.start()
-            result = container.wait(timeout=self._executor_config.docker_timeout)
-            exit_code = self._exit_code_from_wait_result(result)
             try:
-                container.remove(force=True)
-            except Exception:
-                logger.warning("Failed to remove init container %s", init_name, exc_info=True)
-            return exit_code
+                container.start()
+                result = container.wait(timeout=self._executor_config.docker_timeout)
+                return self._exit_code_from_wait_result(result)
+            finally:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    logger.warning("Failed to remove init container %s", init_name, exc_info=True)
 
         try:
             exit_code = await asyncio.to_thread(_run_and_wait)
