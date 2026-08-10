@@ -8,7 +8,7 @@ Workspace tasks
   complete the same intent with the corresponding `nemo_api` workspace operation below.
 - SDK/API operations:
   - `nemo_api(resource="workspaces", action="create", params='{"name":"...", "description":"..."}', studio_session_id="<active Studio session UUID>", workspace="<active request workspace>")`
-  - `nemo_api(resource="workspaces", action="list")`
-  - `nemo_api(resource="workspaces", action="retrieve", params='{"name":"..."}')`
+  - `nemo_api(resource="workspaces", action="list", workspace="<active request workspace>")`
+  - `nemo_api(resource="workspaces", action="retrieve", params='{"name":"..."}', workspace="<active request workspace>")`
   - `nemo_api(resource="workspaces", action="delete", params='{"name":"..."}', studio_session_id="<active Studio session UUID>", workspace="<active request workspace>")`
 - Complete all numbered requirements before stopping.

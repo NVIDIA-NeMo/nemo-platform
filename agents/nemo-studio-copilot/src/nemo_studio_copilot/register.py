@@ -208,6 +208,8 @@ def nemo_api(
             )
             if isinstance(approved_input, str):
                 return approved_input
+            if approved_input.get("workspace", workspace) != workspace:
+                return "Denied: mutation approval cannot change the request workspace"
             resource = approved_input.get("resource", resource)
             action = approved_input.get("action", action)
             approved_params = approved_input.get("params", params)
@@ -216,7 +218,6 @@ def nemo_api(
                 parsed_params = json.loads(params) if params else None
                 if parsed_params is not None and not isinstance(parsed_params, dict):
                     raise ValueError("params must decode to a JSON object")
-            workspace = approved_input.get("workspace", workspace)
             normalized_action = action.strip().lower()
         result = _call_sdk_method(_resolve_resource(_get_client(workspace), resource), normalized_action, parsed_params)
         return json.dumps(_serialize(result), indent=2, default=str)

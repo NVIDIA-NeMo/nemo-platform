@@ -16,5 +16,7 @@ for the full Run -> Gate -> Optimize loop these tasks plug into.
 - Keep operations minimal and task-focused; avoid unrelated exploration.
 - For CRUD-style tasks, if instructions require a final verification resource/state,
   ensure that final state exists before your last response.
-- Before final response, run one direct verification call that checks the required
-  end state from the instruction (for example: retrieve/list/get status).
+- Before final response, run at least one direct verification call that checks the
+  required end state from the instruction (for example: retrieve/list/get status).
+  Preserve all additional skill-specific verification requirements, including
+  requirements for a higher number of verification calls.

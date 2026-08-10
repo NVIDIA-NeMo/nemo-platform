@@ -210,6 +210,41 @@ def test_mutating_nemo_api_uses_edited_approved_input(monkeypatch: pytest.Monkey
     assert response == {"name": "approved"}
 
 
+def test_mutating_nemo_api_rejects_approved_workspace_change(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def approve(_session: str, _tool_name: str, arguments: dict[str, object], **_kwargs: object) -> dict[str, object]:
+        input_value = arguments["input"]
+        assert isinstance(input_value, dict)
+        updated_input = dict(input_value)
+        updated_input["workspace"] = "other"
+        return {"behavior": "allow", "updatedInput": updated_input}
+
+    def resource_for(workspace: str) -> SimpleNamespace:
+        return SimpleNamespace(create=lambda **_kwargs: calls.append(workspace))
+
+    monkeypatch.setattr(
+        register,
+        "_clients",
+        {
+            "default": SimpleNamespace(workspaces=resource_for("default")),
+            "other": SimpleNamespace(workspaces=resource_for("other")),
+        },
+    )
+    monkeypatch.setattr(register, "_call_studio_tool", approve)
+
+    response = register.nemo_api(
+        "workspaces",
+        "create",
+        '{"name": "demo"}',
+        studio_session_id="90a877d5-19f6-49a8-bf09-d0020ae0833a",
+        workspace="default",
+    )
+
+    assert response == "Denied: mutation approval cannot change the request workspace"
+    assert calls == []
+
+
 def test_mutating_nemo_api_validates_params_before_approval(monkeypatch: pytest.MonkeyPatch) -> None:
     approval_requested = False
 
