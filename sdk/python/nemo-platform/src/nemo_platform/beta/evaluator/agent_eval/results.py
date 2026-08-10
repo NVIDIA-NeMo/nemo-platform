@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -78,6 +78,19 @@ class AgentEvalSummary(BaseModel):
     task_count: int = Field(default=0, description="Number of tasks represented in the run.")
     trial_count: int = Field(default=0, description="Number of distinct trials scored.")
     score_count: int = Field(default=0, description="Total number of metric scores.")
+
+    @property
+    def scores_by_name(self) -> Mapping[str, AggregateScore]:
+        """Aggregates keyed by name — see :attr:`AggregatedMetricResult.scores_by_name`."""
+        return self.scores.scores_by_name
+
+    def score(self, name: str) -> AggregateScore:
+        """Return the aggregate named ``name`` — see :meth:`AggregatedMetricResult.score`.
+
+        Exists so callers needn't know the aggregates sit one level down, behind a field whose name
+        differs from the summary's own accessor by a single character.
+        """
+        return self.scores.score(name)
 
     @staticmethod
     def from_scores(

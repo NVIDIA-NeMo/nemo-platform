@@ -223,7 +223,7 @@ def test_median_matches_p50_wherever_both_are_reported() -> None:
     ]
 
     summary = AgentEvalSummary.from_scores(scores)
-    aggregate = next(s for s in summary.scores.scores if s.name == "m.score")
+    aggregate = summary.score("m.score")
 
     assert isinstance(aggregate, AggregateRangeScore)
     assert aggregate.percentiles is not None
