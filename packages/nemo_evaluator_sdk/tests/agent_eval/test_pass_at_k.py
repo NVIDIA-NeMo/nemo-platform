@@ -111,6 +111,14 @@ def test_task_pass_at_k_gated_and_uniform_across_metric_types() -> None:
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {score.name: score for score in summary.scores.scores}
 
+    assert summary.task_metric_values["t1"] == {
+        "gym_reward.reward": [1.0, 0.0],
+        "harbor_reward.reward": [1.0, 0.0],
+    }
+    assert summary.task_metric_values["t2"] == {
+        "gym_reward.reward": [1.0, 1.0],
+        "harbor_reward.reward": [1.0, 1.0],
+    }
     for metric_type in ("gym_reward", "harbor_reward"):  # uniform across runners
         assert by_name[f"{metric_type}.reward.pass@1"].mean == pytest.approx(0.75)
         assert by_name[f"{metric_type}.reward.pass@2"].mean == pytest.approx(1.0)
@@ -167,8 +175,10 @@ def test_a_failed_trial_is_a_failed_attempt_not_an_absent_one() -> None:
         _failed_score("t1", "a1", "reward", details={TRIAL_STATUS_DETAIL: "failed"}),
     ]
 
-    by_name = {s.name: s for s in AgentEvalSummary.from_scores(scores, tasks=tasks).scores.scores}
+    summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
+    by_name = {s.name: s for s in summary.scores.scores}
 
+    assert summary.task_metric_values["t1"]["reward.reward"] == [1.0, None]
     assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.5)  # 1 of 2 attempts, not 1 of 1
     assert by_name["reward.reward.pass@2"].mean == pytest.approx(1.0)
     assert by_name["reward.reward.pass@1"].nan_count == 0  # the task was measured, so nothing is missing
@@ -186,8 +196,10 @@ def test_a_metric_that_raised_leaves_the_attempt_unmeasured_rather_than_failed()
         _score("t2", "a1", "reward", "reward", 0.0),
     ]
 
-    by_name = {s.name: s for s in AgentEvalSummary.from_scores(scores, tasks=tasks).scores.scores}
+    summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
+    by_name = {s.name: s for s in summary.scores.scores}
 
+    assert summary.task_metric_values["t1"]["reward.reward"] == [1.0]
     assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.75)  # mean(1.0, 0.5), not mean(0.5, 0.5)
     # t1 drops out of pass@2 for having fewer than k attempts. That is the estimator working as defined,
     # not missing data, so it is not counted as nan.

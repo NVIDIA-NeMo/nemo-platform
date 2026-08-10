@@ -84,6 +84,25 @@ def test_persist_run_writes_bundle_relative_refs_that_survive_a_move(tmp_path: P
     assert resolved.is_dir() and resolved == moved / "evidence" / "fabric" / "r" / "000000-taskA" / "workspace"
 
 
+def test_persist_run_writes_per_task_attempt_values_to_summary(tmp_path: Path) -> None:
+    summary = AgentEvalSummary(
+        task_metric_values={
+            "task-a": {"harbor_reward.reward": [1.0, 0.0]},
+            "task-b": {"harbor_reward.reward": [1.0, None]},
+        }
+    )
+    result = AgentEvalResult(run_id="run", tasks=[], trials=[], scores=[], summary=summary)
+
+    persist_run(result, tmp_path)
+
+    payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert payload["task_metric_values"] == {
+        "task-a": {"harbor_reward.reward": [1.0, 0.0]},
+        "task-b": {"harbor_reward.reward": [1.0, None]},
+    }
+    assert AgentEvalSummary.model_validate(payload).task_metric_values == summary.task_metric_values
+
+
 def test_read_trials_rejects_evidence_ref_that_escapes_the_bundle(tmp_path: Path) -> None:
     # A copied/untrusted bundle whose ref uses `..` to escape the bundle must NOT be resolved to the
     # outside path: the rebuilt ref is accepted only when it stays inside run_dir.

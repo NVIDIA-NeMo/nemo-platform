@@ -57,7 +57,10 @@ Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/...
 
 ## Read the results
 
-`inspect_results.py` is the companion to the above: it reads a bundle and shows how to reach each kind of result — headline aggregates, `pass@k`, per-task outcomes, and the runner's own imported numbers. Its accessors (`aggregate`, `per_task_outcomes`) are written to be lifted into your own code, and everything it shows also works on the in-memory `AgentEvalResult` that `AgentEvaluator().run(...)` returns — reading a bundle just makes it runnable without a live run.
+`inspect_results.py` reads `summary.json` and shows each result layer: run aggregates from
+`summary.scores`, ordered per-task attempt values from `summary.task_metric_values`, and runner-owned
+aggregates under `runner.gym.*`. Per-task keys use `<metric_type>.<output>`; a `null` attempt is a trial
+that failed before scoring, while an empty list means the metric produced no usable measurement.
 
 No bundle is checked in; the run above produces one. Give it a stable `--output-dir` and point the reader at the same path:
 

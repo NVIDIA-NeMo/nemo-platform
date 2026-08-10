@@ -29,11 +29,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Sequence
 from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
-from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore, is_trial_failure
 from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
 
 #: Value at which an attempt counts as a pass, matching the SDK's pass@k definition (full credit).
@@ -61,34 +59,22 @@ def aggregate(summary: AgentEvalSummary, name: str) -> AggregateScore:
 
 
 def per_task_outcomes(
-    scores: Sequence[AgentEvalTaskScore],
+    summary: AgentEvalSummary,
     *,
     metric_type: str,
     output_name: str,
 ) -> dict[str, list[float | None]]:
-    """Group per-trial score values by task: ``task_id -> [value per attempt]``, ``None`` if it died.
+    """Read ordered attempt values from the summary for one metric output.
 
-    A run with ``num_repeats=R`` produces R trials per task, and the scores are a flat
-    task x trial x metric list — so answering "which tasks failed?" means grouping them yourself.
-
-    Failed trials are kept, as ``None``. Dropping them would show a task that passed once and crashed
-    once as solved, and disagrees with how the SDK computes pass@k (a dead rollout is an attempt that
-    did not pass). A failed *metric* is dropped instead: it leaves the attempt unmeasured rather than
-    unsuccessful, so counting it against the agent would turn a judge timeout into a failure.
+    ``None`` is a failed trial and therefore a failed attempt. An empty list means the task had no
+    usable measurement because its metric failed or omitted the output.
     """
-    by_task: dict[str, list[float | None]] = {}
-    for score in scores:
-        if score.metric_type != metric_type:
-            continue
-        if is_trial_failure(score):
-            by_task.setdefault(score.task_id, []).append(None)
-            continue
-        if score.status == AgentEvalScoreStatus.FAILED:
-            continue
-        for output in score.outputs:
-            if output.name == output_name and isinstance(output.value, int | float):
-                by_task.setdefault(score.task_id, []).append(float(output.value))
-    return by_task
+    key = f"{metric_type}.{output_name}"
+    return {
+        task_id: list(metric_values[key])
+        for task_id, metric_values in summary.task_metric_values.items()
+        if key in metric_values
+    }
 
 
 # --------------------------------------------------------------------------------------------------
@@ -96,19 +82,9 @@ def per_task_outcomes(
 # --------------------------------------------------------------------------------------------------
 
 
-def load_bundle(bundle: Path) -> tuple[AgentEvalSummary, list[AgentEvalTaskScore]]:
-    """Hydrate the pieces of a persisted run bundle used below.
-
-    A runner's own numbers need no separate file: they are imported into ``summary.scores`` under
-    ``runner.<name>.``, so one load covers both.
-    """
-    summary = AgentEvalSummary.model_validate(json.loads((bundle / "summary.json").read_text(encoding="utf-8")))
-    scores = [
-        AgentEvalTaskScore.model_validate(json.loads(line))
-        for line in (bundle / "scores.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    return summary, scores
+def load_bundle(bundle: Path) -> AgentEvalSummary:
+    """Load the persisted summary, including native and runner aggregates and per-task attempts."""
+    return AgentEvalSummary.model_validate(json.loads((bundle / "summary.json").read_text(encoding="utf-8")))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -146,21 +122,26 @@ def show_per_task(by_task: dict[str, list[float | None]]) -> None:
     once and crashed once reads as flaky rather than solved.
     """
     print("\nPer-task outcomes (attempt values; an attempt passes at full credit)")
-    solved = flaky = failed = 0
+    solved = flaky = failed = unmeasured = 0
     for task_id, values in sorted(by_task.items()):
-        passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
-        if passes == len(values):
-            verdict, marker = "solved", "+"
-            solved += 1
-        elif passes:
-            verdict, marker = f"flaky ({passes}/{len(values)})", "~"
-            flaky += 1
+        if not values:
+            verdict, marker = "unmeasured", "?"
+            unmeasured += 1
+            attempts = ""
         else:
-            verdict, marker = "failed", "-"
-            failed += 1
-        attempts = ", ".join("died" if value is None else f"{value:g}" for value in values)
+            passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
+            if passes == len(values):
+                verdict, marker = "solved", "+"
+                solved += 1
+            elif passes:
+                verdict, marker = f"flaky ({passes}/{len(values)})", "~"
+                flaky += 1
+            else:
+                verdict, marker = "failed", "-"
+                failed += 1
+            attempts = ", ".join("died" if value is None else f"{value:g}" for value in values)
         print(f"  {marker} {task_id[:16]}…  [{attempts}]  {verdict}")
-    print(f"\n  {solved} solved · {flaky} flaky · {failed} failed")
+    print(f"\n  {solved} solved · {flaky} flaky · {failed} failed · {unmeasured} unmeasured")
 
 
 def show_runner_aggregations(summary: AgentEvalSummary) -> None:
@@ -206,10 +187,10 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.bundle / "summary.json").exists():
         raise SystemExit(f"{args.bundle} is not a run bundle (no summary.json). Run run_gym_eval.py first.")
 
-    summary, scores = load_bundle(args.bundle)
+    summary = load_bundle(args.bundle)
 
     show_aggregates(summary)
-    by_task = per_task_outcomes(scores, metric_type=args.metric_type, output_name=args.output_name)
+    by_task = per_task_outcomes(summary, metric_type=args.metric_type, output_name=args.output_name)
     if by_task:
         show_per_task(by_task)
     show_runner_aggregations(summary)

@@ -23,7 +23,7 @@ from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, Runne
 from nemo_platform.beta.evaluator.metrics.aggregation import compute_percentiles
 from nemo_platform.beta.evaluator.metrics.protocol import MetricOutput
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
-from nemo_platform.beta.evaluator.values.protocol import BooleanValue, ContinuousScore
+from nemo_platform.beta.evaluator.values.protocol import BooleanValue, ContinuousScore, DiscreteScore
 from nemo_platform.beta.evaluator.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
@@ -35,6 +35,9 @@ from nemo_platform.beta.evaluator.values.results import (
     summary_aggregate_record,
 )
 from pydantic import BaseModel, ConfigDict, Field
+
+#: Metric-output value schemas retained in the ordered per-task attempt-value mapping.
+_TASK_METRIC_VALUE_SCHEMAS = (ContinuousScore, DiscreteScore, BooleanValue)
 
 #: Metric-output value schemas eligible for pass@k (a per-attempt "did it pass?" signal). Labels,
 #: discrete/count outputs, and free models (e.g. token measurements) are excluded.
@@ -59,7 +62,7 @@ class AgentEvalMetricOutputCoverage(BaseModel):
 
 
 class AgentEvalSummary(BaseModel):
-    """Aggregated metric and semantic-view scores, coverage, and run counts for an agent-eval run."""
+    """Aggregated scores, coverage, per-task attempt values, and run counts for an agent-eval run."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -74,6 +77,16 @@ class AgentEvalSummary(BaseModel):
     metric_coverage: dict[str, dict[str, AgentEvalMetricOutputCoverage]] = Field(
         default_factory=dict,
         description="Per-metric, per-output coverage counts (total/scored/failed/missing).",
+    )
+    task_metric_values: dict[str, dict[str, list[float | None]]] = Field(
+        default_factory=dict,
+        description=(
+            "Per task, the values each '<metric_type>.<output>' measured, in trial order. A failed "
+            "trial is None: an attempt that did not pass. An unmeasured attempt (metric failed, output "
+            "absent) has no entry, so each key's list is independent and positions align within a key, "
+            "not across keys. An empty list means nothing was measured, including a task that produced "
+            "no trial."
+        ),
     )
     task_count: int = Field(default=0, description="Number of tasks represented in the run.")
     trial_count: int = Field(default=0, description="Number of distinct trials scored.")
@@ -99,15 +112,22 @@ class AgentEvalSummary(BaseModel):
         tasks: Sequence[AgentEvalTask] | None = None,
         extra_scores: Sequence[AggregateScore] = (),
     ) -> AgentEvalSummary:
-        """Build aggregated scores and coverage for a set of metric scores.
+        """Build aggregated scores, task values, and coverage for a set of metric scores.
 
         ``extra_scores`` are already-aggregated scores contributed by the runner (namespaced
         ``runner.<name>.``), merged in so a backend's own figures are addressable the same way as ours.
         """
         task_list = list(tasks) if tasks is not None else None
+        task_metric_values = _task_metric_values(scores, task_list)
         return AgentEvalSummary(
-            scores=_aggregate_scores(scores, task_list, extra_scores),
+            scores=_aggregate_scores(
+                scores,
+                task_list,
+                extra_scores,
+                task_metric_values=task_metric_values,
+            ),
             metric_coverage=_metric_coverage(scores, task_list),
+            task_metric_values=task_metric_values,
             task_count=len(task_list) if task_list is not None else len({score.task_id for score in scores}),
             trial_count=len({score.trial_id for score in scores}),
             score_count=len(scores),
@@ -455,6 +475,8 @@ def _aggregate_scores(
     scores: Sequence[AgentEvalTaskScore],
     tasks: Sequence[AgentEvalTask] | None,
     extra_scores: Sequence[AggregateScore] = (),
+    *,
+    task_metric_values: dict[str, dict[str, list[float | None]]] | None = None,
 ) -> AggregatedMetricResult:
     """Aggregate per-metric-output, per-semantic-view, and task-level pass@k values into range scores.
 
@@ -487,7 +509,8 @@ def _aggregate_scores(
     for view_name, (values, total) in sorted(_semantic_view_values(scores, tasks).items()):
         aggregated.append(_aggregate_range_score(f"view.{view_name}", values, total))
 
-    aggregated.extend(_task_pass_at_k_scores(scores, tasks))
+    attempt_values = task_metric_values if task_metric_values is not None else _task_metric_values(scores, tasks)
+    aggregated.extend(_task_pass_at_k_scores(attempt_values, tasks))
     aggregated.extend(extra_scores)
 
     return AggregatedMetricResult(scores=aggregated)
@@ -526,8 +549,94 @@ def _scorelike_outputs(tasks: Sequence[AgentEvalTask] | None) -> set[tuple[str, 
     return scorelike
 
 
-def _task_pass_at_k_scores(
+def _task_metric_values(
     scores: Sequence[AgentEvalTaskScore],
+    tasks: Sequence[AgentEvalTask] | None,
+) -> dict[str, dict[str, list[float | None]]]:
+    """Ordered per-attempt values per task, keyed ``<metric_type>.<output>``.
+
+    ``task-a`` declares ``reward.score`` (continuous), ``steps.count`` (discrete) and
+    ``usage.prompt_tokens`` (a free model) and runs four trials::
+
+        in   t0  reward 1.0        steps 5  usage 1200
+             t1  reward <raised>   steps 9  usage 1300   # the judge died, not the agent
+             t2  <trial died>                            # every metric fails as a trial failure
+             t3  reward 0.0        steps 7  usage 1100
+
+        out  {"task-a": {"reward.score": [1.0, None, 0.0],
+                         "steps.count":  [5.0, 9.0, None, 7.0]}}
+
+    ``usage.prompt_tokens`` is absent because its declared schema is not in
+    :data:`_TASK_METRIC_VALUE_SCHEMAS`; t1 is missing from ``reward.score`` but present in
+    ``steps.count``; t2 is ``None`` in both.
+
+    Which keys a task gets:
+
+    - declared by its metric spec under :data:`_TASK_METRIC_VALUE_SCHEMAS` -> kept
+    - declared under any other schema -> dropped, even when the emitted value is numeric, so a
+      ``MetricOutputSpec.model("prompt_tokens", TokenCount)`` measurement never becomes a key
+    - undeclared, but some score emitted a numeric value for it -> kept
+    - ``tasks is None`` -> no specs to filter against, so every numeric output observed is kept
+
+    What each score contributes to its key, in trial order:
+
+    - failed trial (:func:`is_trial_failure`) -> ``None``, an attempt that did not pass
+    - failed metric, or the output absent -> no entry; the attempt is unmeasured, not unsuccessful
+    - otherwise -> the numeric value
+
+    pass@k needs that asymmetry, and it is why a list is indexed by surviving measurement rather than
+    by attempt: above, index 1 is t2 under ``reward.score`` but t1 under ``steps.count``. Compare
+    positions within a key, never across keys.
+    """
+    output_keys: dict[str, set[tuple[str, str]]] = {}
+    # Declared under a schema this mapping does not retain. Tracked so an emitted numeric value cannot
+    # add back what the spec filter just excluded.
+    excluded: set[tuple[str, str]] = set()
+    if tasks is not None:
+        for task in tasks:
+            task_keys = output_keys.setdefault(task.id, set())
+            for metric in task.metrics:
+                metric_type = metric_type_name(metric)
+                for spec in metric.output_spec():
+                    if issubclass(spec.value_schema, _TASK_METRIC_VALUE_SCHEMAS):
+                        task_keys.add((metric_type, spec.name))
+                    else:
+                        excluded.add((metric_type, spec.name))
+
+    scores_by_task_metric: dict[tuple[str, str], list[AgentEvalTaskScore]] = {}
+    for score in scores:
+        scores_by_task_metric.setdefault((score.task_id, score.metric_type), []).append(score)
+        task_keys = output_keys.setdefault(score.task_id, set())
+        if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
+            continue
+        for output in score.outputs:
+            if (score.metric_type, output.name) in excluded:
+                continue
+            if _semantic_value(output) is not None:
+                task_keys.add((score.metric_type, output.name))
+
+    by_task: dict[str, dict[str, list[float | None]]] = {}
+    for task_id, keys in output_keys.items():
+        task_values: dict[str, list[float | None]] = {}
+        for metric_type, output_name in sorted(keys):
+            values: list[float | None] = []
+            for score in scores_by_task_metric.get((task_id, metric_type), []):
+                if is_trial_failure(score):
+                    values.append(None)
+                    continue
+                if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
+                    continue
+                output = _score_output(score, output_name)
+                value = _semantic_value(output) if output is not None else None
+                if value is not None:
+                    values.append(value)
+            task_values[f"{metric_type}.{output_name}"] = values
+        by_task[task_id] = task_values
+    return by_task
+
+
+def _task_pass_at_k_scores(
+    task_metric_values: dict[str, dict[str, list[float | None]]],
     tasks: Sequence[AgentEvalTask] | None,
 ) -> list[AggregateScore]:
     """Task-level pass@k over the R trials per task, aggregated across tasks (uniform for any runner).
@@ -544,50 +653,39 @@ def _task_pass_at_k_scores(
     all drop out of the estimate and are reported as ``nan_count``, uniform across ``k``, so a shrinking
     denominator is never silent. (Tasks excluded from a given ``k`` merely for having fewer than ``k``
     attempts are *not* counted there — that is the estimator working as defined, not missing data.)
+
+    "No usable attempt" includes a task that was never scored at all: a runner that returns no trial
+    for a requested task (Harbor logs a warning and carries on) leaves it declaring the metric with an
+    empty attempt list, and it lands in ``nan_count`` like any other unmeasured task. That is
+    deliberate — it is the same missing coverage whether the trial died or was never produced, and
+    excluding it would report pass@k over a denominator quietly smaller than the task set asked for.
     """
     scorelike = _scorelike_outputs(tasks)
     if not scorelike:
         return []
     aggregated: list[AggregateScore] = []
     for metric_type, output_name in sorted(scorelike):
-        attempts_and_passes: dict[str, list[int]] = {}  # task_id -> [n_attempts, n_passes]
-        tasks_seen: set[str] = set()
-        for score in scores:
-            if score.metric_type != metric_type:
-                continue
-            tasks_seen.add(score.task_id)
-            if is_trial_failure(score):
-                # The agent produced nothing to score. That is an attempt that did not pass, not an
-                # attempt that did not happen -- dropping it would report pass@1 = 1.0 for a run whose
-                # other rollout died, and make pass@2 vanish along with the attempt that justified it.
-                attempts_and_passes.setdefault(score.task_id, [0, 0])[0] += 1
-                continue
-            if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
-                # The metric raised, so whether this attempt passed is unknown. Charging it to the agent
-                # would let a judge timeout read as a task the agent failed; it lands in nan_count.
-                continue
-            output = _score_output(score, output_name)
-            value = _semantic_value(output) if output is not None else None
-            if value is None:
-                continue
-            counts = attempts_and_passes.setdefault(score.task_id, [0, 0])
-            counts[0] += 1
-            if value >= _PASS_VALUE:
-                counts[1] += 1
-        if not attempts_and_passes:
+        key = f"{metric_type}.{output_name}"
+        values_by_task = [outputs[key] for outputs in task_metric_values.values() if key in outputs]
+        measured = [values for values in values_by_task if values]
+        if not measured:
             continue
-        # Tasks that were scored for this metric but yielded no usable attempt whatsoever. Constant
-        # across k, so pass@1 and pass@8 agree on how much of the task set went unmeasured.
-        unmeasured = len(tasks_seen - set(attempts_and_passes))
-        max_n = max(n for n, _ in attempts_and_passes.values())
+        # Empty attempt lists stay in nan_count (via total); for each k, mean the unbiased
+        # estimator over tasks with n >= k (None / < full credit do not count as passes).
+        unmeasured = sum(not values for values in values_by_task)
+        max_n = max(len(values) for values in measured)
         for k in range(1, max_n + 1):
-            per_task = [_pass_at_k(n, c, k) for n, c in attempts_and_passes.values() if n >= k]
-            if per_task:
-                aggregated.append(
-                    _aggregate_range_score(
-                        f"{metric_type}.{output_name}.pass@{k}", per_task, len(per_task) + unmeasured
-                    )
+            per_task = [
+                _pass_at_k(
+                    len(values),
+                    sum(value is not None and value >= _PASS_VALUE for value in values),
+                    k,
                 )
+                for values in measured
+                if len(values) >= k
+            ]
+            if per_task:
+                aggregated.append(_aggregate_range_score(f"{key}.pass@{k}", per_task, len(per_task) + unmeasured))
     return aggregated
 
 
