@@ -1788,25 +1788,25 @@ mypy-extensions==1.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
 nemo-anonymizer==0.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:342cba7427df553afc214e85bd2ee947328ae60f60adaa75dad2e09096c7ba4d
     # via nemo-anonymizer-plugin
-nemo-fabric @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   nemo-agents-plugin
     #   nemo-evaluator-sdk
-nemo-fabric-adapters-claude @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2#subdirectory=adapters/claude ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-claude @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/claude ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-fabric
-nemo-fabric-adapters-codex @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2#subdirectory=adapters/codex ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-codex @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/codex ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-fabric
-nemo-fabric-adapters-common @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2#subdirectory=adapters/common ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-common @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/common ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   nemo-fabric-adapters-claude
     #   nemo-fabric-adapters-codex
     #   nemo-fabric-adapters-deepagents
     #   nemo-fabric-adapters-hermes
-nemo-fabric-adapters-deepagents @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2#subdirectory=adapters/deepagents ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-deepagents @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/deepagents ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-fabric
-nemo-fabric-adapters-hermes @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2#subdirectory=adapters/hermes ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-adapters-hermes @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=adapters/hermes ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-agents-plugin
-nemo-fabric-runtime @ git+https://github.com/NVIDIA/NeMo-Fabric.git@55450ffb7c16f895316c5acc91fc23b36f4427b2#subdirectory=python ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+nemo-fabric-runtime @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0#subdirectory=python ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-fabric
 nemo-relay==0.6.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:849daa9e45158ac581e54506e0fcc7a24f557d1ed06dbdc074f5de7a00393cbc \

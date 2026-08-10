@@ -22,7 +22,7 @@ from nemo_platform.cli.commands.skills.agents.claude import ClaudeInstaller
 from nemo_platform.cli.commands.skills.agents.codex import CodexInstaller
 from nemo_platform.cli.commands.skills.agents.cursor import CursorInstaller
 from nemo_platform.cli.commands.skills.agents.opencode import OpenCodeInstaller
-from nemo_platform.cli.commands.skills.base import Skill
+from nemo_platform.cli.commands.skills.base import Skill, validate_skill_name
 from nemo_platform.cli.commands.skills.installer import BaseAgentInstaller
 
 logger = logging.getLogger(__name__)
@@ -107,12 +107,24 @@ def _load_skill(entry: Path, source_plugin: str | None = None, source_dist: str 
         raise ValueError(f"Invalid frontmatter in {skill_file}: {e}") from e
     if not isinstance(metadata, dict):
         raise ValueError(f"Invalid frontmatter in {skill_file}: expected a mapping, got {type(metadata).__name__}")
+    preconditions = metadata.get("preconditions", [])
+    if preconditions is None:
+        preconditions = []
+    if isinstance(preconditions, str):
+        preconditions = [preconditions]
+    if not isinstance(preconditions, list) or not all(isinstance(item, str) for item in preconditions):
+        raise ValueError(f"Invalid frontmatter in {skill_file}: preconditions must be a list of strings")
+    skill_name = metadata.get("name", entry.name)
+    if not isinstance(skill_name, str):
+        raise ValueError(f"Invalid frontmatter in {skill_file}: name must be a string")
+    validate_skill_name(skill_name)
     return Skill(
-        name=metadata.get("name", entry.name),
+        name=skill_name,
         description=metadata.get("description", ""),
         version=str(metadata.get("version", "0.1")),
         content=body,
         raw=raw,
+        preconditions=preconditions,
         source_dir=entry,
         source_plugin=source_plugin,
         source_dist=source_dist,

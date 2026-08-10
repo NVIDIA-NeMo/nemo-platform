@@ -485,7 +485,7 @@ class FabricContainerRuntime:
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         # Evidence lands under the run's output dir (like every other runtime); the container's own
         # working state lives at /out inside the sandbox and is downloaded here.
-        root = (config.output_dir or Path.cwd()) / "evidence" / "fabric_container"
+        root = (config.work_dir or Path.cwd()) / "evidence" / "fabric_container"
         return root / _common.task_subdir_name(index, task.id)
 
 

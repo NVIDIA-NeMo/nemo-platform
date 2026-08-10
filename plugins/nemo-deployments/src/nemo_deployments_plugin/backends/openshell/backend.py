@@ -134,6 +134,29 @@ exit {_SERVE_PENDING_EXIT}
 """
 _LOG_TAIL_LINES = 20
 
+# Timeout for the default (no-declared-probe) loopback reachability probe. A declared
+# readinessProbe uses its own timeout_seconds instead.
+_DEFAULT_READINESS_TIMEOUT_SECONDS = 3
+
+# Headroom added to a network probe's own timeout when bounding the ExecSandbox RPC, so
+# the RPC outlives the in-sandbox python timeout and captures its (non-zero) exit rather
+# than being cut off first.
+_READINESS_EXEC_TIMEOUT_MARGIN_SECONDS = 5
+
+# Loopback readiness probe programs, run by the sandbox's python. urlopen raises on a
+# refused connection or an HTTP status >= 400 (so a still-starting 503 reads as not
+# ready); create_connection raises until the socket is actually bound. The HTTP probe
+# uses an unverified TLS context so an https readinessProbe against a loopback/self-signed
+# cert is not rejected on verification (matching Kubernetes httpGet HTTPS probe semantics);
+# the context is ignored for plain http, so one program covers both schemes.
+_HTTP_PROBE_PROGRAM = (
+    "import sys, ssl, urllib.request; "
+    "urllib.request.urlopen(sys.argv[1], timeout=float(sys.argv[2]), context=ssl._create_unverified_context())"
+)
+_TCP_PROBE_PROGRAM = (
+    "import sys, socket; socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=float(sys.argv[3])).close()"
+)
+
 # Cached on first status read; needs the proto enums so it cannot be built at import
 # time (see _ensure_openshell). None until built.
 _PHASE_TO_STATUS: dict[int, DeploymentStatus] | None = None
@@ -544,6 +567,13 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         if state == "pending":
             return BackendStatusUpdate(status="STARTING", status_message="Serve launched; awaiting serve pid")
 
+        # A live pid has bound its pidfile, not necessarily its socket. Do not expose
+        # (which reads as READY) until the workload actually accepts a connection, so a
+        # caller trusting READY does not 502 against a process still starting up.
+        pending = await self._readiness_pending(sandbox_id, container)
+        if pending is not None:
+            return pending
+
         # Serve launched but ports not yet exposed: expose them.
         try:
             endpoints = await self._expose_ports(sandbox_nm, container)
@@ -658,16 +688,21 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         return response.sandbox
 
     async def _exec_detached(
-        self, sandbox_id: str, command: list[str], *, stdin: bytes | None = None
+        self, sandbox_id: str, command: list[str], *, timeout: int | None = None, stdin: bytes | None = None
     ) -> tuple[int | None, str]:
-        """Run a command, draining its event stream. Returns (exit_code, combined output).
+        """Run *command* to completion, returning (exit_code, stdout+stderr merged);
+        ``exit_code`` is None when the stream carried no exit event.
+
+        *timeout* bounds both the RPC and the sandbox-side command, defaulting to the
+        executor's control-plane ``request_timeout_seconds``; readiness probes pass a much
+        shorter bound so a hung probe cannot stall the serial reconcile loop.
 
         When *stdin* is given it is streamed to the command as its standard input. The
         ExecSandboxRequest carries a first-class ``stdin`` bytes field, so config-file
         content is piped verbatim into ``cat``: the bytes never touch the argv nor the
         (single-line-only, size-capped) sandbox environment.
         """
-        timeout = self._executor_config.request_timeout_seconds
+        timeout = timeout if timeout is not None else self._executor_config.request_timeout_seconds
         request = pb.ExecSandboxRequest(sandbox_id=sandbox_id, command=command, timeout_seconds=timeout)
         if stdin is not None:
             request.stdin = stdin
@@ -733,6 +768,33 @@ class OpenShellDeploymentBackend(DeploymentBackend):
                 )
         return None
 
+    async def _readiness_pending(self, sandbox_id: str, container: Container) -> BackendStatusUpdate | None:
+        """A STARTING update while the workload is not yet reachable, else None.
+
+        Probed from inside the sandbox against loopback, so readiness does not depend on
+        the gateway route or its TLS. Because a port is exposed only once this passes,
+        the fast path's "endpoints exist -> READY" stays sticky and never re-probes, so a
+        momentarily refusing port cannot flap a serving deployment. A workload that never
+        becomes reachable stays STARTING; the reconciler's starting-timeout is the
+        progress deadline that eventually fails it.
+        """
+        probe_command = _readiness_probe_command(container)
+        if probe_command is None:
+            return None
+        command, description, exec_timeout = probe_command
+        exit_code, _ = await self._exec_detached(sandbox_id, command, timeout=exec_timeout)
+        # Readiness fails closed (liveness fails open): the gate admits only positive
+        # proof of reachability, so a flaky probe never exposes an unready workload.
+        #   - exit 0        -> reachable; expose the port and read READY
+        #   - nonzero       -> not reachable yet; stay STARTING
+        #   - no exit event -> undecidable; stay STARTING and re-probe next poll (the port
+        #                      is not exposed while pending, so this self-heals)
+        # A workload that can never be probed never claims READY -- the contract this gate
+        # keeps. Timeouts and RPC errors surface as UNKNOWN upstream, not as a None exit.
+        if exit_code == 0:
+            return None
+        return BackendStatusUpdate(status="STARTING", status_message=f"Awaiting readiness: {description}")
+
     async def _list_endpoints(self, sandbox_nm: str) -> list[Endpoint]:
         """Return the sandbox's currently exposed services as endpoints."""
         try:
@@ -754,6 +816,87 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             response = await self._unary(self._stub.ExposeService, request)
             endpoints.append(Endpoint(name=service, url=response.url, protocol="http"))
         return endpoints
+
+
+def _resolve_probe_port(port: int | str, container: Container) -> int | None:
+    """Resolve a probe port (a number, or a container-port name) to a number, or None."""
+    if isinstance(port, int):
+        return port
+    for declared in container.ports:
+        if declared.name == port:
+            return declared.container_port
+    return None
+
+
+def _default_probe_port(container: Container) -> int | None:
+    """The first TCP container port, used for the default reachability probe.
+
+    UDP ports are skipped: a TCP connect against a UDP listener never succeeds and would
+    wedge a healthy workload in STARTING until the progress deadline.
+    """
+    for declared in container.ports:
+        if declared.protocol == "TCP":
+            return declared.container_port
+    return None
+
+
+def _loopback_probe_script(program: str, *args: str) -> str:
+    """Wrap a python probe *program* so it runs against the sandbox's own python.
+
+    Selects ``python3`` then ``python`` off PATH and runs *program* with *args*, exiting
+    0 when the probe connects and nonzero when it does not. If neither interpreter is on
+    PATH the probe cannot run, so it exits 0 to preserve the prior expose-on-alive
+    behaviour rather than wedging a workload in STARTING until the progress deadline.
+    """
+    quoted_args = " ".join(shlex.quote(arg) for arg in args)
+    return (
+        "if command -v python3 >/dev/null 2>&1; then _py=python3; "
+        "elif command -v python >/dev/null 2>&1; then _py=python; "
+        "else exit 0; fi; "
+        f'"$_py" -c {shlex.quote(program)} {quoted_args}'
+    )
+
+
+def _readiness_probe_command(container: Container) -> tuple[list[str], str, int] | None:
+    """The in-sandbox probe: (command, description, exec_timeout_seconds), or None.
+
+    Succeeds (exit 0) once the workload is reachable. Honours a declared readinessProbe
+    (exec/httpGet/tcpSocket); with no probe declared, falls back to a TCP connect on the
+    first TCP container port. Returns None when there is nothing to probe (no declared
+    probe and no TCP port), meaning "treat as ready" -- a portless (or UDP-only) workload
+    has no TCP socket a caller could reach anyway.
+
+    ``exec_timeout_seconds`` bounds the ExecSandbox RPC so a hung probe cannot stall the
+    serial reconcile loop: an exec probe is bounded by its own ``timeoutSeconds``; a
+    network probe self-times in python, so the RPC is given that timeout plus headroom.
+    """
+    probe = container.readiness_probe
+    timeout = probe.timeout_seconds if probe is not None else _DEFAULT_READINESS_TIMEOUT_SECONDS
+    network_exec_timeout = timeout + _READINESS_EXEC_TIMEOUT_MARGIN_SECONDS
+
+    if probe is not None and probe.exec_action is not None and probe.exec_action.command:
+        return list(probe.exec_action.command), "exec readiness probe", timeout
+
+    # A declared probe naming a port that does not resolve falls back to the first TCP
+    # port rather than skipping the gate, so a misconfigured probe cannot silently
+    # re-open the bind race.
+    if probe is not None and probe.http_get is not None:
+        port = _resolve_probe_port(probe.http_get.port, container) or _default_probe_port(container)
+        if port is None:
+            return None
+        path = probe.http_get.path if probe.http_get.path.startswith("/") else f"/{probe.http_get.path}"
+        url = f"{probe.http_get.scheme.lower()}://127.0.0.1:{port}{path}"
+        script = _loopback_probe_script(_HTTP_PROBE_PROGRAM, url, str(timeout))
+        return ["/bin/sh", "-c", script], f"httpGet {url}", network_exec_timeout
+
+    if probe is not None and probe.tcp_socket is not None:
+        port = _resolve_probe_port(probe.tcp_socket.port, container) or _default_probe_port(container)
+    else:
+        port = _default_probe_port(container)
+    if port is None:
+        return None
+    script = _loopback_probe_script(_TCP_PROBE_PROGRAM, "127.0.0.1", str(port), str(timeout))
+    return ["/bin/sh", "-c", script], f"tcp 127.0.0.1:{port}", network_exec_timeout
 
 
 def _sandbox_name(workspace: str, name: str) -> str:

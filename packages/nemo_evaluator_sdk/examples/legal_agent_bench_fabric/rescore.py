@@ -93,13 +93,15 @@ async def _main(args: argparse.Namespace) -> None:
         flush=True,
     )
 
-    # The SDK's imported-trials path: no agent runs — it just scores the stored trials with our metric and
-    # writes a full bundle (run.json / trials.jsonl / scores.jsonl / summary.json / report.html).
+    # The SDK's imported-trials path: no agent runs — it just scores the stored trials with our metric.
     result = await AgentEvaluator().run(
         tasks=tasks,
         trials=trials,
-        config=AgentEvalRunConfig(output_dir=output_dir, parallelism=args.parallelism),
+        config=AgentEvalRunConfig(work_dir=output_dir, parallelism=args.parallelism),
     )
+    # Storing is explicit: writes the full bundle (run.json / trials.jsonl / scores.jsonl /
+    # summary.json / report.html).
+    result.persist()
 
     print(f"{'task (area)':30s} {'original':>10s} {'rescored':>10s}")
     print("-" * 54)

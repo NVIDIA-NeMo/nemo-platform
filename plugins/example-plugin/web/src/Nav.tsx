@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { pluginPath } from './paths';
 import type { PluginNavGroup } from './types';
 
 /**
@@ -18,19 +19,25 @@ export const navItems = (workspaceId: string): PluginNavGroup[] => [
         id: 'example-overview',
         iconName: 'flask-conical',
         label: 'Overview',
-        href: `/workspaces/${workspaceId}/plugin/example/overview`,
+        href: pluginPath(workspaceId, 'overview'),
       },
       {
         id: 'example-auth',
         iconName: 'key-round',
         label: 'Auth',
-        href: `/workspaces/${workspaceId}/plugin/example/auth`,
+        href: pluginPath(workspaceId, 'auth'),
       },
       {
         id: 'example-workspace',
         iconName: 'building-2',
         label: 'Workspace',
-        href: `/workspaces/${workspaceId}/plugin/example/workspace`,
+        href: pluginPath(workspaceId, 'workspace'),
+      },
+      {
+        id: 'example-shared-ui',
+        iconName: 'table',
+        label: 'Shared UI',
+        href: pluginPath(workspaceId, 'shared-ui'),
       },
     ],
   },

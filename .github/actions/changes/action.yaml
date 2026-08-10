@@ -73,6 +73,15 @@ runs:
           openapi:
             - 'openapi/**'
             - 'plugins/*/openapi/**'
+            - 'plugins/*/src/**'
+            - 'plugins/*/pyproject.toml'
+            - 'packages/nmp_common/src/nmp_common/api/**'
+            - 'packages/nmp_common/src/nmp_common/datamodel/**'
+            - 'packages/nemo_platform_plugin/src/**'
+            - 'packages/nemo_evaluator_sdk/src/**'
+            - 'script/generate_openapi_spec.py'
+            - 'script/generate-openapi-spec.sh'
+            - 'script/openapi_helper/**'
           tests:
             - 'tests/**'
             - 'pytest.ini'

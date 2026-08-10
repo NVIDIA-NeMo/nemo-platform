@@ -13,6 +13,9 @@ not-for:
   - nemo-setup (use to install or start the platform)
   - nemo-status (use for read-only health)
   - nemo-skill-selection (use for dispatch when intent is unclear)
+preconditions:
+  - nemo_cli_available
+  - user_confirmation_required
 compatibility: nemo-platform >= 0.1.0; uses `nemo services stop`, Docker only to remove an Intake-managed local ClickHouse container before a data wipe, and a targeted `rm -rf` of the platform's data directory (default `~/.local/share/nemo`, overridable via `$NMP_DATA_DIR`); no `pkill`, no `rm` outside the chosen data dir or the working folder; idempotent (re-running after platform is already stopped is a no-op).
 maturity: active
 license: Apache-2.0

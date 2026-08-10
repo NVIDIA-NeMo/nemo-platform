@@ -281,6 +281,15 @@ def _write_skill_dir(root: Path, name: str, body: str = "# body\n") -> Path:
     return skill_dir
 
 
+def test_load_skill_rejects_path_like_frontmatter_name(tmp_path: Path):
+    skill_dir = tmp_path / "safe-dir"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("---\nname: ../escape\ndescription: t\n---\n# body\n")
+
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        _load_skill(skill_dir)
+
+
 def _fake_provider_ep(name: str, dist_name: str, path: Path) -> _FakeEntryPoint:
     return _FakeEntryPoint(
         name=name,

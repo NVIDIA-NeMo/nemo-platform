@@ -32,7 +32,7 @@ from pathlib import Path
 
 from nemo_evaluator_sdk import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, BundleLocation
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexDockerCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentTaskRunner
@@ -108,8 +108,12 @@ async def evaluate(
     output_dir: str | Path | None = None,
     runtime: AgentTaskRunner | None = None,
     write_dashboard: bool = True,
-) -> AgentEvalResult:
-    """Run one Docker Codex task and score its host-readable workspace evidence."""
+) -> tuple[AgentEvalResult, BundleLocation]:
+    """Run one Docker Codex task, score its workspace evidence, and store the run.
+
+    Returns the result and where it was written: ``run`` itself no longer persists, so storing is an
+    explicit step here.
+    """
     resolved_output_dir = Path(output_dir).expanduser() if output_dir is not None else _new_output_dir()
     target = runtime or _docker_runtime(resolved_output_dir)
 
@@ -127,21 +131,21 @@ async def evaluate(
         metrics=[WorkspaceArtifactMetric()],
     )
 
-    return await AgentEvaluator().run(
+    result = await AgentEvaluator().run(
         tasks=[task],
         target=target,
         config=AgentEvalRunConfig(
-            output_dir=resolved_output_dir,
+            work_dir=resolved_output_dir,
             parallelism=1,
-            write_dashboard=write_dashboard,
             labels={"scenario": "codex-docker-evidence-sanity"},
         ),
     )
+    return result, result.persist(write_dashboard=write_dashboard)
 
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-    result = await evaluate()
+    result, location = await evaluate()
 
     trial = result.trials[0]
     if trial.output is None or trial.evidence is None:
@@ -156,7 +160,7 @@ async def main() -> None:
     print(f"artifact contents: {artifact.read_text(encoding='utf-8').strip()}")
     print(f"workspace_artifact.output_matches: {scores['workspace_artifact.output_matches']}")
     print(f"workspace_artifact.artifact_matches: {scores['workspace_artifact.artifact_matches']}")
-    print(f"run bundle: {result.output_dir}")
+    print(f"run bundle: {location.output_dir}")
 
 
 if __name__ == "__main__":

@@ -65,6 +65,7 @@ const VENDOR_IMPORT_MAP: Record<string, string> = {
   'react-router': 'react-router.js',
   '@nvidia/foundations-react-core': 'foundations.js',
   '@tanstack/react-query': 'react-query.js',
+  '@nemo/common': 'common.js',
 };
 
 // Virtual modules have no filesystem location. Rolldown's resolver falls
@@ -78,6 +79,50 @@ const virtualShimPlugin = (shims: Record<string, string>): RolldownPlugin => ({
   },
   load(id) {
     return shims[id] ?? null;
+  },
+});
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+
+// The raw rolldown vendor build doesn't read tsconfig paths, so map by hand.
+const WORKSPACE_ALIASES: Record<string, string> = {
+  '@nemo/common': path.resolve(configDir, '../common'),
+  '@nemo/sdk': path.resolve(configDir, '../sdk'),
+};
+
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+
+const resolveSourceFile = (base: string): string | null => {
+  if (fs.existsSync(base) && fs.statSync(base).isFile()) return base;
+  for (const ext of SOURCE_EXTENSIONS) {
+    if (fs.existsSync(base + ext)) return base + ext;
+  }
+  for (const ext of SOURCE_EXTENSIONS) {
+    const indexFile = path.join(base, `index${ext}`);
+    if (fs.existsSync(indexFile)) return indexFile;
+  }
+  return null;
+};
+
+const workspaceSourcePlugin = (): RolldownPlugin => ({
+  name: 'workspace-source',
+  resolveId(id, importer) {
+    // Studio already bundles these same stylesheets through its own graph.
+    if (id.endsWith('.css')) return { id: 'virtual:empty-css', external: false };
+    const alias = Object.keys(WORKSPACE_ALIASES).find(
+      (name) => id === name || id.startsWith(`${name}/`)
+    );
+    if (alias) {
+      const rest = id.slice(alias.length).replace(/^\//, '');
+      return resolveSourceFile(path.join(WORKSPACE_ALIASES[alias], rest));
+    }
+    if (importer && (id.startsWith('./') || id.startsWith('../'))) {
+      return resolveSourceFile(path.resolve(path.dirname(importer), id));
+    }
+    return null;
+  },
+  load(id) {
+    return id === 'virtual:empty-css' ? '' : null;
   },
 });
 
@@ -163,6 +208,7 @@ async function buildVendorBundles(
     // (no CJS named-reexport introspection needed as with react/react-dom).
     'virtual:foundations': "export * from '@nvidia/foundations-react-core';",
     'virtual:react-query': "export * from '@tanstack/react-query';",
+    'virtual:common': "export * from '@nemo/common/src/plugin';",
   };
 
   const entries: Array<{
@@ -170,6 +216,7 @@ async function buildVendorBundles(
     outfile: string;
     external: string[];
     banner?: string;
+    plugins?: RolldownPlugin[];
   }> = [
     { entry: 'virtual:react', outfile: 'react.js', external: [] },
     {
@@ -193,12 +240,19 @@ async function buildVendorBundles(
       external: ['react'],
       banner: buildRequireShim(['react']),
     },
+    {
+      entry: 'virtual:common',
+      outfile: 'common.js',
+      external: [...VENDOR_EXTERNALS],
+      banner: buildRequireShim(VENDOR_EXTERNALS),
+      plugins: [workspaceSourcePlugin()],
+    },
   ];
 
   fs.rmSync(outdir, { recursive: true, force: true });
   fs.mkdirSync(outdir, { recursive: true });
   await Promise.all(
-    entries.map(({ entry, outfile, external, banner }) =>
+    entries.map(({ entry, outfile, external, banner, plugins = [] }) =>
       rolldownBuild({
         input: entry,
         cwd: projectRoot,
@@ -209,7 +263,7 @@ async function buildVendorBundles(
           define: { 'process.env.NODE_ENV': dev ? '"development"' : '"production"' },
         },
         external,
-        plugins: [virtualShimPlugin(shims)],
+        plugins: [virtualShimPlugin(shims), ...plugins],
         output: {
           file: path.resolve(outdir, outfile),
           format: 'esm',
@@ -319,7 +373,6 @@ const isCI = Boolean(process.env.CI);
 const isProd = process.env.NODE_ENV === 'production';
 const isTest = Boolean(process.env.VITEST);
 
-const configDir = path.dirname(fileURLToPath(import.meta.url));
 const commonPackageDir = path.resolve(configDir, '../common');
 const licenseFileNames = [
   'LICENSE',

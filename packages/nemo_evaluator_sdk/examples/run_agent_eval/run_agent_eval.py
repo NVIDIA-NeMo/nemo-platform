@@ -159,9 +159,9 @@ def _print_result(result: AgentEvalResult) -> None:
         if score.mean is not None:
             print(f"  {score.name}: mean={score.mean:.3f}")
     _print_measurements(result)
-    if result.output_dir is not None:
-        print(f"output_dir: {result.output_dir}")
-        print(f"gate: {result.output_dir / 'gate.json'}")
+    if result.work_dir is not None:
+        print(f"work_dir: {result.work_dir}")
+        print(f"gate: {result.work_dir / 'gate.json'}")
 
 
 def _print_measurements(result: AgentEvalResult) -> None:

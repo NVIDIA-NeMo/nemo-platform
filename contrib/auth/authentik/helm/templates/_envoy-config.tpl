@@ -257,6 +257,16 @@ static_resources:
     - name: nemo
       connect_timeout: 5s
       type: LOGICAL_DNS
+      # Envoy's default upstream HTTP idle timeout is 1h. Keep this below the
+      # API keep-alive timeout so stale pooled API connections are retired
+      # before the backend closes them.
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          common_http_protocol_options:
+            idle_timeout: {{ .Values.envoyProxy.timeouts.upstreamIdle | quote }}
+          explicit_http_config:
+            http_protocol_options: {}
       load_assignment:
         cluster_name: nemo
         endpoints:
