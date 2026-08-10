@@ -10,6 +10,7 @@
 from nmp.rl.schemas.job import (
     DPOTraining,
     GRPOTraining,
+    LoRAParams,
     OutputRequest,
     OutputResponse,
     ParallelismParams,
@@ -21,6 +22,7 @@ from nmp.rl.schemas.job import (
 __all__ = [
     "DPOTraining",
     "GRPOTraining",
+    "LoRAParams",
     "OutputRequest",
     "OutputResponse",
     "ParallelismParams",

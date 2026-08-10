@@ -2327,6 +2327,20 @@ components:
           type: string
           const: grpo
           title: Type
+        finetuning_type:
+          type: string
+          enum:
+          - all_weights
+          - lora
+          title: Finetuning Type
+          description: Full-weight GRPO or LoRA adapter training. lora_merged is not
+            supported.
+          default: all_weights
+        lora:
+          allOf:
+          - $ref: '#/components/schemas/RlLoRAParams'
+          description: LoRA hyperparameters. Defaults applied when finetuning_type
+            is lora.
         num_generations_per_prompt:
           type: integer
           exclusiveMinimum: 0.0
@@ -2388,7 +2402,12 @@ components:
       required:
       - type
       title: RlGRPOTraining
-      description: Group Relative Policy Optimization with NeMo Gym environments.
+      description: 'Group Relative Policy Optimization with NeMo Gym environments.
+
+
+        ``finetuning_type`` is ``all_weights`` (default) or ``lora`` only.
+
+        ``lora_merged`` is not supported for GRPO on the platform DTensor path.'
     RlJobInput:
       properties:
         name:
@@ -2614,6 +2633,50 @@ components:
       - updated_at
       - -updated_at
       title: RlJobsJobsSortField
+    RlLoRAParams:
+      properties:
+        rank:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Rank
+          description: LoRA rank (r); maps to NeMo-RL lora_cfg.dim.
+          default: 16
+        alpha:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Alpha
+          description: LoRA scaling factor (effective lr multiplier = alpha/rank).
+          default: 32
+        dropout:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Dropout
+          description: LoRA dropout probability.
+          default: 0.0
+        target_modules:
+          title: Target Modules
+          description: Module names to adapt. Empty/None with match_all_linear applies
+            to all linear layers.
+          items:
+            type: string
+          type: array
+        exclude_modules:
+          title: Exclude Modules
+          description: Module name patterns to exclude from LoRA.
+          items:
+            type: string
+          type: array
+        use_triton:
+          type: boolean
+          title: Use Triton
+          description: Use Triton LoRA kernels (DTensor v2). Set false when tensor_parallel_size
+            > 1.
+          default: true
+      additionalProperties: false
+      type: object
+      title: RlLoRAParams
+      description: LoRA hyperparameters for GRPO (DTensor ``lora_cfg``). No merge-at-export.
     RlOutputRequest:
       properties:
         name:

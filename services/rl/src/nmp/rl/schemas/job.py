@@ -35,6 +35,26 @@ class ParallelismParams(RlSchema):
     sequence_parallel: bool = Field(default=False, description="Enable sequence parallelism.")
 
 
+class LoRAParams(RlSchema):
+    """LoRA hyperparameters for GRPO (DTensor ``lora_cfg``). No merge-at-export."""
+
+    rank: int = Field(default=16, gt=0, description="LoRA rank (r); maps to NeMo-RL lora_cfg.dim.")
+    alpha: int = Field(default=32, gt=0, description="LoRA scaling factor (effective lr multiplier = alpha/rank).")
+    dropout: float = Field(default=0.0, ge=0.0, le=1.0, description="LoRA dropout probability.")
+    target_modules: list[str] | None = Field(
+        default=None,
+        description="Module names to adapt. Empty/None with match_all_linear applies to all linear layers.",
+    )
+    exclude_modules: list[str] | None = Field(
+        default=None,
+        description="Module name patterns to exclude from LoRA.",
+    )
+    use_triton: bool = Field(
+        default=True,
+        description="Use Triton LoRA kernels (DTensor v2). Set false when tensor_parallel_size > 1.",
+    )
+
+
 class _TrainingBase(RlSchema):
     """Common training configuration shared by all RL methods."""
 
@@ -121,9 +141,23 @@ class DPOTraining(_TrainingBase):
 
 
 class GRPOTraining(_TrainingBase):
-    """Group Relative Policy Optimization with NeMo Gym environments."""
+    """Group Relative Policy Optimization with NeMo Gym environments.
 
+    ``finetuning_type`` is ``all_weights`` (default) or ``lora`` only.
+    ``lora_merged`` is not supported for GRPO on the platform DTensor path.
+    """
+
+    # No default: ``TrainingMethod`` is a discriminated union, so the tag has to be
+    # present in the submitted JSON (same as DPOTraining.type).
     type: Literal["grpo"]
+    finetuning_type: Literal["all_weights", "lora"] = Field(
+        default="all_weights",
+        description="Full-weight GRPO or LoRA adapter training. lora_merged is not supported.",
+    )
+    lora: LoRAParams | None = Field(
+        default=None,
+        description="LoRA hyperparameters. Defaults applied when finetuning_type is lora.",
+    )
     num_generations_per_prompt: int = Field(
         default=8, gt=0, description="Group size: rollouts sampled per prompt, used for relative advantages."
     )
@@ -147,6 +181,14 @@ class GRPOTraining(_TrainingBase):
     ratio_clip_min: float = Field(default=0.2, ge=0.0, description="Lower PPO-style importance ratio clip bound.")
     ratio_clip_max: float = Field(default=0.28, ge=0.0, description="Upper PPO-style importance ratio clip bound.")
     max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
+
+    @model_validator(mode="after")
+    def _lora_defaults(self) -> Self:
+        if self.finetuning_type == "lora" and self.lora is None:
+            self.lora = LoRAParams()
+        if self.finetuning_type == "all_weights" and self.lora is not None:
+            raise ValueError("lora must be omitted when finetuning_type is all_weights")
+        return self
 
 
 TrainingMethod = Annotated[Union[DPOTraining, GRPOTraining], Discriminator("type")]
@@ -226,6 +268,11 @@ class RlJobOutput(RlSchema):
     def _output_type_matches_training(self) -> Self:
         if self.training_type == TrainingType.DPO and self.output.type != OutputNameType.MODEL:
             raise ValueError("DPO produces a full-weight model; output.type must be 'model'.")
-        if self.training_type == TrainingType.GRPO and self.output.type != OutputNameType.MODEL:
-            raise ValueError("GRPO produces a full-weight model; output.type must be 'model'.")
+        if self.training_type == TrainingType.GRPO:
+            assert isinstance(self.training, GRPOTraining)
+            if self.training.finetuning_type == "lora":
+                if self.output.type != OutputNameType.ADAPTER:
+                    raise ValueError("GRPO LoRA produces an adapter; output.type must be 'adapter'.")
+            elif self.output.type != OutputNameType.MODEL:
+                raise ValueError("GRPO all_weights produces a full-weight model; output.type must be 'model'.")
         return self
