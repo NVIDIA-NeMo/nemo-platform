@@ -176,6 +176,26 @@ fi
 grep -Fq "app.kubernetes.io/component: clickhouse" <<<"${clickhouse_pvc_template}"
 grep -Fq "app.kubernetes.io/instance: ${HELM_RELEASE_NAME}" <<<"${clickhouse_pvc_template}"
 
+# Null telemetry endpoint defaults mean "unset"; they must not render empty env
+# vars that override the generic OTLP endpoint. Explicit empty strings remain
+# valid user overrides and should render.
+otel_default_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --show-only templates/api/api-deployment.yaml)
+if grep -Fq "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT" <<<"${otel_default_output}"; then
+  echo "Default null OTEL metrics endpoint rendered an empty env var" >&2
+  exit 1
+fi
+if grep -Fq "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT" <<<"${otel_default_output}"; then
+  echo "Default null OTEL traces endpoint rendered an empty env var" >&2
+  exit 1
+fi
+otel_explicit_empty_output=$(helm template "${HELM_RELEASE_NAME}" "${HELM_FOLDER}" \
+  --show-only templates/api/api-deployment.yaml \
+  --set-string telemetry.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT= \
+  --set-string telemetry.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=)
+grep -Fq "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT" <<<"${otel_explicit_empty_output}"
+grep -Fq "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT" <<<"${otel_explicit_empty_output}"
+
 # Validate the Helm chart by rendering templates with all values files in ci/ directory
 shopt -s nullglob
 for value_file in "${HELM_FOLDER}"/ci/*.yaml; do
