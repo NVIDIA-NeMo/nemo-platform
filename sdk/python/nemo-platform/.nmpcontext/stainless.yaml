@@ -330,22 +330,22 @@ resources:
       pangea_rail_config: PangeaRailConfig
       pangea_rail_options: PangeaRailOptions
       patronus_evaluate_api_params: PatronusEvaluateApiParams
+      patronus_evaluate_config: PatronusEvaluateConfig
       patronus_evaluation_success_strategy: PatronusEvaluationSuccessStrategy
+      patronus_rail_config: PatronusRailConfig
       polygraf_detection: PolygrafDetection
       polygraf_detection_options: PolygrafDetectionOptions
       private_ai_detection: PrivateAIDetection
       private_ai_detection_options: PrivateAIDetectionOptions
       rail_status: RailStatus
+      rails: Rails
+      rails_config: RailsConfig
+      rails_config_data: RailsConfigData
       reasoning_config: ReasoningConfig
       regex_detection: RegexDetection
       regex_detection_options: RegexDetectionOptions
       remote_hf_classifier_config: RemoteHFClassifierConfig
       retrieval_rails: RetrievalRails
-      patronus_evaluate_config: PatronusEvaluateConfig
-      patronus_rail_config: PatronusRailConfig
-      rails: Rails
-      rails_config: RailsConfig
-      rails_config_data: RailsConfigData
       sensitive_data_detection: SensitiveDataDetection
       sensitive_data_detection_options: SensitiveDataDetectionOptions
       single_call_config: SingleCallConfig
@@ -521,7 +521,9 @@ resources:
       compute_resource_spec: ComputeResourceSpec
       compute_resources: ComputeResources
       container_spec: ContainerSpec
+      cpu_execution_provider: CPUExecutionProvider
       create_platform_job_request: CreatePlatformJobRequest
+      distributed_gpu_execution_provider: DistributedGPUExecutionProvider
       docker_job_execution_profile: DockerJobExecutionProfile
       docker_job_execution_profile_config: DockerJobExecutionProfileConfig
       docker_job_network_config: DockerJobNetworkConfig
@@ -529,6 +531,7 @@ resources:
       docker_volume_mount: DockerVolumeMount
       docker_workload_identity_config: DockerWorkloadIdentityConfig
       e2e_job_execution_profile: E2EJobExecutionProfile
+      gpu_execution_provider: GPUExecutionProvider
       image_pull_secret: ImagePullSecret
       job_execution_profile_config: JobExecutionProfileConfig
       kubernetes_config_map_volume: KubernetesConfigMapVolume
@@ -548,12 +551,9 @@ resources:
       platform_job_responses_page: PlatformJobResponsesPage
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
-      platform_jobs_list_filter: PlatformJobsListFilter
-      cpu_execution_provider: CPUExecutionProvider
-      distributed_gpu_execution_provider: DistributedGPUExecutionProvider
-      gpu_execution_provider: GPUExecutionProvider
       platform_job_spec: PlatformJobSpec
       platform_job_step_spec: PlatformJobStepSpec
+      platform_jobs_list_filter: PlatformJobsListFilter
       step_lifecycle: StepLifecycle
       subprocess_execution_provider: SubprocessExecutionProvider
       subprocess_job_execution_profile: SubprocessJobExecutionProfile
@@ -733,6 +733,10 @@ resources:
       # FilesetMetadata`` imports downstream (models service tests).
       fileset_metadata: FilesetMetadata
       dataset_metadata_content: DatasetMetadataContent
+      # Every FilesetMetadata member has to live in $shared alongside it. Left under
+      # `files`, sync-models homes this one there and FilesetMetadata's import of it
+      # becomes shared -> files -> shared, which fails at import time.
+      environment_metadata_content: EnvironmentMetadataContent
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
       finetuning_type: FinetuningType

@@ -15,8 +15,25 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing_extensions import Literal, TypeAlias
+from typing import List, Optional
 
-__all__ = ["FilesetPurpose"]
+from ..._models import BaseModel
 
-FilesetPurpose: TypeAlias = Literal["dataset", "environment", "generic", "model"]
+__all__ = ["EnvironmentMetadataContent"]
+
+
+class EnvironmentMetadataContent(BaseModel):
+    """Content for environment-type filesets (GRPO Gym packages)."""
+
+    format: str
+    """Environment package format (native-v1, wheels-v1, adapter-wheels-v1)."""
+
+    name: str
+
+    adapter_agent: Optional[str] = None
+
+    config_paths: Optional[List[str]] = None
+
+    hub_id: Optional[str] = None
+
+    vf_env_id: Optional[str] = None

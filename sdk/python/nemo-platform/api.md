@@ -9,6 +9,7 @@ from nemo_platform.types import (
     DatasetMetadataContent,
     DatetimeFilter,
     DeleteResponse,
+    EnvironmentMetadataContent,
     FileStorageType,
     FilesetMetadata,
     FinetuningType,

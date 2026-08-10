@@ -50,6 +50,7 @@ from .shared import (
     DatasetMetadataContent as DatasetMetadataContent,
     PlatformJobResultResponse as PlatformJobResultResponse,
     PlatformJobStatusResponse as PlatformJobStatusResponse,
+    EnvironmentMetadataContent as EnvironmentMetadataContent,
     ToolCallingMetadataContent as ToolCallingMetadataContent,
     PlatformJobListResultResponse as PlatformJobListResultResponse,
     PlatformJobStepStatusResponse as PlatformJobStepStatusResponse,
