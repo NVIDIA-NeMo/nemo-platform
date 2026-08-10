@@ -97,7 +97,11 @@ def test_insight_metrics_become_objectives_and_existing_targets_become_guardrail
 
     assert [target.name for target in effective.objective_function] == ["uses_required_tool", "cites_source"]
     assert all(target.direction == "maximize" for target in effective.objective_function)
+    # Demoted targets are carried across whole, `target` included. The authored insight
+    # objectives get none: an LLM-invented metric has no known satisfied value, so a
+    # Mode 1 run cannot stop early on one and falls back to its round budget.
     assert [target.model_dump() for target in effective.regression_metrics] == [
-        {"name": "cost", "direction": "minimize"},
-        {"name": "safety", "direction": "maximize"},
+        {"name": "cost", "direction": "minimize", "target": None},
+        {"name": "safety", "direction": "maximize", "target": None},
     ]
+    assert all(target.target is None for target in effective.objective_function)

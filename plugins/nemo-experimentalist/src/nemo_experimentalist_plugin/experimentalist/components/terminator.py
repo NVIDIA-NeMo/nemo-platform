@@ -77,6 +77,9 @@ class Terminator(Agent):
         Returns:
             A :class:`TerminationDecision`.
         """
+        reached = self.assess_objective_reached(evolution_tree=evolution_tree, config=config)
+        if reached.stop:
+            return reached
         budget = self.assess_round_budget(round_num=round_num, config=config)
         if budget.stop:
             return budget
@@ -85,6 +88,45 @@ class Terminator(Agent):
             prior_analysis=prior_analysis,
             config=config,
         )
+
+    @hidden
+    def assess_objective_reached(
+        self,
+        *,
+        evolution_tree: EvolutionTree,
+        config: EvolutionaryOptimizerConfig,
+    ) -> TerminationDecision:
+        """Stop when a candidate that could win already satisfies every targeted objective.
+
+        Distinct from convergence, which asks whether progress has *stalled*. This asks
+        whether there is any progress left worth making, and answers it from the numbers
+        rather than from a judgement about the analysis text. A run that has solved the
+        problem otherwise keeps buying rounds until its budget runs out, and each one can
+        only match what it already has.
+
+        Deliberately **not** gated by ``disable_convergence_check``. That flag turns off
+        an inference about stagnation, which is a judgement call worth disabling when the
+        signal is unreliable. This is a measurement against a threshold the caller stated,
+        and there is no reason to want it off while a target is configured -- if you do
+        not want the run to stop here, do not set a target.
+
+        Consulted at the top of every round including the first, so a baseline that
+        already meets the targets ends the run without a single round being paid for.
+
+        Only nodes that could actually win are considered -- survivors and the round-0
+        baseline, mirroring finalization. A killed candidate meeting the target would end
+        the run in favour of a winner that never reaches it.
+        """
+        targets = [target for target in config.objective_function if target.target is not None]
+        if not targets:
+            return TerminationDecision(stop=False)
+        for node in evolution_tree.nodes.values():
+            if not node.val_reward or not (node.is_survivor or node.round == 0):
+                continue
+            if all(target.is_satisfied_by(node.val_reward.get(target.name)) for target in targets):
+                summary = ", ".join(f"{target.name}={node.val_reward.get(target.name)}" for target in targets)
+                return TerminationDecision(stop=True, reason=f"objective reached by {node.label} ({summary})")
+        return TerminationDecision(stop=False)
 
     @hidden
     async def assess_convergence(
