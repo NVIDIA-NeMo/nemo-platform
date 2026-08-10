@@ -9,9 +9,11 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from nemo_eval_author_plugin import traces
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
 from nemo_experimentalist_plugin.entities import (
@@ -76,6 +78,10 @@ class EvalAuthor(Agent):
         self._config = config or EvalAuthorConfig()
         self._reporter = reporter
         self.experiment_dir = experiment_dir
+        # Set by the standalone entry point before it queries production traces. The
+        # Experimentalist path leaves both unset and passes a client to ``run`` instead.
+        self.client: AsyncNeMoPlatform | None = None
+        self.workspace: str | None = None
         self.shell = GuardedShellTools(cwd=experiment_dir)
         self.todos = TodoManager()
         self.context["trace_documentation"] = doc(
@@ -91,6 +97,67 @@ class EvalAuthor(Agent):
             llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
+
+    def _intake(self) -> tuple[AsyncNeMoPlatform, str]:
+        """Return the client and workspace for Intake reads, or name what is missing."""
+        if self.client is None or self.workspace is None:
+            raise traces.TraceQueryError(
+                "Production trace tools need a platform client and a workspace. Set "
+                "EvalAuthor.client and EvalAuthor.workspace before you call them."
+            )
+        return self.client, self.workspace
+
+    async def list_traces(
+        self,
+        agent: str,
+        since: datetime | None = None,
+        limit: int = traces.DEFAULT_TRACE_LIMIT,
+    ) -> dict[str, Any]:
+        """List the most recent production traces of one agent, newest first.
+
+        Start here when you need real traces and hold no trace refs. Read the result
+        with ``facets`` to decide which traces are worth opening with ``read_trace``.
+
+        Args:
+            agent: Value that the agent reports to Intake as ``agent_name``.
+            since: Optional lower bound on span start time.
+            limit: Maximum number of traces to return.
+
+        Returns:
+            ``{"traces": [...], "count": int, "truncated": bool}``. ``truncated`` means
+            that more traces exist, so raise ``limit`` or narrow ``since``. Each trace
+            carries ``trace_ref``, ``started_at``, ``status``, ``span_count``,
+            ``error_count``, ``duration_ms``, ``name``, ``error_type``, ``tool``, and
+            ``model``.
+        """
+        client, workspace = self._intake()
+        return await traces.list_traces(client, agent=agent, workspace=workspace, since=since, limit=limit)
+
+    def facets(self, result: dict[str, Any], by: str) -> dict[str, int]:
+        """Count the traces of a ``list_traces`` result per distinct field value.
+
+        This counts exact values. It does not group traces by failure mode.
+
+        Args:
+            result: A ``list_traces`` return value.
+            by: ``"status"``, ``"error_type"``, ``"tool"``, or ``"model"``.
+
+        Returns:
+            Value to trace count, largest count first.
+        """
+        return traces.facets(result, by)
+
+    async def read_trace(self, ref: str) -> TraceExplorer:
+        """Read one production trace in full.
+
+        Args:
+            ref: A ``trace_ref`` from ``list_traces``, or a trace ref from an Insight.
+
+        Returns:
+            A ``TraceExplorer`` over the trace. See the trace documentation in context.
+        """
+        client, workspace = self._intake()
+        return await traces.read_trace(client, ref, workspace=workspace)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15, cell_timeout=60.0)))
     async def discover_runner(self, dataset: Dataset) -> str:
