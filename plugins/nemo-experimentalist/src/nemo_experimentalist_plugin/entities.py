@@ -259,6 +259,15 @@ class Dataset(ABC):
         """
         return list(self.tasks)
 
+    def add_tasks(self, tasks: list[Task]) -> None:
+        """Add tasks to this dataset's durable backing store.
+
+        Dataset implementations define how task artifacts are imported. Callers
+        must use this method instead of mutating ``tasks`` directly so an
+        evaluator can preserve the task files needed at evaluation time.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support adding tasks")
+
     async def validate(self) -> None:
         """Validate authored dataset content without running evaluation trials.
 
@@ -489,10 +498,9 @@ class Candidate(NemoEntity, entity_type="candidate"):
     rewards: dict[str, RewardRecord] = Field(
         default_factory=dict,
         description=(
-            "Measurements keyed by reward channel. An open set: 'train', 'validation', "
-            "'insight' and 'validation-trajectory' today. A channel is a measurement, not a "
-            "dataset split — trajectory scoring is a second measurement of the validation "
-            "split — so adding one costs no entity change."
+            "Measurements keyed by reward channel. This is an open set that includes "
+            "'train', 'validation', and 'validation-trajectory'. A channel is a measurement, "
+            "not a dataset split, so adding one costs no entity change."
         ),
     )
     trajectory_detail: dict[str, Any] | None = Field(

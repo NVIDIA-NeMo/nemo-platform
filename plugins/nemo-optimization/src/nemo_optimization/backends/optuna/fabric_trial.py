@@ -100,14 +100,16 @@ class FabricTrialEvaluator:
             tasks=tasks,
             target=runtime,
             config=AgentEvalRunConfig(
-                output_dir=self._trial_output_dir(trial_number, rep),
+                work_dir=self._trial_output_dir(trial_number, rep),
                 parallelism=self._parallelism,
-                write_dashboard=False,
                 # Keep scoring the rest of the dataset when one metric raises;
                 # reduce_agent_eval_scores skips FAILED task scores.
                 fail_fast=False,
             ),
         )
+        # ``run`` no longer stores the bundle; keep writing one per trial as before. No dashboard —
+        # each trial bundle is intermediate evidence for the study, not something anyone opens.
+        result.persist(write_dashboard=False)
         self._record_traces(result, trial_number=trial_number, rep=rep)
         self._write_trace_map()
         return reduce_agent_eval_scores(result.scores, self._metric_names)

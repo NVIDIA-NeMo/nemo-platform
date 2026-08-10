@@ -14,6 +14,7 @@ export interface EvalAggregateScoreRow {
   nan_count?: number;
   min?: number | null;
   max?: number | null;
+  value?: number | null;
   score_type?: string;
   mode_category?: string | null;
   rubric_distribution?: { label: string; value?: number; count?: number }[];
@@ -39,6 +40,9 @@ const trialsText = (score: EvalAggregateScoreRow): string => {
   const scored = score.count ?? 0;
   return `${scored}/${scored + (score.nan_count ?? 0)}`;
 };
+
+const displayScoreValue = (score: EvalAggregateScoreRow): number | null =>
+  score.score_type === 'scalar' ? (score.value ?? null) : (score.mean ?? null);
 
 export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
   scores,
@@ -68,14 +72,14 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
           </Text>
         ),
       }),
-      col.accessor((original) => original.mean ?? null, {
+      col.accessor(displayScoreValue, {
         id: 'score',
         header: 'Score',
         enableSorting: false,
         size: 100,
         cell: ({ row }) => (
-          <Badge kind="solid" color={scoreColor(row.original.mean)}>
-            {formatScore(row.original.mean)}
+          <Badge kind="solid" color={scoreColor(displayScoreValue(row.original))}>
+            {formatScore(displayScoreValue(row.original))}
           </Badge>
         ),
       }),

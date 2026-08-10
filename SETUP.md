@@ -1,6 +1,6 @@
 ---
 name: nemo-setup
-description: Set up a local NeMo Platform (`make bootstrap` + `nemo setup`) — services, providers, plugins, default model, and an optional demo agent. Use when the user asks to install, bootstrap, set up, run, or start a local NeMo Platform.
+description: Set up a local NeMo Platform (`make bootstrap` + `nemo setup`) — services, providers, plugins, default/fast models, and an optional demo agent. Use when the user asks to install, bootstrap, set up, run, or start a local NeMo Platform.
 version: "0.1"
 ---
 
@@ -86,14 +86,14 @@ is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 ## Bootstrap and start
 
-The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default-model selection, and demo agent deployment in one shot:
+The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot:
 
 === "Interactive"
 
 ```bash
 make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
 source .venv/bin/activate
-nemo setup               # interactive: prompts for provider, picks default model, optionally deploys calculator-agent
+nemo setup               # interactive: prompts for provider, picks default/fast models, optionally deploys calculator-agent
 ```
 
 === "Non-interactive (CI)"
@@ -112,11 +112,20 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 `make clean` removes the venv; `make clean-python` is the venv-only variant.
 
-### Node.js and pnpm
+### Toolchain: uv, Node.js, pnpm
 
-`mise.toml` pins the Node.js and pnpm versions that satisfy `web/package.json` engines, and `make bootstrap-studio` installs mise on first run and invokes both through `mise exec --`. Nothing is written to your shell rc.
+`mise.toml` pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js and pnpm to satisfy `web/package.json` engines. `make bootstrap` installs mise on first run and invokes each through `mise exec --`, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
 
-That covers the `make` targets only. To run `pnpm` directly in `web/` — the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
+**Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through mise but don't install mise themselves. On a machine that doesn't have it yet, they fail like this:
+
+```text
+/bin/sh: /Users/you/.local/bin/mise: No such file or directory
+make: *** [test-unit] Error 127
+```
+
+`make bootstrap` fixes it, as does `make verify-mise` on its own. To use the toolchain you already have instead, pass `NMP_SKIP_MISE=1` — it works on every target.
+
+That covers the `make` targets only. To run `uv` or `pnpm` directly — `uv sync`, the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -126,6 +135,7 @@ Then either prefix commands:
 
 ```bash
 mise exec -- pnpm dev
+mise exec -- uv sync
 ```
 
 or activate mise once so every shell picks up the pinned versions:
@@ -135,22 +145,24 @@ eval "$(mise activate bash)"   # ~/.bashrc
 eval "$(mise activate zsh)"    # ~/.zshrc
 ```
 
-Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`. To bootstrap against your own toolchain instead of mise, use `make bootstrap-studio NMP_SKIP_MISE=1`.
+Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`, and a globally installed uv outside `required-version` fails `uv sync` with a version mismatch. To bootstrap against your own toolchain instead of mise, use `make bootstrap NMP_SKIP_MISE=1`.
 
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 
-### Default model selection (under `--auto`)
+### Default and fast model selection
 
-`$NEMO_DEFAULT_MODEL` **must be a hyphenated entity ID** from `nemo models list` (e.g. `nvidia-llama-3-3-nemotron-super-49b-v1-5` or `default/nvidia-llama-3-3-nemotron-super-49b-v1-5`). The slash-with-dots form (`nvidia/llama-3.3-nemotron-super-49b-v1-5`) is the upstream catalog's `served_model_name` — it's shown for human display but the gateway rejects it as a request input.
+`$NEMO_DEFAULT_MODEL` and `$NEMO_FAST_MODEL` **must be hyphenated entity IDs** from `nemo models list` (e.g. `nvidia-llama-3-3-nemotron-super-49b-v1-5` or `default/nvidia-llama-3-3-nemotron-super-49b-v1-5`). The slash-with-dots form (`nvidia/llama-3.3-nemotron-super-49b-v1-5`) is the upstream catalog's `served_model_name` — it's shown for human display but the gateway rejects it as a request input.
 
 `nemo setup --auto` picks the default model in this order:
 
 1. `$NEMO_DEFAULT_MODEL` (if set) — used as-is. The user may have exported this from a previous session; it takes precedence over anything discovered from the registered provider.
 2. Otherwise, the first model entity returned by provider discovery.
 
-If the user is surprised by which model got picked, check `echo $NEMO_DEFAULT_MODEL` first — that's the most common cause.
+The fast model uses `$NEMO_FAST_MODEL` when set and otherwise reuses the effective default. Interactive setup prompts for both and defaults the fast choice to the selected default. Existing contexts without `fast_model` also reuse `default_model`.
 
-The first-discovered fallback is intentionally simple — providers like NVIDIA Build expose dozens of models and "first one" rarely matches the user's intent. If the user wants a specific model as the default (or wants to compare options before committing), don't rely on the `--auto` fallback. After setup finishes, the `inference` skill's "Step 2 — Discover available models" enumerates entity IDs and shows the jq filters for picking one out by vendor or family. The user can then pin their choice via `export NEMO_DEFAULT_MODEL=<workspace>/<entity-id>` or by overriding `body["model"]` per request.
+If the user is surprised by which model got picked, check `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL` first — that's the most common cause.
+
+The first-discovered fallback is intentionally simple — providers like NVIDIA Build expose dozens of models and "first one" rarely matches the user's intent. If the user wants specific models (or wants to compare options before committing), don't rely on the `--auto` fallback. After setup finishes, the `inference` skill's "Step 2 — Discover available models" enumerates entity IDs and shows the jq filters for picking one out by vendor or family. The user can then pin the pair via `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL`, or override `body["model"]` per request.
 
 If `nemo agents invoke …` fails with HTTP 422 in under a second on the first call, the cause is almost always a slash-with-dots model name reaching the gateway (e.g. via a stale `NEMO_DEFAULT_MODEL` or an agent config that hardcoded the upstream catalog form). The `inference` skill's "Common failure: HTTP 422 from chat completion" subsection has the diagnose-and-recover steps — don't conclude the platform is broken.
 
@@ -228,7 +240,7 @@ The platform is running. Don't leave the user with "you're good to go" — offer
 
 If the user's prompt doesn't already pin one down, ask: *"The platform is up. What would you like to do next — optimize an agent, deploy one, run inference, evaluate, generate data, or something else?"*
 
-If the user wants to **pick or swap the default model** (e.g. they didn't like the one `--auto` selected, or they want to compare options), don't guess — hand off to the `inference` skill. Step 2 there enumerates `served_models[].model_entity_id` and shows jq filters for picking by vendor / family. To pin the choice for subsequent runs, export `NEMO_DEFAULT_MODEL=<workspace>/<entity-id>` before the next `nemo setup --auto`. For one-off commands, pass the entity ID positionally: `nemo chat <entity-id>`.
+If the user wants to **pick or swap the default/fast model pair**, don't guess — hand off to the `inference` skill. Step 2 there enumerates `served_models[].model_entity_id` and shows jq filters for picking by vendor / family. To pin the choices for subsequent runs, export `NEMO_DEFAULT_MODEL=<workspace>/<entity-id>` and `NEMO_FAST_MODEL=<workspace>/<entity-id>` before the next `nemo setup --auto`; fast falls back to default when omitted. For one-off commands, pass the entity ID positionally: `nemo chat <entity-id>`.
 
 ### Available skills
 

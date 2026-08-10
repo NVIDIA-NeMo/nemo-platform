@@ -117,9 +117,10 @@ Required credentials:
 export INFERENCE_API_KEY=...
 ```
 
-`NEMO_EXPERIMENTALIST_API_KEY` may be provided instead. The runner maps either credential
-to both the AUT and optimizer, using
-`https://inference-api.nvidia.com/v1` unless an API base is explicitly set.
+This credential is for the agent under test. Run `nemo setup` separately to
+register the provider and select the default and fast Platform Model Entities
+used by the optimization agents. Set `INFERENCE_API_BASE` to the provider
+endpoint used by the agent under test.
 
 Validate provenance and task IDs without Docker or model calls:
 

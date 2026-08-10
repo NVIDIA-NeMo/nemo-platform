@@ -19,6 +19,7 @@ relying on this loader.
 
 from fastapi import FastAPI
 from nemo_platform_plugin.discovery import discover_services
+from nmp.common.api.utils import install_query_param_schema_openapi_hook
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
 
 
@@ -32,4 +33,5 @@ def build_plugin_app(plugin_name: str) -> FastAPI:
 
     parent = FastAPI(title=f"{plugin_name} (plugin)")
     parent.include_router(sub_app.router, prefix=f"/apis/{plugin_name}")
+    install_query_param_schema_openapi_hook(parent)
     return parent

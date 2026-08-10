@@ -66,6 +66,13 @@ class InsightListItem(Insight, entity_type="insights_insight"):
 InsightPage = NemoListResponse[InsightListItem]
 
 
+class EnableAnalysisConfigRequest(BaseModel):
+    """Model selection captured when periodic analysis is enabled."""
+
+    default_model: str = Field(min_length=1)
+    fast_model: str = Field(min_length=1)
+
+
 class UpdateAnalysisConfigRequest(BaseModel):
     """Body for ``PATCH /analysis-configs/{agent}``."""
 

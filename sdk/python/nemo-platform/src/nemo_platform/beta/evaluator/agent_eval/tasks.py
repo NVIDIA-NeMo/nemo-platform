@@ -214,9 +214,11 @@ class AgentEvalRunConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    output_dir: Path | None = Field(
+    work_dir: Path | None = Field(
         default=None,
-        description="Directory where the run bundle is written; in-memory only when omitted.",
+        description="Directory the run works in: runtimes write trial evidence beneath it, and it is "
+        "the default target for AgentEvalResult.persist so the bundle contains that evidence. Purely "
+        "in-memory when omitted.",
     )
     run_id: str | None = Field(default=None, description="Explicit run identifier; generated when omitted.")
     prompt_template: str | dict[str, Any] | None = Field(
@@ -228,7 +230,6 @@ class AgentEvalRunConfig(BaseModel):
         description="Inference/run parameters used when producing trials online.",
     )
     parallelism: int = Field(default=4, ge=1, description="Maximum number of tasks scored concurrently.")
-    write_dashboard: bool = Field(default=True, description="Whether to render an HTML dashboard for the run.")
     labels: dict[str, str] = Field(
         default_factory=dict,
         description="Caller-supplied tags recorded on the run's metadata (e.g. benchmark, mode, backend, "

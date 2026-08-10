@@ -115,7 +115,14 @@ async def publish_to_intake(
     collected and raised together as a :class:`PublishError` (carrying the partial
     report). The evaluation's local bundle is the system of record and is never
     touched, so the caller can re-run ``publish_to_intake`` once the issue is fixed
-    to publish the remaining trials. (Re-publish is not yet idempotent — see ask X1.)
+    to publish the remaining trials.
+
+    Re-publish is **idempotent**: the session id is derived from the run and trial
+    (``mapping.session_id_for``), the step timestamp from the run's ``started_at``,
+    and each evaluator-result id from its target — so every key Intake replaces on is
+    a function of the result, not of when it was published. Re-sending a trial that
+    already landed replaces its rows instead of duplicating them, which is what makes
+    a worker retry after a partial publish safe.
 
     ``experiment_id`` must reference an Experiment that already exists — ATIF ingest
     rejects unknown experiments with HTTP 400. Creating the Experiment/group is a
@@ -126,6 +133,17 @@ async def publish_to_intake(
     not carry (design §3.9 #6).
     """
     resolved_workspace = http_utils.resolve_workspace(platform, workspace, strict=True)
+
+    # Required, not defaulted to "now": a fallback would silently reintroduce the
+    # publish-time clock that makes re-ingest duplicate rows (see the ingest note on
+    # ``mapping.trial_to_atif_ingest``). A real run always sets it; a hand-built result
+    # must say when it ran.
+    started_at = result.metadata.started_at
+    if started_at is None:
+        raise PublishError(
+            f"Cannot publish run {result.run_id!r}: metadata.started_at is unset, and publishing "
+            "without it would write trajectories that duplicate on re-publish."
+        )
 
     scores_by_trial: dict[str, list[AgentEvalTaskScore]] = defaultdict(list)
     for score in result.scores:
@@ -141,6 +159,7 @@ async def publish_to_intake(
                 run_id=result.run_id,
                 experiment_id=experiment_id,
                 agent_name=agent_name,
+                started_at=started_at,
                 agent_version=agent_version,
                 model_name=model_name,
             )
@@ -193,8 +212,14 @@ def _publish_failure_message(
     report: PublishReport,
     failures: list[tuple[str, BaseException]],
 ) -> str:
-    """Build an actionable error: what failed, where the results are cached, how to recover."""
-    location = f"cached locally at {result.output_dir}" if result.output_dir is not None else "in the local run bundle"
+    """Build an actionable error: what failed, what survives locally, how to recover."""
+    # work_dir is where the runtimes wrote trial evidence, NOT a bundle location: a bundle exists only
+    # if the caller chose to persist(), and persist() can be pointed elsewhere. Say only what is true.
+    location = (
+        f"still in memory, and the run's trial evidence is under {result.work_dir}"
+        if result.work_dir is not None
+        else "still in memory and have not been written to disk (call result.persist() to keep them)"
+    )
     detail = "\n  ".join(f"{trial_id}: {type(error).__name__}: {error}" for trial_id, error in failures)
     return (
         f"publish_to_intake: {len(failures)} of {len(result.trials)} trial(s) failed to publish "

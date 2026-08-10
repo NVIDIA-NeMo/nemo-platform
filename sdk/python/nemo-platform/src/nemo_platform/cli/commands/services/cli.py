@@ -37,7 +37,11 @@ from nemo_platform.local.process import (
     stop_instance,
     write_descriptor,
 )
-from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
+from nmp.platform_runner.config import (
+    DEFAULT_LOCAL_SERVICES_BIND_HOST,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
+    PlatformAppConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +211,14 @@ def run_services(
     ] = None,
     host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = DEFAULT_LOCAL_SERVICES_BIND_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind to.")] = _DEFAULT_PORT,
+    keep_alive_timeout_seconds: Annotated[
+        int,
+        typer.Option(
+            "--keep-alive-timeout-seconds",
+            min=1,
+            help="Seconds Uvicorn keeps idle HTTP connections open.",
+        ),
+    ] = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
     instance: Annotated[
         str | None,
         typer.Option(
@@ -244,6 +256,7 @@ def run_services(
         scope=scope,
         host=host,
         port=port,
+        keep_alive_timeout_seconds=keep_alive_timeout_seconds,
         state_root=base_dir,
     )
 
@@ -317,6 +330,14 @@ def start_services(
     ] = None,
     host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = DEFAULT_LOCAL_SERVICES_BIND_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind to.")] = _DEFAULT_PORT,
+    keep_alive_timeout_seconds: Annotated[
+        int,
+        typer.Option(
+            "--keep-alive-timeout-seconds",
+            min=1,
+            help="Seconds Uvicorn keeps idle HTTP connections open.",
+        ),
+    ] = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
     instance: Annotated[
         str | None,
         typer.Option(
@@ -358,6 +379,7 @@ def start_services(
         scope=scope,
         host=host,
         port=port,
+        keep_alive_timeout_seconds=keep_alive_timeout_seconds,
         state_root=base_dir,
     )
 
@@ -495,6 +517,14 @@ def restart_services(
         int | None,
         typer.Option("--port", help="Port to bind to. Defaults to previous value or 8080."),
     ] = None,
+    keep_alive_timeout_seconds: Annotated[
+        int | None,
+        typer.Option(
+            "--keep-alive-timeout-seconds",
+            min=1,
+            help="Seconds Uvicorn keeps idle HTTP connections open. Defaults to the previous value or 5.",
+        ),
+    ] = None,
     instance: Annotated[
         str | None,
         typer.Option(
@@ -561,6 +591,15 @@ def restart_services(
         host if host is not None else (previous_config.host if previous_config else DEFAULT_LOCAL_SERVICES_BIND_HOST)
     )
     effective_port = port if port is not None else (previous_config.port if previous_config else _DEFAULT_PORT)
+    effective_keep_alive_timeout_seconds = (
+        keep_alive_timeout_seconds
+        if keep_alive_timeout_seconds is not None
+        else (
+            previous_config.keep_alive_timeout_seconds
+            if previous_config
+            else DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+        )
+    )
 
     _warn_bind_all(effective_host)
 
@@ -575,6 +614,7 @@ def restart_services(
         scope=scope,
         host=effective_host,
         port=effective_port,
+        keep_alive_timeout_seconds=effective_keep_alive_timeout_seconds,
         state_root=base_dir,
     )
 

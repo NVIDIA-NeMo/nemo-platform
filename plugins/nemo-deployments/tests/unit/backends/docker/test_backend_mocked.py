@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -608,6 +609,86 @@ async def test_read_status_ready_when_running_without_probe(
     container.attrs = container_attrs()
     mock_docker_client.containers.get.return_value = container
     mock_entities.get.return_value = sample_config()
+
+    update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "READY"
+
+
+def _running_container_with_published_port(host_port: int) -> MagicMock:
+    container = MagicMock()
+    container.id = "abc123def456"
+    container.status = "running"
+    container.labels = {
+        "managed-by": MANAGED_BY_LABEL,
+        DEPLOYMENT_WORKSPACE_LABEL: "default",
+        DEPLOYMENT_NAME_LABEL: "srv",
+        RESTART_POLICY_LABEL: "Always",
+        CONFIG_NAME_LABEL: "cfg1",
+        RESOURCE_SCOPE_LABEL: DEFAULT_RESOURCE_SCOPE,
+    }
+    container.ports = {"8000/tcp": [{"HostPort": str(host_port)}]}
+    container.attrs = container_attrs()
+    return container
+
+
+@pytest.mark.asyncio
+async def test_read_status_ready_when_running_port_bound(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No declared probe, published port accepting connections -> READY.
+    monkeypatch.setenv("NMP_LOOPBACK_ADDRESS", "127.0.0.1")
+    mock_entities.get.return_value = sample_config()
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        host_port = server.getsockname()[1]
+        mock_docker_client.containers.get.return_value = _running_container_with_published_port(host_port)
+
+        update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "READY"
+
+
+@pytest.mark.asyncio
+async def test_read_status_starting_when_running_port_not_bound(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No declared probe, nothing yet listening on the published port -> STARTING, so
+    # READY does not race the workload's bind(). Hold the port bound-but-not-listening
+    # for the whole probe so nothing else can bind and listen on it mid-test; a
+    # connect() still gets ECONNREFUSED, the not-yet-bound state under test.
+    monkeypatch.setenv("NMP_LOOPBACK_ADDRESS", "127.0.0.1")
+    mock_entities.get.return_value = sample_config()
+    with socket.socket() as probe_socket:
+        probe_socket.bind(("127.0.0.1", 0))
+        host_port = probe_socket.getsockname()[1]
+        mock_docker_client.containers.get.return_value = _running_container_with_published_port(host_port)
+
+        update = await docker_backend.read_status(workspace="default", name="srv")
+
+    assert update.status == "STARTING"
+    assert "not ready" in update.status_message
+
+
+@pytest.mark.asyncio
+async def test_read_status_ready_when_running_udp_only_port(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    # A UDP-only workload has no TCP listener, so the default TCP probe is skipped and
+    # running implies ready rather than wedging STARTING until the progress deadline.
+    mock_entities.get.return_value = sample_config()
+    container = _running_container_with_published_port(0)
+    container.ports = {"9000/udp": [{"HostPort": "34567"}]}
+    mock_docker_client.containers.get.return_value = container
 
     update = await docker_backend.read_status(workspace="default", name="srv")
 

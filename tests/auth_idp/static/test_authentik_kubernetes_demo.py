@@ -218,6 +218,17 @@ def test_authentik_tutorial_tests_scoped_access_keys() -> None:
     assert "unset ACCESS_KEY ACCESS_KEY_CONTEXT INVALID_ACCESS_KEY INVALID_STATUS" in tutorial
 
 
+def test_authentik_static_ci_prepares_envoy_validation_inputs() -> None:
+    ci_workflow = Path(".github/workflows/ci.yaml").read_text(encoding="utf-8")
+    job = _workflow_job_block(ci_workflow, "python-auth-idp-static-test")
+
+    assert "needs.changes.outputs.helm == 'true'" in job
+    assert "docker pull docker.io/envoyproxy/envoy:v1.37.0" in job
+    assert "docker pull envoyproxy/envoy:v1.36.2" in job
+    assert "helm dependency build k8s/helm" in job
+    assert "helm dependency build contrib/auth/authentik/helm" in job
+
+
 def test_authentik_e2e_ci_requires_published_nmp_api_image() -> None:
     ci_workflow = Path(".github/workflows/ci.yaml").read_text(encoding="utf-8")
     job = _workflow_job_block(ci_workflow, "python-auth-idp-e2e-test")
@@ -739,6 +750,7 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
     envoy_config = _load_rendered_authentik_envoy_config()
     http_manager = envoy_config["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
     routes = http_manager["route_config"]["virtual_hosts"][0]["routes"]
+    clusters = envoy_config["static_resources"]["clusters"]
     forwarded_proto_header = [
         {
             "header": {"key": "x-forwarded-proto", "value": "https"},
@@ -746,6 +758,13 @@ def test_authentik_umbrella_values_configure_nemo_envoy_as_the_only_edge_proxy()
         }
     ]
     assert envoy["configOverride"] == '{{ include "nemo-platform-authentik.envoyConfig" . }}'
+    assert envoy["timeouts"]["upstreamIdle"] == "4s"
+    nemo_cluster = next(cluster for cluster in clusters if cluster["name"] == "nemo")
+    http_options = nemo_cluster["typed_extension_protocol_options"][
+        "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
+    ]
+    assert http_options["common_http_protocol_options"] == {"idle_timeout": "4s"}
+    assert http_options["explicit_http_config"] == {"http_protocol_options": {}}
     gateway_ready_route = next(route for route in routes if route["match"] == {"path": "/health/gateway/ready"})
     health_route = next(route for route in routes if route["match"] == {"prefix": "/health/"})
     assert routes.index(gateway_ready_route) < routes.index(health_route)

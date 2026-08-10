@@ -42,7 +42,8 @@ def docker_push(
     except ImportError:
         typer.echo(
             "Error: 'python-on-whales' is required for publishing images.  "
-            "Install it with:  pip install 'nemo-agents-plugin[container]'",
+            "From the repository root, install it with:  "
+            "uv sync --package nemo-agents-plugin --extra container",
             err=True,
         )
         raise typer.Exit(code=1)

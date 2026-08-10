@@ -106,7 +106,7 @@ def task_image_tag(task_id: str) -> str:
 
 def resolve_run_layout(task: AgentEvalTask, config: AgentEvalRunConfig | None) -> AgenticRunLayout:
     """Resolve/create the on-disk layout for one task run."""
-    output_dir = config.output_dir if config is not None else None
+    output_dir = config.work_dir if config is not None else None
     run_dir = resolve_run_dir(output_dir, lambda: Path.cwd() / "nat-jobs" / task.id) / task.id
     base = prepare_run_layout(run_dir, str(task.inputs.get("instruction") or task.intent))
     state_dir = base.run_dir / "state"

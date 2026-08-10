@@ -288,7 +288,7 @@ def format_port_conflict(err: PortConflict) -> list[str]:
             "Or restart with:    nemo services restart",
         ]
     return [
-        f"Port {err.port} is already in use by another process.",
+        f"Port {err.port} is already in use by another process (EADDRINUSE).",
         "Free the port or choose a different one:",
         f"lsof -i :{err.port}          (see what's listening)",
         f"nemo services run --port {SUGGESTED_ALT_PORT}",
@@ -827,6 +827,7 @@ def start_background(
     if config.config_path:
         args += ["--config", config.config_path]
     args += ["--host", config.host, "--port", str(config.port)]
+    args += ["--keep-alive-timeout-seconds", str(config.keep_alive_timeout_seconds)]
     args += ["--instance", config.scope]
 
     env = os.environ.copy()

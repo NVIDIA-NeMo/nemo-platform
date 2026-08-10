@@ -24,6 +24,7 @@ from nemo_insights_plugin.schema import (
     AnalysisConfigPage,
     AnalysisRunStatusPage,
     CreateInsightRequest,
+    EnableAnalysisConfigRequest,
     InsightListItem,
     InsightPage,
     UpdateAnalysisConfigRequest,
@@ -328,6 +329,8 @@ async def _get_or_create_analysis_config(
     workspace: str,
     agent: str,
     enabled_if_created: bool,
+    default_model: str = "",
+    fast_model: str = "",
 ) -> tuple[AnalysisConfig, bool]:
     """Fetch an analysis config, creating a default one if it is absent.
 
@@ -343,7 +346,14 @@ async def _get_or_create_analysis_config(
         logger.exception("Failed to fetch analysis config")
         raise HTTPException(status_code=500, detail="Failed to fetch analysis config.") from exc
 
-    config = AnalysisConfig(name=agent, workspace=workspace, agent=agent, enabled=enabled_if_created)
+    config = AnalysisConfig(
+        name=agent,
+        workspace=workspace,
+        agent=agent,
+        enabled=enabled_if_created,
+        default_model=default_model,
+        fast_model=fast_model,
+    )
     try:
         return await entity_client.create(config), True
     except NemoEntityConflictError:
@@ -386,16 +396,24 @@ def _build_analysis_configs_router() -> APIRouter:
     async def enable_analysis_config(
         workspace: str,
         agent: str,
+        body: EnableAnalysisConfigRequest,
         entity_client: NemoEntitiesClient = Depends(get_entity_client),
     ) -> AnalysisConfig:
         """Enable periodic insights analysis for one agent."""
         config, created = await _get_or_create_analysis_config(
-            entity_client, workspace=workspace, agent=agent, enabled_if_created=True
+            entity_client,
+            workspace=workspace,
+            agent=agent,
+            enabled_if_created=True,
+            default_model=body.default_model,
+            fast_model=body.fast_model,
         )
         if created:
             return config
 
         config.enabled = True
+        config.default_model = body.default_model
+        config.fast_model = body.fast_model
         try:
             return await entity_client.update(config)
         except Exception as exc:

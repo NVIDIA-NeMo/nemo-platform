@@ -32,7 +32,13 @@ class DeploymentsPluginConfig(BaseModel):
     peft_refresh_interval: int = 30
     lora_sidecar_image_name: str = "nmp-api"
     lora_sidecar_command: list[str] = Field(
-        default_factory=lambda: ["nemo", "services", "run", "--sidecars", "adapters"]
+        default_factory=lambda: ["python", "-m", "nmp.core.models.sidecars.adapters.main"],
+        description=(
+            "Container command for the LoRA adapters sidecar. Replaces the image ENTRYPOINT "
+            "(e.g. `nemo`), so the adapters module is invoked directly and does not write "
+            "platform instance state under the image $HOME (which is unwritable under the "
+            "pod's runtime uid)."
+        ),
     )
     lora_sidecar_args: list[str] = Field(default_factory=list)
     busybox_image: str = Field(

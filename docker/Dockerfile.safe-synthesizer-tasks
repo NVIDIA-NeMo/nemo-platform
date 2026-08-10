@@ -115,7 +115,7 @@ RUN printf '%s\n' \
         "${SAFE_SYNTHESIZER_RUNTIME_PACKAGE}" \
         > /tmp/safe-synthesizer-runtime.txt && \
     printf '%s\n' \
-        wandb==0.28.0 \
+        wandb==0.28.1 \
         'cryptography>=50.0.0,<51' \
         'pyarrow>=23.0.1,<24' \
         > /tmp/safe-synthesizer-overrides.txt
@@ -191,7 +191,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-install-package pyarrow
 
 COPY docker/scripts/cve-cleanup.sh /bin/
-RUN bash /bin/cve-cleanup.sh
+# Perl CVE cleanup removes dpkg-dev/build-essential; keep the non-Perl
+# compiler toolchain available for runtime JIT/native extension builds.
+RUN apt-mark manual gcc g++ make libc6-dev && \
+    bash /bin/cve-cleanup.sh && \
+    printf 'int main(void) { return 0; }\n' | gcc -x c - -o /tmp/gcc-check && \
+    rm -f /tmp/gcc-check
 RUN mkdir -p "${XDG_CACHE_HOME}" "${MPLCONFIGDIR}" "${OUTLINES_CACHE_DIR}" && \
     chown -R ${USER_UID}:${USER_GID} "/home/${USERNAME}" /workspace
 

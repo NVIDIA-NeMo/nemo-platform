@@ -1144,9 +1144,9 @@ class OptimizeModelCapability(Skill):
     default. Duplicate provider route aliases are intentionally omitted so tuning
     choices are not split across equivalent IDs. If editing an LLM model id, also
     call `available_model_ids = await self.list_available_models()` first and
-    choose a catalog model that is currently available.
-
-    > **Tip**: The full live catalog can be queried at runtime — `requests.get("https://inference-api.nvidia.com/v1/models", headers={"Authorization": f"Bearer {key}"})`. `assets/models.yaml` is a curated subset.
+    choose one of those curated IDs. Optimizer model configuration is separate:
+    the default and fast Platform Model Entities selected by `nemo setup` run the
+    optimization agents and do not constrain model IDs used by the agent under test.
 
     **Code example** — upgrading from a fast model to a stronger one for classification:
 

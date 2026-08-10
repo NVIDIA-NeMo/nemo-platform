@@ -13,7 +13,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and — if you want the web UI — Node.js `>=22.23.2 <23` with `pnpm>=10.34.5`.
+**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and — if you want the web UI — Node.js `>=22.23.2 <23` with `pnpm>=10.34.5`.
 
 Quick install from PyPI:
 
@@ -39,7 +39,9 @@ source .venv/bin/activate
 nemo setup
 ```
 
-`nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
+Source development still needs Git and GNU Make. `make bootstrap` supplies the rest of the toolchain, installing the uv, Node.js and pnpm versions pinned in `mise.toml`. Run it before other `make` targets — they call uv through mise but don't install it. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
+
+`nemo setup` starts local services, registers your LLM provider, discovers available models, selects default and fast agent models, installs agent skills, and deploys a sample agent (see more below).
 
 Review [Telemetry and Privacy](docs/telemetry-and-privacy.mdx) for the omnibus disclosure covering anonymous telemetry, bundled library telemetry, third-party endpoint notes, and opt-out controls.
 
@@ -93,6 +95,7 @@ If `make bootstrap` reports that Studio asset bootstrap did not complete, the AP
 ```bash
 export NVIDIA_API_KEY=nvapi...
 export NEMO_DEFAULT_MODEL=nvidia-nemotron-3-super-120b-a12b
+export NEMO_FAST_MODEL="$NEMO_DEFAULT_MODEL"
 nemo setup --auto --start-services --install-skills --deploy-agent
 ```
 
