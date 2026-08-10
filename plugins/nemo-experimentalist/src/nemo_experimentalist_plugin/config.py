@@ -74,21 +74,37 @@ class EvolutionaryOptimizerConfig(BaseModel):
             return data
         if "curator" in data:
             raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
+
+        # A step is turned off by choosing no implementation of its role.
         for removed, replacement in (
-            ("disable_convergence_check", "terminator: null"),
-            ("disable_trajectory_scoring", "trajectory_scorer: null"),
-            ("analyzer", "analyzer_config"),
-            ("proposer", "proposer_config"),
-            ("evaluator", "evaluation_config"),
-            ("coder", "builder_config"),
-            ("goal_config", "trajectory_scorer_config"),
+            ("disable_convergence_check", "terminator"),
+            ("disable_trajectory_scoring", "trajectory_scorer"),
         ):
-            value = data.get(removed)
-            if removed in data and (replacement.endswith("_config") and isinstance(value, dict) or ":" in replacement):
+            if removed in data:
                 raise ValueError(
-                    f"{removed!r} is no longer a run-config key; use {replacement!r}. Turning a step off is "
-                    "how you choose no implementation of it, and each role's config now sits under "
-                    "'<role>_config' so the role key can name the component."
+                    f"{removed!r} is no longer a run-config key; write '{replacement}: null' instead. "
+                    "Turning a step off is how you choose no implementation of its role."
+                )
+
+        # The role key now names a component, so its tuning moved under '<role>_config'.
+        # A string is a component name and stays valid; only a config block is legacy.
+        for removed, replacement in (("analyzer", "analyzer_config"), ("proposer", "proposer_config")):
+            if isinstance(data.get(removed), dict):
+                raise ValueError(
+                    f"{removed!r} now names the component to run, so its settings moved to {replacement!r}."
+                )
+
+        # Renamed outright. These are not fields at all, so any value here is legacy and
+        # would otherwise be dropped in silence — changing what the run does.
+        for removed, role, config_key in (
+            ("evaluator", "evaluation", "evaluation_config"),
+            ("coder", "builder", "builder_config"),
+            ("goal_config", "trajectory_scorer", "trajectory_scorer_config"),
+        ):
+            if removed in data:
+                raise ValueError(
+                    f"{removed!r} is no longer a run-config key; the role is {role!r} and its settings "
+                    f"belong under {config_key!r}."
                 )
         if "models" in data:
             raise ValueError(
