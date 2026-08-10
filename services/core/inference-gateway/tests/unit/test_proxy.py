@@ -128,6 +128,28 @@ async def test_stream_response_result_prefers_typed_non_streaming_payload():
     assert json.loads(body)["id"] == "typed"
 
 
+@pytest.mark.asyncio
+async def test_stream_response_result_strips_stale_upstream_body_headers():
+    """Re-serialized middleware output does not retain upstream body framing."""
+    response = await stream_response_result(
+        {"id": "decoded"},
+        200,
+        {
+            "content-length": "123",
+            "content-encoding": "gzip",
+            "transfer-encoding": "chunked",
+            "x-upstream-header": "preserved",
+        },
+    )
+
+    assert "content-length" not in response.headers
+    assert "content-encoding" not in response.headers
+    assert "transfer-encoding" not in response.headers
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["x-upstream-header"] == "preserved"
+    assert json.loads(await _read_streaming_response(response)) == {"id": "decoded"}
+
+
 def test_response_annotations_do_not_overwrite_typed_body_fields():
     typed = openai_chat_types.ChatCompletion.model_validate(
         {
