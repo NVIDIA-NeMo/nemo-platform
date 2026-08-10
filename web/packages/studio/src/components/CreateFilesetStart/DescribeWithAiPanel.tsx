@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
-import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
-import { Flex, FormField, Stack } from '@nvidia/foundations-react-core';
+import { Block, Flex, FormField, Stack, TextArea } from '@nvidia/foundations-react-core';
+import { PROMPT_SUGGESTIONS } from '@studio/components/CreateFilesetStart/constants';
 import { GeneratedConfigResult } from '@studio/components/CreateFilesetStart/GeneratedConfigResult';
+import { PromptSuggestionPills } from '@studio/components/CreateFilesetStart/PromptSuggestionPills';
 import type { DescribeWithAiPanelProps } from '@studio/components/CreateFilesetStart/types';
 import { useDescribeWithAi } from '@studio/components/CreateFilesetStart/useDescribeWithAi';
 import { providerForSelection } from '@studio/routes/DataDesignerJobBuildRoute/models';
@@ -15,7 +16,7 @@ import type { FC } from 'react';
 import { useController } from 'react-hook-form';
 
 const PROMPT_PLACEHOLDER =
-  '100 customer support emails, each labelled as phishing or legitimate, with a short reason for the label and the sender domain. Sampled across categories (billing, returns, tech support) with subcategories per category (billing: overcharge, failed payment; returns: damaged item, wrong size)';
+  'Describe the rows you want: how many, what each column holds, and how the data should vary. Or start from an example below.';
 
 const MODEL_HELP = 'Needs tool-calling support. This model will be used in LLM columns.';
 
@@ -35,6 +36,13 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
     name: 'model',
   });
   const modelValue: ModelSelection | null = modelField.value ? { model: modelField.value } : null;
+
+  const { field: promptField, fieldState: promptState } = useController({
+    control: form.control,
+    name: 'prompt',
+  });
+  // Suggestions only make sense on an empty field — once there is text they would cover it.
+  const showSuggestions = promptField.value.trim().length === 0 && !isBusy;
 
   return (
     <form onSubmit={generate} noValidate>
@@ -65,15 +73,33 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
             />
           </FormField>
 
-          <ControlledTextArea
-            label="What do you want to generate?"
+          <FormField
+            slotLabel="What do you want to generate?"
+            slotError={promptState.error?.message}
+            status={promptState.error ? 'error' : undefined}
             required
-            rows={8}
-            className="w-full resize-y"
-            placeholder={PROMPT_PLACEHOLDER}
-            disabled={isBusy}
-            useControllerProps={{ name: 'prompt', control: form.control }}
-          />
+          >
+            <Block className="relative">
+              <TextArea
+                rows={8}
+                className="w-full resize-y"
+                placeholder={PROMPT_PLACEHOLDER}
+                disabled={isBusy}
+                value={promptField.value}
+                onValueChange={promptField.onChange}
+                status={promptState.error ? 'error' : undefined}
+                attributes={{ TextAreaElement: { onBlur: promptField.onBlur } }}
+              />
+              {showSuggestions && (
+                <PromptSuggestionPills
+                  suggestions={PROMPT_SUGGESTIONS}
+                  onSelect={(prompt) =>
+                    form.setValue('prompt', prompt, { shouldValidate: true, shouldDirty: true })
+                  }
+                />
+              )}
+            </Block>
+          </FormField>
 
           <Flex justify="start">
             <LoadingButton
