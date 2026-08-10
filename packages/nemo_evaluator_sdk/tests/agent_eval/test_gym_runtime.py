@@ -598,18 +598,71 @@ def test_hydra_scalars_use_hydra_spellings_not_python_ones() -> None:
     assert _hydra_scalar(None) == "null"
     assert _hydra_scalar(True) == "true"
     assert _hydra_scalar(False) == "false"
-    assert _hydra_scalar([1, "x", None]) == "[1,x,null]"
+    assert _hydra_scalar([1, None]) == "[1,null]"
     assert _hydra_scalar(0.7) == "0.7"
-    # Interpolations survive untouched, which is what lets an override defer to Gym's global config.
-    assert _hydra_scalar("${policy_base_url}") == "${policy_base_url}"
+
+
+def test_hydra_strings_are_quoted_so_the_grammar_cannot_retype_them() -> None:
+    # Hydra's grammar is typed: unquoted, "true" parses as a bool, "null" as None, "1.5" as a float,
+    # and "a,b" as a *sweep* — so a string override would silently become something else.
+    assert _hydra_scalar("true") == "'true'"
+    assert _hydra_scalar("null") == "'null'"
+    assert _hydra_scalar("1.5") == "'1.5'"
+    assert _hydra_scalar("a,b") == "'a,b'"
+    assert _hydra_scalar("A[B") == "'A[B'"  # unquoted this does not parse at all
+    assert _hydra_scalar("") == "''"
+    # Only the quote is escaped: Hydra does not decode `\\` inside a quoted value, so escaping
+    # backslashes would double them.
+    assert _hydra_scalar("he'llo") == "'he\\'llo'"
+    assert _hydra_scalar("back\\slash") == "'back\\slash'"
+    # Interpolation survives quoting — the override sets the text, OmegaConf resolves it on read.
+    assert _hydra_scalar("${policy_base_url}") == "'${policy_base_url}'"
+
+
+def test_hydra_rejects_a_value_it_cannot_express() -> None:
+    # A trailing backslash escapes the closing quote and leaves the value unterminated; there is no
+    # spelling that avoids it, so say so rather than emit something unparseable.
+    with pytest.raises(ValueError, match="ends with a backslash"):
+        _hydra_scalar("ends\\")
+
+
+def test_hydra_dicts_nested_in_a_list_use_the_grammars_bare_keys() -> None:
+    # A mapping reached through a list has no dotted path to flatten onto, so it has to be spelled
+    # inline. `str()` would emit Python's repr — `{'b': 1}` — whose quoted keys Hydra's `dictKey`
+    # rule has no form for and rejects outright.
+    assert _hydra_scalar({"b": 1}) == "{b:1}"
+    assert _hydra_scalar([{"b": 1}, {"c": "true"}]) == "[{b:1},{c:'true'}]"
+    # The typed spellings hold at depth: values recurse through the same function.
+    assert _hydra_scalar({"b": None, "c": True, "d": "a,b"}) == "{b:null,c:true,d:'a,b'}"
+    assert _hydra_scalar({"b": {"c": [1, "x"]}}) == "{b:{c:[1,'x']}}"
+    assert _hydra_scalar({}) == "{}"
+
+
+@pytest.mark.parametrize("key", ["true", "NULL", "1.5", "inf", "b:c", "b,c", "b}c", "b'c", "", 1])
+def test_hydra_rejects_dict_keys_it_would_retype_or_fail_to_parse(key: object) -> None:
+    # Keys are emitted bare because the grammar has no quoted form, which leaves them at the mercy
+    # of the lexer: `{true:1}` keys on the boolean True and `{b:c:1}` does not parse. Neither is what
+    # the caller wrote, and the second is not even loud, so refuse both.
+    with pytest.raises(ValueError, match="dict key"):
+        _hydra_scalar([{key: 1}])
 
 
 def test_flatten_overrides_produces_forcing_dotted_paths() -> None:
     flattened = _flatten_overrides({"a": {"b": {"c": 1}}, "d": "x"})
     # `++` not `+`: a bare `+` fails on a key the merged config already defines, which is precisely
     # the case an override exists for.
-    assert flattened == ["++a.b.c=1", "++d=x"]
+    assert flattened == ["++a.b.c=1", "++d='x'"]
     assert _flatten_overrides({}) == []
+
+
+def test_flatten_overrides_keeps_an_empty_mapping_instead_of_dropping_it() -> None:
+    # An empty mapping has no leaves to descend to, so recursing emits nothing and the override
+    # vanishes — the caller asked to clear `a` and the run would silently keep the config's value.
+    assert _flatten_overrides({"a": {}}) == ["++a={}"]
+
+
+def test_flatten_overrides_serializes_a_list_of_dicts() -> None:
+    assert _flatten_overrides({"a": {"b": [{"c": 1}]}}) == ["++a.b=[{c:1}]"]
 
 
 def _config(**kwargs: object) -> GymRuntimeConfig:
@@ -635,7 +688,7 @@ def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_pat
         tmp_path,
     )
     assert not [arg for arg in selection if arg.startswith("+simple_agent.")]
-    assert "++simple_agent.responses_api_agents.simple_agent.resources_server.name=other" in selection
+    assert "++simple_agent.responses_api_agents.simple_agent.resources_server.name='other'" in selection
 
 
 def test_selection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:

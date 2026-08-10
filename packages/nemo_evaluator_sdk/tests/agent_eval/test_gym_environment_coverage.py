@@ -279,7 +279,11 @@ def test_gym_environment_config_validates(case: GymEnvironmentCase, tmp_path: Pa
     report: an unset ``???``, a bad path, or a cross-reference to a server that is not defined.
     """
     gym = _gym_cli()
-    _require_environment(gym, case)
+    # Only the environment itself is required. Docker and GPU are *execution* prerequisites, and
+    # gating on them here would throw away the coverage this test exists for — `wmt_translation`'s
+    # config would go unvalidated on every machine without an NVIDIA card, which is all of them
+    # until AALGO-494 lands the GPU runner.
+    _environment_dir(gym, case)
 
     proc = subprocess.run(
         [gym, "env", "validate", *_selection(case, tmp_path / "hydra")],

@@ -39,7 +39,7 @@ Working from a Gym checkout also makes its components take precedence over the p
 
 Useful flags: `--resources-server`, `--agent`, `--model-type` (`inference_provider` for OpenAI-compatible **chat** endpoints; `openai_model` uses the OpenAI **Responses API** and 500s against chat-only endpoints), `--num-repeats`, `--dataset`, `--output-dir`.
 
-For the full set of knobs the underlying `gym env start` / `gym eval run` commands accept, see the [NeMo Gym documentation](https://github.com/NVIDIA-NeMo/Gym). Anything `GymRuntimeConfig` does not expose as a field can be passed through with its `env_overrides` escape hatch (Hydra `+key=value` overrides applied to `gym env start`).
+For the full set of knobs the underlying `gym env start` / `gym eval run` commands accept, see the [NeMo Gym documentation](https://github.com/NVIDIA-NeMo/Gym). Anything `GymRuntimeConfig` does not expose as a field can be passed through with its `env_overrides` escape hatch — nested data such as `{"model": {"temperature": 0.7}}`, flattened to Hydra's override grammar and applied to `gym env start`.
 
 Each run writes its bundle to a fresh temporary directory by default. Pass `--output-dir` to choose one, but give every run its own: the runner refuses to reuse a directory that already holds Gym rollout output (Gym appends to its failures sidecar, so reusing one would mix runs) and raises rather than clearing a prior run's results.
 

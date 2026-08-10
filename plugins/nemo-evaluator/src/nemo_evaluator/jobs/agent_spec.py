@@ -173,10 +173,11 @@ class GymRunnerTarget(BaseModel):
         description="Auto-bind the agent's `resources_server.name` via a Hydra override. Set False for "
         "self-contained agents that already bind their own resources-server.",
     )
-    env_overrides: list[str] = Field(
-        default_factory=list,
-        description="Extra Hydra '+key=value' overrides for `gym env start` (applied after the auto-derived "
-        "resources-server binding).",
+    env_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extra config overrides for `gym env start`, as nested data — {'model': {'temperature': 0.7}} "
+        "rather than pre-serialized Hydra strings — so a spec survives being sent as JSON. Flattened to "
+        "Hydra's grammar at invocation, after the auto-derived resources-server binding.",
     )
     num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
     concurrency: int = Field(

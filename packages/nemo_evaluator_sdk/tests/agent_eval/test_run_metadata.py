@@ -200,6 +200,10 @@ def test_gym_redacts_credential_looking_env_overrides() -> None:
                 "model": {"api_key": "sk-should-not-be-recorded", "temperature": 0.7},
                 "env": {"HF_TOKEN": "hf_should-not-be-recorded"},
                 "agent": {"nested": {"secret": "deep-should-not-be-recorded"}},
+                "models": [
+                    {"name": "m", "api_key": "sk-in-a-list-should-not-be-recorded"},
+                ],
+                "api_keys": ["sk-whole-list-should-not-be-recorded"],
             },
         )
     )
@@ -214,6 +218,11 @@ def test_gym_redacts_credential_looking_env_overrides() -> None:
         "env": {"HF_TOKEN": "<redacted>"},
         # Matching is on the full dotted path, so a credential stays redacted at any depth.
         "agent": {"nested": {"secret": "<redacted>"}},
+        # A mapping inside a list reaches Gym just as a nested one does, so it is walked too. The
+        # index contributes no path segment: the key marks the credential, not the position.
+        "models": [{"name": "m", "api_key": "<redacted>"}],
+        # A credential-shaped key wins over descending into it — the whole list goes.
+        "api_keys": "<redacted>",
     }
     assert "should-not-be-recorded" not in json.dumps(recorded)
 

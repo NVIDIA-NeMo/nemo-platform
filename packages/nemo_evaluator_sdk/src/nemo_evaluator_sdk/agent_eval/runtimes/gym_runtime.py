@@ -123,20 +123,72 @@ _SECRET_KEY_MARKERS = ("api_key", "apikey", "token", "secret", "password", "pass
 _REDACTED = "<redacted>"
 
 
+#: Dict keys Hydra reads back unchanged. Its ``dictKey`` rule accepts no quoting, so a key is
+#: whatever the lexer makes of the bare text — this is deliberately narrower than what parses.
+_HYDRA_DICT_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*\Z")
+#: Bare words the lexer types rather than reading as text, so they cannot serve as string keys.
+_HYDRA_KEY_LITERALS = frozenset({"true", "false", "null", "inf", "nan"})
+
+
+def _hydra_dict(value: Mapping[str, Any]) -> str:
+    """Render a mapping as a Hydra dict container, ``{key:value,...}``.
+
+    Reached for a mapping nested inside a container — ``[{"b": 1}]`` — where there is no dotted path
+    to flatten onto, so the dict has to be spelled inline. Values recurse, so the typed spellings
+    below hold at any depth.
+
+    Keys are emitted bare, because Hydra's ``dictKey`` rule has no quoted form: ``{'b':1}`` does not
+    parse at all. That leaves the key at the mercy of the lexer, which types it — ``{true:1}`` keys
+    on the boolean ``True``, ``{1.5:1}`` on a float — and rejects ``:``, ``,``, brackets, and quotes
+    outright. Anything outside the conservative shape above therefore raises here rather than
+    silently keying the config on something the caller did not write.
+    """
+    rendered = []
+    for key, item in value.items():
+        if not isinstance(key, str) or not _HYDRA_DICT_KEY.match(key) or key.casefold() in _HYDRA_KEY_LITERALS:
+            raise ValueError(
+                f"Gym config override has dict key {key!r}, which Hydra's override grammar cannot "
+                "express as a string: keys are unquoted, so only a leading letter or underscore "
+                "followed by letters, digits, '_', '.', or '-' survives the round trip. Set this "
+                "key through the override path instead of nesting it inside a list."
+            )
+        rendered.append(f"{key}:{_hydra_scalar(item)}")
+    return "{" + ",".join(rendered) + "}"
+
+
 def _hydra_scalar(value: Any) -> str:
     """Render a leaf value the way Hydra's override grammar reads it back.
 
-    ``None`` and booleans have dedicated spellings — ``str(None)`` would set the literal string
-    ``"None"``, and ``str(True)`` the string ``"True"``. Sequences use Hydra's bracket form. Anything
-    else is stringified, which leaves interpolations like ``${policy_base_url}`` intact for OmegaConf
-    to resolve later.
+    Hydra's grammar is typed, so an unquoted string is not necessarily a string: ``true`` parses as a
+    boolean, ``null`` as ``None``, ``1.5`` as a float, ``a,b`` as a *sweep*, and ``A[B`` fails to
+    parse outright. Strings are therefore always single-quoted, which round-trips every one of those
+    (verified against ``hydra.core.override_parser``). Interpolations survive quoting — the override
+    sets the literal text and OmegaConf resolves it on read — so ``${policy_base_url}`` still works.
+
+    Only ``'`` is escaped. Hydra does **not** decode ``\\\\`` inside a quoted value: escaping
+    backslashes doubles them, so they are passed through raw.
+
+    ``None`` and booleans get their own spellings, since ``str()`` would emit ``"None"``/``"True"``
+    and Hydra reads those back as text. Containers recurse for the same reason: ``str()`` on a dict
+    emits Python's repr, whose quoted keys Hydra rejects outright.
     """
     if value is None:
         return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, Mapping):
+        return _hydra_dict(value)
     if isinstance(value, (list, tuple)):
         return "[" + ",".join(_hydra_scalar(item) for item in value) + "]"
+    if isinstance(value, str):
+        # A trailing backslash would escape the closing quote and leave the value unterminated, and
+        # there is no spelling that avoids it — better to say so than to emit something unparseable.
+        if value.endswith("\\"):
+            raise ValueError(
+                f"Gym config override value {value!r} ends with a backslash, which Hydra's override "
+                "grammar cannot express: it escapes the closing quote."
+            )
+        return "'" + value.replace("'", "\\'") + "'"
     return str(value)
 
 
@@ -153,7 +205,10 @@ def _flatten_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> list[
     arguments: list[str] = []
     for key, value in overrides.items():
         path = f"{_prefix}{key}"
-        if isinstance(value, Mapping):
+        # An empty mapping has no leaves to descend to, so recursing would drop the override
+        # entirely. It is still a value the caller asked to set: emit it as ``++path={}``, which
+        # clears the subtree.
+        if isinstance(value, Mapping) and value:
             arguments.extend(_flatten_overrides(value, f"{path}."))
         else:
             arguments.append(f"++{path}={_hydra_scalar(value)}")
@@ -170,6 +225,10 @@ def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> di
     The *key* is always kept — knowing that a run overrode ``model.api_key`` is useful provenance;
     knowing the value is a leak. Matching is on the full dotted path, so a marker anywhere in it
     redacts, and nesting cannot hide a credential behind an innocuous leaf name.
+
+    Lists are walked too, since a mapping inside one — ``{"models": [{"api_key": "sk-..."}]}`` —
+    reaches Gym just as a nested mapping does. The index contributes no path segment: what marks a
+    value as a credential is the key it sits under, not where in a list it happens to fall.
     """
     redacted: dict[str, Any] = {}
     for key, value in overrides.items():
@@ -178,9 +237,20 @@ def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> di
             redacted[key] = _redact_env_overrides(value, f"{path}.")
         elif any(marker in path.casefold() for marker in _SECRET_KEY_MARKERS):
             redacted[key] = _REDACTED
+        elif isinstance(value, (list, tuple)):
+            redacted[key] = [_redact_list_item(item, path) for item in value]
         else:
             redacted[key] = value
     return redacted
+
+
+def _redact_list_item(item: Any, path: str) -> Any:
+    """Redact inside one element of a list-valued override. See :func:`_redact_env_overrides`."""
+    if isinstance(item, Mapping):
+        return _redact_env_overrides(item, f"{path}.")
+    if isinstance(item, (list, tuple)):
+        return [_redact_list_item(nested, path) for nested in item]
+    return item
 
 
 def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
@@ -585,6 +655,10 @@ class GymAgentTaskRunner:
             env=dict(subprocess_env),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            # Its own process group, like the other two Gym invocations. `_terminate` signals the
+            # group via `killpg`, so without this a validate timeout would signal *our* group — the
+            # SDK process included.
+            start_new_session=True,
         )
         try:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_VALIDATE_TIMEOUT_S)
