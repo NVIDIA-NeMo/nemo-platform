@@ -8,19 +8,23 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
+from nmp.intake.spans.api.dependencies import DenormalizerDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import (
     IntakeSpan,
     SpanStatus,
     TraceBatch,
 )
-from nmp.intake.spans.span_attribute_catalog import SpanAttributeField
+from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, normalize_span_kind, stable_id, utc_now
 from pydantic import BaseModel, Field
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
+
+# Bag key the evaluation id lands under on a built span (from the attribute catalog). The ingest loop
+# reads it back off each span to learn which evaluations a batch touched, for the denormalizer.
+_EVALUATION_ID_BAG_KEY = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
 
 # Ordered by precedence. Keep direct input.value/output.value first so existing
 # OpenInference/LangChain payloads continue to win over framework-specific fallbacks.
@@ -59,6 +63,7 @@ async def ingest_otlp_traces(
     workspace: str,
     request: Request,
     service: SpansServiceDep,
+    denormalizer: DenormalizerDep,
     content_type: str = Header(default="application/octet-stream"),
     content_length: int | None = Header(default=None),
 ) -> IngestResponse:
@@ -79,6 +84,7 @@ async def ingest_otlp_traces(
     export_request = _parse_export_request(body)
     ingested_at = utc_now()
     spans: list[IntakeSpan] = []
+    evaluation_ids: set[str] = set()
     errors: list[str] = []
 
     for resource_spans in export_request.resource_spans:
@@ -103,8 +109,16 @@ async def ingest_otlp_traces(
                     errors.append(f"span {span_hex}: {exc}")
                     continue
                 spans.append(span_domain)
+                evaluation_id = span_domain.attributes_string.get(_EVALUATION_ID_BAG_KEY)
+                if evaluation_id:
+                    evaluation_ids.add(evaluation_id)
 
     await service.ingest_batch(TraceBatch(spans=spans))
+    # A single OTLP batch can carry spans for several evaluations (associated via the
+    # nemo.experiment.id attribute), so refresh the denormalized name facets for every one it touched.
+    if denormalizer is not None:
+        for evaluation_id in evaluation_ids:
+            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_id)
     return IngestResponse(errors=errors)
 
 

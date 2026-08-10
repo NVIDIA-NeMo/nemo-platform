@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client
+from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.experiments.read_service import EvaluationReadService
 from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
 from nmp.intake.repository.clickhouse.evaluation_session import ClickHouseEvaluationSessionRepository
@@ -59,3 +60,12 @@ def get_evaluation_read_service(
 
 
 EvaluationReadServiceDep = Annotated[EvaluationReadService, Depends(get_evaluation_read_service)]
+
+
+def get_denormalizer(request: Request) -> EvaluationDenormalizer | None:
+    """Reach the service-owned denormalizer from the request (absent if startup didn't create one)."""
+    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
+    return getattr(service, "denormalizer", None) if service is not None else None
+
+
+DenormalizerDep = Annotated[EvaluationDenormalizer | None, Depends(get_denormalizer)]

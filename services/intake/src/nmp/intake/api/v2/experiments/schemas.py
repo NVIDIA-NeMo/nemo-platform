@@ -368,6 +368,23 @@ class EvaluationFilter(Filter):
         default=None,
         description="Filter by a metadata key/value pair, e.g. filter[metadata.model]=claude-opus-4-8.",
     )
+    # Name-facet filters. Each is a scalar that matches evaluations whose denormalized list facet
+    # *contains* the value (the endpoint rewrites the parsed equality into a $contains membership match,
+    # like experiment_id). These are entity-store predicates (workspace-scoped, indexed prefix), so they
+    # filter the whole workspace without touching ClickHouse. The facets are refreshed after ingest, so a
+    # just-ingested name can lag by up to denormalization_interval_seconds.
+    agent_name: Annotated[str | None, map_entity_field("data.agent_names")] = Field(
+        default=None,
+        description="Filter evaluations that observed this agent name in any ingested session.",
+    )
+    agent_version: Annotated[str | None, map_entity_field("data.agent_versions")] = Field(
+        default=None,
+        description="Filter evaluations that observed this agent version in any ingested session.",
+    )
+    model_name: Annotated[str | None, map_entity_field("data.model_names")] = Field(
+        default=None,
+        description="Filter evaluations that observed this model name in any ingested session.",
+    )
     # Rollup-metric filters. These live in ClickHouse, not the entity store, so they're declared as
     # self-mapping namespaces (the path is left untranslated) and applied in the application layer
     # after rollup hydration rather than forwarded to Postgres. Stat sub-paths mirror the sort grammar:
