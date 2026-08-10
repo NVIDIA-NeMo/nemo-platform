@@ -11,7 +11,7 @@ import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Text } from '@nvidia/foundations-react-core';
-import { type FC, useCallback, useEffect, useMemo } from 'react';
+import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 
 interface Props {
@@ -48,6 +48,8 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
     return dataset?.dataset ? getEntityReference(dataset.dataset) : '';
   }, [dataset]);
 
+  const latestRequestRef = useRef(0);
+
   const { control, setValue } = useForm<{ dataset: string }>({
     defaultValues: { dataset: selectedDatasetOption },
   });
@@ -57,8 +59,12 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
   }, [selectedDatasetOption, setValue]);
 
   const handleDatasetSelect = async (datasetId: string, fileset?: FilesetOutput) => {
+    // Any new selection invalidates the in-flight fetch, so a slow response for a
+    // previously selected dataset can't overwrite the files of the current one.
+    const requestId = ++latestRequestRef.current;
     if (datasetId === NEW_DATASET_VALUE) {
       dispatch({ type: 'SET_DATASET', payload: { type: 'new', name: '' } });
+      dispatch({ type: 'SET_FETCHING', payload: false });
       return;
     }
     if (!fileset) return;
@@ -66,6 +72,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
     dispatch({ type: 'SET_DATASET', payload: { type: 'existing', dataset: fileset } });
     try {
       const filesResponse = await filesListFilesetFiles(fileset.workspace, fileset.name);
+      if (requestId !== latestRequestRef.current) return;
       const filesetFiles = filesResponse.data ?? [];
       const uploadFiles = filesetFiles.map(
         (file) => ({ id: getExistingFileId(file), type: 'existing', file }) as const
@@ -84,6 +91,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
       dispatch({ type: 'SET_FETCHING', payload: false });
     } catch (error) {
       console.error('Error fetching dataset files', error);
+      if (requestId !== latestRequestRef.current) return;
       dispatch({ type: 'SET_FETCHING', payload: false });
       dispatch({ type: 'SET_ERRORS', payload: { file: 'Error fetching dataset files' } });
     }
