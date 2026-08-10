@@ -15,6 +15,7 @@ from nemo_insights_plugin.analyst.agent import (
 )
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
+from nemo_insights_plugin.analyst.memory import FilesetMemoryStore, MemoryStore
 from nemo_insights_plugin.analyst.observability import (
     ANALYST_OBSERVABILITY_ENV,
     setup_analyst_observability,
@@ -52,6 +53,7 @@ async def run_analyst(
     since: datetime | None = None,
     evaluation_id: str | None = None,
     model_refs: ConfiguredModelRefs | None = None,
+    memory_store: MemoryStore | None = None,
 ) -> str:
     """Build and run the analyst agent against an agent's telemetry.
 
@@ -74,6 +76,11 @@ async def run_analyst(
         evaluation_id: Optional run scope; AND-pinned onto every span read.
         model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
             the active Platform CLI context.
+        memory_store: Optional override for where the memory document lives.
+            Unset uses the ``nemo-agent-memory`` fileset on *client*, which is
+            reachable identically from the CLI and the scheduled job. Memory is
+            skipped entirely under *local_only*, whose testbed subjects expose
+            Intake but not the rest of the platform.
     """
     observability = None
     model_clients: ConfiguredModelClients | None = None
@@ -100,14 +107,23 @@ async def run_analyst(
                 workspace=workspace,
                 target_agent=agent,
             )
+        if memory_store is None and not local_only:
+            memory_store = FilesetMemoryStore(client=client, workspace=workspace, agent=agent)
+        agent_memory = await memory_store.read() if memory_store is not None else None
         with activate_model_clients(model_clients):
             analyst = build_analyst_agent(
                 deps=deps,
                 agent=agent,
                 agent_spec=agent_spec,
+                agent_memory=agent_memory,
             )
             result = await _run_agent(analyst, verbose=verbose)
-        return await backend.persist_result(workspace=workspace, agent=agent, result=result)
+        report = await backend.persist_result(workspace=workspace, agent=agent, result=result)
+        if memory_store is None:
+            return report
+        # Runs after the insights land, so a memory failure is reported on the
+        # run rather than raised — the analysis itself already succeeded.
+        return f"{report}\n{await memory_store.write(result.memory)}"
     finally:
         try:
             if observability is not None:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import httpx
 from nemo_insights_plugin.analyst.analyst_backend import make_analyst_backend
+from nemo_insights_plugin.analyst.memory import MEMORY_FILESET, memory_remote_path
 from nemo_insights_plugin.client import make_client
 from nemo_insights_plugin.contracts.checks import CheckResult, make_check_result
 from nemo_insights_plugin.profile import AnalysisProfile
@@ -219,4 +220,22 @@ async def check_environment(
                 hint="check the workspace, authentication context, and Intake availability",
             )
         )
+        results.append(_memory_location(agent))
     return results
+
+
+def _memory_location(agent: str) -> CheckResult:
+    """Point at the agent's memory document.
+
+    Deliberately does not fetch it: whether the document exists yet says little
+    (an absent one is the normal first-run state), and the useful thing to tell
+    someone running ``doctor`` is where to look and what to edit.
+    """
+    return CheckResult(
+        name="agent-memory",
+        group="artifacts",
+        status="pass",
+        severity="advisory",
+        message=f"memory at {MEMORY_FILESET}#{memory_remote_path(agent)}",
+        hint=f"read or replace it with `nemo files download/upload {MEMORY_FILESET}`",
+    )

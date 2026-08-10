@@ -182,4 +182,5 @@ def test_healthy_setup_formats_grouped_report(tmp_path: Path) -> None:
     assert "Profile\n  ✓ profile for agent 'a'" in report
     assert "Models\n  ✓ default=default/gpt-5; fast=default/gpt-5-mini" in report
     assert "Platform\n  ✓ http://localhost:8080 reachable" in report
+    assert "memory at nemo-agent-memory#a/AGENT-MEMORY.md" in report
     assert not required_failures(results)

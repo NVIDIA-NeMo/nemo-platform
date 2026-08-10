@@ -19,8 +19,10 @@ The result is delivered through Nooa's ``return_result`` helper and validated
 against the ``AnalystResult`` schema.
 
 The analyst's persona, task, the agent-under-test name, and the optional AUT
-spec are all formatted into the instructions by ``build_analyst_agent``; the
-run is seeded with only the minimal ``KICKOFF`` request. The per-run config the
+spec and memory document are all formatted into the instructions by
+``build_analyst_agent``; the run is seeded with only the minimal ``KICKOFF``
+request. Memory rides the same one-shot channel as the insights: the analyst
+never edits it mid-run, it just returns the notes it wants kept. The per-run config the
 methods need is carried in :class:`~nemo_insights_plugin.analyst.deps.AnalystDeps`.
 Workspace and base URL aren't in the instructions because the methods are already
 scoped to them via ``AnalystDeps``.
@@ -30,6 +32,7 @@ from typing import Annotated, Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.functions import annotations, insights, spans
+from nemo_insights_plugin.analyst.memory import MAX_NOTES
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, hidden, strategy
@@ -119,6 +122,29 @@ noisy Insight burns developer trust and is worse than no Insight at all.
 4. Check the existing Insights for the agent so you know which of your
    findings are new and which extend an Insight that already exists.
 
+## Memory
+
+You may be given a memory document for this agent below. It holds context
+established on earlier runs and anything the developer wrote by hand: how to
+read this agent's telemetry, what is deliberate rather than broken, domain
+vocabulary. Treat it as established and do not spend budget rediscovering it.
+Where this run's evidence contradicts it, trust the evidence and say so in
+your summary.
+
+Keep it current through the ``memory`` field of your result. What you return
+is the memory that should *exist* from now on, not a log of this run, because
+it replaces the maintained section of the document wholesale. Start from the
+notes you were given, drop the ones this run contradicted, and add what you
+newly learned. This matters most on scheduled runs, which only look at traces
+newer than the previous run: a still-true note you leave out because this
+window did not happen to re-prove it is a note you have deleted.
+
+A note earns its place only if it would save work on a future run. Do not
+record findings that belong in an Insight, anything true of a single trace, or
+anything already covered by the agent spec. Order the list most important
+first; only the first {max_notes} are kept. Returning an empty list leaves the
+document untouched rather than clearing it.
+
 ## Reporting your findings
 
 When your analysis is complete, report everything in one final
@@ -136,6 +162,8 @@ When your analysis is complete, report everything in one final
   is the only change allowed on an existing Insight (you cannot rename,
   re-describe, or restatus it). Use this instead of re-filing a
   near-duplicate of an existing Insight.
+- ``memory``: the complete set of notes this agent's memory should hold from
+  now on, as described under Memory above.
 
 Producing the result ends the run, so gather all your evidence first
 and emit one complete, well-evidenced change-set. If you found
@@ -155,6 +183,14 @@ Flag agent divergence from the spec. The spec was authored by the
 developer of the application and should be considered the purpose and goals.
 """
 
+AGENT_MEMORY_HEADER = """
+## Agent Memory
+
+The current memory document for this agent. Everything outside the
+``nemo:auto`` markers was written by the developer and is authoritative; the
+section between them is what you maintain.
+"""
+
 KICKOFF = (
     "Analyze recent traces for the agent under test and file Insights for the highest-impact failure patterns you find."
 )
@@ -171,6 +207,7 @@ class Analyst(Agent):
         deps: AnalystDeps,
         agent: str,
         agent_spec: str | None = None,
+        agent_memory: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
@@ -182,9 +219,11 @@ class Analyst(Agent):
             config=TokenBudgetConfig(max_tokens=MAX_SUMMARY_TOKENS),
         )
 
-        instructions = INSTRUCTIONS.format(agent=agent)
+        instructions = INSTRUCTIONS.format(agent=agent, max_notes=MAX_NOTES)
         if agent_spec and agent_spec.strip():
             instructions = f"{instructions}\n{AGENT_SPEC_HEADER}\n\n{agent_spec.strip()}\n"
+        if agent_memory and agent_memory.strip():
+            instructions = f"{instructions}\n{AGENT_MEMORY_HEADER}\n\n{agent_memory.strip()}\n"
         self.context["analyst_instructions"] = instructions
 
     async def fetch_spans(
@@ -358,6 +397,7 @@ def build_analyst_agent(
     deps: AnalystDeps,
     agent: str,
     agent_spec: str | None = None,
+    agent_memory: str | None = None,
     llm: UnifiedLLM | None = None,
     **kwargs: Any,
 ) -> Analyst:
@@ -366,6 +406,7 @@ def build_analyst_agent(
         deps=deps,
         agent=agent,
         agent_spec=agent_spec,
+        agent_memory=agent_memory,
         llm=llm,
         **kwargs,
     )

@@ -73,6 +73,26 @@ class InsightUpdate(BaseModel):
     )
 
 
+class MemoryNote(BaseModel):
+    """One durable fact about the agent, for the analyst's memory document."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(
+        min_length=1,
+        description=(
+            "A single stable fact about this agent's telemetry, tooling, or "
+            "domain that would save work on a future run (e.g. 'spans with "
+            "source=eval are synthetic replay traffic, not production'). One "
+            "sentence; it is rendered as one bullet."
+        ),
+    )
+    source: str = Field(
+        default="",
+        description="Optional short evidence for the note, such as the trace ids it was observed on.",
+    )
+
+
 class AnalystResult(BaseModel):
     """The analyst's complete, final change-set for one run.
 
@@ -100,5 +120,16 @@ class AnalystResult(BaseModel):
             "New evidence (trace refs) for insights that already exist for "
             "the agent. Only evidence can be added to an existing insight — to "
             "record anything else, file a new insight."
+        ),
+    )
+    memory: list[MemoryNote] = Field(
+        default_factory=list,
+        description=(
+            "The complete set of notes the agent's memory should hold from now "
+            "on, most important first. This replaces the maintained section of "
+            "the memory document wholesale, so carry forward every note that is "
+            "still true — not just what this run discovered — and leave out "
+            "what this run contradicted. An empty list leaves memory untouched "
+            "rather than clearing it."
         ),
     )
