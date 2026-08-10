@@ -65,8 +65,12 @@ touching this directory.
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 
-sbx create --clone --name nemo-experimentalist shell "$repo"
+sbx create --clone --profile external-only --name nemo-experimentalist shell "$repo"
 ```
+
+`--clone` mounts your checkout read-only and gives the sandbox a private clone to
+work in, so a run cannot modify your working tree. NVIDIA employees must also
+pass `--profile external-only`.
 
 > **In a git worktree?** `--clone` refuses to run there, so bind-mount instead:
 >
@@ -91,29 +95,39 @@ with `No module named 'nemo_agents_plugin'`.
 ```bash
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env INFERENCE_API_KEY \
-  --env NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.5 \
-  --env NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5-mini \
-  --env NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5-mini \
+  --env NEMO_DEFAULT_MODEL=default/gpt-5-5 \
+  --env NEMO_FAST_MODEL=default/gpt-5-mini \
   nemo-experimentalist \
   bash -lc 'uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
     nemo agents experimentalist run \
       --profile plugins/nemo-experimentalist/examples/smoke-agent/optimizer.yaml \
       --no-insight \
+      --base-url http://host.docker.internal:8080 \
       --config plugins/nemo-experimentalist/examples/smoke-agent/configs/single-round.yaml \
       --experiment-dir /tmp/smoke-repair'
 ```
 
-The model names above are examples — substitute whatever your endpoint calls its
-models. The tiers have no defaults: `model_name()` raises rather than guessing,
-since a model name is only meaningful against a specific endpoint. The leading
-`openai/` is litellm routing rather than part of the name, and dropping it makes
-a valid endpoint id fail inside the client.
+**Models come from the platform, not from this example.** The Experimentalist
+reads a *Model Entity* pair from the active CLI context — `default_model` and
+`fast_model`, the second falling back to the first when unset — so `nemo setup`
+is what normally configures them. `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL`
+override the context, which is what the command above does; the value is an
+entity id of the form `<workspace>/<name>`, not a litellm routing string. List
+what your platform has with `nemo models list --all-pages`; note that dots become
+dashes, so gpt-5.5 is `default/gpt-5-5`. With neither variable set, the run stops
+at preflight with "No default model is configured".
 
-The tier variables are `NEMO_EXPERIMENTALIST_MODELS_{SMART,MID,FAST}` — nested
-config fields join with `_`, so a `_NAME` suffix is silently ignored rather than
-rejected, and the run then fails at the first LLM call.
+Preflight only checks that a value is *set*, not that the entity exists — a typo
+passes `doctor` and fails at the first LLM call, minutes into a run.
+
+**`--base-url` points at a platform, and the sandbox is not the host.** A
+container's `localhost` is itself, so a platform running on your machine is
+reached at `host.docker.internal:8080`. Without a reachable platform the run
+still works — the model pair is what it needs — but every projection of runs and
+candidates onto native `ExperimentGroup`/`Experiment` entities fails and logs
+`[MIRROR] projection failed`. That is best-effort and never fails a run, so a log
+full of it means the platform was unreachable, not that anything went wrong.
 
 Copy the experiment directory back out with `sbx cp` to check the result.
 
