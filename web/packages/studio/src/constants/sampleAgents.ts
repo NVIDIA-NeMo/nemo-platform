@@ -11,9 +11,11 @@ import { z } from 'zod';
 // Eval configs are a SEPARATE registry (EVAL_CONFIG_SAMPLES) on purpose: either
 // paradigm can target any agent, so a config is not owned by an agent.
 //
-// INVARIANT: an entry whose agent.yml uses a custom NAT `_type` requires that
-// tool's Python package to be installed in the deploy venv, or the deployment
-// fails at startup. Current mappings:
+// INVARIANT: an entry needs its tool's Python package installed in the deploy
+// venv, or the deployment fails at startup. A Fabric entry resolves its stdio
+// MCP `url` as a console script on PATH; a NAT entry resolves a custom `_type`.
+// Current mappings:
+//   email-phishing-iocs (mcp)     -> plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent
 //   _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
 //   _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
 //   _type: review_messages         -> plugins/nemo-agents/examples/email-security-analyst
@@ -36,12 +38,13 @@ export interface SampleAgent {
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
   {
-    key: 'email_security_analyst',
-    displayName: 'Email Security Analyst',
+    key: 'email_phishing_agent',
+    displayName: 'Email Phishing Analyzer',
     description:
-      'An analyst-facing email security assistant: select one or more messages, optionally ask a question, and it routes to the capability that answers it.',
-    namePrefix: 'email-security-analyst',
-    agentConfigPath: 'sample-agents/email-security-analyst/agent.yml',
+      'A Fabric deepagents orchestrator that delegates the phishing verdict to a subagent and calls a deterministic extract_iocs MCP tool to harvest URLs and domains.',
+    namePrefix: 'email-phishing-agent',
+    agentConfigPath: 'sample-agents/email-phishing-agent/agent.yaml',
+    configFormat: 'nemo-agents-spec-v1',
   },
 ];
 
