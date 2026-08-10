@@ -10,9 +10,9 @@ diffutils.pkg-path = "diffutils"
 yq-go.pkg-path = "yq-go"
 
 [vars]
-GUM_LOG_MESSAGE_FOREGROUND="514"
-FOREGROUND="514"
-BORDER_FOREGROUND="514"
+GUM_LOG_MESSAGE_FOREGROUND="#76B900"
+FOREGROUND="#76B900"
+BORDER_FOREGROUND="#76B900"
 BORDER="double"
 ALIGN="center"
 WIDTH="50"

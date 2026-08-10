@@ -75,9 +75,9 @@
     "vars": {
       "ALIGN": "center",
       "BORDER": "double",
-      "BORDER_FOREGROUND": "514",
-      "FOREGROUND": "514",
-      "GUM_LOG_MESSAGE_FOREGROUND": "514",
+      "BORDER_FOREGROUND": "#76B900",
+      "FOREGROUND": "#76B900",
+      "GUM_LOG_MESSAGE_FOREGROUND": "#76B900",
       "MARGIN": "1 2",
       "PADDING": "1 2",
       "PNPM_HOME": "${FLOX_ENV_CACHE}/pnpm",
@@ -1618,9 +1618,9 @@
           "vars": {
             "ALIGN": "center",
             "BORDER": "double",
-            "BORDER_FOREGROUND": "514",
-            "FOREGROUND": "514",
-            "GUM_LOG_MESSAGE_FOREGROUND": "514",
+            "BORDER_FOREGROUND": "#76B900",
+            "FOREGROUND": "#76B900",
+            "GUM_LOG_MESSAGE_FOREGROUND": "#76B900",
             "MARGIN": "1 2",
             "PADDING": "1 2",
             "WIDTH": "50"
