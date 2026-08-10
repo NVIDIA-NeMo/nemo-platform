@@ -4,7 +4,7 @@
 
 The `rl` backend (`nemo customization rl submit`) runs on a Ray cluster — **Kubernetes runtime only**, full-weight (no LoRA). Schema: `RlJobInput` in `plugins/nemo-rl/src/nemo_rl_plugin/schema.py`. Run `nemo customization rl explain` for the live schema.
 
-Discriminated by `training.type`: `"dpo"` or `"grpo"`.
+Discriminated by `training.type`: `"dpo"` or `"grpo"`. **`training.type` is required** — it is the union discriminator, so a payload that omits it is rejected with `union_tag_not_found` rather than defaulting to DPO.
 
 ## DPO job JSON layout
 
@@ -59,7 +59,7 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 
 - `environment` is **required** for GRPO (adapter-wheels-v1 FileSet).
 - `dataset` is Gym JSONL (`training.jsonl` required; not DPO preference triples).
-- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is capable (`NMP_RL_SANDBOX_CLUSTER_CAPABLE=true`).
+- `sandboxed` is **not** a job field — platform config `NMP_RL_SANDBOXED_GYM_DEFAULT` (default `true`). Shared clusters fail closed until OpenSandbox is capable (`NMP_RL_SANDBOX_CLUSTER_CAPABLE=true`) and `NMP_RL_JOB_STORAGE_PVC_CLAIM` names the job-storage PVC the Gym sandbox re-mounts for the environment and dataset. Both are compile-time checks.
 
 ## Field reference — shared training knobs
 
@@ -77,12 +77,12 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 | `epochs` | `1` | Passes over the dataset. |
 | `max_steps` | `null` | Global step cap. Caps the run at `min(max_steps, epochs × steps_per_epoch)`, so it's safe to combine with `epochs` to stop smoke jobs mid-epoch — omit for real runs. |
 | `val_check_interval` | `null` | Float ≤ 1.0 = fraction of epoch; > 1.0 = step count. |
-| `val_at_end` | `true` | Run a final validation pass after the last step. Keep enabled for best-checkpoint selection. |
-| `keep_top_k` | `1` | Number of best checkpoints to retain. |
-| `batch_size` | `32` | Global batch across all GPUs. |
+| `val_at_end` | `true` | Run a final validation pass after the last step. Keep enabled: it makes the final checkpoint carry validation metrics so best-checkpoint selection (`metric_name`/`keep_top_k`) works — otherwise NeMo-RL warns and falls back to the latest checkpoint. Set `false` only to skip the extra eval. **GRPO:** ignored when the dataset ships no `validation.jsonl` — the compiler disables validation rather than fail in `setup()`. |
+| `keep_top_k` | `1` | Number of best checkpoints to retain (DPO ranks by validation loss; GRPO by `val:total_reward/mean`). |
+| `batch_size` | `32` | Global batch across all GPUs. **DPO:** preference **pairs**. **GRPO:** must divide `num_prompts_per_step × num_generations_per_prompt` — see the GRPO table. |
 | `micro_batch_size` | `1` | Per-GPU micro batch. |
 | `max_seq_length` | `2048` | Max token sequence length. |
-| `activation_checkpointing` | `false` | Recompute activations to cut memory. |
+| `activation_checkpointing` | `false` | Recompute activations in the backward pass to cut memory — the first knob to enable for OOM / larger models / longer sequences. |
 | `seed` | `null` → `42` | |
 | `execution_profile` | `null` | GPU execution profile; falls back to the service default. |
 
@@ -102,12 +102,13 @@ Upload the env package as a FileSet with `purpose=environment` and the JSONL as 
 | Field | Default | Notes |
 |-------|---------|-------|
 | `num_generations_per_prompt` | `8` | Group size for relative advantages. |
-| `num_prompts_per_step` | `null` | Derived from `batch_size / num_generations_per_prompt` when omitted. |
+| `num_prompts_per_step` | `null` | Derived from `batch_size / num_generations_per_prompt` when omitted. `num_prompts_per_step × num_generations_per_prompt` must be a multiple of `batch_size` (enforced by `validate_for_training`), so prefer a `num_generations_per_prompt` that divides `batch_size`. |
 | `num_val_generations_per_prompt` | `4` | Generations per prompt at validation. |
 | `normalize_rewards` | `true` | |
 | `max_rollout_turns` | `1` | Multi-turn rollouts; most math envs use `1`. |
 | `ref_policy_kl_penalty` | `0.0` | KL coefficient in the GRPO loss. |
 | `ratio_clip_min` / `ratio_clip_max` | `0.2` / `0.28` | PPO-style ratio clip bounds. |
+| `max_grad_norm` | `1.0` | Gradient clipping norm. |
 
 ### `parallelism`
 
@@ -123,5 +124,6 @@ rl supports **W&B and MLflow** through the top-level `integrations` object (`int
 |---------|--------|
 | Policy degenerates / drifts too far | Raise `ref_policy_kl_penalty` (β), e.g. `0.05` → `0.1`–`0.5`. |
 | Barely changes from the reference | Lower β, or raise `learning_rate` one step (still keep it low for DPO). |
-| OOM | Enable `activation_checkpointing: true`; lower `batch_size` / `max_seq_length`. |
-| Instability | Lower LR; raise β; check preference data quality. |
+| Forgets base capabilities (DPO) | Add SFT regularization: `sft_loss_weight` `0.1`–`0.5`. |
+| CUDA OOM | Set `activation_checkpointing: true`; then lower `micro_batch_size`; then `max_seq_length`. **GRPO:** also lower `num_generations_per_prompt` (keeping `batch_size` divisible). |
+| Instability | Lower LR; raise β. **DPO:** check preference data quality. **GRPO:** check reward scale and `ratio_clip_max`. |

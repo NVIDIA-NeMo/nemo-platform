@@ -63,8 +63,13 @@ def _maybe_bootstrap_environment(config: MasterConfig) -> None:
 
     from nmp.rl.tasks.environment.bootstrap import bootstrap_environment_package
 
-    work = Path(str(nemo_gym.get("host_work_path") or root / ".venv"))
-    result = bootstrap_environment_package(root, work_venv=work / "venv", install_wheels=True)
+    # host_work_path is only set in sandboxed mode, which returns above — so in practice
+    # this is None and bootstrap picks a temp dir outside the package. Never fall back to
+    # a path inside `root`: the package validator rejects any *.jsonl under it, and
+    # site-packages ships plenty, which would break resume and rerun on the same PVC.
+    host_work = nemo_gym.get("host_work_path")
+    work_venv = Path(str(host_work)) / "venv" if host_work else None
+    result = bootstrap_environment_package(root, work_venv=work_venv, install_wheels=True)
     logger.info(
         "Bootstrapped environment format=%s image_config_root=%s venv=%s",
         result.manifest.format,

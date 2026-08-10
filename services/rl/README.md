@@ -32,6 +32,7 @@ No HTTP server. The thin contributor layer lives in
   `compile()` fails fast otherwise.
 - **DPO and GRPO are full-weight only** (PEFT unsupported). GRPO uses NeMo Gym
   environment FileSets; `sandboxed` comes from platform config
-  (`NMP_RL_SANDBOXED_GYM_DEFAULT`, default `true`).
+  (`NMP_RL_SANDBOXED_GYM_DEFAULT`, default `true`), and sandboxed jobs additionally
+  require `NMP_RL_SANDBOX_CLUSTER_CAPABLE=true` and `NMP_RL_JOB_STORAGE_PVC_CLAIM`.
 - **Do not edit checked-in OpenAPI YAML** as part of RL schema work; Pydantic is
   the source of truth until a separate OpenAPI regen pass.

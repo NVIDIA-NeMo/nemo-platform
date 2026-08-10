@@ -165,9 +165,16 @@ wait_sandbox_running() {
   local deadline=$((SECONDS + READY_TIMEOUT_S))
   local resp state
   while (( SECONDS < deadline )); do
-    resp="$(curl -fsS \
+    # A bare assignment from a command substitution inherits curl's exit status, so
+    # under `set -e` a single transient failure while the sandbox is still coming up
+    # would abort the script and defeat READY_TIMEOUT_S. Treat a failed poll as
+    # "not ready yet" and retry until the deadline.
+    if ! resp="$(curl -fsS \
       -H "OPEN-SANDBOX-API-KEY: ${API_KEY}" \
-      "${BASE_URL}/v1/sandboxes/${SANDBOX_ID}")"
+      "${BASE_URL}/v1/sandboxes/${SANDBOX_ID}" 2>/dev/null)"; then
+      sleep 3
+      continue
+    fi
     state="$(json_field "${resp}" 'o.get("status",{}).get("state","")')"
     if [[ "${state}" == "Running" ]]; then
       ok "sandbox Running"

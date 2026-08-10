@@ -59,6 +59,7 @@ from nmp.rl.app.constants import (
     DEFAULT_OUTPUT_MODEL_PATH,
     NMP_BROKER_HOST_ENVVAR,
     NMP_BROKER_PORT_ENVVAR,
+    NMP_JOB_STORAGE_PVC_ENVVAR,
     NMP_VLLM_HOST_ENVVAR,
     NMP_VLLM_PORT_ENVVAR,
     SANDBOX_DATASET_PATH,
@@ -203,7 +204,9 @@ def _build_integrations_config(integrations: IntegrationsSpec | None) -> Trainin
 
 def _build_dpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: bool) -> TrainingStepConfig:
     """Map a DPO spec onto the backend-agnostic step config."""
-    t: DPOTraining = job_spec.training  # type: ignore[assignment]
+    t = job_spec.training
+    if not isinstance(t, DPOTraining):
+        raise PlatformJobCompilationError(f"Expected a DPO training spec, got {type(t).__name__}.")
     p = t.parallelism
     return TrainingStepConfig(
         backend=TrainingBackend.NEMO_RL,
@@ -261,14 +264,27 @@ def _build_dpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code:
 
 def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: bool) -> TrainingStepConfig:
     """Map a GRPO spec onto the backend-agnostic step config."""
-    t: GRPOTraining = job_spec.training  # type: ignore[assignment]
+    t = job_spec.training
+    if not isinstance(t, GRPOTraining):
+        raise PlatformJobCompilationError(f"Expected a GRPO training spec, got {type(t).__name__}.")
     p = t.parallelism
     sandboxed = config.sandboxed_gym_default
     if sandboxed and not config.sandbox_cluster_capable:
         raise PlatformJobCompilationError(
             "GRPO jobs with custom environment filesets require sandboxed Gym (platform default). "
             "OpenSandbox is not yet available on this cluster (sandbox_cluster_capable=false). "
-            "Set NMP_RL_SANDBOXED_GYM_DEFAULT=false for trusted dev smoke tests only."
+            "Set NMP_RL_SANDBOX_CLUSTER_CAPABLE=true once OpenSandbox is installed, or "
+            "NMP_RL_SANDBOXED_GYM_DEFAULT=false for trusted dev smoke tests only."
+        )
+    # The Gym host mounts the job-storage claim itself to read the environment and
+    # dataset, and the training container only ever learns the storage *path*. Without
+    # the claim name the sandbox config is unsatisfiable, so fail here rather than
+    # after the model download and vLLM startup.
+    if sandboxed and not config.job_storage_pvc_claim:
+        raise PlatformJobCompilationError(
+            "Sandboxed GRPO requires the job-storage PVC claim name so the Gym sandbox can "
+            "mount the downloaded environment and dataset. Set NMP_RL_JOB_STORAGE_PVC_CLAIM "
+            "to the same claim the Jobs controller mounts for job storage."
         )
 
     return TrainingStepConfig(
@@ -299,6 +315,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 ref_policy_kl_penalty=t.ref_policy_kl_penalty,
                 ratio_clip_min=t.ratio_clip_min,
                 ratio_clip_max=t.ratio_clip_max,
+                max_grad_norm=t.max_grad_norm,
             ),
         ),
         schedule=TrainingStepConfig.ScheduleConfig(
@@ -376,6 +393,8 @@ def _build_training_step(
             (NMP_BROKER_PORT_ENVVAR, "51234"),
         ):
             environment.append(EnvironmentVariable(name=name, value=value))
+        if config.job_storage_pvc_claim:
+            environment.append(EnvironmentVariable(name=NMP_JOB_STORAGE_PVC_ENVVAR, value=config.job_storage_pvc_claim))
 
     executor: GPUExecutionProviderSpec | DistributedGPUExecutionProviderSpec
     if num_nodes > 1:

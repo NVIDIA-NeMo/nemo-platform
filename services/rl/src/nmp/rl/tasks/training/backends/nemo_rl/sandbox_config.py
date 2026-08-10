@@ -25,6 +25,15 @@ class SandboxNetworkPolicy(BaseModel):
 
 
 class SandboxConfig(BaseModel):
+    """Mirror of NeMo-RL's ``env.nemo_gym.sandbox`` schema.
+
+    Field names and requiredness must track
+    ``nemo_rl/environments/sandbox/host/models.py``: that model is
+    ``extra="forbid"`` and declares ``environment_pvc_claim`` and
+    ``workspace_pvc_claim`` with no defaults, so omitting either makes the Gym
+    host fail validation at provisioning time.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     image: str
@@ -36,6 +45,15 @@ class SandboxConfig(BaseModel):
     ttl_s: int = 14_400
     network_policy: SandboxNetworkPolicy = Field(default_factory=SandboxNetworkPolicy)
     resources: dict[str, str] | None = None
+    # PVC claim + sub-path triples. The sandbox mounts the same job-storage claim the
+    # training container uses, so the environment and dataset it reads are the ones the
+    # file_io download step already materialized.
+    environment_pvc_claim: str = Field(min_length=1)
+    environment_sub_path: str = ""
+    dataset_pvc_claim: str | None = None
+    dataset_sub_path: str = ""
+    workspace_pvc_claim: str = Field(min_length=1)
+    workspace_sub_path: str = ""
 
 
 class NemoGymSandboxedConfig(BaseModel):
@@ -45,12 +63,70 @@ class NemoGymSandboxedConfig(BaseModel):
     host_provider: str = "opensandbox"
     environment_path: str | None = None
     sandbox: SandboxConfig | None = None
+    # Stamped onto every sandbox pod as a label. Upstream defaults this to a shared
+    # constant when absent, which makes concurrent jobs indistinguishable.
+    job_id: str | None = None
 
 
 def resolve_ephemeral_work_path(job_id: str) -> str:
     """Prefer node-local ``/scratch`` for lock-heavy Gym/HF work; else ``/tmp``."""
     base = Path("/scratch") if Path("/scratch").is_dir() else Path("/tmp")
     return str(base / "nmp-rl" / job_id / "work")
+
+
+def resolve_job_storage_pvc_claim() -> str | None:
+    """Job-storage PVC claim name injected by the compiler, if any."""
+    from nmp.rl.app.constants import NMP_JOB_STORAGE_PVC_ENVVAR
+
+    return os.environ.get(NMP_JOB_STORAGE_PVC_ENVVAR) or None
+
+
+class SandboxMounts(BaseModel):
+    """PVC claim + sub-path triples for the Gym sandbox's three mounts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    environment_pvc_claim: str
+    environment_sub_path: str
+    dataset_pvc_claim: str
+    dataset_sub_path: str
+    workspace_pvc_claim: str
+    workspace_sub_path: str
+
+
+def build_sandbox_mounts(
+    *,
+    pvc_claim: str,
+    workspace: str,
+    job_id: str,
+    storage_root: Path,
+    environment_path: str,
+    dataset_path: str,
+) -> SandboxMounts:
+    """Map job-storage directories to PVC-relative sub-paths for the Gym sandbox.
+
+    The training container sees ``environment_path`` / ``dataset_path`` under the
+    job-storage mount; the sandbox mounts the same claim directly, so each path has
+    to be re-expressed relative to the PVC root.
+    """
+    from nemo_platform_plugin.jobs.constants import job_storage_subpath
+
+    prefix = job_storage_subpath(workspace, job_id)
+
+    def _sub_path(path: str) -> str:
+        leaf = Path(path).relative_to(storage_root)
+        return f"{prefix}/{leaf.as_posix()}"
+
+    return SandboxMounts(
+        environment_pvc_claim=pvc_claim,
+        environment_sub_path=_sub_path(environment_path),
+        dataset_pvc_claim=pvc_claim,
+        dataset_sub_path=_sub_path(dataset_path),
+        workspace_pvc_claim=pvc_claim,
+        # Writable scratch for the Gym host, kept beside the job's own data so it is
+        # reclaimed by the same job-storage cleanup.
+        workspace_sub_path=f"{prefix}/gym-work",
+    )
 
 
 def bootstrap_env_from_job(

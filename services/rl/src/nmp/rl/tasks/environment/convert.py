@@ -24,6 +24,7 @@ from nmp.rl.tasks.environment.package import (
     write_dataset_jsonl,
 )
 from nmp.rl.tasks.environment.validate import validate_dataset_rows
+from packaging.version import InvalidVersion, Version
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,15 @@ def download_hub_wheels(
     return wheels_dir
 
 
+def _wheel_version(path: Path) -> Version:
+    """Parse the version segment of a wheel filename (``name-version-...whl``)."""
+    parts = path.name.split("-")
+    try:
+        return Version(parts[1]) if len(parts) > 1 else Version("0")
+    except InvalidVersion:
+        return Version("0")
+
+
 def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> None:
     """Install the hub env package so ``verifiers.load_environment`` can resolve it."""
     candidates = sorted(wheels_dir.glob(f"{package_name}-*.whl"))
@@ -118,7 +128,9 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
         candidates = sorted(wheels_dir.glob(f"{dashed}-*.whl"))
     if not candidates:
         raise RuntimeError(f"No wheel for hub package {package_name!r} under {wheels_dir}; cannot load dataset")
-    whl = candidates[-1]
+    # Filename order is lexicographic, which puts 0.9.0 after 0.10.0 — pick by parsed
+    # version so host-side dataset generation uses the same build the cluster installs.
+    whl = max(candidates, key=_wheel_version)
     cmd = [
         sys.executable,
         "-m",
@@ -128,6 +140,13 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
         "--force-reinstall",
         str(whl),
     ]
+    logger.warning(
+        "Installing untrusted hub package %s into the active interpreter at %s. This "
+        "mutates that environment (it will no longer match uv.lock) and the package stays "
+        "importable afterwards. Run pi-to-gym-conversion in a throwaway venv if that matters.",
+        whl.name,
+        sys.executable,
+    )
     logger.info("Installing hub package for dataset load: %s", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
@@ -156,7 +175,9 @@ def _load_verifiers_dataset_rows(
     rows: list[dict[str, Any]] = []
     for i in range(len(dataset)):
         prompt = dataset["prompt"][i]
-        example_id = dataset["example_id"][i]
+        # example_id is optional upstream just like answer/task/info; hub envs that omit
+        # it would otherwise raise KeyError partway through conversion.
+        example_id = dataset["example_id"][i] if "example_id" in dataset.column_names else i
         answer = dataset["answer"][i] if "answer" in dataset.column_names else ""
         task = dataset["task"][i] if "task" in dataset.column_names else vf_env_id
         info = dataset["info"][i] if "info" in dataset.column_names else {}
@@ -172,6 +193,29 @@ def _load_verifiers_dataset_rows(
             )
         )
     return rows
+
+
+def split_train_validation(
+    rows: list[dict[str, Any]],
+    validation_fraction: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
+    """Split rows into (train, validation), refusing splits that leave no training rows.
+
+    Silently falling back to the full set for training would make the two files
+    identical, and GRPO ranks checkpoints on ``val:total_reward/mean`` — so the run
+    would select a best checkpoint against its own training data with nothing to
+    indicate it.
+    """
+    if not rows or validation_fraction <= 0:
+        return rows, None
+    split = max(1, int(len(rows) * validation_fraction))
+    if split >= len(rows):
+        raise ValueError(
+            f"validation_fraction={validation_fraction} leaves no training rows "
+            f"({len(rows)} row(s) available, {split} would go to validation). "
+            "Use a smaller fraction or generate more rows."
+        )
+    return rows[split:], rows[:split]
 
 
 def convert_prime_environment(spec: ConvertEnvironmentSpec) -> ConvertedPackage:
@@ -210,12 +254,7 @@ def convert_prime_environment(spec: ConvertEnvironmentSpec) -> ConvertedPackage:
                 f"returned 0 rows (dataset_size={spec.dataset_size})"
             )
 
-    train_rows = all_rows
-    val_rows: list[dict[str, Any]] | None = None
-    if all_rows and spec.validation_fraction > 0:
-        split = max(1, int(len(all_rows) * spec.validation_fraction))
-        val_rows = all_rows[:split]
-        train_rows = all_rows[split:] or all_rows
+    train_rows, val_rows = split_train_validation(all_rows, spec.validation_fraction)
 
     if train_rows:
         validate_dataset_rows(

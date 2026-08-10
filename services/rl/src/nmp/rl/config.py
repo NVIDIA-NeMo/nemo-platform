@@ -75,6 +75,16 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         ),
     )
 
+    job_storage_pvc_claim: str | None = Field(
+        default=None,
+        description=(
+            "Name of the shared job-storage PersistentVolumeClaim (the same claim the Jobs "
+            "controller mounts at the job storage path). Sandboxed GRPO re-mounts that claim "
+            "into the Gym host so the sandbox can read the downloaded environment and dataset, "
+            "so it must be set on any cluster where sandbox_cluster_capable is true."
+        ),
+    )
+
 
 config = get_service_config(RlConfig)
 platform_config = get_platform_config()

@@ -40,52 +40,113 @@ class _TrainingBase(RlSchema):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    optimizer_type: OptimizerType | None = Field(default=None)
-    learning_rate: float = Field(default=1e-4, gt=0.0)
-    min_learning_rate: float | None = Field(default=None, ge=0.0)
-    weight_decay: float = Field(default=0.01, ge=0.0)
-    adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0)
-    adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0)
-    adam_eps: float = Field(default=1e-5, gt=0.0)
-    warmup_steps: int = Field(default=0, ge=0)
-    epochs: int = Field(default=1, gt=0)
-    max_steps: int | None = Field(default=None, gt=0)
-    val_check_interval: float | None = Field(default=None)
-    val_at_end: bool = Field(default=True)
-    keep_top_k: int = Field(default=1, gt=0)
-    batch_size: int = Field(default=32, gt=0)
-    micro_batch_size: int = Field(default=1, gt=0)
-    activation_checkpointing: bool = Field(default=False)
-    max_seq_length: int = Field(default=2048, gt=0)
-    seed: int | None = Field(default=None)
+    # --- Optimizer ---
+    optimizer_type: OptimizerType | None = Field(
+        default=None,
+        description="Optimizer + LR-scheduler combination (AdamW/Adam × cosine-annealing/flat-LR). "
+        "Defaults to AdamW with cosine annealing.",
+    )
+    learning_rate: float = Field(default=1e-4, gt=0.0, description="Peak learning rate.")
+    min_learning_rate: float | None = Field(default=None, ge=0.0, description="Minimum LR for cosine decay.")
+    weight_decay: float = Field(default=0.01, ge=0.0, description="Weight decay coefficient.")
+    adam_beta1: float = Field(default=0.9, ge=0.0, lt=1.0, description="Adam beta1.")
+    adam_beta2: float = Field(default=0.999, ge=0.0, lt=1.0, description="Adam beta2.")
+    adam_eps: float = Field(default=1e-5, gt=0.0, description="Adam epsilon (numerical stability term).")
+    warmup_steps: int = Field(default=0, ge=0, description="Linear warmup steps.")
+
+    # --- Schedule ---
+    epochs: int = Field(default=1, gt=0, description="Number of passes through the dataset.")
+    max_steps: int | None = Field(default=None, gt=0, description="Max training steps (overrides epochs if set).")
+    val_check_interval: float | None = Field(
+        default=None,
+        description="Validation interval. Float <= 1.0 is fraction of epoch; > 1.0 is step count.",
+    )
+    val_at_end: bool = Field(
+        default=True,
+        description="Run a final validation pass after the last training step. Keep enabled so the "
+        "final checkpoint carries validation metrics and best-checkpoint selection works; "
+        "set False only to skip the extra eval. GRPO ignores this when the dataset ships no "
+        "validation.jsonl.",
+    )
+
+    # --- Checkpointing ---
+    keep_top_k: int = Field(
+        default=1, gt=0, description="Number of best checkpoints to retain (ranked by validation loss)."
+    )
+
+    # --- Batch ---
+    batch_size: int = Field(default=32, gt=0, description="Global batch size across all GPUs.")
+    micro_batch_size: int = Field(default=1, gt=0, description="Per-GPU micro batch size.")
+    activation_checkpointing: bool = Field(
+        default=False,
+        description="Recompute activations during the backward pass to reduce memory at the cost of compute. "
+        "Enable to fit larger models or longer sequences.",
+    )
+
+    # --- Model ---
+    max_seq_length: int = Field(default=2048, gt=0, description="Maximum token sequence length for training.")
+    seed: int | None = Field(default=None, description="Random seed for reproducibility.")
+
+    # --- Infrastructure ---
     parallelism: ParallelismParams = Field(default_factory=ParallelismParams)
-    execution_profile: str | None = Field(default=None, min_length=1)
+    execution_profile: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Execution profile for the GPU training step (operator-configured). "
+        "Falls back to the service default when omitted.",
+    )
 
 
 class DPOTraining(_TrainingBase):
     """Direct Preference Optimization (full-weight only — PEFT unsupported)."""
 
-    type: Literal["dpo"] = "dpo"
-    ref_policy_kl_penalty: float = Field(default=0.05, ge=0.0)
-    preference_average_log_probs: bool = Field(default=False)
-    sft_average_log_probs: bool = Field(default=False)
-    preference_loss_weight: float = Field(default=1.0, ge=0.0)
-    sft_loss_weight: float = Field(default=0.0, ge=0.0)
-    max_grad_norm: float = Field(default=1.0, ge=0.0)
+    # No default: ``TrainingMethod`` is a discriminated union, so the tag has to be
+    # present in the submitted JSON. Defaulting it here would make the generated
+    # OpenAPI schema advertise the field as optional while the server rejects it.
+    type: Literal["dpo"]
+    ref_policy_kl_penalty: float = Field(
+        default=0.05, ge=0.0, description="KL penalty coefficient (beta in the DPO paper)."
+    )
+    preference_average_log_probs: bool = Field(
+        default=False, description="Average log probabilities for preference loss calculation."
+    )
+    sft_average_log_probs: bool = Field(
+        default=False, description="Average log probabilities for SFT regularization loss."
+    )
+    preference_loss_weight: float = Field(default=1.0, ge=0.0, description="Weight for the preference (DPO) loss term.")
+    sft_loss_weight: float = Field(
+        default=0.0, ge=0.0, description="Weight for SFT regularization loss (0 = disabled)."
+    )
+    max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
 
 
 class GRPOTraining(_TrainingBase):
     """Group Relative Policy Optimization with NeMo Gym environments."""
 
-    type: Literal["grpo"] = "grpo"
-    num_generations_per_prompt: int = Field(default=8, gt=0)
-    num_prompts_per_step: int | None = Field(default=None, gt=0)
-    num_val_generations_per_prompt: int = Field(default=4, gt=0)
-    normalize_rewards: bool = True
-    max_rollout_turns: int = Field(default=1, gt=0)
-    ref_policy_kl_penalty: float = Field(default=0.0, ge=0.0)
-    ratio_clip_min: float = Field(default=0.2, ge=0.0)
-    ratio_clip_max: float = Field(default=0.28, ge=0.0)
+    type: Literal["grpo"]
+    num_generations_per_prompt: int = Field(
+        default=8, gt=0, description="Group size: rollouts sampled per prompt, used for relative advantages."
+    )
+    num_prompts_per_step: int | None = Field(
+        default=None,
+        gt=0,
+        description="Prompts sampled per training step. Derived from batch_size / "
+        "num_generations_per_prompt when omitted; the product of the two must be a "
+        "multiple of batch_size.",
+    )
+    num_val_generations_per_prompt: int = Field(
+        default=4, gt=0, description="Rollouts sampled per prompt during validation."
+    )
+    normalize_rewards: bool = Field(default=True, description="Normalize rewards within each prompt group.")
+    max_rollout_turns: int = Field(
+        default=1, gt=0, description="Maximum agent turns per rollout. Single-turn environments use 1."
+    )
+    ref_policy_kl_penalty: float = Field(
+        default=0.0, ge=0.0, description="KL penalty coefficient against the reference policy."
+    )
+    ratio_clip_min: float = Field(default=0.2, ge=0.0, description="Lower PPO-style importance ratio clip bound.")
+    ratio_clip_max: float = Field(default=0.28, ge=0.0, description="Upper PPO-style importance ratio clip bound.")
+    max_grad_norm: float = Field(default=1.0, ge=0.0, description="Maximum gradient norm for clipping.")
 
 
 TrainingMethod = Annotated[Union[DPOTraining, GRPOTraining], Discriminator("type")]
@@ -143,8 +204,23 @@ class RlJobOutput(RlSchema):
                 f"batch_size ({gb}) must be divisible by micro_batch_size ({mb}) * "
                 f"data_parallel_size ({derived_dp}) = {divisor}."
             )
-        if self.training_type == TrainingType.GRPO and not self.environment:
-            raise ValueError("GRPO jobs require an environment fileset reference.")
+        if isinstance(training, GRPOTraining):
+            if not self.environment:
+                raise ValueError("GRPO jobs require an environment fileset reference.")
+            # The rollout batch is num_prompts_per_step * num_generations_per_prompt, and
+            # NeMo-RL shards it by the train batch. When num_prompts_per_step is derived,
+            # the floor division can leave the two out of step (e.g. 32 // 5 = 6 -> 30 vs
+            # 32), which only surfaces as an assert at the first optimizer step.
+            gen = training.num_generations_per_prompt
+            prompts = training.num_prompts_per_step or max(gb // max(gen, 1), 1)
+            rollout = prompts * gen
+            if rollout % gb != 0:
+                raise ValueError(
+                    f"num_prompts_per_step ({prompts}) * num_generations_per_prompt ({gen}) "
+                    f"= {rollout} must be a multiple of batch_size ({gb}). Choose a "
+                    f"num_generations_per_prompt that divides batch_size, or set "
+                    f"num_prompts_per_step explicitly."
+                )
 
     @model_validator(mode="after")
     def _output_type_matches_training(self) -> Self:

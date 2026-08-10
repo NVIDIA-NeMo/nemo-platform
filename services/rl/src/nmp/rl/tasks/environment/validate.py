@@ -48,8 +48,9 @@ def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> No
             raise EnvironmentPackageValidationError(f"Missing config file: {rel}")
         if cfg.is_symlink():
             raise EnvironmentPackageValidationError(f"Symlinks are not allowed: {rel}")
-        resolved = cfg.resolve()
-        if not str(resolved).startswith(str(env_root.resolve())):
+        # Compare by path components, not string prefix: "/job/environment-attacker"
+        # startswith("/job/environment") but is a different directory.
+        if not cfg.resolve().is_relative_to(env_root.resolve()):
             raise EnvironmentPackageValidationError(f"config_paths escapes environment root: {rel}")
 
     fmt = manifest.format
