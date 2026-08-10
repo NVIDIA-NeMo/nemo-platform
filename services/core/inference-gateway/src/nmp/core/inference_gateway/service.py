@@ -144,8 +144,9 @@ class InferenceGatewayService(Service):
         #
         # - DummyCookieJar: this client session will be used across different
         #   domains, so we don't want to mix cookies between providers.
-        # - auto_decompress=False: compressed responses pass through
-        #   transparently to clients.
+        # - auto_decompress=False: direct proxy responses pass through
+        #   transparently. The inference-middleware path decodes upstream
+        #   Content-Encoding itself before parsing and re-serializing bodies.
         # - skip_auto_headers=["Accept-Encoding"]: pass through the client's
         #   encoding preferences instead of advertising our own.
         # - Explicit TCPConnector: aiohttp's default ClientSession connector

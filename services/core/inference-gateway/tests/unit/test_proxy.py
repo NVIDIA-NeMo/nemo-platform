@@ -4,7 +4,9 @@
 """Tests for proxy functionality."""
 
 import asyncio
+import gzip
 import json
+import zlib
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any, cast
@@ -41,6 +43,7 @@ from nmp.core.inference_gateway.api.proxy import (
     _rewrite_model_field,
     _rewrite_model_field_in_stream,
     build_next_request,
+    fetch_proxy_response,
     normalize_proxy_url,
     proxy_request,
     stream_response_result,
@@ -1433,8 +1436,6 @@ async def test_compressed_response_bytes_passed_through(mock_proxy_client, mock_
     This verifies the gateway doesn't decompress responses, allowing compressed
     data to flow transparently from upstream to client.
     """
-    import gzip
-
     from multidict import CIMultiDict, CIMultiDictProxy
 
     # Simulate a gzip-compressed response from upstream
@@ -1470,6 +1471,120 @@ async def test_compressed_response_bytes_passed_through(mock_proxy_client, mock_
     assert gzip.decompress(received_data) == original_data
 
 
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_gzip_json(mock_proxy_client, mock_proxy_response, next_request_info):
+    """Middleware processing receives decoded JSON when the upstream uses gzip."""
+    expected = {"id": "response", "choices": [{"message": {"content": "ok"}}]}
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/json"),
+                ("content-encoding", "gzip"),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=gzip.compress(json.dumps(expected).encode()))
+
+    result, _, status_code = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert status_code == 200
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_deflate_json(mock_proxy_client, mock_proxy_response, next_request_info):
+    """The middleware path supports the other baseline HTTP compression coding."""
+    expected = {"id": "response", "choices": [{"message": {"content": "ok"}}]}
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/json"),
+                ("content-encoding", "deflate"),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=zlib.compress(json.dumps(expected).encode()))
+
+    result, _, status_code = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert status_code == 200
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_reports_content_decoding_failure(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """A corrupt compressed body is reported as a gateway decoding failure."""
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "application/json"),
+                ("content-encoding", "gzip"),
+            ]
+        )
+    )
+    mock_proxy_response.read = AsyncMock(return_value=b"not-gzip")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Inference Gateway could not decode the upstream response with Content-Encoding 'gzip'."
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_reports_json_processing_failure(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """A JSON parsing failure describes gateway processing instead of blaming the backend."""
+    mock_proxy_response.read = AsyncMock(return_value=b"not-json")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Inference Gateway could not parse the upstream response as JSON for inference middleware processing."
+    )
+    assert "backend returned" not in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_gzip_sse(mock_proxy_client, mock_proxy_response, next_request_info):
+    """Streaming middleware receives decoded SSE chunks when the upstream uses gzip."""
+    expected = [
+        {"id": "chunk-1", "choices": [{"delta": {"content": "hello"}}]},
+        {"id": "chunk-2", "choices": [{"delta": {"content": " world"}}]},
+    ]
+    encoded = gzip.compress(
+        ("\n".join(f"data: {json.dumps(chunk)}" for chunk in expected) + "\ndata: [DONE]\n").encode()
+    )
+
+    async def _iter_compressed_fragments():
+        midpoint = len(encoded) // 2
+        yield encoded[:midpoint]
+        yield encoded[midpoint:]
+
+    mock_proxy_response.headers = CIMultiDictProxy(
+        CIMultiDict(
+            [
+                ("content-type", "text/event-stream"),
+                ("content-encoding", "gzip"),
+            ]
+        )
+    )
+    mock_proxy_response.content.iter_any = Mock(return_value=_iter_compressed_fragments())
+
+    result, _, status_code = await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert status_code == 200
+    assert not isinstance(result, dict)
+    assert [chunk async for chunk in result] == expected
+
+
 # ---------------------------------------------------------------------------
 # _parse_sse_stream tests
 # ---------------------------------------------------------------------------
@@ -1490,6 +1605,7 @@ def _make_sse_response(*lines: str, encoding: str = "utf-8") -> Mock:
             yield chunk
 
     response = Mock()
+    response.headers = CIMultiDictProxy(CIMultiDict())
     response.content = Mock()
     response.content.iter_any = Mock(return_value=_iter_any())
     response.close = Mock()
@@ -1507,6 +1623,7 @@ def _make_sse_response_fragmented(*lines: str) -> Mock:
             yield bytes([byte])
 
     response = Mock()
+    response.headers = CIMultiDictProxy(CIMultiDict())
     response.content = Mock()
     response.content.iter_any = Mock(return_value=_iter_any())
     response.close = Mock()
@@ -1581,6 +1698,7 @@ async def test_parse_sse_handles_crlf_line_endings():
         yield raw.encode()
 
     response = Mock()
+    response.headers = CIMultiDictProxy(CIMultiDict())
     response.content = Mock()
     response.content.iter_any = Mock(return_value=_iter_any())
     response.close = Mock()

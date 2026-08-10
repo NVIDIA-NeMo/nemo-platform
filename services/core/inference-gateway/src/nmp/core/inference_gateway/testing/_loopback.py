@@ -132,8 +132,9 @@ async def per_request_http_client() -> AsyncGenerator[aiohttp.ClientSession, Non
 
     Constructor flags mirror the production client so headers and
     decompression behave identically: ``DummyCookieJar`` (no cross-domain
-    cookie persistence), ``auto_decompress=False`` (compressed responses
-    pass through), and ``Accept-Encoding`` left to the inbound request.
+    cookie persistence), ``auto_decompress=False`` (the relevant proxy path
+    decides whether to pass through or decode), and ``Accept-Encoding`` left
+    to the inbound request.
     """
     session = aiohttp.ClientSession(
         cookie_jar=aiohttp.DummyCookieJar(),

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Union
 
 import aiohttp
 from aiohttp import ClientSession
+from aiohttp.compression_utils import BrotliDecompressor, ZLibDecompressor, ZSTDDecompressor
 from fastapi import HTTPException, Request
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -443,15 +444,84 @@ async def _parse_sse_chunks(
                 yield parsed
 
 
+class UpstreamContentDecodingError(Exception):
+    """Raised when IGW cannot decode an upstream response body."""
+
+    def __init__(self, content_encoding: str):
+        self.content_encoding = content_encoding
+        super().__init__(f"Could not decode upstream Content-Encoding {content_encoding!r}")
+
+
+ContentDecoder = ZLibDecompressor | BrotliDecompressor | ZSTDDecompressor
+
+
+def _build_content_decoder(content_encoding: str) -> ContentDecoder | None:
+    """Build a streaming decoder for an upstream ``Content-Encoding`` value."""
+    normalized = content_encoding.strip().lower()
+    if not normalized or normalized == "identity":
+        return None
+    if normalized == "gzip":
+        return ZLibDecompressor(encoding="gzip")
+    if normalized == "deflate":
+        return ZLibDecompressor(encoding="deflate")
+    if normalized == "br":
+        return BrotliDecompressor()
+    if normalized == "zstd":
+        return ZSTDDecompressor()
+    raise UpstreamContentDecodingError(content_encoding)
+
+
+async def _decode_content_chunks(chunks: AsyncIterable[bytes], content_encoding: str) -> AsyncIterator[bytes]:
+    """Decode an upstream response body incrementally from its content coding."""
+    try:
+        decoder = _build_content_decoder(content_encoding)
+    except (RuntimeError, UpstreamContentDecodingError) as exc:
+        raise UpstreamContentDecodingError(content_encoding) from exc
+
+    if decoder is None:
+        async for chunk in chunks:
+            yield chunk
+        return
+
+    async for chunk in chunks:
+        try:
+            decoded = await decoder.decompress(chunk)
+        except Exception as exc:
+            raise UpstreamContentDecodingError(content_encoding) from exc
+        if decoded:
+            yield decoded
+
+    try:
+        trailing = decoder.flush()
+    except Exception as exc:
+        raise UpstreamContentDecodingError(content_encoding) from exc
+    if trailing:
+        yield trailing
+
+
+async def _decode_content_body(body: bytes, content_encoding: str) -> bytes:
+    """Decode a buffered upstream response body from its content coding."""
+
+    async def _body_chunks() -> AsyncIterator[bytes]:
+        yield body
+
+    return b"".join([chunk async for chunk in _decode_content_chunks(_body_chunks(), content_encoding)])
+
+
 async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[dict[str, Any]]:
     """Yield parsed JSON objects from an SSE (text/event-stream) response.
 
-    Each ``data:`` line is decoded and yielded as a dict.  ``data: [DONE]``
-    terminates the stream.  Malformed or non-JSON data lines are silently skipped.
-    The underlying aiohttp response is always closed when the generator exits.
+    The response body is decoded according to ``Content-Encoding`` before each
+    ``data:`` line is parsed and yielded as a dict. ``data: [DONE]`` terminates
+    the stream. Malformed or non-JSON data lines are silently skipped. The
+    underlying aiohttp response is always closed when the generator exits.
     """
     try:
-        async for parsed in _parse_sse_chunks(response.content.iter_any()):
+        decoded_chunks = _decode_content_chunks(
+            response.content.iter_any(),
+            response.headers.get("content-encoding", ""),
+        )
+        async for parsed in _parse_sse_chunks(decoded_chunks):
             yield parsed
     finally:
         _close_response(response)
@@ -468,11 +538,11 @@ async def fetch_proxy_response(
     responsible for applying response middleware and then streaming via
     :func:`stream_response_result`.
 
-    For ``Content-Type: text/event-stream`` responses the result is an
+    For ``Content-Type: text/event-stream`` responses the decoded result is an
     ``AsyncIterator[dict]`` backed by the live aiohttp response — the iterator
-    **must** be fully consumed or the underlying connection will leak.  For all
-    other responses the body is buffered and parsed as JSON (falling back to an
-    empty dict for non-JSON bodies).
+    **must** be fully consumed or the underlying connection will leak. For all
+    other responses the body is buffered, decoded according to
+    ``Content-Encoding``, and parsed as a JSON object.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -520,20 +590,48 @@ async def fetch_proxy_response(
             # aiohttp response is transferred to the generator.
             result: ResponseResult = _parse_sse_stream(response)
         else:
-            # Non-streaming — buffer the full body and parse as a JSON object.
+            # Non-streaming — buffer and decode the full body before parsing it.
             raw = await response.read()
             _close_response(response)
+            content_encoding = response.headers.get("content-encoding", "")
             try:
-                result = json.loads(raw)
-            except (json.JSONDecodeError, ValueError) as exc:
+                decoded = await _decode_content_body(raw, content_encoding)
+            except UpstreamContentDecodingError as exc:
+                logger.warning(
+                    "Inference Gateway failed to decode upstream response from %s with Content-Encoding %r",
+                    next_request_info.url,
+                    content_encoding,
+                    exc_info=exc,
+                )
                 raise HTTPException(
                     status_code=502,
-                    detail="Inference middleware requires JSON upstream responses; backend returned non-JSON.",
+                    detail=(
+                        "Inference Gateway could not decode the upstream response "
+                        f"with Content-Encoding {content_encoding!r}."
+                    ),
+                ) from exc
+            try:
+                result = json.loads(decoded)
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.warning(
+                    "Inference Gateway could not parse upstream response from %s as JSON",
+                    next_request_info.url,
+                    exc_info=exc,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "Inference Gateway could not parse the upstream response as JSON "
+                        "for inference middleware processing."
+                    ),
                 ) from exc
             if not isinstance(result, dict):
                 raise HTTPException(
                     status_code=502,
-                    detail="Inference middleware requires JSON object upstream responses; backend returned a non-object.",
+                    detail=(
+                        "Inference Gateway received an upstream JSON response that is not an object, "
+                        "which inference middleware cannot process."
+                    ),
                 )
 
         return result, response_headers, status_code
