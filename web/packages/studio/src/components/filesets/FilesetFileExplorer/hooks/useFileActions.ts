@@ -105,29 +105,49 @@ export function useFileActions(options: UseFileActionsOptions): UseFileActionsRe
     return paths;
   }, [filesList]);
 
-  const getFolderSubtreePaths = useCallback(
-    (path: string) =>
-      [...allFolderPaths].filter(
-        (candidate) => candidate === path || candidate.startsWith(`${path}/`)
-      ),
-    [allFolderPaths]
-  );
+  const folderSubtrees = useMemo(() => {
+    const subtrees = new Map<string, string[]>();
+    for (const folder of allFolderPaths) {
+      const segments = folder.split('/');
+      let acc = '';
+      for (const segment of segments) {
+        acc = acc ? `${acc}/${segment}` : segment;
+        const subtree = subtrees.get(acc);
+        if (subtree) {
+          subtree.push(folder);
+        } else {
+          subtrees.set(acc, [folder]);
+        }
+      }
+    }
+    return subtrees;
+  }, [allFolderPaths]);
+
+  const fullyExpandedFolders = useMemo(() => {
+    const fullyExpanded = new Set<string>();
+    for (const [folder, subtree] of folderSubtrees) {
+      if (subtree.every((p) => expandedFolders.has(p))) {
+        fullyExpanded.add(folder);
+      }
+    }
+    return fullyExpanded;
+  }, [folderSubtrees, expandedFolders]);
 
   const isFolderSubtreeExpanded = useCallback(
-    (path: string) => getFolderSubtreePaths(path).every((p) => expandedFolders.has(p)),
-    [getFolderSubtreePaths, expandedFolders]
+    (path: string) => !folderSubtrees.has(path) || fullyExpandedFolders.has(path),
+    [folderSubtrees, fullyExpandedFolders]
   );
 
   const folderHasSubfolders = useCallback(
-    (path: string) => getFolderSubtreePaths(path).length > 1,
-    [getFolderSubtreePaths]
+    (path: string) => (folderSubtrees.get(path)?.length ?? 0) > 1,
+    [folderSubtrees]
   );
 
   const toggleFolderSubtreeExpand = useCallback(
     (path: string) => {
-      const subtree = getFolderSubtreePaths(path);
-      const expand = !subtree.every((p) => expandedFolders.has(p));
+      const subtree = folderSubtrees.get(path) ?? [];
       setExpandedFolders((prev) => {
+        const expand = !subtree.every((p) => prev.has(p));
         const next = new Set(prev);
         for (const p of subtree) {
           if (expand) {
@@ -139,7 +159,7 @@ export function useFileActions(options: UseFileActionsOptions): UseFileActionsRe
         return next;
       });
     },
-    [getFolderSubtreePaths, expandedFolders]
+    [folderSubtrees]
   );
 
   const handleSearchQueryChange = useCallback((value: string, onClearSelection: () => void) => {

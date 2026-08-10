@@ -750,6 +750,18 @@ describe('useFileActions', () => {
       expect(result.current.rowContents.map((r) => r.path)).toEqual(['data', 'docs']);
     });
 
+    it('returns to the original expansion state when toggled twice in one batch', () => {
+      const { result } = renderNested();
+
+      act(() => {
+        result.current.toggleFolderSubtreeExpand('docs');
+        result.current.toggleFolderSubtreeExpand('docs');
+      });
+
+      expect(result.current.expandedFolders.size).toBe(0);
+      expect(result.current.rowContents.map((r) => r.path)).toEqual(['data', 'docs']);
+    });
+
     it('expands the rest of the subtree when it is only partially expanded', () => {
       const { result } = renderNested();
 
