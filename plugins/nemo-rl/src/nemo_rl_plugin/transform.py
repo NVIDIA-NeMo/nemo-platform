@@ -20,12 +20,19 @@ from nmp.customization_common.service.platform_client import (
     fetch_model_entity,
 )
 from nmp.rl.entities.values import TrainingType
-from nmp.rl.schemas import OutputResponse, RlJobOutput
+from nmp.rl.schemas import GRPOTraining, OutputResponse, RlJobOutput
 
 from nemo_rl_plugin.schema import OutputRequest, RlJobInput
 
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
+
+
+def _infer_output_type(input_spec: RlJobInput) -> OutputNameType:
+    if input_spec.training.type == "grpo" and isinstance(input_spec.training, GRPOTraining):
+        if input_spec.training.finetuning_type == "lora":
+            return OutputNameType.ADAPTER
+    return OutputNameType.MODEL
 
 
 async def transform_input_to_output(
@@ -62,7 +69,7 @@ async def transform_input_to_output(
 
     output = OutputResponse(
         name=out_name,
-        type=OutputNameType.MODEL,
+        type=_infer_output_type(input_spec),
         fileset=out_name,
     )
 

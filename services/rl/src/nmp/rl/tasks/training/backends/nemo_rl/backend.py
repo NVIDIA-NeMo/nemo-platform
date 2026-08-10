@@ -12,6 +12,7 @@
 
 import logging
 import os
+import shutil
 import signal
 from pathlib import Path
 from typing import Any, Optional, cast
@@ -30,6 +31,7 @@ from nmp.rl.app.jobs.training.schemas import (
 from nmp.rl.app.jobs.training.schemas import (
     TrainingBackend as TrainingBackendEnum,
 )
+from nmp.rl.entities.values import FinetuningType
 from nmp.rl.tasks.training.backends.nemo_rl.checkpoints import convert_dcp_to_huggingface
 from nmp.rl.tasks.training.chat_templates import apply_chat_template_to_checkpoint
 from nmp.rl.tasks.training.errors.parser import parse_error_from_output
@@ -268,32 +270,36 @@ class NemoRLBackend(TrainingBackend):
     ) -> CheckpointInfo:
         """Process NeMo RL checkpoint to standard output format.
 
-        The NeMo RL driver already converts checkpoints to HuggingFace format.
-        This method copies the output and applies the chat template.
-
-        Args:
-            checkpoint_path: Path to the checkpoint directory in the DCP format
-            output_path: Where to write the processed checkpoint in the HF format
-            customizer_config: Training configuration
-            library_config: Library-specific config (contains chat template)
-
-        Returns:
-            CheckpointInfo with output path, format, and precision
+        Full-weight jobs convert DCP → HuggingFace. GRPO LoRA jobs prefer an
+        already-exported HF-PEFT adapter tree (``adapter_config.json``); otherwise
+        they fall back to DCP conversion and still label the artifact as PEFT.
         """
         logger.info("Processing created checkpoint")
+        is_lora = customizer_config.training.finetuning_type == FinetuningType.LORA
+
+        if is_lora and (checkpoint_path / "adapter_config.json").is_file():
+            logger.info("Copying LoRA adapter from %s to %s", checkpoint_path, output_path)
+            output_path.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(checkpoint_path, output_path, dirs_exist_ok=True)
+            return CheckpointInfo(
+                path=str(output_path),
+                format=CheckpointFormat.HF_PEFT,
+                precision=customizer_config.model.precision,
+            )
+
         hf_checkpoint_path = convert_dcp_to_huggingface(checkpoint_path, output_path)
 
-        # Apply chat template if available
+        # Apply chat template if available (full-weight / merged HF trees only)
         chat_template = None
         if library_config and library_config.config_dict:
             chat_template = library_config.config_dict.get("policy", {}).get("tokenizer", {}).get("chat_template")
 
-        if chat_template:
+        if chat_template and not is_lora:
             apply_chat_template_to_checkpoint(hf_checkpoint_path, chat_template)
             logger.debug("Applied chat template to checkpoint")
 
         return CheckpointInfo(
             path=str(hf_checkpoint_path),
-            format=CheckpointFormat.HF,
+            format=CheckpointFormat.HF_PEFT if is_lora else CheckpointFormat.HF,
             precision=customizer_config.model.precision,
         )
