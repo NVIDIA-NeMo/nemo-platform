@@ -17,12 +17,24 @@ import type { Mock } from 'vitest';
 const WORKSPACE = 'test-workspace';
 const CONFIGS_URL = `${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs`;
 
-const SOURCE_CONFIG = {
+const SOURCE_CONFIG: GuardrailConfig = {
   name: 'my-rail',
   workspace: WORKSPACE,
   description: 'Blocks unsafe content',
-  data: { models: [{ engine: 'nim', model: 'meta/llama-3.1-8b-instruct', type: 'main' }] },
-} as unknown as GuardrailConfig;
+  data: {
+    models: [
+      { engine: 'nim', model: 'nvidia/llama-3.1-nemoguard-8b-content-safety', type: 'main' },
+    ],
+  },
+  id: 'guardrail-config-1',
+  entity_id: 'guardrail-config-1',
+  parent: `workspace-${WORKSPACE}`,
+  created_at: '2026-01-01T00:00:00Z',
+  created_by: null,
+  updated_at: '2026-01-01T00:00:00Z',
+  updated_by: null,
+  db_version: 1,
+};
 
 const renderModal = ({
   onClose = vi.fn(),

@@ -4,11 +4,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
-import {
-  ENTITY_NAME_HELP,
-  ENTITY_NAME_MAX_LENGTH,
-  entityNameSchema,
-} from '@nemo/common/src/utils/entityName';
+import { ENTITY_NAME_HELP, entityNameSchema, toCopyName } from '@nemo/common/src/utils/entityName';
 import { useGuardrailsCreateConfig } from '@nemo/sdk/generated/platform/api';
 import type {
   GuardrailConfig,
@@ -30,12 +26,6 @@ const createGuardrailFormSchema = z.object({
 
 type FormData = z.infer<typeof createGuardrailFormSchema>;
 
-const COPY_SUFFIX = '-copy';
-
-/** `<name>-copy`, trimmed so the suffix still fits within the entity name limit. */
-const getCopyName = (name: string): string =>
-  `${name.slice(0, ENTITY_NAME_MAX_LENGTH - COPY_SUFFIX.length)}${COPY_SUFFIX}`;
-
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -49,7 +39,7 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose, sourceConfig })
   const queryClient = useQueryClient();
 
   const isDuplicate = Boolean(sourceConfig);
-  const defaultName = sourceConfig?.name ? getCopyName(sourceConfig.name) : '';
+  const defaultName = sourceConfig?.name ? toCopyName(sourceConfig.name) : '';
 
   const {
     control,

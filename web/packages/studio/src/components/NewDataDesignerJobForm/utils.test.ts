@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { COPY_NAME_SUFFIX } from '@nemo/common/src/utils/entityName';
 import type {
   CreateJob as DataDesignerJob,
   CreateJobRequest as DataDesignerJobRequest,
@@ -8,7 +9,6 @@ import type {
 import {
   applyFormModelToJobRequest,
   buildClonedJobRequest,
-  CLONE_NAME_SUFFIX,
   getCloneJobRequestFromState,
   getErrorMessage,
   getWorkspaceAndModel,
@@ -229,7 +229,7 @@ describe('buildClonedJobRequest', () => {
   it('copies the job config into a request with a -copy name', () => {
     const result = buildClonedJobRequest(makeJob());
     expect(result).toEqual({
-      name: `reviews${CLONE_NAME_SUFFIX}`,
+      name: `reviews${COPY_NAME_SUFFIX}`,
       description: 'Synthetic product reviews',
       spec: {
         num_records: 250,
