@@ -419,9 +419,11 @@ class AggregateScalarScore(AggregateScoreBase):
 AggregateScore = AggregateRangeScore | AggregateRubricScore | AggregateScalarScore
 
 
-#: Names listed in a lookup-miss message when nothing resembles what was asked for. Enough to spot a
-#: naming-convention mistake, few enough to read; a run with several metrics times pass@k can carry
-#: dozens, and a wall of them buries the answer rather than giving it.
+#: How many names a lookup-miss message lists when nothing resembles what was asked for. A judgement
+#: call rather than a measured optimum -- enough to show the naming convention, few enough to stay
+#: readable, since a run with several metrics times pass@k can carry dozens. Only this fallback is
+#: truncated; a near-miss is surfaced by similarity, so finding the name you meant never depends on
+#: where it happens to fall alphabetically.
 _MISS_NAME_LIMIT = 10
 
 
@@ -462,15 +464,22 @@ class AggregatedMetricResult(BaseModel):
         raise KeyError(self._unknown_score_message(name))
 
     def _unknown_score_message(self, name: str) -> str:
-        """Explain a lookup miss, leading with near-misses when the name looks like a typo."""
+        """Explain a lookup miss, leading with near-misses when the name looks like a typo.
+
+        "Close" is :func:`difflib.get_close_matches`: SequenceMatcher (Ratcliff/Obershelp) similarity
+        of at least 0.6, best three first. That is a subsequence-overlap ratio, not an edit distance.
+
+        Listing every name alphabetically would be simpler, and is the better answer if the list is
+        left whole. Truncating one is what breaks it -- the name a caller meant is not reliably in
+        the first :data:`_MISS_NAME_LIMIT`, since a typo'd ``view.solved`` sits behind a page of
+        ``gym_reward.*`` in a run carrying pass@1..8 for two metrics.
+        """
         # Deduplicated: names are expected unique, but runner-contributed extras are appended as-is,
         # and a repeat would otherwise be suggested twice, listed twice, and counted twice in the
         # "N other aggregates" tally -- making a collision look like two distinct near-misses.
         available = sorted({score.name for score in self.scores})
         if not available:
             return f"no aggregate score named {name!r}: this result has no aggregates at all"
-        # Suggestions beat enumeration for the common case (a typo, or the wrong pass@k), and stay
-        # useful when a run carries dozens of names.
         close = get_close_matches(name, available, n=3)
         if close:
             suggestions = ", ".join(repr(match) for match in close)
