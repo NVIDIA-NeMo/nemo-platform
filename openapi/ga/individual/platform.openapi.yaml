@@ -8645,6 +8645,8 @@ components:
           title: Llm Call Count
           type: integer
           minimum: 0.0
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
         source:
           type: string
           const: agent
@@ -8665,8 +8667,6 @@ components:
           items:
             $ref: '#/components/schemas/AtifToolCall'
           type: array
-        observation:
-          $ref: '#/components/schemas/AtifObservation'
         metrics:
           $ref: '#/components/schemas/AtifMetrics'
       additionalProperties: false
@@ -8704,6 +8704,8 @@ components:
           title: Llm Call Count
           type: integer
           minimum: 0.0
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
         source:
           type: string
           const: system
@@ -8743,6 +8745,8 @@ components:
           title: Llm Call Count
           type: integer
           minimum: 0.0
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
         source:
           type: string
           const: user

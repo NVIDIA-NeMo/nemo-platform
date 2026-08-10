@@ -459,7 +459,14 @@ class JobsResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> JobListExecutionProfilesResponse:
-        """Get all currently configured execution profiles."""
+        """
+        Get all currently configured execution profiles.
+
+        Returns the capability-filtered merge from jobs config. In local standalone the
+        controller may prune the shared list further after registry boot; in split
+        topologies the API advertises its own merge result (not controller process
+        memory).
+        """
         return self._get(
             "/apis/jobs/v2/execution-profiles",
             options=make_request_options(
@@ -971,7 +978,14 @@ class AsyncJobsResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> JobListExecutionProfilesResponse:
-        """Get all currently configured execution profiles."""
+        """
+        Get all currently configured execution profiles.
+
+        Returns the capability-filtered merge from jobs config. In local standalone the
+        controller may prune the shared list further after registry boot; in split
+        topologies the API advertises its own merge result (not controller process
+        memory).
+        """
         return await self._get(
             "/apis/jobs/v2/execution-profiles",
             options=make_request_options(

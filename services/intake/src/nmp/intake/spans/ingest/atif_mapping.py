@@ -844,8 +844,8 @@ def _step_tool_calls(step: AtifStep) -> list[AtifToolCall]:
 
 
 def _step_observation(step: AtifStep) -> AtifObservation | None:
-    """Return the observation attached to an agent step."""
-    return step.observation if isinstance(step, AtifStepAgent) else None
+    """Return the observation attached to any step."""
+    return step.observation
 
 
 def _observation_result_for_tool_call(step: AtifStep, tool_call_id: str) -> AtifObservationResult | None:

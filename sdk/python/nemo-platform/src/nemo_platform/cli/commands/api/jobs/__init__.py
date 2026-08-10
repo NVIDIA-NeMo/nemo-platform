@@ -400,7 +400,12 @@ def list_execution_profiles_jobs(
     columns: OutputColumnsOption = None,
     stream: StreamOutputOption = False,
 ) -> None:
-    """Get all currently configured execution profiles."""
+    """Get all currently configured execution profiles.
+
+    Returns the capability-filtered merge from jobs config. In local standalone the
+    controller may prune the shared list further after registry boot; in split
+    topologies the API advertises its own merge result (not controller process
+    memory)."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
     validate_stream_output_format(output_format, stream)
