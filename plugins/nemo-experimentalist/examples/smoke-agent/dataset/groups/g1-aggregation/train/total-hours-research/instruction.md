@@ -1,4 +1,4 @@
-What is the total hours for the research department?
+What is the total hours in the research department?
 
 Write a single line of text to `/app/artifacts/output.txt` in exactly this form:
 

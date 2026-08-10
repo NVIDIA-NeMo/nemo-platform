@@ -35,6 +35,20 @@ is the word `unknown`, so the line reads `dept=unknown`. This is part of the
 output contract and is compared byte-for-byte like any other answer — the
 sentinel is `unknown` exactly, not `n/a`, `none`, or the empty string.
 
+## Answer keys
+
+The key on the left of the `=` names what the answer *is*, not the field it came
+from. The vocabulary is fixed:
+
+- a value read from one record uses that field's own name — `dept=`, `role=`,
+  `hours=`
+- a sum over records is reported as **`total=`**, whatever field was summed and
+  however the records were selected
+- a number of records is reported as `count=`
+
+Keys are compared byte-for-byte like the rest of the line, so `hours=42` is wrong
+where `total=42` is expected, even though the number is right.
+
 ## Constraints — these are hard requirements
 
 - **The agent is deterministic and offline.** The same instruction must always
