@@ -37,6 +37,12 @@ HEALTH_ENDPOINT = "/health/ready"
 STARTUP_TIMEOUT_SECONDS = 60
 NMP_API_NETWORK_ALIAS = "nmp-quickstart"
 NMP_API_CONTAINER_NAME_PREFIX = "nmp-api-test"
+CLICKHOUSE_CONTAINER_PORT = 8123
+CLICKHOUSE_HEALTH_ENDPOINT = "/ping"
+CLICKHOUSE_STARTUP_TIMEOUT_SECONDS = 60
+NMP_CLICKHOUSE_NETWORK_ALIAS = "nmp-intake-clickhouse"
+NMP_CLICKHOUSE_CONTAINER_NAME_PREFIX = "nmp-clickhouse-test"
+DEFAULT_E2E_CLICKHOUSE_IMAGE = "clickhouse/clickhouse-server:26.3"
 
 # Docker client timeout in seconds. This needs to be higher than the default 60s
 # to handle Docker-in-Docker (DinD) environments in CI where the Docker daemon
@@ -47,6 +53,21 @@ DOCKER_CLIENT_TIMEOUT_SECONDS = 180
 def _api_container_name() -> str:
     """Return a readable, collision-resistant Docker container name for NeMo E2E."""
     return f"{NMP_API_CONTAINER_NAME_PREFIX}-{uuid.uuid4().hex[:8]}"
+
+
+def _clickhouse_container_name() -> str:
+    """Return a readable, collision-resistant Docker container name for NeMo E2E."""
+    return f"{NMP_CLICKHOUSE_CONTAINER_NAME_PREFIX}-{uuid.uuid4().hex[:8]}"
+
+
+def _clickhouse_image() -> str:
+    """Return the ClickHouse image used by Docker E2E."""
+    return os.environ.get("NMP_E2E_CLICKHOUSE_IMAGE", DEFAULT_E2E_CLICKHOUSE_IMAGE)
+
+
+def _clickhouse_api_url() -> str:
+    """Return the ClickHouse URL reachable from sibling containers in the E2E network."""
+    return f"http://{NMP_CLICKHOUSE_NETWORK_ALIAS}:{CLICKHOUSE_CONTAINER_PORT}"
 
 
 class Docker(E2EBackend):
@@ -75,6 +96,7 @@ class Docker(E2EBackend):
             gpu_requested=gpu_requested,
         )
         self.container: DockerContainer | None = None
+        self.clickhouse_container: DockerContainer | None = None
         self.network: Network | None = None
         self._host_port: int | None = None
         self._data_dir: Path | None = None
@@ -99,6 +121,8 @@ class Docker(E2EBackend):
             # Create temporary directory for /data persistence (sqlite + files)
             self._data_dir = Path(tempfile.mkdtemp(prefix="nmp-e2e-data-"))
             logger.info(f"Created data directory: {self._data_dir}")
+
+            self._start_clickhouse_container()
 
             # Create and configure the container
             # Use a longer timeout for DinD environments where Docker API calls can be slower
@@ -151,6 +175,9 @@ class Docker(E2EBackend):
             self.container.with_env("NMP_SECRETS_ALLOW_KEY_CREATION", "1")
             # Enable mock provider mode for testing
             self.container.with_env("NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX", "igw-mock-")
+            # Intake runs inside the API container, so localhost-published ClickHouse
+            # ports are not reachable. Use the sidecar alias on the E2E network.
+            self.container.with_env("NMP_INTAKE_CLICKHOUSE_URL", _clickhouse_api_url())
             # Ensure jobs use the same Docker network as the API for container execution
             self.container.with_env("NEMO_JOBS_DEFAULT_DOCKER_NETWORK", self.network.name)
             # Models Docker backend: use DonD mode so the API (in a container) can reach NIM
@@ -234,6 +261,59 @@ class Docker(E2EBackend):
             self.stop()
             raise
 
+    def _start_clickhouse_container(self) -> None:
+        """Start a ClickHouse sidecar reachable by the API container."""
+        if self.network is None:
+            raise RuntimeError("Docker network must be created before ClickHouse")
+
+        self.clickhouse_container = DockerContainer(
+            _clickhouse_image(),
+            docker_client_kw={"timeout": DOCKER_CLIENT_TIMEOUT_SECONDS},
+        )
+        self.clickhouse_container.with_kwargs(init=True)
+        self.clickhouse_container.with_name(_clickhouse_container_name())
+        self.clickhouse_container.with_network(self.network)
+        self.clickhouse_container.with_network_aliases(NMP_CLICKHOUSE_NETWORK_ALIAS)
+        self.clickhouse_container.with_exposed_ports(CLICKHOUSE_CONTAINER_PORT)
+        self.clickhouse_container.with_env("CLICKHOUSE_USER", "default")
+        self.clickhouse_container.with_env("CLICKHOUSE_PASSWORD", "")
+        self.clickhouse_container.with_env("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
+        self.clickhouse_container.with_env("CLICKHOUSE_SKIP_USER_SETUP", "1")
+
+        logger.info("Starting ClickHouse sidecar container: %s", _clickhouse_image())
+        self.clickhouse_container.start()
+        self._wait_for_clickhouse_healthy()
+
+    def _wait_for_clickhouse_healthy(self) -> None:
+        """Wait for the ClickHouse sidecar to accept HTTP requests."""
+        if self.clickhouse_container is None:
+            raise RuntimeError("ClickHouse container was not created")
+
+        container_host = self.clickhouse_container.get_container_host_ip()
+        host_port = int(self.clickhouse_container.get_exposed_port(CLICKHOUSE_CONTAINER_PORT))
+        health_url = f"http://{container_host}:{host_port}{CLICKHOUSE_HEALTH_ENDPOINT}"
+
+        logger.info(f"Waiting for ClickHouse health check at: {health_url}")
+
+        start_time = time.time()
+        last_error: Exception | None = None
+
+        while (time.time() - start_time) < CLICKHOUSE_STARTUP_TIMEOUT_SECONDS:
+            try:
+                response = httpx.get(health_url, timeout=5.0)
+                if response.status_code == 200:
+                    return
+                last_error = Exception(f"ClickHouse health check returned status {response.status_code}")
+            except httpx.RequestError as e:
+                last_error = e
+
+            time.sleep(1.0)
+
+        msg = f"ClickHouse did not become healthy within {CLICKHOUSE_STARTUP_TIMEOUT_SECONDS}s"
+        if last_error:
+            msg += f": {last_error}"
+        raise RuntimeError(msg)
+
     def _cleanup_existing_resources(self) -> None:
         """Clean up any lingering resources from a previous failed start.
 
@@ -247,6 +327,14 @@ class Docker(E2EBackend):
             except Exception as e:
                 logger.warning(f"Error stopping existing container: {e}")
             self.container = None
+
+        if self.clickhouse_container is not None:
+            logger.warning("Found existing ClickHouse container from previous attempt, cleaning up")
+            try:
+                self.clickhouse_container.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping existing ClickHouse container: {e}")
+            self.clickhouse_container = None
 
         if self.network is not None:
             logger.warning("Found existing network from previous attempt, cleaning up")
@@ -356,12 +444,13 @@ class Docker(E2EBackend):
         and inspect output to log_dir. Safe to call in a partially degraded state —
         individual failures are ignored.
         """
-        if self.container is None:
+        source_container = self.container or self.clickhouse_container
+        if source_container is None:
             return
         try:
             log_path = Path(log_dir)
             log_path.mkdir(parents=True, exist_ok=True)
-            docker_client = self.container.get_docker_client().client
+            docker_client = source_container.get_docker_client().client
             containers = docker_client.containers.list(all=True)
             for c in containers:
                 name = c.name.lstrip("/")
@@ -409,6 +498,28 @@ class Docker(E2EBackend):
                 except Exception as force_error:
                     logger.warning(f"Error force removing container: {force_error}")
             self.container = None
+
+        if self.clickhouse_container:
+            container_id = None
+            try:
+                wrapped = self.clickhouse_container.get_wrapped_container()
+                container_id = wrapped.short_id
+            except Exception as e:
+                logger.debug(f"Could not get ClickHouse container ID for logging: {e}")
+
+            try:
+                self.clickhouse_container.stop()
+                if container_id:
+                    logger.info(f"Stopped ClickHouse container: {container_id}")
+            except Exception as e:
+                logger.warning(f"Error stopping ClickHouse container gracefully: {e}")
+                try:
+                    wrapped = self.clickhouse_container.get_wrapped_container()
+                    wrapped.remove(force=True)
+                    logger.info(f"Force removed ClickHouse container: {container_id}")
+                except Exception as force_error:
+                    logger.warning(f"Error force removing ClickHouse container: {force_error}")
+            self.clickhouse_container = None
 
         if self.network:
             network_name = self.network.name
