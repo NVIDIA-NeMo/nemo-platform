@@ -282,7 +282,7 @@ def _gym_executable() -> str:
     resolved = shutil.which(_GYM_CLI)
     if resolved is None:
         raise RuntimeError(
-            f"The {_GYM_CLI!r} CLI was not found on PATH. NeMo Gym must be installed in the same "
+            f"The {_GYM_CLI!r} CLI was not found on PATH. NeMo Gym must be installed in the same Python "
             "environment as this SDK: `pip install nemo-gym`, plus the target environment's own "
             "dependencies (each resources-server ships a requirements.txt)."
         )
