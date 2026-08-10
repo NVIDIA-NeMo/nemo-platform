@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from nemo_platform import AsyncNeMoPlatform
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import (
@@ -28,7 +28,7 @@ from nmp.core.files.api.v2.otlp.schemas import (
 )
 from nmp.core.files.app.backends import storage_impl_factory
 from nmp.core.files.app.log_storage import LogEntry, LogStorage, dep_log_storage
-from nmp.core.files.exceptions import InvalidFilterError
+from nmp.core.files.exceptions import InvalidFilterError, InvalidPathError
 from opentelemetry.proto.collector.logs.v1 import logs_service_pb2
 from pydantic import BaseModel, Field
 from starlette.status import (
@@ -54,6 +54,10 @@ class LogQueryRequest(BaseModel):
     page_cursor: str | None = Field(
         default=None,
         description="Cursor for pagination",
+    )
+    artifact_base_path: str | None = Field(
+        default=None,
+        description="Folder inside the fileset the logs were nested under (must match the value used on write)",
     )
 
 
@@ -95,10 +99,14 @@ async def query_otlp_logs(
             filters=request.filters,
             page_size=request.limit,
             page_cursor=request.page_cursor,
+            artifact_base_path=request.artifact_base_path,
         )
     except InvalidFilterError as e:
         logger.error(f"Invalid filter: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Invalid filter: {str(e)}")
+    except InvalidPathError as e:
+        logger.error(f"Invalid artifact base path: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error querying logs: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal error processing query request")
@@ -115,6 +123,7 @@ async def upload_otlp_logs(
     name: str,
     raw_request: Request,
     content_type: str = Header(default="application/json"),
+    artifact_base_path: str | None = Query(default=None, description="Folder inside the fileset to nest logs under"),
     entity_store: EntityClient = Depends(get_entity_client),
     log_storage: LogStorage = Depends(dep_log_storage),
     sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
@@ -222,7 +231,9 @@ async def upload_otlp_logs(
         # Insert logs into database
         logger.debug("Inserting %d log entries", len(log_entries))
         if log_entries:
-            inserted_count = await log_storage.insert_logs(storage, log_entries=log_entries)
+            inserted_count = await log_storage.insert_logs(
+                storage, log_entries=log_entries, artifact_base_path=artifact_base_path
+            )
             logger.debug(f"Successfully ingested {inserted_count} log entries")
         # Prepare response
         if rejected_count > 0:
@@ -238,6 +249,9 @@ async def upload_otlp_logs(
             # Full success
             logger.debug("All log records ingested successfully")
             return OtelExportLogsServiceResponse()
+    except InvalidPathError as e:
+        logger.error(f"Invalid artifact base path: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error ingesting logs: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error ingesting logs: {str(e)}")

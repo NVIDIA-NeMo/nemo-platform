@@ -4,6 +4,55 @@ info:
   description: API for Nemo Platform services
   version: 0.0.0
 paths:
+  /apis/auth/authenticate:
+    get:
+      tags:
+      - Authentication
+      summary: Authenticate Bearer Token Get
+      operationId: get_authenticate_bearer_token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticateResponse'
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticateErrorResponse'
+        '500':
+          description: Bearer token authentication is misconfigured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticateErrorResponse'
+    post:
+      tags:
+      - Authentication
+      summary: Authenticate Bearer Token Post
+      operationId: post_authenticate_bearer_token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticateResponse'
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticateErrorResponse'
+        '500':
+          description: Bearer token authentication is misconfigured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticateErrorResponse'
   /apis/auth/discovery:
     get:
       tags:
@@ -117,6 +166,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
+  /apis/auth/v2/access-keys:
+    get:
+      tags:
+      - Scoped Access Keys
+      summary: List Access Keys
+      operationId: list_access_keys_apis_auth_v2_access_keys_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyListResponse'
+        '404':
+          description: Scoped Access Keys are not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+    post:
+      tags:
+      - Scoped Access Keys
+      summary: Create Access Key
+      operationId: create_access_key_apis_auth_v2_access_keys_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessKeyCreateRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyCreateResponse'
+        '400':
+          description: Scoped Access Key creation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '404':
+          description: Scoped Access Keys are not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/auth/v2/access-keys/{jti}:
+    delete:
+      tags:
+      - Scoped Access Keys
+      summary: Revoke Access Key
+      operationId: revoke_access_key_apis_auth_v2_access_keys__jti__delete
+      parameters:
+      - name: jti
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Jti
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Scoped Access Keys are not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/auth/v2/iam/role-bindings:
     get:
       tags:
@@ -699,6 +852,16 @@ paths:
           default: -created_at
           title: Sort
         description: Sort field
+      - name: count_by
+        in: query
+        required: false
+        schema:
+          description: Optional direct string data field whose matching values should
+            be counted.
+          title: Count By
+          type: string
+        description: Optional direct string data field whose matching values should
+          be counted.
       - name: filter
         in: query
         required: false
@@ -893,6 +1056,16 @@ paths:
           title: Parent
           type: string
         description: Parent entity ID for nested entities
+      - name: expected_db_version
+        in: query
+        required: false
+        schema:
+          description: Optional database version for optimistic locking. Delete only
+            succeeds if the entity still has this version.
+          title: Expected Db Version
+          type: integer
+        description: Optional database version for optimistic locking. Delete only
+          succeeds if the entity still has this version.
       responses:
         '200':
           description: Successful Response
@@ -1865,6 +2038,14 @@ paths:
         schema:
           type: string
           title: Name
+      - name: artifact_base_path
+        in: query
+        required: false
+        schema:
+          description: Folder inside the fileset to nest logs under
+          title: Artifact Base Path
+          type: string
+        description: Folder inside the fileset to nest logs under
       - name: content-type
         in: header
         required: false
@@ -3257,11 +3438,23 @@ paths:
         schema:
           type: string
           title: Name
+      - name: expected_db_version
+        in: query
+        required: false
+        schema:
+          description: Optional database version for optimistic locking. Delete only
+            succeeds if the VirtualModel still has this version.
+          title: Expected Db Version
+          type: integer
+        description: Optional database version for optimistic locking. Delete only
+          succeeds if the VirtualModel still has this version.
       responses:
         '204':
           description: VirtualModel deleted
         '404':
           description: VirtualModel not found.
+        '409':
+          description: VirtualModel was modified before it could be deleted.
         '422':
           description: Validation Error
           content:
@@ -3501,9 +3694,9 @@ paths:
             \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
             \ evaluation attribute (name, created_at, updated_at, pinned_at) or an\
             \ aggregate metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>,\
-            \ or evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
-            \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
-            \ evaluations first."
+            \ tokens.<stat>, or evaluators.<name>.<stat>, where <stat> is one of mean,\
+            \ median, p90, p95, p99, sum, count. When omitted, defaults to -created_at\
+            \ with pinned evaluations first."
           title: Sort
           type: string
         description: "Comma-separated list of fields to sort by, applied in order\
@@ -3511,9 +3704,9 @@ paths:
           \ \u2014 e.g. '-evaluators.reward.mean,cost_usd.mean'. Each field is an\
           \ evaluation attribute (name, created_at, updated_at, pinned_at) or an aggregate\
           \ metric: run_count, test_case_count, cost_usd.<stat>, latency_ms.<stat>,\
-          \ or evaluators.<name>.<stat>, where <stat> is one of mean, median, p90,\
-          \ p95, p99, sum, count. When omitted, defaults to -created_at with pinned\
-          \ evaluations first."
+          \ tokens.<stat>, or evaluators.<name>.<stat>, where <stat> is one of mean,\
+          \ median, p90, p95, p99, sum, count. When omitted, defaults to -created_at\
+          \ with pinned evaluations first."
       - in: query
         name: filter
         style: deepObject
@@ -3521,13 +3714,15 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/EvaluationFilter'
-        description: 'Filter evaluations by name, experiment_group_id, dataset_name,
-          dataset_version, created_by, created_at, or updated_at. Pass is_deleted=true
-          to return only soft-deleted evaluations; omit to see only live ones. Pass
-          is_pinned=true (or false) to filter by pinned state; omit to return both.
-          Filter by a metadata key/value: filter[metadata.<key>]=<value>. Filter by
-          a rollup metric with numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
-          filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or filter[evaluators.<name>.mean][$gte]=0.8.'
+        description: 'Filter evaluations by name, experiment_id (experiment group
+          membership; experiment_group_id is a deprecated alias), dataset_name, dataset_version,
+          created_by, created_at, or updated_at. Pass is_deleted=true to return only
+          soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true
+          (or false) to filter by pinned state; omit to return both. Filter by a metadata
+          key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
+          numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
+          filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, filter[tokens.mean][$lte]=5000,
+          or filter[evaluators.<name>.mean][$gte]=0.8.'
       responses:
         '200':
           description: Successful Response
@@ -4004,12 +4199,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiment-groups:
+  /apis/intake/v2/workspaces/{workspace}/experiments:
     post:
       tags:
-      - Experiment Groups
-      summary: Create Experiment Group
-      operationId: create_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups_post
+      - Experiments
+      summary: Create Experiment
+      operationId: create_experiment_apis_intake_v2_workspaces__workspace__experiments_post
       parameters:
       - name: workspace
         in: path
@@ -4022,16 +4217,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentGroupRequest'
+              $ref: '#/components/schemas/ExperimentRequest'
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponse'
+                $ref: '#/components/schemas/ExperimentResponse'
         '409':
-          description: Experiment group already exists
+          description: Experiment already exists
         '422':
           description: Validation Error
           content:
@@ -4040,9 +4235,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
-      - Experiment Groups
-      summary: List Experiment Groups
-      operationId: list_experiment_groups_apis_intake_v2_workspaces__workspace__experiment_groups_get
+      - Experiments
+      summary: List Experiments
+      operationId: list_experiments_apis_intake_v2_workspaces__workspace__experiments_get
       parameters:
       - name: workspace
         in: path
@@ -4093,28 +4288,29 @@ paths:
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/ExperimentGroupFilter'
-        description: 'Filter experiment groups by name, or by a metadata key/value:
-          filter[metadata.<key>]=<value>.'
+          $ref: '#/components/schemas/ExperimentFilter'
+        description: Filter experiments by name, insight_id, is_deleted, or a metadata
+          key/value (filter[metadata.<key>]=<value>). Pass is_deleted=true to return
+          only soft-deleted experiments; omit to see only live ones.
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponsesPage'
+                $ref: '#/components/schemas/ExperimentResponsesPage'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
     get:
       tags:
-      - Experiment Groups
-      summary: Get Experiment Group
-      operationId: get_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__get
+      - Experiments
+      summary: Get Experiment
+      operationId: get_experiment_apis_intake_v2_workspaces__workspace__experiments__name__get
       parameters:
       - name: workspace
         in: path
@@ -4134,9 +4330,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponse'
+                $ref: '#/components/schemas/ExperimentResponse'
         '404':
-          description: Experiment group not found
+          description: Experiment not found
         '422':
           description: Validation Error
           content:
@@ -4145,9 +4341,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     put:
       tags:
-      - Experiment Groups
-      summary: Update Experiment Group
-      operationId: update_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__put
+      - Experiments
+      summary: Update Experiment
+      operationId: update_experiment_apis_intake_v2_workspaces__workspace__experiments__name__put
       parameters:
       - name: workspace
         in: path
@@ -4166,18 +4362,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExperimentGroupRequest'
+              $ref: '#/components/schemas/ExperimentRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExperimentGroupResponse'
+                $ref: '#/components/schemas/ExperimentResponse'
         '404':
-          description: Experiment group not found
+          description: Experiment not found
         '409':
-          description: Attempt to rename the group
+          description: Attempt to rename the experiment
         '422':
           description: Validation Error
           content:
@@ -4186,9 +4382,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
-      - Experiment Groups
-      summary: Delete Experiment Group
-      operationId: delete_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__delete
+      - Experiments
+      summary: Delete Experiment
+      operationId: delete_experiment_apis_intake_v2_workspaces__workspace__experiments__name__delete
       parameters:
       - name: workspace
         in: path
@@ -4206,7 +4402,7 @@ paths:
         '204':
           description: Successful Response
         '404':
-          description: Experiment group not found
+          description: Experiment not found
         '422':
           description: Validation Error
           content:
@@ -4643,8 +4839,7 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_id (or its deprecated alias experiment_id),
-          and test_case_id.
+          root span started_at, evaluation_id, and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -7722,6 +7917,124 @@ components:
       type: object
       title: APIEndpointData
       description: Data about an inference endpoint.
+    AccessKeyCreateRequest:
+      properties:
+        name:
+          title: Name
+          description: Optional human-readable Scoped Access Key label. The token
+            jti remains the stable identifier.
+          type: string
+          maxLength: 128
+          minLength: 1
+        expires_in_seconds:
+          title: Expires In Seconds
+          description: Scoped Access Key lifetime in seconds. Omit to use auth.access_keys.default_expires_in_seconds.
+            Send explicit null to request a non-time-delimited key, which requires
+            auth.access_keys.max_expires_in_seconds to be disabled.
+          type: integer
+          minimum: 1.0
+      type: object
+      title: AccessKeyCreateRequest
+      description: Request body for creating a Scoped Access Key.
+    AccessKeyCreateResponse:
+      properties:
+        jti:
+          type: string
+          title: Jti
+          description: Stable JWT ID for this Scoped Access Key.
+        name:
+          title: Name
+          description: Optional human-readable Scoped Access Key label.
+          type: string
+        principal:
+          type: string
+          title: Principal
+          description: Principal ID stamped into the token.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        expires_at:
+          title: Expires At
+          type: string
+          format: date-time
+        token:
+          type: string
+          title: Token
+        token_type:
+          type: string
+          const: Bearer
+          title: Token Type
+      type: object
+      required:
+      - jti
+      - principal
+      - created_at
+      - token
+      - token_type
+      title: AccessKeyCreateResponse
+      description: Create response. The token value is returned only once.
+    AccessKeyErrorResponse:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      type: object
+      required:
+      - detail
+      title: AccessKeyErrorResponse
+      description: Scoped Access Key error response.
+    AccessKeyListResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AccessKeyMetadataResponse'
+          type: array
+          title: Data
+      type: object
+      required:
+      - data
+      title: AccessKeyListResponse
+      description: List response for Scoped Access Key metadata.
+    AccessKeyMetadataResponse:
+      properties:
+        jti:
+          type: string
+          title: Jti
+          description: Stable JWT ID for this Scoped Access Key.
+        name:
+          title: Name
+          description: Optional human-readable Scoped Access Key label.
+          type: string
+        principal:
+          type: string
+          title: Principal
+          description: Principal ID stamped into the token.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        expires_at:
+          title: Expires At
+          type: string
+          format: date-time
+      type: object
+      required:
+      - jti
+      - principal
+      - created_at
+      title: AccessKeyMetadataResponse
+      description: Metadata for a Scoped Access Key.
+    AccessKeyNotImplementedErrorResponse:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      type: object
+      required:
+      - detail
+      title: AccessKeyNotImplementedErrorResponse
+      description: Response returned by unsupported Scoped Access Key lifecycle endpoints.
     ActionRails:
       properties:
         instant_actions:
@@ -8158,12 +8471,6 @@ components:
       properties:
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
-        experiment_context:
-          allOf:
-          - $ref: '#/components/schemas/ExperimentContext'
-          description: Deprecated. Use evaluation_context; when both are sent, evaluation_context
-            takes precedence.
-          deprecated: true
         schema_version:
           type: string
           enum:
@@ -8591,6 +8898,53 @@ components:
       - auth_enabled
       title: AuthDiscoveryResponse
       description: Auth discovery response for CLI/SDK.
+    AuthenticateErrorResponse:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      type: object
+      required:
+      - detail
+      title: AuthenticateErrorResponse
+      description: Bearer token authentication error response.
+    AuthenticateResponse:
+      properties:
+        principal:
+          type: string
+          title: Principal
+        email:
+          title: Email
+          nullable: true
+          type: string
+        groups:
+          items:
+            type: string
+          type: array
+          title: Groups
+        scopes:
+          items:
+            type: string
+          type: array
+          title: Scopes
+        jti:
+          title: Jti
+          nullable: true
+          type: string
+        token_kind:
+          type: string
+          enum:
+          - access_key
+          - oidc_access_token
+          - workload_access_token
+          - workload_subject_token
+          title: Token Kind
+      type: object
+      required:
+      - principal
+      - token_kind
+      title: AuthenticateResponse
+      description: Successful bearer token authentication response for auth callouts.
     AutoAlignOptions:
       properties:
         guardrails_config:
@@ -8639,7 +8993,7 @@ components:
           title: Name
       title: BaseModelFilter
       type: object
-    CPUExecutionProviderInput:
+    CPUExecutionProvider:
       properties:
         provider:
           type: string
@@ -8659,34 +9013,7 @@ components:
       type: object
       required:
       - container
-      title: CPUExecutionProviderInput
-      description: 'CPU-based execution provider.
-
-
-        Provides configuration for running jobs on CPU resources with
-
-        resource requests and limits.'
-    CPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: cpu
-          title: Provider
-          default: cpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for CPU execution.
-      type: object
-      required:
-      - container
-      title: CPUExecutionProviderOutput
+      title: CPUExecutionProvider
       description: 'CPU-based execution provider.
 
 
@@ -8978,12 +9305,6 @@ components:
       properties:
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
-        experiment_context:
-          allOf:
-          - $ref: '#/components/schemas/ExperimentContext'
-          description: Deprecated. Use evaluation_context; when both are sent, evaluation_context
-            takes precedence.
-          deprecated: true
         request:
           $ref: '#/components/schemas/CapturedChatCompletionsRequest'
         response:
@@ -9386,11 +9707,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'The name of the fileset. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: The name of the fileset. Name must start with a lowercase letter,
+            be 2-63 characters, and use lowercase letters, digits, hyphens, and dots
+            (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - training-data-v1
           - llama-checkpoint
@@ -9419,7 +9741,7 @@ components:
           default: generic
         metadata:
           allOf:
-          - $ref: '#/components/schemas/FilesetMetadataInput'
+          - $ref: '#/components/schemas/FilesetMetadata'
           description: 'Purpose-specific metadata. Use the purpose as the key (e.g.,
             {dataset: {...}}).'
         custom_fields:
@@ -9656,11 +9978,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the model provider. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the model provider. Name must start with a lowercase
+            letter, be 2-63 characters, and use lowercase letters, digits, hyphens,
+            and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - my-nim-provider
           - openai-endpoint
@@ -9764,7 +10087,7 @@ components:
           type: object
           title: Spec
         platform_spec:
-          $ref: '#/components/schemas/PlatformJobSpecInput'
+          $ref: '#/components/schemas/PlatformJobSpec'
         source:
           type: string
           title: Source
@@ -9776,6 +10099,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec
@@ -10002,7 +10328,7 @@ components:
       type: object
       title: DialogRails
       description: Configuration of topical rails.
-    DistributedGPUExecutionProviderInput:
+    DistributedGPUExecutionProvider:
       properties:
         provider:
           type: string
@@ -10022,34 +10348,7 @@ components:
       type: object
       required:
       - container
-      title: DistributedGPUExecutionProviderInput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
-    DistributedGPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: gpu_distributed
-          title: Provider
-          default: gpu_distributed
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for distributed GPU execution.
-      type: object
-      required:
-      - container
-      title: DistributedGPUExecutionProviderOutput
+      title: DistributedGPUExecutionProvider
       description: 'GPU-based execution provider.
 
 
@@ -10161,7 +10460,7 @@ components:
           type: string
           title: Volume Permissions Image
           description: Docker image used to set permissions on the volume
-          default: busybox
+          default: docker.io/library/busybox:stable
         additional_volume_mounts:
           items:
             $ref: '#/components/schemas/DockerVolumeMount'
@@ -10325,6 +10624,11 @@ components:
           description: Filtering information.
           additionalProperties: true
           type: object
+        group_counts:
+          title: Group Counts
+          additionalProperties:
+            type: integer
+          type: object
       type: object
       required:
       - data
@@ -10400,9 +10704,9 @@ components:
         name:
           title: Name
           description: Entity name (optional - auto-generated if not provided). Name
-            must start with a lowercase letter, be 2-63 characters, and contain only
-            lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
+            must start with a lowercase letter, be 2-63 characters, and use lowercase
+            letters, digits, hyphens, and dots (no consecutive hyphens, cannot end
+            with a hyphen).
           examples:
           - my-config
           - baseline-model-v1
@@ -10437,8 +10741,8 @@ components:
         new_name:
           title: New Name
           description: Updated entity name (optional). Name must start with a lowercase
-            letter, be 2-63 characters, and contain only lowercase letters, digits,
-            and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            letter, be 2-63 characters, and use lowercase letters, digits, hyphens,
+            and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - my-config
           - baseline-model-v1
@@ -10491,8 +10795,17 @@ components:
           description: Filter evaluations by name.
           title: Name
           type: string
+        experiment_id:
+          description: "Filter evaluations by experiment group membership: matches\
+            \ evaluations whose `experiment_ids` include this group id (legacy rows\
+            \ still on `experiment_group_id` also match). This is the canonical membership\
+            \ filter \u2014 it mirrors the write-side `experiment_ids`."
+          title: Experiment Id
+          type: string
         experiment_group_id:
-          description: Filter evaluations by owning group id.
+          deprecated: true
+          description: Deprecated alias for `experiment_id`; filter evaluations by
+            experiment group membership.
           title: Experiment Group Id
           type: string
         dataset_name:
@@ -10545,6 +10858,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/MetricStatFilters'
           description: Filter by a latency_ms rollup stat, e.g. filter[latency_ms.p95][$lte]=1000.
+        tokens:
+          allOf:
+          - $ref: '#/components/schemas/MetricStatFilters'
+          description: Filter by a tokens rollup stat, e.g. filter[tokens.mean][$lte]=5000.
         evaluators:
           description: Filter by an evaluator rollup stat, e.g. filter[evaluators.<name>.mean][$gte]=0.8.
           title: Evaluators
@@ -10557,8 +10874,8 @@ components:
       properties:
         experiment_ids:
           title: Experiment Ids
-          description: Replace the ExperimentGroups this Evaluation belongs to. Must
-            be non-empty when provided; each group must already exist. Omit to leave
+          description: Replace the Experiments this Evaluation belongs to. Must be
+            non-empty when provided; each experiment must already exist. Omit to leave
             membership unchanged.
           items:
             type: string
@@ -10601,7 +10918,7 @@ components:
         \ \u2014 same pattern as the models service's PATCH).\nImmutable fields (name,\
         \ dataset_name, dataset_version) aren't accepted here. ``experiment_ids``,\n\
         when provided, must be non-empty: an evaluation must always belong to at least\
-        \ one group."
+        \ one experiment."
     EvaluationRequest:
       properties:
         name:
@@ -10613,13 +10930,13 @@ components:
             type: string
           type: array
           title: Experiment Ids
-          description: Entity ids of the ExperimentGroups this Evaluation belongs
-            to (>=1). Preferred; each group must already exist. When omitted, the
-            deprecated experiment_group_id is used instead.
+          description: Entity ids of the Experiments this Evaluation belongs to (>=1).
+            Preferred; each experiment must already exist. When omitted, the deprecated
+            experiment_group_id is used instead.
         experiment_group_id:
           title: Experiment Group Id
-          description: Deprecated single-group field; provide experiment_ids instead.
-            Coalesced into experiment_ids when experiment_ids is omitted.
+          description: Deprecated single-experiment field; provide experiment_ids
+            instead. Coalesced into experiment_ids when experiment_ids is omitted.
           deprecated: true
           type: string
         dataset_name:
@@ -10650,11 +10967,6 @@ components:
           title: Parent Evaluation Id
           description: Entity id of the evaluation this one was derived from (e.g.
             a variant of a baseline), if any.
-          type: string
-        parent_experiment_id:
-          title: Parent Experiment Id
-          description: Deprecated alias for parent_evaluation_id.
-          deprecated: true
           type: string
         status:
           title: Status
@@ -10688,8 +11000,7 @@ components:
             type: string
           type: array
           title: Experiment Ids
-          description: Entity ids of the ExperimentGroups this Evaluation belongs
-            to (>=1).
+          description: Entity ids of the Experiments this Evaluation belongs to (>=1).
         dataset_name:
           type: string
           title: Dataset Name
@@ -10785,16 +11096,15 @@ components:
           $ref: '#/components/schemas/EvaluatorAggregate'
         latency_ms:
           $ref: '#/components/schemas/EvaluatorAggregate'
-        parent_experiment_id:
-          title: Parent Experiment Id
-          description: Deprecated alias for parent_evaluation_id.
-          deprecated: true
-          readOnly: true
-          type: string
+        tokens:
+          allOf:
+          - $ref: '#/components/schemas/EvaluatorAggregate'
+          description: Average total tokens (input + output) per test case, aggregated
+            across the evaluation.
         experiment_group_id:
           type: string
           title: Experiment Group Id
-          description: Deprecated single-group alias; the first of experiment_ids.
+          description: Deprecated single-experiment alias; the first of experiment_ids.
             Use experiment_ids.
           deprecated: true
           readOnly: true
@@ -10805,7 +11115,6 @@ components:
       - workspace
       - experiment_ids
       - dataset_name
-      - parent_experiment_id
       - experiment_group_id
       title: EvaluationResponse
       description: Evaluation as served by the API, including ClickHouse-hydrated
@@ -10918,12 +11227,6 @@ components:
           title: Evaluator Scores
           description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
             evaluator results only; text/categorical results are omitted.
-        experiment_name:
-          type: string
-          title: Experiment Name
-          description: Deprecated alias for evaluation_name.
-          deprecated: true
-          readOnly: true
       type: object
       required:
       - workspace
@@ -10933,7 +11236,6 @@ components:
       - root_span_id
       - started_at
       - status
-      - experiment_name
       title: EvaluationSessionResponse
       description: "One ingested session of an Evaluation \u2014 a single test case\
         \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
@@ -11197,34 +11499,21 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
-    ExperimentContext:
-      properties:
-        experiment_id:
-          type: string
-          title: Experiment Id
-          description: Name of an existing Experiment entity.
-        test_case_id:
-          title: Test Case Id
-          description: Optional producer-supplied test case id.
-          type: string
+    ExperimentFilter:
       additionalProperties: false
-      type: object
-      required:
-      - experiment_id
-      title: ExperimentContext
-      description: Deprecated alias for :class:`EvaluationContext`. Producers should
-        send ``evaluation_context``.
-    ExperimentGroupFilter:
-      additionalProperties: false
-      description: Filter for listing ExperimentGroups.
+      description: Filter for listing Experiments.
       properties:
         name:
-          description: Filter groups by name.
+          description: Filter experiments by name.
           title: Name
           type: string
+        insight_id:
+          description: Filter experiments by the id of the insight that seeded them.
+          title: Insight Id
+          type: string
         is_deleted:
-          description: When true, returns only soft-deleted groups. Omit (or false)
-            to see only live groups.
+          description: When true, returns only soft-deleted experiments. Omit (or
+            false) to see only live experiments.
           title: Is Deleted
           type: boolean
         metadata:
@@ -11233,50 +11522,56 @@ components:
           additionalProperties:
             type: string
           type: object
-      title: ExperimentGroupFilter
+      title: ExperimentFilter
       type: object
-    ExperimentGroupRequest:
+    ExperimentRequest:
       properties:
         name:
           type: string
           title: Name
-          description: Workspace-unique group name.
+          description: Workspace-unique experiment name.
         description:
           title: Description
-          description: Human-readable purpose of the group.
+          description: Human-readable purpose of the experiment.
           type: string
         insight_id:
           title: Insight Id
-          description: Reference to an external insight that seeded this group, if
-            any.
+          description: Reference to an external insight that seeded this experiment,
+            if any.
           type: string
         summary:
           title: Summary
-          description: Human- or agent-authored summary of the group's findings.
+          description: Human- or agent-authored summary of the experiment's findings.
           type: string
         metadata:
           title: Metadata
-          description: Free-form producer metadata for the group.
+          description: Free-form producer metadata for the experiment.
           additionalProperties:
             type: string
           type: object
         default_sort:
           type: string
           title: Default Sort
-          description: 'Default sort for this group''s evaluations list, as a `sort`-param
-            string: a comma-separated, ordered list of fields where the first is the
-            primary sort and the rest break ties (leading ''-'' on a field = descending),
-            e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults to ''-created_at''.
-            Accepts any field the evaluations list `sort` param does; clients apply
-            it as the list `sort` param.'
+          description: 'Default sort for this experiment''s evaluations list, as a
+            `sort`-param string: a comma-separated, ordered list of fields where the
+            first is the primary sort and the rest break ties (leading ''-'' on a
+            field = descending), e.g. ''-evaluators.reward.mean,cost_usd.mean''. Defaults
+            to ''-created_at''. Accepts any field the evaluations list `sort` param
+            does; clients apply it as the list `sort` param.'
           default: -created_at
+        pareto:
+          allOf:
+          - $ref: '#/components/schemas/ParetoConfig'
+          description: Default X/Y metrics for the experiment's Pareto view. Omit
+            to preserve the existing value on update; on create, defaults to cost
+            vs. latency.
       additionalProperties: false
       type: object
       required:
       - name
-      title: ExperimentGroupRequest
-      description: Request body for creating an ExperimentGroup.
-    ExperimentGroupResponse:
+      title: ExperimentRequest
+      description: Request body for creating an Experiment.
+    ExperimentResponse:
       properties:
         id:
           type: string
@@ -11304,6 +11599,8 @@ components:
         default_sort:
           type: string
           title: Default Sort
+        pareto:
+          $ref: '#/components/schemas/ParetoConfig'
         created_at:
           title: Created At
           type: string
@@ -11315,28 +11612,21 @@ components:
         evaluation_count:
           type: integer
           title: Evaluation Count
-          description: Number of live (non-soft-deleted) evaluations in this group.
+          description: Number of live (non-soft-deleted) evaluations in this experiment.
           default: 0
-        experiment_count:
-          type: integer
-          title: Experiment Count
-          description: Deprecated alias for evaluation_count.
-          deprecated: true
-          readOnly: true
       type: object
       required:
       - id
       - name
       - workspace
       - default_sort
-      - experiment_count
-      title: ExperimentGroupResponse
-      description: ExperimentGroup as served by the API.
-    ExperimentGroupResponsesPage:
+      title: ExperimentResponse
+      description: Experiment as served by the API.
+    ExperimentResponsesPage:
       properties:
         data:
           items:
-            $ref: '#/components/schemas/ExperimentGroupResponse'
+            $ref: '#/components/schemas/ExperimentResponse'
           type: array
           title: Data
         pagination:
@@ -11355,7 +11645,7 @@ components:
       type: object
       required:
       - data
-      title: ExperimentGroupResponsesPage
+      title: ExperimentResponsesPage
     FactCheckingRailConfig:
       properties:
         parameters:
@@ -11535,25 +11825,14 @@ components:
             (on or before) datetime filters.
       title: FilesetFilter
       type: object
-    FilesetMetadataInput:
+    FilesetMetadata:
       properties:
         dataset:
           $ref: '#/components/schemas/DatasetMetadataContent'
         model:
           $ref: '#/components/schemas/ModelMetadataContent'
       type: object
-      title: FilesetMetadataInput
-      description: "Tagged metadata container - the key indicates the type.\n\nExample:\n\
-        \    metadata = FilesetMetadata(\n        dataset=DatasetMetadataContent(\n\
-        \            schema={\"columns\": [\"id\", \"name\"]},\n        )\n    )"
-    FilesetMetadataOutput:
-      properties:
-        dataset:
-          $ref: '#/components/schemas/DatasetMetadataContent'
-        model:
-          $ref: '#/components/schemas/ModelMetadataContent'
-      type: object
-      title: FilesetMetadataOutput
+      title: FilesetMetadata
       description: "Tagged metadata container - the key indicates the type.\n\nExample:\n\
         \    metadata = FilesetMetadata(\n        dataset=DatasetMetadataContent(\n\
         \            schema={\"columns\": [\"id\", \"name\"]},\n        )\n    )"
@@ -11581,7 +11860,7 @@ components:
           - $ref: '#/components/schemas/S3StorageConfig'
           title: Storage
         metadata:
-          $ref: '#/components/schemas/FilesetMetadataOutput'
+          $ref: '#/components/schemas/FilesetMetadata'
         custom_fields:
           additionalProperties: true
           type: object
@@ -11836,7 +12115,7 @@ components:
       type: object
       title: GLiNERDetectionOptions
       description: Configuration options for GLiNER.
-    GPUExecutionProviderInput:
+    GPUExecutionProvider:
       properties:
         provider:
           type: string
@@ -11856,34 +12135,7 @@ components:
       type: object
       required:
       - container
-      title: GPUExecutionProviderInput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
-    GPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: gpu
-          title: Provider
-          default: gpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for GPU execution.
-      type: object
-      required:
-      - container
-      title: GPUExecutionProviderOutput
+      title: GPUExecutionProvider
       description: 'GPU-based execution provider.
 
 
@@ -12327,7 +12579,7 @@ components:
           type: string
         data:
           allOf:
-          - $ref: '#/components/schemas/RailsConfigOutput'
+          - $ref: '#/components/schemas/RailsConfig'
           type: object
           description: Guardrail configuration data
           additionalProperties: true
@@ -12365,6 +12617,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -12375,6 +12632,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: GuardrailConfig
       description: A guardrail configuration entity.
     GuardrailConfigFilter:
@@ -12510,7 +12768,7 @@ components:
           - type: string
             title: Reference
             description: A reference to RailsConfig.
-          - $ref: '#/components/schemas/RailsConfigInput'
+          - $ref: '#/components/schemas/RailsConfig'
           title: Config
           description: The id of the configuration or its dict representation to be
             used.
@@ -13150,7 +13408,7 @@ components:
           type: string
           title: Volume Permissions Image
           description: Image used to set volume permissions
-          default: busybox
+          default: docker.io/library/busybox:stable
         additional_volumes:
           items:
             $ref: '#/components/schemas/KubernetesVolume'
@@ -13622,6 +13880,11 @@ components:
         page_cursor:
           title: Page Cursor
           description: Cursor for pagination
+          type: string
+        artifact_base_path:
+          title: Artifact Base Path
+          description: Folder inside the fileset the logs were nested under (must
+            match the value used on write)
           type: string
       type: object
       title: LogQueryRequest
@@ -15384,6 +15647,25 @@ components:
       - recipe
       title: PangeaRailOptions
       description: Configuration data for the Pangea AI Guard API
+    ParetoConfig:
+      properties:
+        x_metric:
+          type: string
+          title: X Metric
+          description: Metric plotted on the Pareto X axis.
+          default: cost_usd
+        y_metric:
+          type: string
+          title: Y Metric
+          description: Metric plotted on the Pareto Y axis.
+          default: latency_ms
+      type: object
+      title: ParetoConfig
+      description: "Default X/Y metrics for a group's cost-vs-accuracy Pareto view.\n\
+        \nMetric ids use the same vocabulary as the evaluations list sort/filter fields\
+        \ \u2014 ``cost_usd``,\n``latency_ms``, or ``evaluators.<name>``. Defaults\
+        \ to cost (x) vs latency (y): both exist for\nevery group, so the chart always\
+        \ has something to render before anyone customizes it."
     PatronusEvaluateApiParams:
       properties:
         success_strategy:
@@ -15400,23 +15682,14 @@ components:
       type: object
       title: PatronusEvaluateApiParams
       description: Config to parameterize the Patronus Evaluate API call
-    PatronusEvaluateConfigInput:
+    PatronusEvaluateConfig:
       properties:
         evaluate_config:
           allOf:
           - $ref: '#/components/schemas/PatronusEvaluateApiParams'
           description: Configuration passed to the Patronus Evaluate API
       type: object
-      title: PatronusEvaluateConfigInput
-      description: Config for the Patronus Evaluate API call
-    PatronusEvaluateConfigOutput:
-      properties:
-        evaluate_config:
-          allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateApiParams'
-          description: Configuration passed to the Patronus Evaluate API
-      type: object
-      title: PatronusEvaluateConfigOutput
+      title: PatronusEvaluateConfig
       description: Config for the Patronus Evaluate API call
     PatronusEvaluationSuccessStrategy:
       type: string
@@ -15433,31 +15706,18 @@ components:
         ALL_PASS requires all evaluators to pass for success.
 
         ANY_PASS requires only one evaluator to pass for success.'
-    PatronusRailConfigInput:
+    PatronusRailConfig:
       properties:
         input:
           allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigInput'
+          - $ref: '#/components/schemas/PatronusEvaluateConfig'
           description: Patronus Evaluate API configuration for an Input Guardrail
         output:
           allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigInput'
+          - $ref: '#/components/schemas/PatronusEvaluateConfig'
           description: Patronus Evaluate API configuration for an Output Guardrail
       type: object
-      title: PatronusRailConfigInput
-      description: Configuration data for the Patronus Evaluate API
-    PatronusRailConfigOutput:
-      properties:
-        input:
-          allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigOutput'
-          description: Patronus Evaluate API configuration for an Input Guardrail
-        output:
-          allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigOutput'
-          description: Patronus Evaluate API configuration for an Output Guardrail
-      type: object
-      title: PatronusRailConfigOutput
+      title: PatronusRailConfig
       description: Configuration data for the Patronus Evaluate API
     PlatformJobEnvironmentVariable:
       properties:
@@ -15593,11 +15853,16 @@ components:
           title: Spec
           description: Job Spec
         platform_spec:
-          $ref: '#/components/schemas/PlatformJobSpecOutput'
+          $ref: '#/components/schemas/PlatformJobSpec'
         fileset:
           type: string
           title: Fileset
           description: Fileset ID for storing job artifacts
+        output_location:
+          title: Output Location
+          description: Caller-supplied artifact fileset; None when the fileset was
+            auto-created
+          type: string
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
         status_details:
@@ -15732,31 +15997,18 @@ components:
       - updated_at
       - -updated_at
       title: PlatformJobSortField
-    PlatformJobSpecInput:
+    PlatformJobSpec:
       properties:
         steps:
           items:
-            $ref: '#/components/schemas/PlatformJobStepSpecInput'
+            $ref: '#/components/schemas/PlatformJobStepSpec'
           type: array
           title: Steps
           description: List of steps to be executed in the job
       type: object
       required:
       - steps
-      title: PlatformJobSpecInput
-      description: Specification for a platform job, containing steps and secrets.
-    PlatformJobSpecOutput:
-      properties:
-        steps:
-          items:
-            $ref: '#/components/schemas/PlatformJobStepSpecOutput'
-          type: array
-          title: Steps
-          description: List of steps to be executed in the job
-      type: object
-      required:
-      - steps
-      title: PlatformJobSpecOutput
+      title: PlatformJobSpec
       description: Specification for a platform job, containing steps and secrets.
     PlatformJobStatus:
       type: string
@@ -15915,6 +16167,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -15926,21 +16183,22 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: PlatformJobStep
       description: 'A single step within an attempt.
 
 
         Parent-scoped: unique within (workspace, entity_type, parent=attempt_id).'
-    PlatformJobStepSpecInput:
+    PlatformJobStepSpec:
       properties:
         name:
           type: string
           pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
           description: The name of the step. Must be unique for all steps in a job.
-            Name must start with a lowercase letter, be 2-63 characters, and contain
-            only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
+            Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+            letters, digits, hyphens, and dots (no consecutive hyphens, cannot end
+            with a hyphen).
           examples:
           - preprocess
           - train-model
@@ -15953,18 +16211,18 @@ components:
           type: array
         executor:
           oneOf:
-          - $ref: '#/components/schemas/CPUExecutionProviderInput'
-          - $ref: '#/components/schemas/GPUExecutionProviderInput'
-          - $ref: '#/components/schemas/DistributedGPUExecutionProviderInput'
+          - $ref: '#/components/schemas/CPUExecutionProvider'
+          - $ref: '#/components/schemas/GPUExecutionProvider'
+          - $ref: '#/components/schemas/DistributedGPUExecutionProvider'
           - $ref: '#/components/schemas/SubprocessExecutionProvider'
           title: Executor
           description: The executor for the step
           discriminator:
             propertyName: provider
             mapping:
-              cpu: '#/components/schemas/CPUExecutionProviderInput'
-              gpu: '#/components/schemas/GPUExecutionProviderInput'
-              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProviderInput'
+              cpu: '#/components/schemas/CPUExecutionProvider'
+              gpu: '#/components/schemas/GPUExecutionProvider'
+              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProvider'
               subprocess: '#/components/schemas/SubprocessExecutionProvider'
         config:
           additionalProperties: true
@@ -15979,57 +16237,7 @@ components:
       required:
       - name
       - executor
-      title: PlatformJobStepSpecInput
-      description: Specification for a single step in a platform job.
-    PlatformJobStepSpecOutput:
-      properties:
-        name:
-          type: string
-          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
-          title: Name
-          description: The name of the step. Must be unique for all steps in a job.
-            Name must start with a lowercase letter, be 2-63 characters, and contain
-            only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
-          examples:
-          - preprocess
-          - train-model
-          - eval-step-v1
-        environment:
-          title: Environment
-          description: Environment variables for the step
-          items:
-            $ref: '#/components/schemas/PlatformJobEnvironmentVariable'
-          type: array
-        executor:
-          oneOf:
-          - $ref: '#/components/schemas/CPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/GPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/DistributedGPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/SubprocessExecutionProvider'
-          title: Executor
-          description: The executor for the step
-          discriminator:
-            propertyName: provider
-            mapping:
-              cpu: '#/components/schemas/CPUExecutionProviderOutput'
-              gpu: '#/components/schemas/GPUExecutionProviderOutput'
-              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProviderOutput'
-              subprocess: '#/components/schemas/SubprocessExecutionProvider'
-        config:
-          additionalProperties: true
-          type: object
-          title: Config
-          description: Configuration for the step
-        lifecycle:
-          allOf:
-          - $ref: '#/components/schemas/StepLifecycle'
-          description: Lifecycle configuration settings for the step
-      type: object
-      required:
-      - name
-      - executor
-      title: PlatformJobStepSpecOutput
+      title: PlatformJobStepSpec
       description: Specification for a single step in a platform job.
     PlatformJobStepStatusResponse:
       properties:
@@ -16087,6 +16295,12 @@ components:
         fileset:
           type: string
           title: Fileset
+        artifact_base_path:
+          title: Artifact Base Path
+          description: Folder inside the fileset that this job's artifacts nest under;
+            None when the job owns the whole fileset and its artifacts sit at the
+            root
+          type: string
         workspace:
           type: string
           title: Workspace
@@ -16094,7 +16308,7 @@ components:
           type: string
           title: Name
         step_spec:
-          $ref: '#/components/schemas/PlatformJobStepSpecOutput'
+          $ref: '#/components/schemas/PlatformJobStepSpec'
         status:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
@@ -16246,6 +16460,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -16257,6 +16476,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: PlatformJobTask
       description: 'A task within a step (for parallel execution).
 
@@ -16403,9 +16623,12 @@ components:
       properties:
         name:
           type: string
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'The name of the secret to create. Allowed characters: letters
-            (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: The name of the secret to create. Name must start with a lowercase
+            letter, be 2-63 characters, and use lowercase letters, digits, hyphens,
+            and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - hf-token
           - wandb-api-key
@@ -16605,8 +16828,8 @@ components:
           pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
           description: Project name (unique within workspace). Name must start with
-            a lowercase letter, be 2-63 characters, and contain only lowercase letters,
-            digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            a lowercase letter, be 2-63 characters, and use lowercase letters, digits,
+            hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - ml-project
           - nlp-research
@@ -16888,201 +17111,45 @@ components:
       required:
       - status
       title: RailStatus
-    RailsConfigDataInput:
+    Rails:
       properties:
-        fact_checking:
+        config:
           allOf:
-          - $ref: '#/components/schemas/FactCheckingRailConfig'
-          description: Configuration data for the fact-checking rail.
-        autoalign:
+          - $ref: '#/components/schemas/RailsConfigData'
+          description: Configuration data for specific rails that are supported out-of-the-box.
+        input:
           allOf:
-          - $ref: '#/components/schemas/AutoAlignRailConfig'
-          description: Configuration data for the AutoAlign guardrails API.
-        patronus:
+          - $ref: '#/components/schemas/InputRails'
+          description: Configuration of the input rails.
+        output:
           allOf:
-          - $ref: '#/components/schemas/PatronusRailConfigInput'
-          description: Configuration data for the Patronus Evaluate API.
-        sensitive_data_detection:
+          - $ref: '#/components/schemas/OutputRails'
+          description: Configuration of the output rails.
+        retrieval:
           allOf:
-          - $ref: '#/components/schemas/SensitiveDataDetection'
-          description: Configuration for detecting sensitive data.
-        regex_detection:
+          - $ref: '#/components/schemas/RetrievalRails'
+          description: Configuration of the retrieval rails.
+        dialog:
           allOf:
-          - $ref: '#/components/schemas/RegexDetection'
-          description: Configuration for regex pattern detection.
-        jailbreak_detection:
+          - $ref: '#/components/schemas/DialogRails'
+          description: Configuration of the dialog rails.
+        actions:
           allOf:
-          - $ref: '#/components/schemas/JailbreakDetectionConfig'
-          description: Configuration for jailbreak detection.
-        injection_detection:
+          - $ref: '#/components/schemas/ActionRails'
+          description: Configuration of action rails.
+        tool_output:
           allOf:
-          - $ref: '#/components/schemas/InjectionDetection'
-          description: Configuration for injection detection.
-        privateai:
+          - $ref: '#/components/schemas/ToolOutputRails'
+          description: Configuration of tool output rails.
+        tool_input:
           allOf:
-          - $ref: '#/components/schemas/PrivateAIDetection'
-          description: Configuration for Private AI.
-        gliner:
-          allOf:
-          - $ref: '#/components/schemas/GLiNERDetection'
-          description: Configuration for GLiNER PII detection.
-        polygraf:
-          allOf:
-          - $ref: '#/components/schemas/PolygrafDetection'
-          description: Configuration for Polygraf PII detection.
-        fiddler:
-          allOf:
-          - $ref: '#/components/schemas/FiddlerGuardrails'
-          description: Configuration for Fiddler Guardrails.
-        clavata:
-          allOf:
-          - $ref: '#/components/schemas/ClavataRailConfig'
-          description: Configuration for Clavata.
-        crowdstrike_aidr:
-          allOf:
-          - $ref: '#/components/schemas/CrowdStrikeAIDRRailConfig'
-          description: Configuration for CrowdStrike AIDR.
-        pangea:
-          allOf:
-          - $ref: '#/components/schemas/PangeaRailConfig'
-          description: Configuration for Pangea.
-        guardrails_ai:
-          allOf:
-          - $ref: '#/components/schemas/GuardrailsAIRailConfig'
-          description: Configuration for Guardrails AI validators.
-        trend_micro:
-          allOf:
-          - $ref: '#/components/schemas/TrendMicroRailConfig'
-          description: Configuration for Trend Micro.
-        ai_defense:
-          allOf:
-          - $ref: '#/components/schemas/AIDefenseRailConfig'
-          description: Configuration for Cisco AI Defense.
-        content_safety:
-          allOf:
-          - $ref: '#/components/schemas/ContentSafetyConfig'
-          description: Configuration for content safety rails.
-        hf_classifier:
-          title: Hf Classifier
-          description: Named HF classifier configurations. Keys are classifier names
-            referenced by flows.
-          additionalProperties:
-            oneOf:
-            - $ref: '#/components/schemas/LocalHFClassifierConfig'
-            - $ref: '#/components/schemas/RemoteHFClassifierConfig'
-            discriminator:
-              propertyName: engine
-              mapping:
-                fms: '#/components/schemas/RemoteHFClassifierConfig'
-                kserve: '#/components/schemas/RemoteHFClassifierConfig'
-                local: '#/components/schemas/LocalHFClassifierConfig'
-                vllm: '#/components/schemas/RemoteHFClassifierConfig'
-          type: object
-        context_bloat_detection:
-          allOf:
-          - $ref: '#/components/schemas/ContextBloatDetectionConfig'
-          description: Configuration for context bloat / context manipulation detection.
+          - $ref: '#/components/schemas/ToolInputRails'
+          description: Configuration of tool input rails.
+      additionalProperties: false
       type: object
-      title: RailsConfigDataInput
-      description: Configuration data for specific rails that are supported out-of-the-box.
-    RailsConfigDataOutput:
-      properties:
-        fact_checking:
-          allOf:
-          - $ref: '#/components/schemas/FactCheckingRailConfig'
-          description: Configuration data for the fact-checking rail.
-        autoalign:
-          allOf:
-          - $ref: '#/components/schemas/AutoAlignRailConfig'
-          description: Configuration data for the AutoAlign guardrails API.
-        patronus:
-          allOf:
-          - $ref: '#/components/schemas/PatronusRailConfigOutput'
-          description: Configuration data for the Patronus Evaluate API.
-        sensitive_data_detection:
-          allOf:
-          - $ref: '#/components/schemas/SensitiveDataDetection'
-          description: Configuration for detecting sensitive data.
-        regex_detection:
-          allOf:
-          - $ref: '#/components/schemas/RegexDetection'
-          description: Configuration for regex pattern detection.
-        jailbreak_detection:
-          allOf:
-          - $ref: '#/components/schemas/JailbreakDetectionConfig'
-          description: Configuration for jailbreak detection.
-        injection_detection:
-          allOf:
-          - $ref: '#/components/schemas/InjectionDetection'
-          description: Configuration for injection detection.
-        privateai:
-          allOf:
-          - $ref: '#/components/schemas/PrivateAIDetection'
-          description: Configuration for Private AI.
-        gliner:
-          allOf:
-          - $ref: '#/components/schemas/GLiNERDetection'
-          description: Configuration for GLiNER PII detection.
-        polygraf:
-          allOf:
-          - $ref: '#/components/schemas/PolygrafDetection'
-          description: Configuration for Polygraf PII detection.
-        fiddler:
-          allOf:
-          - $ref: '#/components/schemas/FiddlerGuardrails'
-          description: Configuration for Fiddler Guardrails.
-        clavata:
-          allOf:
-          - $ref: '#/components/schemas/ClavataRailConfig'
-          description: Configuration for Clavata.
-        crowdstrike_aidr:
-          allOf:
-          - $ref: '#/components/schemas/CrowdStrikeAIDRRailConfig'
-          description: Configuration for CrowdStrike AIDR.
-        pangea:
-          allOf:
-          - $ref: '#/components/schemas/PangeaRailConfig'
-          description: Configuration for Pangea.
-        guardrails_ai:
-          allOf:
-          - $ref: '#/components/schemas/GuardrailsAIRailConfig'
-          description: Configuration for Guardrails AI validators.
-        trend_micro:
-          allOf:
-          - $ref: '#/components/schemas/TrendMicroRailConfig'
-          description: Configuration for Trend Micro.
-        ai_defense:
-          allOf:
-          - $ref: '#/components/schemas/AIDefenseRailConfig'
-          description: Configuration for Cisco AI Defense.
-        content_safety:
-          allOf:
-          - $ref: '#/components/schemas/ContentSafetyConfig'
-          description: Configuration for content safety rails.
-        hf_classifier:
-          title: Hf Classifier
-          description: Named HF classifier configurations. Keys are classifier names
-            referenced by flows.
-          additionalProperties:
-            oneOf:
-            - $ref: '#/components/schemas/LocalHFClassifierConfig'
-            - $ref: '#/components/schemas/RemoteHFClassifierConfig'
-            discriminator:
-              propertyName: engine
-              mapping:
-                fms: '#/components/schemas/RemoteHFClassifierConfig'
-                kserve: '#/components/schemas/RemoteHFClassifierConfig'
-                local: '#/components/schemas/LocalHFClassifierConfig'
-                vllm: '#/components/schemas/RemoteHFClassifierConfig'
-          type: object
-        context_bloat_detection:
-          allOf:
-          - $ref: '#/components/schemas/ContextBloatDetectionConfig'
-          description: Configuration for context bloat / context manipulation detection.
-      type: object
-      title: RailsConfigDataOutput
-      description: Configuration data for specific rails that are supported out-of-the-box.
-    RailsConfigInput:
+      title: Rails
+      description: Configuration of specific rails.
+    RailsConfig:
       properties:
         models:
           items:
@@ -17166,7 +17233,7 @@ components:
           description: Any custom configuration data that might be needed.
         rails:
           allOf:
-          - $ref: '#/components/schemas/RailsInput'
+          - $ref: '#/components/schemas/Rails'
           description: Configuration for the various rails (input, output, etc.).
         enable_rails_exceptions:
           type: boolean
@@ -17184,188 +17251,105 @@ components:
           - $ref: '#/components/schemas/TracingConfig'
           description: Configuration for tracing.
       type: object
-      title: RailsConfigInput
+      title: RailsConfig
       description: Configuration object for the models and the rails.
-    RailsConfigOutput:
+    RailsConfigData:
       properties:
-        models:
-          items:
-            $ref: '#/components/schemas/Model'
-          type: array
-          title: Models
-          description: The list of models used by the rails configuration.
-        instructions:
-          title: Instructions
-          description: List of instructions in natural language that the LLM should
-            use.
-          default:
-          - type: general
-            content: Below is a conversation between a helpful AI assistant and a
-              user. The bot is designed to generate human-like text based on the input
-              that it receives. The bot is talkative and provides lots of specific
-              details. If the bot does not know the answer to a question, it truthfully
-              says it does not know.
-          items:
-            $ref: '#/components/schemas/Instruction'
-          type: array
-        actions_server_url:
-          title: Actions Server Url
-          description: The URL of the actions server that should be used for the rails.
-          type: string
-        sample_conversation:
-          title: Sample Conversation
-          description: The sample conversation that should be used inside the prompts.
-          default: "user \"Hello there!\"\n  express greeting\nbot express greeting\n\
-            \  \"Hello! How can I assist you today?\"\nuser \"What can you do for\
-            \ me?\"\n  ask about capabilities\nbot respond about capabilities\n  \"\
-            As an AI assistant, I can help you with a wide range of tasks. This includes\
-            \ question answering on various topics, generating text for various purposes\
-            \ and providing suggestions based on your preferences.\"\nuser \"Tell\
-            \ me a bit about the history of NVIDIA.\"\n  ask general question\nbot\
-            \ response for general question\n  \"NVIDIA is a technology company that\
-            \ specializes in designing and manufacturing graphics processing units\
-            \ (GPUs) and other computer hardware. The company was founded in 1993\
-            \ by Jen-Hsun Huang, Chris Malachowsky, and Curtis Priem.\"\nuser \"tell\
-            \ me more\"\n  request more information\nbot provide more information\n\
-            \  \"Initially, the company focused on developing 3D graphics processing\
-            \ technology for the PC gaming market. In 1999, NVIDIA released the GeForce\
-            \ 256, the world's first GPU, which was a major breakthrough for the gaming\
-            \ industry. The company continued to innovate in the GPU space, releasing\
-            \ new products and expanding into other markets such as professional graphics,\
-            \ mobile devices, and artificial intelligence.\"\nuser \"thanks\"\n  express\
-            \ appreciation\nbot express appreciation and offer additional help\n \
-            \ \"You're welcome. If you have any more questions or if there's anything\
-            \ else I can help you with, please don't hesitate to ask.\"\n"
-          type: string
-        prompts:
-          title: Prompts
-          description: The prompts that should be used for the various LLM tasks.
-          items:
-            $ref: '#/components/schemas/TaskPrompt'
-          type: array
-        prompting_mode:
-          title: Prompting Mode
-          description: Allows choosing between different prompting strategies.
-          default: standard
-          type: string
-        lowest_temperature:
-          title: Lowest Temperature
-          description: The lowest temperature that should be used for the LLM.
-          default: 0.001
-          type: number
-        enable_multi_step_generation:
-          title: Enable Multi Step Generation
-          description: Whether to enable multi-step generation for the LLM.
-          default: false
-          type: boolean
-        colang_version:
-          type: string
-          title: Colang Version
-          description: The Colang version to use.
-          default: '1.0'
-        custom_data:
-          additionalProperties: true
+        fact_checking:
+          allOf:
+          - $ref: '#/components/schemas/FactCheckingRailConfig'
+          description: Configuration data for the fact-checking rail.
+        autoalign:
+          allOf:
+          - $ref: '#/components/schemas/AutoAlignRailConfig'
+          description: Configuration data for the AutoAlign guardrails API.
+        patronus:
+          allOf:
+          - $ref: '#/components/schemas/PatronusRailConfig'
+          description: Configuration data for the Patronus Evaluate API.
+        sensitive_data_detection:
+          allOf:
+          - $ref: '#/components/schemas/SensitiveDataDetection'
+          description: Configuration for detecting sensitive data.
+        regex_detection:
+          allOf:
+          - $ref: '#/components/schemas/RegexDetection'
+          description: Configuration for regex pattern detection.
+        jailbreak_detection:
+          allOf:
+          - $ref: '#/components/schemas/JailbreakDetectionConfig'
+          description: Configuration for jailbreak detection.
+        injection_detection:
+          allOf:
+          - $ref: '#/components/schemas/InjectionDetection'
+          description: Configuration for injection detection.
+        privateai:
+          allOf:
+          - $ref: '#/components/schemas/PrivateAIDetection'
+          description: Configuration for Private AI.
+        gliner:
+          allOf:
+          - $ref: '#/components/schemas/GLiNERDetection'
+          description: Configuration for GLiNER PII detection.
+        polygraf:
+          allOf:
+          - $ref: '#/components/schemas/PolygrafDetection'
+          description: Configuration for Polygraf PII detection.
+        fiddler:
+          allOf:
+          - $ref: '#/components/schemas/FiddlerGuardrails'
+          description: Configuration for Fiddler Guardrails.
+        clavata:
+          allOf:
+          - $ref: '#/components/schemas/ClavataRailConfig'
+          description: Configuration for Clavata.
+        crowdstrike_aidr:
+          allOf:
+          - $ref: '#/components/schemas/CrowdStrikeAIDRRailConfig'
+          description: Configuration for CrowdStrike AIDR.
+        pangea:
+          allOf:
+          - $ref: '#/components/schemas/PangeaRailConfig'
+          description: Configuration for Pangea.
+        guardrails_ai:
+          allOf:
+          - $ref: '#/components/schemas/GuardrailsAIRailConfig'
+          description: Configuration for Guardrails AI validators.
+        trend_micro:
+          allOf:
+          - $ref: '#/components/schemas/TrendMicroRailConfig'
+          description: Configuration for Trend Micro.
+        ai_defense:
+          allOf:
+          - $ref: '#/components/schemas/AIDefenseRailConfig'
+          description: Configuration for Cisco AI Defense.
+        content_safety:
+          allOf:
+          - $ref: '#/components/schemas/ContentSafetyConfig'
+          description: Configuration for content safety rails.
+        hf_classifier:
+          title: Hf Classifier
+          description: Named HF classifier configurations. Keys are classifier names
+            referenced by flows.
+          additionalProperties:
+            oneOf:
+            - $ref: '#/components/schemas/LocalHFClassifierConfig'
+            - $ref: '#/components/schemas/RemoteHFClassifierConfig'
+            discriminator:
+              propertyName: engine
+              mapping:
+                fms: '#/components/schemas/RemoteHFClassifierConfig'
+                kserve: '#/components/schemas/RemoteHFClassifierConfig'
+                local: '#/components/schemas/LocalHFClassifierConfig'
+                vllm: '#/components/schemas/RemoteHFClassifierConfig'
           type: object
-          title: Custom Data
-          description: Any custom configuration data that might be needed.
-        rails:
+        context_bloat_detection:
           allOf:
-          - $ref: '#/components/schemas/RailsOutput'
-          description: Configuration for the various rails (input, output, etc.).
-        enable_rails_exceptions:
-          type: boolean
-          title: Enable Rails Exceptions
-          description: If set, the pre-defined guardrails raise exceptions instead
-            of returning pre-defined messages.
-          default: false
-        passthrough:
-          title: Passthrough
-          description: 'Whether the original prompt should pass through the guardrails
-            configuration as is. This means it will not be altered in any way. '
-          type: boolean
-        tracing:
-          allOf:
-          - $ref: '#/components/schemas/TracingConfig'
-          description: Configuration for tracing.
+          - $ref: '#/components/schemas/ContextBloatDetectionConfig'
+          description: Configuration for context bloat / context manipulation detection.
       type: object
-      title: RailsConfigOutput
-      description: Configuration object for the models and the rails.
-    RailsInput:
-      properties:
-        config:
-          allOf:
-          - $ref: '#/components/schemas/RailsConfigDataInput'
-          description: Configuration data for specific rails that are supported out-of-the-box.
-        input:
-          allOf:
-          - $ref: '#/components/schemas/InputRails'
-          description: Configuration of the input rails.
-        output:
-          allOf:
-          - $ref: '#/components/schemas/OutputRails'
-          description: Configuration of the output rails.
-        retrieval:
-          allOf:
-          - $ref: '#/components/schemas/RetrievalRails'
-          description: Configuration of the retrieval rails.
-        dialog:
-          allOf:
-          - $ref: '#/components/schemas/DialogRails'
-          description: Configuration of the dialog rails.
-        actions:
-          allOf:
-          - $ref: '#/components/schemas/ActionRails'
-          description: Configuration of action rails.
-        tool_output:
-          allOf:
-          - $ref: '#/components/schemas/ToolOutputRails'
-          description: Configuration of tool output rails.
-        tool_input:
-          allOf:
-          - $ref: '#/components/schemas/ToolInputRails'
-          description: Configuration of tool input rails.
-      additionalProperties: false
-      type: object
-      title: RailsInput
-      description: Configuration of specific rails.
-    RailsOutput:
-      properties:
-        config:
-          allOf:
-          - $ref: '#/components/schemas/RailsConfigDataOutput'
-          description: Configuration data for specific rails that are supported out-of-the-box.
-        input:
-          allOf:
-          - $ref: '#/components/schemas/InputRails'
-          description: Configuration of the input rails.
-        output:
-          allOf:
-          - $ref: '#/components/schemas/OutputRails'
-          description: Configuration of the output rails.
-        retrieval:
-          allOf:
-          - $ref: '#/components/schemas/RetrievalRails'
-          description: Configuration of the retrieval rails.
-        dialog:
-          allOf:
-          - $ref: '#/components/schemas/DialogRails'
-          description: Configuration of the dialog rails.
-        actions:
-          allOf:
-          - $ref: '#/components/schemas/ActionRails'
-          description: Configuration of action rails.
-        tool_output:
-          allOf:
-          - $ref: '#/components/schemas/ToolOutputRails'
-          description: Configuration of tool output rails.
-        tool_input:
-          allOf:
-          - $ref: '#/components/schemas/ToolInputRails'
-          description: Configuration of tool input rails.
-      additionalProperties: false
-      type: object
-      title: RailsOutput
-      description: Configuration of specific rails.
+      title: RailsConfigData
+      description: Configuration data for specific rails that are supported out-of-the-box.
     ReasoningConfig:
       properties:
         enabled:
@@ -17671,6 +17655,9 @@ components:
       title: SecretRef
       description: 'Reference to a secret. Format: ''secret_name'' (uses request workspace)
         or ''workspace/secret_name'' (explicit workspace).'
+      examples:
+      - my-secret
+      - my-workspace/my-secret
     SensitiveDataDetection:
       properties:
         recognizers:
@@ -18506,12 +18493,6 @@ components:
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
-        experiment_context:
-          allOf:
-          - $ref: '#/components/schemas/ExperimentContext'
-          description: Deprecated alias for evaluation_context; will be removed in
-            a future release.
-          deprecated: true
         started_at:
           type: string
           format: date-time
@@ -18587,12 +18568,6 @@ components:
         evaluation_id:
           description: Filter by root-span evaluation id.
           title: Evaluation Id
-          type: string
-        experiment_id:
-          deprecated: true
-          description: Deprecated alias for evaluation_id. Filter by root-span evaluation
-            id.
-          title: Experiment Id
           type: string
         test_case_id:
           description: Filter by root-span evaluation test case id.
@@ -18727,7 +18702,7 @@ components:
           description: The purpose of the fileset.
         metadata:
           allOf:
-          - $ref: '#/components/schemas/FilesetMetadataInput'
+          - $ref: '#/components/schemas/FilesetMetadata'
           description: 'Purpose-specific metadata. Use the purpose as the key (e.g.,
             {dataset: {...}}).'
         custom_fields:
@@ -19258,6 +19233,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -19268,6 +19248,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: VirtualModel
       description: 'Logical inference route.
 
@@ -19648,8 +19629,8 @@ components:
           pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
           description: Workspace name (unique identifier). Name must start with a
-            lowercase letter, be 2-63 characters, and contain only lowercase letters,
-            digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+            lowercase letter, be 2-63 characters, and use lowercase letters, digits,
+            hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - ml-team
           - research

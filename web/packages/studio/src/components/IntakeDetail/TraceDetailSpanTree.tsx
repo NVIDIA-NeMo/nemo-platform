@@ -13,16 +13,20 @@ import { getSpanTemplate } from '@studio/components/IntakeDetail/SpanTemplates/r
 import { getSpanKindConfig } from '@studio/components/SpanKindBadge/spanKindConfig';
 import {
   formatDurationMs,
+  getTraceDisplayName,
   getSpanDisplayName,
   getSpanDurationMs,
+  type SessionTrajectory,
   type SpanTreeNode,
 } from '@studio/util/intakeTelemetry';
-import { TriangleAlert, Workflow } from 'lucide-react';
+import { MessagesSquare, TriangleAlert, Workflow } from 'lucide-react';
 import { type FC, type ReactNode } from 'react';
 
 interface TraceSpanTreeProps {
-  /** Span trajectory, nested by `parent_span_id` (see `buildSpanTree`). */
-  nodes: SpanTreeNode[];
+  /** Session traces and their summary span trajectories. */
+  trajectories: SessionTrajectory[];
+  /** Trace selected in the URL. */
+  activeTraceId?: string;
   /** Overall trace duration shown on the leading "Session" row. */
   sessionDurationMs?: number;
   /** Marks the "Session" row as errored when the trace failed. */
@@ -30,9 +34,13 @@ interface TraceSpanTreeProps {
   /** Span currently highlighted in the tree (mirrors the open accordion). */
   activeSpanId: string | null;
   /** Fired when a span row is activated; opens/scrolls the matching accordion. */
-  onSelectSpan: (spanId: string) => void;
-  /** Fired when the leading "Session" row is activated; reloads the view. */
+  onSelectSpan: (spanId: string, traceId: string) => void;
+  /** Fired when a trace row is activated. */
+  onSelectTrace?: (traceId: string) => void;
+  /** Fired when the leading "Session" row is activated; returns to the session summary. */
   onSelectSession?: () => void;
+  /** Highlights the leading Session row while its detail panel is visible. */
+  sessionActive?: boolean;
 }
 
 // Match the kind badge's accent color on the tree icon. KUI sets the icon color
@@ -84,7 +92,8 @@ const SpanTreeLabel: FC<SpanTreeLabelProps> = ({ name, durationMs, errored }) =>
 const renderSpanNodes = (
   nodes: SpanTreeNode[],
   activeSpanId: string | null,
-  onSelectSpan: (spanId: string) => void
+  onSelectSpan: (spanId: string, traceId: string) => void,
+  traceId: string
 ): ReactNode =>
   nodes.map((node) => {
     const { span, children } = node;
@@ -117,11 +126,13 @@ const renderSpanNodes = (
             slotIcon={icon}
             active={active}
             title={title}
-            onClickCapture={() => onSelectSpan(span.span_id)}
+            onClickCapture={() => onSelectSpan(span.span_id, traceId)}
           >
             {label}
           </TreeNavBranchTrigger>
-          <TreeNavList>{renderSpanNodes(children, activeSpanId, onSelectSpan)}</TreeNavList>
+          <TreeNavList>
+            {renderSpanNodes(children, activeSpanId, onSelectSpan, traceId)}
+          </TreeNavList>
         </TreeNavBranch>
       );
     }
@@ -133,9 +144,72 @@ const renderSpanNodes = (
         slotIcon={icon}
         active={active}
         title={title}
-        onSelect={() => onSelectSpan(span.span_id)}
+        onSelect={() => onSelectSpan(span.span_id, traceId)}
       >
         {label}
+      </TreeNavLeaf>
+    );
+  });
+
+const renderTraceNodes = ({
+  trajectories,
+  activeTraceId,
+  activeSpanId,
+  onSelectTrace,
+  onSelectSpan,
+  sessionActive,
+}: {
+  trajectories: SessionTrajectory[];
+  activeTraceId?: string;
+  activeSpanId: string | null;
+  onSelectTrace?: (traceId: string) => void;
+  onSelectSpan: (spanId: string, traceId: string) => void;
+  sessionActive?: boolean;
+}): ReactNode =>
+  trajectories.map(({ trace, spanTree }) => {
+    const nodes = spanTree;
+    if (nodes.length > 0) {
+      return (
+        <TreeNavBranch key={trace.id} defaultOpen collapsible={false}>
+          <TreeNavBranchTrigger
+            className={ROW_CLASS}
+            slotIcon={<Workflow role="img" aria-hidden />}
+            active={trace.id === activeTraceId && !sessionActive && activeSpanId === null}
+            title="View trace"
+            onClickCapture={() => onSelectTrace?.(trace.id)}
+          >
+            <SpanTreeLabel
+              name={getTraceDisplayName(trace)}
+              durationMs={trace.duration_ms}
+              errored={trace.status === SpanStatus.error}
+            />
+          </TreeNavBranchTrigger>
+          <TreeNavList>
+            {renderSpanNodes(
+              nodes,
+              trace.id === activeTraceId ? activeSpanId : null,
+              onSelectSpan,
+              trace.id
+            )}
+          </TreeNavList>
+        </TreeNavBranch>
+      );
+    }
+
+    return (
+      <TreeNavLeaf
+        key={trace.id}
+        className={ROW_CLASS}
+        slotIcon={<Workflow role="img" aria-hidden />}
+        active={trace.id === activeTraceId}
+        title="View trace"
+        onSelect={() => onSelectTrace?.(trace.id)}
+      >
+        <SpanTreeLabel
+          name={getTraceDisplayName(trace)}
+          durationMs={trace.duration_ms}
+          errored={trace.status === SpanStatus.error}
+        />
       </TreeNavLeaf>
     );
   });
@@ -146,24 +220,35 @@ const renderSpanNodes = (
  * accordion; opening an accordion highlights the matching tree row.
  */
 export const TraceSpanTree: FC<TraceSpanTreeProps> = ({
-  nodes,
+  trajectories,
+  activeTraceId,
   sessionDurationMs,
   sessionErrored,
   activeSpanId,
   onSelectSpan,
+  onSelectTrace,
   onSelectSession,
+  sessionActive,
 }) => (
   <TreeNavRoot aria-label="Trace trajectory" className="w-full">
     <TreeNavList>
       <TreeNavLeaf
         className={ROW_CLASS}
-        slotIcon={<Workflow role="img" aria-hidden />}
-        title="Reload trace"
+        slotIcon={<MessagesSquare role="img" aria-hidden />}
+        active={sessionActive}
+        title="View session"
         onSelect={onSelectSession}
       >
         <SpanTreeLabel name="Session" durationMs={sessionDurationMs} errored={sessionErrored} />
       </TreeNavLeaf>
-      {renderSpanNodes(nodes, activeSpanId, onSelectSpan)}
+      {renderTraceNodes({
+        trajectories,
+        activeTraceId,
+        activeSpanId,
+        onSelectTrace,
+        onSelectSpan,
+        sessionActive,
+      })}
     </TreeNavList>
   </TreeNavRoot>
 );

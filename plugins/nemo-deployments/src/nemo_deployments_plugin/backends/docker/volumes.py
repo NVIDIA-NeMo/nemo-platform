@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from nemo_deployments_plugin.backends.base import VolumeStatusUpdate
-from nemo_deployments_plugin.backends.labels import docker_volume_name, volume_identity_labels
+from nemo_deployments_plugin.backends.labels import DEFAULT_RESOURCE_SCOPE, docker_volume_name, volume_identity_labels
 
 import docker
 
@@ -25,9 +25,10 @@ async def create_volume(
     driver: str = "local",
     init_chmod: str | None = None,
     init_image: str | None = None,
+    resource_scope: str = DEFAULT_RESOURCE_SCOPE,
 ) -> VolumeStatusUpdate:
     vol_name = docker_volume_name(workspace, name)
-    labels = volume_identity_labels(workspace, name)
+    labels = volume_identity_labels(workspace, name, resource_scope=resource_scope)
 
     def _create() -> bool:
         """Create the volume if missing. Returns True if newly created."""

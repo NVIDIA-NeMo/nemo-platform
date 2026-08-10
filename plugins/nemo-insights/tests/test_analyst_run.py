@@ -3,8 +3,15 @@
 
 """The ``run_analyst`` client injection contract."""
 
+from typing import Any, cast
+
 import pytest
 from nemo_insights_plugin.analyst import run as run_module
+from nemo_insights_plugin.analyst.deps import AnalystDeps
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients
+from nooa.context_blocks import ResultStatus
+from nooa.events import LLMComplete, PythonOutput
 
 
 class FakeClient:
@@ -15,21 +22,49 @@ class FakeClient:
         self.closed = True
 
 
+class FakeModelClient:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 class FakeBackend:
     async def persist_result(self, *, workspace: str, agent: str, result: object) -> str:
         return "REPORT"
 
 
 def _stub_pipeline(monkeypatch: pytest.MonkeyPatch, seen: dict[str, object]) -> None:
-    def fake_make_backend(*, client: FakeClient, insights_output: str | None) -> FakeBackend:
+    default = FakeModelClient()
+    fast = FakeModelClient()
+    model_clients = ConfiguredModelClients(
+        default=cast(Any, default),
+        fast=cast(Any, fast),
+    )
+
+    async def fake_resolve_model_clients(client: object, refs: object) -> ConfiguredModelClients:
+        seen["model_client"] = client
+        seen["model_refs"] = refs
+        seen["model_clients"] = model_clients
+        return model_clients
+
+    def fake_make_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         seen["backend_client"] = client
+        seen["local_only"] = local_only
         return FakeBackend()
 
-    async def fake_run_agent(analyst: object, deps: object, *, verbose: bool) -> object:
+    async def fake_run_agent(analyst: object, *, verbose: bool) -> object:
         return object()
 
     monkeypatch.setattr(run_module, "make_analyst_backend", fake_make_backend)
-    monkeypatch.setattr(run_module, "build_analyst_agent", lambda **kwargs: object())
+    monkeypatch.setattr(run_module, "resolve_model_clients", fake_resolve_model_clients)
+
+    def fake_build_agent(**kwargs: object) -> object:
+        seen["build_kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(run_module, "build_analyst_agent", fake_build_agent)
     monkeypatch.setattr(run_module, "_run_agent", fake_run_agent)
 
 
@@ -43,20 +78,35 @@ async def test_injected_client_is_used_and_closed(monkeypatch: pytest.MonkeyPatc
         agent_spec=None,
         workspace="workspace",
         base_url="https://platform",
-        client=client,  # type: ignore[arg-type]
+        client=cast(AsyncNeMoPlatform, client),
     )
 
     assert report == "REPORT"
     assert seen["backend_client"] is client
+    build_kwargs = cast(dict[str, object], seen["build_kwargs"])
+    assert cast(AnalystDeps, build_kwargs["deps"]).backend is not None
+    assert seen["model_client"] is client
+    model_clients = cast(ConfiguredModelClients, seen["model_clients"])
+    assert cast(FakeModelClient, model_clients.default).closed
+    assert cast(FakeModelClient, model_clients.fast).closed
     assert client.closed
 
 
 async def test_client_closed_when_backend_construction_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient()
+    model = FakeModelClient()
+    pair = ConfiguredModelClients(
+        default=cast(Any, model),
+        fast=cast(Any, model),
+    )
 
-    def raising_backend(*, client: FakeClient, insights_output: str | None) -> FakeBackend:
+    async def fake_resolve_model_clients(client: object, refs: object) -> ConfiguredModelClients:
+        return pair
+
+    def raising_backend(*, client: FakeClient, insights_output: str | None, local_only: bool) -> FakeBackend:
         raise RuntimeError("backend failed")
 
+    monkeypatch.setattr(run_module, "resolve_model_clients", fake_resolve_model_clients)
     monkeypatch.setattr(run_module, "make_analyst_backend", raising_backend)
 
     with pytest.raises(RuntimeError, match="backend failed"):
@@ -65,10 +115,60 @@ async def test_client_closed_when_backend_construction_raises(monkeypatch: pytes
             agent_spec=None,
             workspace="workspace",
             base_url="https://platform",
-            client=client,  # type: ignore[arg-type]
+            client=cast(AsyncNeMoPlatform, client),
+        )
+
+    assert model.closed
+    assert client.closed
+
+
+async def test_client_closed_when_model_resolution_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient()
+
+    async def raising_model_resolution(client: object, refs: object) -> ConfiguredModelClients:
+        raise RuntimeError("model resolution failed")
+
+    monkeypatch.setattr(run_module, "resolve_model_clients", raising_model_resolution)
+
+    with pytest.raises(RuntimeError, match="model resolution failed"):
+        await run_module.run_analyst(
+            agent="agent",
+            agent_spec=None,
+            workspace="workspace",
+            base_url="https://platform",
+            client=cast(AsyncNeMoPlatform, client),
         )
 
     assert client.closed
+
+
+def test_verbose_echo_maps_nooa_reasoning_tools_and_execution(capsys: pytest.CaptureFixture[str]) -> None:
+    run_module._echo_event(
+        LLMComplete(
+            reasoning_content="inspect the failing sessions",
+            tool_calls=[
+                {
+                    "tool_call_id": "call-1",
+                    "function_name": "execute_python",
+                    "arguments": '{"code":"await self.fetch_spans()"}',
+                }
+            ],
+        )
+    )
+    run_module._echo_event(
+        PythonOutput(
+            tool_call_id="call-1",
+            execution_count=1,
+            execution_status=ResultStatus.COMPLETE,
+            stdout="2 sessions\n",
+        )
+    )
+
+    assert capsys.readouterr().err.splitlines() == [
+        "[thought] inspect the failing sessions",
+        '[tool] execute_python({"code":"await self.fetch_spans()"})',
+        "[result] execute_python -> 2 sessions",
+    ]
 
 
 async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,7 +193,7 @@ async def test_client_closed_when_observability_shutdown_raises(monkeypatch: pyt
             agent_spec=None,
             workspace="workspace",
             base_url="https://platform",
-            client=client,  # type: ignore[arg-type]
+            client=cast(AsyncNeMoPlatform, client),
         )
 
     assert client.closed

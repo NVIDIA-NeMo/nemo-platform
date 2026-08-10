@@ -140,6 +140,7 @@ class ContextDefinition(BaseModel):
     user: str = Field(..., min_length=1, description="Reference to user name (string, not resolved)")
     workspace: str | None = Field(default=None, description="Default workspace")
     default_model: str | None = Field(default=None, description="Default model entity ID for inference")
+    fast_model: str | None = Field(default=None, description="Low-latency model entity ID for agent workloads")
     preferences: Preferences = Field(default_factory=Preferences, description="Context-specific preferences")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional context metadata")
 
@@ -174,6 +175,7 @@ class ConfigParams(TypedDict, total=False):
 
     workspace: str
     default_model: str
+    fast_model: str
 
     output_format: OutputFormat
     timestamp_format: TimestampFormat
@@ -220,6 +222,10 @@ class ConfigFile(BaseModel):
     local_services: LocalServicesConfig | None = Field(
         default=None,
         description="User-selected paths for local services (set by `nemo setup`).",
+    )
+    telemetry_enabled: bool = Field(
+        default=True,
+        description="Whether anonymous usage telemetry is enabled. Set to false to opt out.",
     )
 
     def ensure_context(
@@ -312,6 +318,8 @@ class ConfigFile(BaseModel):
             context.workspace = params["workspace"]
         if "default_model" in params:
             context.default_model = params["default_model"]
+        if "fast_model" in params:
+            context.fast_model = params["fast_model"]
         if "output_format" in params:
             context.preferences.output_format = params["output_format"]
         if "timestamp_format" in params:
@@ -379,4 +387,5 @@ class Context(BaseModel):
     user: User | None = Field(default=None, description="Resolved user with authentication credentials")
     workspace: str = Field(..., description="Active workspace (required)")
     default_model: str | None = Field(default=None, description="Default model entity ID for inference")
+    fast_model: str | None = Field(default=None, description="Low-latency model entity ID for agent workloads")
     preferences: Preferences = Field(..., description="Effective preferences")

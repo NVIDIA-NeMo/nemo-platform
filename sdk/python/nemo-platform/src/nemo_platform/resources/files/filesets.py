@@ -43,7 +43,7 @@ from ...types.files.fileset import Fileset
 from ...types.files.fileset_purpose import FilesetPurpose
 from ...types.shared.generic_sort_field import GenericSortField
 from ...types.files.fileset_filter_param import FilesetFilterParam
-from ...types.shared_params.fileset_metadata_param import FilesetMetadataParam
+from ...types.shared_params.fileset_metadata import FilesetMetadata
 from ..._exceptions import ConflictError
 
 __all__ = ["FilesetsResource", "AsyncFilesetsResource"]
@@ -77,7 +77,7 @@ class FilesetsResource(SyncAPIResource):
         cache: bool | Omit = omit,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParam | Omit = omit,
+        metadata: FilesetMetadata | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         storage: fileset_create_params.Storage | Omit = omit,
@@ -96,8 +96,9 @@ class FilesetsResource(SyncAPIResource):
         used.
 
         Args:
-          name: The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9),
-              underscores, hyphens, and dots.
+          name: The name of the fileset. Name must start with a lowercase letter, be 2-63
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           cache: Cache all files after creation. Only applies to external storage.
 
@@ -206,7 +207,7 @@ class FilesetsResource(SyncAPIResource):
         workspace: str | None = None,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParam | Omit = omit,
+        metadata: FilesetMetadata | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -402,7 +403,7 @@ class AsyncFilesetsResource(AsyncAPIResource):
         cache: bool | Omit = omit,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParam | Omit = omit,
+        metadata: FilesetMetadata | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         storage: fileset_create_params.Storage | Omit = omit,
@@ -421,8 +422,9 @@ class AsyncFilesetsResource(AsyncAPIResource):
         used.
 
         Args:
-          name: The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9),
-              underscores, hyphens, and dots.
+          name: The name of the fileset. Name must start with a lowercase letter, be 2-63
+              characters, and use lowercase letters, digits, hyphens, and dots (no consecutive
+              hyphens, cannot end with a hyphen).
 
           cache: Cache all files after creation. Only applies to external storage.
 
@@ -531,7 +533,7 @@ class AsyncFilesetsResource(AsyncAPIResource):
         workspace: str | None = None,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParam | Omit = omit,
+        metadata: FilesetMetadata | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.

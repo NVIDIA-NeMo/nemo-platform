@@ -27,6 +27,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- include "nemo-platform.podAnnotations" . | nindent 8 }}
+        checksum/clickhouse-credentials: {{ include "nemo-common.clickhouse.credentialsChecksum" . }}
       labels:
         app.kubernetes.io/component: nmp-api
         {{- include "nemo-platform.labels" . | nindent 8 }}
@@ -51,6 +52,7 @@ spec:
             - "--service-group=all"
             - "--host={{ include "nemo-platform.bindHost" . }}"
             - "--port={{ .Values.api.service.port }}"
+            - "--keep-alive-timeout-seconds={{ .Values.api.server.keepAliveTimeoutSeconds }}"
             {{- range .Values.api.extraArgs }}
             - {{ . | quote }}
             {{- end }}
@@ -69,12 +71,27 @@ spec:
             {{- end }}
             - name: NMP_CONFIG_FILE_PATH
               value: /etc/nmp/config.yaml
+            - name: NMP_INTAKE_CLICKHOUSE_URL
+              value: {{ include "nemo-common.clickhouse.url" . | quote }}
+            - name: NMP_INTAKE_CLICKHOUSE_USER
+              value: {{ include "nemo-common.clickhouse.user" . | quote }}
+            - name: NMP_INTAKE_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-common.clickhouse.secretName" . | quote }}
+                  key: {{ include "nemo-common.clickhouse.passwordKey" . | quote }}
+            - name: NMP_INTAKE_CLICKHOUSE_DATABASE
+              value: {{ include "nemo-common.clickhouse.database" . | quote }}
             - name: NMP_BASE_URL
               {{- if include "nemo-platform.embeddedPdpEnabled" . }}
               value: {{ include "nemo-platform.apiLoopbackBaseUrl" . | quote }}
               {{- else }}
               value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
               {{- end }}
+            # In-cluster API Service DNS. Deployed agents use this as their inference
+            # endpoint, since NMP_BASE_URL may not be reachable from an agent pod.
+            - name: NMP_INTERNAL_BASE_URL
+              value: {{ include "nemo-platform.internalBaseUrl" . | quote }}
             - name: NMP_AUTOMODEL_DEFAULT_TRAINING_EXECUTION_PROFILE
               value: {{ dig "automodel" "default_training_execution_profile" "default" $platformConfig | quote }}
             - name: NMP_UNSLOTH_DEFAULT_TRAINING_EXECUTION_PROFILE

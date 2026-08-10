@@ -31,6 +31,10 @@ class PlatformJob(EntityBase):
     platform_spec: PlatformJobSpec = Field(..., description="Platform job specification")
     current_attempt_id: Optional[str] = Field(default=None, description="Current Attempt ID")
     fileset: str = Field(..., description="Fileset ID for storing job artifacts (logs, results)")
+    output_location: Optional[str] = Field(
+        default=None,
+        description="Caller-supplied artifact fileset; None when the dispatcher auto-created the fileset",
+    )
     project: Optional[str] = Field(default=None, description="Project URN")
 
     # Optional metadata (explicitly added since EntityBase doesn't include these)

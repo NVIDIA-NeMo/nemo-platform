@@ -27,6 +27,9 @@ def create_logs(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    artifact_base_path: Annotated[
+        str | None, typer.Option("--artifact-base-path", help="Folder inside the fileset to nest logs under")
+    ] = None,
     input_file: Annotated[
         str | None,
         typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
@@ -56,6 +59,8 @@ def create_logs(
     # Apply CLI flag overrides (flags take precedence)
     if workspace is not None:
         input_payload["workspace"] = workspace
+    if artifact_base_path is not None:
+        input_payload["artifact_base_path"] = artifact_base_path
 
     all_kwargs = {"name": name, **input_payload}
     state: CLIContext = ctx.obj
@@ -83,6 +88,13 @@ def query_logs(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    artifact_base_path: Annotated[
+        str | None,
+        typer.Option(
+            "--artifact-base-path",
+            help="Folder inside the fileset the logs were nested under (must match the value used on write)",
+        ),
+    ] = None,
     filters: Annotated[str | None, typer.Option("--filters", help="Key-value filters to apply to the query")] = None,
     limit: Annotated[int | None, typer.Option("--limit", help="Maximum number of results to return")] = None,
     page_cursor: Annotated[str | None, typer.Option("--page-cursor", help="Cursor for pagination")] = None,
@@ -97,6 +109,7 @@ def query_logs(
 
     kwargs = build_kwargs(
         workspace=workspace,
+        artifact_base_path=artifact_base_path,
         filters=filters,
         limit=limit,
         page_cursor=page_cursor,

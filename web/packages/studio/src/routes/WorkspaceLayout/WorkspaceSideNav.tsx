@@ -5,8 +5,9 @@ import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import { DataDesignerIconFc } from '@studio/constants/constants';
 import {
+  ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
-  CODING_AGENT_STUDIO_ENABLED,
+  COPILOT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -18,19 +19,29 @@ import {
   INTAKE_ENABLED,
   JOBS_ENABLED,
   MODEL_COMPARE_ENABLED,
+  OPTIMIZER_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
   SETTINGS_ENABLED,
 } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { getPluginIcon } from '@studio/plugins/iconMap';
+import {
+  usePluginInstalled,
+  usePlugins,
+  usePluginsError,
+  usePluginsLoaded,
+} from '@studio/plugins/PluginContext';
 import { iconColorClass } from '@studio/routes/constants';
 import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
+  getWorkspaceAnonymizerRoute,
   getDataDesignerJobListRoute,
-  getModelCompareRoute,
   getEvaluationResultsRoute,
   getExperimentRoute,
   getGuardrailsRoute,
-  getIntakeRoute,
+  getIntakeTracesRoute,
+  getModelCompareRoute,
+  getOptimizerRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceCustomizationJobListRoute,
   getWorkspaceDashboardRoute,
@@ -41,6 +52,7 @@ import {
   getWorkspaceSettingsRoute,
   getWorkspaceVirtualModelsRoute,
 } from '@studio/routes/utils';
+import { logger } from '@studio/util/logger';
 import {
   Beaker,
   Boxes,
@@ -50,20 +62,28 @@ import {
   Home,
   ShieldCheck,
   Sliders,
-  UserPen,
+  Activity,
   Cog,
   Columns3,
   Rocket,
+  VenetianMask,
+  Gauge,
   Waypoints,
 } from 'lucide-react';
 import { useMemo } from 'react';
 
 export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
+  const plugins = usePlugins();
+  const agentsInstalled = usePluginInstalled('agents');
+  const pluginsLoaded = usePluginsLoaded();
+  const pluginsError = usePluginsError();
+  const manifestResolved = pluginsLoaded && !pluginsError;
+  const showAgents = agentsInstalled || !manifestResolved;
 
   const items = useMemo(() => {
     const dashboardNav =
-      DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED
+      DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED
         ? [
             {
               id: 'dashboard',
@@ -105,13 +125,13 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
-    const intakeNav = INTAKE_ENABLED
+    const tracesNav = INTAKE_ENABLED
       ? [
           {
-            id: 'annotation',
-            slotIcon: <UserPen className={iconColorClass} />,
-            slotLabel: 'Annotation',
-            href: getIntakeRoute(workspace),
+            id: 'traces',
+            slotIcon: <Activity className={iconColorClass} />,
+            slotLabel: 'Traces',
+            href: getIntakeTracesRoute(workspace),
           },
         ]
       : [];
@@ -149,8 +169,29 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         ]
       : [];
 
-    const agentItems = getAgentSideNavItems(workspace);
+    const anonymizerNav = ANONYMIZER_ENABLED
+      ? [
+          {
+            id: 'anonymizer',
+            slotIcon: <VenetianMask className={iconColorClass} />,
+            slotLabel: 'Anonymizer',
+            href: getWorkspaceAnonymizerRoute(workspace),
+          },
+        ]
+      : [];
 
+    const agentItems = showAgents ? getAgentSideNavItems(workspace) : [];
+
+    const optimizerNav = OPTIMIZER_ENABLED
+      ? [
+          {
+            id: 'optimizer',
+            slotIcon: <Gauge className={iconColorClass} />,
+            slotLabel: 'Insights',
+            href: getOptimizerRoute(workspace),
+          },
+        ]
+      : [];
     const virtualModelsNav = [
       {
         id: 'virtual-models',
@@ -184,8 +225,9 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         : []),
       ...safeSynthesizerNav,
       ...dataDesignerNav,
+      ...anonymizerNav,
     ];
-    const evaluateItems = [...evalNav, ...intakeNav, ...experimentNav];
+    const evaluateItems = [...evalNav, ...tracesNav, ...experimentNav];
 
     const safetyItems = GUARDRAILS_ENABLED
       ? [
@@ -201,11 +243,11 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     return [
       ...dashboardNav,
       ...modelCompareNav,
-      ...(agentItems.length > 0
+      ...(agentItems.length > 0 || optimizerNav.length > 0
         ? [
             {
               group: 'Agents',
-              items: agentItems,
+              items: [...agentItems, ...optimizerNav],
             },
           ]
         : []),
@@ -248,7 +290,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
       ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),
     ];
-  }, [workspace]);
+  }, [workspace, showAgents]);
 
   const bottomItems = useMemo(
     () => [
@@ -266,5 +308,35 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     [workspace]
   );
 
-  return <NavigationDrawer items={items} bottomItems={bottomItems} collapsed={collapsed} />;
+  const pluginNavGroups = useMemo(
+    () =>
+      plugins.flatMap((plugin) => {
+        try {
+          return plugin.navItems(workspace).map((group) => ({
+            group: group.group,
+            items: group.items.map((item) => {
+              const Icon = getPluginIcon(item.iconName);
+              return {
+                id: item.id,
+                slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
+                slotLabel: item.label,
+                href: item.href,
+              };
+            }),
+          }));
+        } catch (err) {
+          logger.warn(`[plugins] navItems() threw for plugin "${plugin.name}":`, err);
+          return [];
+        }
+      }),
+    [plugins, workspace]
+  );
+
+  return (
+    <NavigationDrawer
+      items={[...items, ...pluginNavGroups]}
+      bottomItems={bottomItems}
+      collapsed={collapsed}
+    />
+  );
 };

@@ -68,6 +68,7 @@ export const CustomizationJobDetailsRoute: FC = () => {
               status={status}
               backend={backend}
               name={customizationJobName}
+              job={job}
             />
           }
         />

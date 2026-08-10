@@ -5,7 +5,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from nmp.intake.api.v2.experiments.endpoints import get_evaluation_rollup_repository
+from nmp.intake.api.v2.experiments.dependencies import get_evaluation_rollup_repository
 from nmp.intake.service import IntakeService
 from nmp.testing import create_test_client
 

@@ -3,7 +3,9 @@ ARG NODE_VERSION=22
 ARG DOCKERHUB_MIRROR=docker.io/library
 
 # --------------- BASE --------------- #
-FROM ${DOCKERHUB_MIRROR}/node:${NODE_VERSION}-bookworm AS base
+# dist/ is architecture-independent JS/CSS/HTML, so build it once on the builder's
+# native arch. Emulated arm64 builds hang in Vite chunk rendering under QEMU.
+FROM --platform=$BUILDPLATFORM ${DOCKERHUB_MIRROR}/node:${NODE_VERSION}-bookworm AS base
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Preserve the Platform repository layout so SDK generation can resolve
@@ -32,6 +34,7 @@ COPY web/packages/sdk/generateAll.ts packages/sdk/generateAll.ts
 COPY web/packages/sdk/orval.config.ts packages/sdk/orval.config.ts
 COPY web/packages/sdk/orval packages/sdk/orval
 COPY openapi /app/openapi
+COPY plugins/nemo-anonymizer/openapi /app/plugins/nemo-anonymizer/openapi
 COPY plugins/nemo-data-designer/openapi /app/plugins/nemo-data-designer/openapi
 COPY plugins/nemo-agents/openapi /app/plugins/nemo-agents/openapi
 COPY plugins/nemo-safe-synthesizer/openapi /app/plugins/nemo-safe-synthesizer/openapi
@@ -69,12 +72,17 @@ COPY web/packages/studio/env/${ENV_FILE} packages/studio/env/.env
 # so the Dockerfile can retry before the GitHub job-level timeout cancels the run.
 RUN set -eu; \
   for attempt in 1 2 3; do \
-    if VITE_VERSION_SHA="${VITE_VERSION_SHA}" NODE_ENV="${NODE_ENV}" \
+    status=0; \
+    VITE_VERSION_SHA="${VITE_VERSION_SHA}" NODE_ENV="${NODE_ENV}" \
       timeout --kill-after=30s 15m \
-      pnpm --filter nemo-studio-ui --fail-if-no-match build:fastapi; then \
+      pnpm --filter nemo-studio-ui --fail-if-no-match build:fastapi || status="$?"; \
+    if [ "${status}" = "0" ]; then \
+      if [ ! -f /app/web/packages/studio/dist/index.html ]; then \
+        echo "Studio UI build reported success but dist/index.html is missing"; \
+        exit 1; \
+      fi; \
       exit 0; \
     fi; \
-    status="$?"; \
     if [ "${status}" != "124" ] && [ "${status}" != "137" ]; then \
       exit "${status}"; \
     fi; \

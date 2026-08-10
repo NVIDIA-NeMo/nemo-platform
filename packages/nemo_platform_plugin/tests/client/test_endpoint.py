@@ -29,6 +29,11 @@ def GetEndpoint(*, workspace: str, name: str) -> FakeResponse:
     raise NotImplementedError
 
 
+@get("/v2/cacheable", additional_success_status_codes=(304,))
+def CacheableGetEndpoint() -> FakeResponse:
+    raise NotImplementedError
+
+
 @delete("/v2/workspaces/{workspace}/items/{name}")
 def DeleteEndpoint(*, workspace: str, name: str) -> None:
     raise NotImplementedError
@@ -71,6 +76,11 @@ def test_get_endpoint_no_body() -> None:
     assert prepared.content is None
     assert prepared.content_type is None
     assert prepared.response_type is FakeResponse
+
+
+def test_get_endpoint_additional_success_status_codes() -> None:
+    assert GetEndpoint(workspace="default", name="item-1").additional_success_status_codes == ()
+    assert CacheableGetEndpoint().additional_success_status_codes == (304,)
 
 
 def test_delete_endpoint() -> None:

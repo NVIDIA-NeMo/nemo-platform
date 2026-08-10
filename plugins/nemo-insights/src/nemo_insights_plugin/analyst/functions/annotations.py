@@ -28,11 +28,10 @@ in ``~/code/nemo-platform`` (``AnnotationFilter``).
 from typing import Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
-from pydantic_ai import RunContext
 
 
 async def fetch_annotations(
-    ctx: RunContext[AnalystDeps],
+    deps: AnalystDeps,
     filter: dict[str, Any] | None = None,
     sort: str = "-created_at",
     limit: int = 50,
@@ -54,7 +53,6 @@ async def fetch_annotations(
         sort: Sort field; "-created_at" (default, newest first) or "created_at".
         limit: Max annotations to pull across pages (clamped to the ceiling).
     """
-    deps = ctx.deps
     assert deps.backend is not None
     return await deps.backend.list_annotations(
         workspace=deps.workspace,
@@ -65,12 +63,11 @@ async def fetch_annotations(
     )
 
 
-async def get_annotation(ctx: RunContext[AnalystDeps], annotation_id: str) -> dict[str, Any]:
+async def get_annotation(deps: AnalystDeps, annotation_id: str) -> dict[str, Any]:
     """Fetch a single annotation by id.
 
     Args:
         annotation_id: Intake annotation id.
     """
-    deps = ctx.deps
     assert deps.backend is not None
     return await deps.backend.get_annotation(workspace=deps.workspace, annotation_id=annotation_id)

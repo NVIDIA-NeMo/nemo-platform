@@ -101,6 +101,22 @@ class TestAuthorizationMiddleware:
         assert "result" in result
         assert "allowed" in result["result"]
 
+    def test_authz_invalid_entrypoint_returns_structured_detail(self, http_client: TestClient):
+        headers = {"X-NMP-Principal-Id": SERVICE_PRINCIPAL}
+        response = http_client.post(
+            "/apis/auth/v2/authz/missing",
+            json={"input": {}},
+            headers=headers,
+        )
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "detail": {
+                "error": "Invalid entrypoint: missing",
+                "valid_entrypoints": ["allow", "has_permissions", "has_role"],
+            }
+        }
+
     def test_authz_endpoint_blocked_without_service_principal(self, http_client: TestClient):
         """The PDP authz endpoint must not be accessible without a service principal."""
         auth_input = {

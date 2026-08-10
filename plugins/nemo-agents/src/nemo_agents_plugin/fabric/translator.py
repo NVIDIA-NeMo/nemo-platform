@@ -10,10 +10,14 @@ from typing import Any
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
 import nemo_fabric as fabric  # ty: ignore[unresolved-import]
 from nemo_agents_plugin.agent_config import AgentConfig, HarnessConfig, ModelConfig
+from nemo_agents_plugin.fabric.gateway_credentials import (
+    bind_platform_gateway_model_credential,
+    platform_gateway_credential_env,
+)
 
 HARNESS_ADAPTER_IDS = {
     "claude": "nvidia.fabric.claude",
-    "codex": "nvidia.fabric.codex.cli",
+    "codex": "nvidia.fabric.codex",
     "deepagents": "nvidia.fabric.langchain.deepagents",
     "hermes": "nvidia.fabric.hermes",
 }
@@ -27,6 +31,9 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     """Translate Platform-owned agent config into a typed in-memory FabricConfig."""
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
+    model_payload = bind_platform_gateway_model_credential(_model_payload(model))
+    runtime_env = platform_gateway_credential_env({"models": {"default": model_payload}})
+    _validate_untranslated_shared_fields(config)
 
     fabric_config = fabric.FabricConfig(
         metadata=fabric.MetadataConfig(name=config.name, description=config.description or None),
@@ -36,14 +43,19 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
             settings=harness.settings,
         ),
         models={
-            "default": fabric.ModelConfig(**_model_payload(model)),
+            "default": fabric.ModelConfig(**model_payload),
         },
+        instructions=_instructions_config(config),
         environment=fabric.EnvironmentConfig(
             provider=config.environment.provider,
             workspace=config.environment.workspace,
             artifacts=config.environment.artifacts,
+            env=runtime_env,
             settings=config.environment.settings,
         ),
+        skills=_skills_config(config),
+        mcp=_mcp_config(config),
+        tools=_tools_config(config),
     )
 
     _apply_telemetry(fabric_config, config, model)
@@ -82,7 +94,49 @@ def _resolve_model(config: AgentConfig, harness_name: str, harness: HarnessConfi
 
 
 def _model_payload(model: ModelConfig) -> dict[str, Any]:
-    return model.model_dump(exclude_none=True)
+    payload = model.model_dump(exclude_none=True)
+    settings = payload.get("settings")
+    if "base_url" not in payload and isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
+        payload["base_url"] = settings.pop("base_url")
+    return payload
+
+
+def _validate_untranslated_shared_fields(config: AgentConfig) -> None:
+    if config.prompts:
+        raise FabricTranslationError(
+            "Top-level prompts are not translated yet. Configure prompt settings under the selected harness instead."
+        )
+
+
+def _instructions_config(config: AgentConfig) -> Any:
+    if config.instructions is None or config.instructions.system is None:
+        return None
+    return fabric.InstructionsConfig(
+        system=fabric.InstructionConfig(
+            content=config.instructions.system.content,
+            mode=config.instructions.system.mode,
+        )
+    )
+
+
+def _skills_config(config: AgentConfig) -> Any:
+    if config.skills is None:
+        return None
+    return fabric.SkillConfig(paths=config.skills.paths)
+
+
+def _mcp_config(config: AgentConfig) -> Any:
+    if config.mcp is None:
+        return None
+    return fabric.McpConfig(
+        servers={name: fabric.McpServerConfig(**server.model_dump()) for name, server in config.mcp.servers.items()}
+    )
+
+
+def _tools_config(config: AgentConfig) -> Any:
+    if config.tools is None:
+        return None
+    return fabric.ToolsConfig(blocked=config.tools.blocked)
 
 
 def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig) -> None:
@@ -103,7 +157,7 @@ def _apply_telemetry(fabric_config: Any, config: AgentConfig, model: ModelConfig
 
 def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict[str, Any]:
     telemetry = config.telemetry
-    observability: dict[str, Any] = {"version": 1}
+    observability: dict[str, Any] = {"version": 2}
 
     if telemetry.atif is not None:
         atif = dict(telemetry.atif)
@@ -114,9 +168,34 @@ def _relay_observability_config(config: AgentConfig, model: ModelConfig) -> dict
         observability["atif"] = atif
 
     if telemetry.atof is not None:
-        atof = dict(telemetry.atof)
-        if telemetry.output_dir is not None:
-            atof.setdefault("output_directory", telemetry.output_dir)
-        observability["atof"] = atof
+        observability["atof"] = _relay_atof_config(telemetry.atof, output_dir=telemetry.output_dir)
 
     return observability
+
+
+def _relay_atof_config(atof_config: dict[str, Any], output_dir: str | None) -> dict[str, Any]:
+    atof = dict(atof_config)
+    sinks = list(atof.pop("sinks", []) or [])
+
+    file_sink = {"type": "file"}
+    if output_dir is not None:
+        file_sink["output_directory"] = output_dir
+    for key in ("output_directory", "filename", "mode"):
+        if key in atof:
+            file_sink[key] = atof.pop(key)
+    if len(file_sink) > 1:
+        sinks.insert(0, file_sink)
+
+    for endpoint in atof.pop("endpoints", []) or []:
+        stream_sink = dict(endpoint)
+        endpoint_url = stream_sink.pop("endpoint", None)
+        if endpoint_url is not None and "url" not in stream_sink:
+            stream_sink["url"] = endpoint_url
+        stream_sink["type"] = "stream"
+        sinks.append(stream_sink)
+
+    translated = {"enabled": atof.pop("enabled", False)}
+    if sinks:
+        translated["sinks"] = sinks
+    translated.update(atof)
+    return translated

@@ -485,6 +485,14 @@ def _build_items_router() -> APIRouter:
                 status_code=404,
                 detail=f"Item '{name}' not found in workspace '{workspace}'.",
             ) from exc
+        except NemoEntityConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Item '{name}' was modified by another request in workspace '{workspace}'. "
+                    "Refresh the item and try again."
+                ),
+            ) from exc
         except Exception as exc:
             logger.exception("Failed to delete item '%s'", name)
             raise HTTPException(status_code=500, detail="Failed to delete item.") from exc

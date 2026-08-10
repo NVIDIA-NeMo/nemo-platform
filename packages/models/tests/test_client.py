@@ -3,9 +3,18 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncNeMoPlatform,
+    NeMoPlatform,
+    NotFoundError,
+)
 from nemo_platform.types.inference import ModelDeployment, ModelProvider
+from nemo_platform.types.inference.gateway.openai.v1 import OpenAIModelResp
 from nemo_platform.types.models import ModelEntity
 
 # ============================================================================
@@ -41,6 +50,34 @@ def async_sdk():
 def async_sdk_with_workspace():
     """Create async SDK with client-level workspace set."""
     return AsyncNeMoPlatform(base_url="https://nmp.example.com/", workspace="client-ws")
+
+
+def _not_found_error() -> NotFoundError:
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+    response = httpx.Response(404, request=request)
+    return NotFoundError("not found", response=response, body={"detail": "not found"})
+
+
+def _api_status_error(status_code: int) -> APIStatusError:
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+    response = httpx.Response(status_code, request=request)
+    return APIStatusError("gateway not ready", response=response, body={"detail": "gateway not ready"})
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleep_calls: list[float] = []
+
+    def time(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleep_calls.append(seconds)
+        self.now += seconds
+
+    async def async_sleep(self, seconds: float) -> None:
+        self.sleep(seconds)
 
 
 # ============================================================================
@@ -307,6 +344,120 @@ def test_get_openai_client_includes_auth_headers():
         assert default_headers["X-NMP-Principal-Id"] == "user@example.com"
 
 
+# Tests for wait_for_openai_model
+
+
+def test_wait_for_openai_model_uses_client_workspace_and_retries(sdk_with_workspace):
+    """Test that OpenAI model route readiness retries until the model is visible."""
+    model_response = OpenAIModelResp(id="client-ws/model-a", owned_by="test")
+
+    with patch.object(
+        sdk_with_workspace.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=[_not_found_error(), model_response],
+    ) as mock_get:
+        result = sdk_with_workspace.models.wait_for_openai_model("model-a", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert [call.kwargs for call in mock_get.call_args_list] == [
+        {"name": "model-a", "workspace": "client-ws"},
+        {"name": "model-a", "workspace": "client-ws"},
+    ]
+
+
+def test_wait_for_openai_model_accepts_qualified_name(sdk):
+    """Test that workspace-qualified names are normalized for the route path."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        return_value=model_response,
+    ) as mock_get:
+        result = sdk.models.wait_for_openai_model("ws/model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    mock_get.assert_called_once_with(name="model-a", workspace="ws")
+
+
+def test_wait_for_openai_model_retries_unexpected_model_id(sdk):
+    """Test that a stale or mismatched route response is not treated as ready."""
+    stale_response = OpenAIModelResp(id="ws/other-model", owned_by="test")
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=[stale_response, model_response],
+    ) as mock_get:
+        result = sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.call_count == 2
+
+
+@pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+def test_wait_for_openai_model_retries_transient_gateway_errors(sdk, status_code):
+    """Test that transient gateway and connection failures keep polling."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=[
+            APIConnectionError(request=request),
+            _api_status_error(status_code),
+            model_response,
+        ],
+    ) as mock_get:
+        result = sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.call_count == 3
+
+
+def test_wait_for_openai_model_reraises_non_transient_status_error(sdk):
+    """Test that non-readiness HTTP errors are not hidden until timeout."""
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=_api_status_error(401),
+    ):
+        with pytest.raises(APIStatusError):
+            sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+
+def test_wait_for_openai_model_times_out(sdk):
+    """Test that timeout includes the expected model id in the error."""
+    with patch.object(
+        sdk.inference.gateway.openai.v1.models,
+        "get",
+        side_effect=_not_found_error(),
+    ):
+        with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
+            sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=0.01, poll_interval=0)
+
+
+def test_wait_for_openai_model_bounds_sleep_to_remaining_timeout(sdk):
+    """Test that sync polling does not sleep beyond the configured timeout."""
+    clock = _FakeClock()
+
+    with (
+        patch.object(
+            sdk.inference.gateway.openai.v1.models,
+            "get",
+            side_effect=_not_found_error(),
+        ),
+        patch("nemo_platform.models.resources.time.time", side_effect=clock.time),
+        patch("nemo_platform.models.resources.time.sleep", side_effect=clock.sleep),
+    ):
+        with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
+            sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1.25, poll_interval=5)
+
+    assert clock.sleep_calls == [1.25]
+
+
 # ============================================================================
 # AsyncModelsResource Tests
 # ============================================================================
@@ -400,6 +551,93 @@ def test_get_async_openai_client_includes_auth_headers():
 
         assert default_headers["Authorization"] == "Bearer token-abc"
         assert default_headers["X-NMP-Principal-Id"] == "async-user@example.com"
+
+
+# Tests for async wait_for_openai_model
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_retries_until_visible(async_sdk_with_workspace):
+    """Test async OpenAI model route readiness polling."""
+    model_response = OpenAIModelResp(id="client-ws/model-a", owned_by="test")
+    mock_get = AsyncMock(side_effect=[_not_found_error(), model_response])
+
+    with patch.object(async_sdk_with_workspace.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk_with_workspace.models.wait_for_openai_model("model-a", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert [call.kwargs for call in mock_get.call_args_list] == [
+        {"name": "model-a", "workspace": "client-ws"},
+        {"name": "model-a", "workspace": "client-ws"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_accepts_qualified_name_and_retries(async_sdk):
+    """Test that async workspace-qualified names are normalized while polling."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    mock_get = AsyncMock(side_effect=[_not_found_error(), model_response])
+
+    with patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk.models.wait_for_openai_model("ws/model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert [call.kwargs for call in mock_get.call_args_list] == [
+        {"name": "model-a", "workspace": "ws"},
+        {"name": "model-a", "workspace": "ws"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_retries_unexpected_model_id(async_sdk):
+    """Test that an async stale or mismatched route response is not treated as ready."""
+    stale_response = OpenAIModelResp(id="ws/other-model", owned_by="test")
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    mock_get = AsyncMock(side_effect=[stale_response, model_response])
+
+    with patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+async def test_async_wait_for_openai_model_retries_transient_gateway_errors(async_sdk, status_code):
+    """Test that async polling retries transient gateway and timeout failures."""
+    model_response = OpenAIModelResp(id="ws/model-a", owned_by="test")
+    request = httpx.Request("GET", "https://nmp.example.com/apis/inference-gateway/openai/v1/models/model-a")
+    mock_get = AsyncMock(
+        side_effect=[
+            APITimeoutError(request=request),
+            _api_status_error(status_code),
+            model_response,
+        ]
+    )
+
+    with patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get):
+        result = await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1, poll_interval=0)
+
+    assert result == model_response
+    assert mock_get.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_openai_model_bounds_sleep_to_remaining_timeout(async_sdk):
+    """Test that async polling does not sleep beyond the configured timeout."""
+    clock = _FakeClock()
+    mock_get = AsyncMock(side_effect=_not_found_error())
+
+    with (
+        patch.object(async_sdk.inference.gateway.openai.v1.models, "get", mock_get),
+        patch("nemo_platform.models.resources.time.time", side_effect=clock.time),
+        patch("nemo_platform.models.resources.asyncio.sleep", side_effect=clock.async_sleep),
+    ):
+        with pytest.raises(TimeoutError, match="OpenAI model ws/model-a not available"):
+            await async_sdk.models.wait_for_openai_model("model-a", workspace="ws", timeout=1.25, poll_interval=5)
+
+    assert clock.sleep_calls == [1.25]
 
 
 # Tests for async get_provider_route_openai_url_for_deployment

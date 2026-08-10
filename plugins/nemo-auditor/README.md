@@ -81,7 +81,18 @@ tgt = client.auditor.targets.create(
     options={"uri": "http://localhost:9000/v1"},
 )
 
-# Run an audit locally (no jobs-service submission) using the persisted entities
+# Submit a K8s audit job and wait for it to finish.
+job = client.auditor.submit(
+    config="quick-scan",
+    target="llama-31-8b",
+    workspace="default",
+)
+print(f"Job submitted: {job.name}")
+job.wait_until_done()                          # blocks; streams logs while polling
+artifacts_dir = job.download_artifacts()       # extracts garak reports to ./<job-name>/
+print(f"Reports: {artifacts_dir}")
+
+# Or run an audit locally (no jobs-service submission).
 result = client.auditor.run(
     config="quick-scan",       # workspace-qualified name strings ("ws/name") also work
     target="llama-31-8b",
@@ -92,6 +103,7 @@ for name, ref in result["results"].items():
     print(name, ref["artifact_url"])
 ```
 
+`submit()` posts the job to the K8s executor and returns an `AuditorJobResource` handle.
 `run()` shells out to a pre-installed garak interpreter (default
 `~/.auditor/.venv/bin/python`, override via `$NEMO_AUDITOR_GARAK_PYTHON`)
 and registers the resulting JSONL / HTML / hitlog reports as job results

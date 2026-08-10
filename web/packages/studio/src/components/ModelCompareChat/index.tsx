@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { Tooltip } from '@nvidia/foundations-react-core';
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import {
@@ -17,8 +16,6 @@ import { useCallback, useState, type FC, type ReactNode } from 'react';
 interface ModelCompareChatProps extends PanelChatControls {
   /** Route workspace — used only as a fallback for panels without an assigned model. */
   workspace: string;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels: boolean;
   models: SharedModelEntry[];
   onRemoveModel: (id: number) => void;
   onSetModel: (id: number, modelURN: string | null) => void;
@@ -32,8 +29,6 @@ interface ModelCompareChatProps extends PanelChatControls {
 
 export const ModelCompareChat: FC<ModelCompareChatProps> = ({
   workspace,
-  modelGroups,
-  isLoadingModels,
   models,
   onRemoveModel,
   onSetModel,
@@ -113,8 +108,6 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
               key={`${panel.id}-${chatResetCount ?? 0}`}
               panel={panel}
               fallbackWorkspace={workspace}
-              modelGroups={modelGroups}
-              isLoadingModels={isLoadingModels}
               onToggle={togglePanel}
               onRemove={onRemoveModel}
               onModelChange={onSetModel}

@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from nmp.common.entities.client import EntityClient, EntityNotFoundError
+from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.core.models.api.service.model_provider_service import (
     ModelProviderService,
     ModelProviderValidationError,
@@ -277,7 +277,10 @@ async def test_delete_model_provider_success(model_provider_service, mock_entity
     # Assert
     assert result is True
     mock_entity_client.delete.assert_called_once_with(
-        ModelProviderEntity, sample_provider_entity.name, workspace="default"
+        ModelProviderEntity,
+        sample_provider_entity.name,
+        workspace="default",
+        expected_db_version=sample_provider_entity.db_version,
     )
 
 
@@ -569,7 +572,41 @@ async def test_delete_provider_cleans_up_model_entity_references(model_provider_
     mock_entity_client.update.assert_called_once()
     updated_model = mock_entity_client.update.call_args[0][0]
     assert updated_model.model_providers == ["ws/other-provider"]
-    mock_entity_client.delete.assert_called_once_with(ModelProviderEntity, "provider-to-delete", workspace="ws")
+    mock_entity_client.delete.assert_called_once_with(
+        ModelProviderEntity,
+        "provider-to-delete",
+        workspace="ws",
+        expected_db_version=provider_entity.db_version,
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_provider_conflict_leaves_model_entity_references(model_provider_service, mock_entity_client):
+    """A stale provider version must not clean up linked model references."""
+    model_entity = _create_model_entity(
+        name="my-model",
+        workspace="ws",
+        model_providers=["ws/provider-to-delete", "ws/other-provider"],
+    )
+    provider_entity = create_provider_entity(
+        name="provider-to-delete",
+        workspace="ws",
+        host_url="https://api.example.com/v1",
+        served_models=[
+            ServedModelMapping(model_entity_id="ws/my-model", served_model_name="my-model"),
+        ],
+        status=ModelProviderStatus.READY,
+    )
+
+    mock_entity_client.get.side_effect = _make_entity_get_dispatcher(provider_entity, {"my-model": model_entity})
+    mock_entity_client.delete.side_effect = EntityConflictError("stale version")
+
+    request = DeleteModelProviderRequest(workspace="ws", name="provider-to-delete")
+    with pytest.raises(EntityConflictError):
+        await model_provider_service.delete_model_provider(request)
+
+    mock_entity_client.update.assert_not_called()
+    assert model_entity.model_providers == ["ws/provider-to-delete", "ws/other-provider"]
 
 
 @pytest.mark.asyncio
@@ -638,7 +675,12 @@ async def test_delete_provider_cleanup_provider_not_in_model_providers(model_pro
 
     assert result is True
     mock_entity_client.update.assert_not_called()
-    mock_entity_client.delete.assert_called_once_with(ModelProviderEntity, "my-provider", workspace="ws")
+    mock_entity_client.delete.assert_called_once_with(
+        ModelProviderEntity,
+        "my-provider",
+        workspace="ws",
+        expected_db_version=provider_entity.db_version,
+    )
 
 
 @pytest.mark.asyncio
@@ -662,7 +704,12 @@ async def test_delete_provider_cleanup_malformed_model_entity_id(model_provider_
 
     assert result is True
     mock_entity_client.update.assert_not_called()
-    mock_entity_client.delete.assert_called_once_with(ModelProviderEntity, "my-provider", workspace="ws")
+    mock_entity_client.delete.assert_called_once_with(
+        ModelProviderEntity,
+        "my-provider",
+        workspace="ws",
+        expected_db_version=provider_entity.db_version,
+    )
 
 
 @pytest.mark.asyncio
@@ -695,7 +742,12 @@ async def test_delete_provider_cleanup_error_does_not_block_deletion(model_provi
 
     assert result is True
     assert call_count == 1
-    mock_entity_client.delete.assert_called_once_with(ModelProviderEntity, "my-provider", workspace="ws")
+    mock_entity_client.delete.assert_called_once_with(
+        ModelProviderEntity,
+        "my-provider",
+        workspace="ws",
+        expected_db_version=provider_entity.db_version,
+    )
 
 
 @pytest.mark.asyncio

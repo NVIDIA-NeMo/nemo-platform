@@ -6,25 +6,26 @@ Use **Agents** in the NeMo Studio workspace sidebar to review and operate agent 
 
 ## Agent List
 
-The Agents table shows the agents in the selected workspace, including their deployment state and creation time. Select a row to open the agent side panel.
+The Agents table shows the agents in the selected workspace, including their deployment state and creation time. Select an agent to open its details page.
 
 | Action | Where | Result |
 |--------|-------|--------|
-| Review details | Select an agent row | Opens the agent side panel with name, workspace, description, and config format. |
+| Review details | Select an agent | Opens the agent details page with deployment, log, chat, evaluation, and configuration views. |
 | Deploy an agent | Row actions > **Deploy** | Creates a deployment for the selected agent. |
-| Test models | Row actions > **Test models** | Opens the model playground for the agent's configured model. |
 | Clone an agent | Row actions > **Clone** | Creates a copy of the agent definition with a new name. |
-| Chat with a deployment | Agent side panel > **Chat Playground** tab | Opens the chat playground for a running deployment. |
-| Delete a deployment | Agent side panel > **Details** > **Deployments** > **Delete** | Removes that deployment. |
+| Chat with a deployment | Agent details page > **Chat** tab | Opens chat for a running deployment. |
+| Delete a deployment | Agent details page > **Deployments** > **Delete** | Removes that deployment. |
 | Delete an agent | Row actions > **Delete** | Removes the stored agent definition from the workspace. |
 
 ## Agent Details
 
-The agent side panel has three tabs:
+The agent details page has five tabs:
 
-- **Details** shows the stored agent metadata and config format. It includes a **Deployments** section listing active and historical deployments for the agent (endpoint and status), plus recent evaluations.
-- **Chat Playground** opens an interactive chat with a running deployment.
+- **Deployments** lists active and historical deployments for the agent. Use this tab to deploy the agent, open chat for a running deployment, view logs, or delete a deployment.
 - **Logs** shows deployment logs.
+- **Chat** opens an interactive chat with a running deployment.
+- **Evaluations** shows recent evaluation jobs for the agent and lets you start a new evaluation.
+- **Details** shows stored agent metadata and configuration, including workflow, model, tool, and additional config fields.
 
 Agents are created and updated through the `nemo agents` CLI or Agents API. NeMo Studio reflects the current workspace state after the platform services refresh.
 

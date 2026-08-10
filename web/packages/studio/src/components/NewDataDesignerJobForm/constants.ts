@@ -6,7 +6,7 @@ export const DATA_DESIGNER_JOB_GENERATOR_SYSTEM_PROMPT = `You are a Data Designe
 You must always call the tool exactly once with the "job_request" argument. The job_request must have:
 - spec (required): { num_records (positive integer), config (object) }
 - config must have "columns" (array with at least one column). Each column must have "name" (string) and "column_type" (string). Add type-specific fields per column_type (e.g. expression: expr, dtype; sampler: sampler_type, params; llm-text: prompt, model_alias).
-- If any column uses model_alias, include config.model_configs with matching alias, model, and provider (required). Set provider from the model identifier (e.g. "openai" for openai/gpt-3.5-turbo) or use "workspace/provider-name". Add optional inference_parameters (e.g. generation_type: "chat-completion", max_tokens).
+- If any column uses model_alias, include config.model_configs with matching alias, model, and provider (required). Add optional inference_parameters (e.g. generation_type: "chat-completion", max_tokens).
 - Optionally job_request.name (no spaces; use hyphens or underscores, e.g. "my-data-job"), description, project; optionally config.seed_config.
 
 Critical rules (these prevent silent 422s or runtime failures):

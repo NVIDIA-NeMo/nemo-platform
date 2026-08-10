@@ -8,8 +8,9 @@ from typing import Any
 
 from nemo_deployments_plugin.entities import Deployment, DeploymentConfig, Prerequisite, Volume
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityConflictError, NemoEntityNotFoundError
 from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nmp.common.config import Runtime
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
@@ -25,7 +26,6 @@ from nmp.core.models.controllers.backends.deployments_plugin.status import (
     apply_deleting_timeout,
     apply_pending_timeout,
 )
-from nmp.core.models.controllers.backends.engine import ENGINE_GENERIC, config_engine
 from nmp.core.models.controllers.context import ModelContext
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
     def _entity_client(self) -> NemoEntitiesClient:
         if self._entities is None:
             sdk = get_async_platform_sdk(as_service="models", internal=True)
-            self._entities = NemoEntitiesClient(AsyncEntitiesResource(sdk))
+            self._entities = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
         return self._entities
 
     @property
@@ -71,18 +71,6 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
         if resolved.runtime == Runtime.NONE:
             return DeploymentStatusUpdate(
                 status="UNKNOWN", status_message="Deployments plugin is unavailable for runtime none."
-            )
-        lora_enabled = resolved.view.lora_enabled and config_engine(resolved.config) != ENGINE_GENERIC
-        if resolved.runtime == Runtime.DOCKER and lora_enabled:
-            # Fail fast: the plugin docker runtime is single-container today, so a
-            # LoRA deployment (server + adapters sidecar) cannot run there yet.
-            return DeploymentStatusUpdate(
-                status="ERROR",
-                status_message=(
-                    "LoRA serving is not supported on the docker runtime yet "
-                    "(deployments-plugin docker is single-container). Deploy LoRA "
-                    "models on the kubernetes runtime instead."
-                ),
             )
         teardown = await self.delete_model_deployment(resolved.deployment.workspace, resolved.deployment.name)
         if teardown.status == "DELETING":
@@ -224,9 +212,16 @@ class DeploymentsPluginServiceBackend(ServiceBackend):
                 # Plugin reconciler gave up on substrate teardown; remove the stale
                 # entity so models delete can finish config/volume cleanup.
                 try:
-                    await self._entity_client().delete(Deployment, name=deployment_name, workspace=workspace)
+                    await self._entity_client().delete(
+                        Deployment,
+                        name=deployment.name,
+                        workspace=workspace,
+                        expected_db_version=deployment.db_version,
+                    )
                 except NemoEntityNotFoundError:
                     pass
+                except NemoEntityConflictError:
+                    return False
             elif deployment.status != "DELETING" or deployment.desired_state != "STOPPED":
                 deployment.status = "DELETING"
                 deployment.desired_state = "STOPPED"

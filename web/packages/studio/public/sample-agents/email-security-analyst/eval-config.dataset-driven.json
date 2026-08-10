@@ -1,0 +1,60 @@
+{
+  "dataset": "<workspace>/<fileset>#dataset.jsonl",
+  "prompt_template": "Is this legit?\n\nSubject: {{ item.subject }}\nFrom: {{ item.sender }}\n\n{{ item.body }}",
+  "metrics": [
+    {
+      "bundle_kind": "metric-bundle",
+      "bundle_format_version": "v1",
+      "metric_type": "llm-judge",
+      "metadata": {
+        "description": "Verdict accuracy vs the dataset's label column.",
+        "labels": {}
+      },
+      "outputs": [
+        {
+          "name": "accuracy",
+          "description": null,
+          "value_json_schema": {
+            "description": "Continuous numeric metric value.",
+            "title": "ContinuousScore",
+            "type": "number"
+          }
+        }
+      ],
+      "secrets": {},
+      "payload": {
+        "kind": "inline",
+        "metric": {
+          "type": "llm-judge",
+          "model": "default/nvidia-nemotron-3-super-120b-a12b",
+          "prompt_template": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "You are scoring an email security analyst. Ground-truth verdict: \"{{ item.label }}\". The analyst's answer is on the FIRST LINE of the response; everything after it is supporting explanation and must be ignored, even if it mentions the other verdict.\n\nAgent response:\n{{ sample.output_text }}\n\nRespond with a JSON object {\"accuracy\": <value>} where accuracy is 1 if the first line matches the expected verdict, else 0."
+              }
+            ]
+          },
+          "scores": [
+            {
+              "name": "accuracy",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ],
+          "inference": {
+            "max_tokens": 1024,
+            "extra_body": {
+              "nvext": {
+                "max_thinking_tokens": 256
+              }
+            }
+          },
+          "reasoning": {
+            "end_token": "</think>"
+          }
+        }
+      }
+    }
+  ]
+}

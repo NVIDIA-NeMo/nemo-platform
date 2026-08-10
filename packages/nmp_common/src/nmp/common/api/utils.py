@@ -16,6 +16,9 @@ from nemo_platform_plugin.jobs.openapi_utils import clear_query_param_schemas as
 from nemo_platform_plugin.jobs.openapi_utils import (
     generate_openapi_extra_params as generate_openapi_extra_params,  # noqa: F401
 )
+from nemo_platform_plugin.jobs.openapi_utils import (
+    install_query_param_schema_openapi_hook as install_query_param_schema_openapi_hook,  # noqa: F401
+)
 from nemo_platform_plugin.jobs.openapi_utils import parse_deep_object as parse_deep_object  # noqa: F401
 from nemo_platform_plugin.jobs.openapi_utils import (
     register_query_param_schemas as register_query_param_schemas,  # noqa: F401
@@ -97,11 +100,12 @@ def _anyof_null_visitor(key: str, value: Any, parent: Dict):
     if len(value) == 1:
         non_null = value[0]
         del parent["anyOf"]
-        if "type" not in non_null and "$ref" not in non_null:
+        if not non_null.keys() & {"type", "$ref", "oneOf", "anyOf"}:
             raise ValueError(f"Unsupported anyOf member format: {non_null}")
         # Hoist every key from the non-null branch (type, format, writeOnly,
-        # readOnly, items, pattern, enum, examples, $ref, ...) onto the parent
-        # without overwriting parent-provided metadata like title/description.
+        # readOnly, items, pattern, enum, examples, $ref, oneOf, anyOf, ...) onto
+        # the parent without overwriting parent-provided metadata like
+        # title/description. An Optional[Union[...]] collapses to a bare oneOf.
         for k, v in non_null.items():
             parent.setdefault(k, v)
 

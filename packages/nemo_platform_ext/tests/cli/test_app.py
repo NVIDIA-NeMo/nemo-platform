@@ -52,11 +52,41 @@ def test_help_includes_getting_started():
     assert "Getting started:" in result.stdout
     assert "nemo docs --list" in result.stdout
     assert "nemo services run --help" in result.stdout
-    # Help panel truncates long command descriptions; match the visible prefix.
-    assert "Set up NeMo Platform: connect or start services" in result.stdout
+    assert "Exit codes:" in result.stdout
+    assert "3: Remote/API error" in result.stdout
+    # Help panel truncation depends on terminal width; match a stable prefix.
+    assert "Set up NeMo Platform" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
     assert "--help, -h" in result.stdout
     assert "nemo auth login --base-url" not in result.stdout
     assert "nemo quickstart configure" not in result.stdout
+
+
+def test_generated_list_help_includes_stream_option():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with patch("nemo_platform_ext.quickstart.QuickstartConfig.load", return_value=qs_config):
+        result = runner.invoke(app, ["models", "list", "--help"])
+
+    assert result.exit_code == 0
+    assert "--stream" in result.stdout
+    assert "--output-format, --output, -f" in result.stdout
+
+
+def test_generated_list_validates_stream_output_before_client_setup():
+    runner = CliRunner()
+    qs_config = QuickstartConfig(auth_enabled=False)
+
+    with (
+        patch("nemo_platform_ext.quickstart.QuickstartConfig.load", return_value=qs_config),
+        patch("nemo_platform_ext.cli.core.context.CLIContext.get_client") as mock_get_client,
+    ):
+        result = runner.invoke(app, ["workspaces", "list", "--output", "table", "--stream"])
+
+    assert result.exit_code == 2
+    assert "--stream requires --output json or --output raw" in result.stderr
+    mock_get_client.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -198,7 +228,9 @@ def test_generated_api_group_no_arg_help_exits_successfully():
 def test_root_help_includes_lazy_api_commands():
     runner = CliRunner()
     sys.modules.pop("nemo_platform_ext.cli.commands.api.entities", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.api.experiments", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.api.files", None)
+    sys.modules.pop("nemo_platform_ext.cli.commands.api.intake", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.auth", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.use_cases.chat", None)
     sys.modules.pop("nemo_platform_ext.cli.commands.config", None)
@@ -209,11 +241,17 @@ def test_root_help_includes_lazy_api_commands():
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "experiments" in result.stdout
+    assert "Manage experiments." in result.stdout
     assert "files" in result.stdout
     assert "Manage files" in result.stdout
+    assert "intake" in result.stdout
+    assert "Intake operations." in result.stdout
     assert "entities" not in result.stdout
     assert "nemo_platform_ext.cli.commands.api.entities" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.api.experiments" not in sys.modules
     assert "nemo_platform_ext.cli.commands.api.files" not in sys.modules
+    assert "nemo_platform_ext.cli.commands.api.intake" not in sys.modules
     assert "nemo_platform_ext.cli.commands.auth" not in sys.modules
     assert "nemo_platform_ext.cli.commands.use_cases.chat" not in sys.modules
     assert "nemo_platform_ext.cli.commands.config" not in sys.modules
@@ -265,11 +303,12 @@ def test_root_help_excludes_hidden_commands_and_context_option():
 
     assert result.exit_code == 0
     assert "--context" not in result.stdout
-    for hidden_command in ("auth", "config", "quickstart", "cluster-info", "adapters", "projects"):
+    assert "\n  auth" in result.stdout
+    for hidden_command in ("config", "quickstart", "cluster-info", "adapters", "projects"):
         assert f"\n  {hidden_command}" not in result.stdout
 
 
-def test_hidden_command_and_context_option_remain_invokable():
+def test_auth_command_and_hidden_context_option_remain_invokable():
     runner = CliRunner()
     qs_config = QuickstartConfig(auth_enabled=False)
 

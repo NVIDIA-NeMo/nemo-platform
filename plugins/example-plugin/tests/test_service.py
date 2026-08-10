@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_example_plugin.entities import ExampleItem
+from nemo_example_plugin.middleware_config import ExampleMiddlewareConfig
+from nemo_example_plugin.middleware_service import _get_entity_client as _get_middleware_entity_client
 from nemo_example_plugin.service import ExampleService, _get_entity_client
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError, NemoPaginationInfo
 
@@ -33,6 +35,14 @@ def _make_item(name: str = "item1", workspace: str = "default") -> ExampleItem:
     item._id = f"id-{name}"
     item._created_at = NOW
     return item
+
+
+def _make_middleware_config(name: str = "cfg-1", workspace: str = "default") -> ExampleMiddlewareConfig:
+    """Build a fake persisted ExampleMiddlewareConfig with store-populated fields."""
+    config = ExampleMiddlewareConfig(name=name, workspace=workspace)
+    config._id = f"id-{name}"
+    config._created_at = NOW
+    return config
 
 
 def _make_list_response(items: list[ExampleItem]) -> MagicMock:
@@ -56,6 +66,7 @@ def _make_app(mock_client: AsyncMock) -> FastAPI:
     for spec in service.get_routers():
         app.include_router(spec.router, prefix=spec.prefix)
     app.dependency_overrides[_get_entity_client] = lambda: mock_client
+    app.dependency_overrides[_get_middleware_entity_client] = lambda: mock_client
     return app
 
 
@@ -229,12 +240,18 @@ def test_update_item_404() -> None:
 
 def test_delete_item_204() -> None:
     mock = AsyncMock()
+    mock.get.return_value = _make_item("widget")
     mock.delete.return_value = None
 
     client = TestClient(_make_app(mock))
     resp = client.delete("/v2/workspaces/default/items/widget")
 
     assert resp.status_code == 204
+    mock.delete.assert_awaited_once_with(
+        ExampleItem,
+        name="widget",
+        workspace="default",
+    )
 
 
 def test_delete_item_404() -> None:
@@ -245,6 +262,41 @@ def test_delete_item_404() -> None:
     resp = client.delete("/v2/workspaces/default/items/missing")
 
     assert resp.status_code == 404
+
+
+def test_delete_item_409_when_changed() -> None:
+    mock = AsyncMock()
+    mock.delete.side_effect = NemoEntityConflictError("changed")
+
+    client = TestClient(_make_app(mock))
+    resp = client.delete("/v2/workspaces/default/items/widget")
+
+    assert resp.status_code == 409
+
+
+def test_delete_middleware_config_204() -> None:
+    mock = AsyncMock()
+    mock.delete.return_value = None
+
+    client = TestClient(_make_app(mock))
+    resp = client.delete("/v2/workspaces/default/middleware-configs/cfg-1")
+
+    assert resp.status_code == 204
+    mock.delete.assert_awaited_once_with(
+        ExampleMiddlewareConfig,
+        name="cfg-1",
+        workspace="default",
+    )
+
+
+def test_delete_middleware_config_409_when_changed() -> None:
+    mock = AsyncMock()
+    mock.delete.side_effect = NemoEntityConflictError("changed")
+
+    client = TestClient(_make_app(mock))
+    resp = client.delete("/v2/workspaces/default/middleware-configs/cfg-1")
+
+    assert resp.status_code == 409
 
 
 # ---------------------------------------------------------------------------

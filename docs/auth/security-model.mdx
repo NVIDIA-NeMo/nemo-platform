@@ -4,7 +4,7 @@ description: ""
 ---
 This page describes the security architecture of NeMo Platform authentication and authorization — how requests are authenticated, how access decisions are made, and where trust boundaries lie. It is intended for platform operators and security reviewers evaluating NeMo Platform for production deployment.
 
-For hands-on setup, see [Auth Configuration](/documentation/access-control/deployment/configuration). For the authorization model, see [Concepts](/documentation/access-control/concepts).
+For hands-on setup, see [Auth Configuration](/documentation/access-control/deployment). For the authorization model, see [Concepts](/documentation/access-control/concepts).
 
 ## Architecture Overview
 
@@ -12,70 +12,72 @@ For hands-on setup, see [Auth Configuration](/documentation/access-control/deplo
 sequenceDiagram
     participant IdP
     participant Client
-    participant Gateway as Gateway / First Service
-    participant PDP as PDP (Embedded or OPA)
+    participant Gateway
     participant Auth as Auth Service
-    participant Downstream as Downstream Services
+    participant Service as NeMo Platform Service
+    participant PDP as PDP (Embedded or OPA)
 
-    Note over Gateway,Downstream: Trust Boundary
+    Note over Gateway,PDP: Trust Boundary
 
     Client->>IdP: Validate credentials
     IdP-->>Client: JWT
     Client->>Gateway: Authorization: Bearer token
-    Gateway->>PDP: Check authorization
-    Auth-->>PDP: Policy + role data
-    PDP-->>Gateway: Allow / deny
-    Gateway->>Downstream: Forward trusted X-NMP-Principal-* headers
-    Gateway->>Downstream: Forward X-NMP-Authorized: true
+    Gateway->>Auth: /apis/auth/authenticate
+    Auth-->>Gateway: Trusted X-NMP-Principal-* and X-NMP-Scopes headers
+    Gateway->>Service: Forward request with trusted headers
+    Service->>PDP: Check authorization
+    PDP-->>Service: Allow / deny
 ```
 
 The request flow:
 
-1. **Client** sends a request with a JWT in the `Authorization: Bearer` header.
-2. **Gateway** (or the service itself) validates the JWT signature, issuer, audience, and expiry against the configured OIDC provider.
-3. **PDP** (Policy Decision Point) evaluates authorization — checks the principal's role bindings and token scopes against the operation's requirements.
-4. If allowed, the service handles the request. In gateway deployments, the gateway forwards the request with trusted `X-NMP-Principal-*` headers so downstream services skip re-validation.
+1. **Client** sends a request with a bearer token in the `Authorization` header.
+2. In gateway deployments, **Gateway** calls the auth service's `/apis/auth/authenticate` endpoint; otherwise, the first service validates the token directly.
+3. The validating component derives trusted `X-NMP-Principal-*` and `X-NMP-Scopes` headers.
+4. **PDP** (Policy Decision Point) evaluates authorization — checks the principal's role bindings and token scopes against the operation's requirements.
+5. If allowed, the service handles the request.
 
 <Note>
 
-In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](/documentation/access-control/overview).
+In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](/documentation/access-control).
 
 </Note>
 ## Authentication Modes
 
-NeMo Platform supports two authentication modes: **service-level** (the service validates the JWT) and **gateway-level** (the gateway validates at the edge).
+NeMo Platform supports two authentication modes: **service-level** bearer-token validation and **gateway bearer-auth callout**.
 
-In both modes, identity arrives as a **JWT** from the client. The JWT is validated exactly once — either by the first NeMo Platform service or by the gateway. After validation, the authenticated identity (email, subject, groups) is propagated to downstream services via **trusted `X-NMP-Principal-*` headers**. Downstream services accept these headers without re-validating the JWT.
+In both modes, identity arrives in the `Authorization: Bearer <token>` header. The bearer token is validated exactly once — either by the first NeMo Platform service or by the auth service behind the gateway callout. After validation, the authenticated identity (email, subject, groups) is propagated to downstream services via **trusted `X-NMP-Principal-*` headers**. Downstream services accept these headers without re-validating the token, but they still run authorization checks.
 
 This "validate once, propagate via headers" design means that **network perimeter security is critical**: anything inside the trust boundary that receives `X-NMP-Principal-*` headers will trust them unconditionally. The gateway must strip these headers from all incoming external requests to prevent clients from forging an identity. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 
 ### Service-Level Authentication
 
-The first NeMo Platform service that receives the request validates the JWT directly:
+The first NeMo Platform service that receives the request validates the bearer token directly:
 
 1. Extracts the `Authorization: Bearer <token>` header
-2. Validates the JWT signature, issuer, audience, and expiry against the configured OIDC provider
-3. Extracts the principal identity (email, subject, groups) from JWT claims
+2. Validates the token using the enabled auth configuration
+3. Extracts the principal identity (email, subject, groups) and scopes
 4. Calls the PDP for an authorization decision
 5. Forwards `X-NMP-Principal-*` headers to downstream services
 
 No gateway is required. This is the simplest mode and the default.
 
-### Gateway-Level Authentication
+### Gateway Bearer-Auth Callout
 
-The gateway (e.g., Envoy with `ext_authz`) authenticates and authorizes the request before it reaches any service:
+The gateway (e.g., Envoy with `ext_authz`) authenticates the bearer token before forwarding the request:
 
-1. Gateway validates the JWT and calls the PDP
-2. On success, sets `X-NMP-Authorized: true` and the `X-NMP-Principal-*` headers
-3. Services see `X-NMP-Authorized: true` and skip their own JWT validation and PDP call
+1. Gateway calls `/apis/auth/authenticate` with the original `Authorization` header
+2. Auth service validates the bearer token and returns trusted `X-NMP-Principal-*` and `X-NMP-Scopes` headers
+3. Gateway forwards the request with those trusted headers
+4. Services skip bearer-token re-validation and run their normal PDP authorization checks
 
-This rejects unauthorized requests as early as possible, before they reach any service. Services may still call the PDP for fine-grained permission checks (e.g., workspace-level access), but they skip JWT validation and the initial authorization decision.
+This rejects unauthenticated requests before they reach platform services while keeping authorization decisions in the normal service middleware path.
 
 ## Principal Model
 
 A **principal** is an authenticated identity — typically a human user identified by email address. Each request has exactly one principal.
 
-When OIDC is enabled, the principal is resolved from JWT claims: the `sub` claim becomes the principal ID (or `oid` for Azure AD), the `email` claim provides the email (or `upn` for Azure AD), and group memberships come from the `groups` claim. These claim names are configurable. In gateway deployments, the gateway performs this extraction and forwards the result in `X-NMP-Principal-*` headers.
+When OIDC is enabled, the principal is resolved from JWT claims: the `sub` claim becomes the principal ID (or `oid` for Azure AD), the `email` claim provides the email (or `upn` for Azure AD), and group memberships come from the `groups` claim. These claim names are configurable. In gateway deployments, the auth service performs this extraction and the gateway forwards the returned `X-NMP-Principal-*` headers.
 
 <Note>
 
@@ -93,17 +95,15 @@ The following headers carry the authenticated identity through the system:
 | `X-NMP-Principal-Groups` | Comma-separated list of groups the principal belongs to (from JWT group claims). |
 | `X-NMP-Scopes` | Space-separated list of token scopes (extracted from the JWT `scp` or `scope` claim). Used by the PDP for scope-based authorization checks. |
 
-These headers are set after JWT validation and forwarded on every internal service-to-service call. As described in [Authentication Modes](#authentication-modes), services inside the trust boundary accept them unconditionally — they are never re-validated.
-
-Whichever component performs the initial authentication and authorization — the gateway in [gateway-level mode](#gateway-level-authentication), or the first service in [service-level mode](#service-level-authentication) — also sets `X-NMP-Authorized: true`. Downstream services see this header and skip their own JWT validation and PDP call.
+These headers are set after bearer-token validation and forwarded on every internal service-to-service call. As described in [Authentication Modes](#authentication-modes), services inside the trust boundary accept them unconditionally — they are never re-validated. Services still call the PDP for authorization when `auth.enabled=true`.
 
 ### Service Principals
 
 Not all requests originate from human users. Platform services that need cross-workspace access — for example, the jobs controller monitoring jobs across all users, or the evaluator coordinating evaluations — authenticate as **service principals**.
 
-A service principal's ID has the form `service:<name>` (e.g., `service:jobs`, `service:evaluator`). Service principals are auto-authorized without a PDP call and have access to all workspaces and all operations. They are created internally by the platform and are never exposed to external callers.
+A service principal's ID has the form `service:<name>` (e.g., `service:jobs`, `service:evaluator`). For normal service routes, service-principal requests still go through the PDP. The policy gives `service:*` principals a default `ServiceSystem` role with broad platform permissions unless explicit policy data narrows that access. Service principals are created internally by the platform and are never exposed to external callers.
 
-**Internal endpoints** (`/internal/*`) are also auto-authorized — they bypass PDP checks entirely and are reserved for service-to-service communication.
+PDP endpoints under `/apis/auth/v2/authz/` are the exception: service principals may call them without recursively calling the PDP again.
 
 <Note>
 
@@ -170,6 +170,6 @@ The following are explicitly out of scope for the current implementation:
 ## Related
 
 - [Authorization Concepts](/documentation/access-control/concepts) — Workspaces, roles, bindings, and the RBAC model.
-- [Auth Configuration](/documentation/access-control/deployment/configuration) — Enabling auth, PDP provider, OIDC settings.
+- [Auth Configuration](/documentation/access-control/deployment) — Enabling auth, PDP provider, OIDC settings.
 - [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Gateway-level auth and header configuration.
 - [Production Hardening](/documentation/access-control/deployment/production-hardening) — Security checklist for production deployments.

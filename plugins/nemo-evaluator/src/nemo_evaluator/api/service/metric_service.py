@@ -34,10 +34,10 @@ from nemo_evaluator.metric_storage import delete_bundle_by_ref, store_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle as RuntimeMetricBundle
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
-from nemo_platform_plugin.entities import (
-    EntityClient,
-    EntityConflictError,
-    EntityNotFoundError,
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClientProtocol,
+    NemoEntityConflictError,
+    NemoEntityNotFoundError,
 )
 from nemo_platform_plugin.filter_ops import FilterOperation
 from nemo_platform_plugin.log_utils import sanitize_for_log
@@ -124,7 +124,7 @@ def _entity_from_bundle(
 class MetricService:
     """Service layer for stored metric CRUD."""
 
-    def __init__(self, entity_client: EntityClient, sdk: AsyncNeMoPlatform):
+    def __init__(self, entity_client: NemoEntitiesClientProtocol[MetricBundleEntity], sdk: AsyncNeMoPlatform):
         self.entity_client = entity_client
         self.sdk = sdk
 
@@ -147,7 +147,7 @@ class MetricService:
         try:
             await self.entity_client.get(MetricBundleEntity, name=name, workspace=workspace)
             raise ValueError(f"Metric with name '{name}' already exists in workspace '{workspace}'")
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             pass
 
         # Convert the wire DTO into the runtime bundle (JSON round-trip keeps the
@@ -164,7 +164,7 @@ class MetricService:
 
         try:
             created = await self.entity_client.create(entity)
-        except EntityConflictError as e:
+        except NemoEntityConflictError as e:
             # We own this uniquely-named fileset and the entity was not created;
             # deleting it cannot affect the existing metric's data.
             await self._discard_bundle(bundle_ref)
@@ -201,7 +201,7 @@ class MetricService:
         try:
             await self.entity_client.get(MetricBundleEntity, name=name, workspace=workspace)
             return ref
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             pass
 
         bundle_ref = await store_bundle(self.sdk, workspace, name, runtime_bundle)
@@ -210,7 +210,7 @@ class MetricService:
         )
         try:
             await self.entity_client.create(entity)
-        except EntityConflictError:
+        except NemoEntityConflictError:
             # Raced another writer to the same content-addressed name; theirs is byte-identical, so
             # drop the fileset we just uploaded and reuse the existing entry.
             await self._discard_bundle(bundle_ref)
@@ -224,7 +224,7 @@ class MetricService:
         try:
             entity = await self.entity_client.get(MetricBundleEntity, workspace=workspace, name=name)
             return _entity_to_schema(entity)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return None
 
     async def list_metrics(
@@ -269,12 +269,17 @@ class MetricService:
         """Delete a stored metric and its backing bundle. Returns False if not found."""
         try:
             entity = await self.entity_client.get(MetricBundleEntity, workspace=workspace, name=name)
-        except EntityNotFoundError:
+        except NemoEntityNotFoundError:
             return False
 
         try:
-            await self.entity_client.delete(MetricBundleEntity, name, workspace=workspace)
-        except EntityNotFoundError:
+            await self.entity_client.delete(
+                MetricBundleEntity,
+                entity.name,
+                workspace=workspace,
+                expected_db_version=entity.db_version,
+            )
+        except NemoEntityNotFoundError:
             # Lost a delete race: another request already removed it.
             return False
         await self._discard_bundle(entity.bundle_ref)

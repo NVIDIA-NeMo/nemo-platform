@@ -10,3 +10,4 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "smoke_nmp_automodel_training: Import smoke tests for the nmp/automodel-training image"
     )
+    config.addinivalue_line("markers", "smoke_nmp_rl_training: Import smoke tests for the nmp-rl-training image")

@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useAllModels } from '@nemo/common/src/api/models/useModels';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@nemo/common/src/constants/api';
-import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
 import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import { Flex, Stack } from '@nvidia/foundations-react-core';
@@ -11,8 +9,13 @@ import { getErrorMessage } from '@studio/api/common/utils';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { findTemplate } from '@studio/components/CreateFilesetStart/templates';
 import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview';
+import { getCloneJobRequestFromState } from '@studio/components/NewDataDesignerJobForm/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import {
+  getGeneratedJobRequestFromState,
+  seedFromJobRequest,
+} from '@studio/routes/DataDesignerJobBuildRoute/aiSeed';
 import { BuilderCanvas } from '@studio/routes/DataDesignerJobBuildRoute/BuilderCanvas';
 import { BuilderConfigPane } from '@studio/routes/DataDesignerJobBuildRoute/BuilderConfigPane';
 import { BuilderDetailsPanel } from '@studio/routes/DataDesignerJobBuildRoute/BuilderDetailsPanel';
@@ -22,15 +25,20 @@ import {
   type BuilderViewMode,
 } from '@studio/routes/DataDesignerJobBuildRoute/BuilderToolbar';
 import {
+  buildColumnsFromConfig,
   buildDataDesignerConfig,
   validateColumns,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import {
+  buildModelsFromConfig,
   buildServedModelNames,
   validateModels,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { SchemaList } from '@studio/routes/DataDesignerJobBuildRoute/SchemaList';
-import { useJobBuilder } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
+import {
+  type JobBuilderSeed,
+  useJobBuilder,
+} from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
 import {
   getDataDesignerJobDetailsRoute,
   getDataDesignerJobListRoute,
@@ -39,7 +47,7 @@ import {
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { FormProvider } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
 /**
  * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and
@@ -50,14 +58,37 @@ export const DataDesignerJobBuildRoute: FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const { state: locationState } = useLocation();
 
-  // `?template=<id>` seeds the canvas from a template recipe; absent = empty canvas.
   const template = useMemo(() => {
     const templateId = searchParams.get('template');
     return templateId ? (findTemplate(templateId) ?? null) : null;
   }, [searchParams]);
 
-  const heading = template ? template.title : 'Build from scratch';
+  const cloneSeed = useMemo<JobBuilderSeed | null>(() => {
+    const cloneRequest = getCloneJobRequestFromState(locationState);
+    if (!cloneRequest?.spec) return null;
+    const { config, num_records } = cloneRequest.spec;
+    return {
+      name: cloneRequest.name ?? 'untitled-dataset',
+      rows: String(num_records),
+      columns: buildColumnsFromConfig(config),
+      models: buildModelsFromConfig(config.model_configs),
+    };
+  }, [locationState]);
+
+  const generatedSeed = useMemo<JobBuilderSeed | null>(() => {
+    const generatedRequest = getGeneratedJobRequestFromState(locationState);
+    return generatedRequest?.spec ? seedFromJobRequest(generatedRequest) : null;
+  }, [locationState]);
+
+  const heading = cloneSeed
+    ? `Clone of ${cloneSeed.name}`
+    : generatedSeed
+      ? 'Describe with AI'
+      : template
+        ? template.title
+        : 'Build from scratch';
 
   useBreadcrumbs({
     items: [
@@ -67,22 +98,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
     ],
   });
 
-  const {
-    data: modelsData,
-    isLoading: isLoadingModels,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useAllModels({ workspace });
-  const modelGroups = useMemo(
-    () =>
-      groupModelsByWorkspace(modelsData?.pages.flatMap((page) => page.data ?? []) ?? [], {
-        sort: true,
-      }),
-    [modelsData?.pages]
-  );
-  const modelsSettled = !isLoadingModels && !hasNextPage && !isFetchingNextPage;
-
-  const builder = useJobBuilder(template, modelGroups, modelsSettled);
+  const builder = useJobBuilder(template, workspace, cloneSeed ?? generatedSeed);
   const { data: providersPage } = useModelsListProviders(
     workspace,
     { page_size: DEFAULT_LARGE_PAGE_SIZE },
@@ -118,22 +134,22 @@ export const DataDesignerJobBuildRoute: FC = () => {
       ? buildDataDesignerConfig(columns, models, servedModelNames)
       : undefined;
   }, [builder, servedModelNames]);
-  const { previewLogs, isPreviewing, runPreview } = usePreview({
+  const { previewLogs, isPreviewing, runPreview, stopPreview } = usePreview({
     workspace,
     accessToken: user?.access_token ?? undefined,
     getCurrentConfig,
   });
 
-  const handlePreview = () => {
+  const handlePreview = useCallback(() => {
     if (validateAndCollectErrors().length > 0) return;
     setIsDetailsOpen(true);
     void runPreview();
-  };
+  }, [validateAndCollectErrors, runPreview]);
 
   const createJob = useDataDesignerCreateJob();
   const submitError = createJob.error ? getErrorMessage(createJob.error) : null;
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (validateAndCollectErrors().length > 0) return;
     const { columns, models, name, rows } = builder.getBuilderValues();
 
@@ -157,7 +173,17 @@ export const DataDesignerJobBuildRoute: FC = () => {
       setIsDetailsOpen(true);
       // Error surfaced via createJob.error / submitError below.
     }
-  };
+  }, [validateAndCollectErrors, builder, createJob, workspace, servedModelNames, navigate]);
+
+  const toggleDetails = useCallback(() => setIsDetailsOpen((open) => !open), []);
+  const onColumnRemove = useCallback(() => {
+    if (builder.selectedColumnId) builder.removeColumn(builder.selectedColumnId);
+  }, [builder]);
+  const onColumnClose = useCallback(() => builder.selectColumn(null), [builder]);
+  const onModelRemove = useCallback(() => {
+    if (builder.selectedModelId) builder.removeModel(builder.selectedModelId);
+  }, [builder]);
+  const onModelClose = useCallback(() => builder.selectModel(null), [builder]);
 
   return (
     <AccessibleTitle title={heading}>
@@ -170,6 +196,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             onViewModeChange={setViewMode}
             onPreview={handlePreview}
             isPreviewing={isPreviewing}
+            onStopPreview={stopPreview}
             onSubmit={handleSubmit}
             isSubmitting={createJob.isPending}
           />
@@ -179,7 +206,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             submitError={submitError}
             previewLogs={previewLogs}
             isOpen={isDetailsOpen}
-            onToggle={() => setIsDetailsOpen((open) => !open)}
+            onToggle={toggleDetails}
           />
 
           <Flex className="min-h-0 border-t border-base h-full">
@@ -187,8 +214,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
               tab={builder.paletteTab}
               onTabChange={builder.setPaletteTab}
               selectedModelId={builder.selectedModelId}
-              modelGroups={modelGroups}
-              isLoadingModels={isLoadingModels}
+              workspace={workspace}
               onAddColumn={builder.handleAddColumn}
               onAddModel={builder.handleAddModel}
               onSelectModel={builder.selectModel}
@@ -213,16 +239,11 @@ export const DataDesignerJobBuildRoute: FC = () => {
             <BuilderConfigPane
               selectedColumnId={builder.selectedColumnId}
               selectedModelId={builder.selectedModelId}
-              modelGroups={modelGroups}
-              isLoadingModels={isLoadingModels}
-              onColumnRemove={() =>
-                builder.selectedColumnId && builder.removeColumn(builder.selectedColumnId)
-              }
-              onColumnClose={() => builder.selectColumn(null)}
-              onModelRemove={() =>
-                builder.selectedModelId && builder.removeModel(builder.selectedModelId)
-              }
-              onModelClose={() => builder.selectModel(null)}
+              workspace={workspace}
+              onColumnRemove={onColumnRemove}
+              onColumnClose={onColumnClose}
+              onModelRemove={onModelRemove}
+              onModelClose={onModelClose}
             />
           </Flex>
         </Stack>

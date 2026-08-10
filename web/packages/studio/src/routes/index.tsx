@@ -5,8 +5,11 @@ import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
+import { PluginProvider } from '@studio/plugins/PluginProvider';
+import { PluginRenderer } from '@studio/plugins/PluginRenderer';
 import {
   agentRoutes,
+  anonymizerRoutes,
   baseModelsRoutes,
   customizationRoutes,
   dashboardRoutes,
@@ -22,6 +25,7 @@ import {
   jobRoutes,
   memberRoutes,
   modelCompareRoutes,
+  optimizerRoutes,
   safeSynthesizerRoutes,
   secretsRoutes,
   settingsRoutes,
@@ -29,9 +33,9 @@ import {
 import { PageLayout } from '@studio/routes/PageLayout';
 import { RootLayout } from '@studio/routes/RootLayout';
 import { RootRedirect } from '@studio/routes/RootRedirect';
+import { gatePluginRoutes } from '@studio/routes/utils';
 import { lazy, Suspense } from 'react';
-import { Outlet } from 'react-router';
-import type { RouteObject } from 'react-router-dom';
+import { Outlet, type RouteObject } from 'react-router';
 
 const NoMatchRoute = lazy(() =>
   import('@studio/routes/NoMatchRoute').then((module) => ({ default: module.NoMatchRoute }))
@@ -84,7 +88,11 @@ export const routes: RouteObject[] = [
       },
       {
         path: ROUTES.workspace.index,
-        element: <PageLayout sideNav={(collapsed) => <WorkspaceSideNav collapsed={collapsed} />} />,
+        element: (
+          <PluginProvider>
+            <PageLayout sideNav={(collapsed) => <WorkspaceSideNav collapsed={collapsed} />} />
+          </PluginProvider>
+        ),
         children: [
           {
             path: ROUTES.workspace.index,
@@ -112,9 +120,17 @@ export const routes: RouteObject[] = [
               ...customizationRoutes,
               ...jobRoutes,
               ...intakeRoutes,
+              ...optimizerRoutes,
               ...safeSynthesizerRoutes,
               ...dataDesignerRoutes,
+              ...anonymizerRoutes,
               ...agentRoutes,
+              ...gatePluginRoutes({
+                // The /* suffix allows the plugin to own sub-paths via its own internal router.
+                path: `${ROUTES.workspace.plugin}/*`,
+                element: <PluginRenderer />,
+                errorElement: <ErrorPanel title="Plugin" />,
+              }),
               ...settingsRoutes,
               ...modelCompareRoutes,
               ...memberRoutes,

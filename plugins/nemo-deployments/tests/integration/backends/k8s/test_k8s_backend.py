@@ -48,7 +48,7 @@ def mock_entities() -> AsyncMock:
 def k8s_backend(mock_entities: AsyncMock) -> Iterator[K8sDeploymentBackend]:
     mock_sdk = MagicMock()
     with (
-        patch("nemo_deployments_plugin.backends.k8s.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.k8s.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.k8s.backend.NemoEntitiesClient", return_value=mock_entities),
     ):
         backend = K8sDeploymentBackend(mock_sdk, {"default_namespace": NAMESPACE, "request_timeout": 30})
@@ -68,11 +68,11 @@ def _never_config(
     return DeploymentConfig(
         name=name,
         workspace="itest",
-        restart_policy="Never",  # ty: ignore[unknown-argument]
+        restart_policy="Never",  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
         containers=[
             Container(name="main", image=ALPINE_IMAGE, command=["sh", "-c"], args=args or ["echo hello-from-k8s"])
         ],
-        config_files=config_files or [],  # ty: ignore[unknown-argument]
+        config_files=config_files or [],  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
     )
 
 
@@ -80,7 +80,7 @@ def _always_http_config() -> DeploymentConfig:
     return DeploymentConfig(
         name="http-cfg",
         workspace="itest",
-        restart_policy="Always",  # ty: ignore[unknown-argument]
+        restart_policy="Always",  # ty: ignore[unknown-argument]  # pyright: ignore[reportCallIssue]
         containers=[
             Container(
                 name="main",
@@ -149,10 +149,10 @@ async def test_pvc_lifecycle(k8s_backend: K8sDeploymentBackend) -> None:
     try:
         # Unconsumed PVCs stay Pending under kind's default WaitForFirstConsumer
         # storage class, so both Pending and Bound are valid terminal states here.
-        assert created.status in ("PENDING", "BOUND")
+        assert created.status in {"PENDING", "BOUND"}
 
         read = await k8s_backend.read_volume_status(workspace="itest-pvc", name="data")
-        assert read.status in ("PENDING", "BOUND")
+        assert read.status in {"PENDING", "BOUND"}
     finally:
         deleted = await k8s_backend.delete_volume("itest-pvc", "data")
 
@@ -172,7 +172,7 @@ async def test_never_job_succeeds(k8s_backend: K8sDeploymentBackend, mock_entiti
             labels=LABELS,
             backend_config={},
         )
-        assert created.status in ("STARTING", "SUCCEEDED")
+        assert created.status in {"STARTING", "SUCCEEDED"}
 
         await _wait_for_status(k8s_backend, "echo-job", terminal_statuses=("SUCCEEDED", "FAILED"))
         status = await k8s_backend.read_status(workspace="itest", name="echo-job")
@@ -236,7 +236,7 @@ async def test_always_deployment_becomes_ready(k8s_backend: K8sDeploymentBackend
             name=resource_name,
             namespace=NAMESPACE,
         )
-        assert service.metadata.name == resource_name
+        assert getattr(service, "metadata").name == resource_name
     finally:
         await k8s_backend.delete_deployment("itest", "http-svc")
 
@@ -281,7 +281,7 @@ async def test_delete_rejects_foreign_resource(k8s_backend: K8sDeploymentBackend
             name=resource_name,
             namespace=NAMESPACE,
         )
-        assert existing.metadata.name == resource_name
+        assert getattr(existing, "metadata").name == resource_name
     finally:
         try:
             await asyncio.to_thread(

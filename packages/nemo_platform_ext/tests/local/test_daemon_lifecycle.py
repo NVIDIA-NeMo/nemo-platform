@@ -376,6 +376,149 @@ def test_stop_instance_sweeps_orphaned_children(tmp_path: Path) -> None:
                 pass
 
 
+def test_wait_for_lock_release_blocks_until_holder_exits(tmp_path: Path) -> None:
+    """``_wait_for_lock_release`` should return only once the flock is actually free."""
+    scope = "unit-lock-release"
+    state_dir = tmp_path / "state"
+    lock_path = state_dir / "instances" / scope / process.LOCK_FILENAME
+    lock_path.parent.mkdir(parents=True)
+    lock_path.touch()
+
+    # A holder that keeps the flock for ~1s, then exits and releases it.
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, sys, time; "
+            "fd = open(sys.argv[1], 'r+'); "
+            "fcntl.flock(fd, fcntl.LOCK_EX); "
+            "print('held', flush=True); "
+            "time.sleep(1.0)",
+            str(lock_path),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        assert process.is_instance_alive(scope, base_dir=state_dir)
+
+        started = time.monotonic()
+        assert process._wait_for_lock_release(scope, base_dir=state_dir, timeout=10.0)
+        assert not process.is_instance_alive(scope, base_dir=state_dir)
+        # It waited rather than returning eagerly on a still-held lock.
+        assert time.monotonic() - started >= 0.5
+    finally:
+        holder.kill()
+        holder.wait(timeout=5)
+
+
+def test_wait_for_lock_release_times_out_while_held(tmp_path: Path) -> None:
+    """A lock held for the whole window should report failure, not success."""
+    scope = "unit-lock-held"
+    state_dir = tmp_path / "state"
+    lock_path = state_dir / "instances" / scope / process.LOCK_FILENAME
+    lock_path.parent.mkdir(parents=True)
+    lock_path.touch()
+
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, sys, time; "
+            "fd = open(sys.argv[1], 'r+'); "
+            "fcntl.flock(fd, fcntl.LOCK_EX); "
+            "print('held', flush=True); "
+            "time.sleep(300)",
+            str(lock_path),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        assert not process._wait_for_lock_release(scope, base_dir=state_dir, timeout=0.5)
+    finally:
+        holder.kill()
+        holder.wait(timeout=5)
+
+
+@pytest.mark.integration
+def test_stop_instance_releases_lock_held_by_surviving_child(tmp_path: Path) -> None:
+    """Regression: ``stop_instance`` must not report success while the scope's
+    flock is still held.
+
+    A process exiting and its flock being released are not the same instant — the
+    kernel drops the lock while closing fds during teardown, and any process that
+    inherited the fd keeps it held until *it* is gone too.  ``stop_instance`` used
+    to return as soon as the descriptor PID was dead, so an immediate
+    ``is_instance_alive`` probe raced that teardown and intermittently saw True.
+
+    The holder here is deliberately outside the parent's process tree: that makes
+    the window wide and fixed instead of scheduler-dependent, and it models the
+    case the sweep can't reach (a lock-inheriting process spawned after the child
+    snapshot was taken).
+    """
+    scope = "integ-lock-release"
+    state_dir = tmp_path / "state"
+    lock_path = state_dir / "instances" / scope / process.LOCK_FILENAME
+    lock_path.parent.mkdir(parents=True)
+    lock_path.touch()
+
+    hold_seconds = 2.0
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import fcntl, sys, time; "
+            "fd = open(sys.argv[1], 'r+'); "
+            "fcntl.flock(fd, fcntl.LOCK_EX); "
+            "print('held', flush=True); "
+            f"time.sleep({hold_seconds})",
+            str(lock_path),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    # The descriptor PID: exits promptly on SIGTERM, and does not hold the lock.
+    parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"], start_new_session=True)
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        assert process.is_instance_alive(scope, base_dir=state_dir)
+
+        process.write_descriptor(
+            process.InstanceDescriptor(
+                pid=parent.pid,
+                config=PlatformAppConfig(scope=scope, host="127.0.0.1", port=0, state_root=state_dir),
+                transport="tcp",
+                mode="daemon",
+                create_time=psutil.Process(parent.pid).create_time(),
+            ),
+            base_dir=state_dir,
+        )
+
+        started = time.monotonic()
+        result = process.stop_instance(scope, base_dir=state_dir, timeout=10, force=True)
+        elapsed = time.monotonic() - started
+        assert parent.pid in result.stopped_pids
+
+        # The post-condition callers rely on, checked with no grace period.
+        assert not process.is_instance_alive(scope, base_dir=state_dir)
+        assert process.read_descriptor(scope, base_dir=state_dir) is None
+        # It blocked on the lock rather than returning the moment the PID died.
+        assert elapsed >= hold_seconds / 2
+    finally:
+        for proc in (holder, parent):
+            try:
+                proc.kill()
+                proc.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+
 @pytest.mark.integration
 def test_stop_instance_foreground_mode_requires_force(tmp_path: Path) -> None:
     """Stopping a foreground-mode instance without ``force=True`` should raise

@@ -65,18 +65,26 @@ async def test_create_secret_with_empty_value(test_client):
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("invalid_name", ["bad name", "bad/name", "no!way", "a@b"])
-async def test_create_secret_with_invalid_name_returns_friendly_error(test_client, invalid_name):
-    """Verify that names with disallowed characters return a 422 with a readable message."""
+@pytest.mark.parametrize(
+    "invalid_name",
+    ["bad name", "bad/name", "no!way", "MySecret", "1secret", "my--secret", "secret-", "a" * 64],
+)
+async def test_create_secret_with_invalid_name_is_rejected(test_client, invalid_name):
+    """Names the entity store would reject must fail at the API boundary, not downstream."""
     response = test_client.post(
         "/apis/secrets/v2/workspaces/default/secrets",
         json={"name": invalid_name, "value": "x"},
     )
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    msg = detail[0]["msg"]
-    assert "Invalid secret name" in msg
-    assert invalid_name in msg
+
+
+@pytest.mark.parametrize("valid_name", ["hf-token", "a@b", "model.v1", "svc_key", "ab"])
+async def test_create_secret_accepts_entity_store_names(test_client, valid_name):
+    response = test_client.post(
+        "/apis/secrets/v2/workspaces/default/secrets",
+        json={"name": valid_name, "value": "x"},
+    )
+    assert response.status_code == 201
 
 
 async def test_create_and_delete_secret(test_client):

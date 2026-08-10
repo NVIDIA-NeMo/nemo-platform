@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Docker image builder for NAT agents.
+"""Docker image builder for NeMo Platform agents.
 
 Builds a Docker image either from a pre-existing Dockerfile or by rendering
-one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_dockerfile`.
+one on-the-fly via :func:`~nemo_agents_plugin.container.template.render_nat_dockerfile`
+or :func:`~nemo_agents_plugin.container.template.render_fabric_dockerfile`.
 
 Uses `python-on-whales <https://github.com/gabrieldemarmiesse/python-on-whales>`_
 for Docker operations so callers never need to shell out manually.
@@ -18,6 +19,11 @@ import re
 from pathlib import Path
 
 import typer
+import yaml
+from nemo_agents_plugin.entities import (
+    NAT_WORKFLOW_CONFIG_FORMAT,
+    NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +63,8 @@ def docker_build(
     except ImportError:
         typer.echo(
             "Error: 'python-on-whales' is required for building images.  "
-            "Install it with:  pip install 'nemo-agents-plugin[container]'",
+            "From the repository root, install it with:  "
+            "uv sync --package nemo-agents-plugin --extra container",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -87,7 +94,7 @@ def docker_build(
     return tag
 
 
-def build_agent_image(
+def build_nat_agent_image(
     agent_config: Path,
     pyproject: Path | None = None,
     dockerfile: Path | None = None,
@@ -99,6 +106,7 @@ def build_agent_image(
     python_version: str | None = None,
     uv_version: str | None = None,
     allow_root: bool = False,
+    sandbox_runtime: str | None = None,
     agent_version: str | None = None,
     agent_author: str | None = None,
     template_path: str | None = None,
@@ -107,7 +115,7 @@ def build_agent_image(
     platforms: list[str] | None = None,
     push: bool = False,
 ) -> str:
-    """High-level helper: validate, render (if needed), then build.
+    """High-level helper: validate, render (if needed), then build a NAT image.
 
     When *dockerfile* is ``None``, a Dockerfile is rendered via the template
     module and written into a temporary file inside the build context.
@@ -116,7 +124,7 @@ def build_agent_image(
         The Docker image tag.
     """
     from nemo_agents_plugin.container.metadata import extract_agent_metadata
-    from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore, resolve_value
+    from nemo_agents_plugin.container.template import render_dockerignore, render_nat_dockerfile, resolve_value
     from nemo_agents_plugin.container.validator import validate_agent_config
 
     if not skip_validation:
@@ -183,7 +191,7 @@ def build_agent_image(
             push=push,
         )
 
-    content = render_dockerfile(
+    content = render_nat_dockerfile(
         agent_config,
         pyproject,
         base_image_url=base_image_url,
@@ -192,6 +200,7 @@ def build_agent_image(
         nat_version=nat_version,
         uv_version=uv_version,
         allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime,
         agent_version=agent_version,
         agent_author=agent_author,
         template_path=template_path,
@@ -239,6 +248,158 @@ def build_agent_image(
         tmp_dockerfile.unlink(missing_ok=True)
         if ignore_file is not None and not ignore_pre_existed:
             ignore_file.unlink(missing_ok=True)
+
+
+def build_fabric_agent_image(
+    agent_config: Path,
+    pyproject: Path | None = None,
+    dockerfile: Path | None = None,
+    tag: str | None = None,
+    *,
+    base_image_url: str | None = None,
+    base_image_tag: str | None = None,
+    python_version: str | None = None,
+    uv_version: str | None = None,
+    allow_root: bool = False,
+    sandbox_runtime: str | None = None,
+    agent_version: str | None = None,
+    agent_author: str | None = None,
+    template_path: str | None = None,
+    skip_validation: bool = False,
+    generate_ignore: bool = True,
+    platforms: list[str] | None = None,
+    push: bool = False,
+) -> str:
+    """Build a Fabric-backed NeMo agent image.
+
+    This is intentionally separate from ``build_nat_agent_image`` so Fabric
+    packaging can grow without inheriting NAT-specific args such as
+    ``nat_version`` or ``NAT_CONFIG_FILE``.
+    """
+    if pyproject is not None and pyproject.exists():
+        context_dir = pyproject.resolve().parent
+    else:
+        context_dir = agent_config.resolve().parent
+
+    if not skip_validation:
+        import asyncio
+
+        from nemo_agents_plugin.container.fabric_validator import validate_fabric_agent_package
+
+        asyncio.run(validate_fabric_agent_package(agent_config, context_dir=context_dir))
+
+    from nemo_agents_plugin.container.template import (
+        PINNED_NEMO_RELAY_CLI_VERSION,
+        get_contract_version,
+        render_dockerignore,
+        render_fabric_dockerfile,
+        resolve_value,
+    )
+
+    resolved_base_url = resolve_value("base_image_url", base_image_url)
+    resolved_base_tag = resolve_value("base_image_tag", base_image_tag)
+    resolved_python = resolve_value("python_version", python_version)
+    resolved_uv = resolve_value("uv_version", uv_version)
+
+    from nemo_agents_plugin.container.metadata import NEMO_PLATFORM_AGENT_FRAMEWORK, extract_agent_metadata
+
+    build_env_for_id = {
+        "agent_framework": NEMO_PLATFORM_AGENT_FRAMEWORK,
+        "contract_version": get_contract_version(),
+        "nemo_relay_cli_version": PINNED_NEMO_RELAY_CLI_VERSION,
+        "base_image_url": resolved_base_url,
+        "base_image_tag": resolved_base_tag,
+        "python_version": resolved_python,
+        "uv_version": resolved_uv,
+    }
+    meta = extract_agent_metadata(
+        agent_config,
+        pyproject,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        build_env=build_env_for_id,
+    )
+    if tag is None:
+        tag = _default_tag_from_meta(meta)
+
+    build_args = {
+        "BASE_IMAGE_URL": resolved_base_url,
+        "BASE_IMAGE_TAG": resolved_base_tag,
+        "PYTHON_VERSION": resolved_python,
+    }
+
+    if dockerfile is not None:
+        return docker_build(
+            context_dir=context_dir,
+            dockerfile=dockerfile,
+            tag=tag,
+            build_args=build_args,
+            platforms=platforms,
+            push=push,
+        )
+
+    content = render_fabric_dockerfile(
+        agent_config,
+        pyproject,
+        base_image_url=resolved_base_url,
+        base_image_tag=resolved_base_tag,
+        python_version=resolved_python,
+        uv_version=resolved_uv,
+        allow_root=allow_root,
+        sandbox_runtime=sandbox_runtime,
+        agent_version=agent_version,
+        agent_author=agent_author,
+        template_path=template_path,
+        metadata=meta,
+    )
+
+    tmp_dockerfile = context_dir / "Dockerfile.generated"
+    if tmp_dockerfile.exists():
+        raise typer.Exit(_emit_refusal_error(tmp_dockerfile))
+
+    ignore_file: Path | None = None
+    ignore_path = context_dir / ".dockerignore"
+    ignore_pre_existed = ignore_path.exists()
+    try:
+        tmp_dockerfile.write_text(content, encoding="utf-8")
+
+        if generate_ignore:
+            ignore_file = render_dockerignore(context_dir)
+
+        return docker_build(
+            context_dir=context_dir,
+            dockerfile=tmp_dockerfile,
+            tag=tag,
+            build_args=build_args,
+            platforms=platforms,
+            push=push,
+        )
+    finally:
+        tmp_dockerfile.unlink(missing_ok=True)
+        if ignore_file is not None and not ignore_pre_existed:
+            ignore_file.unlink(missing_ok=True)
+
+
+def detect_agent_config_format(agent_config: Path) -> str:
+    try:
+        raw = agent_config.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"Unable to read config file: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Config file is not valid UTF-8: {exc}") from exc
+
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"YAML parse error in agent config {agent_config}: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("Agent config root must be a YAML mapping.")
+
+    config_format = data.get("config_format", NAT_WORKFLOW_CONFIG_FORMAT)
+    if config_format not in {NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT}:
+        raise ValueError(f"Unsupported agent config format: {config_format!r}")
+    return config_format
 
 
 def _emit_refusal_error(path: Path) -> int:

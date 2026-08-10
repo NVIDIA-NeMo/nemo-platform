@@ -27,19 +27,19 @@ import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/dataViews/EvaluationSessionsDataView/Empty';
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getEvaluationTraceDetailRoute } from '@studio/routes/utils';
+import { getEvaluationSessionTraceDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 type SessionRow = EvaluationSessionResponse & { _rowId: string };
 
 interface EvaluationSessionsDataViewProps {
   evaluationName: string;
-  experimentGroupName: string;
+  experimentName: string;
 }
 
 const mapStatusForBadge = (status: EvaluationSessionResponse['status']) =>
@@ -97,7 +97,7 @@ const getSessionSortParam = (sortingState: { id: string; desc: boolean }[]): str
 
 export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = ({
   evaluationName,
-  experimentGroupName,
+  experimentName,
 }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
@@ -301,10 +301,11 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
       onRowClick={(row) => {
         if (row.trace_id) {
           navigate(
-            getEvaluationTraceDetailRoute(
+            getEvaluationSessionTraceDetailRoute(
               workspace,
-              experimentGroupName,
+              experimentName,
               evaluationName,
+              row.session_id,
               row.trace_id
             )
           );
@@ -354,7 +355,7 @@ export const EvaluationSessionsDataView: FC<EvaluationSessionsDataViewProps> = (
             }
             return (
               <Empty
-                experimentGroupName={experimentGroupName}
+                experimentName={experimentName}
                 datasetName={experiment?.dataset_name ?? '<dataset>'}
               />
             );

@@ -4,7 +4,7 @@
 import { mockSignoutRedirect } from '@studio/tests/mocks/react-oidc-context';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router';
 
 // Get access to the centralized auth mocks
 const { mockUseAuthProfile } = vi.hoisted(() => ({

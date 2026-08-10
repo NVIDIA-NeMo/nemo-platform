@@ -36,13 +36,21 @@ from pathlib import Path
 import cloudpickle
 import httpx
 import pytest
-from nemo_evaluator.api.schemas import MetricInline
+from nemo_evaluator.api.schemas import (
+    MetricInline,
+    TaskInput,
+    TaskInputs,
+    TaskRef,
+    TasksetInput,
+    TasksetRef,
+)
 from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
     AgentEvalTaskInput,
     AgentTarget,
     CodexRunnerTarget,
+    HarborRunnerTarget,
     ModelTarget,
 )
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob
@@ -121,6 +129,31 @@ def _output_contains_metric(expected: str) -> MetricInline:
     """An inline, user-defined metric that validates the agent's output text."""
     bundle = bundle_metric(_OutputContainsMetric(expected), CloudpickleMetricBundlePackager())
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
+
+
+class _OutputScoreMetric:
+    """Custom *numeric* metric: 1.0 iff the trial's output contains the expected token, else 0.0.
+
+    The continuous-score counterpart to :class:`_OutputContainsMetric`. A numeric output aggregates
+    into a real ``count``/``mean`` on the run result (a boolean output lands in ``nan_count`` instead),
+    so a caller can assert on how many samples scored and their mean.
+    """
+
+    def __init__(self, expected: str) -> None:
+        self.expected = expected
+
+    @property
+    def type(self) -> str:
+        return "output-score"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("match")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:  # noqa: A002
+        text = input.candidate.output_text or ""
+        return MetricResult(
+            outputs=[MetricOutput(name="match", value=1.0 if self.expected.lower() in text.lower() else 0.0)]
+        )
 
 
 def _bundle_dir(run_result: dict) -> Path:
@@ -406,6 +439,20 @@ def _codex_eval_input_spec() -> dict:
     ).model_dump(mode="json")
 
 
+def _harbor_eval_input_spec() -> dict:
+    """Minimal Harbor target submission; compilation must reject it before task execution."""
+    return AgentEvalInputSpec(
+        tasks=[
+            AgentEvalTaskInput(
+                id="harbor-task",
+                intent="Exercise Harbor backend compatibility validation.",
+                inputs=TaskInputs(instruction="Reply with DONE."),
+            )
+        ],
+        target=HarborRunnerTarget(agent_name="oracle"),
+    ).model_dump(mode="json")
+
+
 @requires_codex
 @pytest.mark.timeout(600)
 def test_submit_to_subprocess_backend_runs_agent_eval(subprocess_platform: str) -> None:
@@ -479,6 +526,79 @@ def test_submit_with_stored_metric_ref_resolves_and_scores(subprocess_platform: 
 
 
 @pytest.mark.timeout(420)
+def test_submit_over_taskset_ref_resolves_and_scores(subprocess_platform: str) -> None:
+    # dim 2 (stored taskset ref) x dim 3 (submit): store a metric + two tasks + a taskset, then submit
+    # an agent eval whose `tasks` is a TasksetRef (no inline tasks). Server-side to_spec must load the
+    # taskset, expand BOTH member tasks, and resolve each task's stored MetricRef — all against the
+    # live entity store — before the job runs. A Model target -> IGW mock provider keeps it codex-free.
+    client = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
+    client.workspaces.create(name=WORKSPACE, exist_ok=True)
+
+    model_name = _unique("taskset-model")
+    add_mock_provider(client, workspace=WORKSPACE, name=model_name, mock_response_body=_chat_completion("DONE"))
+
+    # Store the metric that both tasks will reference. Numeric, so the run aggregate carries a real
+    # count/mean (a boolean output would land in nan_count and obscure whether scoring succeeded). The
+    # cloudpickle packager is explicit: storing a custom metric to the service requires opting in.
+    metric_name = _unique("done-score")
+    client.evaluator.metrics.create(
+        metric_name,
+        metric=_OutputScoreMetric("DONE"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
+        workspace=WORKSPACE,
+    )
+
+    # Store two tasks that reference the metric, then group them in a taskset.
+    task_names = [_unique("ask-a"), _unique("ask-b")]
+    for name in task_names:
+        client.evaluator.tasks.create(
+            name,
+            task=TaskInput(
+                intent="Obtain a one-word reply from the model.",
+                inputs=TaskInputs(instruction="Reply with the single word DONE and nothing else."),
+                metrics=[MetricRef(f"{WORKSPACE}/{metric_name}")],
+            ),
+        )
+    taskset_name = _unique("done-suite")
+    client.evaluator.tasksets.create(
+        taskset_name,
+        taskset=TasksetInput(tasks=[TaskRef(f"{WORKSPACE}/{name}") for name in task_names]),
+    )
+
+    # The point of the test: reference the stored taskset instead of inlining the tasks.
+    spec = AgentEvalInputSpec(
+        tasks=TasksetRef(f"{WORKSPACE}/{taskset_name}"),
+        target=ModelTarget(
+            model=Model(
+                url=_igw_chat_url(subprocess_platform, model_name), name=model_name, format=ModelFormat.OPEN_AI
+            ),
+            prompt_template={"messages": [{"role": "user", "content": "{{item.instruction}}"}]},
+            params=RunConfigOnlineModel(),
+        ),
+    ).model_dump(mode="json")
+
+    response = NemoJobScheduler().submit_remote(
+        AgentEvalJob, spec, base_url=subprocess_platform, workspace=WORKSPACE, profile="default"
+    )
+    job_name = response.get("name") or response.get("id")
+    assert job_name, f"submit response carried no job name/id: {response}"
+
+    job = wait_for_platform_job(client, job_name, WORKSPACE, timeout=360)
+    assert job.status == "completed", f"job {job_name} ended {job.status!r}: {getattr(job, 'status_details', None)}"
+
+    # The taskset expanded to BOTH members and both were scored: the numeric metric aggregates to
+    # count == number of members (one sample per task, one trial each), with no NaNs, and mean == 1.0
+    # because the mock model returns "DONE" for every task (so every task's output contains "DONE").
+    result = client.evaluator.agent_eval_results.retrieve(job_name, workspace=WORKSPACE)
+    assert (result.target_kind, result.target_name) == ("model", model_name)
+    assert result.scores.scores, "run produced no aggregated scores"
+    aggregate = result.scores.scores[0]
+    assert aggregate.nan_count == 0, f"metric failed to score some samples: nan_count={aggregate.nan_count}"
+    assert aggregate.count == len(task_names), f"expected one scored sample per member, got count={aggregate.count}"
+    assert aggregate.mean == 1.0, f"every member's output should score 1.0, got mean={aggregate.mean}"
+
+
+@pytest.mark.timeout(420)
 def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess_platform: str) -> None:
     # dim 1 (Model target) x dim 3 (submit) under auth.enabled: the submitted task's get_task_sdk
     # identity (X-NMP-Principal-Id: service:evaluator) must be forwarded to the evaluator's IGW
@@ -531,6 +651,37 @@ def test_submit_model_target_under_auth_forwards_identity_to_igw(auth_subprocess
     assert result.job_id == job_name
     assert (result.target_kind, result.target_name) == ("model", model_name)
     assert result.bundle_ref
+
+
+@pytest.mark.timeout(300)
+def test_submit_harbor_target_to_docker_backend_fails_fast(docker_platform: str) -> None:
+    workspace = _unique("harbor-docker-guard")
+    client = NeMoPlatform(base_url=docker_platform, max_retries=2)
+    client.workspaces.create(name=workspace, exist_ok=True)
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        NemoJobScheduler().submit_remote(
+            AgentEvalJob,
+            _harbor_eval_input_spec(),
+            base_url=docker_platform,
+            workspace=workspace,
+            profile="default",
+        )
+
+    response = exc_info.value.response
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "profile 'default'" in detail
+    assert "backend 'docker'" in detail
+    assert "Harbor targets currently require local execution or the subprocess backend" in detail
+
+    jobs = httpx.get(
+        f"{docker_platform}/apis/evaluator/v2/workspaces/{workspace}/agent-evaluate/jobs",
+        params={"page_size": 100},
+        timeout=30,
+    )
+    assert jobs.status_code == 200, jobs.text
+    assert jobs.json()["data"] == []
 
 
 @pytest.mark.timeout(600)

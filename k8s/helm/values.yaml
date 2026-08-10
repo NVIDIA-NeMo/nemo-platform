@@ -242,6 +242,124 @@ externalDatabase:
     # -- Key in the URI secret containing the database URI.
     key: ""
 
+# -- Embedded ClickHouse configuration for Intake.
+# The embedded deployment is a single-node convenience topology. Use an external,
+# replicated ClickHouse deployment for production environments that require high availability.
+# These values are used only when `clickhouse.enabled` is true.
+# @default -- This object has the following default values for the embedded ClickHouse configuration.
+clickhouse:
+  # -- Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`.
+  enabled: true
+  image:
+    # -- ClickHouse image repository. Intake is tested against the 26.3 LTS release line.
+    repository: docker.io/clickhouse/clickhouse-server
+    # -- ClickHouse image tag.
+    tag: "26.3"
+    # -- ClickHouse image pull policy.
+    pullPolicy: IfNotPresent
+  auth:
+    # -- ClickHouse username used by Intake.
+    username: nemo
+    # -- ClickHouse password used when auth.existingSecret is empty. If unset, the chart generates a random password.
+    password: null
+    # -- ClickHouse database used by Intake.
+    database: intake
+    # -- Name of an existing Secret containing the ClickHouse password. If empty, the chart creates one.
+    existingSecret: ""
+    # -- Key in auth.existingSecret containing the ClickHouse password.
+    existingSecretPasswordKey: password
+  service:
+    # -- ClickHouse HTTP interface port used by Intake.
+    httpPort: 8123
+    # -- ClickHouse native protocol port exposed inside the cluster for administration.
+    nativePort: 9000
+    # -- Annotations to add to the ClickHouse Service.
+    annotations: {}
+  persistence:
+    # -- Whether to persist embedded ClickHouse data.
+    enabled: true
+    # -- PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README.
+    size: 20Gi
+    # -- Storage class for the ClickHouse PVC. If unset, the cluster default is used.
+    storageClass: ""
+  # -- Resource requests and limits for the ClickHouse container. The defaults are the supported small-volume starting point.
+  resources:
+    requests:
+      cpu: "2"
+      memory: 8Gi
+  # -- Startup probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the startup probe configuration.
+  startupProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 60
+  # -- Liveness probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the liveness probe configuration.
+  livenessProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe configuration for the ClickHouse container.
+  # @default -- This object has the following default values for the readiness probe configuration.
+  readinessProbe:
+    httpGet:
+      path: /ping
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Optional pod security context for the ClickHouse pod.
+  podSecurityContext: {}
+  # -- Optional container security context for the ClickHouse container.
+  securityContext: {}
+  # -- Service account for the ClickHouse pod.
+  # @default -- This object has the following default values for the service account configuration.
+  serviceAccount:
+    # -- Specifies whether a service account should be created for the ClickHouse pod.
+    create: true
+    # -- Automatically mount the ServiceAccount's API credentials.
+    automount: false
+    # -- Annotations to add to the service account.
+    annotations: {}
+    # -- The name of the service account to use. If not set and create is true, a name is generated from the release fullname.
+    name: ""
+  # -- Annotations to add to the ClickHouse StatefulSet.
+  annotations: {}
+  # -- Annotations to add to the ClickHouse pod.
+  podAnnotations: {}
+  # -- Additional labels to add to the ClickHouse pod.
+  podLabels: {}
+  # -- Node selector for the ClickHouse pod.
+  nodeSelector: {}
+  # -- Affinity for the ClickHouse pod.
+  affinity: {}
+  # -- Tolerations for the ClickHouse pod.
+  tolerations: []
+
+# -- External ClickHouse configuration. These values are used when `clickhouse.enabled` is false.
+# @default -- This object has the following default values for the external ClickHouse configuration.
+externalClickhouse:
+  # -- External ClickHouse host. Required when the embedded ClickHouse is disabled.
+  host: ""
+  # -- External ClickHouse HTTP interface port.
+  port: 8123
+  # -- Whether Intake should connect to ClickHouse over HTTPS.
+  secure: false
+  # -- ClickHouse username used by Intake.
+  user: nemo
+  # -- ClickHouse database used by Intake.
+  database: intake
+  # -- Name of an existing Secret containing the ClickHouse password. Required when using external ClickHouse.
+  existingSecret: ""
+  # -- Key in existingSecret containing the ClickHouse password. Required when using external ClickHouse.
+  existingSecretPasswordKey: ""
+
 # -- Platform-wide configuration settings
 # Set configuration here to apply custom, structured configuration across all services.
 # Applied after the base platform config is evaluated for templates. Enables adding / overriding YAML-based elements in the evaluated platform config.
@@ -335,6 +453,12 @@ basePlatformConfig: |
           enabled: true
           k8s_executor: local-k8s
           default_executor: local-k8s
+          # Bypass the image `nemo` ENTRYPOINT; invoke the adapters module directly.
+          # Avoids PermissionError when the sidecar writes instance state under $HOME.
+          lora_sidecar_command:
+            - python
+            - -m
+            - nmp.core.models.sidecars.adapters.main
 
   deployments:
     executors:
@@ -523,6 +647,10 @@ api:
 
   # -- Number of replicas for the API service.
   replicaCount: 1
+  # -- Platform API server settings.
+  server:
+    # -- Seconds Uvicorn keeps idle HTTP connections open. Must be greater than envoyProxy.timeouts.upstreamIdle when Envoy is enabled.
+    keepAliveTimeoutSeconds: 5
   # -- Additional arguments to pass to the Platform API service
   extraArgs: []
   # -- Additional volume mounts to add to the Platform API container.
@@ -562,7 +690,7 @@ api:
     port: 8080
     # -- Annotations for the API service.
     annotations: {}
-  # -- Kubernetes deployment resources configuration for the API service.
+  # -- Kubernetes deployment resources configuration for the API service. Utilization-based autoscaling requires a matching resource request.
   resources: {}
 
   # -- Startup probe configuration for the api service.
@@ -631,9 +759,10 @@ api:
     minReplicas: 1
     # -- The maximum number of replicas for the deployment.
     maxReplicas: 10
-    # -- The target CPU utilization percentage.
+    # -- The target CPU utilization percentage. Requires api.resources.requests.cpu.
     targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
+    # -- The target memory utilization percentage. Requires api.resources.requests.memory.
+    targetMemoryUtilizationPercentage: null
     # -- Annotations for the HorizontalPodAutoscaler.
     annotations: {}
 
@@ -720,7 +849,7 @@ core:
     # -- size of the persistent volume claim used for persistent storage
     size: 200Gi
     # -- volumePermissionsImage is the image used to set permissions on the volume
-    volumePermissionsImage: "busybox"
+    volumePermissionsImage: "docker.io/library/busybox:stable"
     # -- Annotations to add to the persistent volume claim
     annotations: {}
 
@@ -870,7 +999,7 @@ envoyProxy:
 
   # Envoy image
   image:
-    repository: envoyproxy/envoy
+    repository: docker.io/envoyproxy/envoy
     tag: v1.37.0
     # -- Optional image digest. When set, the Envoy image renders as repository@digest.
     digest: ""
@@ -928,8 +1057,10 @@ envoyProxy:
     route: "0s"
     # -- Cluster connect timeout (time to establish connection to backend).
     connect: "30s"
+    # -- Positive whole-second upstream connection idle timeout. Must be less than api.server.keepAliveTimeoutSeconds when Envoy is enabled.
+    upstreamIdle: "4s"
 
-  # -- Kubernetes deployment resources configuration for the Envoy service.
+  # -- Kubernetes deployment resources configuration for the Envoy service. Utilization-based autoscaling requires a matching resource request.
   resources: {}
 
   # -- Liveness probe for the Envoy container (admin interface /ready).
@@ -979,9 +1110,10 @@ envoyProxy:
     minReplicas: 1
     # -- The maximum number of replicas for the deployment.
     maxReplicas: 10
-    # -- The target CPU utilization percentage.
+    # -- The target CPU utilization percentage. Requires envoyProxy.resources.requests.cpu.
     targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
+    # -- The target memory utilization percentage. Requires envoyProxy.resources.requests.memory.
+    targetMemoryUtilizationPercentage: null
     # -- Annotations for the HorizontalPodAutoscaler.
     annotations: {}
 

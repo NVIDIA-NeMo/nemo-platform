@@ -133,6 +133,22 @@ async def test_validate_remote_only_aggregates_seed_and_tool_errors() -> None:
     assert any(("seed" in m.lower()) or ("df" in m) for m in messages)
 
 
+async def test_validate_remote_only_rejects_empty_fileset_root_seed() -> None:
+    builder = dd.DataDesignerConfigBuilder()
+    builder.with_seed_dataset(dd.DirectorySeedSource(path=f"{u.WORKSPACE_NAME}/{u.FILESET_NAME}"))
+    builder.add_column(column_config=dd.ExpressionColumnConfig(name="full_name", expr=u.FULL_NAME_EXPR))
+
+    with u.make_mock_client_context() as client_context:
+        client_context.sdk.files.filesets.create(name=u.FILESET_NAME, workspace=u.WORKSPACE_NAME)
+        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
+        report = await dd_client.validate(builder, execution_context="remote")
+
+    assert not report.ok
+    [result] = report.results
+    assert result.context == "remote"
+    assert any("contains no files to use as seed data" in err.message for err in result.errors)
+
+
 async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors() -> None:
     """Regression: ``DataDesignerResource.validate`` itself (not just the
     underlying ``validate_config`` core) must accept a ``df``-seed config and
@@ -171,7 +187,7 @@ async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors()
     assert any("Tool configs" in m for m in messages)
     # Remote rejects everything outside the {hf, nmp} whitelist; the message
     # mentions both supported types rather than calling out "df" specifically.
-    assert any("seed_type=hf" in m and "seed_type=nmp" in m for m in messages)
+    assert any("seed sources" in m and "Files service" in m for m in messages)
 
 
 async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:
@@ -204,6 +220,36 @@ async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:
     [result] = report.results
     assert result.context == "local"
     assert any("Dataframe seed sources" in err.message for err in result.errors)
+
+
+async def test_sdk_validate_method_rejects_custom_columns() -> None:
+    @dd.custom_column_generator(required_columns=["foo"])
+    def append_custom_value(row: dict) -> dict:
+        row["custom_value"] = f"{row['foo']} custom"
+        return row
+
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)])
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a", "b"]),
+        )
+    )
+    builder.add_column(column_config=dd.CustomColumnConfig(name="custom_value", generator_function=append_custom_value))
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_providers(client_context),
+    ):
+        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
+        report = await dd_client.validate(builder, execution_context="remote")
+
+    assert not report.ok
+    [result] = report.results
+    assert result.context == "remote"
+    messages = [err.message for err in result.errors]
+    assert any("Custom columns are not supported" in m for m in messages)
 
 
 async def test_validate_remote_only_rejects_unknown_provider() -> None:

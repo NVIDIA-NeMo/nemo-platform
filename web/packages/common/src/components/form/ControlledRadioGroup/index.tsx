@@ -27,18 +27,15 @@ export const ControlledRadioGroup: FC<Props> = ({
       status={error ? 'error' : isValid ? 'success' : undefined}
       {...formFieldProps}
     >
-      {(props) => (
-        <RadioGroup
-          {...props}
-          {...radioGroupProps}
-          items={items}
-          value={field.value}
-          onValueChange={(value) => {
-            field.onChange(value);
-          }}
-          name={useControllerProps.name}
-        />
-      )}
+      <RadioGroup
+        {...radioGroupProps}
+        items={items}
+        value={field.value}
+        onValueChange={(value) => {
+          field.onChange(value);
+        }}
+        name={useControllerProps.name}
+      />
     </FormField>
   );
 };

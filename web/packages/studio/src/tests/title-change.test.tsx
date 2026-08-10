@@ -8,6 +8,7 @@ import { dataset1 } from '@studio/mocks/entity-store/datasets';
 import { entityStorePromptTunedModel1 } from '@studio/mocks/entity-store/models';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { metricEvaluationJob1 } from '@studio/mocks/evaluation/v1/evaluations';
+import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { renderWithRouter, waitFor } from '@studio/tests/util/render';
 import { generatePath } from 'react-router';
 
@@ -25,7 +26,8 @@ const pathParams = {
   [RP.evalConfigName]: '',
   [RP.safeSynthesizerJobName]: '',
   [RP.dataDesignerJobName]: '',
-  [RP.traceId]: 'trace-1',
+  [RP.sessionId]: 'session-1',
+  [RP.anonymizerJobName]: 'test-anonymizer-job',
   [RP.deploymentName]: '',
   [RP.deploymentPanelView]: '',
   [RP.agentName]: '',
@@ -33,9 +35,12 @@ const pathParams = {
   [RP.agentEvalJobName]: 'test-agent-eval-job',
   [RP.jobName]: 'test-job',
   [RP.benchmarkName]: 'test-benchmark',
-  [RP.experimentGroupName]: 'test-experiment-group',
+  [RP.experimentName]: 'test-experiment-group',
   [RP.evaluationName]: 'test-experiment',
+  [RP.insightId]: 'test-insight',
   [RP.guardrailConfigName]: 'test-guardrail-config',
+  [RP.guardrailChecksSubTab]: GuardrailChecksSubTab.Tests,
+  [RP.pluginName]: '',
 };
 
 describe('AccessibleTitleE2E', () => {

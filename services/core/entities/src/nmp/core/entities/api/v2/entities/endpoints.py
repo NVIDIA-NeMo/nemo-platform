@@ -47,7 +47,8 @@ from nmp.core.entities.utils.identifiers import generate_entity_name
 from sqlalchemy.exc import IntegrityError
 
 
-class EntitiesPage(Page[Entity]): ...
+class EntitiesPage(Page[Entity]):
+    group_counts: dict[str, int] | None = None
 
 
 router = APIRouter()
@@ -336,23 +337,18 @@ async def list_entities(
         description="Sort field",
         examples=["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"],
     ),
+    count_by: str | None = Query(
+        default=None,
+        description="Optional direct string data field whose matching values should be counted.",
+    ),
 ) -> EntitiesPage:
     """List entities with filtering, supporting cross-workspace queries."""
     accessible_workspaces = await get_accessible_workspaces(repository)
     # Handle cross-workspace query (workspace = "*")
     if workspace == ALL_WORKSPACES:
         # Build combined filter for workspace access and user's filter
-        combined_filter = add_workspace_filtering(accessible_workspaces, filter, field="workspace")
-
-        entities, total = await repository.list_entities(
-            workspace=ALL_WORKSPACES,  # Don't filter by single workspace
-            entity_type=entity_type,
-            page=page,
-            page_size=page_size,
-            sort=sort,
-            filter_op=combined_filter,
-            relationship_child_workspaces=accessible_workspaces,
-        )
+        query_workspace = ALL_WORKSPACES
+        effective_filter = add_workspace_filtering(accessible_workspaces, filter, field="workspace")
     else:
         raise_if_workspace_inaccessible(
             accessible_workspaces,
@@ -362,16 +358,30 @@ async def list_entities(
         # Check if workspace is being deleted (404 for user requests)
         await validate_workspace_not_deleting(workspace_repository, auth_client, workspace)
 
-        # Standard single-workspace query
-        entities, total = await repository.list_entities(
-            workspace=workspace,
-            entity_type=entity_type,
-            page=page,
-            page_size=page_size,
-            sort=sort,
-            filter_op=filter,
-            relationship_child_workspaces=accessible_workspaces,
-        )
+        query_workspace = workspace
+        effective_filter = filter
+
+    entities, total = await repository.list_entities(
+        workspace=query_workspace,
+        entity_type=entity_type,
+        page=page,
+        page_size=page_size,
+        sort=sort,
+        filter_op=effective_filter,
+        relationship_child_workspaces=accessible_workspaces,
+    )
+    group_counts = None
+    if count_by is not None:
+        try:
+            group_counts = await repository.count_entities_by(
+                workspace=query_workspace,
+                entity_type=entity_type,
+                group_by=count_by,
+                filter_op=effective_filter,
+                relationship_child_workspaces=accessible_workspaces,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return EntitiesPage(
         data=entities,
@@ -384,6 +394,7 @@ async def list_entities(
         ),
         sort=sort,
         filter=filter.to_dict() if filter else None,
+        group_counts=group_counts,
     )
 
 
@@ -580,6 +591,10 @@ async def delete_entity_by_name(
     workspace_repository: WorkspaceRepository,
     auth_client: AuthClientDep,
     parent: str | None = Query(default=None, description="Parent entity ID for nested entities"),
+    expected_db_version: int | None = Query(
+        default=None,
+        description="Optional database version for optimistic locking. Delete only succeeds if the entity still has this version.",
+    ),
 ) -> DeleteResponse:
     """Delete entity by name."""
     # Check if workspace is being deleted (404 for user requests)
@@ -592,12 +607,19 @@ async def delete_entity_by_name(
 
     await _invalidate_role_binding_cache_if_present(repository, workspace, entity_type, name, parent)
 
-    deleted_count = await repository.delete_entity_by_name(
-        workspace=workspace,
-        entity_type=entity_type,
-        name=name,
-        parent=parent,
-    )
+    try:
+        deleted_count = await repository.delete_entity_by_name(
+            workspace=workspace,
+            entity_type=entity_type,
+            name=name,
+            parent=parent,
+            expected_db_version=expected_db_version,
+        )
+    except EntityVersionConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        ) from e
     if deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entity not found")
     return DeleteResponse(id=f"{workspace}/{entity_type}/{name}")

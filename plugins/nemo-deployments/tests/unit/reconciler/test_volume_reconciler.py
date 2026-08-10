@@ -7,6 +7,7 @@ import pytest
 from helpers import make_volume
 from nemo_deployments_plugin.backends.base import VolumeStatusUpdate
 from nemo_deployments_plugin.reconciler.volume_reconciler import VolumeReconciler
+from nemo_platform_plugin.entity_client import NemoEntityConflictError
 from reconciler.conftest import MockDeploymentBackend
 
 
@@ -59,6 +60,27 @@ async def test_deleting_volume_removes_backend_then_entity(
 
 
 @pytest.mark.asyncio
+async def test_deleting_volume_delete_conflict_is_handled_for_retry(
+    volume_reconciler: VolumeReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    vol = make_volume()
+    vol.status = "DELETING"
+    mock_entities.delete.side_effect = NemoEntityConflictError("conflict")
+
+    await volume_reconciler.reconcile_one(vol)
+
+    assert mock_backend.volume_delete_calls == [("default", "vol1")]
+    mock_entities.delete.assert_awaited_once_with(
+        type(vol),
+        name="vol1",
+        workspace="default",
+        expected_db_version=vol.db_version,
+    )
+
+
+@pytest.mark.asyncio
 async def test_deleting_volume_waits_for_executor(
     volume_reconciler: VolumeReconciler,
     mock_entities: AsyncMock,
@@ -73,3 +95,16 @@ async def test_deleting_volume_waits_for_executor(
     await reconciler.reconcile_one(vol)
 
     mock_entities.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_volume_update_conflict_is_handled_for_retry(
+    volume_reconciler: VolumeReconciler,
+    mock_entities: AsyncMock,
+) -> None:
+    vol = make_volume()
+    mock_entities.update.side_effect = NemoEntityConflictError("conflict")
+
+    await volume_reconciler.reconcile_one(vol)
+
+    mock_entities.update.assert_awaited()

@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { CreateJobRequest as DataDesignerJobRequest } from '@nemo/sdk/generated/data-designer/schema';
 import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import type { BadgeProps } from '@nvidia/foundations-react-core';
 import type { AddColumnSelection } from '@studio/components/AddColumnPalette/types';
+import type { GeneratedConfigValidation } from '@studio/routes/DataDesignerJobBuildRoute/aiSeed';
 import type { LucideIcon } from 'lucide-react';
 
 export type StartOptionId = 'ai' | 'template' | 'clone' | 'scratch';
@@ -82,17 +84,56 @@ export interface DetailPoint {
   description: string;
 }
 
+export interface DescribeWithAiPanelProps {
+  /** Workspace whose models are offered, and against which the draft is validated. */
+  workspace: string;
+  /**
+   * Fired after every generation: the normalized job request when the draft can be loaded
+   * into the build route, null when it can't (so a failed retry clears an earlier success).
+   */
+  onValidConfig: (jobRequest: DataDesignerJobRequest | null) => void;
+}
+
+export interface GeneratedConfigResultProps {
+  /** Verdict on the last draft; null before the first generation. */
+  validation: GeneratedConfigValidation | null;
+  /** Set when the request failed outright (network, auth, model error). */
+  requestError: string | null;
+  /** Pretty-printed model output for the last draft; enables "View config" when present. */
+  rawOutput: string | null;
+  isGenerating: boolean;
+  /** True while the model is reworking the draft, so the result area says so. */
+  isFixing: boolean;
+  /** Asks the model to resolve the listed issues. Omit to hide the fix affordance. */
+  onFix?: () => void;
+}
+
+export interface GeneratedConfigPanelProps {
+  open: boolean;
+  /** Pretty-printed JSON shown in the snippet. */
+  config: string;
+  onClose: () => void;
+}
+
 export interface StartOptionDetailProps {
   option: StartOption;
   /** Id of the currently-chosen template, when {@link option} is "template". */
   selectedTemplateId: string | null;
   onSelectTemplate: (templateId: string) => void;
+  /** Workspace passed through to the "ai" option's panel. */
+  workspace: string;
+  onValidConfig: (jobRequest: DataDesignerJobRequest | null) => void;
 }
 
+/** What the user confirmed via the Continue footer, carrying that option's payload. */
+export type StartSelection =
+  | { optionId: 'scratch' }
+  | { optionId: 'template'; templateId: string }
+  | { optionId: 'ai'; jobRequest: DataDesignerJobRequest };
+
 export interface CreateFilesetStartProps {
-  /**
-   * Fired when the user confirms a selected start option via the Continue footer. For
-   * the "template" option, the chosen template id is passed as the second argument.
-   */
-  onContinue: (optionId: StartOptionId, templateId?: string) => void;
+  /** Workspace whose models the "Describe with AI" option draws from. */
+  workspace: string;
+  /** Fired when the user confirms a selected start option via the Continue footer. */
+  onContinue: (selection: StartSelection) => void;
 }

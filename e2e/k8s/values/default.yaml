@@ -35,4 +35,4 @@ platformConfig:
 core:
   storage:
     storageClass: oci-nfs
-    volumePermissionsImage: docker.io/library/busybox
+    volumePermissionsImage: docker.io/library/busybox:stable

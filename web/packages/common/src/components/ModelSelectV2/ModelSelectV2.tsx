@@ -8,23 +8,14 @@ import { Group } from '@nvidia/foundations-react-core';
 import { FC, useState } from 'react';
 
 export const ModelSelectV2: FC<ModelSelectV2Props> = ({
-  value,
-  onValueChange,
-  groups,
-  loading,
-  disabled,
-  placeholder,
-  showModelTypeToggle,
-  defaultModelType,
   showParams = false,
-  hideAdapters = false,
-  fullWidth = false,
-  dropdownSide,
   inferenceParams,
   onInferenceParamsChange,
   onOpenChange,
   'aria-label': ariaLabel,
+  ...dropdownProps
 }) => {
+  const { disabled, fullWidth = false } = dropdownProps;
   const [modelOpen, setModelOpen] = useState(false);
   const [paramsOpen, setParamsOpen] = useState(false);
 
@@ -40,21 +31,7 @@ export const ModelSelectV2: FC<ModelSelectV2Props> = ({
   };
 
   const modelDropdown = (
-    <ModelDropdown
-      value={value}
-      onValueChange={onValueChange}
-      groups={groups}
-      loading={loading}
-      disabled={disabled}
-      placeholder={placeholder}
-      showModelTypeToggle={showModelTypeToggle}
-      defaultModelType={defaultModelType}
-      hideAdapters={hideAdapters}
-      fullWidth={fullWidth}
-      dropdownSide={dropdownSide}
-      open={modelOpen}
-      onOpenChange={handleModelOpenChange}
-    />
+    <ModelDropdown {...dropdownProps} open={modelOpen} onOpenChange={handleModelOpenChange} />
   );
 
   if (!showParams) return modelDropdown;

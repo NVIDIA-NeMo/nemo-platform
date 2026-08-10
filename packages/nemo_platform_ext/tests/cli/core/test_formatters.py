@@ -7,6 +7,7 @@ import json
 import re
 from unittest.mock import Mock, patch
 
+import click
 import pytest
 import yaml
 from nemo_platform_ext.cli.core.formatters import (
@@ -19,7 +20,9 @@ from nemo_platform_ext.cli.core.formatters import (
     format_stream_event,
     format_table,
     format_yaml,
+    iter_json_lines,
     model_to_dict,
+    validate_stream_output_format,
 )
 
 
@@ -98,6 +101,67 @@ def test_format_json_nested_data():
     result = format_json(data, indent=2, syntax_highlight=False)
     parsed = json.loads(result)
     assert parsed == data
+
+
+def test_iter_json_lines_extracts_list_items():
+    """JSON Lines output should emit one compact JSON object per list item."""
+    mock_response = Mock()
+    mock_response.data = [
+        {"id": "1", "name": "Alice"},
+        {"id": "2", "name": "Bob"},
+    ]
+
+    assert list(iter_json_lines(mock_response, is_list=True)) == [
+        '{"id":"1","name":"Alice"}',
+        '{"id":"2","name":"Bob"}',
+    ]
+
+
+def test_iter_json_lines_keeps_callable_items_lazy():
+    """Callable response item sources should stream without list materialization."""
+
+    class LazyResponse:
+        def __init__(self) -> None:
+            self.yielded = 0
+
+        def items(self):
+            for item in [{"id": "1"}, {"id": "2"}]:
+                self.yielded += 1
+                yield item
+
+    response = LazyResponse()
+    lines = iter_json_lines(response, is_list=True)
+
+    assert response.yielded == 0
+    assert next(lines) == '{"id":"1"}'
+    assert response.yielded == 1
+    assert next(lines) == '{"id":"2"}'
+    assert response.yielded == 2
+    with pytest.raises(StopIteration):
+        next(lines)
+
+
+def test_format_output_streams_json_lines(capsys):
+    """format_output should print list items as newline-delimited JSON when streaming."""
+    mock_response = Mock()
+    mock_response.data = [{"id": "1"}, {"id": "2"}]
+
+    format_output(mock_response, is_list=True, output_format="json", stream=True)
+
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == ['{"id":"1"}', '{"id":"2"}']
+
+
+def test_format_output_stream_requires_json_compatible_format():
+    """--stream is only valid for JSON-compatible formats."""
+    with pytest.raises(click.UsageError, match="--stream requires --output json or --output raw"):
+        format_output([{"id": "1"}], is_list=True, output_format="table", stream=True)
+
+
+def test_validate_stream_output_format_rejects_table_output():
+    """Command handlers can fail before loading API or discovery data."""
+    with pytest.raises(click.UsageError, match="--stream requires --output json or --output raw"):
+        validate_stream_output_format("table", True)
 
 
 @patch("nemo_platform_ext.cli.core.formatters.is_tty")

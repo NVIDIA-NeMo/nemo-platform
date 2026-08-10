@@ -8,6 +8,33 @@ description: >
 runs:
   using: composite
   steps:
+    # build_policy_wasm.sh already prefers a cached binary at .cache/opa/<version>/ before reaching
+    # out to openpolicyagent.org, but nothing ever populated that directory in CI, so every run
+    # depended on that download — and it has repeatedly failed, taking a required job down with it.
+    # Restoring the cache means the fetch is only needed the first time a pinned version is seen.
+    - name: Resolve pinned OPA version
+      id: opa
+      shell: bash
+      env:
+        REPO_ROOT: ${{ github.action_path }}/../../..
+      run: |
+        # Parse rather than source: the script builds the WASM on execution, so sourcing it here
+        # would do the work twice (and before the cache is restored).
+        version="$(sed -n 's/^OPA_VERSION="\${OPA_VERSION:-\([^}]*\)}"/\1/p' "${REPO_ROOT}/script/build_policy_wasm.sh" | head -1)"
+        if [ -z "${version}" ]; then
+          echo "Could not parse the pinned OPA version from script/build_policy_wasm.sh" >&2
+          echo "If the OPA_VERSION line moved, update this step — a wrong cache key silently disables caching." >&2
+          exit 1
+        fi
+        echo "version=${version}" >> "${GITHUB_OUTPUT}"
+        echo "Pinned OPA version: ${version}"
+
+    - name: Cache the pinned OPA binary
+      uses: actions/cache@v4
+      with:
+        path: .cache/opa
+        key: opa-${{ runner.os }}-${{ runner.arch }}-${{ steps.opa.outputs.version }}
+
     - name: Build policy WASM
       shell: bash
       env:

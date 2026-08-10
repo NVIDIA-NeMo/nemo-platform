@@ -95,6 +95,22 @@ class DeploymentReconciler:
         deployments_by_name: dict[tuple[str, str], Deployment],
         volumes_by_name: dict[tuple[str, str], Volume],
     ) -> None:
+        try:
+            await self._reconcile_one(
+                deployment,
+                deployments_by_name=deployments_by_name,
+                volumes_by_name=volumes_by_name,
+            )
+        except NemoEntityConflictError:
+            logger.debug("Optimistic lock conflict on deployment %s - retry next cycle.", deployment_id(deployment))
+
+    async def _reconcile_one(
+        self,
+        deployment: Deployment,
+        *,
+        deployments_by_name: dict[tuple[str, str], Deployment],
+        volumes_by_name: dict[tuple[str, str], Volume],
+    ) -> None:
         if deployment.desired_state == "STOPPED" or deployment.status == "DELETING":
             await self._reconcile_delete(deployment)
             return
@@ -179,13 +195,12 @@ class DeploymentReconciler:
                 labels=labels,
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
             )
-            logger.info("Created deployment %s: %s", dep_id, status_update.status)
-            await self._update_deployment_status(deployment, status_update)
-        except NemoEntityConflictError:
-            raise
         except Exception as exc:
             logger.exception("Failed to create deployment %s", dep_id)
             await self._update_deployment_status_failure(deployment, f"Failed to create deployment: {exc}")
+            return
+        logger.info("Created deployment %s: %s", dep_id, status_update.status)
+        await self._update_deployment_status(deployment, status_update)
 
     async def _reconcile_delete(self, deployment: Deployment) -> None:
         dep_id = deployment_id(deployment)
@@ -222,12 +237,17 @@ class DeploymentReconciler:
             logger.warning("No executor for delete of %s — removing entity only", dep_id)
 
         try:
-            await self._entities.delete(Deployment, name=deployment.name, workspace=deployment.workspace)
+            await self._entities.delete(
+                Deployment,
+                name=deployment.name,
+                workspace=deployment.workspace,
+                expected_db_version=deployment.db_version,
+            )
             logger.info("Deleted deployment entity %s", dep_id)
         except NemoEntityNotFoundError:
             logger.debug("Deployment entity %s already deleted", dep_id)
         except NemoEntityConflictError:
-            raise
+            logger.debug("Optimistic lock conflict deleting deployment %s - retry next cycle.", dep_id)
         except Exception:
             logger.exception("Failed to delete deployment entity %s", dep_id)
 
@@ -282,14 +302,6 @@ class DeploymentReconciler:
                 labels=labels,
                 backend_config=config.backend_config.model_dump(by_alias=True, exclude_none=True),
             )
-            message = (
-                f"Recovering deployment — backend resources recreated "
-                f"(attempt {attempt}/{limits.max_attempts}). {status_update.status_message}"
-            )
-            status_update = status_update.model_copy(update={"status_message": message})
-            await self._update_deployment_status(deployment, status_update)
-        except NemoEntityConflictError:
-            raise
         except Exception as exc:
             logger.exception("Drift recovery failed for %s", dep_id)
             await self._update_deployment_status(
@@ -299,6 +311,13 @@ class DeploymentReconciler:
                     status_message=(f"Recovery attempt {attempt}/{limits.max_attempts} failed: {exc}. Will retry."),
                 ),
             )
+            return
+        message = (
+            f"Recovering deployment — backend resources recreated "
+            f"(attempt {attempt}/{limits.max_attempts}). {status_update.status_message}"
+        )
+        status_update = status_update.model_copy(update={"status_message": message})
+        await self._update_deployment_status(deployment, status_update)
 
     def _controller_recovery_limits(self) -> DriftRecoveryLimits:
         ctrl = self._controller_config
@@ -439,10 +458,7 @@ class DeploymentReconciler:
         await self._save(deployment)
 
     async def _save(self, deployment: Deployment) -> None:
-        try:
-            await self._entities.update(deployment)
-        except NemoEntityConflictError:
-            raise
+        await self._entities.update(deployment)
 
 
 def _starting_timestamp(deployment: Deployment) -> datetime | None:

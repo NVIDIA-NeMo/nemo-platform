@@ -64,3 +64,23 @@ async def test_invoke_agent_config_once_creates_local_workspace_dir(tmp_path: Pa
     agent_config = AgentConfig.model_validate(config)
     with patch("nemo_agents_plugin.fabric.invocation.run_fabric_agent_once", _run_fabric_agent_once):
         await invoke_agent_config_once(agent_config, ["one"], base_dir=tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_invoke_agent_config_once_rejects_absolute_local_workspace(tmp_path: Path) -> None:
+    config = _agent_config()
+    config["environment"] = {"workspace": str(tmp_path.parent / "outside")}
+    agent_config = AgentConfig.model_validate(config)
+
+    with pytest.raises(ValueError, match="Local workspace path must be relative"):
+        await invoke_agent_config_once(agent_config, ["one"], base_dir=tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_invoke_agent_config_once_rejects_workspace_traversal(tmp_path: Path) -> None:
+    config = _agent_config()
+    config["environment"] = {"workspace": "../../outside"}
+    agent_config = AgentConfig.model_validate(config)
+
+    with pytest.raises(ValueError, match="Local workspace path must remain within"):
+        await invoke_agent_config_once(agent_config, ["one"], base_dir=tmp_path)

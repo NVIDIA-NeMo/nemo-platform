@@ -111,6 +111,12 @@ nemo-platform:
     volcanoEnabled: false
   postgresql:
     enabled: false
+  clickhouse:
+    enabled: false
+  externalClickhouse:
+    host: unused-clickhouse
+    existingSecret: shared-postgresql
+    existingSecretPasswordKey: nemo-password
   externalDatabase:
     host: shared-postgresql
     port: 5432
@@ -130,6 +136,10 @@ nemo-platform:
     serviceAccount:
       create: true
       name: nemo
+    extraArgs:
+      - "--service-group=core"
+    env:
+      NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE: "/etc/nmp/workload-token/private-key.pem"
     extraVolumes:
       - name: workload-token-signing-key
         secret:
@@ -178,6 +188,8 @@ nemo-platform:
       - name: workload-token-tls
         secret:
           secretName: *workloadTokenTlsSecretName
+    timeouts:
+      upstreamIdle: "4s"
     configOverride: '{{ include "nemo-platform-authentik.envoyConfig" . }}'
   platformConfig:
     auth:
@@ -188,6 +200,12 @@ nemo-platform:
       policy_data_refresh_interval: 2
       bundle_cache_seconds: 15
       admin_email: "admin@example.com"
+      token_signing:
+        issuer: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "nemo-platform-envoy" "namespace" .Values.envoyProxy.serviceNamespace "scheme" "https" "port" 8080) }}/apis/auth'
+        key_id: "nemo-platform-signing"
+        private_key_file: "/etc/nmp/workload-token/private-key.pem"
+      access_keys:
+        enabled: false
       oidc:
         enabled: true
         issuer: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "authentik-server" "scheme" "http") }}/application/o/nemo-cli/'
@@ -202,10 +220,12 @@ nemo-platform:
         workload_client_id: "nemo-platform-workload"
         workload_audience: "nemo-platform"
         workload_scope: "openid email groups"
-        workload_token_issuer: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "nemo-platform-envoy" "namespace" .Values.envoyProxy.serviceNamespace "scheme" "https" "port" 8080) }}/apis/auth'
         workload_token_endpoint: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "nemo-platform-envoy" "namespace" .Values.envoyProxy.serviceNamespace "scheme" "https" "port" 8080) }}/apis/auth/token'
-        workload_token_key_id: "nemo-workload-exchange"
-        workload_token_private_key_file: "/etc/nmp/workload-token/private-key.pem"
+        workload_subject_jwks_uri: '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "authentik-server" "scheme" "http") }}/application/o/nemo-workload/jwks/'
+        workload_subject_issuers:
+          - '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "authentik-server" "scheme" "http") }}/application/o/nemo-workload/'
+          - '{{ include "nemo-platform-authentik.serviceUrl" (dict "root" . "serviceName" "nemo-platform-envoy" "namespace" .Values.envoyProxy.serviceNamespace "scheme" "https" "port" 8080) }}/application/o/nemo-workload/'
+          - '{{ include "nemo-platform-authentik.publicGatewayUrl" . }}/application/o/nemo-workload/'
         workload_kubernetes_token_review_enabled: true
         subject_claim: "sub"
         email_claim: "email"

@@ -19,6 +19,7 @@ from typing import ClassVar, cast
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_rl_plugin.schema import RlJobInput
 from nemo_rl_plugin.transform import transform_input_to_output
 from nmp.customization_common.contributor.jobs import BaseSubmitJob, require_distributed_runtime
@@ -63,7 +64,10 @@ class RlJob(BaseSubmitJob):
         del entity_client, options
         require_distributed_runtime(cls.runtime_label)
         canonical = spec if isinstance(spec, RlJobOutput) else RlJobOutput.model_validate(spec.model_dump())
-        canonical.validate_for_training()
+        try:
+            canonical.validate_for_training()
+        except ValueError as e:
+            raise PlatformJobCompilationError(str(e)) from e
 
         # Leave ``None`` when unset so the compiler can default per topology.
         execution_profile = canonical.training.execution_profile or profile

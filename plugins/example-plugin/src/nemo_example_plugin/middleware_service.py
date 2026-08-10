@@ -256,6 +256,14 @@ def build_middleware_config_router() -> APIRouter:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Middleware config '{name}' not found in workspace '{workspace}'.",
             ) from exc
+        except NemoEntityConflictError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Middleware config '{name}' was modified by another request in workspace '{workspace}'. "
+                    "Refresh the config and try again."
+                ),
+            ) from exc
         except Exception:
             logger.exception("Failed to delete middleware config '%s'", name)
             raise HTTPException(status_code=500, detail="Failed to delete middleware config.")

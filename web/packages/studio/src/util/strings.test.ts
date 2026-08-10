@@ -1,7 +1,19 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { capitalize, formatKeyLabel, parseCSV } from '@studio/util/strings';
+import { capitalize, formatKeyLabel, parseCSV, trimToUndefined } from '@studio/util/strings';
+
+describe('#trimToUndefined', () => {
+  it.each([
+    ['  hello  ', 'hello'],
+    ['world', 'world'],
+    ['   ', undefined],
+    ['', undefined],
+    [undefined, undefined],
+  ])('trims "%s" to "%s"', (input, expected) => {
+    expect(trimToUndefined(input)).toBe(expected);
+  });
+});
 
 describe('#formatKeyLabel', () => {
   it.each([

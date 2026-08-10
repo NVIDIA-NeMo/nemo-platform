@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -431,14 +432,17 @@ class TestStopInstance:
         assert result.stopped_pids == []
 
     def test_stops_running_process(self, base_dir: Path) -> None:
-        proc = subprocess.Popen(
-            [sys.executable, "-c", "import time; time.sleep(60)"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        scope = "stop-test"
+        fd: int | None = None
+        proc: subprocess.Popen[bytes] | None = None
         try:
-            scope = "stop-test"
             fd = acquire_lock(scope, base_dir=base_dir)
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(fd,),
+            )
             desc = InstanceDescriptor(
                 pid=proc.pid,
                 config=PlatformAppConfig(scope=scope),
@@ -448,14 +452,63 @@ class TestStopInstance:
             write_descriptor(desc, base_dir=base_dir)
 
             os.close(fd)
+            fd = None
 
             result = stop_instance(scope, base_dir=base_dir, timeout=5.0)
             assert proc.pid in result.stopped_pids
             proc.wait(timeout=5)
             assert proc.poll() is not None
+            assert not is_instance_alive(scope, base_dir=base_dir)
+            assert read_descriptor(scope, base_dir=base_dir) is None
         finally:
-            if proc.poll() is None:
+            if fd is not None:
+                os.close(fd)
+            if proc is not None and proc.poll() is None:
                 proc.kill()
+                proc.wait(timeout=5)
+
+    def test_preserves_descriptor_while_lock_remains_held(self, base_dir: Path) -> None:
+        scope = "lock-still-held"
+        fd: int | None = None
+        lock_holder: subprocess.Popen[bytes] | None = None
+        target: subprocess.Popen[bytes] | None = None
+        try:
+            fd = acquire_lock(scope, base_dir=base_dir)
+            lock_holder = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(fd,),
+            )
+            target = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            os.close(fd)
+            fd = None
+
+            desc = InstanceDescriptor(
+                pid=target.pid,
+                config=PlatformAppConfig(scope=scope),
+                mode="background",
+                create_time=psutil.Process(target.pid).create_time(),
+            )
+            write_descriptor(desc, base_dir=base_dir)
+
+            result = stop_instance(scope, base_dir=base_dir, timeout=0.5)
+
+            assert target.pid in result.stopped_pids
+            assert is_instance_alive(scope, base_dir=base_dir)
+            assert read_descriptor(scope, base_dir=base_dir) == desc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            for proc in (target, lock_holder):
+                if proc is None:
+                    continue
+                if proc.poll() is None:
+                    proc.kill()
                 proc.wait(timeout=5)
 
     def test_cleans_up_stale_descriptor(self, base_dir: Path) -> None:
@@ -591,6 +644,7 @@ class TestStartBackground:
                     controllers=["jobs"],
                     host="127.0.0.1",
                     port=8080,
+                    keep_alive_timeout_seconds=12,
                     state_root=base_dir,
                 ),
             )
@@ -600,6 +654,8 @@ class TestStartBackground:
         assert call_kwargs["start_new_session"] is True
         assert call_kwargs["stdin"] == subprocess.DEVNULL
         assert call_kwargs["close_fds"] is True
+        args = mock_popen.call_args.args[0]
+        assert args[args.index("--keep-alive-timeout-seconds") + 1] == "12"
 
     def test_injects_nmp_data_dir_when_unset(self, base_dir: Path, monkeypatch) -> None:
         monkeypatch.delenv("NMP_DATA_DIR", raising=False)
@@ -840,6 +896,49 @@ class TestSweepOrphans:
             assert proc.pid in killed
             proc.wait(timeout=5)
             assert proc.poll() is not None
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    def test_warns_when_child_survives_sigkill(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A child that outlives SIGKILL is reported rather than silently dropped.
+
+        Nothing survives SIGKILL on demand — the real trigger is a process wedged
+        in uninterruptible sleep, which a test cannot arrange — so `wait_procs` is
+        stubbed to keep reporting the child as alive. The terminate/kill calls are
+        still real; only the observation is simulated.
+        """
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            time.sleep(0.3)
+            ps_child = psutil.Process(proc.pid)
+            # The first wait drives the SIGTERM -> SIGKILL escalation; the second
+            # is the one whose non-empty result trips the warning.
+            with (
+                patch.object(
+                    process_module.psutil,
+                    "wait_procs",
+                    side_effect=[([], [ps_child]), ([], [ps_child])],
+                ) as wait_procs,
+                caplog.at_level(logging.WARNING, logger=process_module.logger.name),
+            ):
+                killed = _sweep_orphans([ps_child], timeout=0.1)
+
+            # Two waits, not one. The second is the post-SIGKILL wait this PR adds,
+            # so a single-wait implementation must not be able to satisfy this test.
+            assert wait_procs.call_count == 2
+            assert proc.pid in killed
+            assert f"Orphaned child [{proc.pid}] still alive after SIGKILL" in caplog.text
+            proc.wait(timeout=5)
         finally:
             if proc.poll() is None:
                 proc.kill()

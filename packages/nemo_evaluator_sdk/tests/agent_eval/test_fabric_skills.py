@@ -8,14 +8,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric import skills as skills_module
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
     CODEX_SKILLS_DIR,
     SKILL_MODE_CODEX_SKILLS_DIR,
     SKILL_MODE_NATIVE,
-    SKILL_PROFILE_NAME,
     AgentSkill,
     SkillInjectionError,
     install_skill,
+    install_skills,
     native_skills_route,
     resolve_skill_mode,
 )
@@ -103,7 +104,7 @@ def test_install_native_stages_named_dir_and_overlay(tmp_path: Path) -> None:
 
     installation = install_skill(
         skill=AgentSkill.from_directory(_make_bundle(tmp_path / "src")),
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=workspace,
         skill_stage_dir=stage,
@@ -115,9 +116,7 @@ def test_install_native_stages_named_dir_and_overlay(tmp_path: Path) -> None:
     assert not (workspace / "SKILL.md").exists()
     assert not (workspace / ".agents").exists()
 
-    overlay = installation.profiles[0]
-    assert overlay["name"] == SKILL_PROFILE_NAME
-    assert overlay["skills"] == {"paths": [str(skill_root)]}
+    assert installation.skill_paths == [str(skill_root)]
 
     prov = installation.provenance
     assert prov["name"] == "code-review"
@@ -132,7 +131,7 @@ def test_install_native_copies_directory_tree(tmp_path: Path) -> None:
 
     install_skill(
         skill=AgentSkill.from_directory(src),
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=tmp_path / "workspace",
         skill_stage_dir=stage,
@@ -150,7 +149,7 @@ def test_install_codex_places_under_agents_skills(tmp_path: Path) -> None:
 
     installation = install_skill(
         skill=AgentSkill.from_directory(_make_bundle(tmp_path / "src")),
-        adapter_id="nvidia.fabric.codex.cli",
+        adapter_id="nvidia.fabric.codex",
         mode=SKILL_MODE_CODEX_SKILLS_DIR,
         workspace_dir=workspace,
         skill_stage_dir=tmp_path / "stage",
@@ -159,8 +158,8 @@ def test_install_codex_places_under_agents_skills(tmp_path: Path) -> None:
     # Codex discovers agentskills bundles from .agents/skills/ in its working directory.
     skill_md = workspace / ".agents" / "skills" / "code-review" / "SKILL.md"
     assert "Be thorough." in skill_md.read_text(encoding="utf-8")
-    # No profile overlay: placement in the workspace is the delivery mechanism.
-    assert installation.profiles == []
+    # No skills path: placement in the workspace is the delivery mechanism.
+    assert installation.skill_paths == []
     assert installation.provenance["mode"] == SKILL_MODE_CODEX_SKILLS_DIR
     assert installation.provenance["location"] == f"{CODEX_SKILLS_DIR}/code-review"
 
@@ -174,7 +173,7 @@ def test_codex_bundle_does_not_collide_with_workspace_root(tmp_path: Path) -> No
 
     install_skill(
         skill=AgentSkill.from_directory(src),
-        adapter_id="nvidia.fabric.codex.cli",
+        adapter_id="nvidia.fabric.codex",
         mode=SKILL_MODE_CODEX_SKILLS_DIR,
         workspace_dir=workspace,
         skill_stage_dir=tmp_path / "stage",
@@ -184,21 +183,18 @@ def test_codex_bundle_does_not_collide_with_workspace_root(tmp_path: Path) -> No
     assert (workspace / ".agents" / "skills" / "collide" / "data.csv").read_text(encoding="utf-8") == "skill payload"
 
 
-def test_install_native_preserves_existing_skill_paths(tmp_path: Path) -> None:
-    # Fabric applies profile skills.paths last-wins, so the overlay must carry the pre-existing paths
-    # (order-preserved) alongside the evaluated skill, or the treated arm would drop them.
+def test_install_native_returns_only_the_staged_path(tmp_path: Path) -> None:
+    # Preserving config-declared skills is FabricConfig.add_skill_path's job (it appends and
+    # de-duplicates), so installation reports only what it staged and never re-lists prior paths.
     installation = install_skill(
         skill=AgentSkill.from_directory(_make_bundle(tmp_path / "src")),
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=tmp_path / "workspace",
         skill_stage_dir=tmp_path / "stage",
-        existing_skill_paths=["/pre/a", "/pre/b", "/pre/a"],  # duplicate is collapsed
     )
 
-    paths = installation.profiles[0]["skills"]["paths"]
-    assert paths[:2] == ["/pre/a", "/pre/b"]
-    assert paths[-1] == str(tmp_path / "stage" / "code-review")
+    assert installation.skill_paths == [str(tmp_path / "stage" / "code-review")]
 
 
 def test_install_native_recreates_stale_stage(tmp_path: Path) -> None:
@@ -207,7 +203,7 @@ def test_install_native_recreates_stale_stage(tmp_path: Path) -> None:
     stage = tmp_path / "stage"
     install_skill(
         skill=AgentSkill.from_directory(_make_bundle(tmp_path / "v1", extra={"old.md": "stale"})),
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=tmp_path / "workspace",
         skill_stage_dir=stage,
@@ -216,7 +212,7 @@ def test_install_native_recreates_stale_stage(tmp_path: Path) -> None:
 
     install_skill(
         skill=AgentSkill.from_directory(_make_bundle(tmp_path / "v2")),  # no old.md
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=tmp_path / "workspace",
         skill_stage_dir=stage,
@@ -235,7 +231,7 @@ def test_install_codex_rejects_reserved_path_collision(tmp_path: Path) -> None:
     with pytest.raises(SkillInjectionError, match="reserved path"):
         install_skill(
             skill=AgentSkill.from_directory(_make_bundle(tmp_path / "src")),
-            adapter_id="nvidia.fabric.codex.cli",
+            adapter_id="nvidia.fabric.codex",
             mode=SKILL_MODE_CODEX_SKILLS_DIR,
             workspace_dir=workspace,
             skill_stage_dir=tmp_path / "stage",
@@ -252,16 +248,95 @@ def test_hash_is_content_sensitive(tmp_path: Path) -> None:
 
     a = install_skill(
         skill=AgentSkill.from_directory(one),
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=tmp_path / "wa",
         skill_stage_dir=tmp_path / "sa",
     )
     b = install_skill(
         skill=AgentSkill.from_directory(two),
-        adapter_id="nvidia.fabric.hermes.sdk",
+        adapter_id="nvidia.fabric.hermes",
         mode=SKILL_MODE_NATIVE,
         workspace_dir=tmp_path / "wb",
         skill_stage_dir=tmp_path / "sb",
     )
     assert a.provenance["hash"] != b.provenance["hash"]
+
+
+def test_install_skills_rolls_back_staged_bundles_on_failure(tmp_path: Path) -> None:
+    # All-or-nothing: a later skill failing to stage rolls back the bundles already staged in this call,
+    # so a partial skill set never lingers on disk.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    (tmp_path / "missing").mkdir()
+    bad = AgentSkill(name="bad", directory=tmp_path / "missing")  # no SKILL.md -> stages fail
+    stage_dir = tmp_path / "stage"
+
+    with pytest.raises(SkillInjectionError):
+        install_skills(
+            skills=[good, bad],
+            adapter_id="nvidia.fabric.hermes",
+            mode=SKILL_MODE_NATIVE,
+            workspace_dir=tmp_path / "ws",
+            skill_stage_dir=stage_dir,
+        )
+
+    # The first skill was staged, then rolled back when the second failed.
+    assert not (stage_dir / "good").exists()
+
+
+def test_install_skills_rolls_back_the_bundle_that_failed_mid_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # install_skill can raise AFTER writing files (a copytree failing partway, an unreadable file while
+    # hashing). That skill's own partially staged bundle must be rolled back too, not just the bundles
+    # from earlier iterations. Hashing runs once the bundle is fully copied, so failing it there puts
+    # real files on disk before the error.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    late = AgentSkill.from_directory(_make_bundle(tmp_path / "src2", name="late"))
+    stage_dir = tmp_path / "stage"
+
+    real_hash = skills_module._hash_directory
+
+    def _fail_on_late(directory: Path) -> str:
+        if directory.name == "late":
+            raise OSError("unreadable file in bundle")
+        return real_hash(directory)
+
+    monkeypatch.setattr(skills_module, "_hash_directory", _fail_on_late)
+
+    with pytest.raises(OSError):
+        install_skills(
+            skills=[good, late],
+            adapter_id="nvidia.fabric.hermes",
+            mode=SKILL_MODE_NATIVE,
+            workspace_dir=tmp_path / "ws",
+            skill_stage_dir=stage_dir,
+        )
+
+    assert not (stage_dir / "good").exists()  # earlier bundle rolled back, as before
+    assert not (stage_dir / "late").exists()  # ...and so is the one that failed after staging files
+
+
+def test_install_skills_rollback_never_deletes_preexisting_seed_file(tmp_path: Path) -> None:
+    # Codex reserved-path collision: the second skill's target already holds a task-seeded file. Rollback
+    # must remove only the bundle THIS call staged (the first skill), never the pre-existing seed file.
+    good = AgentSkill.from_directory(_make_bundle(tmp_path / "src", name="good"))
+    collide = AgentSkill.from_directory(_make_bundle(tmp_path / "src2", name="collide"))
+    workspace = tmp_path / "ws"
+    seeded = workspace / CODEX_SKILLS_DIR / "collide"  # a task-seeded file on the reserved codex path
+    seeded.mkdir(parents=True)
+    (seeded / "seed.txt").write_text("task data", encoding="utf-8")
+
+    with pytest.raises(SkillInjectionError):
+        install_skills(
+            skills=[good, collide],
+            adapter_id="nvidia.fabric.codex",
+            mode=SKILL_MODE_CODEX_SKILLS_DIR,
+            workspace_dir=workspace,
+            skill_stage_dir=tmp_path / "stage",
+        )
+
+    # The staged first bundle is rolled back...
+    assert not (workspace / CODEX_SKILLS_DIR / "good").exists()
+    # ...but the pre-existing task-seeded file is untouched.
+    assert (seeded / "seed.txt").read_text(encoding="utf-8") == "task data"

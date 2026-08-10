@@ -54,7 +54,7 @@ from nemo_platform_plugin.dependencies import get_entity_client, get_sdk_client
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 from nemo_platform_plugin.jobs.result_manager import download_from_result_info
 from nemo_platform_plugin.jobs.schemas import (
@@ -68,12 +68,13 @@ from nemo_platform_plugin.jobs.types import (
     CreatePlatformJobRequest,
     JobLogsQueryParams,
     ListJobsQueryParams,
+    validate_output_location,
 )
 from nemo_platform_plugin.jobs.types import (
     PlatformJobResponse as PlatformJob,
 )
 from nemo_platform_plugin.schema import DatetimeFilter, Filter, Page, PaginationData, StringFilter
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,9 @@ class BaseJobRequest(BaseModel, Generic[JobConfigT]):
     spec: JobConfigT
     ownership: dict | None = None
     custom_fields: dict | None = None
+    output_location: str | None = None
+
+    _validate_output_location = field_validator("output_location")(validate_output_location)
 
 
 class BaseJob(BaseModel, Generic[JobConfigT]):
@@ -666,6 +670,7 @@ async def _compile_platform_spec(
 
     Raises:
         HTTPException(422): If the compiler raises PlatformJobCompilationError.
+        HTTPException(503): If the compiler raises PlatformJobDependencyUnavailableError.
         PermissionError: If the compiler raises a PermissionError.
     """
     try:
@@ -683,6 +688,11 @@ async def _compile_platform_spec(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e),
+        ) from e
+    except PlatformJobDependencyUnavailableError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Temporarily unable to compile {service_name} job spec: {str(e)}",
         ) from e
     except PlatformJobCompilationError as e:
         raise HTTPException(
@@ -900,6 +910,8 @@ def job_route_factory(
                 create_fields["custom_fields"] = request.custom_fields
             if request.project:
                 create_fields["project"] = request.project
+            if request.output_location is not None:
+                create_fields["output_location"] = request.output_location
 
             jobs = client_from_platform(sdk, AsyncJobsClient)
             job_resp = (

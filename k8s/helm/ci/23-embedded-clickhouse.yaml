@@ -1,0 +1,11 @@
+clickhouse:
+  persistence:
+    size: 50Gi
+    storageClass: fast-ssd
+  podAnnotations:
+    example.com/role: telemetry-store
+  podLabels:
+    workload: intake
+  service:
+    annotations:
+      example.com/service: clickhouse

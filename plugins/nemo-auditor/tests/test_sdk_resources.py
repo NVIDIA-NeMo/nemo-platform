@@ -15,7 +15,10 @@ actually shells out to garak; we just verify the SDK builds the right
 
 from __future__ import annotations
 
+import io
+import tarfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,6 +33,7 @@ from nemo_auditor.entities import (
     AuditTarget,
 )
 from nemo_auditor.sdk import AsyncAuditorPluginResource, AuditorPluginResource
+from nemo_auditor.sdk_resources.job_resources import AsyncAuditorJobResource, AuditorJobResource
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 NOW = datetime.now(timezone.utc)
@@ -397,7 +401,8 @@ class TestSyncJobMethods:
 
         result = resource.submit(config="ws/my-cfg", target="ws/my-tgt", workspace="ws")
 
-        assert result == _JOB_PAYLOAD
+        assert isinstance(result, AuditorJobResource)
+        assert result.name == "audit-job-abc123"
         platform._client.post.assert_called_once()
         url = platform._client.post.call_args.args[0]
         body = platform._client.post.call_args.kwargs["json"]
@@ -414,8 +419,9 @@ class TestSyncJobMethods:
 
         cfg = AuditConfig(name="cfg-1", workspace="default")
         tgt = AuditTarget(name="tgt-1", workspace="default", type="nim", model="llama")
-        resource.submit(config=cfg, target=tgt, workspace="default")
+        result = resource.submit(config=cfg, target=tgt, workspace="default")
 
+        assert isinstance(result, AuditorJobResource)
         body = platform._client.post.call_args.kwargs["json"]
         assert isinstance(body["spec"]["config"], dict)
         assert body["spec"]["config"]["name"] == "cfg-1"
@@ -427,8 +433,9 @@ class TestSyncJobMethods:
         platform._client.post.return_value = _ok_response(_JOB_PAYLOAD, status_code=201)
         resource = AuditorPluginResource(cast(NeMoPlatform, platform))
 
-        resource.submit(config="my-cfg", target="my-tgt")
+        result = resource.submit(config="my-cfg", target="my-tgt")
 
+        assert isinstance(result, AuditorJobResource)
         url = platform._client.post.call_args.args[0]
         assert "/workspaces/default/" in url
 
@@ -467,7 +474,8 @@ class TestAsyncJobMethods:
 
         result = await resource.submit(config="ws/my-cfg", target="ws/my-tgt", workspace="ws")
 
-        assert result == _JOB_PAYLOAD
+        assert isinstance(result, AsyncAuditorJobResource)
+        assert result.name == "audit-job-abc123"
         url = platform._client.post.call_args.args[0]
         body = platform._client.post.call_args.kwargs["json"]
         assert url == "http://test:8000/apis/auditor/v2/workspaces/ws/jobs/audit"
@@ -551,3 +559,222 @@ async def test_async_run_resolves_names_and_calls_scheduler_in_thread() -> None:
     assert spec_dict["target"]["name"] == "my-tgt"
     assert call.kwargs["workspace"] == "default"
     assert call.kwargs["async_sdk"] is platform
+
+
+# ---------------------------------------------------------------------------
+# AuditorJobResource
+# ---------------------------------------------------------------------------
+
+_STATUS_PAYLOAD = {"name": "audit-job-abc123", "status": "active", "workspace": "default"}
+
+
+def _make_tar_bytes() -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        content = b"report data"
+        info = tarfile.TarInfo(name="report.jsonl")
+        info.size = len(content)
+        tar.addfile(info, io.BytesIO(content))
+    return buf.getvalue()
+
+
+class TestAuditorJobResource:
+    def _make_resource(self) -> tuple[_SyncPlatform, AuditorJobResource]:
+        platform = _SyncPlatform()
+        resource = AuditorJobResource(
+            job_name="audit-job-abc123",
+            platform=cast(NeMoPlatform, platform),
+            workspace="default",
+        )
+        return platform, resource
+
+    def test_name_property(self) -> None:
+        _, resource = self._make_resource()
+        assert resource.name == "audit-job-abc123"
+
+    def test_get_job_hits_named_url(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response(_JOB_PAYLOAD)
+
+        result = resource.get_job()
+
+        assert result == _JOB_PAYLOAD
+        platform._client.get.assert_called_once_with(
+            "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit/audit-job-abc123"
+        )
+
+    def test_get_job_status_hits_status_url(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "active"})
+
+        status = resource.get_job_status()
+
+        assert status == "active"
+        platform._client.get.assert_called_once_with(
+            "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit/audit-job-abc123/status"
+        )
+
+    def test_check_if_complete_returns_true_when_completed(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "completed"})
+        assert resource.check_if_complete() is True
+
+    def test_check_if_complete_returns_false_when_active(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "active"})
+        assert resource.check_if_complete() is False
+
+    def test_check_if_complete_raises_when_requested(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "error"})
+        with pytest.raises(RuntimeError):
+            resource.check_if_complete(raise_if_not_complete=True)
+
+    def test_wait_until_done_polls_until_completed(self) -> None:
+        platform, resource = self._make_resource()
+        # Status sequence: active → completed; logs return empty pages each time.
+        status_responses = [
+            _ok_response({"status": "active"}),
+            _ok_response({"status": "active"}),
+            _ok_response({"status": "completed"}),
+        ]
+        logs_response = _ok_response({"data": [], "next_page": None})
+        platform._client.get.side_effect = (
+            status_responses[:1] + [logs_response, status_responses[1]] + [logs_response, status_responses[2]]
+        )
+
+        with patch("nemo_auditor.sdk_resources.job_resources._pause"):
+            resource.wait_until_done()
+
+        # Final status call resolves to "completed" — no RuntimeError raised.
+
+    def test_wait_until_done_exits_on_terminal_failure(self) -> None:
+        platform, resource = self._make_resource()
+        status_responses = [
+            _ok_response({"status": "active"}),
+            _ok_response({"status": "error"}),
+        ]
+        logs_response = _ok_response({"data": [], "next_page": None})
+        platform._client.get.side_effect = [
+            status_responses[0],
+            logs_response,
+            status_responses[1],
+        ]
+
+        with patch("nemo_auditor.sdk_resources.job_resources._pause"):
+            resource.wait_until_done()  # must not raise — just logs error and returns
+
+    def test_download_artifacts_raises_when_not_completed(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "active"})
+
+        with pytest.raises(RuntimeError, match="status 'active'"):
+            resource.download_artifacts()
+
+    def test_download_artifacts_extracts_tarball(self, tmp_path: Path) -> None:
+        platform, resource = self._make_resource()
+        status_resp = _ok_response({"status": "completed"})
+        tar_resp = MagicMock(spec=httpx.Response)
+        tar_resp.raise_for_status.return_value = None
+        tar_resp.content = _make_tar_bytes()
+        platform._client.get.side_effect = [status_resp, tar_resp]
+
+        result = resource.download_artifacts(path=tmp_path)
+
+        assert result == tmp_path
+        platform._client.get.assert_called_with(
+            "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit/audit-job-abc123/results/artifacts/download"
+        )
+
+    def test_poll_safe_returns_fallback_on_transient_error(self) -> None:
+        _, resource = self._make_resource()
+
+        def failing() -> str:
+            raise ConnectionError("blip")
+
+        result = resource._poll_safe(failing, "cached")
+        assert result == "cached"
+        assert resource._consecutive_poll_errors == 1
+
+    def test_poll_safe_raises_after_max_consecutive_errors(self) -> None:
+        _, resource = self._make_resource()
+        resource._consecutive_poll_errors = 4
+
+        def failing() -> str:
+            raise ConnectionError("blip")
+
+        with pytest.raises(ConnectionError):
+            resource._poll_safe(failing, "cached")
+        assert resource._consecutive_poll_errors == 0
+
+
+@pytest.mark.asyncio
+class TestAsyncAuditorJobResource:
+    def _make_resource(self) -> tuple[_AsyncPlatform, AsyncAuditorJobResource]:
+        platform = _AsyncPlatform()
+        resource = AsyncAuditorJobResource(
+            job_name="audit-job-abc123",
+            platform=cast(AsyncNeMoPlatform, platform),
+            workspace="default",
+        )
+        return platform, resource
+
+    async def test_name_property(self) -> None:
+        _, resource = self._make_resource()
+        assert resource.name == "audit-job-abc123"
+
+    async def test_get_job_status_hits_status_url(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "completed"})
+
+        status = await resource.get_job_status()
+
+        assert status == "completed"
+        platform._client.get.assert_called_once_with(
+            "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit/audit-job-abc123/status"
+        )
+
+    async def test_check_if_complete_returns_true_when_completed(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "completed"})
+        assert await resource.check_if_complete() is True
+
+    async def test_check_if_complete_raises_when_requested(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "cancelled"})
+        with pytest.raises(RuntimeError):
+            await resource.check_if_complete(raise_if_not_complete=True)
+
+    async def test_wait_until_done_polls_until_completed(self) -> None:
+        platform, resource = self._make_resource()
+        status_responses = [
+            _ok_response({"status": "active"}),
+            _ok_response({"status": "active"}),
+            _ok_response({"status": "completed"}),
+        ]
+        logs_response = _ok_response({"data": [], "next_page": None})
+        platform._client.get.side_effect = (
+            status_responses[:1] + [logs_response, status_responses[1]] + [logs_response, status_responses[2]]
+        )
+
+        with patch("nemo_auditor.sdk_resources.job_resources._async_pause", new=AsyncMock()):
+            await resource.wait_until_done()
+
+    async def test_download_artifacts_raises_when_not_completed(self) -> None:
+        platform, resource = self._make_resource()
+        platform._client.get.return_value = _ok_response({"status": "pending"})
+
+        with pytest.raises(RuntimeError, match="status 'pending'"):
+            await resource.download_artifacts()
+
+    async def test_download_artifacts_extracts_tarball(self, tmp_path: Path) -> None:
+        platform, resource = self._make_resource()
+        status_resp = _ok_response({"status": "completed"})
+        tar_resp = MagicMock(spec=httpx.Response)
+        tar_resp.raise_for_status.return_value = None
+        tar_resp.content = _make_tar_bytes()
+        platform._client.get.side_effect = [status_resp, tar_resp]
+
+        result = await resource.download_artifacts(path=tmp_path)
+
+        assert result == tmp_path

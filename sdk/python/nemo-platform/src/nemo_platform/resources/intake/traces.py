@@ -130,8 +130,7 @@ class TracesResource(SyncAPIResource):
 
         Args:
           filter: Filter root-span-backed traces by id, session_id, root status, root span
-              started_at, evaluation_id (or its deprecated alias experiment_id), and
-              test_case_id.
+              started_at, evaluation_id, and test_case_id.
 
           mode: Response mode. summary returns root-span fields without payloads or rollups;
               preview adds token, cost, and span-count rollups plus 300-character input/output
@@ -265,8 +264,7 @@ class AsyncTracesResource(AsyncAPIResource):
 
         Args:
           filter: Filter root-span-backed traces by id, session_id, root status, root span
-              started_at, evaluation_id (or its deprecated alias experiment_id), and
-              test_case_id.
+              started_at, evaluation_id, and test_case_id.
 
           mode: Response mode. summary returns root-span fields without payloads or rollups;
               preview adds token, cost, and span-count rollups plus 300-character input/output

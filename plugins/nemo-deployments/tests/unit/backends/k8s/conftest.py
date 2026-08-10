@@ -38,7 +38,11 @@ def k8s_backend(
     mock_k8s_clients: MagicMock,
     mock_entities: AsyncMock,
 ) -> Iterator[K8sDeploymentBackend]:
-    with patch("nemo_deployments_plugin.backends.k8s.backend.KubernetesClients", return_value=mock_k8s_clients):
+    with (
+        patch("nemo_deployments_plugin.backends.k8s.backend.KubernetesClients", return_value=mock_k8s_clients),
+        patch("nemo_deployments_plugin.backends.k8s.backend.client_from_platform"),
+        patch("nemo_deployments_plugin.backends.k8s.backend.NemoEntitiesClient", return_value=mock_entities),
+    ):
         backend = K8sDeploymentBackend(
             mock_sdk,
             {"default_namespace": "nemo-deployments", "request_timeout": 30},

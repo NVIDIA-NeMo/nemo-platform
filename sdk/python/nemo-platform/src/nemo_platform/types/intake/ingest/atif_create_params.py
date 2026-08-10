@@ -24,7 +24,6 @@ from .atif_step_param import AtifStepParam
 from .atif_agent_param import AtifAgentParam
 from .atif_final_metrics_param import AtifFinalMetricsParam
 from ..evaluation_context_param import EvaluationContextParam
-from ..experiment_context_param import ExperimentContextParam
 
 __all__ = ["AtifCreateParams"]
 
@@ -46,12 +45,6 @@ class AtifCreateParams(TypedDict, total=False):
     `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
     evaluation_run_id, metadata) keeps ingesting without error rather than being
     rejected.
-    """
-
-    experiment_context: ExperimentContextParam
-    """Deprecated alias for :class:`EvaluationContext`.
-
-    Producers should send `evaluation_context`.
     """
 
     extra: Dict[str, object]

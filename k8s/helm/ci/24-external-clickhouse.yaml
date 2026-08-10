@@ -1,0 +1,11 @@
+clickhouse:
+  enabled: false
+
+externalClickhouse:
+  host: clickhouse.example.internal
+  port: 8443
+  secure: true
+  user: intake
+  database: intake
+  existingSecret: clickhouse-credentials
+  existingSecretPasswordKey: clickhouse-password

@@ -2,41 +2,56 @@ config_format: nemo-agents-spec-v1
 name: test-agent
 description: Test agent config
 
-default_harness: hermes
+instructions:
+  system:
+    content: You are a concise test assistant.
+
+default_harness: codex
 
 harnesses:
+  claude:
+    kind: claude
+    model:
+      provider: anthropic
+      model: anthropic/claude-sonnet-4-5
+    settings:
+      permission_mode: dontAsk
   hermes:
     kind: hermes
     model:
       provider: nvidia
       model: nvidia/nemotron-3-nano-30b-a3b
       api_key_env: NVIDIA_API_KEY
+      base_url: https://integrate.api.nvidia.com/v1
       temperature: 0.0
     settings:
-      base_url: https://integrate.api.nvidia.com/v1
-      max_iterations: 1
       max_tokens: 512
       reasoning_config:
         effort: none
-      enabled_toolsets: []
-      system_prompt: You are a concise test assistant.
+  deepagents:
+    kind: deepagents
+    settings:
+      deepagents: {}
   codex:
     kind: codex
     settings:
       sandbox: workspace-write
-      skip_git_repo_check: true
-      config_overrides:
-        model_reasoning_effort: high
+      reasoning_effort: high
 
 models:
   default:
-    provider: openai
-    model: openai/gpt-5.4
-
-prompts:
-  system: prompts/system.md
+    provider: nvidia
+    model: nvidia-nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
 
 skills:
+  paths: []
+
+mcp:
+  servers: {}
+
+tools:
+  blocked: []
 
 environment:
   workspace: ./workspace

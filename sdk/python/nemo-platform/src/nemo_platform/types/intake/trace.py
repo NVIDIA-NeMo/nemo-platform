@@ -21,7 +21,6 @@ from datetime import datetime
 from ..._models import BaseModel
 from .span_status import SpanStatus
 from .evaluation_context import EvaluationContext
-from .experiment_context import ExperimentContext
 
 __all__ = ["Trace"]
 
@@ -57,12 +56,6 @@ class Trace(BaseModel):
     `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
     evaluation_run_id, metadata) keeps ingesting without error rather than being
     rejected.
-    """
-
-    experiment_context: Optional[ExperimentContext] = None
-    """Deprecated alias for :class:`EvaluationContext`.
-
-    Producers should send `evaluation_context`.
     """
 
     input: Optional[str] = None

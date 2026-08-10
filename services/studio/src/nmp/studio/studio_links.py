@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Studio link destinations and MCP tool helpers for the coding-agent bridge."""
+"""Studio link destinations and MCP tool helpers for the copilot bridge."""
 
 from collections.abc import Mapping
 from copy import deepcopy
@@ -32,10 +32,10 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("workspace_home", "workspace_index"),
     ),
     "dashboard": StudioLinkDestination("Workspace dashboard", "/workspaces/{workspace}/dashboard"),
-    "code_agent": StudioLinkDestination(
-        "Code Agent",
-        "/workspaces/{workspace}/dashboard/code-agent",
-        aliases=("claude_code", "claude_code_chat", "coding_agent", "coding_agent_chat"),
+    "copilot": StudioLinkDestination(
+        "NeMo Copilot",
+        "/workspaces/{workspace}/dashboard/copilot",
+        aliases=("claude_code", "claude_code_chat", "copilot_chat"),
     ),
     "agents": StudioLinkDestination(
         "Agents",
@@ -235,17 +235,23 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         "/workspaces/{workspace}/intake/spans",
         aliases=("spans", "span_list", "intake_span_list"),
     ),
+    "intake_session": StudioLinkDestination(
+        "Session {session_id}",
+        "/workspaces/{workspace}/intake/sessions/{session_id}",
+        aliases=("session", "session_detail", "intake_session_detail"),
+        required_args=("session_id",),
+    ),
     "intake_trace": StudioLinkDestination(
-        "Trace {name}",
-        "/workspaces/{workspace}/intake/traces/{name}",
+        "Trace {trace_id}",
+        "/workspaces/{workspace}/intake/sessions/{session_id}?traceId={trace_id}",
         aliases=("trace", "trace_detail"),
-        requires_name=True,
+        required_args=("session_id", "trace_id"),
     ),
     "intake_span": StudioLinkDestination(
         "Span {span_id}",
-        "/workspaces/{workspace}/intake/traces/{trace_id}?spanId={span_id}",
+        "/workspaces/{workspace}/intake/sessions/{session_id}?traceId={trace_id}&spanId={span_id}",
         aliases=("span", "span_detail"),
-        required_args=("trace_id", "span_id"),
+        required_args=("session_id", "trace_id", "span_id"),
     ),
     "data_designer": StudioLinkDestination(
         "Data Designer",
@@ -308,6 +314,12 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("experiment_run",),
         required_args=("name", "experiment_name"),
     ),
+    "plugin": StudioLinkDestination(
+        "Plugin {name}",
+        "/workspaces/{workspace}/plugin/{name}",
+        aliases=("plugin_page", "plugin_ui"),
+        requires_name=True,
+    ),
 }
 
 _STUDIO_LINK_DESTINATION_ALIASES = {
@@ -340,12 +352,13 @@ _STUDIO_LINK_ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "experiment_name": ("experimentName", "experiment_id", "experimentId"),
     "file_path": ("file", "filePath", "file_path_encoded", "filePathEncoded", "path"),
+    "session_id": ("sessionId",),
     "trace_id": ("traceId",),
     "span_id": ("spanId", "name"),
 }
 
 _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
-    "code_agent": ("coding_agent_studio_enabled",),
+    "copilot": ("copilot_studio_enabled",),
     "agents": ("agents_enabled",),
     "agent": ("agents_enabled",),
     "agent_chat": ("agents_enabled",),
@@ -388,6 +401,7 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
     "intake": ("intake_enabled",),
     "intake_traces": ("intake_enabled",),
     "intake_spans": ("intake_enabled",),
+    "intake_session": ("intake_enabled",),
     "intake_trace": ("intake_enabled",),
     "intake_span": ("intake_enabled",),
     "data_designer": ("data_designer_enabled",),
@@ -405,7 +419,7 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
 }
 
 _STUDIO_LINK_DESTINATION_ANY_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
-    "dashboard": ("dashboard_enabled", "coding_agent_studio_enabled"),
+    "dashboard": ("dashboard_enabled", "copilot_studio_enabled"),
 }
 
 _STUDIO_FEATURE_FLAG_MAPPINGS = {
@@ -450,7 +464,11 @@ _STUDIO_LINK_TOOL: dict[str, Any] = {
             },
             "trace_id": {
                 "type": "string",
-                "description": "Trace ID for span-specific intake destinations.",
+                "description": "Trace ID for trace- and span-specific intake destinations.",
+            },
+            "session_id": {
+                "type": "string",
+                "description": "Session ID for session-, trace-, and span-specific intake destinations.",
             },
             "span_id": {
                 "type": "string",
@@ -549,8 +567,16 @@ def tool_for_destinations(destinations: Mapping[str, StudioLinkDestination]) -> 
         )
     if "model_chat" in destinations:
         description_parts.append("When the user wants to chat with or try a model, use destination='model_chat'.")
+    if "intake_session" in destinations:
+        description_parts.append("For an intake session link, use destination='intake_session' with session_id.")
+    if "intake_trace" in destinations:
+        description_parts.append(
+            "For an intake trace link, use destination='intake_trace' with session_id and trace_id."
+        )
     if "intake_span" in destinations:
-        description_parts.append("For an intake span link, use destination='intake_span' with trace_id and span_id.")
+        description_parts.append(
+            "For an intake span link, use destination='intake_span' with session_id, trace_id, and span_id."
+        )
     description_parts.append("Include the returned markdown link exactly in your final response.")
     tool["description"] = " ".join(description_parts)
     destination_schema = tool["inputSchema"]["properties"]["destination"]

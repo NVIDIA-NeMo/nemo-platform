@@ -93,10 +93,19 @@ class RunnerBackend(ABC):
         config: dict[str, Any],
         port: int,
         *,
+        agent: str = "",
         image: str | None = None,
         deployment_mode: DeploymentMode = "subprocess",
+        created_by: str | None = None,
     ) -> DeploymentInfo:
-        """Start the agent process; returns status="starting"."""
+        """Start the agent process; returns status="starting".
+
+        ``created_by`` is the principal id that created the deployment. When
+        platform auth is enabled, container-mode backends delegate the deployed
+        agent's platform calls to this principal (on-behalf-of) so its access is
+        scoped to what the creator can reach rather than the agents service
+        principal's full reach.
+        """
         ...
 
     @abstractmethod

@@ -2,19 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { IntakeSpansTable } from '@studio/components/IntakeLists/IntakeSpansTable';
+import { ROUTES } from '@studio/constants/routes';
 import { mockSpansPage } from '@studio/mocks/intake/telemetry';
 import { server } from '@studio/mocks/node';
+import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
+import { LocationDisplay } from '@studio/tests/util/LocationDisplay';
 import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useLocation } from 'react-router-dom';
-
-const LocationProbe = () => {
-  const location = useLocation();
-  return (
-    <output data-testid="trace-detail-location">{`${location.pathname}${location.search}`}</output>
-  );
-};
 
 describe('IntakeSpansTable', () => {
   it('shows bounded input and output summaries', async () => {
@@ -41,27 +36,27 @@ describe('IntakeSpansTable', () => {
     expect(requestedModes).toContain('preview');
   });
 
-  it('opens span rows in the trace detail route with the span deep link', async () => {
+  it('opens span rows in the session detail route with trace and span deep links', async () => {
     const user = userEvent.setup();
 
     renderRoute(undefined, {
       history: '/workspaces/default/intake/spans',
       routes: [
         {
-          path: '/workspaces/:workspace/intake/spans',
+          path: ROUTES.workspace.intakeSpans,
           element: <IntakeSpansTable workspace="default" />,
         },
         {
-          path: '/workspaces/:workspace/intake/traces/:traceId',
-          element: <LocationProbe />,
+          path: ROUTES.workspace.intakeSession,
+          element: <LocationDisplay />,
         },
       ],
     });
 
     await user.click(await screen.findByText('Answer customer policy question'));
 
-    expect(await screen.findByTestId('trace-detail-location')).toHaveTextContent(
-      '/workspaces/default/intake/traces/trace-agent-run-001?spanId=span-root-001'
+    expect(await screen.findByTestId(LOCATION_DISPLAY_TEST_ID)).toHaveTextContent(
+      '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001&spanId=span-root-001'
     );
   });
 
@@ -101,9 +96,9 @@ describe('IntakeSpansTable', () => {
     await screen.findByText('Answer customer policy question');
     await user.click(await screen.findByTestId('open-filters-button'));
 
-    expect(screen.getAllByText('Status').length).toBeGreaterThan(1);
+    expect(await screen.findByText('Trace ID')).toBeInTheDocument();
     expect(screen.getAllByText('Kind').length).toBeGreaterThan(1);
-    expect(screen.getByText('Trace ID')).toBeInTheDocument();
+    expect(screen.getAllByText('Status').length).toBeGreaterThan(1);
     expect(screen.getByText('Started At')).toBeInTheDocument();
     expect(screen.queryByText('Session ID')).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Search by span ID')).not.toBeInTheDocument();

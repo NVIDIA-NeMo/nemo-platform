@@ -13,6 +13,25 @@ from pathlib import Path
 from nemo_platform_ext.cli.commands.skills.base import Skill
 from nemo_platform_ext.cli.commands.skills.registry import _load_skills_cached, load_skills
 
+KNOWN_SKILL_PRECONDITIONS = frozenset(
+    {
+        "agent_config_exists",
+        "agent_design_complete",
+        "agent_spec_exists",
+        "agents_plugin_available",
+        "clickhouse_ready",
+        "evaluator_sdk_available",
+        "guardrails_plugin_available",
+        "nemo_cli_available",
+        "nemo_setup_complete",
+        "platform_running",
+        "provider_registered",
+        "secrets_configured",
+        "user_confirmation_required",
+        "workspace_exists",
+    }
+)
+
 
 def setup_function() -> None:
     """Drop both registry caches before every test.
@@ -41,6 +60,7 @@ class TestSkillDataclass:
         assert skill.description == "A test skill"
         assert skill.version == "0.1"
         assert skill.content == "# Test"
+        assert skill.preconditions == []
 
     def test_skill_has_source_dir(self):
         skill = Skill(
@@ -84,10 +104,34 @@ class TestLoadPlatformSkills:
             assert skill.raw.startswith("---")
 
     def test_each_skill_has_source_dir(self):
-        for name, skill in load_skills().items():
+        for skill in load_skills().values():
             assert skill.source_dir is not None
             assert skill.source_dir.is_dir()
             assert (skill.source_dir / "SKILL.md").exists()
+
+    def test_platform_skills_declare_known_preconditions(self):
+        skills_with_preconditions = []
+        for name, skill in load_skills().items():
+            if skill.source_plugin != "platform":
+                continue
+            if skill.preconditions:
+                skills_with_preconditions.append(name)
+            unknown = set(skill.preconditions) - KNOWN_SKILL_PRECONDITIONS
+            assert not unknown, f"{name} has unknown preconditions: {sorted(unknown)}"
+        assert skills_with_preconditions
+
+    def test_build_agent_templates_are_packaged(self):
+        skill = load_skills()["nemo-build-agent"]
+        assert skill.source_dir is not None
+
+        templates_dir = skill.source_dir / "references" / "templates"
+        assert (templates_dir / "agent.yml").is_file()
+        assert (templates_dir / "eval-job.json").is_file()
+
+    def test_model_selection_benchmark_cache_is_packaged(self):
+        skill = load_skills()["nemo-model-selection"]
+        assert skill.source_dir is not None
+        assert (skill.source_dir / "references" / "benchmark_cache.json").is_file()
 
     def test_returns_new_dict_each_call(self):
         """Verify callers can't corrupt the cached data."""

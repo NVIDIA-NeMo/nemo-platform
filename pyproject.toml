@@ -2,7 +2,7 @@
 name = "nemoplatform"
 description = "NeMo Platform"
 readme = "README.md"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 
@@ -17,7 +17,6 @@ classifiers = [
 
   "License :: OSI Approved :: Apache Software License",
 
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -35,7 +34,7 @@ dependencies = [
   "h11>=0.16.0",
   "protobuf<7.0.dev0,>=6.33.5", # fix for GHSA OOS
   "pyyaml>=6.0.2",
-  "pydantic>=2.10.6",
+  "pydantic>=2.12.0",
   "mypy-extensions==1.0.0",
   "tornado>=6.5.7",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
@@ -67,8 +66,15 @@ dependencies = [
 version = "0.0.0"
 
 [dependency-groups]
-# Optional Insights analyst plugin.
+# Insights analyst plugin convenience group.
 insights = ["nemo-insights-plugin"]
+# Experimentalist and Eval Author currently support Python 3.12 and 3.13. Both are listed
+# because insight mode imports Eval Author at module scope, while Eval Author still depends
+# back on Experimentalist for evaluator/trace helpers (see plugins/nemo-eval-author/README.md).
+experimentalist = [
+  "nemo-experimentalist-plugin ; python_full_version < '3.14'",
+  "nemo-eval-author-plugin ; python_full_version < '3.14'",
+]
 dev = [
   "pre-commit>=3.8.0",
   "pydantic-settings>=2.6.1",
@@ -169,6 +175,9 @@ enabled-plugins = [
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nemo-evaluator-plugin",
+  "nemo-insights-plugin",
+  "nemo-experimentalist-plugin ; python_full_version < '3.14'",
+  "nemo-eval-author-plugin ; python_full_version < '3.14'",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
   "nemo-safe-synthesizer-plugin",
@@ -177,6 +186,7 @@ enabled-plugins = [
   "nemo-deployments-plugin[docker,k8s]",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
+  "nemo-optimization-plugin",
   "nemo-unsloth-plugin",
   "nemo-rl-plugin",
 ]
@@ -204,6 +214,11 @@ core-services = [
 # Includes core services plus all application services
 functional-services = [
   { include-group = "core-services" },
+  # Ship the openshell deployment SDK in the nmp-api image only. The extra carries
+  # platform-restricted wheels (manylinux_2_39 / macOS 13 arm64) and is deliberately
+  # kept out of `enabled-plugins` so bare `uv sync` on unsupported hosts (older glibc,
+  # older macOS) does not hard-fail. The api image runs on a compatible base.
+  "nemo-deployments-plugin[openshell]",
   "nmp-studio",
   "nmp-guardrails",
   "nemo-data-designer-plugin",
@@ -238,7 +253,7 @@ generate-config-docs = "script.generate_config_docs:main"
 [tool.uv]
 prerelease = "if-necessary-or-explicit"
 index-strategy = "unsafe-best-match"
-required-version = ">=0.9.14,<0.10.0"
+required-version = ">=0.9.14"
 cache-keys = [{ file = "pyproject.toml" }]
 # Keep uv's implicit dev default and also install enabled plugins on bare `uv sync`.
 default-groups = ["dev", "enabled-plugins"]
@@ -257,14 +272,15 @@ environments = [
 ]
 
 constraint-dependencies = [
-  "GitPython>=3.1.49",
+  "GitPython>=3.1.57",
   "Mako>=1.3.12",
   "Pygments>=2.20.0",
   "aiohttp>=3.14.1",                      # High/Medium/Low OOS – auditor-tasks + customizer
   "authlib>=1.6.11",
   "black>=26.3.1",
   "bleach>=6.4.0",
-  "cryptography>=48.0.1,<49",
+  "cryptography>=50.0.0,<51",
+  "datamodel-code-generator>=0.71.0",
   "diffusers>=0.38.0",
   "filelock>=3.20.3",
   "jupyter-server>=2.20.0",
@@ -286,14 +302,15 @@ constraint-dependencies = [
   "nltk>=3.10.0",
   "pillow>=12.3.0",
   "postcss>=8.5.10",
-  "pyasn1>=0.6.3",
+  "pyasn1>=0.6.4",
+  "pydantic-monty==0.0.18",               # 0.0.19 dropped MontyRepl required by pydantic-ai-harness==0.3.0 CodeMode
   "python-multipart>=0.0.27",
   "regex>=2025.10.22",
   "safetensors>=0.8.0rc0",                # explicit prerelease so uv allows the rc
   "sqlfluff>=4.2.2",
   "starlette>=1.3.1",
   "urllib3>=2.7.0",
-  "uv>=0.9.14,<0.10.0",
+  "uv>=0.9.14",
 ]
 
 override-dependencies = [
@@ -314,7 +331,7 @@ override-dependencies = [
   "aiohttp>=3.14.1",         # High/Medium/Low OOS – auditor-tasks + customizer
   "jaraco-context>=6.1.0",   # High OOS – auditor-tasks + customizer
   "joserfc>=1.7.2",
-  "pyasn1>=0.6.3",           # High OOS – auditor-tasks + customizer
+  "pyasn1>=0.6.4",           # High OOS – auditor-tasks + customizer
   "setuptools>=78.1.1",      # High OOS – nmp-cpu-tasks/gpu-tasks/customizer-tasks
   "urllib3>=2.7.0",          # High OOS – auditor-tasks + customizer
   "wheel>=0.46.2",           # High OOS – widespread
@@ -324,7 +341,7 @@ override-dependencies = [
   "xgrammar>=0.1.32",        # High – customizer + nmp-gpu-tasks
   "fastmcp>=3.2.0",          # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
   "wandb>=0.28.1",           # wandb-core Go CVEs (nspect); unsloth + training images
-  "cryptography>=48.0.1,<49", # Pulse Critical; overrides data-designer-engine 0.7.0's <47 cap after changelog review
+  "cryptography>=50.0.0,<51", # GHSA-g6cj-pr64-35w5; overrides nvidia-nat-core's <47 cap after changelog review
   "click>=8.2.0",            # Below CVEs are based on constraints that garak has
   "litellm>=1.83.10",        # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
@@ -365,6 +382,27 @@ nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-insights-plugin = { workspace = true }
+nemo-eval-author-plugin = { workspace = true }
+nemo-experimentalist-plugin = { workspace = true }
+# Not published to PyPI yet, so this pins an immutable public commit. It is a commit
+# rather than a tag because the callable `@strategy(llm=...)` support this plugin now
+# depends on landed after v0.0.8; move back to a tag once one ships that contains it.
+nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e0274dd03f883254a084cfb9f871ea580e03434" }
+
+# Temporary until Fabric 0.2.0 publishes (mid-Aug): pin the monorepo SHA that lands
+# FABRIC-167 (Hermes MCP discover + preserve mcp.servers.*.env). Override every
+# package — git subdirectory sources do not inherit Fabric's own path mappings,
+# and the metapackage pins runtime/adapters to ==0.2.0.
+# Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
+# wheel still resolve (uv.sources do not apply outside this workspace).
+# Remove these entries once PyPI has 0.2.0.
+nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0" }
+nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "python" }
+nemo-fabric-adapters-common = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/common" }
+nemo-fabric-adapters-claude = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/claude" }
+nemo-fabric-adapters-codex = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/codex" }
+nemo-fabric-adapters-deepagents = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/deepagents" }
+nemo-fabric-adapters-hermes = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "adapters/hermes" }
 
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
@@ -375,8 +413,10 @@ nemo-agents-plugin = { workspace = true }
 nemo-deployments-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-agents-example-email-phishing = { workspace = true }
+nemo-agents-example-email-security = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
+nemo-optimization-plugin = { workspace = true }
 nemo-unsloth-plugin = { workspace = true }
 nemo-rl-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
@@ -431,10 +471,15 @@ members = [
   "plugins/nemo-agents",
   "plugins/nemo-deployments",
   "plugins/nemo-insights",
+  "plugins/nemo-eval-author",
+  "plugins/nemo-experimentalist",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
+  "plugins/nemo-agents/examples/email-security-analyst",
+  "plugins/nemo-agents/examples/nemo-agent-config/calculator-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
+  "plugins/nemo-optimization",
   "plugins/nemo-unsloth",
   "plugins/nemo-rl",
   "services/automodel",
@@ -529,7 +574,7 @@ executionEnvironments = [
 ]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.12"
 extra-paths = [
   # nemo-data-designer plugin is a workspace member; add its src so ty can
   # resolve nemo_data_designer_plugin imports from plugin test files.
@@ -540,6 +585,9 @@ extra-paths = [
   # nemo-agents plugin is not a workspace member; add its src so ty can
   # resolve nemo_agents_plugin imports when checking plugin test files.
   "plugins/nemo-agents/src",
+  # The built-in NeMo Copilot is a standalone deployable with its own lockfile;
+  # add its src so ty can resolve nemo_studio_copilot imports from its tests.
+  "agents/nemo-studio-copilot/src",
   # example-plugin is not a workspace member; add its src so ty can
   # resolve nmp.example_plugin imports when checking plugin test files.
   "plugins/example-plugin/src",
@@ -551,8 +599,12 @@ extra-paths = [
   # nemo-evaluator plugin is not a workspace member; add its src so ty can
   # resolve nemo_evaluator imports when checking plugin test files.
   "plugins/nemo-evaluator/src",
-  # The optional Insights analyst is not part of the default environment.
+  # Source path for the Insights analyst plugin.
   "plugins/nemo-insights/src",
+  # Source path for the Eval Author plugin.
+  "plugins/nemo-eval-author/src",
+  # Source path for Experimentalist; its tests also import the benchmark runner.
+  "plugins/nemo-experimentalist/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
@@ -606,6 +658,10 @@ exclude = [
   # root `ty` until that cleanup lands in a focused follow-up.
   "plugins/nemo-switchyard/",
 
+  # Standalone agents-under-test: each resolves from its own lockfile inside the
+  # benchmark's task containers, so its imports are absent from the workspace env.
+  "plugins/nemo-experimentalist/examples/",
+
   "docs/",
 
   "./sdk/",
@@ -613,3 +669,15 @@ exclude = [
   "tools/nemo-platform-sdk-tools/src/nemo_platform_sdk_tools/sdk",
   "tools/nemo-platform-sdk-tools/tests/sdk",
 ]
+
+# nooa agents declare their LLM-generated methods as annotated signatures with an
+# ellipsis body; the framework fills them in at runtime. ty reads that as a missing
+# return, so the rule is off for the Experimentalist and Eval Author agent classes only.
+[[tool.ty.overrides]]
+include = [
+  "plugins/nemo-experimentalist/src/**",
+  "plugins/nemo-eval-author/src/**",
+]
+
+[tool.ty.overrides.rules]
+empty-body = "ignore"

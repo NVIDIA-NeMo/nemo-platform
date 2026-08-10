@@ -673,7 +673,7 @@ def add_mock_provider(
         from nemo_platform.types.inference.virtual_model import VirtualModel as _SDKVirtualModel
 
         virtual_model_cache = global_virtual_model_cache()
-        now_iso = _datetime.now().isoformat()
+        now = _datetime.now()
         for entity_name in served_models:
             key = (workspace, entity_name)
             if key in virtual_model_cache.virtual_model_map:
@@ -684,10 +684,11 @@ def add_mock_provider(
                 workspace=workspace,
                 name=entity_name,
                 parent=workspace,
+                db_version=1,
                 default_model_entity=f"{workspace}/{entity_name}",
                 autoprovisioned=should_autoprovision_virtual_model,
-                created_at=now_iso,
-                updated_at=now_iso,
+                created_at=now,
+                updated_at=now,
             )
     except RuntimeError:
         # From E2E tests, the local cache is not available (app runs in a separate process).

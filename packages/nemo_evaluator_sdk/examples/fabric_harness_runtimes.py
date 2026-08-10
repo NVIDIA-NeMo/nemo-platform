@@ -8,9 +8,9 @@ different agent harnesses purely via the Fabric config — the harness is select
 ``harness.adapter_id``, never inferred from a model. Across harnesses the shape differs mainly in that
 ``adapter_id``, ``runtime.transport``, and any harness-specific ``harness.settings``:
 
-* **Codex CLI** (``nvidia.fabric.codex.cli``) runs the agent as a subprocess — ``transport="cli"`` —
-  and takes codex-specific ``harness.settings`` (sandbox mode, git-repo check, ...).
-* **Hermes SDK** (``nvidia.fabric.hermes.sdk``) runs in-library — ``transport="library"`` — and
+* **Codex CLI** (``nvidia.fabric.codex``) runs the agent as a subprocess — ``transport="cli"`` —
+  and takes codex-specific ``harness.settings`` such as sandbox and approval modes.
+* **Hermes SDK** (``nvidia.fabric.hermes``) runs in-library — ``transport="library"`` — and
   declares its ``input``/``output`` schemas instead.
 
 An optional ``model=`` slug (e.g. ``"openai/gpt-5.4"``) can be passed to ``FabricAgentRuntime`` to
@@ -28,10 +28,11 @@ from __future__ import annotations
 import json
 
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
-from nemo_fabric import (  # ty: ignore[unresolved-import]
+from nemo_fabric import (
     FabricConfig,
     HarnessConfig,
     MetadataConfig,
+    ModelConfig,
     RuntimeConfig,
 )
 
@@ -39,19 +40,21 @@ from nemo_fabric import (  # ty: ignore[unresolved-import]
 CODEX_CLI_CONFIG = FabricConfig(
     metadata=MetadataConfig(name="codex-eval"),
     harness=HarnessConfig(
-        adapter_id="nvidia.fabric.codex.cli",
-        settings={"sandbox": "read-only", "skip_git_repo_check": True},
+        adapter_id="nvidia.fabric.codex",
+        settings={"sandbox": "read-only"},
     ),
-    models={"default": {"provider": "openai", "model": "gpt-5.4"}},
-    runtime=RuntimeConfig(mode="oneshot", transport="cli"),
+    models={"default": ModelConfig(provider="openai", model="gpt-5.4")},
+    runtime=RuntimeConfig.from_mapping({"mode": "oneshot", "transport": "cli"}),
 )
 
 #: Hermes SDK harness — in-library transport, explicit chat/message schemas.
 HERMES_SDK_CONFIG = FabricConfig(
     metadata=MetadataConfig(name="hermes-eval"),
-    harness=HarnessConfig(adapter_id="nvidia.fabric.hermes.sdk", resolution="preinstalled"),
-    models={"default": {"provider": "nvidia", "model": "qwen2.5-coder-32b"}},
-    runtime=RuntimeConfig(mode="oneshot", transport="library", input_schema="chat", output_schema="message"),
+    harness=HarnessConfig(adapter_id="nvidia.fabric.hermes", resolution="preinstalled"),
+    models={"default": ModelConfig(provider="nvidia", model="qwen2.5-coder-32b")},
+    runtime=RuntimeConfig.from_mapping(
+        {"mode": "oneshot", "transport": "library", "input_schema": "chat", "output_schema": "message"}
+    ),
 )
 
 #: Named Fabric configs, one per harness, keyed by a short label.
@@ -63,7 +66,7 @@ HARNESS_CONFIGS: dict[str, FabricConfig] = {
 
 def build_runtime(harness: str, *, model: str | None = None, work_root: str | None = None) -> FabricAgentRuntime:
     """Build a :class:`FabricAgentRuntime` for a named harness (see :data:`HARNESS_CONFIGS`)."""
-    return FabricAgentRuntime(config=HARNESS_CONFIGS[harness], model=model, work_root=work_root)
+    return FabricAgentRuntime(config=HARNESS_CONFIGS[harness].to_mapping(), model=model, work_root=work_root)
 
 
 def main() -> None:

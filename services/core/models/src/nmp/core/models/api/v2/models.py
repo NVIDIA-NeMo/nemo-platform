@@ -25,7 +25,7 @@ from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.auth import AuthClient, get_auth_client
-from nmp.common.entities.client import EntityNotFoundError, EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityNotFoundError, EntityValidationError
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.models.api.dependencies import get_adapter_entity_service, get_model_entity_service
@@ -460,6 +460,10 @@ async def delete_model(
 
     except HTTPException:
         raise
+    except EntityConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Concurrent modification - please retry."
+        ) from e
     except Exception:
         logger.exception("Failed to delete model entity")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete model entity")
@@ -570,6 +574,10 @@ async def delete_model_adapter(
 
     except HTTPException:
         raise
+    except EntityConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Concurrent modification - please retry."
+        ) from e
     except Exception as e:
         logger.exception(f"Failed to delete model entity - {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete model entity")

@@ -39,6 +39,9 @@ class PlatformJobStep(BaseModel):
 
     created_by: Optional[str] = None
 
+    db_version: int
+    """Database version of the entity for optimistic locking."""
+
     entity_id: str
     """Alias for id for backwards compatibility."""
 

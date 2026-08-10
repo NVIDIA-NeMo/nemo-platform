@@ -62,11 +62,11 @@ function extractIntro(readme) {
   return out.join("\n");
 }
 
-function buildMdx(intro, valuesYaml) {
+export function buildHelmReferenceMdx(readme, valuesYaml) {
   return (
     FRONTMATTER +
     "\n" +
-    intro +
+    extractIntro(readme) +
     "\n\n" +
     "## Values\n\n" +
     "The following is the complete `values.yaml` for the NeMo Platform Helm Chart.\n" +
@@ -78,8 +78,8 @@ function buildMdx(intro, valuesYaml) {
 }
 
 export function syncHelmDocs() {
-  const mdxText = buildMdx(
-    extractIntro(readFileSync(README, "utf8")),
+  const mdxText = buildHelmReferenceMdx(
+    readFileSync(README, "utf8"),
     readFileSync(VALUES, "utf8"),
   );
 

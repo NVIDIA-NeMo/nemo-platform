@@ -33,7 +33,7 @@ describe('DetailActions', () => {
         />
       </TestProviders>
     );
-    expect(screen.getByRole('button', { name: 'Cancel Job' })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'Cancel Job' })).toBeEnabled();
   });
   it('should render evaluate button when status is launchable', () => {
     render(
@@ -70,10 +70,11 @@ describe('DetailActions', () => {
       </TestProviders>
     );
 
-    await user.click(screen.getByRole('button', { name: 'Cancel Job' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Cancel Job' }));
 
-    // Wait for the loading state to appear (Spinner has role="status")
-    expect(await screen.findByRole('status')).toBeInTheDocument();
+    // While the mutation is pending the item becomes disabled and its label changes
+    const cancellingItem = await screen.findByRole('menuitem', { name: 'Cancelling…' });
+    expect(cancellingItem).toBeDisabled();
   });
   it.each([
     PlatformJobStatus.cancelled,

@@ -38,6 +38,9 @@ _AUTH_READY_TIMEOUT = 60
 _E2E_ADMIN_EMAIL = "admin@example.com"
 _E2E_REPO_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/local.yaml"
+# Layered on the default config so pooled platforms that are not testing
+# deployments orphan cleanup cannot delete peer platforms' docker containers.
+_DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP = _E2E_REPO_ROOT / "e2e/configs/disable-deployments-orphan-cleanup.yaml"
 _E2E_COMPOSE_LIFECYCLE_ENV = "NMP_E2E_COMPOSE_LIFECYCLE"
 
 
@@ -290,7 +293,12 @@ class E2EServicesPool:
 
     def _materialize_config_path(self, state: ModuleConfigState) -> ModuleConfigState:
         data_dir = e2e_services_data_dir(self._get_log_dir(), state.key.config_hash)
-        rendered_config_data = _render_e2e_config_for_backend(state.config_data, data_dir, state.harness_config)
+        rendered_config_data = _render_e2e_config_for_backend(
+            state.config_data,
+            data_dir,
+            state.harness_config,
+            state.key.config_hash,
+        )
         rendered_config = yaml.safe_dump(rendered_config_data, default_flow_style=False, sort_keys=True)
         config_path = self._get_generated_config_dir() / f"platform-{state.key.config_hash}.yaml"
         if not config_path.exists():
@@ -401,7 +409,10 @@ def _services_log_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def _resolve_e2e_config_layers_from_node(node: Node) -> list[str | dict[str, Any]]:
     marker = node.get_closest_marker("e2e_config")
     if marker is None or not marker.args:
-        return [str(_DEFAULT_E2E_PLATFORM_CONFIG)]
+        return [
+            str(_DEFAULT_E2E_PLATFORM_CONFIG),
+            str(_DEFAULT_E2E_DISABLE_DEPLOYMENTS_ORPHAN_CLEANUP),
+        ]
     layers: list[str | dict[str, Any]] = []
     for layer in marker.args:
         if isinstance(layer, (str, dict)):
@@ -542,11 +553,16 @@ def _load_effective_e2e_config_from_layers(
 
 
 def e2e_services_data_dir(log_dir: Path, config_hash: str) -> Path:
-    """Return the persistent data directory for one pooled services instance."""
-    return log_dir / f"data-{config_hash}"
+    """Return persistent state outside the directory collected as test logs."""
+    return log_dir.parent / f"{log_dir.name}-data" / f"data-{config_hash}"
 
 
-def with_e2e_instance_paths(config_data: dict[str, Any], data_dir: Path) -> dict[str, Any]:
+def with_e2e_instance_paths(
+    config_data: dict[str, Any],
+    data_dir: Path,
+    *,
+    resource_scope: str | None = None,
+) -> dict[str, Any]:
     """Return config data with per-instance filesystem paths rooted under ``data_dir``."""
     rendered = deepcopy(config_data)
     subprocess_working_dir = str(data_dir / "subprocess-jobs")
@@ -577,7 +593,25 @@ def with_e2e_instance_paths(config_data: dict[str, Any], data_dir: Path) -> dict
         if isinstance(default_storage_config, dict) and default_storage_config.get("type") == "local":
             default_storage_config["path"] = files_root
 
+    if resource_scope:
+        _stamp_e2e_docker_deployment_scope(rendered, resource_scope)
+
     return rendered
+
+
+def _stamp_e2e_docker_deployment_scope(config_data: dict[str, Any], resource_scope: str) -> None:
+    deployments = config_data.get("deployments")
+    if not isinstance(deployments, dict):
+        return
+    executors = deployments.get("executors")
+    if not isinstance(executors, list):
+        return
+    for executor in executors:
+        if not isinstance(executor, dict) or executor.get("backend") != "docker":
+            continue
+        executor_config = executor.setdefault("config", {})
+        if isinstance(executor_config, dict):
+            executor_config.setdefault("resource_scope", resource_scope)
 
 
 # The authz e2e suite (``e2e/authz_oidc``) editable-installs intentionally-broken
@@ -610,11 +644,11 @@ def _e2e_backend(harness_config: E2EHarnessConfig) -> Literal["subprocess", "doc
 
 
 def _render_e2e_config_for_backend(
-    config_data: dict[str, Any], data_dir: Path, harness_config: E2EHarnessConfig
+    config_data: dict[str, Any], data_dir: Path, harness_config: E2EHarnessConfig, config_hash: str
 ) -> dict[str, Any]:
     if _e2e_backend(harness_config) in {"docker", "docker_compose"}:
         return deepcopy(config_data)
-    return with_e2e_instance_paths(config_data, data_dir)
+    return with_e2e_instance_paths(config_data, data_dir, resource_scope=f"e2e-{config_hash}")
 
 
 class DockerBackendOverrides(TypedDict, total=False):

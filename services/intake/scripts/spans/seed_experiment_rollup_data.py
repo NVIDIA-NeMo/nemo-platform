@@ -104,10 +104,10 @@ def _preflight(base_url: str) -> None:
 
 def _upsert_group(client: httpx.Client, base_url: str, workspace: str) -> str:
     body = {"name": DEFAULT_GROUP, "description": "Smoke-test group for the rollup script."}
-    url = _intake_url(base_url, workspace, "/experiment-groups")
+    url = _intake_url(base_url, workspace, "/experiments")
     response = client.post(url, json=body)
     if response.status_code == 409:
-        response = client.put(_intake_url(base_url, workspace, f"/experiment-groups/{DEFAULT_GROUP}"), json=body)
+        response = client.put(_intake_url(base_url, workspace, f"/experiments/{DEFAULT_GROUP}"), json=body)
     response.raise_for_status()
     return response.json()["id"]
 

@@ -10,13 +10,21 @@ nemo_platform.auth.helpers.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
-from typing import Annotated, cast
+from typing import Annotated, NoReturn, cast
 
 import httpx
 import typer
+from nemo_platform_plugin.auth.access_keys.client import AccessKeyIssuerClient, AccessKeysClient
+from nemo_platform_plugin.auth.access_keys.issuer import (
+    AccessKeyFeatureDisabledError,
+    AccessKeyOperationNotImplementedError,
+)
+from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest
+from nemo_platform_plugin.client.adapter import client_from_platform
 from rich.console import Console
 
 from nemo_platform.auth.helpers import (
@@ -40,8 +48,45 @@ app = create_typer_app(
     name="auth",
     help="Manage authentication for NeMo Platform.",
 )
+access_keys_app = create_typer_app(
+    name="access-keys",
+    help="Manage NeMo Platform Scoped Access Keys.",
+)
+app.add_typer(access_keys_app, name="access-keys")
 
 logger = logging.getLogger(__name__)
+
+
+def _access_key_issuer(ctx: typer.Context) -> AccessKeyIssuerClient:
+    state: CLIContext = ctx.obj
+    access_keys_client = client_from_platform(state.get_client(), AccessKeysClient)
+    return AccessKeyIssuerClient(access_keys_client)
+
+
+def _raise_access_key_not_implemented(exc: AccessKeyOperationNotImplementedError) -> NoReturn:
+    raise AuthError(str(exc) or "Scoped Access Key operation is not implemented.") from exc
+
+
+def _raise_access_key_disabled(exc: AccessKeyFeatureDisabledError) -> NoReturn:
+    raise AuthError(str(exc) or "Scoped Access Keys are not enabled.") from exc
+
+
+def _parse_access_key_expires_in(value: str | None) -> tuple[bool, int | None]:
+    if value is None:
+        return False, None
+
+    normalized = value.strip().lower()
+    if normalized in {"none", "null"}:
+        return True, None
+
+    try:
+        expires_in_seconds = int(value)
+    except ValueError as exc:
+        raise AuthError("--expires-in must be a positive integer number of seconds or 'none'.") from exc
+
+    if expires_in_seconds < 1:
+        raise AuthError("--expires-in must be a positive integer number of seconds or 'none'.")
+    return True, expires_in_seconds
 
 
 def is_auth_disabled(base_url: str, timeout: float = 3.0) -> bool:
@@ -433,7 +478,7 @@ def login(
     # Set base URL and log in
     nemo auth login --base-url https://nemo.example.com
     # Context-specific login
-    nemo auth login --context dev --base-url https://nemo.dev.example.com
+    nemo auth login --context staging --base-url https://nmp.staging.example.com
     # Device flow, open browser
     nemo auth login
     # Device flow, show code only
@@ -697,7 +742,7 @@ def refresh(ctx: typer.Context) -> None:
     try:
         oidc_config = discover_nmp_config(base_url)
     except httpx.HTTPError as e:
-        raise AuthError(f"Failed to discover auth configuration: {e}")
+        raise AuthError(f"Failed to discover auth configuration: {e}") from e
 
     if not oidc_config.client_id or not oidc_config.token_endpoint:
         raise AuthError("OIDC not configured on cluster.")
@@ -741,14 +786,25 @@ def refresh(ctx: typer.Context) -> None:
 
 @app.command("token")
 @handle_errors
-def token(ctx: typer.Context) -> None:
+def token(
+    ctx: typer.Context,
+    decode: Annotated[
+        bool,
+        typer.Option(
+            "--decode",
+            help="Decode the JWT payload claims as JSON. This does not verify the token signature.",
+        ),
+    ] = False,
+) -> None:
     """Print the current access token (for use with SDK or curl).
 
-    This outputs the raw token to stdout, suitable for piping or capture.
+    By default this outputs the raw token to stdout, suitable for piping or capture.
 
     Examples:
     # Print token
     nemo auth token
+    # Inspect token claims
+    nemo auth token --decode
     # Capture in env var
     export TOKEN=$(nemo auth token)
     curl -H "Authorization: Bearer $(nemo auth token)" ...
@@ -762,9 +818,47 @@ def token(ctx: typer.Context) -> None:
         raise AuthError("No authentication configured. Run 'nemo auth login' first.")
 
     if isinstance(context.user, OAuthUser):
-        typer.echo(context.user.token.get_secret_value())
+        access_token = context.user.token.get_secret_value()
+        if decode:
+            claims = decode_jwt_claims(access_token)
+            if not claims:
+                raise AuthError("Current access token is not a decodable JWT.")
+            typer.echo(json.dumps(claims, indent=2))
+            return
+        typer.echo(access_token)
     else:
         raise AuthError("No token available for current user type.")
+
+
+@access_keys_app.command("create")
+@handle_errors
+def create_access_key(
+    ctx: typer.Context,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Optional human-readable label for the Scoped Access Key."),
+    ] = None,
+    expires_in: Annotated[
+        str | None,
+        typer.Option(
+            "--expires-in",
+            help="Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.",
+        ),
+    ] = None,
+) -> None:
+    """Create a Scoped Access Key for the current authenticated user."""
+    expires_in_was_set, parsed_expires_in = _parse_access_key_expires_in(expires_in)
+    if expires_in_was_set:
+        request = AccessKeyCreateRequest(name=name, expires_in_seconds=parsed_expires_in)
+    else:
+        request = AccessKeyCreateRequest(name=name)
+    try:
+        created = _access_key_issuer(ctx).create(request)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+    typer.echo(created.token)
 
 
 @app.command("status")

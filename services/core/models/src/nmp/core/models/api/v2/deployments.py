@@ -9,7 +9,7 @@ from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.auth import AuthClient, AuthContext, get_auth_client
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.core.models.api.dependencies import get_model_deployment_service
 from nmp.core.models.api.permissions import check_deployment_config_access
 from nmp.core.models.api.service.model_deployment_service import DeploymentStatusConflictError, ModelDeploymentService
@@ -444,6 +444,10 @@ async def delete_all_deployment_versions(
             return None
     except HTTPException:
         raise
+    except EntityConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Concurrent modification - please retry."
+        ) from e
     except Exception:
         logger.exception("Unexpected error deleting deployment")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete deployment")
@@ -519,6 +523,10 @@ async def delete_deployment_version(
             return None
     except HTTPException:
         raise
+    except EntityConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Concurrent modification - please retry."
+        ) from e
     except Exception:
         logger.exception("Unexpected error deleting deployment version")
         raise HTTPException(

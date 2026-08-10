@@ -11,17 +11,11 @@ Stainless-generated duplicates.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import NotRequired, Self, TypedDict
 
-from pydantic import BaseModel, Field, SecretStr, field_serializer, field_validator, model_validator
-
-# Mirrors ``nmp.common.entities.constants.REGEX_WORD_CHARACTER_DOT_DASH``. Inlined
-# rather than imported so this package stays free of an ``nmp_common`` dependency
-# (matching the ``files.types`` boundary — plugin types own their own contract).
-_NAME_REGEX = r"^[\w\-.]+$"
-_NAME_RE: re.Pattern[str] = re.compile(_NAME_REGEX)
+from nemo_platform_plugin.entity_naming import NAME_MAX_LENGTH, NAME_PATTERN, NAME_PATTERN_DESCRIPTION
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_serializer, model_validator
 
 # ---------------------------------------------------------------------------
 # Response types
@@ -67,25 +61,16 @@ class PlatformSecretCreateRequest(BaseModel):
     # server would store the mask instead of the secret. (Keep this as a comment,
     # not the class docstring, so it does not leak into the OpenAPI schema.)
 
+    model_config = ConfigDict(regex_engine="python-re")
+
     name: str = Field(
-        description=(
-            "The name of the secret to create. Allowed characters: letters (a-z, A-Z), "
-            "digits (0-9), underscores, hyphens, and dots."
-        ),
+        description=f"The name of the secret to create. {NAME_PATTERN_DESCRIPTION}",
+        max_length=NAME_MAX_LENGTH,
+        pattern=NAME_PATTERN,
         examples=["hf-token", "wandb-api-key"],
     )
     description: str | None = Field(default=None, description="An optional description of the secret")
     value: SecretStr = Field(description="The payload of the secret")
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, v: str) -> str:
-        if not _NAME_RE.match(v):
-            raise ValueError(
-                f"Invalid secret name '{v}'. Allowed characters: letters, digits, underscores, "
-                "hyphens, and dots. Example: my-api-key"
-            )
-        return v
 
     @field_serializer("value", when_used="json")
     def _serialize_value(self, value: SecretStr) -> str:

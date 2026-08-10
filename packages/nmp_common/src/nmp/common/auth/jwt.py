@@ -10,8 +10,10 @@ from typing import Optional
 
 import httpx
 import jwt
-from jwt import PyJWKClient
+from jwt.types import Options
 from nmp.common.config import AuthConfig
+
+from .jwks import AsyncJWKSClient
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ class JWTValidator:
 
     def __init__(self, config: AuthConfig):
         self.config = config
-        self._jwks_client: Optional[PyJWKClient] = None
+        self._jwks_client: Optional[AsyncJWKSClient] = None
         self._discovery_cache: Optional[dict] = None
         self._discovery_cache_time: float = 0.0
 
@@ -68,7 +70,7 @@ class JWTValidator:
             self._discovery_cache_time = now
             return self._discovery_cache
 
-    async def _get_jwks_client(self) -> PyJWKClient:
+    async def _get_jwks_client(self) -> AsyncJWKSClient:
         """Get or create JWKS client for token validation.
 
         The client is initialized with a lifespan so that cached keys
@@ -84,7 +86,7 @@ class JWTValidator:
             discovery = await self._discover_oidc_config()
             jwks_uri = discovery["jwks_uri"]
 
-        self._jwks_client = PyJWKClient(jwks_uri, cache_keys=True, lifespan=_JWKS_CACHE_LIFESPAN)
+        self._jwks_client = AsyncJWKSClient(jwks_uri, lifespan=_JWKS_CACHE_LIFESPAN)
         return self._jwks_client
 
     def _extract_token_claims(self, claims: dict) -> Optional[TokenClaims]:
@@ -170,7 +172,7 @@ class JWTValidator:
                 return self._extract_token_claims(claims)
 
             jwks_client = await self._get_jwks_client()
-            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            signing_key = await jwks_client.get_signing_key_from_jwt(token)
 
             # Only validate audience when explicitly configured.
             # When audience is not set, skip the check so tokens from any
@@ -182,7 +184,7 @@ class JWTValidator:
             allowed_issuers = [self.config.oidc.issuer] + self.config.oidc.additional_issuers
 
             # Decode and validate token (validate issuer manually to support multiple)
-            decode_options: dict = {"require": ["exp", "iat", "sub"]}
+            decode_options: Options = {"require": ["exp", "iat", "sub"]}
             if audience is None:
                 decode_options["verify_aud"] = False
             claims = jwt.decode(

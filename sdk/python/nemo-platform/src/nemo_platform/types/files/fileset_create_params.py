@@ -24,8 +24,8 @@ from .fileset_purpose import FilesetPurpose
 from .s3_storage_config_param import S3StorageConfigParam
 from .ngc_storage_config_param import NGCStorageConfigParam
 from .local_storage_config_param import LocalStorageConfigParam
+from ..shared_params.fileset_metadata import FilesetMetadata
 from .huggingface_storage_config_param import HuggingfaceStorageConfigParam
-from ..shared_params.fileset_metadata_param import FilesetMetadataParam
 
 __all__ = ["FilesetCreateParams", "Storage"]
 
@@ -36,8 +36,9 @@ class FilesetCreateParams(TypedDict, total=False):
     name: Required[str]
     """The name of the fileset.
 
-    Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and
-    dots.
+    Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+    letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a
+    hyphen).
     """
 
     cache: bool
@@ -49,7 +50,7 @@ class FilesetCreateParams(TypedDict, total=False):
     description: str
     """The description of the fileset."""
 
-    metadata: FilesetMetadataParam
+    metadata: FilesetMetadata
     """Tagged metadata container - the key indicates the type.
 
     Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(

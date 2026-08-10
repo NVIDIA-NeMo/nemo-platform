@@ -3,16 +3,18 @@
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelProvider } from '@nemo/sdk/generated/platform/schema';
+import { DEFAULT_MAX_PARALLEL_REQUESTS } from '@studio/constants/constants';
 import {
   type BuilderModel,
   buildModelConfigs,
+  buildModelsFromConfig,
   buildModelsFromTemplate,
   buildServedModelNames,
   builderModelFromSelection,
   defaultModelAlias,
   firstAvailableModel,
   modelIdForModel,
-  providerForModel,
+  providerForSelection,
   resolveTemplateModel,
   validateModelAlias,
   validateModels,
@@ -34,7 +36,7 @@ describe('defaultModelAlias', () => {
   });
 });
 
-describe('providerForModel', () => {
+describe('model resolution', () => {
   const groups = [
     {
       workspace: 'steramae',
@@ -50,13 +52,17 @@ describe('providerForModel', () => {
     },
   ] as unknown as ModelWorkspaceGroup[];
 
-  it('returns the model’s first provider ref', () => {
-    expect(providerForModel(groups, 'steramae/nemotron-oss')).toBe('steramae/build');
+  it('providerForSelection returns the picked entity’s first provider ref', () => {
+    expect(
+      providerForSelection({ model: 'steramae/nemotron-oss', entity: groups[0].models[0] })
+    ).toBe('steramae/build');
   });
 
-  it('returns empty string when the model or its provider is missing', () => {
-    expect(providerForModel(groups, 'steramae/no-provider')).toBe('');
-    expect(providerForModel(groups, 'steramae/unknown')).toBe('');
+  it('providerForSelection returns empty string without an entity or provider', () => {
+    expect(
+      providerForSelection({ model: 'steramae/no-provider', entity: groups[0].models[2] })
+    ).toBe('');
+    expect(providerForSelection({ model: 'steramae/unknown' })).toBe('');
   });
 
   it('firstAvailableModel picks the first model and its provider', () => {
@@ -141,18 +147,39 @@ describe('buildModelsFromTemplate', () => {
   it('seeds models with sequential ids, leaving model/provider empty for auto-fill', () => {
     const models = buildModelsFromTemplate([{ alias: 'default' }], 2);
     expect(models).toEqual([
-      { id: 'model-2', alias: 'default', model: '', provider: '', inferenceParams: {} },
+      {
+        id: 'model-2',
+        alias: 'default',
+        model: '',
+        provider: '',
+        inferenceParams: {
+          temperature: 0.7,
+          top_p: 0.9,
+          max_parallel_requests: DEFAULT_MAX_PARALLEL_REQUESTS,
+        },
+      },
     ]);
   });
 
-  it('carries a preferred model and inference params through', () => {
+  it('carries a preferred model through and lets a spec override a sampling default', () => {
     const models = buildModelsFromTemplate([
       { alias: 'judge', model: 'nvidia/gpt-oss', inferenceParams: { temperature: 0 } },
     ]);
     expect(models[0]).toMatchObject({
       alias: 'judge',
       model: 'nvidia/gpt-oss',
-      inferenceParams: { temperature: 0 },
+      // Explicit temperature wins; top_p still gets the default that truncates the tail.
+      inferenceParams: { temperature: 0, top_p: 0.9 },
+    });
+  });
+
+  it('gives embedding specs a concurrency cap but no chat sampling params', () => {
+    const models = buildModelsFromTemplate([
+      { alias: 'embedder', inferenceParams: { generation_type: 'embedding' } },
+    ]);
+    expect(models[0].inferenceParams).toEqual({
+      generation_type: 'embedding',
+      max_parallel_requests: DEFAULT_MAX_PARALLEL_REQUESTS,
     });
   });
 
@@ -212,6 +239,52 @@ describe('validateModels', () => {
   });
 });
 
+describe('buildModelsFromConfig', () => {
+  it('reverses chat-completion model configs, numbering ids from startId', () => {
+    const configs = buildModelConfigs([
+      model({ alias: 'gen', inferenceParams: { temperature: 0.7, top_p: 0.9, max_tokens: 512 } }),
+    ]);
+
+    expect(buildModelsFromConfig(configs, 2)).toEqual([
+      {
+        id: 'model-2',
+        alias: 'gen',
+        model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+        provider: 'nvidia',
+        inferenceParams: {
+          generation_type: 'chat-completion',
+          temperature: 0.7,
+          top_p: 0.9,
+          max_tokens: 512,
+        },
+      },
+    ]);
+  });
+
+  it('preserves embedding params so a config round-trips unchanged', () => {
+    const models = [
+      model({
+        id: 'model-0',
+        alias: 'embedder',
+        model: 'nvidia/nv-embedqa-e5-v5',
+        provider: 'steramae/build',
+        inferenceParams: {
+          generation_type: 'embedding',
+          encoding_format: 'float',
+          extra_body: { input_type: 'query' },
+        },
+      }),
+    ];
+    const configs = buildModelConfigs(models);
+
+    expect(buildModelConfigs(buildModelsFromConfig(configs))).toEqual(configs);
+  });
+
+  it('returns an empty array for an absent model_configs list', () => {
+    expect(buildModelsFromConfig()).toEqual([]);
+  });
+});
+
 describe('buildModelConfigs', () => {
   it('returns undefined when there are no models', () => {
     expect(buildModelConfigs([])).toBeUndefined();
@@ -229,6 +302,34 @@ describe('buildModelConfigs', () => {
         },
       },
     ]);
+  });
+
+  it('forwards max_parallel_requests so the job caps its own fan-out', () => {
+    const [config] = buildModelConfigs([model({ inferenceParams: { max_parallel_requests: 4 } })])!;
+    expect(config.inference_parameters).toMatchObject({
+      generation_type: 'chat-completion',
+      max_parallel_requests: 4,
+    });
+  });
+
+  it('forwards extra_body so backend flags like a thinking-mode switch survive', () => {
+    const extra_body = { chat_template_kwargs: { thinking: false } };
+    const configs = buildModelConfigs([model({ inferenceParams: { extra_body } })])!;
+    expect(configs[0].inference_parameters).toMatchObject({ extra_body });
+    // And survives a clone round-trip.
+    expect(buildModelsFromConfig(configs)[0].inferenceParams).toMatchObject({ extra_body });
+  });
+
+  it('omits max_parallel_requests when no cap was set', () => {
+    const [config] = buildModelConfigs([model({ inferenceParams: {} })])!;
+    expect(config.inference_parameters).not.toHaveProperty('max_parallel_requests');
+  });
+
+  it('round-trips max_parallel_requests back into the builder when cloning', () => {
+    const configs = buildModelConfigs([model({ inferenceParams: { max_parallel_requests: 8 } })])!;
+    expect(buildModelsFromConfig(configs)[0].inferenceParams).toMatchObject({
+      max_parallel_requests: 8,
+    });
   });
 
   it('resolves the model URN to the provider-facing served model name when given', () => {

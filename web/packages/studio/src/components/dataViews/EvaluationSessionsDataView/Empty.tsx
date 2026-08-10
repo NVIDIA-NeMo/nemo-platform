@@ -15,14 +15,14 @@ import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
 import { Bot, ChevronRight, File, FlaskConical, Terminal } from 'lucide-react';
 
 interface EmptyProps {
-  experimentGroupName: string;
+  experimentName: string;
   datasetName: string;
 }
 
-export const Empty = ({ experimentGroupName, datasetName }: EmptyProps) => {
+export const Empty = ({ experimentName, datasetName }: EmptyProps) => {
   const cliCommand =
     `nemo exp run \\\n` +
-    `  --group "${experimentGroupName}" \\\n` +
+    `  --group "${experimentName}" \\\n` +
     `  --dataset "${datasetName}" \\\n` +
     `  --evaluators correctness,helpfulness,groundedness,tool-error`;
 
@@ -35,9 +35,9 @@ export const Empty = ({ experimentGroupName, datasetName }: EmptyProps) => {
         <div className="w-[560px] border border-base rounded-lg overflow-hidden bg-surface-overlay">
           <TabsRoot defaultValue="cli">
             <TabsList className="px-density-md">
-              <TabsTrigger value="coding-agent">
+              <TabsTrigger value="copilot">
                 <Bot className="size-4" />
-                Coding agent
+                NeMo Copilot
               </TabsTrigger>
               <TabsTrigger value="cli">
                 <Terminal className="size-4" />
@@ -45,7 +45,7 @@ export const Empty = ({ experimentGroupName, datasetName }: EmptyProps) => {
               </TabsTrigger>
             </TabsList>
             <div className="px-density-md pb-density-md flex flex-col gap-density-sm">
-              <TabsContent value="coding-agent" className="px-0 pb-0 w-full">
+              <TabsContent value="copilot" className="px-0 pb-0 w-full">
                 <CodeSnippet
                   value="To be determined"
                   language="text"

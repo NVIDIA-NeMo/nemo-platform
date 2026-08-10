@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
-import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
+import { WorkspaceModelSelect } from '@nemo/common/src/components/ModelSelectV2/WorkspaceModelSelect';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { CardIconBadge, SelectableCard } from '@studio/components/common/SelectableCard';
 import {
   type BuilderModel,
-  providerForModel,
+  providerForSelection,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { Cpu } from 'lucide-react';
 import type { FC } from 'react';
@@ -16,8 +15,7 @@ import type { FC } from 'react';
 export interface AddModelPaletteProps {
   models: BuilderModel[];
   selectedId?: string | null;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels?: boolean;
+  workspace: string;
   onAddModel: (selection: ModelSelection, provider: string) => void;
   onSelectModel: (id: string) => void;
   className?: string;
@@ -25,8 +23,7 @@ export interface AddModelPaletteProps {
 export const AddModelPalette: FC<AddModelPaletteProps> = ({
   models,
   selectedId,
-  modelGroups,
-  isLoadingModels,
+  workspace,
   onAddModel,
   onSelectModel,
   className,
@@ -40,13 +37,10 @@ export const AddModelPalette: FC<AddModelPaletteProps> = ({
     </Stack>
 
     <div className="shrink-0">
-      <ModelSelectV2
+      <WorkspaceModelSelect
+        workspace={workspace}
         value={null}
-        onValueChange={(selection) =>
-          onAddModel(selection, providerForModel(modelGroups, selection.model))
-        }
-        groups={modelGroups}
-        loading={isLoadingModels}
+        onValueChange={(selection) => onAddModel(selection, providerForSelection(selection))}
         placeholder="Add a model"
         fullWidth
         dropdownSide="bottom"

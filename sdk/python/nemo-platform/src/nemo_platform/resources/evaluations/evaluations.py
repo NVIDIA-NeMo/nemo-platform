@@ -90,7 +90,6 @@ class EvaluationsResource(SyncAPIResource):
         experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
-        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -114,19 +113,17 @@ class EvaluationsResource(SyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
-              experiment_ids when experiment_ids is omitted.
+          experiment_group_id: Deprecated single-experiment field; provide experiment_ids instead. Coalesced
+              into experiment_ids when experiment_ids is omitted.
 
-          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
-              each group must already exist. When omitted, the deprecated experiment_group_id
+          experiment_ids: Entity ids of the Experiments this Evaluation belongs to (>=1). Preferred; each
+              experiment must already exist. When omitted, the deprecated experiment_group_id
               is used instead.
 
           metadata: Free-form producer metadata.
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
-
-          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -164,7 +161,6 @@ class EvaluationsResource(SyncAPIResource):
                         "experiment_ids": experiment_ids,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
-                        "parent_experiment_id": parent_experiment_id,
                         "root_cause": root_cause,
                         "source_link": source_link,
                         "status": status,
@@ -232,7 +228,6 @@ class EvaluationsResource(SyncAPIResource):
         experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
-        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -255,19 +250,17 @@ class EvaluationsResource(SyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
-              experiment_ids when experiment_ids is omitted.
+          experiment_group_id: Deprecated single-experiment field; provide experiment_ids instead. Coalesced
+              into experiment_ids when experiment_ids is omitted.
 
-          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
-              each group must already exist. When omitted, the deprecated experiment_group_id
+          experiment_ids: Entity ids of the Experiments this Evaluation belongs to (>=1). Preferred; each
+              experiment must already exist. When omitted, the deprecated experiment_group_id
               is used instead.
 
           metadata: Free-form producer metadata.
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
-
-          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -306,7 +299,6 @@ class EvaluationsResource(SyncAPIResource):
                     "experiment_ids": experiment_ids,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
-                    "parent_experiment_id": parent_experiment_id,
                     "root_cause": root_cause,
                     "source_link": source_link,
                     "status": status,
@@ -338,14 +330,15 @@ class EvaluationsResource(SyncAPIResource):
         List Evaluations
 
         Args:
-          filter: Filter evaluations by name, experiment_group_id, dataset_name, dataset_version,
+          filter: Filter evaluations by name, experiment_id (experiment group membership;
+              experiment_group_id is a deprecated alias), dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
               soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true (or
               false) to filter by pinned state; omit to return both. Filter by a metadata
               key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
               numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
-              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
-              filter[evaluators.<name>.mean][$gte]=0.8.
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+              filter[tokens.mean][$lte]=5000, or filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
@@ -355,7 +348,7 @@ class EvaluationsResource(SyncAPIResource):
               dominates); prefix any field with '-' for descending — e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Each field is an evaluation attribute
               (name, created_at, updated_at, pinned_at) or an aggregate metric: run_count,
-              test_case_count, cost_usd.<stat>, latency_ms.<stat>, or
+              test_case_count, cost_usd.<stat>, latency_ms.<stat>, tokens.<stat>, or
               evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
               sum, count. When omitted, defaults to -created_at with pinned evaluations first.
 
@@ -462,8 +455,9 @@ class EvaluationsResource(SyncAPIResource):
         Args:
           description: Human-readable description.
 
-          experiment_ids: Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when
-              provided; each group must already exist. Omit to leave membership unchanged.
+          experiment_ids: Replace the Experiments this Evaluation belongs to. Must be non-empty when
+              provided; each experiment must already exist. Omit to leave membership
+              unchanged.
 
           metadata: Free-form producer metadata.
 
@@ -633,7 +627,6 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
-        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -657,19 +650,17 @@ class AsyncEvaluationsResource(AsyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
-              experiment_ids when experiment_ids is omitted.
+          experiment_group_id: Deprecated single-experiment field; provide experiment_ids instead. Coalesced
+              into experiment_ids when experiment_ids is omitted.
 
-          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
-              each group must already exist. When omitted, the deprecated experiment_group_id
+          experiment_ids: Entity ids of the Experiments this Evaluation belongs to (>=1). Preferred; each
+              experiment must already exist. When omitted, the deprecated experiment_group_id
               is used instead.
 
           metadata: Free-form producer metadata.
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
-
-          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -707,7 +698,6 @@ class AsyncEvaluationsResource(AsyncAPIResource):
                         "experiment_ids": experiment_ids,
                         "metadata": metadata,
                         "parent_evaluation_id": parent_evaluation_id,
-                        "parent_experiment_id": parent_experiment_id,
                         "root_cause": root_cause,
                         "source_link": source_link,
                         "status": status,
@@ -775,7 +765,6 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         experiment_ids: SequenceNotStr[str] | Omit = omit,
         metadata: Dict[str, str] | Omit = omit,
         parent_evaluation_id: str | Omit = omit,
-        parent_experiment_id: str | Omit = omit,
         root_cause: str | Omit = omit,
         source_link: str | Omit = omit,
         status: str | Omit = omit,
@@ -798,19 +787,17 @@ class AsyncEvaluationsResource(AsyncAPIResource):
 
           description: Human-readable description.
 
-          experiment_group_id: Deprecated single-group field; provide experiment_ids instead. Coalesced into
-              experiment_ids when experiment_ids is omitted.
+          experiment_group_id: Deprecated single-experiment field; provide experiment_ids instead. Coalesced
+              into experiment_ids when experiment_ids is omitted.
 
-          experiment_ids: Entity ids of the ExperimentGroups this Evaluation belongs to (>=1). Preferred;
-              each group must already exist. When omitted, the deprecated experiment_group_id
+          experiment_ids: Entity ids of the Experiments this Evaluation belongs to (>=1). Preferred; each
+              experiment must already exist. When omitted, the deprecated experiment_group_id
               is used instead.
 
           metadata: Free-form producer metadata.
 
           parent_evaluation_id: Entity id of the evaluation this one was derived from (e.g. a variant of a
               baseline), if any.
-
-          parent_experiment_id: Deprecated alias for parent_evaluation_id.
 
           root_cause: Human- or agent-authored explanation of the evaluation's outcome (e.g. why it
               was killed).
@@ -849,7 +836,6 @@ class AsyncEvaluationsResource(AsyncAPIResource):
                     "experiment_ids": experiment_ids,
                     "metadata": metadata,
                     "parent_evaluation_id": parent_evaluation_id,
-                    "parent_experiment_id": parent_experiment_id,
                     "root_cause": root_cause,
                     "source_link": source_link,
                     "status": status,
@@ -881,14 +867,15 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         List Evaluations
 
         Args:
-          filter: Filter evaluations by name, experiment_group_id, dataset_name, dataset_version,
+          filter: Filter evaluations by name, experiment_id (experiment group membership;
+              experiment_group_id is a deprecated alias), dataset_name, dataset_version,
               created_by, created_at, or updated_at. Pass is_deleted=true to return only
               soft-deleted evaluations; omit to see only live ones. Pass is_pinned=true (or
               false) to filter by pinned state; omit to return both. Filter by a metadata
               key/value: filter[metadata.<key>]=<value>. Filter by a rollup metric with
               numeric range operators ($gte/$lte/$gt/$lt/$eq): filter[run_count][$gte]=5,
-              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000, or
-              filter[evaluators.<name>.mean][$gte]=0.8.
+              filter[cost_usd.mean][$lte]=0.5, filter[latency_ms.p95][$lte]=1000,
+              filter[tokens.mean][$lte]=5000, or filter[evaluators.<name>.mean][$gte]=0.8.
 
           page: Page number.
 
@@ -898,7 +885,7 @@ class AsyncEvaluationsResource(AsyncAPIResource):
               dominates); prefix any field with '-' for descending — e.g.
               '-evaluators.reward.mean,cost_usd.mean'. Each field is an evaluation attribute
               (name, created_at, updated_at, pinned_at) or an aggregate metric: run_count,
-              test_case_count, cost_usd.<stat>, latency_ms.<stat>, or
+              test_case_count, cost_usd.<stat>, latency_ms.<stat>, tokens.<stat>, or
               evaluators.<name>.<stat>, where <stat> is one of mean, median, p90, p95, p99,
               sum, count. When omitted, defaults to -created_at with pinned evaluations first.
 
@@ -1005,8 +992,9 @@ class AsyncEvaluationsResource(AsyncAPIResource):
         Args:
           description: Human-readable description.
 
-          experiment_ids: Replace the ExperimentGroups this Evaluation belongs to. Must be non-empty when
-              provided; each group must already exist. Omit to leave membership unchanged.
+          experiment_ids: Replace the Experiments this Evaluation belongs to. Must be non-empty when
+              provided; each experiment must already exist. Omit to leave membership
+              unchanged.
 
           metadata: Free-form producer metadata.
 

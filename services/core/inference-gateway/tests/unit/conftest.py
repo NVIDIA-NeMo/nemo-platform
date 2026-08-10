@@ -114,6 +114,7 @@ def autoprovisioned_vms_for_cache(model_cache: ModelCache) -> list[VirtualModel]
             workspace=workspace,
             name=name,
             parent=workspace,
+            db_version=1,
             default_model_entity=f"{workspace}/{name}",
             autoprovisioned=True,
             created_at=now,

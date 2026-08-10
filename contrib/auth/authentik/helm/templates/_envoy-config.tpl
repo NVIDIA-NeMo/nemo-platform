@@ -1,6 +1,5 @@
 {{- define "nemo-platform-authentik.envoyConfig" -}}
 {{- $authentik := required "nemo-platform.authentikEnvoy is required" .Values.authentikEnvoy -}}
-{{- $oidc := .Values.platformConfig.auth.oidc -}}
 {{- $tlsMountPath := "" -}}
 {{- range .Values.envoyProxy.extraVolumeMounts -}}
 {{- if eq (index . "name") "workload-token-tls" -}}
@@ -9,7 +8,6 @@
 {{- end -}}
 {{- $tlsMountPath = required "nemo-platform.envoyProxy.extraVolumeMounts must include workload-token-tls" $tlsMountPath -}}
 {{- $apiServiceName := include "nmp-api.api-servicename" . -}}
-{{- $envoyServiceName := include "nmp-envoy.servicename" . -}}
 {{- $spoofHeaders := concat .Values.envoyProxy.trustedHeaders (list "x-nmp-authorized" "x-nmp-scopes") | uniq -}}
 admin:
   address:
@@ -49,6 +47,62 @@ static_resources:
                             prefix: "/.well-known/nemo-platform/"
                           route:
                             cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
+                            path: "/apis/auth/discovery"
+                          route:
+                            cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
+                            path: "/apis/auth/authenticate"
+                          route:
+                            cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
+                            path: "/apis/auth/jwks"
+                          route:
+                            cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                          request_headers_to_add:
+                            - header:
+                                key: x-forwarded-proto
+                                value: https
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - match:
+                            path: "/apis/auth/token"
+                          route:
+                            cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
                           request_headers_to_add:
                             - header:
                                 key: x-forwarded-proto
@@ -69,10 +123,18 @@ static_resources:
                             status: 503
                             body:
                               inline_string: '{"status":"not_ready"}'
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
                         - match:
                             prefix: "/health/"
                           route:
                             cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
                           request_headers_to_add:
                             - header:
                                 key: x-forwarded-proto
@@ -82,6 +144,10 @@ static_resources:
                             path: "/status"
                           route:
                             cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
                           request_headers_to_add:
                             - header:
                                 key: x-forwarded-proto
@@ -91,6 +157,10 @@ static_resources:
                             prefix: "/studio/"
                           route:
                             cluster: nemo
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
                           request_headers_to_add:
                             - header:
                                 key: x-forwarded-proto
@@ -100,6 +170,10 @@ static_resources:
                             prefix: "/"
                           route:
                             cluster: authentik
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
                 http_filters:
                   - name: envoy.filters.http.lua
                     typed_config:
@@ -152,56 +226,30 @@ static_resources:
                             string.format('{"status":"not_ready","nemo":"%s","authentik":"%s"}', nemo_status, authentik_status)
                           )
                         end
-                  - name: envoy.filters.http.jwt_authn
+                  - name: envoy.filters.http.ext_authz
                     typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
-                      providers:
-                        authentik_workload:
-                          audiences:
-                            - {{ $oidc.workload_audience | quote }}
-                            - {{ $oidc.client_id | quote }}
-                            - {{ $oidc.workload_client_id | quote }}
-                          remote_jwks:
-                            http_uri:
-                              uri: {{ printf "https://%s:%v/application/o/nemo/jwks/" $envoyServiceName .Values.envoyProxy.service.port | quote }}
-                              cluster: nemo_envoy_https
-                              timeout: 5s
-                            cache_duration: 600s
-                          claim_to_headers:
-                            - header_name: "X-NMP-Principal-Id"
-                              claim_name: "sub"
-                            - header_name: "X-NMP-Principal-Groups"
-                              claim_name: "groups"
-                        workload_exchange:
-                          audiences:
-                            - {{ $oidc.workload_audience | quote }}
-                          remote_jwks:
-                            http_uri:
-                              uri: {{ printf "https://%s:%v/apis/auth/jwks" $envoyServiceName .Values.envoyProxy.service.port | quote }}
-                              cluster: nemo_envoy_https
-                              timeout: 5s
-                            cache_duration: 600s
-                          claim_to_headers:
-                            - header_name: "X-NMP-Principal-Id"
-                              claim_name: "sub"
-                            - header_name: "X-NMP-Principal-Groups"
-                              claim_name: "groups"
-                      rules:
-                        - match:
-                            path: "/apis/auth/discovery"
-                        - match:
-                            path: "/apis/auth/jwks"
-                        - match:
-                            path: "/apis/auth/token"
-                        - match:
-                            prefix: "/health/"
-                        - match:
-                            prefix: "/apis/"
-                          requires:
-                            requires_any:
-                              requirements:
-                                - provider_name: "authentik_workload"
-                                - provider_name: "workload_exchange"
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      transport_api_version: V3
+                      failure_mode_allow: false
+                      status_on_error:
+                        code: ServiceUnavailable
+                      http_service:
+                        server_uri:
+                          uri: {{ printf "http://%s:%v" $apiServiceName .Values.api.service.port | quote }}
+                          cluster: nemo
+                          timeout: 5s
+                        path_prefix: "/apis/auth/authenticate"
+                        authorization_response:
+                          allowed_upstream_headers:
+                            patterns:
+                              - exact: x-nmp-principal-id
+                              - exact: x-nmp-principal-email
+                              - exact: x-nmp-principal-groups
+                              - exact: x-nmp-scopes
+                          allowed_client_headers:
+                            patterns:
+                              - exact: content-type
+                              - exact: www-authenticate
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -209,6 +257,16 @@ static_resources:
     - name: nemo
       connect_timeout: 5s
       type: LOGICAL_DNS
+      # Envoy's default upstream HTTP idle timeout is 1h. Keep this below the
+      # API keep-alive timeout so stale pooled API connections are retired
+      # before the backend closes them.
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          common_http_protocol_options:
+            idle_timeout: {{ .Values.envoyProxy.timeouts.upstreamIdle | quote }}
+          explicit_http_config:
+            http_protocol_options: {}
       load_assignment:
         cluster_name: nemo
         endpoints:
@@ -230,25 +288,4 @@ static_resources:
                     socket_address:
                       address: {{ $authentik.serviceName }}
                       port_value: {{ $authentik.servicePort }}
-    - name: nemo_envoy_https
-      connect_timeout: 5s
-      type: LOGICAL_DNS
-      transport_socket:
-        name: envoy.transport_sockets.tls
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-          sni: {{ $envoyServiceName }}
-          common_tls_context:
-            validation_context:
-              trusted_ca:
-                filename: {{ printf "%s/ca.crt" $tlsMountPath | quote }}
-      load_assignment:
-        cluster_name: nemo_envoy_https
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: {{ $envoyServiceName }}
-                      port_value: {{ .Values.envoyProxy.service.port }}
 {{- end -}}

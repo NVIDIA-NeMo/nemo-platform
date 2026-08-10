@@ -10,7 +10,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIntakeSpansRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { FC, Suspense } from 'react';
-import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
+import { Link, Outlet, matchPath, useLocation } from 'react-router';
 
 export const INTAKE_FILTER_ACTION_TARGET_ID = 'intake-filter-action-target';
 
@@ -37,19 +37,19 @@ export const IntakeLayout: FC = () => {
   useBreadcrumbs({
     items: [
       {
-        slotLabel: 'Intake',
+        slotLabel: 'Traces',
       },
     ],
   });
 
   return (
-    <AccessibleTitle title="Intake">
+    <AccessibleTitle title="Traces">
       <Stack gap="density-2xl" padding="density-2xl" className="h-full">
         <PageHeader
           className="p-0"
           slotHeading={
             <>
-              Intake
+              Traces
               <FeatureFlagBadge flag="intakeEnabled" />
             </>
           }

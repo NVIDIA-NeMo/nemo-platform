@@ -62,10 +62,6 @@ class TestAtif:
                 "evaluation_id": "evaluation_id",
                 "test_case_id": "test_case_id",
             },
-            experiment_context={
-                "experiment_id": "experiment_id",
-                "test_case_id": "test_case_id",
-            },
             extra={"foo": "bar"},
             final_metrics={
                 "extra": {"foo": "bar"},
@@ -217,10 +213,6 @@ class TestAsyncAtif:
             continued_trajectory_ref="continued_trajectory_ref",
             evaluation_context={
                 "evaluation_id": "evaluation_id",
-                "test_case_id": "test_case_id",
-            },
-            experiment_context={
-                "experiment_id": "experiment_id",
                 "test_case_id": "test_case_id",
             },
             extra={"foo": "bar"},

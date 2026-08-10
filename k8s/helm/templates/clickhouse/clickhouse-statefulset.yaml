@@ -1,0 +1,112 @@
+{{- if include "nemo-common.clickhouse.enabled" . }}
+{{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "nemo-common.clickhouse.fullname" . }}
+  labels:
+    app.kubernetes.io/component: clickhouse
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  {{- with .Values.clickhouse.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  serviceName: {{ include "nemo-common.clickhouse.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: clickhouse
+      {{- include "nemo-platform.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/clickhouse-credentials: {{ include "nemo-common.clickhouse.credentialsChecksum" . }}
+        {{- with .Values.clickhouse.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        app.kubernetes.io/component: clickhouse
+        {{- include "nemo-platform.labels" . | nindent 8 }}
+        {{- with .Values.clickhouse.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nemo-common.clickhouse.serviceAccountName" . }}
+{{- if $imagePullSecrets }}
+      imagePullSecrets:
+{{- $imagePullSecrets | nindent 8 }}
+{{- end }}
+      securityContext:
+        {{- include "nemo-common.podSecurityContext" (dict "global" .Values.podSecurityContext "local" .Values.clickhouse.podSecurityContext) | nindent 8 }}
+      {{- with .Values.clickhouse.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: clickhouse
+          image: {{ printf "%s:%s" .Values.clickhouse.image.repository .Values.clickhouse.image.tag | quote }}
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy }}
+          securityContext:
+            {{- include "nemo-common.securityContext" (dict "global" .Values.securityContext "local" .Values.clickhouse.securityContext) | nindent 12 }}
+          env:
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.clickhouse.auth.username | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "nemo-common.clickhouse.secretName" . | quote }}
+                  key: {{ include "nemo-common.clickhouse.passwordKey" . | quote }}
+            - name: CLICKHOUSE_DB
+              value: {{ .Values.clickhouse.auth.database | quote }}
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8123
+              protocol: TCP
+            - name: native
+              containerPort: 9000
+              protocol: TCP
+          startupProbe:
+            {{- toYaml .Values.clickhouse.startupProbe | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.clickhouse.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.clickhouse.readinessProbe | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+      {{- if not .Values.clickhouse.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.clickhouse.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/component: clickhouse
+          {{- include "nemo-platform.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.persistence.size | quote }}
+        {{- with .Values.clickhouse.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+  {{- end }}
+{{- end }}

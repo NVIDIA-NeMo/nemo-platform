@@ -15,23 +15,20 @@ import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledT
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
 import {
   getSecretsListSecretsQueryKey,
   useSecretsCreateSecret,
 } from '@nemo/sdk/generated/platform/api';
 import { Stack } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
-import {
-  SECRET_NAME_HELP,
-  SECRET_NAME_REGEXP,
-} from '@studio/routes/SecretsListRoute/CreateSecretModal/constants';
 import { useQueryClient } from '@tanstack/react-query';
 import { FC } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 const secretFormSchema = z.object({
-  name: z.string().min(1, 'Name is required').regex(SECRET_NAME_REGEXP, SECRET_NAME_HELP),
+  name: entityNameSchema('Name'),
   description: z.string().optional(),
   value: z.string().min(1, 'Secret value is required'),
 });
@@ -132,7 +129,7 @@ export const CreateSecretModal: FC<CreateSecretModalProps> = ({
           formFieldProps={{
             slotInfo:
               'Best practice: Use lowercase letters, numbers, and hyphens only to ensure compatibility with Kubernetes naming conventions.',
-            slotHelp: SECRET_NAME_HELP,
+            slotHelp: ENTITY_NAME_HELP,
             slotError: errors.name?.message,
           }}
         />

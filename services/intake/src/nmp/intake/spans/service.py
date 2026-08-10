@@ -5,8 +5,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from nmp.common.api.common import PaginatedResult
-from nmp.intake.spans.annotations_repository import AnnotationsRepository
+from nmp.intake.repository.annotations import AnnotationsRepository
+from nmp.intake.repository.evaluator_results import EvaluatorResultsRepository
+from nmp.intake.repository.session import SessionRepository
+from nmp.intake.repository.span import SpanRepository
+from nmp.intake.repository.trace import TraceRepository
 from nmp.intake.spans.domain import (
     Annotation,
     AnnotationListFilter,
@@ -22,10 +28,6 @@ from nmp.intake.spans.domain import (
     TraceListFilter,
     TraceMode,
 )
-from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
-from nmp.intake.spans.session_repository import SessionRepository
-from nmp.intake.spans.span_repository import SpanRepository
-from nmp.intake.spans.trace_repository import TraceRepository
 
 
 class SpanNotFoundError(Exception):
@@ -139,6 +141,17 @@ class IntakeSpansService:
         if trace is None:
             raise TraceNotFoundError(workspace, trace_id)
         return trace
+
+    async def latest_trace_started_at_by_group(
+        self,
+        *,
+        workspace: str,
+        trace_refs_by_group: dict[str, list[str]],
+    ) -> dict[str, datetime]:
+        return await self._traces.latest_trace_started_at_by_group(
+            workspace=workspace,
+            trace_refs_by_group=trace_refs_by_group,
+        )
 
     async def get_session(self, *, workspace: str, session_id: str) -> IntakeSession:
         session = await self._sessions.get_session(workspace=workspace, session_id=session_id)

@@ -1,0 +1,14 @@
+[
+  {
+    "input_message": "Show the details for the default workspace without making any changes.",
+    "expected_output": "details for the default workspace"
+  },
+  {
+    "input_message": "List all workspaces on the platform",
+    "expected_output": "list of workspaces"
+  },
+  {
+    "input_message": "List the available models and inference providers using the platform API.",
+    "expected_output": "list of available models and inference providers"
+  }
+]

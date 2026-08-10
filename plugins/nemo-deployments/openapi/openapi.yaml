@@ -659,7 +659,7 @@ components:
           type: object
           title: Labels
         backend_config:
-          $ref: '#/components/schemas/DeploymentBackendConfigInput'
+          $ref: '#/components/schemas/DeploymentBackendConfig'
       type: object
       required:
       - name
@@ -822,6 +822,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -833,24 +838,17 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: Deployment
       description: Desired and observed deployment state.
-    DeploymentBackendConfigInput:
+    DeploymentBackendConfig:
       properties:
         docker:
           $ref: '#/components/schemas/DockerDeploymentConfig'
         k8s:
           $ref: '#/components/schemas/K8sDeploymentConfig'
       type: object
-      title: DeploymentBackendConfigInput
-    DeploymentBackendConfigOutput:
-      properties:
-        docker:
-          $ref: '#/components/schemas/DockerDeploymentConfig'
-        k8s:
-          $ref: '#/components/schemas/K8sDeploymentConfig'
-      type: object
-      title: DeploymentBackendConfigOutput
+      title: DeploymentBackendConfig
     DeploymentConfig:
       properties:
         name:
@@ -907,7 +905,30 @@ components:
           type: object
           title: Labels
         backendConfig:
-          $ref: '#/components/schemas/DeploymentBackendConfigOutput'
+          $ref: '#/components/schemas/DeploymentBackendConfig'
+        authProxySidecar:
+          type: boolean
+          title: Authproxysidecar
+          description: Inject a loopback auth-proxy sidecar that stamps a service-principal
+            identity header on the workload's platform calls. No-op when platform
+            auth is disabled. The workload must target the proxy on localhost (see
+            auth_proxy_sidecar_port).
+          default: false
+        authProxySidecarIdentity:
+          title: Authproxysidecaridentity
+          description: 'Service-principal name the auth-proxy sidecar stamps (interpolated
+            into ''X-NMP-Principal-Id: service:<identity>''). Required when auth_proxy_sidecar
+            is True.'
+          type: string
+        authProxySidecarOnBehalfOf:
+          title: Authproxysidecaronbehalfof
+          description: Optional principal id the auth-proxy sidecar delegates to via
+            'X-NMP-Principal-On-Behalf-Of'. When set, the service principal acts on
+            behalf of this identity so the platform scopes the workload's access to
+            what that principal can reach (e.g. the deployment's creator) rather than
+            the service principal's full reach. Only meaningful when auth_proxy_sidecar
+            is True.
+          type: string
         id:
           type: string
           title: Id
@@ -942,6 +963,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -952,6 +978,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: DeploymentConfig
       description: Immutable PodSpec-shaped deployment template.
     DockerDeploymentConfig:
@@ -969,6 +996,17 @@ components:
           default: local
         mount_point:
           title: Mount Point
+          type: string
+        initChmod:
+          title: Initchmod
+          description: "When set, an init container chmods the freshly created (root-owned)\
+            \ named volume to this mode (e.g. '0777') so a non-root workload (e.g.\
+            \ the HF weight-puller) can write to it \u2014 the docker analogue of\
+            \ a k8s fsGroup."
+          type: string
+        initImage:
+          title: Initimage
+          description: Image used for the init_chmod container (e.g. busybox).
           type: string
       type: object
       title: DockerVolumeConfig
@@ -1594,6 +1632,11 @@ components:
           description: Parent entity ID for nested entities.
           readOnly: true
           type: string
+        db_version:
+          type: integer
+          title: Db Version
+          description: Database version of the entity for optimistic locking.
+          readOnly: true
       type: object
       required:
       - workspace
@@ -1604,6 +1647,7 @@ components:
       - updated_by
       - entity_id
       - parent
+      - db_version
       title: Volume
       description: Persistent volume request and observed state.
     VolumeBackendConfig:

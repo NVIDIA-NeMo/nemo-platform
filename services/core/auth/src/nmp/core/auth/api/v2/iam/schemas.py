@@ -1,11 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""IAM schemas for API endpoints."""
+"""IAM schemas for API endpoints.
+
+Role-binding request and response DTOs are shared with the typed plugin client.
+Server-only filter schemas remain here because they provide entity-store field
+translation that is not part of the wire DTO contract.
+"""
 
 from datetime import datetime
 from typing import Optional
 
+from nemo_platform_plugin.iam.types import RoleBinding as RoleBinding
+from nemo_platform_plugin.iam.types import RoleBindingInput as RoleBindingInput
 from nmp.common.entities.values import Filter, StringFilter
 from pydantic import BaseModel, Field
 
@@ -17,35 +24,12 @@ class DateRangeFilter(BaseModel):
     lte: Optional[datetime] = Field(None, description="Less than or equal to this date")
 
 
-class RoleBindingInput(BaseModel):
-    """Input schema for creating a role binding."""
-
-    principal: str = Field(description="The principal identifier (email, user ID, or group ID)")
-    workspace: Optional[str] = Field(
-        default=None, description="The workspace this binding applies to. None for platform-level roles."
-    )
-    role: str = Field(description="The role name (e.g., 'Viewer', 'Editor', 'Admin')")
-
-
 class RoleBindingUpdate(BaseModel):
     """Input schema for updating a role binding."""
 
     revoked_at: Optional[datetime] = Field(
         default=None, description="Timestamp when the role was revoked (None if active)"
     )
-
-
-class RoleBinding(BaseModel):
-    """Role binding response model."""
-
-    id: str
-    name: str
-    principal: str
-    workspace: Optional[str]
-    role: str
-    granted_by: str
-    granted_at: datetime
-    revoked_at: Optional[datetime]
 
 
 class RoleBindingFilter(Filter):

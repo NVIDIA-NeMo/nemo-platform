@@ -54,23 +54,45 @@ def project_dir(tmp_path: Path) -> tuple[Path, Path]:
     return config, pyproject
 
 
+@pytest.fixture()
+def fabric_agent_config(tmp_path: Path) -> Path:
+    config = tmp_path / "agent.yaml"
+    config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+    return config
+
+
 # ---------------------------------------------------------------------------
 # Render tests
 # ---------------------------------------------------------------------------
 
 
-class TestRenderDockerfile:
-    """Tests for nemo_agents_plugin.container.template."""
+class TestRenderNatDockerfile:
+    """Tests for the NAT Dockerfile renderer."""
+
+    def test_render_params_keep_runtime_fields_separate(self) -> None:
+        from nemo_agents_plugin.container.template import FabricRenderParams, NatRenderParams, SharedRenderParams
+
+        shared = SharedRenderParams()
+        nat = NatRenderParams(nat_version="1.8.0")
+        fabric = FabricRenderParams()
+
+        assert isinstance(nat, SharedRenderParams)
+        assert isinstance(fabric, SharedRenderParams)
+        assert not hasattr(shared, "nat_version")
+        assert nat.nat_version == "1.8.0"
+        for field in ("nat_version", "nemo_agents_version", "relay_cli_version"):
+            assert not hasattr(fabric, field)
 
     def test_config_only_mode(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(agent_config, None, nat_version="1.4.0")
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
 
         assert "nvidia-nat[most]==" in result
         assert "uv sync" not in result
         assert "NAT_CONFIG_FILE=/workspace/config.yaml" in result
         assert "ARG NAT_VERSION=1.4.0" in result
+        assert "ghcr.io/astral-sh/uv:0.9.14" in result
 
     def test_project_mode(self, project_dir: tuple[Path, Path]) -> None:
         """Project mode trusts pyproject.toml as the single source of truth.
@@ -84,10 +106,10 @@ class TestRenderDockerfile:
         ``uv sync`` is also avoided so ``[tool.uv.sources]`` path overrides
         don't silently pull sibling packages from outside the build context.
         """
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         config, pyproject = project_dir
-        result = render_dockerfile(config, pyproject, nat_version="1.4.0")
+        result = render_nat_dockerfile(config, pyproject, nat_version="1.4.0")
 
         assert "uv pip install ." in result
         assert ". /workspace/.venv/bin/activate" in result
@@ -111,9 +133,9 @@ class TestRenderDockerfile:
                 )
 
     def test_custom_overrides(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(
+        result = render_nat_dockerfile(
             agent_config,
             None,
             base_image_url="custom/image",
@@ -130,15 +152,21 @@ class TestRenderDockerfile:
         assert "ghcr.io/astral-sh/uv:0.9.0" in result
 
     def test_env_var_fallback(self, agent_config: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         monkeypatch.setenv("NAT_VERSION", "1.5.0")
-        monkeypatch.setenv("NAT_PYTHON_VERSION", "3.11")
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_URL", "env/image")
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_TAG", "env-tag")
+        monkeypatch.setenv("NEMO_AGENTS_PYTHON_VERSION", "3.11")
+        monkeypatch.setenv("NEMO_AGENTS_UV_VERSION", "0.9.0")
 
-        result = render_dockerfile(agent_config, None)
+        result = render_nat_dockerfile(agent_config, None)
 
         assert "ARG NAT_VERSION=1.5.0" in result
+        assert "ARG BASE_IMAGE_URL=env/image" in result
+        assert "ARG BASE_IMAGE_TAG=env-tag" in result
         assert "ARG PYTHON_VERSION=3.11" in result
+        assert "ghcr.io/astral-sh/uv:0.9.0" in result
 
     def test_missing_nat_version_falls_back_to_default(
         self, agent_config: Path, monkeypatch: pytest.MonkeyPatch
@@ -148,20 +176,20 @@ class TestRenderDockerfile:
         The default is kept in sync with a release where ``nvidia-nat[most]`` and every
         plugin extra target the same core ABI (avoids runtime ImportError drift).
         """
-        from nemo_agents_plugin.container.template import _DEFAULTS, render_dockerfile
+        from nemo_agents_plugin.container.template import _DEFAULTS, render_nat_dockerfile
 
         monkeypatch.delenv("NAT_VERSION", raising=False)
 
-        result = render_dockerfile(agent_config, None)
+        result = render_nat_dockerfile(agent_config, None)
 
         default = _DEFAULTS["nat_version"]
         assert f"ARG NAT_VERSION={default}" in result
         assert f'com.nemo.agent.nat-version="{default}"' in result
 
     def test_non_root_user_by_default(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(agent_config, None, nat_version="1.4.0")
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
 
         assert "USER agent" in result
         assert "groupadd" in result
@@ -179,17 +207,80 @@ class TestRenderDockerfile:
         assert "groupdel -f" in result
 
     def test_allow_root_skips_user(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(agent_config, None, nat_version="1.4.0", allow_root=True)
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0", allow_root=True)
 
         assert "USER agent" not in result
         assert "groupadd" not in result
 
-    def test_oci_labels_present(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+    @staticmethod
+    def _fake_profile():
+        from nemo_platform_plugin.sandbox import SandboxImageProfile, SandboxUser
 
-        result = render_dockerfile(agent_config, None, nat_version="1.4.0")
+        return SandboxImageProfile(
+            name="openshell",
+            apt_packages=("iproute2", "nftables"),
+            users=(
+                SandboxUser(name="sandbox", system=True, create_home=True, home="/home/sandbox", shell="/bin/bash"),
+            ),
+        )
+
+    def test_sandbox_runtime_off_by_default(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
+
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
+
+        # Vanilla images must not carry any sandbox-runtime extras.
+        assert "iproute2" not in result
+        assert "nftables" not in result
+        assert "sandbox" not in result
+
+    def test_sandbox_runtime_renders_discovered_profile(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
+
+        # The packager discovers profiles by name; it never imports a provider.
+        with patch(
+            "nemo_agents_plugin.container.sandbox.discover_sandbox_profiles",
+            return_value={"openshell": self._fake_profile()},
+        ):
+            result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0", sandbox_runtime="openshell")
+
+        assert "iproute2 nftables" in result
+        assert "groupadd --system sandbox" in result
+        assert (
+            "useradd --system --gid sandbox --create-home --home-dir /home/sandbox --shell /bin/bash sandbox" in result
+        )
+        # Normal-container hardening + entrypoint are untouched.
+        assert "USER agent" in result
+        assert "exec nat serve" in result
+
+    def test_sandbox_runtime_unknown_raises(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
+
+        with patch("nemo_agents_plugin.container.sandbox.discover_sandbox_profiles", return_value={}):
+            with pytest.raises(ValueError, match="unknown sandbox runtime"):
+                render_nat_dockerfile(agent_config, None, nat_version="1.4.0", sandbox_runtime="nope")
+
+    def test_sandbox_runtime_independent_of_allow_root(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
+
+        with patch(
+            "nemo_agents_plugin.container.sandbox.discover_sandbox_profiles",
+            return_value={"openshell": self._fake_profile()},
+        ):
+            result = render_nat_dockerfile(
+                agent_config, None, nat_version="1.4.0", sandbox_runtime="openshell", allow_root=True
+            )
+
+        # The sandbox user is required whether or not the agent user is created.
+        assert "groupadd --system sandbox" in result
+        assert "USER agent" not in result
+
+    def test_oci_labels_present(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
+
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
 
         assert 'com.nemo.agent.id="' in result
         assert 'org.opencontainers.image.title="config"' in result
@@ -201,9 +292,9 @@ class TestRenderDockerfile:
         assert 'org.opencontainers.image.source="' in result
 
     def test_oci_labels_with_explicit_metadata(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(
+        result = render_nat_dockerfile(
             agent_config,
             None,
             nat_version="1.4.0",
@@ -215,16 +306,16 @@ class TestRenderDockerfile:
         assert 'org.opencontainers.image.authors="Test Author"' in result
 
     def test_oci_labels_from_pyproject(self, project_dir: tuple[Path, Path]) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         config, pyproject = project_dir
-        result = render_dockerfile(config, pyproject, nat_version="1.4.0")
+        result = render_nat_dockerfile(config, pyproject, nat_version="1.4.0")
 
         assert 'org.opencontainers.image.title="test-agent"' in result
         assert 'org.opencontainers.image.version="2.3.0"' in result
 
     def test_oci_labels_description_and_license_from_pyproject(self, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         (tmp_path / "configs").mkdir()
         config = tmp_path / "configs" / "config.yaml"
@@ -236,22 +327,22 @@ class TestRenderDockerfile:
             'license = "Apache-2.0"\n'
         )
 
-        result = render_dockerfile(config, pyproject, nat_version="1.4.0")
+        result = render_nat_dockerfile(config, pyproject, nat_version="1.4.0")
 
         assert 'org.opencontainers.image.description="A calculator agent for math queries"' in result
         assert 'org.opencontainers.image.licenses="Apache-2.0"' in result
 
     def test_oci_licenses_omitted_when_absent(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(agent_config, None, nat_version="1.4.0")
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
 
         assert "org.opencontainers.image.licenses" not in result
 
     def test_hardened_apt_get(self, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        result = render_dockerfile(agent_config, None, nat_version="1.4.0")
+        result = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
 
         assert "--no-install-recommends" in result
         assert "rm -rf /var/lib/apt/lists/*" in result
@@ -263,11 +354,11 @@ class TestRenderDockerfile:
         /root/.local/share/uv/python/... which the agent user (uid 1000) could
         not traverse, causing 'exec: nat: Permission denied' at runtime.
         """
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
-        config_only = render_dockerfile(agent_config, None, nat_version="1.4.0")
+        config_only = render_nat_dockerfile(agent_config, None, nat_version="1.4.0")
         cfg_path, pyproj = project_dir
-        with_proj = render_dockerfile(cfg_path, pyproj, nat_version="1.4.0")
+        with_proj = render_nat_dockerfile(cfg_path, pyproj, nat_version="1.4.0")
 
         for result in (config_only, with_proj):
             assert "UV_PYTHON_INSTALL_DIR=/opt/uv/python" in result
@@ -276,15 +367,237 @@ class TestRenderDockerfile:
             assert "/root/.local" not in result
 
     def test_external_template(self, agent_config: Path, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         custom = tmp_path / "custom.dockerfile.j2"
         custom.write_text("FROM ubuntu\nRUN echo {{ nat_version }}\n")
 
-        result = render_dockerfile(agent_config, None, nat_version="9.9.9", template_path=str(custom))
+        result = render_nat_dockerfile(agent_config, None, nat_version="9.9.9", template_path=str(custom))
 
         assert "FROM ubuntu" in result
         assert "echo 9.9.9" in result
+
+
+class TestFabricDockerfileTemplate:
+    """Direct contract tests for the Fabric template before its renderer is wired."""
+
+    @staticmethod
+    def _render(**overrides: object) -> str:
+        from dataclasses import asdict
+
+        from nemo_agents_plugin.container.template import (
+            FABRIC_DOCKERFILE_TEMPLATE,
+            FabricRenderParams,
+            _jinja_env,
+        )
+
+        params = FabricRenderParams(contract_version="1.2.3", **overrides)
+        return _jinja_env().from_string(FABRIC_DOCKERFILE_TEMPLATE).render(**asdict(params))
+
+    def test_installs_pinned_relay_cli_globally(self) -> None:
+        from nemo_agents_plugin.container.template import (
+            PINNED_NEMO_RELAY_CLI_VERSION,
+            PINNED_NEMO_RELAY_INSTALLER_COMMIT,
+            PINNED_NEMO_RELAY_INSTALLER_SHA256,
+        )
+
+        result = self._render()
+
+        assert f"NVIDIA/NeMo-Relay/{PINNED_NEMO_RELAY_INSTALLER_COMMIT}/install.sh" in result
+        assert f'echo "{PINNED_NEMO_RELAY_INSTALLER_SHA256}  /tmp/install-nemo-relay.sh"' in result
+        assert result.index("sha256sum -c -") < result.index("NEMO_RELAY_VERSION=")
+        assert f"NEMO_RELAY_VERSION={PINNED_NEMO_RELAY_CLI_VERSION}" in result
+        assert "--install-dir /usr/local/bin" in result
+        assert "nemo-relay --version" in result
+        assert "ARG NEMO_RELAY" not in result
+
+    def test_preserves_agent_bundle_and_config_path(self) -> None:
+        result = self._render(config_file_path="/workspace/configs/agent.yaml")
+
+        assert "COPY ./ /workspace" in result
+        assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
+        assert "COPY agent.yaml" not in result
+
+    def test_starts_fabric_server(self) -> None:
+        result = self._render()
+
+        assert "ENV PORT=8000" in result
+        assert "ENV VIRTUAL_ENV=/workspace/.venv" in result
+        assert "EXPOSE 8000" in result
+        assert (
+            'ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server '
+            '--agent-config \\"$AGENT_CONFIG_PATH\\" --host 0.0.0.0 --port \\"$PORT\\""]' in result
+        )
+
+
+class TestRenderFabricDockerfile:
+    """Tests for the public Fabric Dockerfile renderer."""
+
+    def test_config_only_mode(self, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
+
+        result = render_fabric_dockerfile(fabric_agent_config)
+
+        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}"' in result
+        install_line = next(line for line in result.splitlines() if "uv pip install" in line)
+        assert "--prerelease" not in install_line
+        assert '" .' not in install_line
+        assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in result
+        assert "NAT_VERSION" not in result
+        assert "ghcr.io/astral-sh/uv:0.9.14" in result
+
+    def test_renders_platform_agent_oci_labels(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
+
+        agent_config = tmp_path / "agent.yaml"
+        agent_config.write_text(
+            "config_format: nemo-agents-spec-v1\nname: research-assistant\ndescription: Researches technical topics\n"
+        )
+        metadata = extract_agent_metadata(
+            agent_config,
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+        )
+
+        result = render_fabric_dockerfile(
+            agent_config,
+            agent_version="2.0.0",
+            agent_author="Agent Author",
+        )
+
+        assert 'org.opencontainers.image.title="research-assistant"' in result
+        assert 'org.opencontainers.image.version="2.0.0"' in result
+        assert 'org.opencontainers.image.authors="Agent Author"' in result
+        assert 'org.opencontainers.image.description="Researches technical topics"' in result
+        assert f'com.nemo.agent.id="{metadata["agent_id"]}"' in result
+        assert 'com.nemo.agent.framework="nemo_platform_agent"' in result
+        assert f'com.nemo.agent.contract-version="{get_contract_version()}"' in result
+
+    def test_project_mode_preserves_relative_config_path(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import get_contract_version, render_fabric_dockerfile
+
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        agent_config = configs / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        result = render_fabric_dockerfile(agent_config, pyproject)
+
+        assert f'uv pip install "nemo-platform[nemo-agents-plugin]=={get_contract_version()}" .' in result
+        install_line = next(line for line in result.splitlines() if "uv pip install" in line)
+        assert "--prerelease" not in install_line
+        assert '" .' in install_line
+        assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in result
+
+    def test_unresolved_contract_version_is_rejected(
+        self,
+        fabric_agent_config: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import nemo_agents_plugin.container.template as template
+
+        monkeypatch.setattr(template, "get_contract_version", lambda: "0.0.0")
+
+        with pytest.raises(ValueError, match="Unable to resolve the installed nemo-platform contract version"):
+            template.render_fabric_dockerfile(fabric_agent_config)
+
+    def test_custom_template_uses_fabric_context(self, tmp_path: Path, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        custom = tmp_path / "fabric.dockerfile.j2"
+        custom.write_text("FROM {{ base_image_url }}:{{ base_image_tag }}\nENV CONFIG={{ config_file_path }}\n")
+
+        result = render_fabric_dockerfile(
+            fabric_agent_config,
+            base_image_url="custom/image",
+            base_image_tag="custom-tag",
+            template_path=str(custom),
+        )
+
+        assert result == "FROM custom/image:custom-tag\nENV CONFIG=/workspace/agent.yaml\n"
+
+    def test_shared_environment_and_explicit_overrides(
+        self,
+        fabric_agent_config: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_URL", "env/image")
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_TAG", "env-tag")
+        monkeypatch.setenv("NEMO_AGENTS_PYTHON_VERSION", "3.12")
+        monkeypatch.setenv("NEMO_AGENTS_UV_VERSION", "0.9.0")
+        monkeypatch.setenv("NAT_VERSION", "9.9.9")
+
+        from_environment = render_fabric_dockerfile(fabric_agent_config)
+        explicit = render_fabric_dockerfile(
+            fabric_agent_config,
+            base_image_url="flag/image",
+            base_image_tag="flag-tag",
+            python_version="3.13",
+            uv_version="0.10.0",
+        )
+
+        assert "ARG BASE_IMAGE_URL=env/image" in from_environment
+        assert "ARG BASE_IMAGE_TAG=env-tag" in from_environment
+        assert "ARG PYTHON_VERSION=3.12" in from_environment
+        assert "ghcr.io/astral-sh/uv:0.9.0" in from_environment
+        assert "ARG BASE_IMAGE_URL=flag/image" in explicit
+        assert "ARG BASE_IMAGE_TAG=flag-tag" in explicit
+        assert "ARG PYTHON_VERSION=3.13" in explicit
+        assert "ghcr.io/astral-sh/uv:0.10.0" in explicit
+        assert "9.9.9" not in from_environment + explicit
+
+    def test_allow_root_and_sandbox_profile(self, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+        from nemo_platform_plugin.sandbox import SandboxImageProfile, SandboxUser
+
+        profile = SandboxImageProfile(
+            name="openshell",
+            apt_packages=("iproute2", "nftables"),
+            users=(SandboxUser(name="sandbox", system=True, create_home=True),),
+        )
+
+        with patch(
+            "nemo_agents_plugin.container.sandbox.discover_sandbox_profiles",
+            return_value={"openshell": profile},
+        ):
+            result = render_fabric_dockerfile(fabric_agent_config, sandbox_runtime="openshell", allow_root=True)
+
+        assert "iproute2 nftables" in result
+        assert "groupadd --system sandbox" in result
+        assert "USER agent" not in result
+        assert "nemo_agents_plugin.fabric.server" in result
+
+    def test_config_outside_project_context_is_rejected(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        agent_dir = tmp_path / "agent"
+        project_dir = tmp_path / "project"
+        agent_dir.mkdir()
+        project_dir.mkdir()
+        agent_config = agent_dir / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        pyproject = project_dir / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        with pytest.raises(ValueError, match="outside the pyproject build context"):
+            render_fabric_dockerfile(agent_config, pyproject)
+
+    def test_unreadable_custom_template_is_reported_as_value_error(
+        self,
+        tmp_path: Path,
+        fabric_agent_config: Path,
+    ) -> None:
+        from nemo_agents_plugin.container.template import render_fabric_dockerfile
+
+        missing = tmp_path / "missing.dockerfile.j2"
+
+        with pytest.raises(ValueError, match="failed to read --template file"):
+            render_fabric_dockerfile(fabric_agent_config, template_path=str(missing))
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +635,14 @@ class TestRenderDockerignore:
 
 
 class TestExtractAgentMetadata:
+    def test_parses_agent_config_once(self, agent_config: Path) -> None:
+        import nemo_agents_plugin.container.metadata as metadata
+
+        with patch.object(metadata.yaml, "safe_load", wraps=metadata.yaml.safe_load) as mock_safe_load:
+            metadata.extract_agent_metadata(agent_config, agent_author="x")
+
+        mock_safe_load.assert_called_once()
+
     def test_basic_extraction(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
 
@@ -351,6 +672,26 @@ class TestExtractAgentMetadata:
 
         assert meta["agent_name"] == "test-agent"
         assert meta["agent_version"] == "2.3.0"
+
+    def test_fabric_config_sets_name_and_framework(self, fabric_agent_config: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        meta = extract_agent_metadata(fabric_agent_config, agent_author="x")
+
+        assert meta["agent_name"] == "fabric-agent"
+        assert meta["agent_framework"] == "nemo_platform_agent"
+
+    def test_pyproject_name_overrides_fabric_config_name(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: config-name\n")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "project-name"\nversion = "1.0.0"\n')
+
+        meta = extract_agent_metadata(config, pyproject, agent_author="x")
+
+        assert meta["agent_name"] == "project-name"
 
     def test_explicit_overrides_take_priority(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
@@ -383,6 +724,27 @@ class TestExtractAgentMetadata:
         m2 = extract_agent_metadata(c2, agent_author="x")
         assert m1["agent_id"] != m2["agent_id"]
 
+    def test_fabric_agent_id_includes_runtime_contract(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: research-assistant\n")
+        baseline = {
+            "agent_framework": "nemo_platform_agent",
+            "contract_version": "1.0.0",
+            "nemo_relay_cli_version": "0.6.0",
+        }
+
+        baseline_id = extract_agent_metadata(config, agent_author="x", build_env=baseline)["agent_id"]
+
+        for key, value in (
+            ("agent_framework", "different-runtime"),
+            ("contract_version", "2.0.0"),
+            ("nemo_relay_cli_version", "0.7.0"),
+        ):
+            changed = {**baseline, key: value}
+            assert extract_agent_metadata(config, agent_author="x", build_env=changed)["agent_id"] != baseline_id
+
     def test_no_workflow_key_gives_unknown_framework(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
 
@@ -391,6 +753,20 @@ class TestExtractAgentMetadata:
 
         meta = extract_agent_metadata(config, agent_author="x")
         assert meta["agent_framework"] == "unknown"
+
+    def test_nat_metadata_ignores_platform_only_top_level_fields(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "nat-config.yaml"
+        config.write_text(
+            "name: platform-style-name\ndescription: Platform-style description\nworkflow:\n  _type: react_agent\n"
+        )
+
+        meta = extract_agent_metadata(config, agent_author="x")
+
+        assert meta["agent_name"] == "nat-config"
+        assert meta["agent_framework"] == "nemo_agent_toolkit"
+        assert meta["description"] == "react_agent agent"
 
     def test_git_failure_falls_back_to_unknown(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
@@ -421,6 +797,21 @@ class TestExtractAgentMetadata:
 
         meta = extract_agent_metadata(config, pyproject, agent_author="x")
         assert meta["description"] == "Handles math queries"
+
+    def test_fabric_description_and_pyproject_override(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.metadata import extract_agent_metadata
+
+        config = tmp_path / "agent.yaml"
+        config.write_text(
+            "config_format: nemo-agents-spec-v1\nname: research-assistant\ndescription: Config description\n"
+        )
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(
+            '[project]\nname = "research-assistant"\nversion = "1.0.0"\ndescription = "Project description"\n'
+        )
+
+        assert extract_agent_metadata(config, agent_author="x")["description"] == "Config description"
+        assert extract_agent_metadata(config, pyproject, agent_author="x")["description"] == "Project description"
 
     def test_description_fallback_to_workflow_type(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.metadata import extract_agent_metadata
@@ -780,16 +1171,60 @@ class TestValidateAgentConfig:
 # ---------------------------------------------------------------------------
 
 
+class TestDetectAgentConfigFormat:
+    def test_missing_config_format_defaults_to_nat(self, agent_config: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+        from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT
+
+        assert detect_agent_config_format(agent_config) == NAT_WORKFLOW_CONFIG_FORMAT
+
+    def test_detects_platform_agent_spec(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+        from nemo_agents_plugin.entities import NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+        config = tmp_path / "agent.yaml"
+        config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+
+        assert detect_agent_config_format(config) == NEMO_AGENTS_SPEC_CONFIG_FORMAT
+
+    @pytest.mark.parametrize(
+        ("content", "error"),
+        [
+            ("config_format: future-format-v99\n", "Unsupported agent config format"),
+            ("config_format: [unterminated\n", "YAML parse error"),
+        ],
+    )
+    def test_rejects_invalid_config(self, tmp_path: Path, content: str, error: str) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        config = tmp_path / "agent.yaml"
+        config.write_text(content)
+
+        with pytest.raises(ValueError, match=error):
+            detect_agent_config_format(config)
+
+    def test_wraps_read_errors(self, tmp_path: Path) -> None:
+        from nemo_agents_plugin.container.builder import detect_agent_config_format
+
+        with pytest.raises(ValueError, match="Unable to read config file"):
+            detect_agent_config_format(tmp_path / "missing.yaml")
+
+        binary = tmp_path / "binary.yaml"
+        binary.write_bytes(b"\x80\x81\x82")
+        with pytest.raises(ValueError, match="Config file is not valid UTF-8"):
+            detect_agent_config_format(binary)
+
+
 class TestBuildAgentImage:
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_with_provided_dockerfile(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         dockerfile = agent_config.parent / "Dockerfile"
         dockerfile.write_text("FROM ubuntu")
         mock_build.return_value = "my-agent:latest"
 
-        result = build_agent_image(
+        result = build_nat_agent_image(
             agent_config,
             dockerfile=dockerfile,
             tag="my-agent:latest",
@@ -802,11 +1237,11 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_renders_on_the_fly(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "config-abc123:0.0.0"
 
-        build_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
 
         tag = mock_build.call_args.kwargs["tag"]
         assert tag.startswith("config-")
@@ -816,10 +1251,10 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_cleans_up_dockerignore(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "config-abc:0.0.0"
-        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
 
         assert not (agent_config.parent / ".dockerignore").exists()
         assert not (agent_config.parent / "Dockerfile.generated").exists()
@@ -839,7 +1274,7 @@ class TestBuildAgentImage:
         deletes files this run actually *created* (file did not exist
         before the build).  Both content and existence are checked.
         """
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
         from nemo_agents_plugin.container.template import DOCKERIGNORE_SENTINEL
 
         ignore = agent_config.parent / ".dockerignore"
@@ -847,7 +1282,7 @@ class TestBuildAgentImage:
         ignore.write_text(committed)
 
         mock_build.return_value = "config-abc:0.0.0"
-        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
 
         assert ignore.exists(), "committed .dockerignore was deleted by build cleanup"
         # Content may have been regenerated (sentinel-marked = safe to
@@ -857,22 +1292,22 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_no_ignore(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "config-abc:0.0.0"
-        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=False, agent_author="x")
+        build_nat_agent_image(agent_config, nat_version="1.4.0", generate_ignore=False, agent_author="x")
 
         assert not (agent_config.parent / ".dockerignore").exists()
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_default_tag_from_metadata(self, mock_build: MagicMock, project_dir: tuple[Path, Path]) -> None:
         """Default tag follows the ``{agent_name}-{agent_id}:{agent_version}`` convention."""
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         config, pyproject = project_dir
         mock_build.return_value = "placeholder"
 
-        build_agent_image(config, pyproject=pyproject, nat_version="1.4.0", agent_author="x")
+        build_nat_agent_image(config, pyproject=pyproject, nat_version="1.4.0", agent_author="x")
 
         tag = mock_build.call_args.kwargs["tag"]
         assert tag.startswith("test-agent-"), f"Expected tag to start with 'test-agent-', got {tag}"
@@ -883,32 +1318,32 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_runs_validation_by_default(self, mock_build: MagicMock, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         bad = tmp_path / "bad.yaml"
         bad.write_text("no_workflow_here: true\n")
         mock_build.return_value = "x:latest"
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(bad, nat_version="1.0.0")
+            build_nat_agent_image(bad, nat_version="1.0.0")
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_skip_validation(self, mock_build: MagicMock, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         bad = tmp_path / "bad.yaml"
         bad.write_text("no_workflow_here: true\n")
         mock_build.return_value = "x:latest"
 
-        result = build_agent_image(bad, nat_version="1.0.0", skip_validation=True)
+        result = build_nat_agent_image(bad, nat_version="1.0.0", skip_validation=True)
         assert result == "x:latest"
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_passes_allow_root(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "x:latest"
-        build_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
+        build_nat_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
 
         call_kwargs = mock_build.call_args.kwargs
         dockerfile = call_kwargs["dockerfile"]
@@ -916,25 +1351,25 @@ class TestBuildAgentImage:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_with_external_template(self, mock_build: MagicMock, agent_config: Path, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         tpl = tmp_path / "custom.j2"
         tpl.write_text("FROM scratch\nRUN echo {{ nat_version }}")
         mock_build.return_value = "x:latest"
 
-        build_agent_image(agent_config, nat_version="5.0.0", template_path=str(tpl))
+        build_nat_agent_image(agent_config, nat_version="5.0.0", template_path=str(tpl))
 
         call_kwargs = mock_build.call_args.kwargs
         assert "5.0.0" in call_kwargs["build_args"]["NAT_VERSION"]
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_cleanup_on_failure(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.side_effect = SystemExit(1)
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(agent_config, nat_version="1.0.0")
+            build_nat_agent_image(agent_config, nat_version="1.0.0")
 
         assert not (agent_config.parent / "Dockerfile.generated").exists()
         assert not (agent_config.parent / ".dockerignore").exists()
@@ -1075,10 +1510,10 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_render_then_build_then_publish(self, mock_build: MagicMock, agent_config: Path, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
-        from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
+        from nemo_agents_plugin.container.template import render_dockerignore, render_nat_dockerfile
 
-        rendered = render_dockerfile(
+        rendered = render_nat_dockerfile(
             agent_config,
             None,
             nat_version="1.4.0",
@@ -1098,7 +1533,7 @@ class TestEndToEndPipeline:
         assert ignore_path.exists()
 
         mock_build.return_value = "e2e-agent:1.0.0"
-        tag = build_agent_image(
+        tag = build_nat_agent_image(
             agent_config,
             dockerfile=dockerfile_path,
             tag="e2e-agent:1.0.0",
@@ -1127,7 +1562,7 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_full_pipeline_with_project_mode(self, mock_build: MagicMock, project_dir: tuple[Path, Path]) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
         from nemo_agents_plugin.container.validator import validate_agent_config
 
         config, pyproject = project_dir
@@ -1136,7 +1571,7 @@ class TestEndToEndPipeline:
         assert validation.valid
 
         mock_build.return_value = "placeholder"
-        build_agent_image(
+        build_nat_agent_image(
             config,
             pyproject=pyproject,
             nat_version="1.4.0",
@@ -1153,26 +1588,26 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_validation_blocks_bad_config(self, mock_build: MagicMock, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         bad = tmp_path / "bad_agent.yaml"
         bad.write_text("llms:\n  x: {}\n")
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(bad, nat_version="1.0.0")
+            build_nat_agent_image(bad, nat_version="1.0.0")
 
         mock_build.assert_not_called()
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_external_template_e2e(self, mock_build: MagicMock, agent_config: Path, tmp_path: Path) -> None:
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         custom_tpl = tmp_path / "tpl.j2"
         custom_tpl.write_text(
             "FROM alpine\nLABEL agent={{ agent_name }} version={{ agent_version }}\nRUN echo {{ nat_version }}\n"
         )
 
-        rendered = render_dockerfile(
+        rendered = render_nat_dockerfile(
             agent_config,
             None,
             nat_version="7.0.0",
@@ -1187,10 +1622,10 @@ class TestEndToEndPipeline:
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_allow_root_e2e(self, mock_build: MagicMock, agent_config: Path) -> None:
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         mock_build.return_value = "root-agent:latest"
-        build_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
+        build_nat_agent_image(agent_config, nat_version="1.0.0", allow_root=True)
 
         generated = agent_config.parent / "Dockerfile.generated"
         content = generated.read_text() if generated.exists() else ""
@@ -1232,7 +1667,7 @@ class TestPackageCommand:
         output = tmp_path / "Dockerfile"
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             result = runner.invoke(
@@ -1255,6 +1690,108 @@ class TestPackageCommand:
         assert "Dockerfile written to" in result.stdout
         mock_build.assert_not_called()
         mock_push.assert_not_called()
+
+    def test_fabric_no_build_renders_fabric_dockerfile_and_ignore(
+        self, package_cli, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        """Fabric ``--no-build`` renders without invoking either image builder."""
+        app, runner = package_cli
+        output = tmp_path / "Dockerfile.fabric"
+
+        with (
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_nat_build,
+            patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "package",
+                    "--agent",
+                    str(fabric_agent_config),
+                    "--output",
+                    str(output),
+                    "--no-build",
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        rendered = output.read_text()
+        assert "nemo_agents_plugin.fabric.server" in rendered
+        assert "ENV AGENT_CONFIG_PATH=/workspace/agent.yaml" in rendered
+        assert "NAT_VERSION" not in rendered
+        assert (tmp_path / ".dockerignore").exists()
+        assert "Dockerfile written to" in result.stdout
+        mock_fabric_build.assert_not_called()
+        mock_nat_build.assert_not_called()
+        mock_push.assert_not_called()
+
+    def test_fabric_no_build_forwards_shared_flags(
+        self, package_cli, fabric_agent_config: Path, tmp_path: Path
+    ) -> None:
+        """Fabric render-only mode honors shared CLI flags without NAT arguments."""
+        app, runner = package_cli
+        output = tmp_path / "Dockerfile.fabric"
+
+        result = runner.invoke(
+            app,
+            [
+                "package",
+                "--agent",
+                str(fabric_agent_config),
+                "--output",
+                str(output),
+                "--base-image-url",
+                "custom/image",
+                "--base-image-tag",
+                "custom-tag",
+                "--python-version",
+                "3.12",
+                "--uv-version",
+                "0.9.0",
+                "--allow-root",
+                "--no-build",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        rendered = output.read_text()
+        assert "ARG BASE_IMAGE_URL=custom/image" in rendered
+        assert "ARG BASE_IMAGE_TAG=custom-tag" in rendered
+        assert "ARG PYTHON_VERSION=3.12" in rendered
+        assert "ghcr.io/astral-sh/uv:0.9.0" in rendered
+        assert "USER agent" not in rendered
+        assert "NAT_VERSION" not in rendered
+
+    def test_fabric_no_build_project_mode_uses_project_root(self, package_cli, tmp_path: Path) -> None:
+        app, runner = package_cli
+        configs = tmp_path / "configs"
+        configs.mkdir()
+        agent_config = configs / "agent.yaml"
+        agent_config.write_text("config_format: nemo-agents-spec-v1\nname: fabric-agent\n")
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "fabric-agent"\nversion = "1.0.0"\n')
+
+        result = runner.invoke(
+            app,
+            [
+                "package",
+                "--agent",
+                str(agent_config),
+                "--pyproject",
+                str(pyproject),
+                "--no-build",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        output = tmp_path / "Dockerfile"
+        assert output.exists()
+        rendered = output.read_text()
+        assert "ENV AGENT_CONFIG_PATH=/workspace/configs/agent.yaml" in rendered
+        install_line = next(line for line in rendered.splitlines() if "uv pip install" in line)
+        assert '" .' in install_line
+        assert not (configs / "Dockerfile").exists()
 
     def test_no_build_project_mode_writes_dockerfile_next_to_pyproject(
         self, package_cli, project_dir: "tuple[Path, Path]"
@@ -1349,7 +1886,7 @@ class TestPackageCommand:
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             mock_build.return_value = "my-agent:1.0"
@@ -1372,12 +1909,203 @@ class TestPackageCommand:
         assert mock_build.call_args.kwargs["tag"] == "my-agent:1.0"
         mock_push.assert_not_called()
 
+    def test_shared_package_env_vars_are_forwarded(
+        self,
+        package_cli,
+        agent_config: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Canonical shared environment variables reach the selected builder."""
+        app, runner = package_cli
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_URL", "env/image")
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_TAG", "env-tag")
+        monkeypatch.setenv("NEMO_AGENTS_PYTHON_VERSION", "3.12")
+        monkeypatch.setenv("NEMO_AGENTS_UV_VERSION", "0.9.0")
+
+        with patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build:
+            mock_build.return_value = "my-agent:dev"
+            result = runner.invoke(
+                app,
+                ["package", "--agent", str(agent_config), "--nat-version", "1.8.0"],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        kwargs = mock_build.call_args.kwargs
+        assert kwargs["base_image_url"] == "env/image"
+        assert kwargs["base_image_tag"] == "env-tag"
+        assert kwargs["python_version"] == "3.12"
+        assert kwargs["uv_version"] == "0.9.0"
+
+    def test_shared_package_flags_override_environment(
+        self,
+        package_cli,
+        agent_config: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Explicit shared package flags take precedence over environment values."""
+        app, runner = package_cli
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_URL", "env/image")
+        monkeypatch.setenv("NEMO_AGENTS_BASE_IMAGE_TAG", "env-tag")
+        monkeypatch.setenv("NEMO_AGENTS_PYTHON_VERSION", "3.11")
+        monkeypatch.setenv("NEMO_AGENTS_UV_VERSION", "0.8.0")
+
+        with patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build:
+            mock_build.return_value = "my-agent:dev"
+            result = runner.invoke(
+                app,
+                [
+                    "package",
+                    "--agent",
+                    str(agent_config),
+                    "--nat-version",
+                    "1.8.0",
+                    "--base-image-url",
+                    "flag/image",
+                    "--base-image-tag",
+                    "flag-tag",
+                    "--python-version",
+                    "3.13",
+                    "--uv-version",
+                    "0.10.0",
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        kwargs = mock_build.call_args.kwargs
+        assert kwargs["base_image_url"] == "flag/image"
+        assert kwargs["base_image_tag"] == "flag-tag"
+        assert kwargs["python_version"] == "3.13"
+        assert kwargs["uv_version"] == "0.10.0"
+
+    def test_fabric_config_routes_only_to_fabric_builder(self, package_cli, fabric_agent_config: Path) -> None:
+        """Fabric configs select the Fabric builder without NAT-only arguments."""
+        app, runner = package_cli
+
+        with (
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_nat_build,
+        ):
+            mock_fabric_build.return_value = "fabric-agent:dev"
+            result = runner.invoke(
+                app,
+                [
+                    "package",
+                    "--agent",
+                    str(fabric_agent_config),
+                    "--tag",
+                    "fabric-agent:dev",
+                ],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        assert "Image ready: fabric-agent:dev" in result.stdout
+        mock_fabric_build.assert_called_once()
+        mock_nat_build.assert_not_called()
+        assert mock_fabric_build.call_args.args == (fabric_agent_config,)
+        assert mock_fabric_build.call_args.kwargs["tag"] == "fabric-agent:dev"
+        assert "nat_version" not in mock_fabric_build.call_args.kwargs
+
+    def test_fabric_validation_error_is_reported_cleanly(self, package_cli, fabric_agent_config: Path) -> None:
+        """Fabric package validation failures are presented as CLI errors."""
+        from nemo_agents_plugin.container.fabric_validator import FabricPackageValidationError
+
+        app, runner = package_cli
+
+        with patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build:
+            mock_fabric_build.side_effect = FabricPackageValidationError(
+                "Fabric package validation failed: invalid harness settings"
+            )
+            result = runner.invoke(app, ["package", "--agent", str(fabric_agent_config)])
+
+        assert result.exit_code == 1
+        assert "Error: Fabric package validation failed: invalid harness settings" in (result.stderr or result.stdout)
+        assert result.exception is not None
+
+    def test_fabric_skip_validation_is_forwarded(self, package_cli, fabric_agent_config: Path) -> None:
+        """The shared skip flag reaches the Fabric builder."""
+        app, runner = package_cli
+
+        with patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build:
+            mock_fabric_build.return_value = "fabric-agent:dev"
+            result = runner.invoke(
+                app,
+                ["package", "--agent", str(fabric_agent_config), "--skip-validation"],
+            )
+
+        assert result.exit_code == 0, result.stdout
+        assert mock_fabric_build.call_args.kwargs["skip_validation"] is True
+
+    def test_fabric_config_ignores_ambient_nat_version(
+        self, package_cli, fabric_agent_config: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A shell-level NAT_VERSION must not affect Fabric packaging."""
+        app, runner = package_cli
+        monkeypatch.setenv("NAT_VERSION", "1.8.0")
+
+        with (
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_nat_build,
+        ):
+            mock_fabric_build.return_value = "fabric-agent:dev"
+            result = runner.invoke(app, ["package", "--agent", str(fabric_agent_config)])
+
+        assert result.exit_code == 0, result.stdout
+        mock_fabric_build.assert_called_once()
+        mock_nat_build.assert_not_called()
+        assert "nat_version" not in mock_fabric_build.call_args.kwargs
+
+    def test_fabric_config_rejects_explicit_nat_version(self, package_cli, fabric_agent_config: Path) -> None:
+        """An explicit --nat-version remains an error for Fabric packaging."""
+        app, runner = package_cli
+
+        with (
+            patch("nemo_agents_plugin.container.builder.build_fabric_agent_image") as mock_fabric_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_nat_build,
+        ):
+            result = runner.invoke(
+                app,
+                ["package", "--agent", str(fabric_agent_config), "--nat-version", "1.8.0"],
+            )
+
+        assert result.exit_code == 1
+        assert "--nat-version is only valid for NAT workflow packaging" in (result.stderr or result.stdout)
+        mock_fabric_build.assert_not_called()
+        mock_nat_build.assert_not_called()
+
+    def test_nat_config_resolves_nat_version_from_environment(
+        self,
+        package_cli,
+        agent_config: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """NAT packaging still resolves NAT_VERSION after CLI routing."""
+        app, runner = package_cli
+        output = tmp_path / "Dockerfile"
+        monkeypatch.setenv("NAT_VERSION", "1.8.0")
+
+        result = runner.invoke(
+            app,
+            [
+                "package",
+                "--agent",
+                str(agent_config),
+                "--output",
+                str(output),
+                "--no-build",
+            ],
+        )
+
+        assert result.exit_code == 0, result.stdout
+        assert "ARG NAT_VERSION=1.8.0" in output.read_text()
+        assert "--nat-version not provided" not in ((result.stderr or "") + result.stdout)
+
     def test_publish_pushes_after_build(self, package_cli, agent_config: Path) -> None:
         """``--publish --registry`` triggers a push after a successful build."""
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             mock_build.return_value = "my-agent:1.0"
@@ -1410,7 +2138,7 @@ class TestPackageCommand:
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             result = runner.invoke(
@@ -1428,7 +2156,7 @@ class TestPackageCommand:
         app, runner = package_cli
 
         with (
-            patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build,
+            patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build,
             patch("nemo_agents_plugin.container.publisher.docker_push") as mock_push,
         ):
             result = runner.invoke(
@@ -1474,7 +2202,7 @@ class TestPackageCommand:
         """
         app, runner = package_cli
 
-        with patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build:
+        with patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build:
             no_build_result = runner.invoke(
                 app,
                 ["package", "--agent", str(agent_config), "--format", "whl", "--no-build"],
@@ -1520,13 +2248,13 @@ class TestPackagingSafetyRegressions:
             ``RUN`` instruction).
           * ``\\`` in ``--agent-author`` (escape character collision).
         """
-        from nemo_agents_plugin.container.template import _dockerfile_escape, render_dockerfile
+        from nemo_agents_plugin.container.template import _dockerfile_escape, render_nat_dockerfile
 
         assert _dockerfile_escape('Alice "the Hacker"') == 'Alice \\"the Hacker\\"'
         assert _dockerfile_escape("multi\nline") == "multi line"
         assert _dockerfile_escape("back\\slash") == "back\\\\slash"
 
-        rendered = render_dockerfile(
+        rendered = render_nat_dockerfile(
             agent_config,
             nat_version="1.4.0",
             agent_version="1.0.0",
@@ -1654,7 +2382,7 @@ class TestPackagingSafetyRegressions:
         """
         app, runner = package_cli
 
-        with patch("nemo_agents_plugin.container.builder.build_agent_image") as mock_build:
+        with patch("nemo_agents_plugin.container.builder.build_nat_agent_image") as mock_build:
             result = runner.invoke(
                 app,
                 [
@@ -1717,7 +2445,7 @@ class TestPackagingSafetyRegressions:
         which produced an image that built successfully but crashed at
         ``nat serve`` startup with ``config file not found``.
         """
-        from nemo_agents_plugin.container.template import render_dockerfile
+        from nemo_agents_plugin.container.template import render_nat_dockerfile
 
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()
@@ -1725,7 +2453,7 @@ class TestPackagingSafetyRegressions:
         pyproject.write_text('[project]\nname = "x"\nversion = "1.0.0"\n')
 
         with pytest.raises(ValueError, match="outside the pyproject build context"):
-            render_dockerfile(agent_config, pyproject, nat_version="1.4.0", agent_author="x")
+            render_nat_dockerfile(agent_config, pyproject, nat_version="1.4.0", agent_author="x")
 
     def test_agent_id_includes_build_environment(self, agent_config: Path) -> None:
         """Changing the toolchain must change the agent_id.
@@ -1785,13 +2513,13 @@ class TestPackagingSafetyRegressions:
         The cleanup in ``finally`` would otherwise unlink the user's file
         once the build finishes.
         """
-        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.builder import build_nat_agent_image
 
         user_file = agent_config.parent / "Dockerfile.generated"
         user_file.write_text("USER OWNED — DO NOT DELETE\n")
 
         with pytest.raises((SystemExit, ClickExit)):
-            build_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
+            build_nat_agent_image(agent_config, nat_version="1.4.0", agent_author="x")
 
         assert user_file.exists()
         assert "USER OWNED" in user_file.read_text()

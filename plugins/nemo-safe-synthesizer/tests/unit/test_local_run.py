@@ -68,6 +68,27 @@ def test_run_local_loads_spec_and_writes_results(tmp_path, monkeypatch):
     get_platform_sdk.assert_not_called()
 
 
+def test_validate_flat_tabular_data_rejects_nested_columns(monkeypatch):
+    task_main = import_task_main_without_heavy_runtime(monkeypatch)
+    data = pd.DataFrame(
+        {
+            "id": [1, 2],
+            "tools": [[{"name": "f"}], []],
+            "metadata": [{"a": 1}, {"a": 2}],
+        }
+    )
+
+    with pytest.raises(task_main.ParameterError, match="tools, metadata"):
+        task_main._validate_flat_tabular_data(data)
+
+
+def test_validate_flat_tabular_data_allows_flat_columns(monkeypatch):
+    task_main = import_task_main_without_heavy_runtime(monkeypatch)
+    data = pd.DataFrame({"name": ["a", "b"], "age": [1, 2], "score": [0.5, 0.9]})
+
+    task_main._validate_flat_tabular_data(data)
+
+
 def test_run_from_env_reports_missing_config_path(monkeypatch):
     task_main = import_task_main_without_heavy_runtime(monkeypatch)
     monkeypatch.setattr(task_main, "initialize_observability", lambda: None)

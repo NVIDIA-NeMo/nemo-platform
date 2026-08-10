@@ -16,6 +16,7 @@ from typing import Any, Iterator
 
 import yaml
 from nemo_platform import NeMoPlatform, NotFoundError
+from nemo_platform_plugin.entities import parse_qualified_name
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,11 @@ _ENV_VAR_PATTERN = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Z
 # the workspace.  Other types (e.g. direct cloud SDKs) bypass IGW and are not
 # validatable through ``sdk.inference.virtual_models``.
 _IGW_LLM_TYPES = frozenset({"openai", "nim"})
+
+# Fabric model providers that speak through Platform's OpenAI-compatible IGW
+# endpoint. Native providers such as Anthropic should keep their own adapter
+# defaults unless the config explicitly supplies a base_url.
+_FABRIC_IGW_MODEL_PROVIDERS = frozenset({"openai", "nvidia", "openai-compatible"})
 
 # Regex used to skip LLM ``model_name`` values that still contain unexpanded
 # ``$VAR`` / ``${VAR}`` placeholders.  These were left in place by
@@ -171,6 +177,17 @@ def get_base_url() -> str:
     )
 
 
+def get_internal_base_url() -> str | None:
+    """Return the in-cluster platform base URL reachable from inside agent pods, or None.
+
+    This is the API Service DNS used to reach the platform from a deployed agent
+    when :func:`get_base_url` is not routable from inside the container. Read from
+    ``NEMO_INTERNAL_BASE_URL``, then ``NMP_INTERNAL_BASE_URL``.
+    """
+    internal = os.environ.get("NEMO_INTERNAL_BASE_URL") or os.environ.get("NMP_INTERNAL_BASE_URL")
+    return internal.rstrip("/") if internal else None
+
+
 def get_default_model() -> str | None:
     """Return the default model for the platform from the SDK context."""
     from nemo_platform.config import get_context
@@ -223,6 +240,46 @@ def inject_gateway_url(
     return config
 
 
+def inject_fabric_gateway_url(
+    config: dict[str, Any],
+    workspace: str,
+    base_url: str | None = None,
+) -> dict[str, Any]:
+    """Deep-copy a Platform agent config and bind its models to the Inference Gateway."""
+    if base_url is None:
+        base_url = get_base_url()
+    gateway_url = f"{base_url.rstrip('/')}/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1"
+
+    resolved = copy.deepcopy(config)
+    model_configs: list[Any] = []
+
+    models = resolved.get("models")
+    if isinstance(models, dict):
+        model_configs.extend(models.values())
+
+    harnesses = resolved.get("harnesses")
+    if isinstance(harnesses, dict):
+        for harness in harnesses.values():
+            if isinstance(harness, dict) and "model" in harness:
+                model_configs.append(harness["model"])
+
+    for model_config in model_configs:
+        if not isinstance(model_config, dict):
+            continue
+        if model_config.get("base_url") is not None:
+            continue
+        settings = model_config.get("settings")
+        if isinstance(settings, dict) and isinstance(settings.get("base_url"), str):
+            model_config["base_url"] = settings.pop("base_url")
+            continue
+        provider = model_config.get("provider")
+        if not isinstance(provider, str) or provider.lower() not in _FABRIC_IGW_MODEL_PROVIDERS:
+            continue
+        model_config["base_url"] = gateway_url
+
+    return resolved
+
+
 def inject_nemo_trace_fields(
     config: dict[str, Any],
     workspace: str,
@@ -261,9 +318,11 @@ def validate_llm_models(
     """Pre-flight check that every IGW-routed LLM in *config* exists as a VirtualModel.
 
     Iterates ``config["llms"]`` and, for each block whose ``_type`` is in
-    :data:`_IGW_LLM_TYPES`, calls
-    ``sdk.inference.virtual_models.retrieve(model_name, workspace=workspace)``.
-    Names are deduplicated before lookup so the same model declared under
+    :data:`_IGW_LLM_TYPES`, strips a leading ``{workspace}/`` qualifier from
+    ``model_name`` (mirroring IGW's OpenAI proxy — the VM route takes
+    workspace as its own path segment, so the bare name is what it expects)
+    then calls ``sdk.inference.virtual_models.retrieve(name, workspace=workspace)``.
+    Names are deduplicated *after* stripping so the same model declared under
     multiple LLM keys (e.g. agent + judge) costs one network call.
 
     LLM blocks whose ``model_name`` still contains an unexpanded ``$VAR`` /
@@ -293,11 +352,9 @@ def validate_llm_models(
     if not isinstance(llms, dict):
         return
 
-    # Collect (llm_key, model_name) pairs we should validate, deduped by
-    # model_name so multiple LLMs pointing at the same model only cost one
-    # retrieve call.  We keep the first llm_key we saw for each model_name
-    # so error messages can point at a concrete YAML location.
-    to_check: dict[str, str] = {}
+    # Dedup by resolved (workspace, name) so the same model under multiple LLM
+    # keys costs one retrieve; keep the first llm_key for error locations.
+    to_check: dict[tuple[str, str], str] = {}
     for llm_key, llm_cfg in llms.items():
         if not isinstance(llm_cfg, dict):
             continue
@@ -314,31 +371,33 @@ def validate_llm_models(
                 model_name,
             )
             continue
-        to_check.setdefault(model_name, llm_key)
+        # A model_name may be workspace-qualified ("prod/foo"); the VM route
+        # takes workspace as its own path segment, so resolve it here.
+        target_ws, target_name = parse_qualified_name(model_name, default_workspace=workspace)
+        if not target_name:
+            continue
+        to_check.setdefault((target_ws, target_name), llm_key)
 
     if not to_check:
         return
 
-    missing: list[tuple[str, str]] = []  # (model_name, llm_key)
-    for model_name, llm_key in to_check.items():
+    missing: list[tuple[str, str]] = []  # (qualified_name, llm_key)
+    for (target_ws, target_name), llm_key in to_check.items():
         try:
-            sdk.inference.virtual_models.retrieve(name=model_name, workspace=workspace)
+            sdk.inference.virtual_models.retrieve(name=target_name, workspace=target_ws)
         except NotFoundError:
-            missing.append((model_name, llm_key))
+            missing.append((f"{target_ws}/{target_name}", llm_key))
         except Exception as exc:  # pragma: no cover - defensive soft-fail
-            # Soft-fail: log and continue.  We don't want a transient platform
-            # outage or auth blip to gate the eval/optimize run; the
-            # subprocess will fail with the real error if the model truly
-            # isn't reachable.  ``exc_info`` preserves the traceback so a
-            # debugger looking at the warning has the full chain of context
-            # (which we'd otherwise drop by formatting ``exc`` via ``%s``).
+            # Soft-fail: a transient platform outage or auth blip shouldn't gate
+            # the run; the subprocess surfaces the real error. exc_info keeps the
+            # traceback.
             logger.warning(
-                "Could not validate LLM %r (model_name=%r) against workspace %r: %s. "
+                "Could not validate LLM %r (model=%r) against workspace %r: %s. "
                 "Continuing anyway; the underlying eval/optimize call will surface any "
                 "real error.",
                 llm_key,
-                model_name,
-                workspace,
+                target_name,
+                target_ws,
                 exc,
                 exc_info=exc,
             )
@@ -372,7 +431,7 @@ def preflight_validate_llm_models(
     side effects.
 
     Used as a pre-flight in ``EvaluateAgentJob.run`` and
-    ``OptimizeAgentJob.run`` to surface a missing-VirtualModel error
+    ``OptimizeJob.run`` (via ``nemo-optimization``) to surface a missing-VirtualModel error
     before the subprocess starts.
 
     No-op when *sdk* is ``None`` (local-only paths that don't have a
@@ -454,10 +513,9 @@ def merge_agent_config(
 ) -> dict[str, Any]:
     """Merge an agent's stored NAT config with an optimize-config dict.
 
-    Used by :class:`~nemo_agents_plugin.jobs.optimize_agent.OptimizeAgentJob`
-    to compose ``react-agent.yml``-style agent definitions with
-    ``react-optimize.yml``-style tuning configs.  The agent supplies the
-    workflow shape (``workflow``, ``functions``, telemetry, the LLMs
+    Used when composing platform agent definitions with optimize-config YAML
+    before dispatch (e.g. ``nemo customization optimize --agent ...``).
+    The agent supplies the workflow shape (``workflow``, ``functions``, telemetry, the LLMs
     actually invoked at runtime); the optimize config supplies eval, the
     optimizer block, judge LLMs, and any tuning overrides on shared LLM
     keys.

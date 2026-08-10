@@ -156,6 +156,7 @@ def _make_entity(
             "parent": "",
             "workspace": workspace,
             "name": name,
+            "db_version": 1,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": updated_at,
             "data": rails.model_dump(exclude_none=True),
@@ -653,7 +654,7 @@ class TestProcessRequest:
         with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
             result = await _process_request(middleware, request_body, {}, _entity_source())
 
-        assert isinstance(result, dict)
+        assert not isinstance(result, ImmediateResponse)
         assert result["messages"] == [
             {"role": "user", "content": "earlier turn"},
             {"role": "assistant", "content": "ok"},
@@ -681,7 +682,7 @@ class TestProcessRequest:
         with patch.object(middleware, "_run_rails", new=AsyncMock(return_value=generation_response)):
             result = await _process_request(middleware, request_body, {}, _entity_source())
 
-        assert isinstance(result, dict)
+        assert not isinstance(result, ImmediateResponse)
         assert result["messages"][0]["content"] == multimodal_content
 
     async def test_user_log_options_forwarded_to_run_rails(self, middleware: GuardrailsMiddleware) -> None:

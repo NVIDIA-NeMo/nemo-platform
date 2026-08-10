@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.core.models.api.dependencies import get_prompt_service
 from nmp.core.models.api.service.prompt_service import PromptService
 from nmp.core.models.schemas import (
@@ -189,6 +189,10 @@ async def delete_prompt(
         return None
     except HTTPException:
         raise
+    except EntityConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Concurrent modification - please retry."
+        ) from e
     except Exception:
         logger.exception(f"Failed to delete prompt {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")

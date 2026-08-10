@@ -19,7 +19,7 @@ import {
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { keepPreviousData } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 type UseDatasetsTableArgs = Pick<
   DatasetsTableProps,

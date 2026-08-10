@@ -19,7 +19,7 @@ from nmp.core.models.constants import (
     MODEL_REF_PATTERN_DESCRIPTION,
     is_valid_model_ref,
 )
-from pydantic import AnyUrl, BaseModel, Field, field_validator
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_validator
 
 
 def get_model_id(prefix: str) -> str:
@@ -473,10 +473,12 @@ class ModelProviderSort(StrEnum):
 class CreateModelProviderRequest(BaseModel):
     """Request model for creating a ModelProvider."""
 
+    model_config = ConfigDict(regex_engine="python-re")
+
     name: str = Field(
-        description=f"Name of the model provider. {constants.REGEX_WORD_CHARACTER_DOT_DASH_DESCRIPTION}",
-        max_length=constants.MAX_LENGTH_255,
-        pattern=constants.REGEX_WORD_CHARACTER_DOT_DASH,
+        description=f"Name of the model provider. {constants.NAME_PATTERN_DESCRIPTION}",
+        max_length=constants.NAME_MAX_LENGTH,
+        pattern=constants.NAME_PATTERN,
         examples=["my-nim-provider", "openai-endpoint"],
     )
     project: Optional[str] = Field(

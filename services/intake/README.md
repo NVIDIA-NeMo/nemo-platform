@@ -52,15 +52,15 @@ Run these commands from the repository root unless a command says otherwise.
 Intake tests rely on shared platform test helpers, so use the root `uv`
 environment instead of package-scoped `uv run --package ...` commands.
 
-Prerequisite: Docker must be installed and running locally.
+Prerequisite for the managed local database: Docker must be installed and the
+Docker daemon must be running.
 
-Start a local ClickHouse container for span and trace storage:
+Intake is tested and profiled on ClickHouse 26.3 LTS. Other ClickHouse versions
+may not be supported.
 
-```bash
-services/intake/scripts/spans/run_clickhouse.sh
-```
-
-Start Intake with the platform runner:
+Start Intake with the platform runner. When `NMP_INTAKE_CLICKHOUSE_URL` is not
+set and the configured URL is the default `http://localhost:8123`, Intake
+automatically provisions a ClickHouse container before initializing its client:
 
 ```bash
 uv run nemo services run \
@@ -68,6 +68,68 @@ uv run nemo services run \
   --host 127.0.0.1 \
   --port 8000
 ```
+
+The container is owned by the resolved NeMo data directory, publishes ClickHouse
+on a Docker-assigned loopback port, and is reused by platform processes sharing
+that data directory. Its data is stored below `$NMP_DATA_DIR/intake-clickhouse/`
+(or the normal NeMo data directory when `NMP_DATA_DIR` is unset). Graceful
+platform shutdown stops the container without removing it or its data; later
+startups restart and reuse it. A hard process termination can leave it running.
+The managed lifecycle assumes only one active local platform runner uses a given
+data directory. The data directory contains a durable identity marker; Intake replaces rather than
+reattaches a stale container after that directory has been deleted and
+recreated. Replacing a container does not delete the current directory. Only an
+explicitly confirmed full data teardown deletes the default storage under the
+NeMo data directory, after removing the managed container. An explicitly
+configured `NMP_INTAKE_CLICKHOUSE_DATA_DIR` outside the NeMo data directory is
+never deleted by platform teardown.
+
+The managed image and storage location can be overridden through the typed
+Intake configuration surface:
+
+```bash
+export NMP_INTAKE_CLICKHOUSE_IMAGE=clickhouse/clickhouse-server:26.3
+export NMP_INTAKE_CLICKHOUSE_DATA_DIR=/path/to/clickhouse-data
+```
+
+Intake does not change permissions on an explicitly configured data directory.
+Changing `NMP_INTAKE_CLICKHOUSE_USER` or
+`NMP_INTAKE_CLICKHOUSE_PASSWORD` requires removing the existing managed
+container so it can be provisioned with the new credentials; removing the
+container does not remove its bind-mounted data. If the image is not installed
+locally, startup logs announce the synchronous image pull before it begins.
+
+If Docker is unavailable, Intake still starts, but ClickHouse-backed endpoints
+return `503`. Start Docker Desktop on macOS/Windows or the Docker service on
+Linux, then rerun `nemo setup` or restart `nemo services run`.
+
+To use an operator-managed ClickHouse and bypass Docker provisioning entirely,
+set its URL explicitly before starting the platform:
+
+```bash
+export NMP_INTAKE_CLICKHOUSE_URL=https://clickhouse.example.com:8443
+```
+
+`services/intake/scripts/spans/run_clickhouse.sh` remains available for callers
+that need the historical `nmp-intake-clickhouse` name, fixed localhost ports
+`8123`/`9000`, and repository-local data under `tmp/intake-clickhouse`. Point
+Intake at that compatibility container explicitly:
+
+```bash
+services/intake/scripts/spans/run_clickhouse.sh
+NMP_INTAKE_CLICKHOUSE_URL=http://localhost:8123 uv run nemo services run
+```
+
+Remove a compatibility container with its wrapper so the same data directory
+is targeted, or pass the directory explicitly to the underlying command:
+
+```bash
+services/intake/scripts/spans/run_clickhouse.sh --remove
+uv run python -m nmp.intake.local_clickhouse --remove --data-dir /path/to/clickhouse-data
+```
+
+Running `python -m nmp.intake.local_clickhouse` without compatibility flags uses
+the normal managed container naming and dynamic loopback port behavior.
 
 In another terminal, start Studio from the `web/` workspace with the Intake
 feature flag enabled:
@@ -104,7 +166,7 @@ Seed an Experiment rollup and read it back:
 
 ```bash
 uv run services/intake/scripts/spans/seed_experiment_rollup_data.py
-curl -s "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/experiments/rollup-smoke-exp" | jq
+curl -s "http://127.0.0.1:8000/apis/intake/v2/workspaces/default/evaluations/rollup-smoke-exp" | jq
 
 # Optional larger local workload.
 uv run services/intake/scripts/spans/seed_experiment_rollup_data.py \

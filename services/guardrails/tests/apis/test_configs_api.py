@@ -3,8 +3,13 @@
 
 """Tests for the Guardrails config API endpoints."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi.testclient import TestClient
+from nmp.common.entities import EntityNotFoundError
+from nmp.common.service.dependencies import get_entity_client
+from nmp.guardrails.entities import GuardrailConfig
 
 
 class TestGuardrailConfigsAPI:
@@ -91,6 +96,21 @@ class TestGuardrailConfigsAPI:
         response = client.delete("/apis/guardrails/v2/workspaces/default/configs/delete-test-config")
         assert response.status_code == 200
         assert response.json()["message"] == "Resource deleted successfully."
+
+    def test_delete_config_not_found_during_delete(self, client: TestClient):
+        """Test a config deleted after lookup returns 404."""
+        entities_client = AsyncMock()
+        entities_client.get.return_value = GuardrailConfig(name="delete-race-config", workspace="default")
+        entities_client.delete.side_effect = EntityNotFoundError("not found")
+        dependency_overrides = getattr(client.app, "dependency_overrides")
+        dependency_overrides[get_entity_client] = lambda: entities_client
+        try:
+            response = client.delete("/apis/guardrails/v2/workspaces/default/configs/delete-race-config")
+        finally:
+            dependency_overrides.pop(get_entity_client, None)
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Guardrail config not found."
 
     def test_get_config_not_found(self, client: TestClient):
         """Test getting a non-existent config returns 404."""

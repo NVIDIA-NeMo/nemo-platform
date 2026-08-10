@@ -56,7 +56,7 @@ When something goes wrong with authentication or authorization, start here. Prob
 2. Check your token scopes. Decode the JWT and verify the required scopes are present:
 
  ```bash
- nemo auth token | cut -d. -f2 | base64 -d 2>/dev/null | python -m json.tool
+ nemo auth token --decode
  ```
 
  Look for `scp` or `scope` — ensure `platform:write` is present for write operations.
@@ -119,17 +119,19 @@ The `client_id` in NeMo Platform config doesn't match the application in your Id
  nemo workspaces members list --workspace <workspace-name>
  ```
 
-## "Gateway-Level Auth Isn't Working"
+## "Gateway Bearer-Auth Callout Isn't Working"
 
 **Cause**: Headers are not being set or stripped correctly by the gateway.
 
 **Diagnosis**:
 
-1. Check that `X-NMP-Authorized: true` is being set by the gateway on allowed requests. If services don't see this header, they fall through to their own PDP call.
+1. Check that the gateway calls `/apis/auth/authenticate` with the original `Authorization` header before forwarding protected requests.
 
-2. Check that auth headers are stripped from external requests. Try sending a request with `X-NMP-Authorized: true` from outside the cluster — it should be stripped by the gateway.
+2. Check that the gateway forwards the trusted `X-NMP-Principal-*` and `X-NMP-Scopes` headers returned by the auth service on successful authentication.
 
-3. Verify the PDP is reachable from the gateway. If using external OPA, check that the OPA sidecar/service is running and the bundle endpoint is accessible.
+3. Check that auth headers are stripped from external requests. Try sending a request with `X-NMP-Principal-Id` or `X-NMP-Scopes` from outside the cluster — those headers should be stripped by the gateway.
+
+4. Verify the PDP is reachable from platform services. If using external OPA, check that the OPA sidecar/service is running and the bundle endpoint is accessible.
 
 ## "Role Change Doesn't Take Effect"
 
@@ -162,7 +164,7 @@ If these steps don't resolve the issue:
 
 ## Related
 
-- [Auth Configuration](/documentation/access-control/deployment/configuration) — Configuration reference.
+- [Auth Configuration](/documentation/access-control/deployment) — Configuration reference.
 - [Security Model](/documentation/access-control/security-model) — Architecture and trust boundaries.
 - [OIDC Setup](/documentation/access-control/authentication/oidc-setup) — IdP configuration.
 - [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Gateway auth and headers.

@@ -41,6 +41,7 @@ from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
 from nemo_platform_plugin.jobs.schemas import PlatformJobResultCreateRequest
 from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
+from nemo_safe_synthesizer.errors import ParameterError
 from nemo_safe_synthesizer.observability import initialize_observability
 from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
 from nemo_safe_synthesizer_plugin.job_config import (
@@ -286,6 +287,29 @@ def _setup_classify_endpoint():
         logger.info("Configured column classification endpoint: %s", full_url)
 
 
+def _validate_flat_tabular_data(data: pd.DataFrame) -> None:
+    """Reject non-tabular input with a clear, actionable error.
+
+    Safe Synthesizer expects one scalar value per cell. Nested values (lists or
+    dicts, e.g. from a JSON/JSONL fileset with array fields) otherwise crash deep
+    inside preflight with an opaque ``TypeError: unhashable type: 'list'``. Naming
+    the offending columns here turns that into something the user can act on.
+    """
+    nested_columns = [
+        str(column)
+        for column in data.columns
+        # Only object-dtype columns can hold Python containers; skip the rest.
+        if data[column].dtype == object and data[column].map(lambda value: isinstance(value, (list, dict, set))).any()
+    ]
+    if nested_columns:
+        raise ParameterError(
+            "Input data is not flat tabular: column(s) "
+            f"{', '.join(nested_columns)} contain nested list/dict values. "
+            "Safe Synthesizer expects one scalar value per cell — flatten these "
+            "columns or serialize them to strings (e.g. JSON) before running."
+        )
+
+
 def run_config(
     job_config: SafeSynthesizerJobConfig,
     data_source: pd.DataFrame,
@@ -294,6 +318,7 @@ def run_config(
     adapter_location: str | Path | None = None,
 ) -> tuple[SafeSynthesizerResults, Path | None]:
     """Run NSS against a validated config and already-loaded data source."""
+    _validate_flat_tabular_data(data_source)
     enable_synthesis: bool = job_config.enable_synthesis
     logger.info("enable_synthesis=%s", enable_synthesis)
     logger.info("Nemo Safe Synthesizer runtime job config: %s", job_config.model_dump_json(indent=2))

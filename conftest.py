@@ -12,14 +12,21 @@ files for more specific fixtures.
 import logging
 import os
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
-import pytest
-from nmp.testing.pytest_outcomes import pytest_skip as skip_test
+from tests.xdist_cache import xdist_worker_xdg_cache_home
 
-from tests.auth_idp.xdist import append_xdist_group_suffix
-from tests.discovery_exclusions import TEST_DISCOVERY_EXCLUSIONS
+_xdist_cache_home = xdist_worker_xdg_cache_home(os.environ)
+if _xdist_cache_home is not None:
+    os.environ["XDG_CACHE_HOME"] = _xdist_cache_home
+    os.environ["NMP_PYTEST_XDIST_CACHE_HOME_ISOLATED"] = "1"
+
+import pytest  # noqa: E402
+from nmp.testing.pytest_outcomes import pytest_skip as skip_test  # noqa: E402
+
+from tests.auth_idp.xdist import append_xdist_group_suffix  # noqa: E402
+from tests.discovery_exclusions import TEST_DISCOVERY_EXCLUSIONS  # noqa: E402
 
 # Set test environment variables BEFORE any imports
 # This must happen at module level, before pytest even starts processing
@@ -347,4 +354,9 @@ LoadScopeScheduling._reschedule = _patched_reschedule  # type: ignore[invalid-as
 
 
 def pytest_xdist_make_scheduler(config, log):
-    return LoadGroupScheduling(config, log)
+    dist = config.getvalue("dist")
+    if dist == "loadgroup":
+        return LoadGroupScheduling(config, log)
+    if dist == "loadscope":
+        return LoadScopeScheduling(config, log)
+    return None

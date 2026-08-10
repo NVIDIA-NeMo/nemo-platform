@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { E2E_DATASETS_URL, LONG_OPERATION_TIMEOUT } from '@e2e-tests/utils/constants';
+import { LONG_OPERATION_TIMEOUT } from '@e2e-tests/utils/constants';
 import { Page, expect } from '@playwright/test';
+import { TOUR_SEEN_KEY } from '@studio/util/localStorage';
 
 export const disableAuthForTest = async (page: Page) => {
   await page.goto('/');
-  await page.evaluate(() => {
+  await page.evaluate((tourSeenKey) => {
     localStorage.setItem('e2e_test', 'true');
-  });
+    // Prevent the welcome tour from auto-starting and blocking clicks
+    localStorage.setItem(tourSeenKey, 'true');
+  }, TOUR_SEEN_KEY);
 };
 
 export const textExists = async (page: Page, name: string): Promise<boolean> => {
@@ -76,11 +79,6 @@ export const waitForLongOperation = async (
       }
     }
   }
-};
-
-export const navigateToProjectDatasets = async (page: Page, datasetFullName?: string) => {
-  const datasetPathParam = datasetFullName ? `/${encodeURIComponent(datasetFullName)}` : '';
-  await page.goto(`${E2E_DATASETS_URL}${datasetPathParam}`);
 };
 
 /**

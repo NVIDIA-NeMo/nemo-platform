@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nmp.common.api.common import Page, PaginationData
-from nmp.common.entities.client import EntityValidationError
+from nmp.common.entities.client import EntityConflictError, EntityValidationError
 from nmp.core.models.api.service.prompt_service import PromptService
 from nmp.core.models.api.v2.prompts import router
 from nmp.core.models.schemas import Prompt, PromptMessage, PromptMessageRole
@@ -261,3 +261,11 @@ def test_delete_prompt_not_found_returns_404(client, mock_prompt_service):
     response = client.delete("/apis/models/v2/workspaces/default/prompts/missing")
 
     assert response.status_code == 404
+
+
+def test_delete_prompt_conflict_returns_409(client, mock_prompt_service):
+    mock_prompt_service.delete_prompt.side_effect = EntityConflictError("stale version")
+
+    response = client.delete("/apis/models/v2/workspaces/default/prompts/summarizer")
+
+    assert response.status_code == 409

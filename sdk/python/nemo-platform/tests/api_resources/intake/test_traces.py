@@ -112,7 +112,6 @@ class TestTraces:
             filter={
                 "id": "id",
                 "evaluation_id": "evaluation_id",
-                "experiment_id": "experiment_id",
                 "session_id": "session_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -246,7 +245,6 @@ class TestAsyncTraces:
             filter={
                 "id": "id",
                 "evaluation_id": "evaluation_id",
-                "experiment_id": "experiment_id",
                 "session_id": "session_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),

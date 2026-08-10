@@ -24,6 +24,7 @@ const vm: VirtualModel = {
   updated_by: null,
   entity_id: 'default/my-vm',
   parent: '',
+  db_version: 1,
 };
 
 describe('VirtualModelDetailsSidePanel', () => {

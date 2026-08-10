@@ -44,6 +44,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     _validate_job_spec,
     job_route_factory,
 )
+from nemo_platform_plugin.jobs.exceptions import PlatformJobDependencyUnavailableError
 from nmp.common.errors.sdk_exception_handlers import register_sdk_exception_handlers
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.schemas import (
@@ -1743,6 +1744,33 @@ class TestCompilePlatformSpec:
         assert exc_info.value.status_code == 422
         assert "my_svc" in exc_info.value.detail
         assert "missing field" in exc_info.value.detail
+
+    @pytest.mark.anyio
+    async def test_dependency_unavailable_error_becomes_503(self):
+        """A compiler dependency outage is reported as a service outage."""
+        from fastapi import HTTPException
+
+        def unavailable_compiler(workspace, input_spec, output_spec, entity_client, job_name, sdk):
+            raise PlatformJobDependencyUnavailableError(
+                "The Jobs service is temporarily unavailable. Retry the submission."
+            )
+
+        spec = FooJobConfig(foo="a", bar=1)
+        with pytest.raises(HTTPException) as exc_info:
+            await _compile_platform_spec(
+                unavailable_compiler,
+                "ws",
+                spec,
+                spec,
+                MagicMock(),
+                "name",
+                "my_svc",
+                MagicMock(),
+            )
+        assert exc_info.value.status_code == 503
+        assert "my_svc" in exc_info.value.detail
+        assert "temporarily unavailable" in exc_info.value.detail
+        assert "Retry the submission" in exc_info.value.detail
 
     @pytest.mark.anyio
     async def test_validate_job_spec_is_called(self):

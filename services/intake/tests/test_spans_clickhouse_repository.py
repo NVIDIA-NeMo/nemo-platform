@@ -4,43 +4,50 @@
 """Span repository tests."""
 
 from datetime import datetime, timezone
-from typing import cast
 
 import pytest
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseQuery
+from nmp.intake.repository.clickhouse.span import (
+    SPAN_COLUMNS,
+    SPAN_GROUP_COLUMN_FIELDS,
+    ClickHouseSpanRepository,
+    _order_by,
+)
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
 from nmp.intake.spans.api.spans_schemas import SpanGroupBy
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
-from nmp.intake.spans.domain import SpanListFilter
-from nmp.intake.spans.span_repository import SPAN_COLUMNS, SPAN_GROUP_COLUMN_FIELDS, SpanRepository, _order_by
+from nmp.intake.spans.domain import SpanListFilter, SpanStatus
 from nmp.intake.spans.storage import make_pagination
 
 
 class _QueryResult:
     def __init__(self, rows: list[tuple[object, ...]], columns: list[str] | None = None) -> None:
         self.result_rows = rows
-        self.column_names = columns or []
+        self.column_names = columns or (["count()"] if rows and len(rows[0]) == 1 else [])
 
 
-class _Client:
+class _Client(ClickHouseExecutor):
     def __init__(self, query_results: list[_QueryResult] | None = None) -> None:
         self.queries: list[str] = []
         self.parameters: list[dict[str, object]] = []
         self.query_results = query_results or []
 
-    def table(self, name: str) -> str:
-        return name
+    def table(self, table: ClickHouseTable) -> str:
+        return table.value
 
-    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
-        self.queries.append(query)
-        self.parameters.append(parameters)
+    async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, object]]:
+        self.queries.append(query.statement)
+        self.parameters.append(dict(query.parameters))
         if self.query_results:
-            return self.query_results.pop(0)
-        if query.lstrip().startswith("SELECT count()"):
-            return _QueryResult([(0,)])
-        return _QueryResult([])
+            result = self.query_results.pop(0)
+        elif query.statement.lstrip().startswith("SELECT count()"):
+            result = _QueryResult([(0,)], ["count()"])
+        else:
+            result = _QueryResult([])
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
 
 
-def _repository(client: _Client) -> SpanRepository:
-    return SpanRepository(cast(ClickHouseSpanClient, client))
+def _repository(client: _Client) -> ClickHouseSpanRepository:
+    return ClickHouseSpanRepository(client)
 
 
 def test_order_by_whitelists_supported_span_sort_keys():
@@ -197,7 +204,7 @@ async def test_list_span_groups_reuses_span_filters():
     repository = _repository(client)
 
     await repository.list_span_groups(
-        filters=SpanListFilter(workspace="workspace-a", status="error"),
+        filters=SpanListFilter(workspace="workspace-a", status=SpanStatus.ERROR),
         group_by=["trace_id"],
         page=1,
         page_size=10,
@@ -226,8 +233,18 @@ async def test_list_span_groups_rejects_unsupported_group_field():
 
 @pytest.mark.asyncio
 async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
-    row = _span_row(internal_id=7, external_span_id="123")
-    client = _Client(query_results=[_QueryResult([row], SPAN_COLUMNS)])
+    started_at = datetime(2026, 1, 1, 0, 0, 0, 123456, tzinfo=timezone.utc)
+    started_at_us = 1767225600123456
+    row = _span_row(internal_id=7, external_span_id="123", started_at=started_at)
+    client = _Client(
+        query_results=[
+            _QueryResult(
+                [(7, "session-a", started_at_us, 0)],
+                ["id", "session_id", "start_time_us", "current_is_deleted"],
+            ),
+            _QueryResult([row], SPAN_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     span = await repository.get_span(workspace="workspace-a", span_id="123")
@@ -235,14 +252,25 @@ async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
     assert span is not None
     assert span.id == 7
     assert span.external_span_id == "123"
-    assert len(client.queries) == 1
+    assert len(client.queries) == 2
+    assert "FINAL" not in client.queries[0]
     assert "external_span_id = %(span_id)s" in client.queries[0]
     assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
+    assert "FROM spans FINAL" in client.queries[1]
+    assert "session_id = %(session_id)s" in client.queries[1]
+    assert "start_time = fromUnixTimestamp64Micro(%(start_time_us)s)" in client.queries[1]
+    assert "id = %(id)s" in client.queries[1]
+    assert client.parameters[1] == {
+        "workspace": "workspace-a",
+        "session_id": "session-a",
+        "start_time_us": started_at_us,
+        "id": 7,
+    }
 
 
 @pytest.mark.asyncio
 async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
-    client = _Client(query_results=[_QueryResult([], SPAN_COLUMNS)])
+    client = _Client(query_results=[_QueryResult([], ["id", "session_id", "start_time_us", "current_is_deleted"])])
     repository = _repository(client)
 
     span = await repository.get_span(workspace="workspace-a", span_id="123")
@@ -253,8 +281,7 @@ async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
     assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
 
 
-def _span_row(*, internal_id: int, external_span_id: str) -> tuple[object, ...]:
-    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+def _span_row(*, internal_id: int, external_span_id: str, started_at: datetime) -> tuple[object, ...]:
     zero_time = datetime.fromtimestamp(0, tz=timezone.utc)
     values: dict[str, object] = {
         "workspace": "workspace-a",

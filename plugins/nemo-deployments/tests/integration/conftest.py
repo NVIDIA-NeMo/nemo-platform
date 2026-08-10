@@ -21,6 +21,7 @@ _DOCKER_INTEGRATION_XDIST_GROUP = "nemo_deployments_docker_integration"
 _K8S_INTEGRATION_XDIST_GROUP = "nemo_deployments_k8s_integration"
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     integration_dir = Path(__file__).parent.resolve()
     k8s_dir = (integration_dir / "backends" / "k8s").resolve()

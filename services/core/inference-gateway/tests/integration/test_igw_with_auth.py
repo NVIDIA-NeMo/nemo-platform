@@ -770,3 +770,102 @@ class TestIGWServicePrincipalAccess:
             },
         )
         assert response.status_code == 403
+
+
+@pytest.mark.integration
+class TestIGWDelegatedServicePrincipalAccess:
+    """A *delegated* service principal (service:* + on-behalf-of) is scoped to the OBO user.
+
+    Unlike a bare service principal (which takes the ServiceSystem bypass), a service
+    principal that carries X-NMP-Principal-On-Behalf-Of must only reach workspaces the
+    delegated user can reach. This is the agent-deployment case: the deployed agent's
+    auth-proxy sidecar stamps service:agents on-behalf-of the deployment's creator.
+    """
+
+    SERVICE_PRINCIPAL_AGENTS = "service:agents"
+
+    @staticmethod
+    def _delegated_headers(on_behalf_of: str) -> dict[str, str]:
+        return {
+            "X-NMP-Principal-Id": TestIGWDelegatedServicePrincipalAccess.SERVICE_PRINCIPAL_AGENTS,
+            "X-NMP-Principal-On-Behalf-Of": on_behalf_of,
+            "X-NMP-Principal-On-Behalf-Of-Email": on_behalf_of,
+        }
+
+    def test_delegated_denied_when_obo_user_lacks_role(self, sdk: NeMoPlatform):
+        # The OBO user has NO role in the workspace: the service bypass must not apply.
+        workspace = short_unique_name("igw-obo-d")
+        obo_email = unique_email("obo-norole")
+
+        admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_sdk.workspaces.create(name=workspace)
+        add_mock_provider(
+            admin_sdk,
+            workspace=workspace,
+            name=short_unique_name("mdl"),
+            mock_response_body=MOCK_CHAT_RESPONSE,
+        )
+
+        response = sdk._client.get(
+            f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models",
+            headers=self._delegated_headers(obo_email),
+        )
+        assert response.status_code == 403
+
+    def test_delegated_allowed_when_obo_user_has_role(self, sdk: NeMoPlatform):
+        # The OBO user is granted a role in the workspace: the delegated call is allowed.
+        workspace = short_unique_name("igw-obo-a")
+        obo_email = unique_email("obo-viewer")
+
+        admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_sdk.workspaces.create(name=workspace)
+        grant_workspace_role(admin_sdk, workspace=workspace, principal=obo_email, roles=["Viewer"])
+
+        response = sdk._client.get(
+            f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models",
+            headers=self._delegated_headers(obo_email),
+        )
+        assert response.status_code == 200
+
+    def test_delegated_openai_proxy_denied_when_obo_user_lacks_role(self, sdk: NeMoPlatform):
+        workspace = short_unique_name("igw-obo-po")
+        model_name = short_unique_name("mdl")
+        obo_email = unique_email("obo-norole")
+
+        admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_sdk.workspaces.create(name=workspace)
+        add_mock_provider(
+            admin_sdk,
+            workspace=workspace,
+            name=model_name,
+            mock_response_body=MOCK_CHAT_RESPONSE,
+        )
+
+        response = sdk._client.post(
+            f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions",
+            json={"model": f"{workspace}/{model_name}", "messages": [{"role": "user", "content": "hi"}]},
+            headers=self._delegated_headers(obo_email),
+        )
+        assert response.status_code == 403
+
+    def test_delegated_openai_proxy_allowed_when_obo_user_has_role(self, sdk: NeMoPlatform):
+        workspace = short_unique_name("igw-obo-pa")
+        model_name = short_unique_name("mdl")
+        obo_email = unique_email("obo-editor")
+
+        admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
+        admin_sdk.workspaces.create(name=workspace)
+        add_mock_provider(
+            admin_sdk,
+            workspace=workspace,
+            name=model_name,
+            mock_response_body=MOCK_CHAT_RESPONSE,
+        )
+        grant_workspace_role(admin_sdk, workspace=workspace, principal=obo_email, roles=["Editor"])
+
+        response = sdk._client.post(
+            f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions",
+            json={"model": f"{workspace}/{model_name}", "messages": [{"role": "user", "content": "hi"}]},
+            headers=self._delegated_headers(obo_email),
+        )
+        assert response.status_code == 200

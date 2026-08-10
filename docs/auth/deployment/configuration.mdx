@@ -4,7 +4,7 @@ description: ""
 ---
 Complete reference for enabling and configuring platform authorization: the `auth` section in config, Helm values, environment variables, and the choice between embedded and external OPA.
 
-For quickstart setup, see [Authentication and Authorization](/documentation/access-control/overview). For OIDC settings, see [OIDC Setup](/documentation/access-control/authentication/oidc-setup).
+For quickstart setup, see [Authentication and Authorization](/documentation/access-control). For OIDC settings, see [OIDC Setup](/documentation/access-control/authentication/oidc-setup).
 
 ## Enabling Authorization
 
@@ -22,7 +22,7 @@ When using Helm, this is done by setting `platformConfig.auth.enabled: true` in 
 
 platformConfig:
  auth:
- enabled: true
+  enabled: true
 ```
 
 When `auth.enabled` is `false` (the default), all API requests are allowed without checks. When `true`, every request is evaluated by the Policy Decision Point (PDP). In Helm deployments, this setting is controlled via `platformConfig.auth.enabled`.
@@ -78,25 +78,118 @@ NMP_AUTH_POLICY_DECISION_POINT_BASE_URL=http://auth:8000
 NMP_AUTH_POLICY_DECISION_POINT_PROVIDER=embedded
 NMP_AUTH_ADMIN_EMAIL=admin@example.com
 NMP_AUTH_EMBEDDED_PDP_AUTO_BUILD_WASM=true
+NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE=/etc/nmp/workload-token/private-key.pem
 ```
 
-Nested keys (e.g., OIDC) use double underscore: `NMP_AUTH_OIDC__ISSUER`, `NMP_AUTH_OIDC__CLIENT_ID`.
+Nested auth keys use a double underscore after `NMP_AUTH_`: for example,
+`NMP_AUTH_OIDC__ISSUER`, `NMP_AUTH_OIDC__CLIENT_ID`, and
+`NMP_AUTH_ACCESS_KEYS__ENABLED`.
 
-## OIDC Workload Identity Exchange
+## Scoped Access Keys
 
-`auth.oidc` can also advertise SDK workload identity token exchange metadata:
+Scoped Access Keys let an authenticated user create a scoped bearer token for
+non-SDK clients and automation. The implementation creates user-scoped signed
+JWT access keys and rejects service principals. Revocation and rotation are not
+implemented.
+
+Scoped Access Keys are an auth-service feature exposed under the auth CLI
+namespace (`nemo auth access-keys ...`) and the `/apis/auth/v2/access-keys` API routes.
+They are not a standalone NeMo Platform plugin.
+
+Scoped Access Keys are disabled by default. Enable them only when the auth
+service has a shared RSA signing key:
 
 ```yaml
 auth:
- oidc:
  enabled: true
- token_endpoint: "https://idp.example.com/oauth/token"
- workload_token_exchange_enabled: true
- workload_client_id: "nemo-platform-workload"
- workload_token_endpoint: "https://idp.example.com/oauth/token"
- workload_audience: "nemo-platform"
- workload_scope: "openid email groups"
+ token_signing:
+   issuer: "https://nmp.company.com/apis/auth"
+   key_id: "nemo-platform-signing"
+   private_key_file: "/etc/nmp/workload-token/private-key.pem"
+ access_keys:
+   enabled: true
+   issue_format: "jwt"
+   accepted_formats: ["jwt"]
+   audience: "nemo-platform-access-key"
+   default_expires_in_seconds: 2592000
+   max_expires_in_seconds: 2592000
 ```
+
+Equivalent environment overrides:
+
+```bash
+NMP_AUTH_TOKEN_SIGNING__ISSUER=https://nmp.company.com/apis/auth
+NMP_AUTH_TOKEN_SIGNING__KEY_ID=nemo-platform-signing
+NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE=/etc/nmp/workload-token/private-key.pem
+NMP_AUTH_ACCESS_KEYS__ENABLED=true
+NMP_AUTH_ACCESS_KEYS__ISSUE_FORMAT=jwt
+NMP_AUTH_ACCESS_KEYS__ACCEPTED_FORMATS=jwt
+NMP_AUTH_ACCESS_KEYS__AUDIENCE=nemo-platform-access-key
+NMP_AUTH_ACCESS_KEYS__DEFAULT_EXPIRES_IN_SECONDS=2592000
+NMP_AUTH_ACCESS_KEYS__MAX_EXPIRES_IN_SECONDS=2592000
+```
+
+List-valued env vars for accepted Scoped Access Key formats are written as
+comma-separated values, for example `NMP_AUTH_ACCESS_KEYS__ACCEPTED_FORMATS=jwt`.
+
+Service-level `AuthorizationMiddleware` accepts Scoped Access Key bearer tokens
+directly when `auth.access_keys.enabled=true`. When
+`auth.access_keys.enabled=false`, the middleware does not try to authenticate
+Scoped Access Keys. Gateway deployments that use `/apis/auth/authenticate` still
+keep `auth.access_keys.enabled=true` when they want Scoped Access Keys to work,
+because the same flag controls creation and auth-service validation.
+
+Scoped Access Keys expire after 30 days by default. Create requests may omit
+`expires_in_seconds`; the auth service then uses
+`auth.access_keys.default_expires_in_seconds`. Callers may request a shorter
+or longer finite lifetime with `expires_in_seconds` or CLI `--expires-in`, but
+the requested value must be less than or equal to
+`auth.access_keys.max_expires_in_seconds` when the max is configured.
+
+Set `auth.access_keys.max_expires_in_seconds` to `null` only when unlimited
+keys are permitted. With `max_expires_in_seconds: null` and a finite
+`default_expires_in_seconds`, ordinary omitted-expiry requests still use the
+default lifetime, while explicit `expires_in_seconds: null` or CLI
+`--expires-in none` creates a no-expiration key. Set both max and default to
+`null` only when omitted-expiry requests should also create no-expiration keys.
+With a finite `max_expires_in_seconds` and `default_expires_in_seconds: null`,
+callers must provide a finite `expires_in_seconds`. When
+`max_expires_in_seconds` is `null`, callers may still provide a finite
+`expires_in_seconds`, and the auth service honors that finite lifetime.
+
+The issuer defaults to `<platform.base_url>/apis/auth` when
+`auth.token_signing.issuer` is unset. Use an externally reachable issuer URL
+when a gateway validates Scoped Access Keys before forwarding requests to
+platform services.
+
+## OIDC Workload Identity Exchange
+
+`auth.oidc` can also advertise SDK workload identity token exchange metadata.
+Workload tokens share `auth.token_signing` by default, while
+`auth.oidc.workload_token_*` fields remain available for workload-specific
+overrides:
+
+```yaml
+auth:
+ token_signing:
+   issuer: "https://nmp.company.com/apis/auth"
+   key_id: "nemo-platform-signing"
+   private_key_file: "/etc/nmp/workload-token/private-key.pem"
+ oidc:
+   enabled: true
+   token_endpoint: "https://idp.example.com/oauth/token"
+   workload_token_exchange_enabled: true
+   workload_client_id: "nemo-platform-workload"
+   workload_token_endpoint: "https://idp.example.com/oauth/token"
+   workload_audience: "nemo-platform"
+   workload_scope: "openid email groups"
+```
+
+By default, workload-exchange access tokens use `auth.token_signing.key_id` as
+their JWT `kid`. To give workload tokens a distinct key identifier, set
+`auth.oidc.workload_token_key_id`. For cryptographic separation, also set
+`auth.oidc.workload_token_private_key_file`; changing only the key ID is useful
+for debugging and rotation labeling, but still reuses the same RSA private key.
 
 When `NMP_WORKLOAD_IDENTITY_TOKEN_FILE` is present, the SDK reads the subject
 token from that file and sends an RFC 8693 exchange request using
@@ -197,9 +290,9 @@ auth:
  policy_data_refresh_interval: 30
  admin_email: "platform-admin@company.com"
  oidc:
- enabled: true
- issuer: "https://login.microsoftonline.com/<tenant>/v2.0"
- client_id: "<client-id>"
+   enabled: true
+   issuer: "https://login.microsoftonline.com/<tenant>/v2.0"
+   client_id: "<client-id>"
 ```
 
 ### Production with external OPA
@@ -214,7 +307,7 @@ auth:
 
 ## Related
 
-- [Authentication and Authorization](/documentation/access-control/overview) — Overview, auth methods, and getting started.
+- [Authentication and Authorization](/documentation/access-control) — Overview, auth methods, and getting started.
 - [OIDC Setup](/documentation/access-control/authentication/oidc-setup) — IdP configuration and CLI login.
 - [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Using a gateway for authorization.
 - [Managing Access](/documentation/access-control/authorization/managing-access) — Workspaces and member management.

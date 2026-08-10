@@ -3,6 +3,7 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
+import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
 import {
   Banner,
   Button,
@@ -16,18 +17,23 @@ import {
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DataDesignerJobActionsMenu } from '@studio/components/DataDesignerJobActionsMenu';
+import { CreateFileSplitsModal } from '@studio/components/FilesTable/CreateFileSplitsModal';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { DataDesignerConfigPanel } from '@studio/routes/DataDesignerJobDetailsRoute/DataDesignerConfigPanel';
 import { DatasetProfilerSection } from '@studio/routes/DataDesignerJobDetailsRoute/DatasetProfilerSection';
 import { JobDatasetEditorSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobDatasetEditorSection';
+import { JobLogsSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobLogsSection';
 import { JobOutputFilesetSection } from '@studio/routes/DataDesignerJobDetailsRoute/JobOutputFilesetSection';
+import { useDataDesignerArtifactsFileset } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerArtifactsFileset';
 import { useDataDesignerJobFromRoute } from '@studio/routes/DataDesignerJobDetailsRoute/useDataDesignerJobFromRoute';
 import { getDataDesignerJobListRoute } from '@studio/routes/utils';
 import { formatDateTime } from '@studio/util/date';
-import { ArrowLeft, FileJson } from 'lucide-react';
-import { useState, type FC } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Split } from 'lucide-react';
+import { useRef, useState, type FC } from 'react';
+import { Link, useNavigate } from 'react-router';
+
+type JobDetailsTab = 'profile' | 'data' | 'output' | 'logs';
 
 export const DataDesignerJobDetailsRoute: FC = () => {
   const {
@@ -41,7 +47,23 @@ export const DataDesignerJobDetailsRoute: FC = () => {
 
   const navigate = useNavigate();
   const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
+  const [selectedTab, setSelectedTab] = useState<JobDetailsTab | undefined>(undefined);
+
+  const defaultTabRef = useRef<JobDetailsTab | undefined>(undefined);
+  if (!defaultTabRef.current && job?.status) {
+    defaultTabRef.current = PlatformJobTerminalStatuses.includes(job.status) ? 'profile' : 'logs';
+  }
+  const activeTab = selectedTab ?? defaultTabRef.current ?? 'profile';
+
+  const { filesetWorkspace, filesetName, files } = useDataDesignerArtifactsFileset();
+  const splitDatasetId =
+    filesetWorkspace && filesetName ? `${filesetWorkspace}/${filesetName}` : undefined;
+  const splitFileOptions = files
+    .map((file) => file.path)
+    .filter((path) => /\.(json|jsonl|parquet)$/i.test(path));
+  const canSplit = Boolean(splitDatasetId) && splitFileOptions.length > 0;
 
   useBreadcrumbs({
     items: [
@@ -92,11 +114,18 @@ export const DataDesignerJobDetailsRoute: FC = () => {
               {job.status ? <StatusBadge status={job.status} /> : null}
             </Flex>
             <Flex gap="density-md" align="center">
-              <Button type="button" kind="secondary" onClick={() => setIsConfigPanelOpen(true)}>
-                <FileJson /> View config
+              <Button
+                type="button"
+                kind="primary"
+                color="brand"
+                disabled={!canSplit}
+                onClick={() => setIsSplitModalOpen(true)}
+              >
+                <Split /> Split
               </Button>
               <DataDesignerJobActionsMenu
                 job={job}
+                onViewConfig={() => setIsConfigPanelOpen(true)}
                 onDeleted={() => navigate(getDataDesignerJobListRoute(workspace))}
                 onCancelError={setCancelError}
               />
@@ -126,11 +155,16 @@ export const DataDesignerJobDetailsRoute: FC = () => {
           </Flex>
         </Stack>
 
-        <TabsRoot defaultValue="profile" className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <TabsRoot
+          value={activeTab}
+          onValueChange={(value) => setSelectedTab(value as JobDetailsTab)}
+          className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
+        >
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="output">Output files</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="min-h-0 flex-1 overflow-y-auto px-0">
@@ -144,6 +178,10 @@ export const DataDesignerJobDetailsRoute: FC = () => {
           <TabsContent value="output" className="min-h-0 flex-1 overflow-y-auto px-0">
             <JobOutputFilesetSection />
           </TabsContent>
+
+          <TabsContent value="logs" className="min-h-0 min-w-0 flex-1 overflow-y-auto px-0">
+            <JobLogsSection />
+          </TabsContent>
         </TabsRoot>
       </Stack>
 
@@ -151,6 +189,15 @@ export const DataDesignerJobDetailsRoute: FC = () => {
         open={isConfigPanelOpen}
         onClose={() => setIsConfigPanelOpen(false)}
       />
+
+      {isSplitModalOpen && (
+        <CreateFileSplitsModal
+          open
+          onClose={() => setIsSplitModalOpen(false)}
+          datasetId={splitDatasetId}
+          fileOptions={splitFileOptions}
+        />
+      )}
     </AccessibleTitle>
   );
 };

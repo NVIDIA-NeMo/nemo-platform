@@ -4,9 +4,9 @@
 """Authorization API endpoints using embedded WASM policy evaluation."""
 
 import logging
-from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Path
+from nemo_platform_plugin.iam.types import AuthzErrorResponse, AuthzRequest, AuthzResponse
 from nmp.common.config import get_service_config
 from nmp.common.entities import EntityClient
 from nmp.common.service.dependencies import get_entity_client
@@ -18,47 +18,9 @@ from nmp.core.auth.app.embedded_pdp import (
     validate_entrypoint,
 )
 from nmp.core.auth.config import AuthServiceConfig
-from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["Authorization"])
 logger = logging.getLogger(__name__)
-
-
-class AuthzRequest(BaseModel):
-    """Authorization request input."""
-
-    input: Dict[str, Any] = Field(
-        ...,
-        description="Input data for policy evaluation",
-        json_schema_extra={
-            "examples": [
-                {
-                    "principal_id": "user@example.com",
-                    "method": "GET",
-                    "path": "/v2/workspaces/my-workspace/models",
-                }
-            ]
-        },
-    )
-
-
-class AuthzResponse(BaseModel):
-    """Authorization response."""
-
-    result: Dict[str, Any] = Field(
-        ...,
-        description="Policy evaluation result",
-    )
-
-
-class AuthzErrorResponse(BaseModel):
-    """Authorization error response."""
-
-    error: str = Field(..., description="Error message")
-    valid_entrypoints: List[str] = Field(
-        default_factory=get_valid_entrypoints,
-        description="List of valid entrypoints",
-    )
 
 
 @router.post(

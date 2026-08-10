@@ -50,7 +50,27 @@ class UpdateInsightRequest(BaseModel):
     trace_refs: list[str] | None = None
 
 
-InsightPage = NemoListResponse[Insight]
+class InsightListItem(Insight, entity_type="insights_insight"):
+    """Insight representation used only in the paginated list response."""
+
+    experiment_group_count: int | None = Field(
+        default=None,
+        description="Number of live experiment groups linked to this insight.",
+    )
+    last_seen_at: datetime | None = Field(
+        default=None,
+        description="Newest start timestamp among the insight's currently referenced traces.",
+    )
+
+
+InsightPage = NemoListResponse[InsightListItem]
+
+
+class EnableAnalysisConfigRequest(BaseModel):
+    """Model selection captured when periodic analysis is enabled."""
+
+    default_model: str = Field(min_length=1)
+    fast_model: str = Field(min_length=1)
 
 
 class UpdateAnalysisConfigRequest(BaseModel):

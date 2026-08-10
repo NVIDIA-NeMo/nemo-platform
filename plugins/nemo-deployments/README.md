@@ -30,8 +30,8 @@ Host port allocation for published container ports is configured per named docke
 executor (not on `DeploymentConfig.backend_config.docker`). Set the inclusive
 `port_range_start` / `port_range_end` bounds on the executor `config` block in
 platform YAML. The allocator scans every host port from `port_range_start`
-through `port_range_end`, including both endpoints (for example, 9000–9100
-allows 101 ports):
+through `port_range_end`, including both endpoints (for example, 49152–49251
+allows 100 ports):
 
 ```yaml
 deployments:
@@ -39,10 +39,16 @@ deployments:
     - name: local-docker
       backend: docker
       config:
-        port_range_start: 9000
-        port_range_end: 9100  # inclusive
+        port_range_start: 49152
+        port_range_end: 49251  # inclusive
   default_executor: local-docker
 ```
+
+A port is considered taken when any container on the daemon publishes it — not just
+platform-managed ones — or when the host socket is already bound. Docker's own
+reservations are not observable until a publish is attempted, so a port claimed
+concurrently is retried against a different port rather than failing the deployment.
+Pick a range nothing else on the host publishes on.
 
 Entity-level `backend_config.docker` accepts only deployment-specific overrides such
 as `network`.

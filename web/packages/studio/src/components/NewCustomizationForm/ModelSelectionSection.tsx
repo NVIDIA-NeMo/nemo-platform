@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
+import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { FormField, Stack } from '@nvidia/foundations-react-core';
 import { FormSection } from '@studio/components/NewCustomizationForm/FormSection';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { CustomizationFormFields } from '@studio/util/forms/customization';
+import { useState } from 'react';
 import { useController, useFormContext } from 'react-hook-form';
 
 export const ModelSelectionSection = () => {
@@ -23,7 +24,8 @@ export const ModelSelectionSection = () => {
     name: modelFieldName,
   });
 
-  const { groups, isFetching } = useModelsFromWorkspace({ workspace });
+  const [open, setOpen] = useState(false);
+  const modelSearch = useModelSearch({ workspace, enabled: open });
 
   const selectedValue: ModelSelection | null = modelField.value
     ? { model: modelField.value as string }
@@ -43,10 +45,10 @@ export const ModelSelectionSection = () => {
           slotError={modelFieldState.error?.message}
         >
           <ModelSelectV2
-            groups={groups}
-            loading={isFetching}
+            {...modelSearch}
             value={selectedValue}
             onValueChange={handleModelChange}
+            onOpenChange={setOpen}
             disabled={disabled}
             hideAdapters
             fullWidth

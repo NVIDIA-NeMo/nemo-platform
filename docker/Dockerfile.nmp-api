@@ -5,14 +5,24 @@ ARG NMP_PYTHON_BASE=nmp-python-base
 
 FROM ${NMP_PYTHON_BASE} AS builder
 COPY --from=nmp-workspace . .
+# Put the generated authorization policy into the source package before uv
+# installs it. This keeps the artifact aligned with the venv's actual Python
+# version instead of assuming a hard-coded site-packages path.
+COPY --from=policy-wasm-artifacts /artifacts/policy.wasm /app/services/core/auth/src/nmp/core/auth/assets/policy.wasm
 
 # Prevents annoy (a dependency of the nemoguardrails library) from generating CPU-specific instructions
 # that cause Guardrails to crash at inference-time with SIGILL on AVX2-only CPUs (e.g. AMD EPYC Zen 2).
 # When ANNOY_COMPILER_ARGS is set, annoy uses these arguments as-is, replacing its defaults.
 ENV ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD"
 
+# --reinstall-package pip forces uv to uninstall the seed pip (planted by
+# `uv venv --seed` in the base image) via its RECORD before installing the
+# locked pip, so exactly one pip remains. Without it, uv copies the locked pip
+# over the seed pip without removing stale files, leaving two pip-*.dist-info
+# dirs and a mixed file tree whose `pip` import is broken.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --only-group functional-services --no-editable
+    uv sync --frozen --only-group functional-services --no-editable \
+    --reinstall-package pip
 
 # annoy must be reinstalled from the committed lockfile without wheel cache reuse: uv's wheel cache
 # key does not include env vars, so the first sync can reuse a stale native-compiled wheel that
@@ -21,6 +31,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     VIRTUAL_ENV=/app/.venv \
     uv sync --frozen --active --only-group functional-services --no-editable \
     --reinstall-package annoy --refresh-package annoy --no-binary-package annoy --no-cache
+
+# Fail the build if pip is broken or duplicated (regression guard).
+RUN /app/.venv/bin/pip --version && \
+    test "$(ls -d /app/.venv/lib/python3.13/site-packages/pip-*.dist-info | wc -l)" -eq 1
+
+# Fail the image build if the installed auth package cannot see its generated policy.
+RUN /app/.venv/bin/python -c 'from nmp.core.auth.app.embedded_pdp.policy_wasm import ensure_embedded_policy_wasm; ensure_embedded_policy_wasm(auto_build=False)'
 
 # Pre-install DuckDB aws + httpfs so OTLP log ingestion works without outbound network.
 # Download the extension artifacts directly over HTTPS and install from local files
@@ -50,8 +67,6 @@ ENV USERNAME=nvs \
 COPY --chown=nvs:nvs --from=builder /root/.duckdb /root/.duckdb
 COPY --chown=nvs:nvs --from=builder /root/.duckdb /home/nvs/.duckdb
 COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
-# Authz evaluates the packaged policy WASM from nmp.core.auth.assets at runtime.
-COPY --chown=nvs:nvs --from=policy-wasm-artifacts /artifacts/policy.wasm /app/.venv/lib/python3.13/site-packages/nmp/core/auth/assets/policy.wasm
 ENV PATH="/app/.venv/bin:$PATH"
 COPY --chown=nvs:nvs --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
 COPY --chown=nvs:nvs --from=nmp-studio-ui /artifacts /static/studio

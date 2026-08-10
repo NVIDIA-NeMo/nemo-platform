@@ -432,3 +432,44 @@ def test_anyof_null_collapse_preserves_format_and_write_only():
         "title": "Value",
         "description": "The new secret value",
     }
+
+
+def test_anyof_null_collapse_hoists_optional_union():
+    """``Optional[Union[...]]`` renders as ``anyOf: [{oneOf: [...]}, null]``.
+    Collapsing must drop the null branch and hoist the ``oneOf`` onto the parent."""
+    spec = {
+        "components": {
+            "schemas": {
+                "Config": {
+                    "type": "object",
+                    "title": "Config",
+                    "properties": {
+                        "replace": {
+                            "anyOf": [
+                                {
+                                    "oneOf": [
+                                        {"$ref": "#/components/schemas/Annotate"},
+                                        {"$ref": "#/components/schemas/Redact"},
+                                    ]
+                                },
+                                {"type": "null"},
+                            ],
+                            "default": None,
+                            "title": "Replace",
+                        }
+                    },
+                }
+            }
+        },
+        "paths": {},
+    }
+
+    result = tweak_spec(spec)
+    prop = result["components"]["schemas"]["Config"]["properties"]["replace"]
+    assert prop == {
+        "oneOf": [
+            {"$ref": "#/components/schemas/Annotate"},
+            {"$ref": "#/components/schemas/Redact"},
+        ],
+        "title": "Replace",
+    }

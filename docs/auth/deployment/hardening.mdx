@@ -4,7 +4,7 @@ description: ""
 ---
 Security checklist for deploying NeMo Platform to production. Work through each section and verify your deployment meets these requirements.
 
-For the security architecture, see [Security Model](/documentation/access-control/security-model). For configuration details, see [Auth Configuration](/documentation/access-control/deployment/configuration).
+For the security architecture, see [Security Model](/documentation/access-control/security-model). For configuration details, see [Auth Configuration](/documentation/access-control/deployment).
 
 ## Authentication
 
@@ -25,9 +25,9 @@ For the security architecture, see [Security Model](/documentation/access-contro
 
 ## Gateway and Network
 
-- [ ] **Strip auth headers from external requests**: Configure your ingress/gateway to remove `X-NMP-Principal-Id`, `X-NMP-Principal-Email`, `X-NMP-Principal-Groups`, `X-NMP-Principal-On-Behalf-Of`, `X-NMP-Authorized`, and `X-NMP-Scopes` from all incoming external traffic. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
+- [ ] **Strip auth headers from external requests**: Configure your ingress/gateway to remove `X-NMP-Principal-Id`, `X-NMP-Principal-Email`, `X-NMP-Principal-Groups`, `X-NMP-Principal-On-Behalf-Of`, and `X-NMP-Scopes` from all incoming external traffic. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 - [ ] **Enable TLS termination**: Terminate TLS at the ingress or load balancer. Tokens in `Authorization` headers are sent in the clear without TLS.
-- [ ] **Consider gateway-level auth**: For reduced latency and centralized authorization, configure Envoy `ext_authz` to call the PDP at the edge. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
+- [ ] **Consider gateway bearer-auth callout**: To enforce bearer-token validation before requests reach platform services, configure Envoy `ext_authz` to call `/apis/auth/authenticate`. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 
 ## Policy Engine
 
@@ -64,6 +64,6 @@ nemo workspaces list
 ## Related
 
 - [Security Model](/documentation/access-control/security-model) — Architecture, trust boundaries, and authorization layers.
-- [Auth Configuration](/documentation/access-control/deployment/configuration) — Full configuration reference.
+- [Auth Configuration](/documentation/access-control/deployment) — Full configuration reference.
 - [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Gateway auth and header stripping.
 - [Roles & Permissions](/documentation/access-control/authorization/roles-and-permissions) — Permission matrix for role auditing.

@@ -22,11 +22,7 @@ EVALUATION_CONTEXT: dict[str, Any] = {
     "test_case_id": "chat-case-001",
     "metadata": {"source": "chat-completions-test"},
 }
-EXPERIMENT_CONTEXT: dict[str, Any] = {
-    "experiment_id": EVALUATION_CONTEXT["evaluation_id"],
-    "test_case_id": EVALUATION_CONTEXT["test_case_id"],
-}
-EXPECTED_CONTEXT_FROM_EXPERIMENT_CONTEXT: dict[str, Any] = {
+EXPECTED_EVALUATION_CONTEXT: dict[str, Any] = {
     "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
     "test_case_id": EVALUATION_CONTEXT["test_case_id"],
 }
@@ -78,12 +74,12 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
 
 
 def test_chat_completions_ingest_happy_path(client: TestClient):
-    experiment_id = _create_experiment(client, EXPERIMENT_CONTEXT["experiment_id"])
+    evaluation_id = _create_experiment(client, EVALUATION_CONTEXT["evaluation_id"])
     body = {
         "request": _openai_request(),
         "response": _openai_response(),
         "session_id": "session-happy",
-        "experiment_context": {**EXPERIMENT_CONTEXT, "experiment_id": experiment_id},
+        "evaluation_context": {**EVALUATION_CONTEXT, "evaluation_id": evaluation_id},
         "provider": "openai",
     }
     response = client.post(INGEST_URL, json=body)
@@ -106,7 +102,7 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
     assert span["name"] == "gpt-4o-mini-2024-08-06"
     assert span["model"] == "gpt-4o-mini-2024-08-06"
     assert span["provider"] == "openai"
-    assert span["evaluation_context"] == EXPECTED_CONTEXT_FROM_EXPERIMENT_CONTEXT
+    assert span["evaluation_context"] == EXPECTED_EVALUATION_CONTEXT
     assert "evaluation_run_id" not in span
     assert "raw_attributes" not in span
     assert span["input_tokens"] == 24
@@ -139,19 +135,6 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
     filtered_spans = filtered.json()["data"]
     assert len(filtered_spans) == 1
     assert filtered_spans[0]["span_id"] == "chatcmpl-test-abc123"
-
-
-def test_chat_completions_ingest_rejects_unknown_experiment_context(client: TestClient):
-    body = {
-        "request": _openai_request(),
-        "response": _openai_response(id="chatcmpl-missing-exp"),
-        "session_id": "session-missing-exp",
-        "experiment_context": {"experiment_id": "missing-exp", "test_case_id": "case-1"},
-    }
-    response = client.post(INGEST_URL, json=body)
-
-    assert response.status_code == 400, response.text
-    assert "must be created before it can be logged" in response.json()["detail"]
 
 
 def test_chat_completions_ingest_persists_cost_fields(client: TestClient):
@@ -434,27 +417,6 @@ def test_chat_completions_ingest_rejects_legacy_context_fields(client: TestClien
         assert response.status_code == 422, response.text
 
 
-def test_chat_completions_ingest_accepts_both_context_shapes_with_evaluation_context_precedence(client: TestClient):
-    _create_experiment(client, "chat-eval")
-    # evaluation_context is canonical and wins; experiment_context points at a non-existent entity, so a
-    # 201 (rather than a 400 for the missing "legacy-exp") proves evaluation_context took precedence.
-    body = {
-        "request": _openai_request(),
-        "response": _openai_response(id="chatcmpl-both-contexts"),
-        "session_id": "session-both-contexts",
-        "experiment_context": {"experiment_id": "legacy-exp", "test_case_id": "legacy-case"},
-        "evaluation_context": {"evaluation_id": "chat-eval", "test_case_id": "case-1"},
-    }
-    response = client.post(INGEST_URL, json=body)
-    assert response.status_code == 201, response.text
-
-    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-both-contexts"})
-    assert listed.status_code == 200, listed.text
-    span = listed.json()["data"][0]
-    assert span["evaluation_context"]["evaluation_id"] == "chat-eval"
-    assert span["evaluation_context"]["test_case_id"] == "case-1"
-
-
 def _create_experiment(client: TestClient, name: str) -> str:
     group_id = _ensure_group(client)
     response = client.post(
@@ -477,10 +439,10 @@ def _create_experiment(client: TestClient, name: str) -> str:
 
 def _ensure_group(client: TestClient, name: str = "chat-completions-test-group") -> str:
     response = client.post(
-        "/apis/intake/v2/workspaces/default/experiment-groups",
+        "/apis/intake/v2/workspaces/default/experiments",
         json={"name": name},
     )
     if response.status_code == 409:
-        response = client.get(f"/apis/intake/v2/workspaces/default/experiment-groups/{name}")
+        response = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
     response.raise_for_status()
     return response.json()["id"]

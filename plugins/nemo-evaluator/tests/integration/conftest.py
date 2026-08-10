@@ -34,6 +34,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 #: each fixture's ``env_overrides``.
 MOCK_PROVIDER_PREFIX = "igw-mock-"
 MOCK_PROVIDER_PREFIX_ENVVAR = "NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX"
+CLICKHOUSE_XDIST_GROUP = "nmp_intake_clickhouse"
+CLICKHOUSE_XDIST_FIXTURE = "_clickhouse"
 
 #: Base URL (and therefore port) for the agent-eval subprocess-backend platform. Distinct from
 #: other integration platforms so both can run in the same session without a port clash.
@@ -44,6 +46,12 @@ AGENT_DOCKER_PLATFORM_BASE_URL = os.environ.get("NMP_AGENT_DOCKER_BASE_URL", "ht
 
 #: Base URL for the auth-enabled subprocess platform (own port, coexists with the others).
 AGENT_AUTH_PLATFORM_BASE_URL = os.environ.get("NMP_AGENT_AUTH_BASE_URL", "http://localhost:8092")
+
+# xdist ``loadgroup`` does not infer shared fixtures; it only groups tests that
+# carry the same ``xdist_group`` marker. Any evaluator test that depends on the
+# ClickHouse fixture uses Intake's fixed local container, so keep those tests on
+# one worker to avoid cross-worker startup/teardown races. ``tryfirst`` matters:
+# xdist reads these markers during collection to build its scheduling groups.
 
 
 def _docker_available() -> bool:
@@ -72,6 +80,13 @@ def _port_in_use(host: str, port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(1)
         return sock.connect_ex((host, port)) == 0
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if CLICKHOUSE_XDIST_FIXTURE in item.fixturenames:
+            item.add_marker(pytest.mark.xdist_group(CLICKHOUSE_XDIST_GROUP))
 
 
 @contextmanager
@@ -224,6 +239,13 @@ def _materialize_docker_config(work_root: Path, *, base_url: str) -> Path:
     silently run on subprocess. ``platform.runtime: docker`` + a ``cpu/default`` docker executor
     keeps the agent-eval step on the docker backend. The jobs-launcher binary is optional (the
     backend falls back to the container's own entrypoint when it's absent), so it isn't built here.
+
+    ``enable_subprocess_executor: False`` is what makes that true, and is load-bearing — do not drop
+    it as redundant with the ``executors`` list. Jobs auto-appends a ``subprocess/default`` profile
+    for any non-Kubernetes runtime unless this is set (see
+    ``get_default_executor_profiles_for_runtime``). The Harbor compiler deliberately selects any
+    advertised subprocess profile, so leaving this unset would make the fixture subprocess-capable
+    instead of Docker-only.
     """
     docker_executor_config = {
         "launcher_tool_path": str(REPO_ROOT / "services/core/jobs/jobs-launcher/jobs-launcher"),
@@ -236,6 +258,7 @@ def _materialize_docker_config(work_root: Path, *, base_url: str) -> Path:
         "platform": {"runtime": "docker", "base_url": base_url},
         "auth": {"enabled": False, "allow_unsigned_jwt": True},
         "jobs": {
+            "enable_subprocess_executor": False,
             "executors": [
                 {"provider": "cpu", "profile": "default", "backend": "docker", "config": docker_executor_config},
             ],

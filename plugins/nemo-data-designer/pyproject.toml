@@ -7,7 +7,7 @@ authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
-    "data-designer==0.7.0",
+    "data-designer==0.8.0",
     "data-designer-nemo",
     "httpx>=0.27",
     "fastapi",
@@ -47,7 +47,7 @@ test = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.7.0",
+  "data-designer==0.8.0",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -60,7 +60,7 @@ nemo-platform-plugin = [
   "jsonschema>=4.0.0",
   "lark>=1.1.0",
   "openai>=1.109.1",
-  "pydantic>=2.10.3",
+  "pydantic>=2.12.0",
   "pydantic-settings>=2.8.1",
   "pyyaml>=6.0.2",
   "typer>=0.20.0,<0.26",

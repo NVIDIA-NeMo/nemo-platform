@@ -111,8 +111,9 @@ async def delete_deployment_config(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
-    # Best-effort referential check before delete. Entity store has no conditional
-    # delete API today, so this cannot be fully atomic against concurrent creates.
+    # Best-effort referential check before delete. The version check below protects the
+    # config row itself, but cannot make this relationship check atomic against a
+    # concurrent deployment create.
     referencing = await deployment_names_using_config(
         entity_client,
         workspace=workspace,
@@ -133,4 +134,12 @@ async def delete_deployment_config(
         raise HTTPException(
             status_code=404,
             detail=f"DeploymentConfig '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"DeploymentConfig '{name}' was modified by another request in workspace '{workspace}'. "
+                "Refresh the config and try again."
+            ),
         ) from exc

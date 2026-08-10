@@ -25,7 +25,7 @@ import {
 } from '@nemo/sdk/generated/agents/api';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
-import { Button, Divider, Flex, Text } from '@nvidia/foundations-react-core';
+import { Button, Text } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
@@ -34,9 +34,9 @@ import { LINK_DOCS_STUDIO } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getModelCompareRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { HatGlasses, Trash, X } from 'lucide-react';
+import { HatGlasses, Trash } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export type { Agent, AgentDeployment };
 
@@ -115,6 +115,14 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     },
   });
 
+  // `keepPreviousData` keeps the previous workspace's rows on screen after a switch,
+  // so a selection made there would still resolve — and delete by name against the new
+  // workspace. Drop it as soon as the workspace changes.
+  const clearRowSelection = dataViewState.rowSelection.set;
+  useEffect(() => {
+    clearRowSelection({});
+  }, [workspace, clearRowSelection]);
+
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
   const sortParam = getSortParamWithWhitelist(
@@ -176,12 +184,6 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       };
     });
   }, [agentsData, deploymentsData]);
-
-  const rowSelection = dataViewState.rowSelection.state;
-  const selectedAgents = useMemo(
-    () => tableData.filter((row) => rowSelection[row.id]),
-    [tableData, rowSelection]
-  );
 
   const deleteAgentMutation = useAgentsDeleteAgent();
   const deleteDeploymentMutation = useAgentsDeleteDeployment();
@@ -321,32 +323,18 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
 
   return (
     <>
-      {selectedAgents.length > 0 && (
-        <Flex align="center" gap="2">
-          <Text kind="label/regular/md">
-            {selectedAgents.length} {selectedAgents.length === 1 ? 'row' : 'rows'} selected
-          </Text>
-          <Flex align="center" gap="1">
-            <Button
-              kind="tertiary"
-              aria-label="Delete selected agents"
-              onClick={() => setDeleteState({ kind: 'bulk', items: selectedAgents })}
-            >
-              <Trash /> Delete
-            </Button>
-            <Divider orientation="vertical" />
-            <Button kind="tertiary" onClick={() => dataViewState.rowSelection.set({})}>
-              <span className="only-mobile">
-                <X variant="line" />
-              </span>
-              <span className="hide-mobile">Cancel</span>
-            </Button>
-          </Flex>
-        </Flex>
-      )}
       <StudioDataView
         dataViewState={dataViewState}
         makeColumns={makeColumns}
+        renderBulkActions={({ selectedRows }) => (
+          <Button
+            kind="tertiary"
+            aria-label="Delete selected agents"
+            onClick={() => setDeleteState({ kind: 'bulk', items: selectedRows })}
+          >
+            <Trash /> Delete
+          </Button>
+        )}
         onRowClick={(row: AgentTableRow) => {
           onAgentRowClick?.(row);
         }}

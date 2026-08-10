@@ -55,6 +55,7 @@ def test_service_run_config_converts_to_platform_app_config(tmp_path: Path) -> N
         sidecars=["adapters"],
         config_path=tmp_path / "local.yaml",
         socket_path=tmp_path / "nemo.sock",
+        keep_alive_timeout_seconds=12,
         mode="embedded",
     )
 
@@ -69,6 +70,12 @@ def test_service_run_config_converts_to_platform_app_config(tmp_path: Path) -> N
     assert app_config.runtime_dir() == tmp_path
     assert app_config.host == "127.0.0.1"
     assert app_config.port == 8080
+    assert app_config.keep_alive_timeout_seconds == 12
+
+
+def test_service_run_config_rejects_non_positive_keep_alive_timeout() -> None:
+    with pytest.raises(ValueError, match="keep_alive_timeout_seconds must be greater than 0"):
+        ServiceRunConfig(keep_alive_timeout_seconds=0)
 
 
 def test_instance_descriptor_converts_from_service_run_config(
@@ -680,20 +687,38 @@ def test_daemonize_services_bounds_probe_and_sleep_by_remaining_deadline(
     proc = MagicMock()
     proc.pid = 4242
     proc.poll.return_value = None
+    clock = 0.0
+    sleep_calls: list[float] = []
+
+    def monotonic() -> float:
+        nonlocal clock
+        if clock == 0.0:
+            clock = 4.0
+            return 0.0
+        return clock
+
+    def probe_status(*_args: object, **_kwargs: object) -> bool:
+        nonlocal clock
+        clock = 4.5
+        return False
+
+    def sleep(duration: float) -> None:
+        nonlocal clock
+        sleep_calls.append(duration)
+        clock += duration
 
     with (
         patch("nemo_platform_ext.local.services.require_services_extra"),
-        patch("nemo_platform_ext.local.services.probe_status", return_value=False) as probe_status,
+        patch("nemo_platform_ext.local.services.probe_status", side_effect=probe_status) as probe_status_mock,
         patch("nemo_platform_ext.local.services.subprocess.Popen", return_value=proc),
-        patch("nemo_platform_ext.local.services.time.monotonic", side_effect=[0.0, 4.0, 4.5, 5.0]),
-        patch("nemo_platform_ext.local.services.time.sleep") as sleep,
+        patch("nemo_platform_ext.local.services.time.monotonic", side_effect=monotonic),
+        patch("nemo_platform_ext.local.services.time.sleep", side_effect=sleep),
     ):
         with pytest.raises(services.ServicesStartupTimeoutError):
             services.daemonize_services(cfg)
 
-    assert probe_status.call_args.kwargs["timeout"] == pytest.approx(1.0)
-    sleep.assert_called_once()
-    assert sleep.call_args.args[0] == pytest.approx(0.5)
+    assert probe_status_mock.call_args.kwargs["timeout"] == pytest.approx(1.0)
+    assert sleep_calls == [pytest.approx(0.5)]
     proc.terminate.assert_called_once_with()
 
 
@@ -844,14 +869,46 @@ def test_run_services_serves_embedded_app_with_socket_path(monkeypatch: pytest.M
 
 
 def test_serve_embedded_app_with_socket_path_listens_on_tcp_and_uds(tmp_path: Path) -> None:
-    cfg = ServiceRunConfig(transport="tcp", host="127.0.0.1", port=9090)
+    cfg = ServiceRunConfig(
+        transport="tcp",
+        host="127.0.0.1",
+        port=9090,
+        keep_alive_timeout_seconds=12,
+    )
     app = object()
     socket_path = tmp_path / "nemo.sock"
 
     with patch("nmp.platform_runner.server._run_server_on_bound_sockets") as run_bound_sockets:
         services.serve_embedded_app(app, cfg, socket_path)
 
-    run_bound_sockets.assert_called_once_with(app, host="127.0.0.1", port=9090, socket_path=str(socket_path))
+    run_bound_sockets.assert_called_once_with(
+        app,
+        host="127.0.0.1",
+        port=9090,
+        socket_path=str(socket_path),
+        keep_alive_timeout_seconds=12,
+    )
+
+
+def test_serve_embedded_app_without_socket_path_sets_keep_alive_timeout() -> None:
+    cfg = ServiceRunConfig(
+        transport="tcp",
+        host="127.0.0.1",
+        port=9090,
+        keep_alive_timeout_seconds=12,
+    )
+    app = object()
+
+    with patch("uvicorn.run") as uvicorn_run:
+        services.serve_embedded_app(app, cfg, None)
+
+    uvicorn_run.assert_called_once_with(
+        app,
+        host="127.0.0.1",
+        port=9090,
+        log_config=None,
+        timeout_keep_alive=12,
+    )
 
 
 def test_run_services_cleans_lock_when_log_path_resolution_fails(

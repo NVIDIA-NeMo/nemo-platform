@@ -61,6 +61,9 @@ class PlatformJobResponse(BaseModel):
 
     error_details: Optional[Dict[str, object]] = None
 
+    output_location: Optional[str] = None
+    """Caller-supplied artifact fileset; None when the fileset was auto-created"""
+
     ownership: Optional[Dict[str, object]] = None
 
     project: Optional[str] = None

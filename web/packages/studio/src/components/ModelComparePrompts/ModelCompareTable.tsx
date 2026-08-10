@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { TableExpandableCell } from '@nemo/common/src/components/DataView/TableExpandableCell';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import type { FileSampleMethod } from '@nemo/common/src/utils/sampleTextLines';
@@ -26,8 +25,7 @@ import type { Dispatch, FC, SetStateAction } from 'react';
 
 interface ModelCompareTableProps {
   models: SharedModelEntry[];
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels: boolean;
+  workspace: string;
   promptRows: PromptRow[];
   fileResult: DatasetInputFileResult | null;
   sampleMethod: FileSampleMethod;
@@ -57,8 +55,7 @@ interface ModelCompareTableProps {
 
 export const ModelCompareTable: FC<ModelCompareTableProps> = ({
   models,
-  modelGroups,
-  isLoadingModels,
+  workspace,
   promptRows,
   fileResult,
   sampleMethod,
@@ -202,8 +199,7 @@ export const ModelCompareTable: FC<ModelCompareTableProps> = ({
               className={`${hasPrompts ? 'border-b ' : ''}${idx < models.length - 1 ? 'border-r ' : ''}border-base px-2 py-2 align-top`}
             >
               <ModelColumnSelect
-                modelGroups={modelGroups}
-                isLoadingModels={isLoadingModels}
+                workspace={workspace}
                 value={m.modelURN}
                 disabled={isRunning}
                 onChange={(ref) => {

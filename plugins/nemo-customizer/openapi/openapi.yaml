@@ -1208,7 +1208,7 @@ components:
         output:
           $ref: '#/components/schemas/AutomodelOutputRequest'
         integrations:
-          $ref: '#/components/schemas/IntegrationsSpecInput'
+          $ref: '#/components/schemas/IntegrationsSpec'
       additionalProperties: false
       type: object
       required:
@@ -1240,7 +1240,7 @@ components:
         output:
           $ref: '#/components/schemas/AutomodelOutputResponse'
         integrations:
-          $ref: '#/components/schemas/IntegrationsSpecOutput'
+          $ref: '#/components/schemas/IntegrationsSpec'
       additionalProperties: false
       type: object
       required:
@@ -1325,6 +1325,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec
@@ -1698,7 +1701,7 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
-    IntegrationsSpecInput:
+    IntegrationsSpec:
       properties:
         wandb:
           allOf:
@@ -1710,29 +1713,7 @@ components:
           description: MLflow integration configuration.
       additionalProperties: false
       type: object
-      title: IntegrationsSpecInput
-      description: 'Third-party experiment-tracking integrations for a job spec.
-
-
-        Each integration is requested by presence: omit or set a field to ``null``
-        to
-
-        disable it. Activation at training time still requires credentials/URIs
-
-        (see compile-time warnings and runtime builders).'
-    IntegrationsSpecOutput:
-      properties:
-        wandb:
-          allOf:
-          - $ref: '#/components/schemas/WandbIntegration'
-          description: Weights & Biases integration configuration.
-        mlflow:
-          allOf:
-          - $ref: '#/components/schemas/MlflowIntegration'
-          description: MLflow integration configuration.
-      additionalProperties: false
-      type: object
-      title: IntegrationsSpecOutput
+      title: IntegrationsSpec
       description: 'Third-party experiment-tracking integrations for a job spec.
 
 
@@ -2073,6 +2054,7 @@ components:
             \ Defaults to AdamW with cosine annealing."
         learning_rate:
           type: number
+          exclusiveMinimum: 0.0
           title: Learning Rate
           description: Peak learning rate.
           default: 0.0001
@@ -2080,18 +2062,24 @@ components:
           title: Min Learning Rate
           description: Minimum LR for cosine decay.
           type: number
+          minimum: 0.0
         weight_decay:
           type: number
+          minimum: 0.0
           title: Weight Decay
           description: Weight decay coefficient.
           default: 0.01
         adam_beta1:
           type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
           title: Adam Beta1
           description: Adam beta1.
           default: 0.9
         adam_beta2:
           type: number
+          exclusiveMaximum: 1.0
+          minimum: 0.0
           title: Adam Beta2
           description: Adam beta2.
           default: 0.999
@@ -2235,7 +2223,7 @@ components:
           - $ref: '#/components/schemas/RlDPOTraining'
           description: DPO training method and hyperparameters.
         integrations:
-          $ref: '#/components/schemas/IntegrationsSpecInput'
+          $ref: '#/components/schemas/IntegrationsSpec'
         output:
           $ref: '#/components/schemas/RlOutputRequest'
       additionalProperties: false
@@ -2266,7 +2254,7 @@ components:
           description: Training method and hyperparameters (DPO).
         integrations:
           allOf:
-          - $ref: '#/components/schemas/IntegrationsSpecOutput'
+          - $ref: '#/components/schemas/IntegrationsSpec'
           description: W&B / MLflow integrations.
         output:
           allOf:
@@ -2359,6 +2347,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec
@@ -2431,6 +2422,7 @@ components:
         name:
           title: Name
           type: string
+          maxLength: 255
       additionalProperties: false
       type: object
       title: RlOutputRequest
@@ -2517,6 +2509,9 @@ components:
       title: SecretRef
       description: 'Reference to a secret. Format: ''secret_name'' (uses request workspace)
         or ''workspace/secret_name'' (explicit workspace).'
+      examples:
+      - my-secret
+      - my-workspace/my-secret
     StringFilter:
       additionalProperties: false
       properties:
@@ -2683,7 +2678,7 @@ components:
         hardware:
           $ref: '#/components/schemas/UnslothHardwareSpec'
         integrations:
-          $ref: '#/components/schemas/IntegrationsSpecInput'
+          $ref: '#/components/schemas/IntegrationsSpec'
         output:
           $ref: '#/components/schemas/UnslothOutputRequest'
         deployment_config:
@@ -2724,7 +2719,7 @@ components:
         hardware:
           $ref: '#/components/schemas/UnslothHardwareSpec'
         integrations:
-          $ref: '#/components/schemas/IntegrationsSpecOutput'
+          $ref: '#/components/schemas/IntegrationsSpec'
         output:
           $ref: '#/components/schemas/UnslothOutputResponse'
         deployment_config:
@@ -2827,6 +2822,9 @@ components:
           title: Custom Fields
           additionalProperties: true
           type: object
+        output_location:
+          title: Output Location
+          type: string
       type: object
       required:
       - spec

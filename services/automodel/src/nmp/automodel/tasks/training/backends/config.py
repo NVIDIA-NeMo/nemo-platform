@@ -10,6 +10,7 @@ or KnowledgeDistillationRecipeForNextTokenPrediction.
 """
 
 import logging
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ from nmp.automodel.tasks.training.schemas import (
 )
 from nmp.automodel.tasks.training.sequence_packing import (
     calculate_optimal_pack_size,
+    calculate_target_packing_factor,
     estimate_dataset_sequence_lengths,
 )
 from nmp.customization_common.service.context import NMPJobContext
@@ -132,8 +134,7 @@ def compile_automodel_config(
     # Note dp_size is typically auto-derived by Automodel (world_size / (tp * pp * cp)),
     # but we calculate it explicitly here because:
     # 1. It's validated upstream in validators.py
-    # 2. We need it for warmup_steps validation below
-    # 3. Passing an explicit value ensures consistency rather than relying on Automodel's derivation
+    # 2. Passing an explicit value ensures consistency rather than relying on Automodel's derivation
     dp = total_gpus // (p.tensor_parallel_size * p.pipeline_parallel_size * p.context_parallel_size)
 
     cfg["distributed"] = {
@@ -170,12 +171,49 @@ def compile_automodel_config(
     validator.validate_dataset(str(prepared.validation_file))
     logger.info("Validated datasets successfully")
 
+    # === Sequence Packing ===
+    # Compute packing before the schedule so its estimated reduction in dataset
+    # length is reflected in steps_per_epoch, validation, and warmup.
+    effective_seq_length = customizer_config.model.max_seq_length
+    packing_factor: float | None = None
+    if not _is_embedding_model and customizer_config.batch.sequence_packing:
+        packing_estimate = estimate_dataset_sequence_lengths(
+            customizer_config,
+            train_file=prepared.train_file,
+            max_samples=customizer_config.batch.sequence_packing_max_samples,
+            seed=customizer_config.seed,
+            trust_remote_code=trust_remote_code,
+        )
+
+        if packing_estimate is not None:
+            optimal_pack_size = packing_estimate.pack_size
+            packing_factor = packing_estimate.packing_factor
+            logger.info(
+                f"Sequence packing enabled: pack_size={optimal_pack_size}, "
+                f"avg_seq={packing_estimate.avg_seq_length}, max_seq={packing_estimate.max_seq_length}, "
+                f"packing_factor={packing_factor}, samples={packing_estimate.samples_analyzed}"
+            )
+        else:
+            optimal_pack_size = calculate_optimal_pack_size(customizer_config)
+            packing_factor = float(calculate_target_packing_factor(customizer_config))
+            logger.info(
+                f"Sequence packing enabled with fallback pack_size={optimal_pack_size}, packing_factor={packing_factor}"
+            )
+
+        cfg["packed_sequence"] = {
+            "packed_sequence_size": optimal_pack_size,
+        }
+        effective_seq_length = optimal_pack_size
+
     # === Step Scheduler (with val_check_interval conversion) ===
     batch_size = customizer_config.batch.global_batch_size
     epochs = customizer_config.schedule.epochs
 
-    # Compute steps per epoch (round up to ensure all samples are used)
-    steps_per_epoch = (prepared.train_samples + batch_size - 1) // batch_size
+    steps_per_epoch = estimate_steps_per_epoch(
+        train_samples=prepared.train_samples,
+        batch_size=batch_size,
+        packing_factor=packing_factor,
+    )
     total_steps = steps_per_epoch * epochs
 
     # Determine effective max_steps
@@ -187,7 +225,8 @@ def compile_automodel_config(
 
     logger.info(
         f"Training schedule: {prepared.train_samples} samples, batch_size={batch_size}, "
-        f"steps_per_epoch={steps_per_epoch}, epochs={epochs}, max_steps={max_steps}"
+        f"packing_factor={packing_factor or 1.0}, steps_per_epoch={steps_per_epoch}, "
+        f"epochs={epochs}, max_steps={max_steps}"
     )
 
     cfg["step_scheduler"] = {
@@ -206,31 +245,10 @@ def compile_automodel_config(
     cfg["step_scheduler"]["ckpt_every_steps"] = val_every_steps
     logger.info(f"Validation interval: {customizer_config.schedule.val_check_interval} -> {val_every_steps} steps")
 
-    # === Validate warmup_steps ===
-    # Automodel requires: lr_warmup_steps < lr_decay_steps (scheduler.py line 96)
-    # lr_decay_steps = total_optimizer_steps (accounting for gradient accumulation)
-    warmup_steps = customizer_config.optimizer.warmup_steps
-    if warmup_steps > 0:
-        micro_batch_size = customizer_config.batch.micro_batch_size
-
-        # Calculate gradient accumulation steps (how StepScheduler computes it)
-        grad_acc_steps = batch_size // (micro_batch_size * dp)
-
-        # Calculate total optimizer steps (accounting for gradient accumulation)
-        total_optimizer_steps = (epochs * prepared.train_samples) // grad_acc_steps
-
-        # lr_decay_steps will be min(max_steps, total_optimizer_steps)
-        lr_decay_steps = min(total_optimizer_steps, max_steps)
-
-        if warmup_steps >= lr_decay_steps:
-            raise ValueError(
-                f"warmup_steps ({warmup_steps}) must be less than lr_decay_steps ({lr_decay_steps}). "
-                f"Calculation: grad_acc_steps={grad_acc_steps} (batch_size={batch_size} / "
-                f"(micro_batch_size={micro_batch_size} * dp_size={dp})), "
-                f"total_optimizer_steps={total_optimizer_steps} (epochs={epochs} * "
-                f"steps_per_epoch={prepared.train_samples} / grad_acc_steps={grad_acc_steps}), "
-                f"lr_decay_steps=min({total_optimizer_steps}, {max_steps})={lr_decay_steps}"
-            )
+    warmup_steps = resolve_warmup_steps(
+        warmup_steps=customizer_config.optimizer.warmup_steps,
+        max_steps=max_steps,
+    )
 
     # === Optimizer ===
     # Map the optimizer choice to its torch class. Reject unknown names instead of
@@ -249,7 +267,7 @@ def compile_automodel_config(
 
     cfg["lr_scheduler"] = {
         "lr_decay_style": customizer_config.optimizer.lr_decay_style,
-        "lr_warmup_steps": customizer_config.optimizer.warmup_steps,
+        "lr_warmup_steps": warmup_steps,
     }
     if customizer_config.optimizer.min_learning_rate:
         cfg["lr_scheduler"]["min_lr"] = customizer_config.optimizer.min_learning_rate
@@ -265,40 +283,6 @@ def compile_automodel_config(
         "dequantize_base_checkpoint": True,
         "v4_compatible": customizer_config.model.v4_compatible,
     }
-
-    # === Sequence Packing (must be computed before dataset config) ===
-    # When packing is enabled, we use the pack size as the effective sequence length
-    # for dataset configuration. This ensures samples are truncated appropriately.
-    effective_seq_length = customizer_config.model.max_seq_length
-    if not _is_embedding_model:
-        if customizer_config.batch.sequence_packing:
-            # Calculate optimal pack size based on dataset statistics
-            packing_estimate = estimate_dataset_sequence_lengths(
-                customizer_config,
-                train_file=prepared.train_file,
-                max_samples=customizer_config.batch.sequence_packing_max_samples,
-                seed=customizer_config.seed,
-                trust_remote_code=trust_remote_code,
-            )
-
-            if packing_estimate is not None:
-                optimal_pack_size = packing_estimate.pack_size
-                logger.info(
-                    f"Sequence packing enabled: pack_size={optimal_pack_size}, "
-                    f"avg_seq={packing_estimate.avg_seq_length}, max_seq={packing_estimate.max_seq_length}, "
-                    f"packing_factor={packing_estimate.packing_factor}, samples={packing_estimate.samples_analyzed}"
-                )
-            else:
-                # Fallback to conservative default (model max_seq_length)
-                optimal_pack_size = calculate_optimal_pack_size(customizer_config)
-                logger.info(f"Sequence packing enabled with conservative pack_size={optimal_pack_size}")
-
-            cfg["packed_sequence"] = {
-                "packed_sequence_size": optimal_pack_size,
-            }
-
-            # Use pack size as the effective sequence length for datasets
-            effective_seq_length = optimal_pack_size
 
     # === Dataset Configuration (with schema detection) ===
     _configure_datasets(
@@ -383,6 +367,38 @@ def compile_automodel_config(
         logger.info(f"MLflow enabled: {mlflow_config.get('tracking_uri')}")
 
     return cfg
+
+
+def estimate_steps_per_epoch(
+    *,
+    train_samples: int,
+    batch_size: int,
+    packing_factor: float | None = None,
+) -> int:
+    """Estimate optimizer steps per epoch, accounting for sequence packing."""
+    effective_packing_factor = packing_factor if packing_factor and packing_factor > 1 else 1.0
+    return math.ceil(train_samples / (batch_size * effective_packing_factor))
+
+
+def resolve_warmup_steps(*, warmup_steps: int, max_steps: int) -> int:
+    """Return warmup steps that satisfy Automodel's ``lr_warmup_steps < lr_decay_steps``.
+
+    A large global batch size can leave a run with fewer optimizer steps than the
+    requested warmup. That is a schedule too short to warm up over rather than a
+    misconfiguration, so warm up over the whole run instead of failing.
+    """
+    if warmup_steps <= 0:
+        return warmup_steps
+
+    if warmup_steps < max_steps:
+        return warmup_steps
+
+    clamped_warmup_steps = max(0, max_steps - 1)
+    logger.warning(
+        f"warmup_steps ({warmup_steps}) must be less than lr_decay_steps ({max_steps}); "
+        f"clamping warmup_steps to {clamped_warmup_steps}"
+    )
+    return clamped_warmup_steps
 
 
 def _configure_moe_backend(

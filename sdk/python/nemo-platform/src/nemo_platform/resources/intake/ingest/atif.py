@@ -37,7 +37,6 @@ from ....types.intake.ingest import atif_create_params
 from ....types.intake.ingest.atif_step_param import AtifStepParam
 from ....types.intake.ingest.atif_agent_param import AtifAgentParam
 from ....types.intake.evaluation_context_param import EvaluationContextParam
-from ....types.intake.experiment_context_param import ExperimentContextParam
 from ....types.intake.ingest.atif_trajectory_param import AtifTrajectoryParam
 from ....types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 
@@ -74,7 +73,6 @@ class AtifResource(SyncAPIResource):
         ],
         continued_trajectory_ref: str | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
-        experiment_context: ExperimentContextParam | Omit = omit,
         extra: Dict[str, object] | Omit = omit,
         final_metrics: AtifFinalMetricsParam | Omit = omit,
         notes: str | Omit = omit,
@@ -99,9 +97,6 @@ class AtifResource(SyncAPIResource):
               evaluation_run_id, metadata) keeps ingesting without error rather than being
               rejected.
 
-          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
-              `evaluation_context`.
-
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -123,7 +118,6 @@ class AtifResource(SyncAPIResource):
                     "schema_version": schema_version,
                     "continued_trajectory_ref": continued_trajectory_ref,
                     "evaluation_context": evaluation_context,
-                    "experiment_context": experiment_context,
                     "extra": extra,
                     "final_metrics": final_metrics,
                     "notes": notes,
@@ -171,7 +165,6 @@ class AsyncAtifResource(AsyncAPIResource):
         ],
         continued_trajectory_ref: str | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
-        experiment_context: ExperimentContextParam | Omit = omit,
         extra: Dict[str, object] | Omit = omit,
         final_metrics: AtifFinalMetricsParam | Omit = omit,
         notes: str | Omit = omit,
@@ -196,9 +189,6 @@ class AsyncAtifResource(AsyncAPIResource):
               evaluation_run_id, metadata) keeps ingesting without error rather than being
               rejected.
 
-          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
-              `evaluation_context`.
-
           extra_headers: Send extra headers
 
           extra_query: Add additional query parameters to the request
@@ -220,7 +210,6 @@ class AsyncAtifResource(AsyncAPIResource):
                     "schema_version": schema_version,
                     "continued_trajectory_ref": continued_trajectory_ref,
                     "evaluation_context": evaluation_context,
-                    "experiment_context": experiment_context,
                     "extra": extra,
                     "final_metrics": final_metrics,
                     "notes": notes,

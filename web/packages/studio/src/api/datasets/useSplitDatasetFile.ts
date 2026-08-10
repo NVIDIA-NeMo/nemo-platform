@@ -40,7 +40,6 @@ export const useSplitDatasetFile = ({ onError, onSuccess }: Props) => {
       seed,
       sortKey,
     }: FileSplitsProps) => {
-      // Parse JSON objects
       const { rows, failures } = parseFileContent({
         content: fileContent,
         fileType: getFileExtension(filepath) ?? '',
@@ -49,17 +48,17 @@ export const useSplitDatasetFile = ({ onError, onSuccess }: Props) => {
         toast.error(`${failures.length} Line(s) had parsing errors.`);
       }
 
-      // Split rows into randomly distributed lists
       const splitList =
         distributionType === 'random'
           ? splitRandomDistribution(rows, splits, seed)
           : splitSequentialDistribution(rows, splits, { key: sortKey });
 
-      // Upload files to fileset
-      const filename = filepath.split('/').pop() ?? filepath;
+      const isJson = filepath.toLowerCase().endsWith('json');
+      const sourceName = filepath.split('/').pop() ?? filepath;
+      const baseName = sourceName.replace(/\.[^./]+$/, '');
+      const outputName = `${baseName}.${isJson ? 'json' : 'jsonl'}`;
       const toUpload = splits
         .map((_, index) => {
-          const isJson = filepath.endsWith('json');
           let content = splitList[index]
             .map((row) => JSON.stringify(row))
             .join(isJson ? ',\n' : '\n');
@@ -70,13 +69,12 @@ export const useSplitDatasetFile = ({ onError, onSuccess }: Props) => {
             return undefined;
           }
           return {
-            path: `${fileSuffix[index]}/${filename}`,
+            path: `${fileSuffix[index]}/${outputName}`,
             content,
           };
         })
         .filter(isDefined);
 
-      // Upload each file using v2 API
       const results = await Promise.all(
         toUpload.map(async (details) => {
           const blob = new Blob([details.content], { type: 'application/json' });

@@ -10,7 +10,9 @@ Mounted on :class:`~nemo_platform.NeMoPlatform` as ``client.auditor`` via the
 - ``client.auditor.configs.{create,list,get,update,delete}`` — ``AuditConfig`` CRUD.
 - ``client.auditor.targets.{create,list,get,update,delete}`` — ``AuditTarget`` CRUD.
 - ``client.auditor.submit(config=..., target=..., workspace=...)`` — submit a K8s
-  audit job through the plugin's job endpoint and return the raw job dict.
+  audit job and return an :class:`~nemo_auditor.sdk_resources.job_resources.AuditorJobResource`
+  handle. Call ``.wait_until_done()`` on the handle to block until the job completes,
+  then ``.download_artifacts()`` to fetch the garak report tarball.
 - ``client.auditor.list_jobs(workspace=...)`` — list submitted audit jobs.
 - ``client.auditor.get_job(job_name, workspace=...)`` — fetch a single audit job.
 - ``client.auditor.run(config=..., target=..., workspace=...)`` — in-process
@@ -29,6 +31,7 @@ import asyncio
 from nemo_auditor.entities import AuditConfig, AuditTarget
 from nemo_auditor.jobs.audit import AuditInputSpec, AuditJob
 from nemo_auditor.sdk_resources.configs import _AsyncConfigResource, _ConfigResource
+from nemo_auditor.sdk_resources.job_resources import AsyncAuditorJobResource, AuditorJobResource
 from nemo_auditor.sdk_resources.targets import _AsyncTargetResource, _TargetResource
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.entities import parse_qualified_name
@@ -73,12 +76,12 @@ class AuditorPluginResource:
         workspace: str | None = None,
         max_probe_retries: int = 0,
         fail_job_on_retries_exhausted: bool = True,
-    ) -> dict:
+    ) -> AuditorJobResource:
         """Submit an audit job to the K8s executor via the plugin job endpoint.
 
-        Returns the raw job dict (name, status, workspace, …). Use
-        ``sdk.jobs.get_status(name=result["name"], workspace=workspace)`` to poll
-        for completion, or pass the name to ``sdk.auditor.get_job()``.
+        Returns an :class:`~nemo_auditor.sdk_resources.job_resources.AuditorJobResource`
+        handle. Call ``.wait_until_done()`` to block until the job completes, then
+        ``.download_artifacts()`` to fetch the garak report tarball.
         """
         ws = workspace or "default"
         spec = AuditInputSpec(
@@ -92,7 +95,7 @@ class AuditorPluginResource:
             json={"spec": spec.model_dump(mode="json")},
         )
         response.raise_for_status()
-        return response.json()
+        return AuditorJobResource(job_name=response.json()["name"], platform=self._platform, workspace=ws)
 
     def list_jobs(
         self,
@@ -199,7 +202,7 @@ class AsyncAuditorPluginResource:
         workspace: str | None = None,
         max_probe_retries: int = 0,
         fail_job_on_retries_exhausted: bool = True,
-    ) -> dict:
+    ) -> AsyncAuditorJobResource:
         """Async twin of :meth:`AuditorPluginResource.submit`."""
         ws = workspace or "default"
         spec = AuditInputSpec(
@@ -213,7 +216,7 @@ class AsyncAuditorPluginResource:
             json={"spec": spec.model_dump(mode="json")},
         )
         response.raise_for_status()
-        return response.json()
+        return AsyncAuditorJobResource(job_name=response.json()["name"], platform=self._platform, workspace=ws)
 
     async def list_jobs(
         self,

@@ -31,23 +31,19 @@ def _example_yaml_config() -> dict:
                     "provider": "nvidia",
                     "model": "nvidia/nemotron-3-nano-30b-a3b",
                     "api_key_env": "NVIDIA_API_KEY",
+                    "base_url": "https://integrate.api.nvidia.com/v1",
                     "temperature": 0.0,
                 },
                 "settings": {
-                    "base_url": "https://integrate.api.nvidia.com/v1",
-                    "max_iterations": 1,
                     "max_tokens": 512,
                     "reasoning_config": {"effort": "none"},
-                    "enabled_toolsets": [],
-                    "system_prompt": "You are a concise smoke test assistant.",
                 },
             },
             "codex": {
                 "kind": "codex",
                 "settings": {
                     "sandbox": "workspace-write",
-                    "skip_git_repo_check": True,
-                    "config_overrides": {"model_reasoning_effort": "high"},
+                    "reasoning_effort": "high",
                 },
             },
         },
@@ -59,6 +55,11 @@ def _example_yaml_config() -> dict:
         },
         "prompts": {
             "system": "prompts/system.md",
+        },
+        "instructions": {
+            "system": {
+                "content": "You are a concise smoke test assistant.",
+            },
         },
         "skills": None,
         "environment": {
@@ -92,8 +93,14 @@ class TestAgentConfig:
         assert config.default_harness == "hermes"
         assert config.harnesses["hermes"].model is not None
         assert config.harnesses["hermes"].model.provider == "nvidia"
+        assert config.harnesses["hermes"].model.base_url == "https://integrate.api.nvidia.com/v1"
+        assert config.harnesses["hermes"].settings["max_tokens"] == 512
         assert config.harnesses["codex"].settings["sandbox"] == "workspace-write"
         assert config.models["default"].model == "openai/gpt-5.4"
+        assert config.instructions is not None
+        assert config.instructions.system is not None
+        assert config.instructions.system.content == "You are a concise smoke test assistant."
+        assert config.instructions.system.mode == "replace"
         assert config.skills is None
         assert config.telemetry.atif == {
             "enabled": True,
@@ -113,10 +120,37 @@ class TestAgentConfig:
         assert config.description == ""
         assert config.models == {}
         assert config.prompts == {}
+        assert config.instructions is None
+        assert config.skills is None
+        assert config.mcp is None
+        assert config.tools is None
         assert config.environment.provider == "local"
         assert config.environment.workspace == "./workspace"
         assert config.environment.artifacts == "./artifacts"
         assert config.telemetry.enabled is False
+
+    def test_shared_capability_sections_validate(self) -> None:
+        payload = _example_yaml_config()
+        payload["skills"] = {"paths": ["skills/review"]}
+        payload["mcp"] = {
+            "servers": {
+                "repo": {
+                    "transport": "stdio",
+                    "url": "repo-mcp --root .",
+                }
+            }
+        }
+        payload["tools"] = {"blocked": ["shell", "browser"]}
+
+        config = AgentConfig.model_validate(payload)
+
+        assert config.skills is not None
+        assert config.skills.paths == ["skills/review"]
+        assert config.mcp is not None
+        assert config.mcp.servers["repo"].transport == "stdio"
+        assert config.mcp.servers["repo"].exposure == "harness_native"
+        assert config.tools is not None
+        assert config.tools.blocked == ["shell", "browser"]
 
     def test_default_harness_must_reference_configured_harness(self) -> None:
         with pytest.raises(ValidationError, match="default_harness must reference one of harnesses: codex"):
@@ -148,6 +182,13 @@ class TestAgentConfig:
         payload["harnesses"]["codex"]["unknown"] = "value"
 
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            AgentConfig.model_validate(payload)
+
+    def test_blank_instruction_content_rejected(self) -> None:
+        payload = _example_yaml_config()
+        payload["instructions"]["system"]["content"] = "   "
+
+        with pytest.raises(ValidationError, match="String should match pattern"):
             AgentConfig.model_validate(payload)
 
 

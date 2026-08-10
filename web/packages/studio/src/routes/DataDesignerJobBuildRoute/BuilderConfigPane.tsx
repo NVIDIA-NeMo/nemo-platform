@@ -1,54 +1,52 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { Flex, Text } from '@nvidia/foundations-react-core';
 import { ColumnConfigPanel } from '@studio/components/ColumnConfigPanel';
 import { ModelConfigPanel } from '@studio/components/ModelConfigPanel';
-import type { FC } from 'react';
+import { type FC, memo } from 'react';
 
 export interface BuilderConfigPaneProps {
   selectedColumnId: string | null;
   selectedModelId: string | null;
-  modelGroups: ModelWorkspaceGroup[];
-  isLoadingModels: boolean;
+  workspace: string;
   onColumnRemove: () => void;
   onColumnClose: () => void;
   onModelRemove: () => void;
   onModelClose: () => void;
 }
 
-export const BuilderConfigPane: FC<BuilderConfigPaneProps> = ({
+export const BuilderConfigPane: FC<BuilderConfigPaneProps> = memo(function BuilderConfigPane({
   selectedColumnId,
   selectedModelId,
-  modelGroups,
-  isLoadingModels,
+  workspace,
   onColumnRemove,
   onColumnClose,
   onModelRemove,
   onModelClose,
-}) => (
-  <div className="w-[240px] shrink-0 border-l border-base bg-surface-base">
-    {selectedColumnId ? (
-      <ColumnConfigPanel
-        columnId={selectedColumnId}
-        onRemove={onColumnRemove}
-        onClose={onColumnClose}
-      />
-    ) : selectedModelId ? (
-      <ModelConfigPanel
-        modelId={selectedModelId}
-        modelGroups={modelGroups}
-        isLoadingModels={isLoadingModels}
-        onRemove={onModelRemove}
-        onClose={onModelClose}
-      />
-    ) : (
-      <Flex align="center" justify="center" className="h-full p-density-lg">
-        <Text kind="body/regular/sm" className="text-secondary text-center">
-          Select a column or model to configure it, or add one from the left.
-        </Text>
-      </Flex>
-    )}
-  </div>
-);
+}) {
+  return (
+    <div className="w-[240px] shrink-0 border-l border-base bg-surface-base">
+      {selectedColumnId ? (
+        <ColumnConfigPanel
+          columnId={selectedColumnId}
+          onRemove={onColumnRemove}
+          onClose={onColumnClose}
+        />
+      ) : selectedModelId ? (
+        <ModelConfigPanel
+          modelId={selectedModelId}
+          workspace={workspace}
+          onRemove={onModelRemove}
+          onClose={onModelClose}
+        />
+      ) : (
+        <Flex align="center" justify="center" className="h-full p-density-lg">
+          <Text kind="body/regular/sm" className="text-secondary text-center">
+            Select a column or model to configure it, or add one from the left.
+          </Text>
+        </Flex>
+      )}
+    </div>
+  );
+});

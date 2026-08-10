@@ -23,6 +23,12 @@ class VolumeReconciler:
         self._registry = registry
 
     async def reconcile_one(self, volume: Volume) -> None:
+        try:
+            await self._reconcile_one(volume)
+        except NemoEntityConflictError:
+            logger.debug("Optimistic lock conflict on volume %s/%s - retry next cycle.", volume.workspace, volume.name)
+
+    async def _reconcile_one(self, volume: Volume) -> None:
         if volume.status == "DELETING":
             await self._reconcile_delete(volume)
             return
@@ -57,12 +63,17 @@ class VolumeReconciler:
             return
 
         try:
-            await self._entities.delete(Volume, name=volume.name, workspace=volume.workspace)
+            await self._entities.delete(
+                Volume,
+                name=volume.name,
+                workspace=volume.workspace,
+                expected_db_version=volume.db_version,
+            )
             logger.info("Deleted volume entity %s", volume_id)
         except NemoEntityNotFoundError:
             logger.debug("Volume entity %s already deleted", volume_id)
         except NemoEntityConflictError:
-            raise
+            logger.debug("Optimistic lock conflict deleting volume %s - retry next cycle.", volume_id)
         except Exception:
             logger.exception("Failed to delete volume entity %s", volume_id)
 
@@ -76,16 +87,15 @@ class VolumeReconciler:
                 access_modes=list(volume.access_modes),
                 backend_config=backend_config,
             )
-            await self._update_volume_status(volume, update)
-            logger.info("Volume %s/%s created: %s", volume.workspace, volume.name, update.status)
-        except NemoEntityConflictError:
-            raise
         except Exception as exc:
             logger.exception("Failed to create volume %s/%s", volume.workspace, volume.name)
             await self._update_volume_status(
                 volume,
                 VolumeStatusUpdate(status="FAILED", status_message=f"Failed to create volume: {exc}"),
             )
+            return
+        await self._update_volume_status(volume, update)
+        logger.info("Volume %s/%s created: %s", volume.workspace, volume.name, update.status)
 
     async def _reconcile_read(self, volume: Volume, backend: DeploymentBackend) -> None:
         backend_config = volume.backend_config.model_dump(by_alias=True, exclude_none=True)
@@ -95,15 +105,14 @@ class VolumeReconciler:
                 name=volume.name,
                 backend_config=backend_config,
             )
-            await self._update_volume_status(volume, update)
-        except NemoEntityConflictError:
-            raise
         except Exception as exc:
             logger.exception("Failed to read volume status %s/%s", volume.workspace, volume.name)
             await self._update_volume_status(
                 volume,
                 VolumeStatusUpdate(status="FAILED", status_message=f"Failed to read volume status: {exc}"),
             )
+            return
+        await self._update_volume_status(volume, update)
 
     async def _update_volume_status(self, volume: Volume, update: VolumeStatusUpdate) -> None:
         if (
@@ -118,7 +127,4 @@ class VolumeReconciler:
         await self._save(volume)
 
     async def _save(self, volume: Volume) -> None:
-        try:
-            await self._entities.update(volume)
-        except NemoEntityConflictError:
-            raise
+        await self._entities.update(volume)

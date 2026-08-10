@@ -59,7 +59,13 @@ SUGGESTED_ALT_PORT = 9090
 
 _SIGTERM_POLL_INTERVAL = 0.25
 _SIGKILL_WAIT_TIMEOUT = 5.0
+_LOCK_RELEASE_WAIT_TIMEOUT = 5.0
+_REAP_PID_TIMEOUT = 2.0
 _DEFAULT_STOP_TIMEOUT = 30.0
+# How long ``stop_instance`` waits for the flock to be released after the last process it
+# signaled has exited.  The kernel drops the lock as part of closing the fd during process
+# teardown, so this only has to cover the tail of that teardown, not a whole shutdown.
+_LOCK_RELEASE_TIMEOUT = 5.0
 
 
 def _pause(seconds: float) -> None:
@@ -282,7 +288,7 @@ def format_port_conflict(err: PortConflict) -> list[str]:
             "Or restart with:    nemo services restart",
         ]
     return [
-        f"Port {err.port} is already in use by another process.",
+        f"Port {err.port} is already in use by another process (EADDRINUSE).",
         "Free the port or choose a different one:",
         f"lsof -i :{err.port}          (see what's listening)",
         f"nemo services run --port {SUGGESTED_ALT_PORT}",
@@ -569,9 +575,14 @@ def _snapshot_children(pid: int) -> list[psutil.Process]:
 def _sweep_orphans(children: list[psutil.Process], timeout: float = 5.0) -> list[int]:
     """Terminate any still-alive processes from a prior snapshot.
 
-    Sends SIGTERM, waits up to *timeout*, then SIGKILL survivors.
+    Sends SIGTERM, waits up to *timeout*, then SIGKILL survivors and waits again.
     Returns PIDs that were signaled.  Handles ``NoSuchProcess`` gracefully
     since children may have already exited during graceful shutdown.
+
+    The second wait matters: these children inherited the instance flock fd from the
+    parent, and the kernel only releases the lock once the last holder's fd is closed.
+    Returning while a SIGKILLed child is still being torn down leaves the lock held, so
+    an ``is_instance_alive`` probe immediately after a "successful" stop reports True.
     """
     alive_children = [c for c in children if c.is_running()]
     if not alive_children:
@@ -586,11 +597,18 @@ def _sweep_orphans(children: list[psutil.Process], timeout: float = 5.0) -> list
             pass  # Already exited or not owned by us — skip.
 
     _, still_alive = psutil.wait_procs(alive_children, timeout=timeout)
+    kill_sent: list[psutil.Process] = []
     for child in still_alive:
         try:
             child.kill()
+            kill_sent.append(child)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass  # Raced with exit or not owned — nothing to do.
+
+    if kill_sent:
+        _, unreaped = psutil.wait_procs(kill_sent, timeout=timeout)
+        if unreaped:
+            logger.warning("Orphaned child %s still alive after SIGKILL", [c.pid for c in unreaped])
 
     if killed:
         logger.info(
@@ -673,8 +691,47 @@ def stop_instance(
 
     swept = _sweep_orphans(children) if children else []
 
-    remove_descriptor(scope, base_dir=base_dir)
+    # A process exiting and its flock being released are not the same instant: the kernel
+    # drops the lock while closing fds during teardown.  Callers treat a successful stop as
+    # "the scope is free now" (and immediately probe with ``is_instance_alive``), so hold the
+    # post-condition here rather than making every caller poll for it.
+    if not _wait_for_lock_release(scope, base_dir=base_dir, timeout=_LOCK_RELEASE_TIMEOUT):
+        logger.warning(
+            "Instance '%s' flock still held %.0fs after pid %d exited; a child may have outlived the sweep",
+            scope,
+            _LOCK_RELEASE_TIMEOUT,
+            pid,
+        )
+    _reap_stopped_pid(pid, timeout=min(_REAP_PID_TIMEOUT, timeout))
+    lock_released = _wait_until_instance_lock_released(
+        scope,
+        base_dir=base_dir,
+        timeout=min(_LOCK_RELEASE_WAIT_TIMEOUT, timeout),
+    )
+    if not lock_released:
+        # A descendant may still hold the inherited flock, or a replacement
+        # instance may have acquired it. Preserve its descriptor.
+        return StopResult(stopped_pids=[pid], swept_children=swept)
+
+    current_desc = read_descriptor(scope, base_dir=base_dir)
+    if current_desc is not None and (current_desc.pid != desc.pid or current_desc.create_time != desc.create_time):
+        logger.warning(
+            "Instance %r descriptor changed during stop; preserving replacement descriptor",
+            scope,
+        )
+    else:
+        remove_descriptor(scope, base_dir=base_dir)
     return StopResult(stopped_pids=[pid], swept_children=swept)
+
+
+def _wait_for_lock_release(scope: str, *, base_dir: Path | None, timeout: float) -> bool:
+    """Poll until the instance flock is free, or *timeout* elapses."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not is_instance_alive(scope, base_dir=base_dir):
+            return True
+        _pause(_SIGTERM_POLL_INTERVAL)
+    return not is_instance_alive(scope, base_dir=base_dir)
 
 
 def _wait_for_pid_exit(pid: int, *, timeout: float) -> bool:
@@ -684,6 +741,45 @@ def _wait_for_pid_exit(pid: int, *, timeout: float) -> bool:
             return True
         _pause(_SIGTERM_POLL_INTERVAL)
     return not _pid_alive(pid)
+
+
+def _reap_stopped_pid(pid: int, *, timeout: float) -> None:
+    """Reap *pid* when this process is its parent so the kernel drops zombie state."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            wpid, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if wpid == pid:
+            return
+        if wpid == 0:
+            _pause(min(_SIGTERM_POLL_INTERVAL, max(0.0, deadline - time.monotonic())))
+            continue
+    with contextlib.suppress(ChildProcessError):
+        os.waitpid(pid, os.WNOHANG)
+
+
+def _wait_until_instance_lock_released(
+    scope: str,
+    *,
+    base_dir: Path | None,
+    timeout: float,
+) -> bool:
+    """Wait until the scope flock is free (graceful shutdown may lag process exit)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not is_instance_alive(scope, base_dir=base_dir):
+            return True
+        _pause(_SIGTERM_POLL_INTERVAL)
+    if not is_instance_alive(scope, base_dir=base_dir):
+        return True
+    logger.warning(
+        "Instance %r lock still held after stop (waited %.1fs); preserving descriptor",
+        scope,
+        timeout,
+    )
+    return False
 
 
 def _pid_alive(pid: int) -> bool:
@@ -731,6 +827,7 @@ def start_background(
     if config.config_path:
         args += ["--config", config.config_path]
     args += ["--host", config.host, "--port", str(config.port)]
+    args += ["--keep-alive-timeout-seconds", str(config.keep_alive_timeout_seconds)]
     args += ["--instance", config.scope]
 
     env = os.environ.copy()

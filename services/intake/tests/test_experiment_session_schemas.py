@@ -4,8 +4,8 @@
 from datetime import datetime, timezone
 
 from nmp.intake.api.v2.experiments.schemas import EvaluationSessionResponse
+from nmp.intake.repository.evaluation_session import EvaluationSessionRow
 from nmp.intake.spans.domain import SpanStatus
-from nmp.intake.spans.evaluation_session_repository import EvaluationSessionRow
 
 
 def test_evaluation_session_from_row_preserves_detailed_payloads() -> None:

@@ -39,13 +39,6 @@ def create_atif(
             help='Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)',
         ),
     ] = None,
-    experiment_context: Annotated[
-        str | None,
-        typer.Option(
-            "--experiment-context",
-            help="Deprecated alias for :class:`EvaluationContext`. Producers should send `evaluation_context`. (JSON string)",
-        ),
-    ] = None,
     extra: Annotated[str | None, typer.Option("--extra", help="JSON string")] = None,
     final_metrics: Annotated[str | None, typer.Option("--final-metrics", help="JSON string")] = None,
     notes: Annotated[str | None, typer.Option("--notes")] = None,
@@ -90,8 +83,6 @@ def create_atif(
         input_payload["continued_trajectory_ref"] = continued_trajectory_ref
     if evaluation_context is not None:
         input_payload["evaluation_context"] = read_payload("evaluation_context", evaluation_context)
-    if experiment_context is not None:
-        input_payload["experiment_context"] = read_payload("experiment_context", experiment_context)
     if extra is not None:
         input_payload["extra"] = read_payload("extra", extra)
     if final_metrics is not None:

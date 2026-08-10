@@ -39,6 +39,7 @@ from importlib.metadata import entry_points
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.constants import is_workload_identity_token_file_set
 
 _SDKT = TypeVar("_SDKT", NeMoPlatform, AsyncNeMoPlatform)
 
@@ -157,6 +158,10 @@ def _on_behalf_of_headers(principal: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
+def _workload_identity_headers(*, internal: bool) -> dict[str, str]:
+    return {_INTERNAL_REQUEST_HEADER: "true"} if internal else {}
+
+
 class DefaultSDKProvider:
     """Env-var-based provider that ships with the plugin package.
 
@@ -166,6 +171,12 @@ class DefaultSDKProvider:
     """
 
     def get_task_sdk(self, service_name: str) -> NeMoPlatform:
+        if is_workload_identity_token_file_set():
+            return NeMoPlatform(
+                base_url=self._base_url(),
+                default_headers=_workload_identity_headers(internal=True),
+            )
+
         headers: dict[str, str] = {
             "X-NMP-Principal-Id": f"service:{service_name}",
             _INTERNAL_REQUEST_HEADER: "true",
@@ -189,6 +200,12 @@ class DefaultSDKProvider:
     def get_async_task_sdk(self, service_name: str) -> AsyncNeMoPlatform:
         # Async mirror of get_task_sdk: identical headers (service principal,
         # internal marker, and full on-behalf-of id/email/groups), async client.
+        if is_workload_identity_token_file_set():
+            return AsyncNeMoPlatform(
+                base_url=self._base_url(),
+                default_headers=_workload_identity_headers(internal=True),
+            )
+
         headers: dict[str, str] = {
             "X-NMP-Principal-Id": f"service:{service_name}",
             _INTERNAL_REQUEST_HEADER: "true",
@@ -217,6 +234,10 @@ class DefaultSDKProvider:
         internal: bool = False,
         on_behalf_of: str | None = None,
     ) -> _SDKT:
+        if as_service is None and on_behalf_of is None and is_workload_identity_token_file_set():
+            headers = _workload_identity_headers(internal=internal)
+            return cls(base_url=self._base_url(), default_headers=headers or None)
+
         headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
         return cls(base_url=self._base_url(), default_headers=headers or None)
 

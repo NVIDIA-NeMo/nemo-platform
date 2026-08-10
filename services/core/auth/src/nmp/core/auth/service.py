@@ -7,6 +7,8 @@ import asyncio
 import logging
 from typing import ClassVar, List, Optional
 
+import nmp.core.auth.api.v2.access_keys.endpoints as access_keys
+import nmp.core.auth.api.v2.authenticate as authenticate
 from nmp.common.config import get_service_config
 from nmp.common.service import RouterConfig, Service
 from nmp.core.auth.api.v2 import workload_token_exchange
@@ -38,6 +40,10 @@ class AuthService(Service[AuthServiceConfig]):
             RouterConfig(iam.router, tag="IAM", description="Identity and Access Management endpoints"),
             RouterConfig(bundle.router, tag="Bundle", description="OPA bundle endpoints"),
             RouterConfig(discovery.router, tag="Discovery", description="Platform configuration discovery endpoints"),
+            RouterConfig(
+                authenticate.router, tag="Authentication", description="Bearer token authentication endpoints"
+            ),
+            RouterConfig(access_keys.router, tag="Scoped Access Keys", description="Scoped Access Key endpoints"),
             RouterConfig(
                 workload_token_exchange.router,
                 tag="Workload Identity",

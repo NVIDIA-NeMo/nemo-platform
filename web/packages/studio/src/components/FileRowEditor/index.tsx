@@ -32,11 +32,24 @@ import {
   type DataFileRow,
 } from '@studio/components/FileRowEditor/types';
 import { Trash } from 'lucide-react';
-import { type ChangeEvent, type FC, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  type ChangeEvent,
+  type FC,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 export interface FileRowEditorProps {
   /** File name shown in the header. Its extension drives the format chip. */
   fileName?: string;
+  /**
+   * Replaces the header's static file name with a custom node (e.g. a file picker), letting
+   * the header double as the file selector. The format chip and stats still track `fileName`.
+   */
+  slotFileName?: ReactNode;
   /** File size label shown in the header summary. */
   fileSizeLabel?: string;
   /**
@@ -81,6 +94,7 @@ export interface FileRowEditorProps {
  */
 export const FileRowEditor: FC<FileRowEditorProps> = ({
   fileName: fileNameProp = 'qa-sft-dataset-v1.parquet',
+  slotFileName,
   fileSizeLabel: fileSizeLabelProp = '4.2 MB',
   columns: columnsProp,
   initialRows = [],
@@ -227,8 +241,6 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
   const handleOpenFileClick = () => fileInputRef.current?.click();
 
   const handleDownload = () => {
-    // Parquet/unknown files have no in-browser binary form, so export the current rows as
-    // JSON; text formats round-trip to their own extension.
     const downloadFormat: DataFileFormat = TEXT_PARSEABLE_FORMATS.includes(fileFormat)
       ? fileFormat
       : 'json';
@@ -247,7 +259,6 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
 
   const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    // Reset the input so selecting the same file again re-triggers change.
     event.target.value = '';
     if (!file) {
       return;
@@ -282,6 +293,7 @@ export const FileRowEditor: FC<FileRowEditorProps> = ({
     <Stack gap="density-xl" className={`h-full w-full min-w-0 ${className ?? ''}`}>
       <FileHeader
         fileName={fileName}
+        slotFileName={slotFileName}
         fileFormat={fileFormat}
         rowCount={rows.length}
         columnCount={columns.length}

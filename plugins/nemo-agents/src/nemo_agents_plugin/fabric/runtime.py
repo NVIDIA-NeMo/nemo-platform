@@ -14,18 +14,35 @@ translation, CLI/API wiring, deploy semantics, or durable session management.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
-from nemo_fabric import Fabric, FabricConfig, FabricError, RunRequest, RunResult  # ty: ignore[unresolved-import]
+from nemo_fabric import (  # ty: ignore[unresolved-import]
+    Fabric,
+    FabricConfig,
+    FabricError,
+    RunRequest,
+    RunResult,
+    Runtime,
+)
 
 
 @dataclass(frozen=True, slots=True)
-class FabricRuntimeRequest:
-    """Platform-owned request for one Fabric runtime invocation.
+class FabricInvocationRequest:
+    """Platform-owned request for one invocation on an active Fabric runtime."""
+
+    input: Any = ""
+    request_id: str | None = None
+    caller_context: dict[str, Any] = field(default_factory=dict)
+    timeout_seconds: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FabricOneShotRequest:
+    """Platform-owned request for one ephemeral Fabric runtime invocation.
 
     This is an internal bridge type. The fields are intentionally close to
     Fabric's ``RunRequest`` while preserving Platform-owned lifecycle inputs
@@ -62,16 +79,106 @@ class FabricRuntimeResult:
     request_id: str | None = None
 
 
+class FabricRuntimeStream:
+    """Platform-owned handle for one streaming Fabric runtime invocation."""
+
+    def __init__(self, stream: Any, timeout_seconds: float | None = None) -> None:
+        self._stream = stream
+        self._timeout_seconds = timeout_seconds
+
+    async def records(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield raw NeMo Relay ATOF records from Fabric."""
+        try:
+            async for record in self._stream:
+                yield dict(record)
+        except TimeoutError as error:
+            raise FabricRuntimeTimeoutError(
+                _timeout_error_message(self._timeout_seconds),
+            ) from error
+        except FabricError as error:
+            raise FabricRuntimeExecutionError(
+                f"Fabric runtime streaming failed: {error}",
+            ) from error
+
+    async def result(self) -> FabricRuntimeResult:
+        """Return the authoritative terminal Fabric result for this stream."""
+        try:
+            result = await asyncio.wait_for(
+                self._stream.result(),
+                timeout=self._timeout_seconds,
+            )
+        except TimeoutError as error:
+            raise FabricRuntimeTimeoutError(
+                _timeout_error_message(self._timeout_seconds),
+            ) from error
+        except FabricError as error:
+            raise FabricRuntimeExecutionError(
+                f"Fabric runtime streaming failed: {error}",
+            ) from error
+        return _normalize_fabric_run_result(result)
+
+    async def aclose(self) -> None:
+        """Finalize unread stream records without cancelling the harness turn."""
+        try:
+            await self._stream.aclose()
+        except FabricError as error:
+            raise FabricRuntimeExecutionError(
+                f"Fabric runtime streaming cleanup failed: {error}",
+            ) from error
+
+
 class FabricRuntimeExecutionError(RuntimeError):
     """Raised when Fabric cannot return a normalized runtime result."""
 
 
 class FabricRuntimeTimeoutError(FabricRuntimeExecutionError):
-    """Raised when a Fabric runtime invocation exceeds the Platform timeout."""
+    """Raised when a Fabric runtime invocation times out."""
+
+
+def _timeout_error_message(timeout_seconds: float | None) -> str:
+    if timeout_seconds is None:
+        return "Fabric runtime invocation timed out."
+    return f"Fabric runtime invocation timed out after {timeout_seconds:g}s."
+
+
+async def invoke_fabric_runtime(
+    runtime: Runtime,
+    request: FabricInvocationRequest,
+) -> FabricRuntimeResult:
+    """Invoke an active Fabric runtime without changing its lifecycle."""
+    try:
+        result = await asyncio.wait_for(
+            runtime.invoke(request=_with_platform_invocation_context(request)),
+            timeout=request.timeout_seconds,
+        )
+    except TimeoutError as error:
+        raise FabricRuntimeTimeoutError(
+            _timeout_error_message(request.timeout_seconds),
+        ) from error
+    except FabricError as error:
+        raise FabricRuntimeExecutionError(
+            f"Fabric runtime invocation failed: {error}",
+        ) from error
+
+    return _normalize_fabric_run_result(result)
+
+
+def stream_fabric_runtime(
+    runtime: Runtime,
+    request: FabricInvocationRequest,
+) -> FabricRuntimeStream:
+    """Start streaming one turn on an active Fabric runtime."""
+    try:
+        stream = runtime.invoke_stream(request=_with_platform_invocation_context(request))
+    except FabricError as error:
+        raise FabricRuntimeExecutionError(
+            f"Fabric runtime streaming failed: {error}",
+        ) from error
+    return FabricRuntimeStream(stream, request.timeout_seconds)
 
 
 async def run_fabric_agent_once(
-    request: FabricRuntimeRequest,
+    request: FabricOneShotRequest,
     *,
     fabric: Any | None = None,
 ) -> FabricRuntimeResult:
@@ -85,7 +192,7 @@ async def run_fabric_agent_once(
         )
     except TimeoutError as error:
         raise FabricRuntimeTimeoutError(
-            f"Fabric runtime invocation timed out after {request.timeout_seconds:g}s.",
+            _timeout_error_message(request.timeout_seconds),
         ) from error
     except FabricError as error:
         raise FabricRuntimeExecutionError(
@@ -96,7 +203,7 @@ async def run_fabric_agent_once(
 
 
 async def _invoke_fabric_agent_once(
-    request: FabricRuntimeRequest,
+    request: FabricOneShotRequest,
     *,
     fabric: Any,
 ) -> RunResult:
@@ -108,7 +215,7 @@ async def _invoke_fabric_agent_once(
         return await runtime.invoke(request=_with_platform_invocation_context(request))
 
 
-def _with_platform_invocation_context(request: FabricRuntimeRequest) -> RunRequest:
+def _with_platform_invocation_context(request: FabricInvocationRequest | FabricOneShotRequest) -> RunRequest:
     """Preserve Platform invocation metadata when calling Fabric."""
     request_kwargs: dict[str, Any] = {
         "context": request.caller_context,

@@ -197,7 +197,12 @@ async def delete_config(
     except EntityNotFoundError:
         raise HTTPException(status_code=404, detail="Guardrail config not found.")
 
-    await entities_client.delete(GuardrailConfig, config.name, workspace=workspace)
+    try:
+        await entities_client.delete(GuardrailConfig, config.name, workspace=workspace)
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="Guardrail config not found.")
+    except EntityConflictError as exc:
+        raise HTTPException(status_code=409, detail="Concurrent modification - please retry.") from exc
 
     full_config_id = f"{workspace}/{config.name}" if workspace else config.name
 

@@ -9,12 +9,14 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime, timezone
 from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from nmp.intake.config import ClickHouseConfig, IntakeConfig
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable, qualified_table
 from nmp.intake.service import IntakeService
 from nmp.intake.spans.clickhouse_client import (
     ClickHouseSettings,
@@ -22,6 +24,9 @@ from nmp.intake.spans.clickhouse_client import (
     bootstrap_schema,
 )
 from nmp.testing import create_test_client
+
+_CLICKHOUSE_VERSION_FILE = Path(__file__).resolve().parents[3] / ".clickhouse-version"
+CLICKHOUSE_VERSION = _CLICKHOUSE_VERSION_FILE.read_text(encoding="utf-8").strip()
 
 
 def _run(coro: Any) -> Any:
@@ -55,12 +60,17 @@ def clickhouse_container():
     from testcontainers.clickhouse import ClickHouseContainer
 
     with ClickHouseContainer(
-        "clickhouse/clickhouse-server:24.3",
+        f"clickhouse/clickhouse-server:{CLICKHOUSE_VERSION}",
         username="test",
         password="test",
         dbname="default",
     ) as container:
         yield container
+
+
+@pytest.fixture(scope="session")
+def clickhouse_version() -> str:
+    return CLICKHOUSE_VERSION
 
 
 @pytest.fixture(scope="session")
@@ -88,11 +98,12 @@ def clickhouse_client(clickhouse_settings: ClickHouseSettings):
 
 @pytest.fixture(autouse=True)
 def clean_clickhouse(clickhouse_client: ClickHouseSpanClient):
-    for table in ("spans", "evaluator_results", "trace_index"):
-        _run(clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_client.table(table)}"))
+    tables = (ClickHouseTable.SPANS, ClickHouseTable.EVALUATOR_RESULTS, ClickHouseTable.TRACE_INDEX)
+    for table in tables:
+        _run(clickhouse_client.command(f"TRUNCATE TABLE {qualified_table(clickhouse_client.database, table)}"))
     yield
-    for table in ("spans", "evaluator_results", "trace_index"):
-        _run(clickhouse_client.command(f"TRUNCATE TABLE {clickhouse_client.table(table)}"))
+    for table in tables:
+        _run(clickhouse_client.command(f"TRUNCATE TABLE {qualified_table(clickhouse_client.database, table)}"))
 
 
 @pytest.fixture

@@ -26,11 +26,10 @@ dependencies = [
   "fsspec>=2023.1.0",
 ]
 
-requires-python = ">= 3.11"
+requires-python = ">= 3.12"
 classifiers = [
   "Typing :: Typed",
   "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
@@ -61,7 +60,8 @@ nemo-evaluator-sdk = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.4.0,<0.5.0",
+  "nemo-relay>=0.6.0,<0.7",
+  "nemo-fabric>=0.1.1,<0.3.0",
 ]
 
 [project.entry-points."nemo.skills"]
@@ -143,7 +143,6 @@ path = "README.md"
 pattern = '\[(.+?)\]\(((?!https?://)\S+?)\)'
 replacement = '[\1](https://github.com/stainless-sdks/nemo-platform-python/tree/main/\g<2>)'
 
-
 [tool.hatch.version]
 source = "nmp-dynamic-versioning"
 [tool.pytest.ini_options]
@@ -161,7 +160,7 @@ filterwarnings = [
 # there are a couple of flags that are still disabled by
 # default in strict mode as they are experimental and niche.
 typeCheckingMode = "strict"
-pythonVersion = "3.11"
+pythonVersion = "3.12"
 
 exclude = [
     "_dev",
@@ -231,7 +230,7 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 120
 output-format = "grouped"
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.format]
 docstring-code-format = true

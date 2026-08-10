@@ -11,6 +11,7 @@ from backends.k8s.k8s_helpers import sample_always_config, sample_config
 from kubernetes.client import ApiClient
 from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
+    _build_probe,
     build_configmap_body,
     compile_workload,
     configmap_data_key,
@@ -23,13 +24,31 @@ from nemo_deployments_plugin.entities import (
     ConfigFile,
     Container,
     ContainerPort,
+    ExecAction,
+    HTTPGetAction,
     K8sDeploymentConfig,
+    Probe,
 )
 from nemo_platform_plugin.config import ImagePullSecret
 
 
 def _serialized(obj: object) -> dict:
     return ApiClient().sanitize_for_serialization(obj)
+
+
+def test_build_probe_exec_action() -> None:
+    # V1Probe requires the `_exec` kwarg (exec is a Python keyword); regression
+    # for the exec-probe path used by loopback-only sidecars.
+    probe = _build_probe(Probe(exec=ExecAction(command=["sh", "-c", "curl -sf http://127.0.0.1:8090/healthz"])))
+    serialized = _serialized(probe)
+    assert serialized["exec"]["command"] == ["sh", "-c", "curl -sf http://127.0.0.1:8090/healthz"]
+
+
+def test_build_probe_http_get_action() -> None:
+    probe = _build_probe(Probe(httpGet=HTTPGetAction(path="/health", port=8000)))
+    serialized = _serialized(probe)
+    assert serialized["httpGet"]["path"] == "/health"
+    assert serialized["httpGet"]["port"] == 8000
 
 
 def test_configmap_data_key_sanitizes_paths() -> None:

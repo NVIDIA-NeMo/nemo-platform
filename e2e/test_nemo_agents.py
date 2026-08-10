@@ -69,7 +69,7 @@ def _agent_config(label: str) -> dict[str, Any]:
 
 
 def _platform_agent_config(label: str) -> dict[str, Any]:
-    """Return a minimal Platform-owned agent config for API persistence tests."""
+    """Return a minimal Platform-managed agent config for API persistence tests."""
     return {
         "config_format": _NEMO_AGENTS_SPEC_CONFIG_FORMAT,
         "name": label,
@@ -134,8 +134,15 @@ def _delete_deployment_if_exists(sdk: NeMoPlatform, *, workspace: str, name: str
     try:
         sdk.agents.deployments.delete(name, workspace=workspace)
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code != 404:
-            raise
+        if exc.response.status_code == 404:
+            return
+        if exc.response.status_code in {409, 500}:
+            try:
+                sdk.agents.deployments.get(name, workspace=workspace)
+            except httpx.HTTPStatusError as get_exc:
+                if get_exc.response.status_code == 404:
+                    return
+        raise
 
 
 def _get_deployment_log_text(sdk: NeMoPlatform, *, workspace: str, name: str) -> str:

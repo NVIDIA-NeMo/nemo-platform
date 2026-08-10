@@ -136,24 +136,7 @@ def make_mock_client_context(workspace: str = WORKSPACE_NAME) -> Generator[Clien
         workspace=workspace,
         workspaces=[workspace],
     ) as client_context:
-        # ``create_test_client`` routes the async SDK injected into FastAPI routes through the
-        # in-process ASGI transport. We additionally need to redirect the few places where DD code
-        # derives a *sync* SDK so they also hit the test app rather than the real network. This
-        # generally happens via an explicit conversion from an async sdk to a sync one, nearly always
-        # because ``FilesetFileSystem`` must run in fsspec sync mode for DuckDB). The
-        # fresh sync SDK doesn't carry the test ASGI transport, so we replace it with the test
-        # client's sync SDK in this fixture.
-        with (
-            patch(
-                "data_designer_nemo.fileset_file_seed_reader.async_to_sync_sdk",
-                return_value=client_context.sdk,
-            ),
-            patch(
-                "data_designer_nemo.person_reader.async_to_sync_sdk",
-                return_value=client_context.sdk,
-            ),
-        ):
-            yield client_context
+        yield client_context
 
 
 @contextmanager
@@ -183,7 +166,10 @@ def setup_mock_secret(client_context: ClientContext) -> Generator[None]:
 
 
 @contextmanager
-def setup_mock_file(client_context: ClientContext) -> Generator[None]:
+def setup_mock_file(
+    client_context: ClientContext,
+    remote_path: str | None = None,
+) -> Generator[None]:
     files = client_from_platform(client_context.sdk, FilesClient)
     files.create_fileset(
         body=CreateFilesetRequest(name=FILESET_NAME),
@@ -195,7 +181,7 @@ def setup_mock_file(client_context: ClientContext) -> Generator[None]:
             fileset=FILESET_NAME,
             workspace=client_context.sdk.workspace or WORKSPACE_NAME,
             local_path=tmpfile.name,
-            remote_path=FILE_PATH,
+            remote_path=remote_path or FILE_PATH,
         )
     yield
 
@@ -443,7 +429,7 @@ async def task_context(
                     # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
                     # which deserializes the stored spec back through the schema) succeed.
                     spec=step_config if isinstance(step_config, dict) else step_config.model_dump(),
-                    platform_spec=job_config_dict,
+                    platform_spec=job_config_dict,  # ty:ignore[invalid-argument-type]
                 ),
             ).data()
             job_ctx = JobContext(

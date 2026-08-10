@@ -27,5 +27,11 @@ class EntityDeleteEntityByNameParams(TypedDict, total=False):
 
     entity_type: Required[str]
 
+    expected_db_version: int
+    """Optional database version for optimistic locking.
+
+    Delete only succeeds if the entity still has this version.
+    """
+
     parent: str
     """Parent entity ID for nested entities"""

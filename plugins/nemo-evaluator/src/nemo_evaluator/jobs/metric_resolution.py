@@ -25,6 +25,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.entities import EntityClient
 
 
 def unresolved_model_refs(metrics: list[Metric]) -> list[str]:
@@ -58,7 +59,7 @@ async def resolve_metrics_to_inline(
     metrics: list[MetricRefOrInline],
     *,
     workspace: str,
-    entity_client: object,
+    entity_client: EntityClient | None,
     async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
 ) -> list[MetricInline]:
     """Resolve a wire metric list (inline + stored refs) into canonical inline metrics.

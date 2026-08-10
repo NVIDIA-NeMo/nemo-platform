@@ -11,6 +11,8 @@
     "gen:capabilities": "tsx ./orval/generate-capabilities.ts",
     "gen:agents": "tsx ./orval/generate.ts agents",
     "gen:agents-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts agents",
+    "gen:anonymizer": "tsx ./orval/generate.ts anonymizer",
+    "gen:anonymizer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts anonymizer",
     "gen:customizer": "tsx ./orval/generate.ts customizer",
     "gen:customizer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts customizer",
     "gen:data-designer": "tsx ./orval/generate.ts data-designer",

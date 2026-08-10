@@ -4,7 +4,7 @@
 import { TextInputSpinner } from '@nemo/common/src/components/form/TextInputSpinner';
 import { UseControllerComponentProps } from '@nemo/common/src/types';
 import { Combobox, ComboboxProps, FormField } from '@nvidia/foundations-react-core';
-import { ReactNode, useState } from 'react';
+import { KeyboardEvent, ReactNode, useState } from 'react';
 import { useController } from 'react-hook-form';
 
 // Generic type to handle both single and multiple selection
@@ -21,8 +21,6 @@ interface Props<T extends 'single' | 'multiple' = 'single'>
       | 'kind'
       | 'value'
       | 'onValueChange'
-      | 'inputValue'
-      | 'onInputValueChange'
       | 'renderValue'
       | 'ref'
     >,
@@ -41,6 +39,7 @@ interface Props<T extends 'single' | 'multiple' = 'single'>
   ) => ReactNode;
   /**
    * Allow users to input a value that is not in the list. Also causes the value to not reset on blur.
+   * Single-select writes the typed value straight through; multi-select appends it on Enter.
    * @default false
    */
   freeForm?: boolean;
@@ -58,6 +57,8 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
   kind = 'single' as T,
   renderValue,
   freeForm = false,
+  inputValue,
+  onInputValueChange,
   ...comboboxProps
 }: Props<T>) => {
   const {
@@ -66,20 +67,55 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
   } = useController(useControllerProps);
   const [dispValue, setDispValue] = useState(value);
 
+  const [typedValue, setTypedValue] = useState('');
+
+  const isMultiple = kind === 'multiple';
+  const addsOnEnter = freeForm && isMultiple;
+  const hasCallerInputValue = inputValue !== undefined;
+
   const handleSelectedValueChange = (newValue: string | string[]) => {
     setDispValue(newValue);
+    setTypedValue('');
     onChange?.(newValue as ComboboxValue<T>);
     onChangeControl(newValue);
   };
 
   const handleTempValueChange = (newValue: string) => {
-    // In freeForm, we set form value to enable custom values.
-    if (freeForm) {
+    onInputValueChange?.(newValue);
+    if (hasCallerInputValue) return;
+    if (addsOnEnter) {
+      setTypedValue(newValue);
+    } else if (freeForm) {
       handleSelectedValueChange(newValue);
     } else {
       setDispValue(newValue);
     }
   };
+
+  const addTypedValue = () => {
+    const entry = (hasCallerInputValue ? inputValue : typedValue)?.trim();
+    if (!entry) return false;
+    const current = Array.isArray(value) ? (value as string[]) : [];
+    if (!current.includes(entry)) {
+      handleSelectedValueChange([...current, entry]);
+    }
+    setTypedValue('');
+    return true;
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    comboboxProps.attributes?.ComboboxTrigger?.onKeyDown?.(event);
+    if (!addsOnEnter || event.key !== 'Enter' || event.defaultPrevented) return;
+    if (addTypedValue()) event.preventDefault();
+  };
+
+  const resolvedInputValue = hasCallerInputValue
+    ? inputValue
+    : addsOnEnter
+      ? typedValue
+      : isMultiple
+        ? ''
+        : dispValue || '';
   return (
     <FormField
       name={useControllerProps.name}
@@ -88,14 +124,14 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
       status={error && 'error'}
       {...formFieldProps}
     >
-      {({ status, ...args }) => {
+      {({ status }) => {
         const baseProps = {
           status,
           style: { width },
           id: useControllerProps.name,
           name: useControllerProps.name,
           items,
-          inputValue: kind === 'multiple' ? '' : dispValue || '',
+          inputValue: resolvedInputValue,
           onInputValueChange: handleTempValueChange,
           onBlur,
           slotEnd: loading && <TextInputSpinner />,
@@ -104,9 +140,9 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
           ...comboboxProps,
           attributes: {
             ComboboxTrigger: {
-              ...args,
               spellCheck: false,
               ...comboboxProps?.attributes?.ComboboxTrigger,
+              onKeyDown: handleKeyDown,
             },
           },
         };

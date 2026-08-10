@@ -8,11 +8,11 @@ validation, and free-form status."""
 from fastapi.testclient import TestClient
 
 EVALUATIONS = "/apis/intake/v2/workspaces/default/evaluations"
-GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
+EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
 
 
 def _group(client: TestClient, name: str = "grp") -> dict:
-    resp = client.post(GROUPS, json={"name": name})
+    resp = client.post(EXPERIMENTS, json={"name": name})
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -25,7 +25,7 @@ def _evaluation(client: TestClient, group_id: str, name: str) -> dict:
 
 def test_group_fields_round_trip(client: TestClient) -> None:
     resp = client.post(
-        GROUPS,
+        EXPERIMENTS,
         json={"name": "g1", "insight_id": "insight-123", "summary": "looks promising", "metadata": {"k": "v"}},
     )
     assert resp.status_code == 201, resp.text
@@ -140,10 +140,10 @@ def test_filter_experiments_by_metadata(client: TestClient) -> None:
 
 def test_filter_experiment_groups_by_metadata(client: TestClient) -> None:
     for name, team in (("grp-sy", "switchyard"), ("grp-opt", "optimizer")):
-        resp = client.post(GROUPS, json={"name": name, "metadata": {"team": team}})
+        resp = client.post(EXPERIMENTS, json={"name": name, "metadata": {"team": team}})
         assert resp.status_code == 201, resp.text
 
-    listed = client.get(GROUPS, params={"filter[metadata.team]": "switchyard"})
+    listed = client.get(EXPERIMENTS, params={"filter[metadata.team]": "switchyard"})
     assert listed.status_code == 200, listed.text
     assert [g["name"] for g in listed.json()["data"]] == ["grp-sy"]
 

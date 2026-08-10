@@ -1,0 +1,27 @@
+{{- if include "nemo-common.clickhouse.enabled" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemo-common.clickhouse.fullname" . }}
+  labels:
+    app.kubernetes.io/component: clickhouse
+    {{- include "nemo-platform.labels" . | nindent 4 }}
+  {{- with .Values.clickhouse.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.clickhouse.service.httpPort | int }}
+      targetPort: http
+      protocol: TCP
+    - name: native
+      port: {{ .Values.clickhouse.service.nativePort | int }}
+      targetPort: native
+      protocol: TCP
+  selector:
+    app.kubernetes.io/component: clickhouse
+    {{- include "nemo-platform.selectorLabels" . | nindent 4 }}
+{{- end }}

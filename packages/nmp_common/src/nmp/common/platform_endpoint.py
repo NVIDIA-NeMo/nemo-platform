@@ -12,6 +12,7 @@ from typing import Literal
 
 import httpx
 from httpx._types import TimeoutTypes
+from nemo_platform import DefaultAsyncHttpxClient, DefaultHttpxClient
 from nmp.common.config import PlatformConfig
 
 UDS_BASE_URL = "http://nemo-platform.local"
@@ -46,6 +47,20 @@ class PlatformEndpoint:
         if timeout is None:
             return httpx.AsyncClient(follow_redirects=True)
         return httpx.AsyncClient(follow_redirects=True, timeout=timeout)
+
+    def sync_sdk_http_client(self, *, timeout: TimeoutTypes | None = None) -> httpx.Client:
+        if self.transport == "uds":
+            return self.sync_http_client(timeout=timeout)
+        if timeout is None:
+            return DefaultHttpxClient()
+        return DefaultHttpxClient(timeout=timeout)
+
+    def async_sdk_http_client(self, *, timeout: TimeoutTypes | None = None) -> httpx.AsyncClient:
+        if self.transport == "uds":
+            return self.async_http_client(timeout=timeout)
+        if timeout is None:
+            return DefaultAsyncHttpxClient()
+        return DefaultAsyncHttpxClient(timeout=timeout)
 
 
 def resolve_platform_endpoint(platform_config: PlatformConfig | None = None) -> PlatformEndpoint:

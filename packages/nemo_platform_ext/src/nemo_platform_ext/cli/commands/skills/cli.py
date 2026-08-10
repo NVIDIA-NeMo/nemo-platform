@@ -16,9 +16,19 @@ from nemo_platform_ext.cli.commands.skills.registry import (
     load_skills,
 )
 from nemo_platform_ext.cli.core.context import CLIContext
-from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform_ext.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
-from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
+from nemo_platform_ext.cli.core.types import (
+    ListOutputFormatOption,
+    NoTruncateOption,
+    OutputColumnsOption,
+    StreamOutputOption,
+)
 
 _AGENT_NAMES = ", ".join(list_agent_names())
 
@@ -47,15 +57,9 @@ def skills_callback(ctx: typer.Context) -> None:
         typer.echo(ctx.get_help())
 
 
-def _find_project_root() -> Path:
-    """Find the project root by looking for a .git directory, falling back to cwd."""
-    cwd = Path.cwd()
-    current = cwd
-    while current != current.parent:
-        if (current / ".git").exists():
-            return current
-        current = current.parent
-    return cwd
+def _find_project_root(project_dir: Path | None = None) -> Path:
+    """Resolve the project install directory without inspecting parent directories."""
+    return project_dir if project_dir is not None else Path.cwd()
 
 
 # Distributions that ship the platform's own bundled skills. Both names show
@@ -131,6 +135,7 @@ def list_skills(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     source: Annotated[
         list[str] | None,
         typer.Option(
@@ -160,6 +165,7 @@ def list_skills(
     state: CLIContext = ctx.obj
     columns_explicit = columns is not None and str(columns).strip() != "default"
     output_format = state.get_output_format(output_format, apply_non_tty_default=not columns_explicit)
+    validate_stream_output_format(output_format, stream)
     check_output_columns_with_format(columns, output_format)
 
     default_columns = [
@@ -168,8 +174,9 @@ def list_skills(
         Column("source", "Source"),
         Column("description", "Description"),
     ]
+    output_columns: str | list[Column] | None = columns
     if not columns_explicit:
-        columns = default_columns
+        output_columns = default_columns
 
     try:
         skills = load_skills()
@@ -185,6 +192,7 @@ def list_skills(
             "name": skill.name,
             "version": skill.version,
             "description": skill.description,
+            "preconditions": skill.preconditions,
             # `source` is the human-friendly column shown in `list` output:
             # the distribution name that registered the skill's entry point,
             # collapsed to `nemo-platform` for the platform's own packages.
@@ -201,10 +209,11 @@ def list_skills(
         items,
         is_list=True,
         output_format=output_format,
-        output_columns=columns,
+        output_columns=output_columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
         wrap=True,
+        stream=stream,
     )
 
 
@@ -268,16 +277,30 @@ def install(
         bool,
         typer.Option("--user", help="Install to user scope (default: project scope)"),
     ] = False,
+    project_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-dir",
+            "--project-root",
+            help="Project directory to install into (default: current working directory)",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=True,
+        ),
+    ] = None,
 ) -> None:
     """Install Nemo skill files for an AI coding agent.
 
     By default, installs all skills to project scope.
-    Use --skill to select specific skills, --user for user scope.
+    Use --skill to select specific skills, --user for user scope, or
+    --project-dir to explicitly select the project install directory.
 
     Examples:
       nemo skills install --agent claude
       nemo skills install --agent claude --user
       nemo skills install --agent claude --skill inference
+      nemo skills install --agent claude --project-dir /path/to/project
     """
     try:
         installer = get_installer(agent)
@@ -296,7 +319,7 @@ def install(
         raise typer.Exit(code=1)
 
     skills = _resolve_skills(skill)
-    project_root = _find_project_root()
+    project_root = _find_project_root(project_dir)
     result_paths = installer.install(scope, project_root, skills)
     typer.echo(f"Installed {len(skills)} skill(s) for {installer.display_name}:")
     for path in result_paths:

@@ -15,7 +15,7 @@ vi.mock('use-debounce', () => ({
 }));
 
 const WORKSPACE = 'default';
-const EXPERIMENT_GROUP = 'my-group';
+const EXPERIMENT = 'my-group';
 const EXPERIMENT_NAME = 'my-experiment';
 const TRACE_ID = 'trace-abc-123';
 
@@ -43,26 +43,26 @@ const mockSessionsPage = {
 const mockEvaluation = {
   workspace: WORKSPACE,
   name: EXPERIMENT_NAME,
-  experiment_group_name: EXPERIMENT_GROUP,
+  experiment_group_name: EXPERIMENT,
   run_count: 1,
   evaluator_names: [],
 };
 
 const renderDataView = () =>
   renderRoute(undefined, {
-    history: getEvaluationDetailRoute(WORKSPACE, EXPERIMENT_GROUP, EXPERIMENT_NAME),
+    history: getEvaluationDetailRoute(WORKSPACE, EXPERIMENT, EXPERIMENT_NAME),
     routes: [
       {
         path: ROUTES.workspace.evaluationDetail,
         element: (
           <EvaluationSessionsDataView
             evaluationName={EXPERIMENT_NAME}
-            experimentGroupName={EXPERIMENT_GROUP}
+            experimentName={EXPERIMENT}
           />
         ),
       },
       {
-        path: ROUTES.workspace.evaluationTraceDetail,
+        path: ROUTES.workspace.evaluationSessionDetail,
         element: <div data-testid="trace-detail-route" />,
       },
     ],
@@ -126,7 +126,7 @@ describe('EvaluationSessionsDataView', () => {
     await waitFor(() => expect(sessionRequestModes).toEqual(['preview', null]));
   });
 
-  it('navigates to the experiment trace route when a row is clicked', async () => {
+  it('navigates to the experiment session route with the trace selected', async () => {
     const user = userEvent.setup();
     renderDataView();
 

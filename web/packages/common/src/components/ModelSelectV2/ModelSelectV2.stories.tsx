@@ -97,6 +97,18 @@ const mockGroups: ModelWorkspaceGroup[] = [
   },
 ];
 
+const groupByWorkspace = (models: ModelWorkspaceGroup['models']): ModelWorkspaceGroup[] => {
+  const byWorkspace = new Map<string, ModelWorkspaceGroup['models']>();
+  for (const model of models) {
+    const workspace = model.workspace ?? 'default';
+    byWorkspace.set(workspace, [...(byWorkspace.get(workspace) ?? []), model]);
+  }
+  return Array.from(byWorkspace, ([workspace, groupModels]) => ({
+    workspace,
+    models: groupModels,
+  }));
+};
+
 const meta: Meta<typeof ModelSelectV2> = {
   component: ModelSelectV2,
   title: 'Studio Common/ModelSelectV2',
@@ -346,4 +358,57 @@ const HideAdaptersRender = (args: ModelSelectV2Props) => {
 
 export const HideAdapters: Story = {
   render: HideAdaptersRender,
+};
+
+const allProgressiveModels = manyModelsGroups.flatMap((group) => group.models);
+const PROGRESSIVE_PAGE_SIZE = 6;
+const PROGRESSIVE_LATENCY_MS = 600;
+
+/**
+ * The paged contract `useModelSearch` implements, stubbed with a local list: the filter box
+ * reports its debounced value instead of filtering in place, and pages arrive as the list scrolls.
+ */
+const ProgressiveRender = (args: ModelSelectV2Props) => {
+  const [value, setValue] = useState<ModelSelection | null>(null);
+  const [search, setSearch] = useState('');
+  const [pageCount, setPageCount] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const matches = allProgressiveModels.filter((model) =>
+    (model.name ?? '').toLowerCase().includes(search.toLowerCase())
+  );
+  const loaded = matches.slice(0, pageCount * PROGRESSIVE_PAGE_SIZE);
+  const hasMore = loaded.length < matches.length;
+
+  const handleSearchChange = (next: string) => {
+    setSearch(next);
+    setPageCount(1);
+  };
+
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    await new Promise((resolve) => setTimeout(resolve, PROGRESSIVE_LATENCY_MS));
+    setPageCount((count) => count + 1);
+    setIsLoadingMore(false);
+  };
+
+  return (
+    <ModelSelectV2
+      {...args}
+      value={value}
+      onValueChange={setValue}
+      groups={groupByWorkspace(loaded)}
+      onSearchChange={handleSearchChange}
+      onLoadMore={handleLoadMore}
+      hasMore={hasMore}
+      isLoadingMore={isLoadingMore}
+      doneLoadingMessage="No more models"
+      hideAdapters
+      fullWidth
+    />
+  );
+};
+
+export const ProgressiveLoading: Story = {
+  render: ProgressiveRender,
 };

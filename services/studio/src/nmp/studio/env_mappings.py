@@ -60,13 +60,18 @@ ENV_MAPPINGS: list[EnvMapping] = [
         marker="STUDIO_UI_VITE_FF_AGENTS_ENABLED", config_path="studio.feature_flags.agents_enabled", default="true"
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_ANONYMIZER_ENABLED",
+        config_path="studio.feature_flags.anonymizer_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_BASE_MODELS_ENABLED",
         config_path="studio.feature_flags.base_models_enabled",
         default="true",
     ),
     EnvMapping(
-        marker="STUDIO_UI_VITE_FF_CODING_AGENT_STUDIO_ENABLED",
-        config_path="studio.feature_flags.coding_agent_studio_enabled",
+        marker="STUDIO_UI_VITE_FF_COPILOT_STUDIO_ENABLED",
+        config_path="studio.feature_flags.copilot_studio_enabled",
         default="false",
     ),
     EnvMapping(
@@ -125,7 +130,7 @@ ENV_MAPPINGS: list[EnvMapping] = [
         default="true",
     ),
     EnvMapping(
-        marker="STUDIO_UI_VITE_FF_INTAKE_ENABLED", config_path="studio.feature_flags.intake_enabled", default="false"
+        marker="STUDIO_UI_VITE_FF_INTAKE_ENABLED", config_path="studio.feature_flags.intake_enabled", default="true"
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_JOBS_ENABLED", config_path="studio.feature_flags.jobs_enabled", default="true"
@@ -137,6 +142,16 @@ ENV_MAPPINGS: list[EnvMapping] = [
         marker="STUDIO_UI_VITE_FF_MODEL_COMPARE_ENABLED",
         config_path="studio.feature_flags.model_compare_enabled",
         default="false",
+    ),
+    EnvMapping(
+        marker="STUDIO_UI_VITE_FF_OPTIMIZER_ENABLED",
+        config_path="studio.feature_flags.optimizer_enabled",
+        default="true",
+    ),
+    EnvMapping(
+        marker="STUDIO_UI_VITE_FF_PLUGINS_ENABLED",
+        config_path="studio.feature_flags.plugins_enabled",
+        default="true",
     ),
     EnvMapping(
         marker="STUDIO_UI_VITE_FF_SAFE_SYNTHESIZER_ENABLED",

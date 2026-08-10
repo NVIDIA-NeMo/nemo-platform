@@ -28,13 +28,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
 from nemo_platform_plugin.inference_middleware import (
-    _AUTOPROVISIONED_DESC,
     InferenceMiddlewareError,
     MiddlewareCall,
     MiddlewareConfigNotFoundError,
     VirtualModel,
-    VirtualModelInferenceConfig,
 )
+from nemo_platform_plugin.virtual_models.types import CreateVirtualModelRequest, UpdateVirtualModelRequest
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
@@ -43,7 +42,7 @@ from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter
 from nmp.common.service.dependencies import get_entity_client
 from nmp.core.inference_gateway.api.dependencies import global_middleware_registry
 from nmp.core.inference_gateway.api.middleware_registry import MiddlewareRegistry
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -188,90 +187,6 @@ async def _load_raw_middleware_config(
 
     # Inline config path: omitted config means the plugin validates an empty dict.
     return call.config or {}
-
-
-# ---------------------------------------------------------------------------
-# Request schemas
-# ---------------------------------------------------------------------------
-
-
-class _VirtualModelFields(BaseModel):
-    """Mutable fields shared by :class:`CreateVirtualModelRequest` and
-    :class:`UpdateVirtualModelRequest`.
-
-    Keeping them in one place ensures Create and Update always have an
-    identical schema for the configurable parts of a VirtualModel.
-    """
-
-    default_model_entity: str | None = Field(
-        default=None,
-        description=(
-            'Model entity to route to, in "workspace/name" format. Written into request["model"] '
-            "before the request middleware pipeline runs. If omitted, a request middleware plugin "
-            "must handle backend routing itself. Set to null to clear an existing value."
-        ),
-    )
-    autoprovisioned: bool = Field(
-        default=False,
-        description=_AUTOPROVISIONED_DESC,
-    )
-    models: list[VirtualModelInferenceConfig] = Field(
-        default_factory=list,
-        description=(
-            "Model entity references used by this VirtualModel. A per-entry backend_format overrides the referenced "
-            "ModelEntity backend_format when IGW resolves the backend format for a request."
-        ),
-    )
-    request_middleware: list[MiddlewareCall] = Field(
-        default_factory=list,
-        description=(
-            "Ordered list of middleware plugins applied before proxying to the backend. "
-            'Each entry is a MiddlewareCall with a "name" (plugin identifier) and optional '
-            '"config_type" and "config_id" fields that reference a stored plugin configuration.'
-        ),
-    )
-    response_middleware: list[MiddlewareCall] = Field(
-        default_factory=list,
-        description=(
-            "Ordered list of middleware plugins applied after the backend response is received, "
-            "before returning it to the caller."
-        ),
-    )
-    post_response_middleware: list[MiddlewareCall] = Field(
-        default_factory=list,
-        description=(
-            "Ordered list of middleware plugins invoked after the response has been returned to "
-            "the caller. Intended for fire-and-forget work (logging, analytics) that must not "
-            "block or modify the response."
-        ),
-    )
-    override_proxy: str | None = Field(
-        default=None,
-        description=(
-            "Plugin-provided proxy implementation for IGW to use instead of its default aiohttp proxy. "
-            'Format: "plugin-name.proxy-name". Leave unset to use the default IGW proxy. '
-            "Set to null to clear an existing value."
-        ),
-    )
-
-
-class CreateVirtualModelRequest(_VirtualModelFields):
-    """Request body for creating a new VirtualModel."""
-
-    name: str = Field(
-        description="Name of the virtual model within the workspace. Must be unique per workspace.",
-    )
-
-
-class UpdateVirtualModelRequest(_VirtualModelFields):
-    """Request body for partially updating an existing VirtualModel (PATCH).
-
-    Only fields present in the request body are updated.  Omitted fields
-    retain their current values.  ``model_fields_set`` is used in the handler
-    to distinguish an intentional ``[]`` (clear the list) from a missing field
-    (leave unchanged).  Set ``default_model_entity`` or ``override_proxy`` to
-    ``null`` explicitly to clear them.
-    """
 
 
 # ---------------------------------------------------------------------------
@@ -511,12 +426,17 @@ async def update_virtual_model(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         404: {"description": "VirtualModel not found."},
+        409: {"description": "VirtualModel was modified before it could be deleted."},
     },
 )
 async def delete_virtual_model(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
+    expected_db_version: int | None = Query(
+        default=None,
+        description="Optional database version for optimistic locking. Delete only succeeds if the VirtualModel still has this version.",
+    ),
 ) -> None:
     """Permanently delete a VirtualModel.
 
@@ -524,11 +444,21 @@ async def delete_virtual_model(
     this VirtualModel.  IGW's model cache is refreshed on its next polling cycle.
     """
     try:
-        await entity_client.delete(VirtualModel, name=name, workspace=workspace)
+        await entity_client.delete(
+            VirtualModel,
+            name=name,
+            workspace=workspace,
+            expected_db_version=expected_db_version,
+        )
     except EntityNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"VirtualModel '{name}' not found in workspace '{workspace}'.",
+        ) from exc
+    except EntityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Concurrent modification - please retry.",
         ) from exc
     except HTTPException:
         raise

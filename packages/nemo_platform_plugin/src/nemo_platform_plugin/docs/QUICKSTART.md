@@ -4,7 +4,7 @@ A plugin with an HTTP endpoint, a CLI command, a scheduled job, and typed config
 
 ## Prerequisites
 
-Python 3.11+, `uv`, `export NMP_BASE_URL=http://localhost:8080` (Steps 2–5), running NeMo Platform (Step 6).
+Python 3.12–3.13, `uv`, `export NMP_BASE_URL=http://localhost:8080` (Steps 2–5), running NeMo Platform (Step 6).
 
 ## Step 1: Create the package structure
 
@@ -30,7 +30,7 @@ my-plugin/
 name = "nemo-my-plugin"
 version = "0.1.0"
 description = "My NeMo Platform plugin."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = ["nemo-platform-plugin", "nemo-platform"]
 
 [project.entry-points."nemo.services"]

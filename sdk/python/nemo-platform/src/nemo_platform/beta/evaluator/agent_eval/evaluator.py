@@ -12,6 +12,8 @@ import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from logging import getLogger
 from pathlib import Path
 from typing import Any, cast, overload
@@ -19,14 +21,13 @@ from urllib.parse import urlparse
 
 import httpx
 import nemo_platform.beta.evaluator.inference as inference
-from nemo_platform.beta.evaluator.agent_eval.dashboard import write_dashboard
-from nemo_platform.beta.evaluator.agent_eval.persistence import persist_run
-from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalResult, AgentEvalSummary
+from nemo_platform.beta.evaluator.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_platform.beta.evaluator.agent_eval.scores import (
     AgentEvalDiagnostic,
     AgentEvalDiagnosticSeverity,
     AgentEvalScoreStatus,
     AgentEvalTaskScore,
+    TRIAL_STATUS_DETAIL,
 )
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_platform.beta.evaluator.agent_eval.trials import (
@@ -35,6 +36,8 @@ from nemo_platform.beta.evaluator.agent_eval.trials import (
     AgentEvalTrialStatus,
     AgentOutput,
     AgentTaskRunner,
+    RunAggregationsProvider,
+    RunnerInfo,
 )
 from nemo_platform.beta.evaluator.agent_inference import (
     AgentInferenceContext,
@@ -57,6 +60,7 @@ from nemo_platform.beta.evaluator.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_platform.beta.evaluator.values.results import AggregateScore
 from nemo_platform.beta.evaluator.values.evidence import (
     EVIDENCE_FORMAT_JSON,
     EVIDENCE_TRACE,
@@ -155,6 +159,7 @@ class AgentEvaluator:
 
         run_id = resolved_config.run_id or _new_run_id()
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
+        started_at = datetime.now(UTC)
 
         # Branch on which seam was supplied so the type checker can narrow ``target`` to a
         # concrete ``AgentEvalTarget`` without a cast.
@@ -172,18 +177,26 @@ class AgentEvaluator:
             config=runtime_config,
             run_id=run_id,
         )
-        benchmark = {**_benchmark_metadata(task_list), **runtime_config.benchmark}
+        runner_scores = _collect_runner_aggregate_scores(target) if target is not None else []
+        finished_at = datetime.now(UTC)
+        metadata = RunMetadata(
+            labels=dict(runtime_config.labels),
+            target=_describe_target(target, runtime_config.params),
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_sec=(finished_at - started_at).total_seconds(),
+            sdk_version=_sdk_version(),
+        )
         result = AgentEvalResult(
             run_id=run_id,
             tasks=task_list,
             trials=trial_list,
             scores=scores,
-            summary=AgentEvalSummary.from_scores(scores, tasks=task_list),
-            benchmark=benchmark,
+            summary=AgentEvalSummary.from_scores(scores, tasks=task_list, extra_scores=runner_scores),
+            metadata=metadata,
+            work_dir=runtime_config.work_dir,
         )
 
-        if runtime_config.output_dir is not None:
-            result = _persist_with_optional_dashboard(result, runtime_config.output_dir, runtime_config.write_dashboard)
         return result
 
     def run_sync(
@@ -240,7 +253,9 @@ class AgentEvaluator:
                             severity=AgentEvalDiagnosticSeverity.ERROR,
                             message=f"trial {trial.id!r} is failed",
                             source=metric_type_name(metric),
-                            details={"trial_status": trial.status.value},
+                            # The key pass@k reads to tell "the agent produced nothing" (a failed
+                            # attempt) from "the metric raised" (an unusable measurement).
+                            details={TRIAL_STATUS_DETAIL: trial.status.value},
                         ),
                     )
                 try:
@@ -324,8 +339,8 @@ class AgentEvaluator:
                         "invocation_id": f"{config.run_id}:{task.id}:{target.name}",
                     }
                     evidence_dir = (
-                        _task_evidence_dir(Path(config.output_dir), index=index, task_id=task.id)
-                        if config.output_dir is not None and isinstance(target, AgentBase)
+                        _task_evidence_dir(Path(config.work_dir), index=index, task_id=task.id)
+                        if config.work_dir is not None and isinstance(target, AgentBase)
                         else None
                     )
                     resolved_inference_fn = self.inference_fn
@@ -538,6 +553,17 @@ async def _score_metric(
         metric_type=metric_type,
         status=AgentEvalScoreStatus.COMPLETED,
         outputs=metric_result.outputs,
+        # Persist the metric's own diagnostics (e.g. per-criterion judge verdicts) — the failure path
+        # already records diagnostics; the success path dropped them.
+        diagnostics=[
+            AgentEvalDiagnostic(
+                severity=AgentEvalDiagnosticSeverity.INFO,
+                message=diagnostic.message,
+                source=metric_type,
+                details=diagnostic.details or {},
+            )
+            for diagnostic in metric_result.diagnostics
+        ],
         metadata={
             "row_index": row_index,
             "trial_metadata": trial.metadata,
@@ -675,23 +701,70 @@ def _is_completions_endpoint(url: str) -> bool:
     return path.endswith("/completions") and not path.endswith("/chat/completions")
 
 
-def _benchmark_metadata(tasks: list[AgentEvalTask]) -> dict[str, Any]:
-    benchmarks = sorted({str(task.metadata.get("benchmark")) for task in tasks if task.metadata.get("benchmark")})
-    if not benchmarks:
-        return {}
-    return {"benchmark": benchmarks[0] if len(benchmarks) == 1 else benchmarks}
+def _sdk_version() -> str | None:
+    try:
+        return package_version("nemo-evaluator-sdk")
+    except PackageNotFoundError:  # pragma: no cover - only when running from an uninstalled tree
+        return None
 
 
-def _persist_with_optional_dashboard(
-    result: AgentEvalResult,
-    output_dir: Path,
-    write_html: bool,
-) -> AgentEvalResult:
-    path = Path(output_dir)
-    dashboard_path = None
-    if write_html:
-        dashboard_path = write_dashboard(result.model_copy(update={"output_dir": path}), path / "report.html")
-    return persist_run(result.model_copy(update={"output_dir": path, "dashboard_path": dashboard_path}), path)
+def _describe_target(
+    target: AgentEvalTarget | None,
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+) -> RunnerInfo:
+    """Identify what produced the trials, for the run's provenance.
+
+    Runners identify themselves via the required :meth:`AgentTaskRunner.runner_info`; trials supplied
+    directly have no runner.
+
+    Models and agents are described by name *and* the settings they were invoked with — the endpoint
+    ``url``, plus the whole ``params`` object (temperature, max_tokens, reasoning effort, system prompt,
+    retries, ...). A name alone is not an identity: the same model name served from two different URLs,
+    or at two different temperatures, would otherwise record identical provenance. ``params`` is dumped
+    whole rather than cherry-picked, because a filtered subset is what bites you later when the omitted
+    field turns out to be the one that mattered. It carries no credentials — ``Model.api_key_secret`` is
+    a reference on the model, and ``default_headers`` is excluded from serialization.
+    """
+    if target is None:
+        return RunnerInfo(name="imported", kind="imported")
+    if isinstance(target, (Model, AgentBase)):
+        config: dict[str, Any] = {"url": getattr(target, "url", None)}
+        if params is not None:
+            config["params"] = params.model_dump(mode="json", exclude_none=True)
+        return RunnerInfo(name=target.name, kind="model" if isinstance(target, Model) else "agent", config=config)
+    return target.runner_info()
+
+
+def _collect_runner_aggregate_scores(target: object) -> list[AggregateScore]:
+    """The typed subset of a runner's own aggregations, for merging into ``summary.scores``.
+
+    A runner that maps its numbers onto aggregate scores namespaces them under ``runner.<name>.``, so
+    they sit alongside the SDK's own without being mistaken for them. That namespace is *enforced*, not
+    merely documented: ``RunAggregationsProvider`` is a public extension point, ``summary.scores`` is a
+    flat list, and a third-party runner returning ``gym_reward.reward`` would not overwrite the SDK's
+    own aggregate but sit next to it under the same name, leaving any lookup to pick one arbitrarily.
+
+    Offending entries are dropped with a warning rather than raised on. This runs *after* ``run_tasks``,
+    so raising would sink a completed run — potentially hours of collection — over a naming bug, while
+    the numbers themselves remain in the runner's own files inside the bundle.
+    """
+    if not isinstance(target, RunAggregationsProvider):
+        return []
+    runner_info = getattr(target, "runner_info", None)  # structurally optional: the protocol is a companion
+    runner_name = runner_info().name if callable(runner_info) else None
+    prefix = f"runner.{runner_name}." if runner_name else "runner."
+    collected: list[AggregateScore] = []
+    for score in target.run_aggregate_scores():
+        if not score.name.startswith(prefix):
+            log.warning(
+                "Dropping runner-contributed aggregate %r: RunAggregationsProvider names must be "
+                "namespaced %r so an imported figure is never mistaken for one the SDK computed.",
+                score.name,
+                prefix,
+            )
+            continue
+        collected.append(score)
+    return collected
 
 
 def _new_run_id() -> str:

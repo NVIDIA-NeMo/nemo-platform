@@ -15,6 +15,7 @@ from nmp.intake.spans.api.query_filters import (
     filter_comparisons,
     require_datetime_value,
     require_enum_value,
+    require_string_or_list_value,
     require_string_value,
 )
 from nmp.intake.spans.api.traces_schemas import Trace, TraceFilter, TraceMode, TraceSortField
@@ -26,13 +27,11 @@ API_TAG = "Traces"
 TRACE_INDEX_FILTER_FIELDS = frozenset(
     {
         "evaluation_id",
-        "experiment_id",  # deprecated alias for evaluation_id
         "test_case_id",
     }
 )
 TRACE_INDEX_FILTER_ALIASES = {
     "evaluation_id": "evaluation_id",
-    "experiment_id": "evaluation_id",  # deprecated alias resolves to the evaluation_id filter
     "test_case_id": "test_case_id",
 }
 
@@ -46,7 +45,7 @@ TRACE_INDEX_FILTER_ALIASES = {
         filter_schema=TraceFilter,
         filter_description=(
             "Filter root-span-backed traces by id, session_id, root status, root span started_at, "
-            "evaluation_id (or its deprecated alias experiment_id), and test_case_id."
+            "evaluation_id, and test_case_id."
         ),
     ),
 )
@@ -113,7 +112,7 @@ def _trace_filter(workspace: str, parsed: ParsedFilter) -> TraceListFilter:
     filters = TraceListFilter(workspace=workspace)
     for comparison in filter_comparisons(parsed):
         if comparison.field == "id":
-            filters.trace_id = require_string_value(comparison)
+            filters.trace_ids = require_string_or_list_value(comparison)
         elif comparison.field == "session_id":
             filters.session_id = require_string_value(comparison)
         elif comparison.field == "status":

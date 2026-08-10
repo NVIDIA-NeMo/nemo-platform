@@ -67,12 +67,13 @@ bad agent behavior or a normal tool/source limitation.>
 
 ## Framework
 
-- Resolution: <langgraph-nat | needs-wrapper>
-- Source framework: <only when resolution is `needs-wrapper`; e.g. `crewai`, `autogen`, `langchain`, `pydantic-ai`, `custom service`; omit if not needed>
-- Notes: <brief temporary NeMo Platform compatibility note, such as wrapper plan or `_(none)_`; do not duplicate harness or implementation details here>
+- Resolution: <supported-harness | nat-workflow | needs-adapter>
+- Source framework: <framework or implementation style when known; e.g. `config-driven`, `langgraph`, `deepagents`, `custom service`; use `_(none)_` when not applicable>
+- Notes: <brief compatibility or adapter note, or `_(none)_`; do not duplicate harness implementation details here>
 
 ## Harness
 
+- Selection: <codex | hermes | deepagents | claude | nat | unresolved>
 - Description: <the extra-model layer that makes the model behave as an agent: loop, tools, context, state, constraints, observation, and validation; summarize rather than inventory every constructor/config detail>
 - Agent loop: <how model calls, tool calls, observations, retries, and stop conditions are orchestrated; omit if unknown or unimportant>
 - Tool dispatch: <how tool calls are validated, routed, executed, and returned to the model; omit if unknown or unimportant>

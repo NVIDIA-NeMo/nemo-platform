@@ -12,7 +12,7 @@ const meta = {
     layout: 'fullscreen',
   },
   args: {
-    modelGroups: [],
+    workspace: 'default',
     onAddModel: () => {},
     onSelectModel: () => {},
   },

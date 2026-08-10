@@ -1,10 +1,14 @@
+# Agent Evaluation Architecture
 
-## GenericAgent vs NemoAgentToolkitAgent
-The central mental model is:
+## GenericAgent and NemoAgentToolkitAgent evaluation paths
 
-> BugNeMo and a generic application select different public agent variants, but both become the same internal HTTP invocation. BugNeMo adds domain-specific interpretation through a translator; the transport remains shared.
+The architecture is application-agnostic. Its central mental model is:
 
-“NatAgent” in this design means `NemoAgentToolkitAgent` plus `NatAgentConfig`.
+> `GenericAgent` and `NemoAgentToolkitAgent` have different public
+> configurations, but both normalize into the same internal HTTP invocation.
+> Hermes is one real-world example of how a streaming `GenericAgent` can add
+> domain-specific interpretation through a translator while keeping the
+> transport shared; it is not the scope of the architecture itself.
 
 ### 1. Complete architecture flow
 
@@ -14,23 +18,17 @@ flowchart TB
     %% APPLICATION CONFIGURATION
     %% ─────────────────────────────
 
-    subgraph BUG["BugNeMo count-only evaluation"]
-        B0["Load task bundle"]
-        B1["Generate or load frozen ground truth"]
-        B2{"All tasks belong to<br/>count family?"}
-        B3["NemoAgentToolkitAgent<br/>format = nemo_agent_toolkit"]
-        B4["NatAgentConfig<br/>endpoint = /generate/stream<br/>request_mode = passthrough<br/>response_path = $..value"]
-        B5["BugNemoNatStreamTranslator"]
-        B6["partial make_agent_inference_fn<br/>translator = BugNeMo translator<br/>capture_evidence = true"]
-        B7["AgentEvaluator<br/>agent_inference_fn_factory = BugNeMo factory"]
+    subgraph HERMES["Example: Hermes Responses SSE evaluation"]
+        HM0["Load streaming smoke task"]
+        HM1["GenericAgent<br/>format = generic"]
+        HM2["Responses request<br/>model, input, stream, store"]
+        HM3["response_path = $..text<br/>stream = true"]
+        HM4["HermesStreamTranslator"]
+        HM5["partial make_agent_inference_fn<br/>translator = Hermes translator<br/>capture_evidence = true"]
+        HM6["AgentEvaluator<br/>agent_inference_fn_factory = Hermes factory"]
 
-        B0 --> B1 --> B2
-        B2 -- yes --> B3 --> B4
-        B5 --> B6
-        B4 --> B7
-        B6 --> B7
-
-        B2 -. other families .-> BX["BugNemoStreamRuntime<br/>existing custom runtime path"]
+        HM0 --> HM1 --> HM2 --> HM3 --> HM6
+        HM4 --> HM5 --> HM6
     end
 
     subgraph GENERIC["Example: customer-support evaluation"]
@@ -48,12 +46,22 @@ flowchart TB
         G6 -. optional override .-> G5
     end
 
+    subgraph NAT["NeMo Agent Toolkit evaluation"]
+        NT0["Load NAT workflow tasks"]
+        NT1["NemoAgentToolkitAgent<br/>format = nemo_agent_toolkit"]
+        NT2["Optional NatAgentConfig<br/>endpoint, request mode,<br/>query params, response_path"]
+        NT3["AgentEvaluator<br/>default factory"]
+
+        NT0 --> NT1 --> NT2 --> NT3
+    end
+
     %% ─────────────────────────────
     %% EVALUATOR ORCHESTRATION
     %% ─────────────────────────────
 
-    B7 --> E0
+    HM6 --> E0
     G5 --> E0
+    NT3 --> E0
 
     subgraph EVALUATOR["Shared AgentEvaluator orchestration"]
         E0["run_sync → run"]
@@ -138,9 +146,10 @@ flowchart TB
 
         H7["Read response line by line"]
         H8["Retain raw line"]
-        H9["Parse SSE field into SseFrame"]
+        H9["Parse supported payload field"]
+        H9A{"SseFrame parsed?"}
         H10{"Frame channel?"}
-        H11["Retain non-data fields as evidence"]
+        H11["Retain application-specific channels<br/>for evidence or translation"]
         H12{"Payload is DONE?"}
         H13["Ignore terminal marker"]
         H14["Apply response_path"]
@@ -154,7 +163,9 @@ flowchart TB
         H2 --> H3
         H3 --> H4 --> H5 --> H6
 
-        H7 --> H8 --> H9 --> H10
+        H7 --> H8 --> H9 --> H9A
+        H9A -- "no: event line" --> H7
+        H9A -- yes --> H10
         H10 -- non-data field --> H11 --> H7
         H10 -- data --> H12
         H12 -- yes --> H13 --> H7
@@ -190,28 +201,24 @@ flowchart TB
     end
 
     %% ─────────────────────────────
-    %% BUGNEMO TRANSLATOR DETAILS
+    %% EXAMPLE TRANSLATOR DETAILS
     %% ─────────────────────────────
 
-    B5 -. implementation of generic protocol .-> BT0
+    HM4 -. implementation of generic protocol .-> HMT0
 
-    subgraph BUGTRANSLATOR["BugNeMo-specific semantic adapter"]
-        BT0["Receive all SseFrame objects"]
-        BT1["Select intermediate_data frames"]
-        BT2["Select observability_trace frames"]
-        BT3["Coalesce repeated same-ID updates"]
-        BT4["Correlate tool start, complete and failure"]
-        BT5["Build ATIF-v1.7 user, agent and tool steps"]
-        BT6["Add tool_evidence"]
-        BT7["Add final_answer"]
-        BT8["Add observability_trace"]
-        BT9["Return AgentStreamTranslation"]
+    subgraph HERMES_TRANSLATOR["Example: Hermes semantic adapter"]
+        HMT0["Receive all SseFrame objects"]
+        HMT1["Select JSON data payloads"]
+        HMT2["Require final JSON data payload<br/>type = response.completed"]
+        HMT3["Validate completed status<br/>and output text"]
+        HMT4["Build ATIF-v1.7<br/>user and agent steps"]
+        HMT5["Map input and output<br/>token usage"]
+        HMT6["Return AgentStreamTranslation"]
 
-        BT0 --> BT1 --> BT2 --> BT3 --> BT4 --> BT5
-        BT5 --> BT6 --> BT7 --> BT8 --> BT9
+        HMT0 --> HMT1 --> HMT2 --> HMT3 --> HMT4 --> HMT5 --> HMT6
     end
 
-    BT9 -. returned to shared engine .-> T5
+    HMT6 -. returned to shared engine .-> T5
 
     %% ─────────────────────────────
     %% SAMPLE, TRIAL, SCORING
@@ -246,19 +253,22 @@ flowchart TB
     %% APPLICATION CONSUMERS
     %% ─────────────────────────────
 
-    A12 --> BO["BugNeMo writes reports"]
+    A12 --> HMO["Example: Hermes evaluation writes reports"]
     A12 --> GO["Generic application consumes<br/>scores, trials and evidence"]
+    A12 --> NTO["NAT application consumes<br/>scores, trials and evidence"]
     A12 -. explicit optional consumer .-> INTAKE["publish_to_intake result<br/>does not rerun the agent"]
 
-    classDef bug fill:#fde68a,stroke:#b45309,color:#111827;
+    classDef hermes fill:#fde68a,stroke:#b45309,color:#111827;
     classDef generic fill:#bfdbfe,stroke:#1d4ed8,color:#111827;
+    classDef nat fill:#cffafe,stroke:#0e7490,color:#111827;
     classDef shared fill:#dcfce7,stroke:#15803d,color:#111827;
     classDef evidence fill:#f3e8ff,stroke:#7e22ce,color:#111827;
     classDef output fill:#fee2e2,stroke:#b91c1c,color:#111827;
 
-    class B0,B1,B2,B3,B4,B5,B6,B7,BT0,BT1,BT2,BT3,BT4,BT5,BT6,BT7,BT8,BT9,BO bug;
+    class HM0,HM1,HM2,HM3,HM4,HM5,HM6,HMT0,HMT1,HMT2,HMT3,HMT4,HMT5,HMT6,HMO hermes;
     class G0,G1,G2,G3,G4,G5,G6,GO generic;
-    class E0,E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,E11,E12,S0,S1,S2,N0,N1,N2,N3,N4,N5,N6,N7,N8,N9,N10,N11,N12,H0,H1,H2,H3,H4,H5,H6,H7,H8,H9,H10,H11,H12,H13,H14,H15,H16,H17,H18 shared;
+    class NT0,NT1,NT2,NT3,NTO nat;
+    class E0,E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,E11,E12,S0,S1,S2,N0,N1,N2,N3,N4,N5,N6,N7,N8,N9,N9A,H10,H11,H12,H13,H14,H15,H16,H17,H18 shared;
     class T0,T1,T2,T3,T4,T5,T6,T7,T8,T9,T10 evidence;
     class A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,INTAKE output;
 ```
@@ -284,11 +294,15 @@ sequenceDiagram
     participant MT as Metrics
     participant OUT as Result persistence
 
-    alt BugNeMo count-only
-        Caller->>Caller: Load tasks and frozen ground truth
+    alt Example: Hermes Responses SSE
+        Caller->>Caller: Load streaming smoke task
+        Caller->>Caller: Construct GenericAgent
+        Caller->>Caller: Configure Responses body and response_path=$..text
+        Caller->>Caller: Set stream=true and configure HermesStreamTranslator
+        Caller->>AE: run_sync(tasks, generic target, config)
+    else NeMo Agent Toolkit workflow
         Caller->>Caller: Construct NemoAgentToolkitAgent
-        Caller->>Caller: Configure NatAgentConfig for /generate/stream
-        Caller->>Caller: Configure BugNemoNatStreamTranslator
+        Caller->>Caller: Optionally override NatAgentConfig
         Caller->>AE: run_sync(tasks, NAT target, config)
     else Generic application
         Caller->>Caller: Construct GenericAgent
@@ -307,10 +321,10 @@ sequenceDiagram
 
         alt Direct inference_fn supplied
             AE->>AE: Use direct function
-        else BugNeMo configured factory
+        else Hermes configured factory
             AE->>F: factory(AgentInferenceContext)
             F-->>AE: partial(invoke_agent, translator, capture=true)
-        else Generic default factory
+        else Shared default factory
             AE->>F: make_agent_inference_fn(context)
             F-->>AE: partial(invoke_agent, capture=false)
         end
@@ -347,8 +361,8 @@ sequenceDiagram
             loop Each SSE line
                 API-->>HTTP: SSE line
                 HTTP->>IA: Raw line
-                IA->>IA: Parse SseFrame
-                IA->>IA: Preserve raw and parsed frame
+                IA->>IA: Preserve raw line
+                IA->>IA: Ignore event: lines; parse payload fields into SseFrame
 
                 alt data frame
                     IA->>IA: Ignore DONE marker
@@ -364,13 +378,13 @@ sequenceDiagram
                 IA->>IA: Build standard stream evidence
             end
 
-            opt BugNeMo translator configured
+            opt Hermes translator configured
                 IA->>TR: frames + AgentStreamTranslationContext
-                TR->>TR: Interpret intermediate_data
-                TR->>TR: Interpret observability_trace
-                TR->>TR: Correlate tool lifecycle
-                TR->>TR: Produce canonical ATIF-v1.7
-                TR-->>IA: trajectory + tool evidence + metadata
+                TR->>TR: Require terminal response.completed data payload
+                TR->>TR: Validate status and output text
+                TR->>TR: Build ATIF-v1.7 user and agent steps
+                TR->>TR: Map usage to final token metrics
+                TR-->>IA: canonical trajectory
                 IA->>IA: Merge typed trace
             end
 
@@ -399,12 +413,14 @@ sequenceDiagram
     AE->>OUT: Persist AgentEvalResult and dashboard
     OUT-->>Caller: Durable local result
 
-    alt BugNeMo
-        Caller->>Caller: Write BugNeMo reports
+    alt Example: Hermes
+        Caller->>Caller: Write Hermes evaluation reports
         opt Explicit Intake publishing
             Caller->>OUT: publish_to_intake(existing result)
-            Note over Caller,OUT: Publishing consumes the result.<br/>It does not invoke BugNeMo again.
+            Note over Caller,OUT: Publishing consumes the result.<br/>It does not invoke Hermes again.
         end
+    else NeMo Agent Toolkit workflow
+        Caller->>Caller: Display, export, or compare scores
     else Generic application
         Caller->>Caller: Display, export, or compare scores
     end
@@ -463,28 +479,33 @@ flowchart TD
 
 Important nuance: `PARTIAL` is still inspectable and can be scored. `FAILED` is reserved for cases such as translation failure or an evaluator-converted request failure.
 
-### 4. The two application configurations
+### 4. Application configurations
 
-BugNeMo supplies domain knowledge:
+As a concrete example, Hermes supplies domain knowledge through a translator
+while using a `GenericAgent` for its Responses HTTP and SSE contract:
 
 ```python
-target = NemoAgentToolkitAgent(
-    url=agent_url,
-    name="bugnemo-stream",
-    nat=NatAgentConfig(
-        endpoint=agent_url,
-        request_mode="passthrough",
-        query_params={},
-        response_path="$..value",
-    ),
+target = GenericAgent(
+    url="http://127.0.0.1:8642/v1/responses",
+    name="hermes-agent",
+    api_key_secret=SecretRef("HERMES_TOKEN"),
+    body={
+        "model": "hermes-agent",
+        "input": "{{ instruction }}",
+        "stream": True,
+        "store": False,
+    },
+    response_path="$..text",
+    stream=True,
 )
 
 evaluator = AgentEvaluator(
     agent_inference_fn_factory=partial(
         make_agent_inference_fn,
-        stream_translator=BugNemoNatStreamTranslator(),
+        stream_translator=HermesStreamTranslator(),
         capture_evidence=True,
     ),
+    default_headers={"Accept": "text/event-stream"},
 )
 ```
 
@@ -508,22 +529,28 @@ evaluator = AgentEvaluator(
 )
 ```
 
+A NeMo Agent Toolkit workflow uses its fixed request and JSON SSE response
+protocol, so it does not define a generic `body`, `response_path`, or `stream`
+field. `NatAgentConfig` can override the NAT defaults when needed:
+
+```python
+target = NemoAgentToolkitAgent(
+    url="http://127.0.0.1:8000",
+    name="nat-agent",
+)
+
+evaluator = AgentEvaluator()
+```
+
 For blocking JSON, the generic application only changes `stream=False`.
 
 ### 5. What belongs where
 
-| Layer | BugNeMo | Generic application | Shared SDK |
-|---|---|---|---|
-| Public target | `NemoAgentToolkitAgent` | `GenericAgent` | Discriminated `Agent` union |
-| Request defaults | `NatAgentConfig` | `body`, URL, JSONPaths | Normalization |
-| Transport | JSON SSE | JSON or JSON SSE | One HTTP engine |
-| Domain interpretation | `BugNemoNatStreamTranslator` | Usually none; optional custom translator | Generic translator protocol |
-| Evidence | ATIF, tool evidence, observability, raw stream | Raw stream and optional trajectory | Capture and persistence |
-| Evaluation | BugNeMo metrics | Application metrics | Trial creation, scoring, summary |
-
-The design deliberately separates three questions:
-
-1. **What target is this?** Public discriminator model.
-2. **How do I communicate with it?** Shared HTTP engine.
-3. **What do its proprietary stream events mean?** Optional application translator.
-
+| Layer | Hermes example | Generic application | NeMo Agent Toolkit | Shared SDK |
+| --- | --- | --- | --- | --- |
+| Public target | `GenericAgent` | `GenericAgent` | `NemoAgentToolkitAgent` | Discriminated `Agent` union |
+| Request defaults | Responses `body`, URL, JSONPaths | `body`, URL, JSONPaths | `NatAgentConfig` | Normalization |
+| Transport | JSON SSE | JSON or JSON SSE | JSON SSE | One HTTP engine |
+| Domain interpretation | `HermesStreamTranslator` | Usually none; optional custom translator | NAT response path; optional custom translator | Generic translator protocol |
+| Evidence | ATIF, token usage, raw stream | Raw stream and optional trajectory | Raw stream and optional translated ATIF | Capture and persistence |
+| Evaluation | `KeywordMatchMetric` | Application metrics | Application metrics | Trial creation, scoring, summary |

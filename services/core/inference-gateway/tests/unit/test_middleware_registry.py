@@ -57,6 +57,7 @@ def _make_sdk_vm(
         name=name,
         workspace=workspace,
         parent=workspace,
+        db_version=1,
         created_at="2026-01-01T00:00:00Z",
         updated_at=updated_at,
         default_model_entity=f"{workspace}/{name}",
@@ -514,6 +515,7 @@ class TestResolveConfigsForVirtualModel:
             name=None,
             workspace="ws",
             parent="ws",
+            db_version=1,
             created_at="2026-01-01T00:00:00Z",
             updated_at="2026-01-01T00:00:00Z",
         )
@@ -846,6 +848,7 @@ def test_sdk_vm_to_plugin_vm_handles_none_name():
         name=None,
         workspace="ws",
         parent="ws",
+        db_version=1,
         created_at="2026-01-01T00:00:00Z",
         updated_at="2026-01-01T00:00:00Z",
     )

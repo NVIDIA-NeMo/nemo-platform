@@ -334,6 +334,29 @@ async def test_desired_stopped_deletes(
 
 
 @pytest.mark.asyncio
+async def test_desired_stopped_delete_conflict_is_handled_for_retry(
+    deployment_reconciler: DeploymentReconciler,
+    mock_backend: MockDeploymentBackend,
+    mock_entities: AsyncMock,
+) -> None:
+    dep = make_deployment()
+    dep.desired_state = "STOPPED"
+    cfg = make_deployment_config()
+    deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
+    mock_entities.delete.side_effect = NemoEntityConflictError("conflict")
+
+    await deployment_reconciler.reconcile_one(dep, deployments_by_name={}, volumes_by_name=NO_VOLUMES)
+
+    assert mock_backend.deployment_delete_calls == [("default", "dep1")]
+    mock_entities.delete.assert_awaited_once_with(
+        Deployment,
+        name="dep1",
+        workspace="default",
+        expected_db_version=dep.db_version,
+    )
+
+
+@pytest.mark.asyncio
 async def test_delete_proceeds_when_config_missing(
     deployment_reconciler: DeploymentReconciler,
     mock_backend: MockDeploymentBackend,
@@ -535,7 +558,7 @@ async def test_drift_recovery_exhausted(
 
 
 @pytest.mark.asyncio
-async def test_conflict_propagates_from_save(
+async def test_conflict_from_save_is_handled_for_retry(
     deployment_reconciler: DeploymentReconciler,
     mock_entities: AsyncMock,
 ) -> None:
@@ -544,12 +567,13 @@ async def test_conflict_propagates_from_save(
     deployment_reconciler.set_config_cache({("default", "cfg1"): cfg})
     mock_entities.update.side_effect = NemoEntityConflictError("conflict")
 
-    with pytest.raises(NemoEntityConflictError):
-        await deployment_reconciler.reconcile_one(
-            dep,
-            deployments_by_name={},
-            volumes_by_name=NO_VOLUMES,
-        )
+    await deployment_reconciler.reconcile_one(
+        dep,
+        deployments_by_name={},
+        volumes_by_name=NO_VOLUMES,
+    )
+
+    mock_entities.update.assert_awaited()
 
 
 @pytest.mark.asyncio

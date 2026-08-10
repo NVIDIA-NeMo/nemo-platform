@@ -31,8 +31,7 @@ class TraceListParams(TypedDict, total=False):
     filter: TraceFilterParam
     """
     Filter root-span-backed traces by id, session_id, root status, root span
-    started_at, evaluation_id (or its deprecated alias experiment_id), and
-    test_case_id.
+    started_at, evaluation_id, and test_case_id.
     """
 
     mode: Literal["summary", "preview", "detailed"]

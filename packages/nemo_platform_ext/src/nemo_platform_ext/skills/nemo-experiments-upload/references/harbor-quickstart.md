@@ -8,7 +8,7 @@ each task runs several times (trials). You upload **one ATIF payload per trial**
 
 | Harbor concept | NeMo entity | How |
 |---|---|---|
-| A benchmark / sweep | **Experiment Group** | `POST /experiment-groups` once |
+| A benchmark / sweep | **Experiment** | `POST /experiments` once |
 | One agent+config on that benchmark | **Evaluation** | `POST /evaluations` once (its `name` is your `evaluation_id`) |
 | A task / test case | `test_case_id` | field inside `evaluation_context` |
 | One trial (attempt) of a task | one ingested **session** | one `POST /ingest/atif` |

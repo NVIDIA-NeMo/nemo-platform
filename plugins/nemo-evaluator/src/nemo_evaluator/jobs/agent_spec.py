@@ -18,7 +18,8 @@ from typing import Any, Literal, Self, TypeAlias
 # payload kind so MetricBundle payloads round-trip through validation.
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
-from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList
+from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
+from nemo_evaluator.intake.mapping import DEFAULT_AGENT_VERSION
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
@@ -80,8 +81,11 @@ class FabricRunnerTarget(BaseModel):
     """Generate trials by driving an agent harness through the NeMo Fabric runtime.
 
     Fabric is harness-agnostic: the harness (Codex, Hermes, ...) is selected by the supplied
-    config's ``harness.adapter_id`` and is never inferred from ``model``. ``model`` is applied as a
-    final profile overlay when given.
+    config's ``harness.adapter_id`` and is never inferred from ``model``. ``model`` is applied as the
+    config's default model when given.
+
+    A run is described by exactly one complete ``config``. Fabric 0.1.0rc2 removed profile overlays,
+    so the former ``profiles`` field is gone — fold any overlay you were passing into ``config``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -89,15 +93,11 @@ class FabricRunnerTarget(BaseModel):
     kind: Literal["fabric"] = "fabric"
     config: dict[str, Any] = Field(
         description="Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped mapping). Its "
-        "``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex.cli`` for Codex.",
-    )
-    profiles: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Ordered Fabric profile overlays applied after the base config, before ``model``.",
+        "``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex`` for Codex.",
     )
     model: str | None = Field(
         default=None,
-        description="Optional ``provider/model`` slug applied as a final profile overlay; the harness "
+        description="Optional ``provider/model`` slug applied as the config's default model; the harness "
         "default is used when omitted.",
     )
     timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Fabric run, in seconds.")
@@ -151,6 +151,76 @@ AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | HarborRu
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).
 Target: TypeAlias = ModelTarget | AgentTarget | AgentRunnerTarget
+
+
+def target_agent_identity(target: Target | None) -> tuple[str | None, str | None]:
+    """``(agent_name, model_name)`` derivable from a target, for publishing to Intake.
+
+    Only targets that carry a real name yield one — nothing here invents an identity, because a
+    made-up agent name is worse than an explicit one the submitter had to supply. A ``ModelTarget``
+    has a model but no agent; the runners other than Harbor name a harness, not an agent. Those
+    cases return ``None`` and the spec must carry ``publication.intake.agent_name``.
+
+    Distinct from ``result_persistence._agent_target_fields``, which flattens the same targets to
+    ``(kind, name, url)`` filter traits and folds runner *models* into its ``name`` slot.
+    """
+    if isinstance(target, AgentTarget):
+        return target.agent.name, None
+    if isinstance(target, HarborRunnerTarget):
+        return target.agent_import_path or target.agent_name, target.agent_model_name
+    if isinstance(target, ModelTarget):
+        return None, target.model.name
+    if isinstance(target, CodexRunnerTarget | FabricRunnerTarget):
+        return None, target.model
+    return None, None
+
+
+class IntakePublicationSpec(BaseModel):
+    """Publish this run's trials and scores to Intake, under an Evaluation that already exists.
+
+    ``evaluation_id`` is the *name* of a ``client.evaluations`` record. Intake stores that record as
+    its ``Experiment`` entity and the SDK's ``publish_to_intake`` calls the argument
+    ``experiment_id``, but the value is the same one either way — the parent ``client.experiments``
+    group is a different resource and is not what goes here. The job never creates the Evaluation: a
+    missing one is an error, because nothing in an eval spec can supply the dataset identity
+    ``evaluations.create`` requires.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_id: str = Field(
+        min_length=1,
+        description="Name of the existing Evaluation to publish under. Must already exist; the job does not create it.",
+    )
+    agent_name: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Agent name recorded on each published trajectory. Derived from the target when "
+        "it names one; required otherwise.",
+    )
+    agent_version: str = Field(
+        default=DEFAULT_AGENT_VERSION,
+        min_length=1,
+        description="Agent version recorded on each published trajectory. Neither a Model nor an "
+        "Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.",
+    )
+    required: bool = Field(
+        default=True,
+        description="Fail the job when publication fails. Defaults to True so a run that asked to "
+        "publish does not report success with nothing in Experiments. The result bundle is saved "
+        "before publication runs, so a failed job still leaves the results intact to re-publish. "
+        "Set False to keep the job successful and report the failure in its output instead.",
+    )
+
+
+class PublicationSpec(BaseModel):
+    """Where a completed run publishes its results, beyond its own result bundle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    intake: IntakePublicationSpec | None = Field(
+        default=None, description="Publish trials and scores to Intake. Omit to publish nowhere."
+    )
 
 
 class _AgentEvalTaskCommon(BaseModel):
@@ -233,7 +303,30 @@ class _AgentEvalSpecCommon(BaseModel):
         "`params.parallelism`, which bounds concurrent inference requests *within* trial generation.",
     )
     fail_fast: bool = Field(default=False, description="Stop the run on the first scoring failure when True.")
-    benchmark: dict[str, Any] = Field(default_factory=dict, description="Benchmark metadata recorded with the run.")
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Caller-supplied tags recorded on the run's metadata (e.g. benchmark, mode, backend).",
+    )
+    publication: PublicationSpec | None = Field(
+        default=None,
+        description="Where the completed run publishes its results, beyond its own result bundle. "
+        "Omit to publish nowhere.",
+    )
+
+    @model_validator(mode="after")
+    def _require_resolvable_publication_identity(self) -> Self:
+        # Publishing needs an agent name, and only some targets carry one. Rejecting here makes it a
+        # 422 on submit rather than a failure discovered after the evaluation has already run.
+        intake = self.publication.intake if self.publication is not None else None
+        if intake is None or intake.agent_name is not None:
+            return self
+        if target_agent_identity(self.target)[0] is None:
+            source = "the precomputed `trials`" if self.target is None else f"a `{self.target.kind}` target"
+            raise ValueError(
+                f"`publication.intake.agent_name` is required: it cannot be derived from {source}. "
+                "Supply the name the published trajectories should be recorded under."
+            )
+        return self
 
     @model_validator(mode="after")
     def _require_exactly_one_trial_source(self) -> Self:
@@ -248,9 +341,24 @@ class _AgentEvalSpecCommon(BaseModel):
 
 
 class AgentEvalInputSpec(_AgentEvalSpecCommon):
-    """Submitter-facing agent-evaluation input: tasks whose metrics may be inline or references."""
+    """Submitter-facing agent-evaluation input.
 
-    tasks: list[AgentEvalTaskInput] = Field(min_length=1, description="Tasks to evaluate; at least one is required.")
+    ``tasks`` is either an inline list of tasks (whose metrics may be inline or references) or a
+    :class:`TasksetRef` naming a stored taskset whose member tasks are loaded and expanded during spec
+    resolution. Either way it hydrates to the canonical ``AgentEvalSpec.tasks`` list.
+    """
+
+    tasks: TasksetRef | list[AgentEvalTaskInput] = Field(
+        description="Tasks to evaluate: an inline list (at least one) or a reference to a stored taskset.",
+    )
+
+    @model_validator(mode="after")
+    def _reject_empty_inline_tasks(self) -> Self:
+        # A TasksetRef is validated (and required non-empty) when it is expanded during resolution; an
+        # inline list must carry at least one task, mirroring the canonical spec's ``min_length=1``.
+        if isinstance(self.tasks, list) and not self.tasks:
+            raise ValueError("provide at least one task, or a `tasks` taskset reference")
+        return self
 
 
 class AgentEvalSpec(_AgentEvalSpecCommon):

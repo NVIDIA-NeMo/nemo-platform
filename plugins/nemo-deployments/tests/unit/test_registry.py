@@ -10,7 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from docker.errors import NotFound
-from nemo_deployments_plugin.backends.base import BackendStatusUpdate, DeploymentBackend, LogResult, VolumeStatusUpdate
+from nemo_deployments_plugin.backends.base import (
+    BackendStatusUpdate,
+    DeploymentBackend,
+    LogResult,
+    MissingBackendDependencyError,
+    VolumeStatusUpdate,
+)
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
 from nemo_deployments_plugin.backends.registry import (
     ExecutorNotFoundError,
@@ -47,7 +53,14 @@ class _StubBackend(DeploymentBackend):
     async def read_volume_status(self, **kwargs: Any) -> VolumeStatusUpdate:
         return VolumeStatusUpdate(status="BOUND")
 
-    async def delete_volume(self, workspace: str, name: str) -> VolumeStatusUpdate:
+    async def delete_volume(
+        self,
+        workspace: str,
+        name: str,
+        *,
+        backend_config: dict[str, Any] | None = None,
+    ) -> VolumeStatusUpdate:
+        del backend_config
         return VolumeStatusUpdate(status="RELEASED")
 
 
@@ -65,7 +78,7 @@ def _patched_docker_init(
     client = mock_docker_client or MagicMock()
     entities = mock_entities or AsyncMock()
     with (
-        patch("nemo_deployments_plugin.backends.docker.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.docker.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.docker.backend.NemoEntitiesClient", return_value=entities),
         patch("nemo_deployments_plugin.backends.docker.backend.get_shared_gpu_pool", return_value=None),
         patch("docker.from_env", return_value=client),
@@ -102,8 +115,34 @@ def test_missing_executor_raises(backend_classes: dict[str, type[DeploymentBacke
         [ExecutorSpec(name="a", backend="docker", config={})],
         backend_classes=backend_classes,
     )
-    with pytest.raises(ExecutorNotFoundError):
+    with pytest.raises(ExecutorNotFoundError, match="'missing' is not registered"):
         registry.resolve("missing")
+
+
+def test_unavailable_executor_reports_distinct_error(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    # A configured executor whose backend was skipped must resolve to a distinct,
+    # actionable error that names the backend, not the generic 'not registered'
+    # message used for a genuinely unknown name.
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+    classes = {**backend_classes, "sandbox": _MissingDepBackend}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="ok", backend="docker", config={}),
+            ExecutorSpec(name="sandbox-local", backend="sandbox", config={}),
+        ],
+        backend_classes=classes,
+    )
+    with pytest.raises(ExecutorNotFoundError) as excinfo:
+        registry.resolve("sandbox-local")
+    message = str(excinfo.value)
+    assert "is not registered" not in message
+    assert "configured but" in message
+    assert "unavailable" in message
+    assert "sandbox" in message
+    assert "openshell extra not installed" in message
 
 
 def test_unknown_backend_type_raises() -> None:
@@ -119,6 +158,11 @@ def test_unknown_backend_type_raises() -> None:
 class _FailingBackend(_StubBackend):
     def init(self) -> None:
         raise RuntimeError("init failed")
+
+
+class _MissingDepBackend(_StubBackend):
+    def init(self) -> None:
+        raise MissingBackendDependencyError("openshell extra not installed")
 
 
 def test_registry_rolls_back_on_partial_init(backend_classes: dict[str, type[DeploymentBackend]]) -> None:
@@ -141,6 +185,87 @@ def test_registry_rolls_back_on_partial_init(backend_classes: dict[str, type[Dep
             backend_classes=classes,
         )
     assert shutdown_calls == ["shutdown"]
+
+
+def test_registry_skips_backend_with_missing_dependency(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    # An opt-in backend whose optional extra is absent is skipped, not fatal:
+    # other executors still register and the service can boot.
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+    classes = {**backend_classes, "sandbox": _MissingDepBackend}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="ok", backend="docker", config={}),
+            ExecutorSpec(name="sandbox-local", backend="sandbox", config={}),
+        ],
+        backend_classes=classes,
+    )
+    assert registry.registered_names() == ["ok"]
+    with pytest.raises(ExecutorNotFoundError):
+        registry.resolve("sandbox-local")
+
+
+def test_registry_missing_dependency_default_executor_fails(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    # Skipping an optional executor is fine; a configured default that cannot
+    # register must fail fast so misconfiguration is obvious at startup.
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+    classes = {**backend_classes, "sandbox": _MissingDepBackend}
+    with pytest.raises(ExecutorNotFoundError, match="default_executor 'sandbox-local' is not registered"):
+        ExecutorRegistry.from_config(
+            sdk,
+            [ExecutorSpec(name="sandbox-local", backend="sandbox", config={})],
+            default_executor="sandbox-local",
+            backend_classes=classes,
+        )
+
+
+def test_registry_skips_unavailable_docker_and_keeps_other_backends(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+
+    class _UnavailableDocker(_StubBackend):
+        def init(self) -> None:
+            raise MissingBackendDependencyError("Docker daemon is unavailable")
+
+    classes = {**backend_classes, "docker": _UnavailableDocker}
+    registry = ExecutorRegistry.from_config(
+        sdk,
+        [
+            ExecutorSpec(name="local-docker", backend="docker", config={}),
+            ExecutorSpec(name="cluster-a", backend="k8s", config={}),
+        ],
+        # No default pointing at the skipped docker executor — other backends boot.
+        backend_classes=classes,
+    )
+    assert registry.registered_names() == ["cluster-a"]
+    assert registry.resolve("cluster-a") is not None
+
+
+def test_registry_unavailable_docker_default_executor_fails(
+    backend_classes: dict[str, type[DeploymentBackend]],
+) -> None:
+    sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
+
+    class _UnavailableDocker(_StubBackend):
+        def init(self) -> None:
+            raise MissingBackendDependencyError("Docker daemon is unavailable")
+
+    classes = {**backend_classes, "docker": _UnavailableDocker}
+    with pytest.raises(ExecutorNotFoundError, match="default_executor 'local-docker' is not registered"):
+        ExecutorRegistry.from_config(
+            sdk,
+            [
+                ExecutorSpec(name="local-docker", backend="docker", config={}),
+                ExecutorSpec(name="cluster-a", backend="k8s", config={}),
+            ],
+            default_executor="local-docker",
+            backend_classes=classes,
+        )
 
 
 def test_multiple_docker_executors_distinct_config() -> None:
@@ -214,4 +339,4 @@ async def test_executor_port_range_used_for_allocation() -> None:
     mock_find_port.assert_awaited()
     call_args = mock_find_port.await_args
     assert call_args is not None
-    assert call_args.args[1:3] == (9050, 9060)
+    assert list(call_args.args[1:3]) == [9050, 9060]

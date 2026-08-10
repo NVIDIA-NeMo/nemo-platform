@@ -3,10 +3,10 @@
 
 import duckdb
 from data_designer.engine.resources.person_reader import PersonReader
+from data_designer_nemo.filesystem import make_filesystem
 from data_designer_nemo.nemotron_personas import (
     get_locale_fileset_file_ref,
 )
-from data_designer_nemo.sdk_translation import async_to_sync_sdk
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 
@@ -23,13 +23,12 @@ class FilesetsPersonReader(PersonReader):
     """
 
     def __init__(self, sdk: NeMoPlatform | AsyncNeMoPlatform):
-        if isinstance(sdk, AsyncNeMoPlatform):
-            sdk = async_to_sync_sdk(sdk)
         self._sdk = sdk
 
     def create_duckdb_connection(self) -> duckdb.DuckDBPyConnection:
+        filesystem = make_filesystem(self._sdk)
         conn = duckdb.connect()
-        conn.register_filesystem(self._sdk.files.fsspec)
+        conn.register_filesystem(filesystem)
         return conn
 
     def get_dataset_uri(self, locale: str) -> str:

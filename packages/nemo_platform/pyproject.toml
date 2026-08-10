@@ -18,13 +18,11 @@ description = "Convenience wrapper distribution for NeMo Platform Python package
 readme = "README.md"
 authors = [{ name = "NVIDIA Corporation" }]
 license = "Apache-2.0"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.14"
 classifiers = [
   "Intended Audience :: Developers",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
-  "Programming Language :: Python :: 3.14",
   "Operating System :: OS Independent",
   "Operating System :: POSIX",
   "Operating System :: MacOS",
@@ -87,7 +85,7 @@ core-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.7.0",
+  "data-designer==0.8.0",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -182,6 +180,7 @@ intake-service = [
   "pydantic-settings>=2.6.1, <3.0.0",
   "nmp-common",
   "clickhouse-connect>=0.7,<1.0",
+  "docker>=7.1.0",
   "opentelemetry-proto>=1.27.0",
 ]
 
@@ -226,25 +225,26 @@ nemo-agents-example-calculator = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-agents-plugin = [
   "nemo-platform-plugin",
+  "nemo-optimization-plugin",
   "nemo-agents-example-calculator",
   "nvidia-nat-core>=1.8.0,<1.9",
   "nvidia-nat-langchain>=1.8.0,<1.9",
-  "nvidia-nat-config-optimizer>=1.8.0,<1.9",
   "langchain-aws==1.1.0",
   "boto3>=1.40.46,<1.40.62",
   "botocore>=1.40.46,<1.40.62",
   "httpx>=0.27",
-  "nemo-fabric>=0.1.0a20260717,<0.2.0",
   "pyyaml>=6.0",
   "anthropic>=0.88.0",
   "rich>=13.7.1",
+  "nemo-fabric[claude,codex,deepagents,relay]>=0.1.0,<0.3.0",
+  "nemo-fabric-adapters-hermes>=0.1.0,<0.3.0; python_version < '3.14'",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-anonymizer-plugin = [
   "nemo-platform-plugin",
-  "nemo-anonymizer>=0.3.0",
-  "data-designer==0.7.0",
+  "nemo-anonymizer>=0.3.1",
+  "data-designer==0.8.0",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
@@ -265,7 +265,7 @@ nemo-auditor-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
-  "data-designer==0.7.0",
+  "data-designer==0.8.0",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
@@ -278,7 +278,7 @@ nemo-evaluator-plugin = [
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
   "nemo-platform-sdk",
-  "pydantic>=2.10.6",
+  "pydantic>=2.12.0",
   "typer>=0.20.0",
 ]
 
@@ -296,7 +296,8 @@ nemo-evaluator-sdk = [
   "ragas==0.4.3",
   "langchain-openai>=1.3.5",
   "langchain-nvidia-ai-endpoints>=1.4.3,<2.0.0",
-  "nemo-relay>=0.4.0,<0.5.0",
+  "nemo-relay>=0.6.0,<0.7",
+  "nemo-fabric>=0.1.1,<0.3.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -310,6 +311,19 @@ nemo-guardrails-plugin = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
+nemo-optimization-plugin = [
+  "nemo-platform-plugin",
+  "nemo-evaluator-sdk",
+  "matplotlib>=3.8.0",
+  "numpy>=1.26.0",
+  "optuna>=4.0.0",
+  "pydantic>=2.10.6",
+  "pydantic-settings>=2.6.1",
+  "pyyaml>=6.0",
+  "typer>=0.12.5",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 nemo-platform-plugin = [
   "anthropic>=0.88.0",
   "fastapi>=0.115.4",
@@ -317,7 +331,7 @@ nemo-platform-plugin = [
   "lark>=1.1.0",
   "nemo-platform-sdk",
   "openai>=1.109.1",
-  "pydantic>=2.10.3",
+  "pydantic>=2.12.0",
   "pydantic-settings>=2.8.1",
   "pyyaml>=6.0.2",
   "typer>=0.20.0,<0.26",
@@ -416,6 +430,7 @@ plugins = [
     "nemo-platform[nemo-data-designer-plugin]",
     "nemo-platform[nemo-evaluator-plugin]",
     "nemo-platform[nemo-guardrails-plugin]",
+    "nemo-platform[nemo-optimization-plugin]",
     "nemo-platform[nemo-safe-synthesizer-plugin]",
     "nemo-platform[nemo-switchyard]",
 ]
@@ -495,7 +510,6 @@ agents-deployment = "nemo_agents_plugin.runner.controller:AgentDeploymentControl
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.docs"]
 auditor = "nemo_auditor.docs:get_docs_path"
-evaluator = "nemo_evaluator.docs:get_docs_path"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.functions"]
@@ -510,15 +524,20 @@ nemo-switchyard = "nemo_switchyard.middleware:SwitchyardMiddleware"
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.jobs"]
 "agents.evaluate" = "nemo_agents_plugin.jobs.evaluate_agent:EvaluateAgentJob"
-"agents.optimize" = "nemo_agents_plugin.jobs.optimize_agent:OptimizeAgentJob"
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
+"agents.optimize" = "nemo_optimization.jobs.optimize:OptimizeJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
 "anonymizer.run" = "nemo_anonymizer_plugin.jobs.run:RunJob"
 "auditor.audit" = "nemo_auditor.jobs.audit:AuditJob"
 "data-designer.create" = "nemo_data_designer_plugin.jobs.create:CreateJob"
 "evaluator.evaluate" = "nemo_evaluator.jobs.evaluate:EvaluateJob"
 "evaluator.agent-evaluate" = "nemo_evaluator.jobs.agent_evaluate:AgentEvalJob"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.optimization.backends"]
+optuna = "nemo_optimization.backends.optuna.backend:OptunaBackend"
+ga = "nemo_optimization.backends.ga.backend:GaBackend"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.sdk"]
@@ -556,7 +575,6 @@ anonymizer = "nemo_anonymizer_plugin.skills:get_skills_path"
 guardrails = "nemo_guardrails_plugin.skills:get_skills_path"
 platform = "nemo_platform.skills:skills_dir"
 safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
-
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
 nemo-platform-ext = { workspace = true }
@@ -609,6 +627,8 @@ nemo-anonymizer-plugin = { source = "../../plugins/nemo-anonymizer/src/nemo_anon
 nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-data-designer-plugin = { source = "../../plugins/nemo-data-designer/src/nemo_data_designer_plugin", module = "nemo_data_designer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator", inherit = { "entry-points" = ["nemo.*"] } }
+# Required by agents.optimize (OptimizeJob lives here; agents plugin imports it at router setup).
+nemo-optimization-plugin = { source = "../../plugins/nemo-optimization/src/nemo_optimization", module = "nemo_optimization", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-guardrails-plugin = { source = "../../plugins/nemo-guardrails/src/nemo_guardrails_plugin", module = "nemo_guardrails_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-safe-synthesizer-plugin = { source = "../../plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin", module = "nemo_safe_synthesizer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-switchyard = { source = "../../plugins/nemo-switchyard/src/nemo_switchyard", module = "nemo_switchyard", inherit = { "entry-points" = ["nemo.*"] } }

@@ -1,7 +1,7 @@
 # nemo-platform-plugin
 
 [![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE)
-[![Python](https://img.shields.io/badge/python-3.11--3.14-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Docs](https://img.shields.io/static/v1?label=docs&message=docs.nvidia.com%2Fnemo-platform&color=76B900&style=flat-square&logo=readthedocs&logoColor=white)](https://docs.nvidia.com/nemo-platform)
 
 Build NeMo Platform plugins in Python.
@@ -25,18 +25,10 @@ Build NeMo Platform plugins in Python.
 pip install nemo-platform-plugin
 ```
 
-To run a local NeMo Platform that loads and serves your plugin while you develop, install [`nemo-platform`](https://pypi.org/project/nemo-platform/) too — it ships the platform services, the `nemo` CLI, and the runtime that wires entity-client injection into your plugin's FastAPI app:
+To run a local NeMo Platform that loads and serves your plugin while you develop, use Python 3.12–3.13 and install [`nemo-platform`](https://pypi.org/project/nemo-platform/) too — it ships the platform services, the `nemo` CLI, and the runtime that wires entity-client injection into your plugin's FastAPI app:
 
 ```bash
 pip install "nemo-platform[all]"
-```
-
-On Python 3.14, prefix the `nemo-platform[all]` install with
-`PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` while the transitive `litellm` Rust
-extension catches up to Python 3.14:
-
-```bash
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install "nemo-platform[all]"
 ```
 
 ## A minimal plugin
@@ -48,7 +40,7 @@ A complete NeMo Platform plugin that contributes one HTTP route — a `pyproject
 [project]
 name = "nemo-my-plugin"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = ["nemo-platform-plugin"]
 
 [project.entry-points."nemo.services"]

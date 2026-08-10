@@ -6,7 +6,7 @@ import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { type SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { JobConfigDrawer } from '@studio/routes/SafeSynthesizerJobDetailsRoute/components/JobConfigDrawer';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Mock the CodeEditor component to simplify testing
@@ -94,7 +94,7 @@ describe('JobConfigDrawer', () => {
       const user = userEvent.setup();
       await user.click(closeButton);
 
-      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+      await waitFor(() => expect(mockOnOpenChange).toHaveBeenCalledWith(false));
     });
 
     describe('Heading Content', () => {

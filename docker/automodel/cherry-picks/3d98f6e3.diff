@@ -2,6 +2,14 @@ diff --git a/pyproject.toml b/pyproject.toml
 index 801ca1be..3d98f6e3 100644
 --- a/pyproject.toml
 +++ b/pyproject.toml
+@@ -80,7 +80,6 @@ dependencies = [
+     "datasets>=4.0.0",
+     "megatron-fsdp>=0.2.3",
+     "mistral-common[image,audio,hf-hub,sentencepiece]",
+-    "opencv-python-headless==4.10.0.84",
+     "pybind11",
+     "pyyaml",
+     "tiktoken",
 @@ -99,7 +99,6 @@ diffusion = [
      "diffusers>=0.37.0",
      "ftfy",
@@ -63,6 +71,14 @@ index ad6029d3..42f67bd1 100644
  [[package]]
  name = "imagesize"
  version = "1.4.1"
+@@ -3879,7 +3852,6 @@ dependencies = [
+     { name = "megatron-fsdp" },
+     { name = "mistral-common", extra = ["audio", "hf-hub", "image", "sentencepiece"] },
+     { name = "mlflow" },
+-    { name = "opencv-python-headless" },
+     { name = "pybind11" },
+     { name = "pyyaml" },
+     { name = "tiktoken" },
 @@ -3900,13 +3873,11 @@ all = [
      { name = "boto3" },
      { name = "causal-conv1d" },
@@ -117,3 +133,10 @@ index ad6029d3..42f67bd1 100644
      { name = "kernels", marker = "extra == 'diffusion-kernels'" },
      { name = "mamba-ssm", marker = "extra == 'cuda'" },
      { name = "megatron-fsdp", specifier = ">=0.2.3" },
+@@ -4109,7 +4075,6 @@ requires-dist = [
+     { name = "onnxscript", marker = "extra == 'cuda'", specifier = ">=0.5.6" },
+     { name = "open-clip-torch", marker = "extra == 'vlm'" },
+-    { name = "opencv-python-headless", specifier = "==4.10.0.84" },
+     { name = "opencv-python-headless", marker = "extra == 'diffusion'" },
+     { name = "perceptron", marker = "extra == 'extra'" },
+     { name = "pillow", marker = "extra == 'vlm'" },

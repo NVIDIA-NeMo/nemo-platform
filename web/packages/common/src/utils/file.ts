@@ -54,8 +54,8 @@ export function findMessagesArray(
  * @param filename - The name to give the downloaded file.
  */
 export const triggerDownload = (data: BlobPart, filename: string) => {
-  // Create a Blob from the data
-  const blob = new Blob([data]);
+  // Re-wrapping a Blob would drop its type, and the browser uses that to pick the extension.
+  const blob = data instanceof Blob ? data : new Blob([data]);
 
   // Create an object URL for the Blob
   const blobUrl = URL.createObjectURL(blob);

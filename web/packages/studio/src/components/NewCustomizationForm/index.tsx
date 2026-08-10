@@ -36,24 +36,27 @@ import {
 } from '@studio/util/forms/customization';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
 import { type FieldErrors, FormProvider, type Resolver, useForm, useWatch } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface NewCustomizationFormProps {
   workspace: string;
   initialModel?: string;
+  initialValues?: CustomizationFormFields;
 }
 
 export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
   workspace,
   initialModel,
+  initialValues,
 }) => {
   const navigate = useNavigate();
   const toast = useToast();
   const errorBannerRef = useRef<HTMLDivElement>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
-  const defaultValues = useMemo<CustomizationFormFields>(
-    () => ({
+  const defaultValues = useMemo<CustomizationFormFields>(() => {
+    if (initialValues) return initialValues;
+    return {
       ...FORM_DEFAULTS,
       outputName: generateDefaultName(),
       automodel: { ...FORM_DEFAULTS.automodel, model: initialModel ?? '' },
@@ -61,9 +64,8 @@ export const NewCustomizationForm: FC<NewCustomizationFormProps> = ({
         ...FORM_DEFAULTS.unsloth,
         model: { ...FORM_DEFAULTS.unsloth.model, name: initialModel ?? '' },
       },
-    }),
-    [initialModel]
-  );
+    };
+  }, [initialModel, initialValues]);
 
   const form = useForm<CustomizationFormFields>({
     resolver: zodResolver(customizationFormSchema) as unknown as Resolver<CustomizationFormFields>,

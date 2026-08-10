@@ -134,10 +134,6 @@ def dict_to_row(row: dict[str, Any], columns: Sequence[str]) -> list[Any]:
     return [row.get(column) for column in columns]
 
 
-def result_rows(result: Any) -> list[dict[str, Any]]:
-    return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
-
-
 def float_or_none(value: Any) -> float | None:
     if value is None:
         return None

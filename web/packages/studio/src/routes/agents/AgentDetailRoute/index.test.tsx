@@ -29,6 +29,7 @@ describe('AgentDetailRoute', () => {
     expect(screen.getByRole('tab', { name: 'Evaluations' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Logs' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Chat' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Details' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Configuration' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open traces' })).toBeInTheDocument();
@@ -45,5 +46,25 @@ describe('AgentDetailRoute', () => {
 
     expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByRole('textbox', { name: /Task prompt/i })).toBeInTheDocument();
+  });
+
+  it('shows the agent spec on the details tab and masks secrets', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(await screen.findByRole('tab', { name: 'Details' }));
+
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
+    // Structured panels
+    expect(await screen.findByText('Overview')).toBeInTheDocument();
+    expect(screen.getByText('Workflow')).toBeInTheDocument();
+    expect(screen.getByText('Models')).toBeInTheDocument();
+    expect(screen.getByText('Tools')).toBeInTheDocument();
+    // Config values surfaced from the spec
+    expect(screen.getByText('nat-workflow-v1')).toBeInTheDocument();
+    expect(screen.getByText('react_agent')).toBeInTheDocument();
+    // The llm api_key is masked, never shown raw
+    expect(screen.queryByText('not-used')).not.toBeInTheDocument();
+    expect(screen.getByText('••••••••')).toBeInTheDocument();
   });
 });

@@ -16,8 +16,6 @@ from data_designer.config.dataset_metadata import DatasetMetadata
 from data_designer.config.preview_results import PreviewResults
 from data_designer.config.utils.info import InterfaceInfo
 from data_designer.logging import RandomEmoji
-from data_designer_nemo.errors import NDDInvalidConfigError
-from data_designer_nemo.unsupported_features import validate_remote_seed_type
 from nemo_data_designer_plugin.functions._types import (
     AnalysisFrame,
     DatasetFrame,
@@ -247,7 +245,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         Returns:
             An object containing the preview dataset and tools for inspecting the results.
         """
-        config = _get_config_for_api_call(config_builder)
+        config = config_builder.build()
         request = PreviewSpec(config=config, num_records=num_records)
 
         with _PreviewFrameCollector() as message_collector:
@@ -305,7 +303,7 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         Returns:
             An object with methods for querying the job's status and results.
         """
-        config = _get_config_for_api_call(config_builder)
+        config = config_builder.build()
         request = DataDesignerJobConfig(config=config, num_records=num_records)
         try:
             resp = self._client().post(
@@ -384,13 +382,6 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
             A :class:`ValidationReport` whose ``ok`` property is true iff
             every requested context validated cleanly.
         """
-        # Don't apply the eager ``_get_config_for_api_call`` rejection that
-        # ``preview`` / ``create`` use — the validate pass is *meant* to
-        # surface unsupported-seed errors as part of its report, alongside
-        # any other problems. Short-circuiting on the first eager check would
-        # break aggregation and would also reject ``df``-seed configs that
-        # are surfaced cleanly with a helpful message by the validate pass
-        # itself (see ``_validate_seed_type_for_execution_context``).
         resolved_workspace = workspace or self._platform.workspace or "default"
         return validate_config_sync(
             config_builder,
@@ -426,7 +417,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         Returns:
             An object containing the preview dataset and tools for inspecting the results.
         """
-        config = _get_config_for_api_call(config_builder)
+        config = config_builder.build()
         request = PreviewSpec(config=config, num_records=num_records)
 
         with _PreviewFrameCollector() as message_collector:
@@ -484,7 +475,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         Returns:
             An object with methods for querying the job's status and results.
         """
-        config = _get_config_for_api_call(config_builder)
+        config = config_builder.build()
         request = DataDesignerJobConfig(config=config, num_records=num_records)
         try:
             resp = await self._client().post(
@@ -547,8 +538,6 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         workspace: str | None = None,
     ) -> ValidationReport:
         """Async equivalent of :meth:`DataDesignerResource.validate`."""
-        # See the sync ``DataDesignerResource.validate`` docstring for why we
-        # bypass ``_get_config_for_api_call`` here.
         resolved_workspace = workspace or self._platform.workspace or "default"
         return await validate_config(
             config_builder,
@@ -556,17 +545,6 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
             workspace=resolved_workspace,
             execution_context=execution_context,
         )
-
-
-def _get_config_for_api_call(config_builder: dd.DataDesignerConfigBuilder) -> dd.DataDesignerConfig:
-    """Build the config and reject unsupported local-only seed source types."""
-
-    if (seed_config := config_builder.get_seed_config()) is not None:
-        try:
-            validate_remote_seed_type(seed_config.source.seed_type)
-        except NDDInvalidConfigError as exc:
-            raise DataDesignerConfigValidationError(str(exc)) from exc
-    return config_builder.build()
 
 
 def _get_error(e: BaseException) -> DataDesignerClientError:

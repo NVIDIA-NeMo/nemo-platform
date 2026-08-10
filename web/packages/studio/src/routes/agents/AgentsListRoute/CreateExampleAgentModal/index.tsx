@@ -3,17 +3,13 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledSearchableSelect } from '@nemo/common/src/components/form/ControlledSearchableSelect';
+import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { loadSampleAgentConfig } from '@studio/api/agents/loadSampleAgentConfig';
 import { getErrorMessage } from '@studio/api/common/utils';
-import {
-  hasShownExampleAgentIntro,
-  markAgentWalkthroughPending,
-  markExampleAgentIntroShown,
-} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import {
   buildSampleAgentName,
@@ -23,6 +19,11 @@ import {
   SAMPLE_AGENTS,
   sampleAgentFormSchema,
 } from '@studio/constants/sampleAgents';
+import {
+  hasShownExampleAgentIntro,
+  markAgentWalkthroughPending,
+  markExampleAgentIntroShown,
+} from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import type {
   CreateExampleAgentModalProps,
   ExampleAgentFormData,
@@ -30,15 +31,22 @@ import type {
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import {
   buildSuggestedModelOptions,
-  pickDefaultModelName,
+  pickModelNameForExample,
   SUGGESTED_MODEL_GROUP_LABELS,
 } from '@studio/util/buildSuggestedModelOptions';
-import { useQueryClient } from '@tanstack/react-query';
-import { type FC, useEffect, useRef, useState } from 'react';
-import { type SubmitHandler, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { loadSampleAgentModelName } from '@studio/util/sampleAgents';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type FC, useEffect, useMemo, useState } from 'react';
+import { type SubmitHandler, useForm, useWatch } from 'react-hook-form';
+import { useNavigate } from 'react-router';
 
-export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
+// Since useForm is called in the component itself, key-based remount needs a thin outer wrapper
+// otherwise there's nothing to put the key on
+export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = (props) => (
+  <CreateExampleAgentModalInner key={props.open ? props.workspace : 'closed'} {...props} />
+);
+
+const CreateExampleAgentModalInner: FC<CreateExampleAgentModalProps> = ({
   open,
   onClose,
   workspace,
@@ -53,11 +61,11 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
     { page_size: DEFAULT_LARGE_PAGE_SIZE },
     { query: { enabled: open && !!workspace } }
   );
-  const models = modelsPage?.data ?? [];
+  const models = useMemo(() => modelsPage?.data ?? [], [modelsPage?.data]);
   const modelOptions = buildSuggestedModelOptions(models);
-  const exampleOptions = SAMPLE_AGENTS.map((example) => ({
+  const exampleItems = SAMPLE_AGENTS.map((example) => ({
     value: example.key,
-    label: example.label,
+    children: example.displayName,
   }));
 
   const {
@@ -91,7 +99,7 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
 
   const {
     control,
-    reset: resetForm,
+    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm({
@@ -101,28 +109,30 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
     mode: 'onChange',
   });
 
-  const seededRef = useRef(false);
+  const exampleKey = useWatch({ control, name: 'exampleKey' });
+
+  const { data: preferredModel } = useQuery({
+    queryKey: ['sample-agent-model', exampleKey],
+    queryFn: () => loadSampleAgentModelName(getSampleAgent(exampleKey).agentConfigPath),
+    enabled: open && !!exampleKey,
+    staleTime: Infinity,
+  });
+
+  const defaultModel = useMemo(
+    () => pickModelNameForExample(models, preferredModel),
+    [models, preferredModel]
+  );
+
   useEffect(() => {
-    if (!open) {
-      seededRef.current = false;
-      resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: '' });
-      return;
-    }
-    if (seededRef.current) return;
-    const defaultModel = pickDefaultModelName(models);
-    if (defaultModel) {
-      resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: defaultModel });
-      seededRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, modelsPage, resetForm]);
+    if (!defaultModel) return;
+    setValue('modelName', defaultModel, { shouldValidate: true });
+  }, [defaultModel, setValue]);
 
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
 
   const reset = () => {
     resetMutation();
     setLoadError(undefined);
-    resetForm({ exampleKey: DEFAULT_SAMPLE_AGENT_KEY, modelName: '' });
   };
 
   const resetAndClose = () => {
@@ -147,6 +157,9 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
           name: buildSampleAgentName(example.namePrefix),
           description: example.description,
           config,
+          // Omitted for NAT samples (API defaults to nat-workflow-v1); set for
+          // Fabric samples so the API validates the config as nemo-agents-spec-v1.
+          ...(example.configFormat ? { config_format: example.configFormat } : {}),
         },
       });
     } catch {
@@ -171,11 +184,10 @@ export const CreateExampleAgentModal: FC<CreateExampleAgentModalProps> = ({
       loading={isPending}
       errorText={errorMessage}
     >
-      <ControlledSearchableSelect
+      <ControlledSelect
         useControllerProps={{ control, name: 'exampleKey' }}
-        options={exampleOptions}
-        triggerPlaceholder="Select an example"
-        searchPlaceholder="Search examples..."
+        items={exampleItems}
+        renderValue={(v) => exampleItems.find((item) => item.value === v)?.children}
         formFieldProps={{
           slotLabel: 'Example',
           slotError: errors.exampleKey?.message,

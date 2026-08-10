@@ -534,7 +534,9 @@ async def test_delete_deployment_config_success(deployment_config_service, mock_
     # Assert
     assert result is True
     mock_entity_client.delete.assert_called_once_with(
-        ModelDeploymentConfigEntity, sample_config_entity.name, workspace="default"
+        ModelDeploymentConfigEntity,
+        sample_config_entity.name,
+        workspace="default",
     )
 
 
@@ -556,7 +558,9 @@ async def test_delete_deployment_config_specific_version(
     # Assert
     assert result is True
     mock_entity_client.delete.assert_called_once_with(
-        ModelDeploymentConfigEntity, sample_config_entity.name, workspace="default"
+        ModelDeploymentConfigEntity,
+        sample_config_entity.name,
+        workspace="default",
     )
 
 

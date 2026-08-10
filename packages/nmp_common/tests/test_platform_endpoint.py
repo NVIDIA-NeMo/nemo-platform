@@ -98,12 +98,46 @@ def test_sync_http_client_passes_explicit_timeout() -> None:
     client.assert_called_once_with(follow_redirects=True, timeout=2.0)
 
 
+def test_sync_sdk_http_client_uses_sdk_default_for_tcp() -> None:
+    endpoint = parse_platform_endpoint("http://127.0.0.1:8080")
+
+    with patch("nmp.common.platform_endpoint.DefaultHttpxClient") as client:
+        endpoint.sync_sdk_http_client()
+
+    client.assert_called_once_with()
+
+
+def test_sync_sdk_http_client_passes_explicit_timeout() -> None:
+    endpoint = parse_platform_endpoint("http://127.0.0.1:8080")
+
+    with patch("nmp.common.platform_endpoint.DefaultHttpxClient") as client:
+        endpoint.sync_sdk_http_client(timeout=2.0)
+
+    client.assert_called_once_with(timeout=2.0)
+
+
 def test_uds_sync_http_client_keeps_transport_and_omits_unset_timeout() -> None:
     endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
 
     with patch("nmp.common.platform_endpoint.httpx.Client") as client:
         endpoint.sync_http_client()
 
+    kwargs = client.call_args.kwargs
+    assert kwargs["follow_redirects"] is True
+    assert "transport" in kwargs
+    assert "timeout" not in kwargs
+
+
+def test_uds_sync_sdk_http_client_keeps_transport_and_omits_unset_timeout() -> None:
+    endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
+
+    with (
+        patch("nmp.common.platform_endpoint.DefaultHttpxClient") as sdk_client,
+        patch("nmp.common.platform_endpoint.httpx.Client") as client,
+    ):
+        endpoint.sync_sdk_http_client()
+
+    sdk_client.assert_not_called()
     kwargs = client.call_args.kwargs
     assert kwargs["follow_redirects"] is True
     assert "transport" in kwargs
@@ -128,12 +162,46 @@ def test_async_http_client_passes_explicit_timeout() -> None:
     client.assert_called_once_with(follow_redirects=True, timeout=2.0)
 
 
+def test_async_sdk_http_client_uses_sdk_default_for_tcp() -> None:
+    endpoint = parse_platform_endpoint("http://127.0.0.1:8080")
+
+    with patch("nmp.common.platform_endpoint.DefaultAsyncHttpxClient") as client:
+        endpoint.async_sdk_http_client()
+
+    client.assert_called_once_with()
+
+
+def test_async_sdk_http_client_passes_explicit_timeout() -> None:
+    endpoint = parse_platform_endpoint("http://127.0.0.1:8080")
+
+    with patch("nmp.common.platform_endpoint.DefaultAsyncHttpxClient") as client:
+        endpoint.async_sdk_http_client(timeout=2.0)
+
+    client.assert_called_once_with(timeout=2.0)
+
+
 def test_uds_async_http_client_keeps_transport_and_omits_unset_timeout() -> None:
     endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
 
     with patch("nmp.common.platform_endpoint.httpx.AsyncClient") as client:
         endpoint.async_http_client()
 
+    kwargs = client.call_args.kwargs
+    assert kwargs["follow_redirects"] is True
+    assert "transport" in kwargs
+    assert "timeout" not in kwargs
+
+
+def test_uds_async_sdk_http_client_keeps_transport_and_omits_unset_timeout() -> None:
+    endpoint = parse_platform_endpoint("unix:///tmp/nemo-platform.sock")
+
+    with (
+        patch("nmp.common.platform_endpoint.DefaultAsyncHttpxClient") as sdk_client,
+        patch("nmp.common.platform_endpoint.httpx.AsyncClient") as client,
+    ):
+        endpoint.async_sdk_http_client()
+
+    sdk_client.assert_not_called()
     kwargs = client.call_args.kwargs
     assert kwargs["follow_redirects"] is True
     assert "transport" in kwargs

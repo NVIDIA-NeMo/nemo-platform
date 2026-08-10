@@ -27,7 +27,7 @@ import {
 import { IntakePayloadPreviewCell } from '@studio/components/IntakeLists/IntakePayloadPreviewCell';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
-import { getIntakeTraceSpanRoute } from '@studio/routes/utils';
+import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import {
   formatCost,
   formatDurationMs,
@@ -40,7 +40,7 @@ import {
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
 import { type ComponentProps, type FC, type ReactNode, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 const SPAN_STATUS_FILTER_OPTIONS = [
   { value: 'success', label: 'Success' },
@@ -163,7 +163,11 @@ const SeededIntakeSpansTable: FC<
       : (onRowClick ??
         ((span: SpanTableRow) => {
           if (span.trace_id) {
-            navigate(getIntakeTraceSpanRoute(requestWorkspace, span.trace_id, span.span_id));
+            navigate(
+              getIntakeSessionTraceRoute(requestWorkspace, span.session_id, span.trace_id, {
+                spanId: span.span_id,
+              })
+            );
           }
         }));
 
@@ -306,10 +310,11 @@ const SeededIntakeSpansTable: FC<
             row.original.trace_id ? (
               <Anchor asChild>
                 <Link
-                  to={getIntakeTraceSpanRoute(
+                  to={getIntakeSessionTraceRoute(
                     requestWorkspace,
+                    row.original.session_id,
                     row.original.trace_id,
-                    row.original.span_id
+                    { spanId: row.original.span_id }
                   )}
                   className="truncate"
                   title={row.original.trace_id}

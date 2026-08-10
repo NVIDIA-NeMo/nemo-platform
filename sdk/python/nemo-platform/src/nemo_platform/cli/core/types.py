@@ -26,6 +26,7 @@ ListOutputFormatOption = Annotated[
     ListOutputFormat | None,
     typer.Option(
         "--output-format",
+        "--output",
         "-f",
         show_choices=True,
         help="Output format for the list of results.",
@@ -37,6 +38,7 @@ EntityOutputFormatOption = Annotated[
     EntityOutputFormat | None,
     typer.Option(
         "--output-format",
+        "--output",
         "-f",
         show_choices=True,
         help="Output format for an entity.",
@@ -47,9 +49,19 @@ ConfigOutputFormatOption = Annotated[
     ConfigOutputFormat | None,
     typer.Option(
         "--output-format",
+        "--output",
         "-f",
         show_choices=True,
         help="Output format for config.",
+        rich_help_panel="Output Options",
+    ),
+]
+
+StreamOutputOption = Annotated[
+    bool,
+    typer.Option(
+        "--stream",
+        help="Emit newline-delimited JSON, one record per line. Requires JSON or raw output.",
         rich_help_panel="Output Options",
     ),
 ]

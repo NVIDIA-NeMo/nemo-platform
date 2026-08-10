@@ -17,9 +17,10 @@ from nemo_insights_plugin.entities import AnalysisConfig, AnalysisRunStatus
 from nemo_insights_plugin.jobs.analyze import AnalyzeJob, AnalyzeSpec
 from nemo_insights_plugin.schedule import is_due
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform.resources.entities import AsyncEntitiesResource
+from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import get_nemo_config
 from nemo_platform_plugin.controller import NemoController
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -89,7 +90,7 @@ class InsightsAnalysisController(NemoController):
         """Initialise service-principal SDK and entity client."""
         self._config = get_nemo_config(InsightsConfig)
         self._sdk = get_async_platform_sdk(as_service="insights", internal=True)
-        self._entities = NemoEntitiesClient(AsyncEntitiesResource(self._sdk))
+        self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         logger.info("InsightsAnalysisController started.")
 
     async def on_shutdown(self) -> None:
@@ -123,6 +124,16 @@ class InsightsAnalysisController(NemoController):
 
     async def _reconcile_config(self, config: AnalysisConfig) -> None:
         if not config.enabled:
+            return
+        if not config.default_model:
+            logger.error(
+                "Analysis config for agent '%s' in workspace '%s' has no model selection; "
+                "run `nemo insights analysis enable --agent %s --workspace %s` again",
+                config.agent,
+                config.workspace,
+                config.agent,
+                config.workspace,
+            )
             return
         if await self._has_active_job(config):
             return
@@ -231,7 +242,8 @@ class InsightsAnalysisController(NemoController):
             agent=config.agent,
             base_url=self.insights_config.analyst.base_url,
             since=status.last_successful_run_at if status is not None else None,
-            inference_api_key_secret_name=(self.insights_config.analyst.inference_api_key_secret_name),
+            default_model=config.default_model,
+            fast_model=config.fast_model or config.default_model,
         )
         job_name = _job_name(config, submitted_at)
         platform_spec = await self._compile_job_spec(

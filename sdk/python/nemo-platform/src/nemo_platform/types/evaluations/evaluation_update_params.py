@@ -42,15 +42,15 @@ class EvaluationUpdateParams(TypedDict, total=False):
     """Human-readable description."""
 
     experiment_group_id: str
-    """Deprecated single-group field; provide experiment_ids instead.
+    """Deprecated single-experiment field; provide experiment_ids instead.
 
     Coalesced into experiment_ids when experiment_ids is omitted.
     """
 
     experiment_ids: SequenceNotStr[str]
-    """Entity ids of the ExperimentGroups this Evaluation belongs to (>=1).
+    """Entity ids of the Experiments this Evaluation belongs to (>=1).
 
-    Preferred; each group must already exist. When omitted, the deprecated
+    Preferred; each experiment must already exist. When omitted, the deprecated
     experiment_group_id is used instead.
     """
 
@@ -62,9 +62,6 @@ class EvaluationUpdateParams(TypedDict, total=False):
 
     a variant of a baseline), if any.
     """
-
-    parent_experiment_id: str
-    """Deprecated alias for parent_evaluation_id."""
 
     root_cause: str
     """Human- or agent-authored explanation of the evaluation's outcome (e.g.

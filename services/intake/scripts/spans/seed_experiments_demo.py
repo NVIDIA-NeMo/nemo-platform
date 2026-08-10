@@ -5,9 +5,11 @@
 """Seed local Intake with a curated multi-group evaluation dataset.
 
 Designed for the Studio UI team to have realistic data while building out the
-Evaluations surfaces. Seeds four experiment groups across multiple agents and
-datasets, with varied evaluator scores, costs, and latencies. Every evaluation
-is attached to a group; nothing is ungrouped.
+Evaluations surfaces. Seeds five experiment groups across multiple agents and
+datasets, with varied evaluator scores, costs, and latencies — including a
+``secondary-sort-fixtures`` group whose sessions share tied cost values so the
+tables' secondary (tie-break) sort can be exercised. Every evaluation is
+attached to a group; nothing is ungrouped.
 
 Behavior:
 
@@ -76,6 +78,12 @@ class EvaluationSpec:
     score_stddev: float = 0.08
     cost_mean_usd: float = 0.02
     cost_stddev_pct: float = 0.4
+    # Optional: sessions cycle through these exact per-session costs (USD) instead of the
+    # random draw above, guaranteeing many exact ties in cost_total_usd. Handy for exercising
+    # the sessions table's secondary (tie-break) sort — sort by Cost, then watch a second column
+    # order the tied rows. Two evaluations that share the same cycle and n_sessions also end up
+    # with tied *aggregate* cost, covering the evaluations table's secondary sort at the group level.
+    cost_usd_cycle: tuple[float, ...] | None = None
     latency_mean_ms: int = 1500
     latency_stddev_ms: int = 400
     prompt_tokens_mean: int = 600
@@ -331,6 +339,47 @@ DEMO_GROUPS: list[GroupSpec] = [
             ),
         ],
     ),
+    # ----- Group 5: fixtures for the tables' secondary (tie-break) sort -----
+    # Both evaluations draw per-session cost from the SAME fixed cycle, so:
+    #   * within an evaluation, many sessions share an identical cost_total_usd — sort the
+    #     sessions table by Cost, then a second column orders the tied rows; and
+    #   * because they also share n_sessions, their *aggregate* costs tie, exercising the
+    #     evaluations table's secondary sort at the group level too.
+    # Latency and evaluator scores still vary, so there's a meaningful second sort key.
+    GroupSpec(
+        name="secondary-sort-fixtures",
+        description="Tied cost values for exercising the tables' secondary (tie-break) sort.",
+        evaluations=[
+            EvaluationSpec(
+                name="tied-cost-fast-agent",
+                description="Per-session cost snaps to four fixed buckets; low latency.",
+                agent_name="claude-code",
+                agent_version="0.125.0",
+                model_name="anthropic/claude-haiku-4-5",
+                dataset_name="tau-bench",
+                dataset_version="v0.4",
+                n_sessions=40,
+                evaluators={"pass_at_1": 0.72, "goal_accuracy": 0.75},
+                cost_usd_cycle=(0.05, 0.10, 0.15, 0.20),
+                latency_mean_ms=1400,
+                latency_stddev_ms=250,
+            ),
+            EvaluationSpec(
+                name="tied-cost-slow-agent",
+                description="Same four cost buckets as the fast agent (tied aggregate cost); higher latency.",
+                agent_name="codex-cli",
+                agent_version="1.4.0",
+                model_name="openai/gpt-4o",
+                dataset_name="tau-bench",
+                dataset_version="v0.4",
+                n_sessions=40,
+                evaluators={"pass_at_1": 0.66, "goal_accuracy": 0.70},
+                cost_usd_cycle=(0.05, 0.10, 0.15, 0.20),
+                latency_mean_ms=5200,
+                latency_stddev_ms=700,
+            ),
+        ],
+    ),
 ]
 
 
@@ -403,7 +452,7 @@ def _create_group_if_missing(
     client: httpx.Client, base_url: str, workspace: str, spec: GroupSpec
 ) -> tuple[str | None, bool]:
     """Returns (group_id, created). On 409, returns (None, False) and leaves the existing group alone."""
-    url = _intake_url(base_url, workspace, "/experiment-groups")
+    url = _intake_url(base_url, workspace, "/experiments")
     body = {"name": spec.name, "description": spec.description}
     response = client.post(url, json=body)
     if response.status_code == 409:
@@ -458,7 +507,11 @@ def _seed_sessions(
     eval_url = _intake_url(base_url, workspace, "/evaluator-results")
 
     for i in range(spec.n_sessions):
-        cost_usd = max(0.0005, rng.gauss(spec.cost_mean_usd, spec.cost_mean_usd * spec.cost_stddev_pct))
+        cost_usd = (
+            spec.cost_usd_cycle[i % len(spec.cost_usd_cycle)]
+            if spec.cost_usd_cycle
+            else max(0.0005, rng.gauss(spec.cost_mean_usd, spec.cost_mean_usd * spec.cost_stddev_pct))
+        )
         latency_ms = max(100, int(rng.gauss(spec.latency_mean_ms, spec.latency_stddev_ms)))
         prompt_tokens = max(10, int(rng.gauss(spec.prompt_tokens_mean, spec.prompt_tokens_mean * 0.25)))
         completion_tokens = max(5, int(rng.gauss(spec.completion_tokens_mean, spec.completion_tokens_mean * 0.3)))
@@ -598,8 +651,8 @@ def _wipe_workspace(client: httpx.Client, base_url: str, workspace: str) -> None
         if _delete(client, base_url, workspace, f"/evaluations/{name}"):
             deleted_evaluations += 1
     deleted_groups = 0
-    for name in _list_all_names(client, base_url, workspace, "/experiment-groups"):
-        if _delete(client, base_url, workspace, f"/experiment-groups/{name}"):
+    for name in _list_all_names(client, base_url, workspace, "/experiments"):
+        if _delete(client, base_url, workspace, f"/experiments/{name}"):
             deleted_groups += 1
     print(f"deleted {deleted_evaluations} evaluation(s) and {deleted_groups} group(s)\n")
 

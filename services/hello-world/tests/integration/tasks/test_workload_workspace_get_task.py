@@ -1,16 +1,37 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 from types import SimpleNamespace
 from typing import cast
 
 import httpx
+import pytest
 import respx
 from nemo_platform import NeMoPlatform
-from nemo_platform.auth.helpers import NMPOIDCConfig
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
+from nmp.common.config import Configuration, PlatformConfig
 from nmp.common.jobs.constants import TASK_CONFIG_ENVVAR
 from nmp.hello_world.tasks.workload_workspace_get.run import run as task_run
+
+
+@pytest.fixture(autouse=True)
+def clear_config_cache():
+    Configuration.clear_cache()
+    try:
+        yield
+    finally:
+        Configuration.clear_cache()
+
+
+@pytest.fixture
+def platform_base_url():
+    base_url = "http://nmp.example.test"
+    Configuration.set_override(PlatformConfig(base_url=base_url))
+    try:
+        yield base_url
+    finally:
+        Configuration.clear_override(PlatformConfig)
 
 
 class _StubWorkspaces:
@@ -27,68 +48,22 @@ class _StubSDK:
         self.workspaces = _StubWorkspaces()
 
 
-@respx.mock
-def test_workload_workspace_get_reads_workspace_via_public_sdk(monkeypatch, tmp_path):
-    subject_token_file = tmp_path / "workload-token"
-    subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
-    config_file = tmp_path / "config.yaml"
-    config_file.write_text("{}\n", encoding="utf-8")
-    discovery_requests: list[str] = []
-    exchange_requests: list[dict] = []
+def test_workload_workspace_get_uses_task_sdk_factory(monkeypatch):
+    sdk = _StubSDK()
+    sdk_factory_calls: list[str] = []
 
-    def discover_nmp_config(base_url: str) -> NMPOIDCConfig:
-        discovery_requests.append(base_url)
-        return NMPOIDCConfig(
-            auth_enabled=True,
-            workload_token_exchange_enabled=True,
-            workload_client_id="workload-client",
-            workload_token_endpoint="https://idp.example.test/oauth2/token",
-            workload_audience="nemo-platform",
-            workload_scope="openid email groups",
-        )
-
-    def token_exchange_grant(**kwargs):
-        exchange_requests.append(kwargs)
-        return {"access_token": "exchanged-access-token", "expires_in": 300}
+    def get_task_sdk(*, as_service: str) -> NeMoPlatform:
+        sdk_factory_calls.append(as_service)
+        return cast(NeMoPlatform, sdk)
 
     monkeypatch.setenv(TASK_CONFIG_ENVVAR, '{"workspace":"workload-read-target"}')
-    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_file))
-    monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
-    monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
-    monkeypatch.setattr("nemo_platform.client.factory.discover_nmp_config", discover_nmp_config)
-    monkeypatch.setattr("nemo_platform.auth.workload_exchange.token_exchange_grant", token_exchange_grant)
+    monkeypatch.setattr("nmp.hello_world.tasks.workload_workspace_get.run.get_task_sdk", get_task_sdk)
 
-    workspace_route = respx.get("http://nmp.example.test/apis/entities/v2/workspaces/workload-read-target").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "id": "workspace-id",
-                "name": "workload-read-target",
-                "created_at": "2026-01-01T00:00:00Z",
-                "updated_at": "2026-01-01T00:00:00Z",
-            },
-        )
-    )
-
-    sdk = NeMoPlatform(base_url="http://nmp.example.test")
-    try:
-        exit_code = task_run(sdk=sdk)
-    finally:
-        sdk.close()
+    exit_code = task_run()
 
     assert exit_code == 0
-    assert workspace_route.called
-    assert workspace_route.calls[0].request.headers["Authorization"] == "Bearer exchanged-access-token"
-    assert [url.rstrip("/") for url in discovery_requests] == ["http://nmp.example.test"]
-    assert exchange_requests == [
-        {
-            "token_endpoint": "https://idp.example.test/oauth2/token",
-            "client_id": "workload-client",
-            "subject_token": "subject-token-from-file",
-            "audience": "nemo-platform",
-            "scope": "openid email groups",
-        }
-    ]
+    assert sdk_factory_calls == ["jobs"]
+    assert sdk.workspaces.requested == ["workload-read-target"]
 
 
 def test_workload_workspace_get_uses_injected_sdk_without_workload_token(monkeypatch):
@@ -102,3 +77,53 @@ def test_workload_workspace_get_uses_injected_sdk_without_workload_token(monkeyp
 
     assert exit_code == 0
     assert sdk.workspaces.requested == ["workload-read-target"]
+
+
+@respx.mock
+def test_workload_workspace_get_uses_task_sdk_without_workload_token(monkeypatch, tmp_path, platform_base_url):
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setenv(TASK_CONFIG_ENVVAR, '{"workspace":"workload-read-target"}')
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("NMP_BASE_URL", platform_base_url)
+    monkeypatch.setenv(
+        "NMP_PRINCIPAL",
+        json.dumps(
+            {
+                "id": "creator@example.com",
+                "email": "creator@example.com",
+                "groups": ["engineering"],
+            }
+        ),
+    )
+    monkeypatch.delenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, raising=False)
+    monkeypatch.delenv("NMP_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("NEMO_WORKLOAD_TOKEN", raising=False)
+    monkeypatch.delenv("NEMO_WORKLOAD_TOKEN_FILE", raising=False)
+
+    def workspace_response(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("X-NMP-Principal-Id") != "service:jobs":
+            return httpx.Response(401, json={"detail": "Unauthorized"})
+        if request.headers.get("X-NMP-Principal-On-Behalf-Of") != "creator@example.com":
+            return httpx.Response(403, json={"detail": "Forbidden"})
+        if request.headers.get("Authorization") == "Bearer service:jobs":
+            return httpx.Response(401, json={"detail": "Unauthorized"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "workspace-id",
+                "name": "workload-read-target",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            },
+        )
+
+    workspace_route = respx.get(f"{platform_base_url}/apis/entities/v2/workspaces/workload-read-target").mock(
+        side_effect=workspace_response
+    )
+
+    exit_code = task_run()
+
+    assert exit_code == 0
+    assert workspace_route.called

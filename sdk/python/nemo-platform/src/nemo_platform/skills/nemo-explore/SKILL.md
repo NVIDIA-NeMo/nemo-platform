@@ -17,6 +17,8 @@ not-for:
   - nemo-build-agent (use after spec exists)
   - nemo-model-selection (use for the model question in step 5; explore delegates to it)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
+preconditions:
+  - nemo_cli_available
 compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-spec.
 maturity: active
 license: Apache-2.0
@@ -60,8 +62,8 @@ requirements: handoff to `nemo-spec` is blocked until both are resolved.
 | 3 | Scope | yes | Audience, 3-6 task categories, expected in-scope work, and explicit out-of-scope work/non-goals. |
 | 4 | Tools | yes | Tools, APIs, and knowledge sources the agent can use, or "Prompt-only." Group related helpers by capability or source. Capture only behaviorally important purpose, credentials/scopes, side effects, freshness, and expected failures. |
 | 5 | Model | yes | Mode (cloud vs local NIM) + model family/size. Example: "cloud, Nemotron Super 49B." `nemo-build-agent` resolves to a specific model entity ID later. |
-| 6 | Framework | **yes** | Temporary NeMo Platform compatibility field. Keep it binary: `langgraph-nat` or `needs-wrapper`; include source-framework context only when a wrapper is needed. |
-| 7 | Harness | optional | Modern harness description: the extra-model layer around the agent — loop, tool dispatch, context/state, guardrails, observability, verification, and runtime. Summarize at useful granularity; omit low-level settings unless they affect behavior. Use `_(none)_` if unknown. |
+| 6 | Framework | **yes** | Record execution compatibility as `supported-harness`, `nat-workflow`, or `needs-adapter`. Include the source framework when one exists. Do not assume a Python framework name alone guarantees lifecycle compatibility. |
+| 7 | Harness | optional | Describe the selected or likely harness and the behavior it owns: loop, tool dispatch, context/state, guardrails, observability, verification, and runtime. Use `_(none)_` if selection should wait until config authoring. |
 | 8 | Behavior | yes | Behavioral rules and boundaries: constraints, refusal/escalation policy, tone, safety/compliance requirements, accepted limitations, and known non-goals. |
 | 9 | Success Criteria | yes | What good production behavior looks like, independent of current evals: mission-level outcomes, quality standards, escalation quality, accuracy expectations, latency/cost expectations if relevant, and examples of success. |
 | 10 | Evaluation Setup | yes | Current validation setup: how to run it, what datasets/checks it uses, what scorers/metrics measure, pass/fail thresholds, and known coverage gaps relative to the success criteria. If no eval suite exists, say so explicitly. |
@@ -88,16 +90,20 @@ Time-box this to ~5 minutes of tool use. Read first, ask second. Greenfield
 projects will turn up nothing here, which is fine — move to step 2 and ask
 the user the full set of unfilled fields.
 
-1. **Find agent entry points.** Look for NAT workflow YAMLs, LangGraph
-   builders, system prompts, tool definitions:
+1. **Find agent definitions and entry points.** Look for Platform
+   `agent.yaml`, NAT workflow YAMLs, supported harness configuration, Python
+   agent builders, system prompts, skills, and tool definitions:
 
    ```bash
+   find . -maxdepth 5 -type f -name "agent.yaml" 2>/dev/null
    find . -maxdepth 4 -type f \( -name "*.workflow.yaml" -o -name "*.workflow.yml" \) 2>/dev/null
    find . -maxdepth 4 -type d -name "agents" 2>/dev/null
    ```
 
-   Then use `Glob` / `Grep` to find `langgraph`, `StateGraph`,
-   `create_react_agent`, `system_prompt`, and tool definitions.
+   Then use `Glob` / `Grep` to find `nemo-agents-spec-v1`,
+   `default_harness`, `codex`, `hermes`, `deepagents`, `claude`, `langgraph`,
+   `StateGraph`, `create_react_agent`, `system_prompt`, skills, MCP servers,
+   and tool definitions.
 
 2. **Find design context.** Look for `README.md`, `AGENTS.md`,
    product/design/planning docs, launch notes, and anything in `docs/`. Read
@@ -132,14 +138,18 @@ the user the full set of unfilled fields.
      Group low-level helpers when they share credentials, side effects,
      freshness, and failure modes.
    - **Model** — model id strings in workflow YAML, env vars, config files.
-   - **Framework** — `langgraph` import + NAT workflow YAML → "LangGraph +
-     NAT." `crewai` / `autogen` / `pydantic_ai` imports → `needs-wrapper`
-     with source-framework context. Plain `langchain` without `langgraph` →
-     `needs-wrapper`. Do not turn this into a detailed implementation audit.
-   - **Harness** — `langgraph` imports, NAT workflow YAML, `crewai` /
-     `autogen` / `pydantic_ai` imports, service entrypoints, CLI commands,
-     Dockerfiles, notebooks, or deployment configs. Capture what exists
-     descriptively; platform-specific wrapper needs can go in notes.
+   - **Framework** — a validated `nemo-agents-spec-v1` config selecting a
+     supported harness → `supported-harness`; an existing NAT workflow YAML →
+     `nat-workflow`; an arbitrary Python entrypoint or unsupported framework
+     without a start/stop/invoke lifecycle contract → `needs-adapter`. Record
+     the source framework separately when known. Do not infer compatibility
+     solely from imports such as `langchain`, `langgraph`, `crewai`,
+     `autogen`, or `pydantic_ai`.
+   - **Harness** — infer from `default_harness` and `harnesses` in
+     `agent.yaml`, adapter configuration, NAT workflow YAML, service
+     entrypoints, CLI commands, Dockerfiles, notebooks, or deployment configs.
+     Capture behaviorally relevant capabilities, not low-level settings. If
+     there is no selection yet, leave it unresolved for `nemo-agent-config`.
    - **Behavior** — system prompt rules ("never give medical advice"),
      refusal/escalation policy, tone, accepted limitations, and non-goals.
    - **Success Criteria** — desired production outcomes, product goals,
@@ -226,8 +236,8 @@ After the user's reply, apply the corrections and check the two hard
 preconditions:
 
 1. **Role** is a concrete one-sentence answer (not "help with stuff").
-2. **Framework** is resolved (`langgraph-nat` or `needs-wrapper` with a
-   source-framework name).
+2. **Framework** is resolved to `supported-harness`, `nat-workflow`, or
+   `needs-adapter`, with source-framework context when known.
 
 If either is still unresolved, ask for it in one final message and stop until
 the user provides it. Do not hand off with a hard requirement blank —
@@ -273,10 +283,14 @@ to Filesets") and trigger it.
   into questions.** Spending the first five minutes reading earns the right
   to ask shorter, sharper questions. Asking something the codebase already
   answers loses trust immediately.
-- **NeMo Platform optimizes LangGraph agents wrapped in NAT today.** Other
-  frameworks may still be valid AGENTSpec harnesses, but need a user-written
-  wrapper for the current NeMo build path. Record that as Harness notes; do
-  not make the standard schema a NeMo-specific capability gate.
+- **Framework names do not prove execution compatibility.** A supported
+  harness must own the required lifecycle contract. Preserve an existing NAT
+  workflow as `nat-workflow`; classify an arbitrary Python entrypoint without
+  that contract as `needs-adapter` rather than promising direct execution.
+- **Keep Platform terminology at the design boundary.** Record the desired
+  harness behavior and artifacts without exposing Fabric SDK types or asking
+  the user to design a raw runtime config. `nemo-agent-config` owns the
+  machine-readable Platform YAML after the spec is approved.
 - **Change Scope is a permissions list, not a wishlist.** It controls
   what the experimentalist agent will edit. Walk the defaults explicitly so
   the user knows what they're consenting to.

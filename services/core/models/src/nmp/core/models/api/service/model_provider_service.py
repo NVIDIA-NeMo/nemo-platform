@@ -294,9 +294,14 @@ class ModelProviderService:
             return False
 
         provider_id = f"{request.workspace}/{request.name}"
-        await self._cleanup_model_entity_references(provider, provider_id)
+        await self.entity_client.delete(
+            ModelProviderEntity,
+            provider.name,
+            workspace=request.workspace,
+            expected_db_version=provider.db_version,
+        )
 
-        await self.entity_client.delete(ModelProviderEntity, request.name, workspace=request.workspace)
+        await self._cleanup_model_entity_references(provider, provider_id)
         logger.info("Model provider deleted", extra={"workspace": request.workspace, "provider_name": request.name})
         return True
 

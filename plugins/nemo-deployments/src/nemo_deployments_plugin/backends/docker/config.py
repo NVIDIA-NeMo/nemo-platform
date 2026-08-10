@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from nemo_deployments_plugin.backends.labels import DEFAULT_RESOURCE_SCOPE
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -17,15 +18,32 @@ class DockerExecutorConfig(BaseModel):
         ge=1,
         description="Docker client timeout in seconds for pull/create/status operations (default: 10 minutes).",
     )
+    oneshot_observe_timeout_seconds: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Max seconds to wait for a Never one-shot container to exit during create. "
+            "Should stay near the deployments controller reconcile interval (default 5s). "
+            "Longer jobs return STARTING and finish via read_status polling."
+        ),
+    )
     pull_images: bool = Field(default=True, description="Pull container images before run when missing locally.")
+    resource_scope: str = Field(
+        default=DEFAULT_RESOURCE_SCOPE,
+        min_length=1,
+        description=(
+            "Owner scope label for Docker-managed resources. Orphan cleanup only lists resources with the "
+            "same scope, allowing multiple platform instances to share one Docker daemon."
+        ),
+    )
     port_range_start: int = Field(
-        default=9000,
+        default=49152,
         ge=1,
         le=65535,
         description="First host port to consider when publishing container ports for this executor.",
     )
     port_range_end: int = Field(
-        default=9100,
+        default=49251,
         ge=1,
         le=65535,
         description="Last host port (inclusive) to consider when publishing container ports for this executor.",

@@ -597,7 +597,12 @@ async def test_delete_deployment_already_deleted_hard_deletes(deployment_service
 
     # Assert
     assert result is None  # Returns None for hard delete
-    mock_entity_client.delete.assert_called_once_with(ModelDeploymentEntity, deleted_entity.name, workspace="default")
+    mock_entity_client.delete.assert_called_once_with(
+        ModelDeploymentEntity,
+        deleted_entity.name,
+        workspace="default",
+        expected_db_version=deleted_entity.db_version,
+    )
 
 
 @pytest.mark.asyncio

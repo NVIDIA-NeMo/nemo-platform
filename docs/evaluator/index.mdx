@@ -120,10 +120,12 @@ result = job.get_result()
 
 <Note>
 
-**Agent evaluation runs from the SDK today.** Task-driven runs use the local SDK
-(`AgentEvaluator().run()`); running them as durable platform jobs — the way dataset-driven metrics
-already can — is [in progress](/documentation/evaluate-models/agent-eval). Use the local SDK path for
-now.
+**Agent evaluation has local interfaces and durable platform interfaces.**
+- Use `await AgentEvaluator().run(tasks=..., target=...)` for local task-driven SDK runs
+that do not require running nemo-platform.
+- Use the Evaluator plugin's `uv run nemo evaluator agent-evaluate submit` job for durable runs with inline
+tasks or stored tasksets. The high-level `client.evaluator.run/submit` interfaces
+above remain dataset-driven only.
 
 </Note>
 
@@ -203,6 +205,8 @@ Most teams get the best results by starting metric-first and scaling up:
   custom metrics, dataset sources, and how scores aggregate.
 - **Evaluate agents:** [Agent Evaluation](/documentation/evaluate-models/agent-eval) — the task-driven
   model, targets, and runners.
+- **Compare runs:** [Experiments](/documentation/evaluate-models/experiments) — roll evaluation runs up
+  into one leaderboard ranked by cost, latency, and evaluator scores.
 - **Run it in code:** [SDK Resources](/documentation/evaluate-models/sdk-resources) — the `run()` and
   `submit()` calling surface.
 - **Full API:** [Evaluator API Reference](/documentation/reference/api-reference).

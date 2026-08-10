@@ -13,6 +13,10 @@ vi.mock('@studio/components/filesets/hooks/useIsBinaryFile', () => ({
   useIsBinaryFile: () => ({ isBinary: false, isLoading: false }),
 }));
 
+vi.mock('@studio/components/FilesetFilePreviewPanel/FilesetImagePreview', () => ({
+  FilesetImagePreview: ({ filePath }: { filePath: string }) => <img alt={filePath} />,
+}));
+
 const baseProps = {
   workspace: 'default',
   filesetName: 'test-dataset',
@@ -73,6 +77,17 @@ describe('FilesetFilePreviewContent', () => {
       </TestProviders>
     );
     expect(screen.getByText('Error: boom')).toBeInTheDocument();
+  });
+
+  it('uses the image preview instead of the text editor for image files', () => {
+    render(
+      <TestProviders>
+        <FilesetFilePreviewContent {...baseProps} filePath="folder/chart.png" />
+      </TestProviders>
+    );
+
+    expect(screen.getByRole('img', { name: 'folder/chart.png' })).toBeInTheDocument();
+    expect(screen.queryByTestId('nv-code-editor-root')).not.toBeInTheDocument();
   });
 
   it('invokes onFolderClick with the cumulative folder path', () => {

@@ -7,14 +7,14 @@ Covers:
 - inject_gateway_url: IGW URL construction, setdefault semantics, explicit
   base_url override, NEMO_BASE_URL env var, non-openai LLMs left unchanged,
   original config dict not mutated.
+- inject_fabric_gateway_url: shared and harness-specific Fabric models are
+  bound to the IGW without overriding explicit endpoints.
 - merge_agent_config: per-section merge semantics for component dicts vs.
   scalar/dict sections, workflow ownership, and input immutability.
 - temp_injected_config: temp file written to same directory as source,
   injected content is correct, file is deleted on context exit, and
   ``extra_config`` agent merge works alongside gateway URL injection.
 - EvaluateAgentSpec workspace and agent field semantics.
-- OptimizeAgentJob._resolve_agent: the three-mode classifier (None,
-  EndpointURL, AgentRef) and SDK-based agent fetch.
 """
 
 from __future__ import annotations
@@ -25,10 +25,11 @@ from typing import Any
 import pytest
 import yaml
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob, EvaluateAgentSpec
-from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
 from nemo_agents_plugin.refs import AgentRef
 from nemo_agents_plugin.utils import (
+    get_internal_base_url,
     inject_default_model,
+    inject_fabric_gateway_url,
     inject_gateway_url,
     merge_agent_config,
     preflight_validate_llm_models,
@@ -137,6 +138,85 @@ class TestInjectGatewayUrl:
     def test_trailing_slash_stripped_from_base_url(self) -> None:
         result = inject_gateway_url(self._BASE_CONFIG, "default", base_url="http://platform:8080/")
         assert "//apis" not in result["llms"]["llm"]["base_url"]
+
+
+class TestInjectFabricGatewayUrl:
+    def test_injects_shared_and_harness_model_base_url(self) -> None:
+        config = {
+            "models": {"default": {"provider": "openai", "model": "test-model"}},
+            "harnesses": {
+                "hermes": {
+                    "kind": "hermes",
+                    "model": {"provider": "nvidia", "model": "test-harness-model"},
+                },
+                "claude": {
+                    "kind": "claude",
+                    "model": {"provider": "anthropic", "model": "anthropic/claude-sonnet-4-5"},
+                },
+            },
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+        expected_url = "http://platform:8080/apis/inference-gateway/v2/workspaces/test-workspace/openai/-/v1"
+
+        assert result["models"]["default"]["base_url"] == expected_url
+        assert result["harnesses"]["hermes"]["model"]["base_url"] == expected_url
+        assert "base_url" not in result["harnesses"]["claude"]["model"]
+        assert "settings" not in result["models"]["default"]
+        assert "settings" not in result["harnesses"]["hermes"]["model"]
+        assert "settings" not in config["models"]["default"]
+        assert "settings" not in config["harnesses"]["hermes"]["model"]
+
+    def test_preserves_explicit_top_level_endpoint_and_input(self) -> None:
+        config = {
+            "models": {
+                "default": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "base_url": "http://explicit:8080/v1",
+                }
+            }
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+
+        assert result["models"]["default"]["base_url"] == "http://explicit:8080/v1"
+        assert config["models"]["default"]["base_url"] == "http://explicit:8080/v1"
+
+    def test_promotes_legacy_settings_endpoint(self) -> None:
+        config = {
+            "models": {
+                "default": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "settings": {"base_url": "http://legacy:8080/v1"},
+                }
+            }
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+
+        assert result["models"]["default"]["base_url"] == "http://legacy:8080/v1"
+        assert "base_url" not in result["models"]["default"]["settings"]
+        assert "base_url" not in config["models"]["default"]
+        assert config["models"]["default"]["settings"]["base_url"] == "http://legacy:8080/v1"
+
+
+class TestGetInternalBaseUrl:
+    def test_returns_none_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEMO_INTERNAL_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_INTERNAL_BASE_URL", raising=False)
+        assert get_internal_base_url() is None
+
+    def test_reads_nmp_internal_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEMO_INTERNAL_BASE_URL", raising=False)
+        monkeypatch.setenv("NMP_INTERNAL_BASE_URL", "http://nmp-api:8080/")
+        assert get_internal_base_url() == "http://nmp-api:8080"
+
+    def test_nemo_internal_base_url_takes_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("NEMO_INTERNAL_BASE_URL", "http://nemo:8080")
+        monkeypatch.setenv("NMP_INTERNAL_BASE_URL", "http://nmp:8080")
+        assert get_internal_base_url() == "http://nemo:8080"
 
 
 # ---------------------------------------------------------------------------
@@ -940,134 +1020,6 @@ class TestTempInjectedConfigWithExtraConfig:
         assert "/workspaces/default/" in loaded["llms"]["llm"]["base_url"]
 
 
-# ---------------------------------------------------------------------------
-# OptimizeAgentSpec — same union-typed agent field as evaluate, plus a
-# distinct minimum: optimize-config is required.
-# ---------------------------------------------------------------------------
-
-
-class TestOptimizeAgentSpec:
-    def test_agent_defaults_to_none(self) -> None:
-        cfg = OptimizeAgentSpec(optimize_config="/tmp/optimize.yml")
-        assert cfg.agent is None
-
-    def test_agent_accepts_bare_name(self) -> None:
-        cfg = OptimizeAgentSpec(optimize_config="/tmp/optimize.yml", agent="react-agent")  # ty: ignore[invalid-argument-type]
-        assert cfg.agent == "react-agent"
-
-    def test_agent_accepts_http_url(self) -> None:
-        cfg = OptimizeAgentSpec(
-            optimize_config="/tmp/optimize.yml",
-            agent="http://localhost:8080",  # ty: ignore[invalid-argument-type]
-        )
-        assert cfg.agent == "http://localhost:8080"
-
-    def test_workspace_defaults_to_default(self) -> None:
-        cfg = OptimizeAgentSpec(optimize_config="/tmp/optimize.yml")
-        assert cfg.workspace == "default"
-
-
-class TestOptimizeAgentResolveAgent:
-    """``OptimizeAgentJob._resolve_agent`` projects the union to (config, endpoint).
-
-    Three modes are exercised: ``None`` → no merge, no endpoint (the inline-
-    workflow path); :class:`EndpointURL` → no merge, endpoint pass-through
-    (opaque-service mode, with the inert-sweeps warning); :class:`AgentRef`
-    → SDK-based fetch and config dict for downstream merging.
-    """
-
-    def test_none_returns_none_pair(self) -> None:
-        """No agent → no merge, no endpoint."""
-        assert OptimizeAgentJob._resolve_agent(None, workspace="default", sdk=None) == (None, None)
-
-    def test_endpoint_url_returns_passthrough(self, caplog: pytest.LogCaptureFixture) -> None:
-        """URL mode is opaque-service: pass the URL through and warn that
-        local sweeps don't reach the remote agent.
-        """
-        url = EndpointURL("http://localhost:8080")
-        with caplog.at_level("WARNING"):
-            agent_config, endpoint = OptimizeAgentJob._resolve_agent(url, workspace="default", sdk=None)
-        assert agent_config is None
-        assert endpoint == "http://localhost:8080"
-        assert any("opaque" in rec.message.lower() or "remote" in rec.message.lower() for rec in caplog.records)
-
-    def test_agent_ref_without_sdk_raises_local_run_error(self) -> None:
-        """A platform-managed name with no SDK is a configuration error;
-        raise early with an actionable message instead of running.
-        """
-        ref = AgentRef("react-agent")
-        with pytest.raises(LocalRunError, match="NeMoPlatform"):
-            OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=None)
-
-    def test_agent_ref_fetches_via_sdk(self) -> None:
-        """``--agent react-agent`` calls ``sdk.agents.get(name=..., workspace=...)``."""
-
-        captured: dict[str, object] = {}
-
-        class _StubAgents:
-            def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-                captured["name"] = name
-                captured["workspace"] = workspace
-                return {
-                    "name": name,
-                    "config": {
-                        "workflow": {"_type": "react_agent", "llm_name": "llm"},
-                        "llms": {"llm": {"_type": "openai", "model_name": "x"}},
-                    },
-                }
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.agents = _StubAgents()
-
-        ref = AgentRef("react-agent")
-        agent_config, endpoint = OptimizeAgentJob._resolve_agent(
-            ref,
-            workspace="default",
-            sdk=_StubSDK(),  # type: ignore[arg-type]
-        )
-
-        assert captured == {"name": "react-agent", "workspace": "default"}
-        assert endpoint is None
-        assert agent_config is not None
-        assert agent_config["workflow"]["_type"] == "react_agent"
-
-    def test_ws_qualified_agent_ref_overrides_workspace_arg(self) -> None:
-        """``"prod/react-agent"`` wins over the spec's ``workspace`` field."""
-        captured: dict[str, object] = {}
-
-        class _StubAgents:
-            def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-                captured["name"] = name
-                captured["workspace"] = workspace
-                return {"config": {"workflow": {"_type": "react_agent"}}}
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.agents = _StubAgents()
-
-        ref = AgentRef("prod/react-agent")
-        OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())  # type: ignore[arg-type]
-
-        assert captured == {"name": "react-agent", "workspace": "prod"}
-
-    def test_agent_ref_with_empty_config_raises(self) -> None:
-        """An agent stored without a usable config can't be merged — fail loudly."""
-
-        class _StubAgents:
-            def get(self, *, name: str, workspace: str) -> dict[str, Any]:
-                del name, workspace
-                return {"config": {}}
-
-        class _StubSDK:
-            def __init__(self) -> None:
-                self.agents = _StubAgents()
-
-        ref = AgentRef("react-agent")
-        with pytest.raises(RuntimeError, match="empty or invalid stored config"):
-            OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())  # type: ignore[arg-type]
-
-
 class TestRebaseOptimizeOutputs:
     def test_repoints_eval_and_optimizer_outputs(self, tmp_path: Path) -> None:
         config = yaml.safe_load(
@@ -1390,6 +1342,83 @@ class TestValidateLLMModels:
 
         assert vms.calls == [{"name": "shared-model", "workspace": "default"}]
 
+    def test_strips_workspace_qualifier_before_lookup(self) -> None:
+        """A ``{workspace}/model`` value is stripped to bare ``model`` before retrieve.
+
+        Mirrors IGW's OpenAI proxy. ``nemo setup`` stores the qualified form as
+        the default, so ``${NEMO_DEFAULT_MODEL}`` resolves to e.g.
+        ``default/nvidia-nemotron`` — the VM route takes workspace as a separate
+        path segment, so the bare name is what must reach the SDK.
+        """
+        config = {
+            "llms": {
+                "agent_llm": {"_type": "openai", "model_name": "default/nvidia-nemotron"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == [{"name": "nvidia-nemotron", "workspace": "default"}]
+
+    def test_qualified_name_routes_to_its_own_workspace(self) -> None:
+        """A qualified ``ws/model`` looks up ``model`` in ``ws``, not the path workspace.
+
+        ``parse_qualified_name`` splits on the first ``/``: a qualifier always
+        wins over the fallback workspace, so a cross-workspace reference resolves
+        where it points. Bare names fall back to the path workspace.
+        """
+        config = {
+            "llms": {
+                "bare": {"_type": "openai", "model_name": "plain-model"},
+                "other_ws": {"_type": "openai", "model_name": "prod/foo"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        calls = sorted((c["workspace"], c["name"]) for c in vms.calls)
+        assert calls == [("default", "plain-model"), ("prod", "foo")]
+
+    def test_qualified_and_bare_forms_dedupe_to_one_lookup(self) -> None:
+        """``default/foo`` and ``foo`` normalize to the same name → one retrieve.
+
+        Dedup happens *after* stripping, so the same model spelled both ways
+        across LLM keys costs a single lookup.
+        """
+        config = {
+            "llms": {
+                "qualified": {"_type": "openai", "model_name": "default/foo"},
+                "bare": {"_type": "openai", "model_name": "foo"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == [{"name": "foo", "workspace": "default"}]
+
+    def test_bare_workspace_prefix_normalizes_to_empty_and_is_skipped(self) -> None:
+        """A ``model_name`` of exactly ``{workspace}/`` strips to '' and is skipped.
+
+        The empty string is not a routable model name; it must not reach the SDK.
+        """
+        config = {
+            "llms": {
+                "empty_after_strip": {"_type": "openai", "model_name": "default/"},
+            }
+        }
+        vms = _RecordingVirtualModels()
+        sdk = _StubSDKWithVirtualModels(vms)
+
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
+
+        assert vms.calls == []
+
     def test_distinct_model_names_each_get_one_call(self) -> None:
         config = {
             "llms": {
@@ -1421,7 +1450,7 @@ class TestValidateLLMModels:
         message = str(exc_info.value)
         # Names the missing model + the YAML key + the workspace, and points
         # the user at concrete recovery steps.
-        assert "'missing-model'" in message
+        assert "'default/missing-model'" in message
         assert "llms.judge_llm.model_name" in message
         assert "'default'" in message
         assert "NEMO_DEFAULT_MODEL" in message
@@ -1441,8 +1470,8 @@ class TestValidateLLMModels:
             validate_llm_models(config, workspace="default", sdk=sdk)
 
         message = str(exc_info.value)
-        assert "'missing-1'" in message
-        assert "'missing-2'" in message
+        assert "'default/missing-1'" in message
+        assert "'default/missing-2'" in message
 
     def test_non_igw_llm_types_are_skipped(self) -> None:
         """LLMs whose ``_type`` doesn't route through IGW aren't validatable here."""
@@ -1655,4 +1684,4 @@ class TestPreflightValidateLLMModels:
 
         # Sanity-check the message shape; full message coverage lives in
         # TestValidateLLMModels.
-        assert "'missing-model'" in str(exc_info.value)
+        assert "'default/missing-model'" in str(exc_info.value)

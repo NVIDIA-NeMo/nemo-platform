@@ -142,6 +142,27 @@ local process instead of the cluster Service.
 {{- end -}}
 
 {{/*
+Validate that Envoy retires idle upstream API connections before Uvicorn closes
+them. This avoids reusing a backend connection that the API already dropped.
+*/}}
+{{- define "nemo-platform.validateEnvoyKeepAliveTimeouts" -}}
+{{- if and .Values.api.enabled (include "nemo-platform.authEnabled" .) .Values.envoyProxy.enabled -}}
+{{- $apiKeepAliveSeconds := .Values.api.server.keepAliveTimeoutSeconds | int -}}
+{{- if lt $apiKeepAliveSeconds 1 -}}
+{{- fail "api.server.keepAliveTimeoutSeconds must be greater than 0" -}}
+{{- end -}}
+{{- $upstreamIdle := .Values.envoyProxy.timeouts.upstreamIdle | toString -}}
+{{- if not (regexMatch "^[1-9][0-9]*s$" $upstreamIdle) -}}
+{{- fail "envoyProxy.timeouts.upstreamIdle must be a positive whole-second duration like \"4s\"" -}}
+{{- end -}}
+{{- $upstreamIdleSeconds := trimSuffix "s" $upstreamIdle | int -}}
+{{- if ge $upstreamIdleSeconds $apiKeepAliveSeconds -}}
+{{- fail (printf "envoyProxy.timeouts.upstreamIdle (%s) must be less than api.server.keepAliveTimeoutSeconds (%ds)" $upstreamIdle $apiKeepAliveSeconds) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Pod annotations
 */}}
 {{- define "nemo-platform.podAnnotations" -}}
@@ -340,6 +361,116 @@ nemo-common.database.password generates a POSTGRES_DB_PASSWORD environment value
       name: {{ include "nemo-common.postgresql.secret-name" .}}
       key: {{ include "nemo-common.postgresql.password-key" .}}
 {{- end }}
+{{- end -}}
+
+{{/*
+Embedded ClickHouse full name (service and generated secret name).
+*/}}
+{{- define "nemo-common.clickhouse.fullname" -}}
+{{- printf "%s-clickhouse" (include "nemo-platform.fullname" . | trunc 51 | trimSuffix "-") -}}
+{{- end -}}
+
+{{/*
+Name of the service account to use for the embedded ClickHouse pod.
+*/}}
+{{- define "nemo-common.clickhouse.serviceAccountName" -}}
+{{- if .Values.clickhouse.serviceAccount.create -}}
+{{- default (include "nemo-common.clickhouse.fullname" .) .Values.clickhouse.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.clickhouse.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Whether the embedded ClickHouse should be rendered.
+*/}}
+{{- define "nemo-common.clickhouse.enabled" -}}
+{{- if .Values.clickhouse.enabled -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+ClickHouse HTTP URL used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.url" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- printf "http://%s:%d" (include "nemo-common.clickhouse.fullname" .) (.Values.clickhouse.service.httpPort | int) -}}
+{{- else -}}
+{{- $host := required "externalClickhouse.host is required when clickhouse.enabled=false" .Values.externalClickhouse.host -}}
+{{- $scheme := ternary "https" "http" .Values.externalClickhouse.secure -}}
+{{- printf "%s://%s:%d" $scheme $host (.Values.externalClickhouse.port | int) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+ClickHouse username used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.user" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.username -}}
+{{- else -}}
+{{- .Values.externalClickhouse.user -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+ClickHouse database used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.database" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.database -}}
+{{- else -}}
+{{- .Values.externalClickhouse.database -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Secret containing the ClickHouse password used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.secretName" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- default (include "nemo-common.clickhouse.fullname" .) .Values.clickhouse.auth.existingSecret -}}
+{{- else -}}
+{{- required "externalClickhouse.existingSecret is required when clickhouse.enabled=false" .Values.externalClickhouse.existingSecret -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Key containing the ClickHouse password used by Intake.
+*/}}
+{{- define "nemo-common.clickhouse.passwordKey" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- if .Values.clickhouse.auth.existingSecret -}}
+{{- .Values.clickhouse.auth.existingSecretPasswordKey | default "password" -}}
+{{- else -}}
+password
+{{- end -}}
+{{- else -}}
+{{- required "externalClickhouse.existingSecretPasswordKey is required when clickhouse.enabled=false" .Values.externalClickhouse.existingSecretPasswordKey -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Checksum of the ClickHouse password used by Intake. Prefer an explicitly
+configured password for a chart-managed Secret, then the live Secret value, so
+credential changes roll both API and ClickHouse pods together. During first
+install with a generated password, use a deterministic fallback until the
+Secret exists.
+*/}}
+{{- define "nemo-common.clickhouse.credentialsChecksum" -}}
+{{- $_ := include "nemo-common.clickhouse.url" . -}}
+{{- $secretName := include "nemo-common.clickhouse.secretName" . -}}
+{{- $passwordKey := include "nemo-common.clickhouse.passwordKey" . -}}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
+{{- $passwordData := get ($secret.data | default dict) $passwordKey | default "" -}}
+{{- if and .Values.clickhouse.enabled (not .Values.clickhouse.auth.existingSecret) .Values.clickhouse.auth.password -}}
+{{- .Values.clickhouse.auth.password | toString | b64enc | sha256sum -}}
+{{- else if $passwordData -}}
+{{- $passwordData | sha256sum -}}
+{{- else -}}
+{{- printf "%s:%s" $secretName $passwordKey | sha256sum -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

@@ -4,7 +4,7 @@
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any, Protocol
 from urllib.parse import urlparse
@@ -118,7 +118,7 @@ def create_experiment(
     experiment_group_id: str,
     dataset_name: str,
     dataset_version: str,
-    metadata: dict,
+    metadata: Mapping[str, object],
     client: httpx.Client | None = None,
 ) -> None:
     """Create the per-run Experiment under ``experiment_group_id``.
@@ -127,13 +127,13 @@ def create_experiment(
     409 here is a genuine collision and is surfaced as ``RuntimeError`` along
     with every other non-2xx. No auth header.
     """
-    url = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{workspace}/experiments"
+    url = f"{base_url.rstrip('/')}/apis/intake/v2/workspaces/{workspace}/evaluations"
     body = {
         "name": name,
         "experiment_group_id": experiment_group_id,
         "dataset_name": dataset_name,
         "dataset_version": dataset_version,
-        "metadata": metadata,
+        "metadata": {key: str(value) for key, value in metadata.items()},
     }
     owns_client = client is None
     client = client or httpx.Client(timeout=30.0)

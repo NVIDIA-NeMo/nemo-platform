@@ -6,11 +6,15 @@ import { SafeSynthesizerNavigation } from '@studio/components/SafeSynthesizerNav
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 // Mock the hooks
 vi.mock('@studio/hooks/useWorkspaceFromPath');
-vi.mock('react-router-dom');
+// Partial mock: route helpers call generatePath internally, so only useNavigate is stubbed.
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
+  useNavigate: vi.fn(),
+}));
 
 const mockNavigate = vi.fn();
 const mockuseWorkspaceFromPath = vi.mocked(useWorkspaceFromPath);

@@ -25,6 +25,7 @@ from nemo_evaluator.api.service.result_service import ResultService
 from nemo_evaluator.authz import scope
 from nemo_platform_plugin.api.parsed_filter import ParsedFilter, make_filter_dep
 from nemo_platform_plugin.authz import CallerKind, PermissionSet, path_rule, perm
+from nemo_platform_plugin.entity_client import NemoEntityConflictError
 from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 from nemo_platform_plugin.log_utils import sanitize_for_log
 from nemo_platform_plugin.schema import DatetimeFilter, Page
@@ -164,6 +165,11 @@ async def delete_agent_eval_result(
         return None
     except HTTPException:
         raise
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Result was modified by another request: {workspace}/{name}. Refresh and try again.",
+        ) from exc
     except Exception:
         logger.exception(f"Failed to delete agent-eval result {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
@@ -252,6 +258,11 @@ async def delete_eval_result(
         return None
     except HTTPException:
         raise
+    except NemoEntityConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Result was modified by another request: {workspace}/{name}. Refresh and try again.",
+        ) from exc
     except Exception:
         logger.exception(f"Failed to delete eval result {sanitize_for_log(workspace)}/{sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")

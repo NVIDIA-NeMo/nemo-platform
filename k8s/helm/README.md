@@ -29,6 +29,93 @@ On upgrade, the generated Secret must already exist and contain
 Secret instead of generating a replacement key; existing encrypted platform
 secrets will not decrypt with a new key.
 
+## Intake and ClickHouse
+
+Intake is included in the platform API service group. By default, the chart
+deploys a single-node embedded ClickHouse 26.3 LTS service, and Intake creates
+and migrates its own `intake` database on first use.
+
+The embedded ClickHouse is intended for development, evaluation, and
+non-critical single-node installations. It does not provide replication or
+automatic backups. For a production deployment that requires high availability,
+set `clickhouse.enabled` to `false` and provide a separately managed ClickHouse:
+
+First, create the credentials Secret in the Helm release namespace. The Secret
+key must match `externalClickhouse.existingSecretPasswordKey`:
+
+```shell
+kubectl create secret generic clickhouse-credentials \
+  --namespace <release-namespace> \
+  --from-literal=password='<clickhouse-password>'
+```
+
+Then configure the external connection:
+
+```yaml
+clickhouse:
+  enabled: false
+
+externalClickhouse:
+  host: clickhouse.example.internal
+  port: 8443
+  secure: true
+  user: nemo
+  database: intake
+  existingSecret: clickhouse-credentials
+  existingSecretPasswordKey: password
+```
+
+The external user must be allowed to create the configured database, tables,
+materialized views, and indexes because Intake owns its ClickHouse migrations.
+
+### ClickHouse sizing
+
+Use retained span count as an initial operational threshold, not as a disk-size
+estimate. Span `input`, `output`, and attribute payloads vary substantially.
+Measure `bytes_on_disk` from representative traffic before setting production
+storage:
+
+```sql
+SELECT
+    table,
+    sum(rows) AS physical_rows,
+    formatReadableSize(sum(bytes_on_disk)) AS disk
+FROM system.parts
+WHERE active AND database = 'intake'
+GROUP BY table
+ORDER BY table;
+```
+
+The following are starting points for the current Intake schema and interactive
+query workload:
+
+| Retained Intake spans | Topology | ClickHouse resources | Storage |
+| --- | --- | --- | --- |
+| Up to 1 million | Embedded single node for non-critical workloads | 2 vCPU, 8 GiB RAM | Fast SSD, at least 20 GiB and 2× measured active data |
+| 1–10 million | External preferred; embedded only when downtime and data loss are acceptable | 4–8 vCPU, 16–32 GiB RAM | Provisioned-IOPS SSD, at least 100 GiB and 2× measured active data |
+| More than 10 million, or any HA requirement | Managed ClickHouse or an operator-managed replicated cluster | Start at 8 vCPU and 32 GiB RAM per replica, then load-test the actual ingest/read mix | Size from measured compression, retention, replication, and merge headroom |
+
+Intake currently retains spans and its trace index for 90 days. Evaluator
+results and annotations do not have a time-based TTL, so include their continuing
+growth in capacity planning. ReplacingMergeTree retries also leave physical row
+versions until background merges complete.
+
+For large or frequently queried deployments, ClickHouse recommends:
+
+- At least 8 GiB RAM even at low data volumes.
+- A general-purpose starting ratio of 4 GiB RAM per CPU core.
+- Provisioned-IOPS SSDs for latency-sensitive workloads.
+- Roughly 1:30 to 1:50 RAM-to-storage for frequently accessed large datasets.
+- Replication for production durability; vertically scale replicas before
+  adding shards.
+
+Validate CPU, query peak memory, active parts, merge backlog, disk latency, and
+free space under representative batched OTLP ingestion before promoting a tier.
+See the upstream
+[ClickHouse sizing guide](https://clickhouse.com/docs/guides/oss/best-practices/sizing-and-hardware-recommendations)
+and
+[OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
+
 ## Values
 
 | Key | Type | Default | Description |
@@ -36,12 +123,13 @@ secrets will not decrypt with a new key.
 | api | object | This object has the following default values for the API configuration. | API configuration settings for the api deployment |
 | api.affinity | object | `{}` | Affinity configuration for the API service. |
 | api.annotations | object | `{}` | Annotations to add to the API service deployment. |
-| api.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80}` | Specifies autoscaling configurations for the deployment. |
+| api.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":null}` | Specifies autoscaling configurations for the deployment. |
 | api.autoscaling.annotations | object | `{}` | Annotations for the HorizontalPodAutoscaler. |
 | api.autoscaling.enabled | bool | `false` | Whether to enable horizontal pod autoscaler. |
 | api.autoscaling.maxReplicas | int | `10` | The maximum number of replicas for the deployment. |
 | api.autoscaling.minReplicas | int | `1` | The minimum number of replicas for the deployment. |
-| api.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
+| api.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. Requires api.resources.requests.cpu. |
+| api.autoscaling.targetMemoryUtilizationPercentage | string | `nil` | The target memory utilization percentage. Requires api.resources.requests.memory. |
 | api.enabled | bool | `true` | Specifies whether to enable the api deployment. |
 | api.extraArgs | list | `[]` | Additional arguments to pass to the Platform API service |
 | api.extraVolumeMounts | list | `[]` | Additional volume mounts to add to the Platform API container. |
@@ -70,8 +158,10 @@ secrets will not decrypt with a new key.
 | api.readinessProbe.periodSeconds | int | `10` | The frequency in seconds to perform the readiness probe. |
 | api.readinessProbe.timeoutSeconds | int | `5` | The timeout in seconds for the readiness probe. |
 | api.replicaCount | int | `1` | Number of replicas for the API service. |
-| api.resources | object | `{}` | Kubernetes deployment resources configuration for the API service. |
+| api.resources | object | `{}` | Kubernetes deployment resources configuration for the API service. Utilization-based autoscaling requires a matching resource request. |
 | api.securityContext | object | `{}` | Container-level security context settings for the API service. |
+| api.server | object | `{"keepAliveTimeoutSeconds":5}` | Platform API server settings. |
+| api.server.keepAliveTimeoutSeconds | int | `5` | Seconds Uvicorn keeps idle HTTP connections open. Must be greater than envoyProxy.timeouts.upstreamIdle when Envoy is enabled. |
 | api.service | object | This object has the following default values for the service configuration. | Service configuration for the API service. |
 | api.service.annotations | object | `{}` | Annotations for the API service. |
 | api.service.port | int | `8080` | The port number to expose for the service. |
@@ -96,6 +186,39 @@ secrets will not decrypt with a new key.
 | api.tolerations | list | `[]` | Tolerations configuration for the API service. |
 | api.topologySpreadConstraints | list | `[]` | Topology spread constraints for the API service pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
 | basePlatformConfig | string | This object has the following default values for the base platform configuration. | Base platform configuration settings |
+| clickhouse | object | This object has the following default values for the embedded ClickHouse configuration. | Embedded ClickHouse configuration for Intake. The embedded deployment is a single-node convenience topology. Use an external, replicated ClickHouse deployment for production environments that require high availability. These values are used only when `clickhouse.enabled` is true. |
+| clickhouse.affinity | object | `{}` | Affinity for the ClickHouse pod. |
+| clickhouse.annotations | object | `{}` | Annotations to add to the ClickHouse StatefulSet. |
+| clickhouse.auth.database | string | `"intake"` | ClickHouse database used by Intake. |
+| clickhouse.auth.existingSecret | string | `""` | Name of an existing Secret containing the ClickHouse password. If empty, the chart creates one. |
+| clickhouse.auth.existingSecretPasswordKey | string | `"password"` | Key in auth.existingSecret containing the ClickHouse password. |
+| clickhouse.auth.password | string | `nil` | ClickHouse password used when auth.existingSecret is empty. If unset, the chart generates a random password. |
+| clickhouse.auth.username | string | `"nemo"` | ClickHouse username used by Intake. |
+| clickhouse.enabled | bool | `true` | Whether to deploy the embedded ClickHouse. Set to false to use `externalClickhouse`. |
+| clickhouse.image.pullPolicy | string | `"IfNotPresent"` | ClickHouse image pull policy. |
+| clickhouse.image.repository | string | `"docker.io/clickhouse/clickhouse-server"` | ClickHouse image repository. Intake is tested against the 26.3 LTS release line. |
+| clickhouse.image.tag | string | `"26.3"` | ClickHouse image tag. |
+| clickhouse.livenessProbe | object | This object has the following default values for the liveness probe configuration. | Liveness probe configuration for the ClickHouse container. |
+| clickhouse.nodeSelector | object | `{}` | Node selector for the ClickHouse pod. |
+| clickhouse.persistence.enabled | bool | `true` | Whether to persist embedded ClickHouse data. |
+| clickhouse.persistence.size | string | `"20Gi"` | PersistentVolumeClaim size. See the Intake and ClickHouse sizing guidance in the chart README. |
+| clickhouse.persistence.storageClass | string | `""` | Storage class for the ClickHouse PVC. If unset, the cluster default is used. |
+| clickhouse.podAnnotations | object | `{}` | Annotations to add to the ClickHouse pod. |
+| clickhouse.podLabels | object | `{}` | Additional labels to add to the ClickHouse pod. |
+| clickhouse.podSecurityContext | object | `{}` | Optional pod security context for the ClickHouse pod. |
+| clickhouse.readinessProbe | object | This object has the following default values for the readiness probe configuration. | Readiness probe configuration for the ClickHouse container. |
+| clickhouse.resources | object | `{"requests":{"cpu":"2","memory":"8Gi"}}` | Resource requests and limits for the ClickHouse container. The defaults are the supported small-volume starting point. |
+| clickhouse.securityContext | object | `{}` | Optional container security context for the ClickHouse container. |
+| clickhouse.service.annotations | object | `{}` | Annotations to add to the ClickHouse Service. |
+| clickhouse.service.httpPort | int | `8123` | ClickHouse HTTP interface port used by Intake. |
+| clickhouse.service.nativePort | int | `9000` | ClickHouse native protocol port exposed inside the cluster for administration. |
+| clickhouse.serviceAccount | object | This object has the following default values for the service account configuration. | Service account for the ClickHouse pod. |
+| clickhouse.serviceAccount.annotations | object | `{}` | Annotations to add to the service account. |
+| clickhouse.serviceAccount.automount | bool | `false` | Automatically mount the ServiceAccount's API credentials. |
+| clickhouse.serviceAccount.create | bool | `true` | Specifies whether a service account should be created for the ClickHouse pod. |
+| clickhouse.serviceAccount.name | string | `""` | The name of the service account to use. If not set and create is true, a name is generated from the release fullname. |
+| clickhouse.startupProbe | object | This object has the following default values for the startup probe configuration. | Startup probe configuration for the ClickHouse container. |
+| clickhouse.tolerations | list | `[]` | Tolerations for the ClickHouse pod. |
 | core | object | This object has the following default values for the core deployment configuration. | Core deployment configuration settings |
 | core.controller.affinity | object | `{}` | Affinity configuration for the controller service. |
 | core.controller.annotations | object | `{}` | Annotations to add to the controller service deployment. |
@@ -154,7 +277,7 @@ secrets will not decrypt with a new key.
 | core.storage.existingPersistentVolumeName | string | `""` | If set, pods will mount this persistent volume for job-scoped storage and we will not create a new persistent volume claim. |
 | core.storage.size | string | `"200Gi"` | size of the persistent volume claim used for persistent storage |
 | core.storage.storageClass | string | `""` | Which storageClass to use when creating a new persistent volume claim. Empty string uses the cluster's default StorageClass. |
-| core.storage.volumePermissionsImage | string | `"busybox"` | volumePermissionsImage is the image used to set permissions on the volume |
+| core.storage.volumePermissionsImage | string | `"docker.io/library/busybox:stable"` | volumePermissionsImage is the image used to set permissions on the volume |
 | core.telemetry | object | `{}` | OpenTelemetry configuration overrides for the platform deployment. |
 | env | object | `{}` | Environment variables that will be applied to every deployment pod. Uses a simple key value map structure like MY_ENV_VAR: the-key and works with valueFrom as well. |
 | envFromSecret | string | `""` | Optional. Name of an existing Kubernetes Secret to load as env vars (envFrom) for the API pod. When set, the chart does not create or generate the default api-env Secret; use your own Secret (for example, from Vault or sealed-secrets). |
@@ -162,12 +285,13 @@ secrets will not decrypt with a new key.
 | envoyProxy.adminPort | int | `9901` | Envoy Admin port |
 | envoyProxy.affinity | object | `{}` | Affinity configuration for the Envoy pods. |
 | envoyProxy.annotations | object | `{}` | Annotations to add to the Envoy service deployment. |
-| envoyProxy.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80}` | Specifies autoscaling configurations for the deployment. |
+| envoyProxy.autoscaling | object | `{"annotations":{},"enabled":false,"maxReplicas":10,"minReplicas":1,"targetCPUUtilizationPercentage":80,"targetMemoryUtilizationPercentage":null}` | Specifies autoscaling configurations for the deployment. |
 | envoyProxy.autoscaling.annotations | object | `{}` | Annotations for the HorizontalPodAutoscaler. |
 | envoyProxy.autoscaling.enabled | bool | `false` | Whether to enable horizontal pod autoscaler. |
 | envoyProxy.autoscaling.maxReplicas | int | `10` | The maximum number of replicas for the deployment. |
 | envoyProxy.autoscaling.minReplicas | int | `1` | The minimum number of replicas for the deployment. |
-| envoyProxy.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. |
+| envoyProxy.autoscaling.targetCPUUtilizationPercentage | int | `80` | The target CPU utilization percentage. Requires envoyProxy.resources.requests.cpu. |
+| envoyProxy.autoscaling.targetMemoryUtilizationPercentage | string | `nil` | The target memory utilization percentage. Requires envoyProxy.resources.requests.memory. |
 | envoyProxy.configOverride | string | `""` | Full Envoy config override. When set, this replaces the chart's default passthrough Envoy config. |
 | envoyProxy.enabled | bool | `true` | Specifies whether to enable the Envoy proxy deployment. Rendered only when platform config has auth.enabled: true. |
 | envoyProxy.extraArgs | list | `[]` | Extra arguments to append to the envoy container command. Useful for passing server flags such as concurrency. Example: ["--concurrency", "4"] |
@@ -185,7 +309,7 @@ secrets will not decrypt with a new key.
 | envoyProxy.podSecurityContext | object | This object has the following default values for the pod security context. | Pod-level security context settings for the Envoy service. |
 | envoyProxy.podSecurityContext.fsGroup | int | `1000` | The file system group ID to use for all containers. |
 | envoyProxy.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/ready","port":"admin"},"periodSeconds":10,"timeoutSeconds":5}` | Readiness probe for the Envoy container (admin interface /ready). |
-| envoyProxy.resources | object | `{}` | Kubernetes deployment resources configuration for the Envoy service. |
+| envoyProxy.resources | object | `{}` | Kubernetes deployment resources configuration for the Envoy service. Utilization-based autoscaling requires a matching resource request. |
 | envoyProxy.securityContext | object | `{}` | Container-level security context settings for the Envoy service. |
 | envoyProxy.service | object | This object has the following default values for the service configuration. | Service configuration for the Envoy service. |
 | envoyProxy.service.annotations | object | `{}` | Annotations for the Envoy service. |
@@ -209,9 +333,18 @@ secrets will not decrypt with a new key.
 | envoyProxy.timeouts.requestHeaders | string | `"60s"` | Time to receive full request headers. 0 = disabled. |
 | envoyProxy.timeouts.route | string | `"0s"` | Per-route timeout for the passthrough to backend. 0 = disabled. |
 | envoyProxy.timeouts.streamIdle | string | `"0s"` | Stream idle timeout. Time with no activity before stream is closed. 0 = disabled (required for long-lived streams). |
+| envoyProxy.timeouts.upstreamIdle | string | `"4s"` | Positive whole-second upstream connection idle timeout. Must be less than api.server.keepAliveTimeoutSeconds when Envoy is enabled. |
 | envoyProxy.tolerations | list | `[]` | Tolerations configuration for the Envoy pods. |
 | envoyProxy.topologySpreadConstraints | list | `[]` | Topology spread constraints for the Envoy pods. See https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/ |
 | existingSecret | string | `"ngc-api"` | You can use an existing Kubernetes secret for communicating with the NGC API for downloading models. The chart uses the `ngcAPIKey` value to generate the secret if you set this to an empty string. |
+| externalClickhouse | object | This object has the following default values for the external ClickHouse configuration. | External ClickHouse configuration. These values are used when `clickhouse.enabled` is false. |
+| externalClickhouse.database | string | `"intake"` | ClickHouse database used by Intake. |
+| externalClickhouse.existingSecret | string | `""` | Name of an existing Secret containing the ClickHouse password. Required when using external ClickHouse. |
+| externalClickhouse.existingSecretPasswordKey | string | `""` | Key in existingSecret containing the ClickHouse password. Required when using external ClickHouse. |
+| externalClickhouse.host | string | `""` | External ClickHouse host. Required when the embedded ClickHouse is disabled. |
+| externalClickhouse.port | int | `8123` | External ClickHouse HTTP interface port. |
+| externalClickhouse.secure | bool | `false` | Whether Intake should connect to ClickHouse over HTTPS. |
+| externalClickhouse.user | string | `"nemo"` | ClickHouse username used by Intake. |
 | externalDatabase | object | This object has the following default values for the external PostgreSQL configuration. | External PostgreSQL configuration settings. These values are only used when postgresql.enabled is set to false. |
 | externalDatabase.database | string | `"nemoplatform"` | Database name. |
 | externalDatabase.existingSecret | string | `""` | Name of an existing secret resource containing the database credentials. |

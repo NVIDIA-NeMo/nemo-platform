@@ -116,28 +116,25 @@ export const InputFileValidationBanner: FC<InputFileValidationBannerProps> = ({
                       slotError={fieldState?.error?.message}
                       status={fieldState?.error ? 'error' : undefined}
                     >
-                      {({ ...args }) => (
-                        <Select
-                          {...args}
-                          value={field.value || ''}
-                          items={[
-                            { children: 'Select a key...', value: '' },
-                            ...availableKeys.map((key) => ({
-                              children: key.label,
-                              value: key.value,
-                            })),
-                          ]}
-                          onValueChange={(value: string) => {
-                            // Store the original key value in the primary field
-                            field.onChange(value);
-                            // Also store the interpolated template string
-                            const interpolatedValue = value ? `{{item.${value} | trim}}` : '';
-                            setValue('configData.templateSelectorInputPrompt', interpolatedValue);
-                          }}
-                          disabled={disabled}
-                          placeholder="Select a key"
-                        />
-                      )}
+                      <Select
+                        value={field.value || ''}
+                        items={[
+                          { children: 'Select a key...', value: '' },
+                          ...availableKeys.map((key) => ({
+                            children: key.label,
+                            value: key.value,
+                          })),
+                        ]}
+                        onValueChange={(value: string) => {
+                          // Store the original key value in the primary field
+                          field.onChange(value);
+                          // Also store the interpolated template string
+                          const interpolatedValue = value ? `{{item.${value} | trim}}` : '';
+                          setValue('configData.templateSelectorInputPrompt', interpolatedValue);
+                        }}
+                        disabled={disabled}
+                        placeholder="Select a key"
+                      />
                     </FormField>
                   )}
                 />
@@ -151,31 +148,28 @@ export const InputFileValidationBanner: FC<InputFileValidationBannerProps> = ({
                       slotError={fieldState?.error?.message}
                       status={fieldState?.error ? 'error' : undefined}
                     >
-                      {({ ...args }) => (
-                        <Select
-                          {...args}
-                          value={field.value || ''}
-                          items={[
-                            { children: 'Select a key...', value: '' },
-                            ...availableKeys.map((key) => ({
-                              children: key.label,
-                              value: key.value,
-                            })),
-                          ]}
-                          onValueChange={(value: string) => {
-                            // Store the original key value in the primary field
-                            field.onChange(value);
-                            // Also store the interpolated template string
-                            const interpolatedValue = value ? `{{item.${value} | trim}}` : '';
-                            setValue(
-                              'configData.templateSelectorInputGroundTruth',
-                              interpolatedValue
-                            );
-                          }}
-                          disabled={disabled}
-                          placeholder="Select a key"
-                        />
-                      )}
+                      <Select
+                        value={field.value || ''}
+                        items={[
+                          { children: 'Select a key...', value: '' },
+                          ...availableKeys.map((key) => ({
+                            children: key.label,
+                            value: key.value,
+                          })),
+                        ]}
+                        onValueChange={(value: string) => {
+                          // Store the original key value in the primary field
+                          field.onChange(value);
+                          // Also store the interpolated template string
+                          const interpolatedValue = value ? `{{item.${value} | trim}}` : '';
+                          setValue(
+                            'configData.templateSelectorInputGroundTruth',
+                            interpolatedValue
+                          );
+                        }}
+                        disabled={disabled}
+                        placeholder="Select a key"
+                      />
                     </FormField>
                   )}
                 />
@@ -191,28 +185,25 @@ export const InputFileValidationBanner: FC<InputFileValidationBannerProps> = ({
                         slotError={fieldState?.error?.message}
                         status={fieldState?.error ? 'error' : undefined}
                       >
-                        {({ ...args }) => (
-                          <Select
-                            {...args}
-                            value={field.value || ''}
-                            items={[
-                              { children: 'Select a key...', value: '' },
-                              ...availableKeys.map((key) => ({
-                                children: key.label,
-                                value: key.value,
-                              })),
-                            ]}
-                            onValueChange={(value: string) => {
-                              // Store the original key value in the primary field
-                              field.onChange(value);
-                              // Also store the interpolated template string
-                              const interpolatedValue = value ? `{{item.${value} | trim}}` : '';
-                              setValue('configData.templateSelectorOutput', interpolatedValue);
-                            }}
-                            disabled={disabled}
-                            placeholder="Select a key"
-                          />
-                        )}
+                        <Select
+                          value={field.value || ''}
+                          items={[
+                            { children: 'Select a key...', value: '' },
+                            ...availableKeys.map((key) => ({
+                              children: key.label,
+                              value: key.value,
+                            })),
+                          ]}
+                          onValueChange={(value: string) => {
+                            // Store the original key value in the primary field
+                            field.onChange(value);
+                            // Also store the interpolated template string
+                            const interpolatedValue = value ? `{{item.${value} | trim}}` : '';
+                            setValue('configData.templateSelectorOutput', interpolatedValue);
+                          }}
+                          disabled={disabled}
+                          placeholder="Select a key"
+                        />
                       </FormField>
                     )}
                   />

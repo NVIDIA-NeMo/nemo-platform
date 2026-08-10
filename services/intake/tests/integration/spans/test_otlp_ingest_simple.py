@@ -7,6 +7,7 @@ import json
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable, qualified_table
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 
 
@@ -185,7 +186,11 @@ def test_otlp_reingest_same_batch_collapses_after_merge(
         assert ingest_response.status_code == 200, ingest_response.text
         assert ingest_response.json() == {"errors": []}
 
-    run_async(clickhouse_client.command(f"OPTIMIZE TABLE {clickhouse_client.table('spans')} FINAL"))
+    run_async(
+        clickhouse_client.command(
+            f"OPTIMIZE TABLE {qualified_table(clickhouse_client.database, ClickHouseTable.SPANS)} FINAL"
+        )
+    )
 
     spans_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",

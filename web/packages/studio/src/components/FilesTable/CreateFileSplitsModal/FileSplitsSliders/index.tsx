@@ -104,6 +104,7 @@ export const FileSplitsSliders: FC = () => {
         render={({ field }) => (
           <Flex gap="density-sm" align="center" className="*:flex-1">
             <SliderWithTextInput
+              size="compact"
               field={field}
               defaultValue={field.value}
               min={0}
@@ -140,7 +141,6 @@ export const FileSplitsSliders: FC = () => {
                   className: 'max-w-[64px]',
                   onFocus: () => setIsFocused(fieldName),
                   onBlur: () => setIsFocused(null),
-                  // Prevent the user from submitting form on enter
                   onKeyDown: (e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();

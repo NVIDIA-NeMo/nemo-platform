@@ -50,7 +50,9 @@ class _FakeConfig:
         self.runtime = _FakeRuntimeCfg()
         self.models: dict[str, Any] = dict(mapping.get("models", {}))
         self.relay: dict[str, Any] | None = None  # records enable_relay(...)
-        self.skill_paths: list[str] = []  # records add_skill_path(...) (the capability-plan probe uses it)
+        # Mirrors FabricConfig.skills.paths: seeded from the config, then appended to by
+        # add_skill_path (which the capability-plan probe and native skill injection both use).
+        self.skill_paths: list[str] = [str(p) for p in mapping.get("skills", {}).get("paths", [])]
 
     @classmethod
     def from_mapping(cls, mapping: dict[str, Any]) -> _FakeConfig:
@@ -65,25 +67,44 @@ class _FakeConfig:
         clone.skill_paths = list(self.skill_paths)
         return clone
 
-    def add_skill_path(self, path: Any) -> None:
-        self.skill_paths.append(str(path))
+    def add_skill_path(self, path: Any) -> _FakeConfig:
+        # Real SkillConfig.add_path appends only if absent, preserving order.
+        value = str(path)
+        if value not in self.skill_paths:
+            self.skill_paths.append(value)
+        return self
 
     def enable_relay(
-        self, *, project: str | None = None, output_dir: str | None = None, config: Any = None
+        self,
+        *,
+        project: str | None = None,
+        output_dir: str | None = None,
+        observability: Any = None,
+        components: Any = None,
+        policy: Any = None,
     ) -> _FakeConfig:
-        self.relay = {"project": project, "output_dir": output_dir, "config": config}
+        self.relay = {
+            "project": project,
+            "output_dir": output_dir,
+            "observability": observability,
+            "components": components,
+            "policy": policy,
+        }
         return self
 
 
-class _FakeProfile:
-    def __init__(self, *, name: str | None = None, models: Any = None, mapping: Any = None) -> None:
-        self.name = name
-        self.models = models
-        self.mapping = mapping
+class _FakeModelConfig:
+    """Stand-in for nemo_fabric.ModelConfig — FabricConfig.models is dict[str, ModelConfig], so the
+    runtime must build the typed model rather than assign a raw dict (which Fabric tolerates but
+    does not validate, and warns about on serialization)."""
 
-    @classmethod
-    def from_mapping(cls, mapping: dict[str, Any]) -> _FakeProfile:
-        return cls(name=mapping.get("name"), mapping=mapping)
+    def __init__(self, *, provider: str, model: str, **extra: Any) -> None:
+        self.provider = provider
+        self.model = model
+        self.extra = extra
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"provider": self.provider, "model": self.model, **self.extra}
 
 
 class _FakeRunRequest:
@@ -94,23 +115,15 @@ class _FakeRunRequest:
         self.request_id = request_id
 
 
-class _FakeRelayConfig:
-    """Stand-in for nemo_relay.observability's typed config objects (AtifConfig/AtofConfig/...)."""
+class _FakeRelayModel:
+    """Stand-in for Fabric's typed relay models (RelayObservabilityConfig/RelayAtifConfig/RelayAtofConfig).
+
+    The runtime constructs these to hand to ``enable_relay(observability=...)``; it never introspects
+    them, so a plain kwargs bag suffices.
+    """
 
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
-
-    def to_dict(self) -> dict[str, Any]:
-        return {key: (value.to_dict() if hasattr(value, "to_dict") else value) for key, value in self.kwargs.items()}
-
-
-class _FakeComponentSpec:
-    def __init__(self, *, config: Any, enabled: bool = True) -> None:
-        self.config = config
-        self.enabled = enabled
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"kind": "observability", "enabled": self.enabled, "config": self.config.to_dict()}
 
 
 class _FakeArtifact:
@@ -152,8 +165,7 @@ class _FakeEvent:
 # adapters/*/fabric-adapter.json. ``acme.custom.native`` stands in for an END-USER adapter the platform
 # doesn't ship — the runtime learns it accepts skills purely from the plan, with no hardcoded list.
 _NATIVE_SKILL_ADAPTERS = {
-    "nvidia.fabric.hermes.sdk",
-    "nvidia.fabric.hermes.cli",
+    "nvidia.fabric.hermes",
     "nvidia.fabric.claude",
     "acme.custom.native",
 }
@@ -193,7 +205,7 @@ class _FakeResult:
         self.output = output
         self.error = error
         self.harness = "codex"
-        self.adapter_id = "nvidia.fabric.codex.cli"
+        self.adapter_id = "nvidia.fabric.codex"
         self.adapter_kind = "process"
         self.invocation_id = "inv-1"
         self.artifacts = _FakeManifest(artifacts or [])
@@ -216,10 +228,10 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
             _FakeClient.recorded.append({"agent": agent, **kwargs})
             return handler(agent, kwargs)
 
-        def plan(self, agent: Any, *, profiles: Any = None, base_dir: Any = None) -> _FakePlan:
+        def plan(self, agent: Any, *, base_dir: Any = None) -> _FakePlan:
             # Mirror Fabric's capability planner: a ``skills`` route appears only when a skill path is
             # attached, and it routes ``harness_native`` iff the selected adapter accepts native skills.
-            _FakeClient.planned.append({"agent": agent, "profiles": profiles, "base_dir": base_dir})
+            _FakeClient.planned.append({"agent": agent, "base_dir": base_dir})
             adapter_id = agent.harness.adapter_id
             has_skill_path = bool(getattr(agent, "skill_paths", None))
             native = has_skill_path and adapter_id in _NATIVE_SKILL_ADAPTERS
@@ -233,19 +245,22 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
     module = types.ModuleType("nemo_fabric")
     module.Fabric = _FakeClient  # type: ignore[attr-defined]
     module.FabricConfig = _FakeConfig  # type: ignore[attr-defined]
-    module.FabricProfileConfig = _FakeProfile  # type: ignore[attr-defined]
     module.EnvironmentConfig = _FakeEnvironment  # type: ignore[attr-defined]
+    module.ModelConfig = _FakeModelConfig  # type: ignore[attr-defined]
     module.RunRequest = _FakeRunRequest  # type: ignore[attr-defined]
+    # The runtime builds the relay observability config from Fabric's own typed models (lazy import).
+    module.RelayObservabilityConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayAtifConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayAtofConfig = _FakeRelayModel  # type: ignore[attr-defined]
+    module.RelayAtofFileSinkConfig = _FakeRelayModel  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_fabric", module)
 
-    # The runtime builds the trajectory profile from nemo_relay's typed config objects (lazy import);
-    # stub the optional package so trajectory-capture paths resolve without the native dependency.
+    # ``run_tasks`` fails fast on ``import nemo_relay.observability`` when capture_trajectory is on
+    # (the relay gateway is a runtime requirement); stub the optional package so that guard resolves
+    # without the native dependency. The observability config itself is now built from nemo_fabric's
+    # typed models (stubbed above), not from nemo_relay, so this stand-in only needs to be importable.
     relay_mod = types.ModuleType("nemo_relay")
     observability_mod = types.ModuleType("nemo_relay.observability")
-    observability_mod.AtifConfig = _FakeRelayConfig  # type: ignore[attr-defined]
-    observability_mod.AtofConfig = _FakeRelayConfig  # type: ignore[attr-defined]
-    observability_mod.ObservabilityConfig = _FakeRelayConfig  # type: ignore[attr-defined]
-    observability_mod.ComponentSpec = _FakeComponentSpec  # type: ignore[attr-defined]
     relay_mod.observability = observability_mod  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nemo_relay", relay_mod)
     monkeypatch.setitem(sys.modules, "nemo_relay.observability", observability_mod)
@@ -253,7 +268,7 @@ def _install_fake_fabric(monkeypatch: pytest.MonkeyPatch, handler: Any) -> type:
 
 
 _TASK = AgentEvalTask(id="task/1", intent="Answer.", inputs={"instruction": "Ping?"})
-_CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex.cli"}}
+_CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}
 
 
 @pytest.mark.asyncio
@@ -280,7 +295,7 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     assert trial.output.output_text == "PONG"  # extracted from the adapter envelope's `response`
     assert trial.output.response == {"adapter": "cli", "response": "PONG", "returncode": 0}
     assert trial.metadata["harness"] == "codex"
-    assert trial.metadata["adapter_id"] == "nvidia.fabric.codex.cli"
+    assert trial.metadata["adapter_id"] == "nvidia.fabric.codex"
     assert trial.metadata["generated"] is True
     # agent_ok mirrors the Codex runtime so AgentPhaseSuccessMetric scores the phase as clean.
     assert trial.metadata["agent_ok"] is True
@@ -294,7 +309,7 @@ async def test_fabric_runtime_maps_succeeded_result_to_completed_trial(
     # Config-first: the model is set on the config's default model and relay (ATIF trajectory) is
     # enabled on the config, rather than layered as profile overlays.
     composed = client_cls.recorded[0]["agent"]
-    assert composed.models["default"] == {"provider": "openai", "model": "openai/gpt-5.4"}
+    assert (composed.models["default"].provider, composed.models["default"].model) == ("openai", "openai/gpt-5.4")
     assert composed.relay is not None  # capture_trajectory defaults on -> enable_relay(...) called
     assert client_cls.recorded[0]["request"].request_id == "task/1"
     # Telemetry reference is preserved end-to-end (uri + trace_id), not just provider/kind.
@@ -357,34 +372,16 @@ def _workspace_from_config(config: Any) -> Path:
     return Path(config.environment.workspace)
 
 
-def _resolve_like_fabric(config: Any, profiles: list[Any], section: str, key: str) -> Any:
-    """Mirror Fabric's resolver: start from the config, then apply each profile as a winning overlay in
-    order (last wins). Used to assert what value actually reaches the harness for a config/profile key.
-    """
-    if section == "environment":
-        value = getattr(config.environment, key, None) if config.environment is not None else None
-    elif section == "models":
-        value = config.models.get(key)
-    else:  # pragma: no cover - only the two sections above are exercised
-        raise ValueError(section)
-    for profile in profiles:
-        overlay = getattr(profile, "mapping", None)
-        if isinstance(overlay, Mapping) and isinstance(overlay.get(section), Mapping):
-            if overlay[section].get(key) is not None:
-                value = overlay[section][key]
-    return value
-
-
 @pytest.mark.asyncio
-async def test_caller_profiles_cannot_override_evaluator_owned_settings(
+async def test_supplied_config_cannot_override_evaluator_owned_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Fabric applies caller-supplied profiles over the config (last-wins), so the evaluator's per-task
-    # workspace (isolation + `workspace` evidence integrity) and model-under-eval must remain the final,
-    # authoritative layer. A caller profile that sets these must NOT win.
-    caller_profile = {
-        "name": "caller",
-        "environment": {"workspace": "/caller/hijacked-workspace"},
+    # Since Fabric dropped profile overlays there is exactly one config, so the evaluator's per-task
+    # workspace (isolation + `workspace` evidence integrity) and model-under-eval stay authoritative by
+    # being composed on last. A caller config that pins these must NOT survive into the run.
+    hijacked = {
+        **_CONFIG,
+        "environment": {"provider": "local", "workspace": "/caller/hijacked-workspace"},
         "models": {"default": {"provider": "openai", "model": "caller/rogue-model"}},
     }
 
@@ -392,20 +389,16 @@ async def test_caller_profiles_cannot_override_evaluator_owned_settings(
         return _FakeResult(status="succeeded", output="ok")
 
     client_cls = _install_fake_fabric(monkeypatch, handler)
-    runtime = fabric_runtime.FabricAgentRuntime(
-        config=_CONFIG, model="openai/gpt-5.4", work_root=tmp_path / "fabric", profiles=[caller_profile]
-    )
+    runtime = fabric_runtime.FabricAgentRuntime(config=hijacked, model="openai/gpt-5.4", work_root=tmp_path / "fabric")
 
     await runtime.run_tasks([_TASK])
 
     config = client_cls.recorded[0]["agent"]
-    profiles = client_cls.recorded[0]["profiles"]
-    eval_workspace = config.environment.workspace  # the per-task dir the evaluator composed
-    eval_model = config.models["default"]
-
-    # After Fabric applies the caller profile, the evaluator's workspace + model must still win.
-    assert _resolve_like_fabric(config, profiles, "environment", "workspace") == eval_workspace
-    assert _resolve_like_fabric(config, profiles, "models", "default") == eval_model
+    # The config handed to Fabric carries the evaluator's per-task workspace and model, not the
+    # caller's — and there is no second layer that could put them back.
+    assert config.environment.workspace != "/caller/hijacked-workspace"
+    assert Path(config.environment.workspace).is_relative_to(tmp_path / "fabric")
+    assert (config.models["default"].provider, config.models["default"].model) == ("openai", "openai/gpt-5.4")
 
 
 @pytest.mark.asyncio
@@ -487,6 +480,136 @@ async def test_fabric_runtime_bad_seed_fails_only_that_task(tmp_path: Path, monk
 
     assert trials[0].status == "failed"
     assert trials[0].metadata["error_type"] == "WorkspaceSeedError"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_invokes_task_hook_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+
+    class _Hook:
+        def prepare(self, *, config, task, evidence_dir, workspace_dir, session):  # noqa: ANN001
+            events.append("prepare")
+            session.state["ok"] = True
+            return config
+
+        def after_success(self, *, task, result, session):  # noqa: ANN001
+            events.append("after_success")
+            assert session.state["ok"] is True
+            return {"analyzer_analysis": {"label": "benign"}}
+
+        def cleanup(self, *, session):  # noqa: ANN001
+            events.append("cleanup")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        capture_trajectory=False,
+        task_hook=_Hook(),
+    )
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert events == ["prepare", "after_success", "cleanup"]
+    assert trials[0].status == "completed"
+    assert trials[0].metadata["analyzer_analysis"]["label"] == "benign"
+    assert trials[0].output is not None
+    assert trials[0].output.metadata["analyzer_analysis"]["label"] == "benign"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_recovers_mcp_binding_when_fabric_status_not_succeeded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _Hook:
+        def prepare(self, *, config, task, evidence_dir, workspace_dir, session):  # noqa: ANN001
+            return config
+
+        def after_success(self, *, task, result, session):  # noqa: ANN001
+            return {"analyzer_analysis": {"label": "phishing", "is_likely_phishing": True}}
+
+        def cleanup(self, *, session):  # noqa: ANN001
+            return None
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="failed", output={"response": ""})
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        capture_trajectory=False,
+        task_hook=_Hook(),
+    )
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert trials[0].status == "completed"
+    assert trials[0].metadata.get("recovered_from_mcp_binding") is True
+    assert trials[0].output is not None
+    assert "phishing" in (trials[0].output.output_text or "")
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_task_hook_cleanup_runs_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+
+    class _Hook:
+        def prepare(self, *, config, task, evidence_dir, workspace_dir, session):  # noqa: ANN001
+            events.append("prepare")
+            return config
+
+        def after_success(self, *, task, result, session):  # noqa: ANN001
+            events.append("after_success")
+            return None
+
+        def cleanup(self, *, session):  # noqa: ANN001
+            events.append("cleanup")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        raise RuntimeError("boom")
+
+    _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        capture_trajectory=False,
+        task_hook=_Hook(),
+    )
+
+    trials = await runtime.run_tasks([_TASK])
+
+    assert events == ["prepare", "cleanup"]
+    assert trials[0].status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_passes_trajectory_extra_to_atif_relay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    runtime = fabric_runtime.FabricAgentRuntime(
+        config=_CONFIG,
+        work_root=tmp_path / "fabric",
+        trajectory_extra={"nemo.optimizer.experiment_id": "exp-1", "nemo.optimizer.trial_number": 2},
+    )
+
+    await runtime.run_tasks([_TASK])
+
+    # Trajectory capture is composed onto the per-task config via enable_relay (no profile overlays).
+    observability = client_cls.recorded[0]["agent"].relay["observability"]
+    atif_extra = observability.kwargs["atif"].kwargs["extra"]
+    assert atif_extra["nemo.optimizer.experiment_id"] == "exp-1"
+    assert atif_extra["nemo.optimizer.trial_number"] == 2
+    assert atif_extra["nemo.optimizer.row_id"] == "task/1"
 
 
 @pytest.mark.asyncio
@@ -653,11 +776,11 @@ def _skill_bundle(base: Path, *, name: str = "code-review", body: str = "Be thor
     return root
 
 
-_HERMES_CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes.sdk"}}
+_HERMES_CONFIG = {"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.hermes"}}
 
 
 @pytest.mark.asyncio
-async def test_fabric_runtime_native_skill_adds_overlay_and_provenance(
+async def test_fabric_runtime_native_skill_adds_skill_path_and_provenance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
@@ -667,7 +790,7 @@ async def test_fabric_runtime_native_skill_adds_overlay_and_provenance(
 
     client_cls = _install_fake_fabric(monkeypatch, handler)
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path, body="# Code Review\n\nBe thorough."))
-    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skill=skill)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skills=[skill])
 
     trials = await runtime.run_tasks([_TASK])
 
@@ -675,10 +798,9 @@ async def test_fabric_runtime_native_skill_adds_overlay_and_provenance(
     # hardcoded adapter list.
     assert client_cls.planned, "expected the runtime to query Fabric.plan for skills routing"
     assert client_cls.planned[0]["agent"].skill_paths, "expected a probe skill path attached for planning"
-    # A native `skills` overlay reaches client.run pointing at the staged <name>/ skill dir.
-    profiles = client_cls.recorded[0]["profiles"]
-    skill_profile = next(p for p in profiles if p.name == "eval_skill")
-    assert skill_profile.mapping["skills"]["paths"][0].endswith("/code-review")
+    # The staged <name>/ skill dir is on the config handed to client.run.
+    config = client_cls.recorded[0]["agent"]
+    assert config.skill_paths[-1].endswith("/code-review")
     # Provenance is stamped into trial metadata for the A/B diff.
     prov = trials[0].metadata["skill"]
     assert prov["name"] == "code-review"
@@ -690,29 +812,23 @@ async def test_fabric_runtime_native_skill_adds_overlay_and_provenance(
 async def test_fabric_runtime_native_skill_preserves_preconfigured_skills(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Regression: Fabric applies profile skills.paths last-wins, so the native overlay must re-list any
-    # skills the config/profiles already declare — otherwise the treated arm would drop them and the A/B
-    # would differ by more than the injected skill.
+    # Injection appends to the config's skills.paths, so skills the config already declares survive.
+    # If they were dropped, the treated arm would differ from the baseline by more than the injected
+    # skill and the A/B would be invalid.
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
 
     def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
         return _FakeResult(status="succeeded", output={"response": "ok"})
 
     client_cls = _install_fake_fabric(monkeypatch, handler)
-    config = {**_HERMES_CONFIG, "skills": {"paths": ["/pre/existing-a"]}}
+    config = {**_HERMES_CONFIG, "skills": {"paths": ["/pre/existing-a", "/pre/existing-b"]}}
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
-    runtime = fabric_runtime.FabricAgentRuntime(
-        config=config,
-        work_root=tmp_path / "fabric",
-        skill=skill,
-        profiles=[{"name": "caller", "skills": {"paths": ["/pre/existing-b"]}}],
-    )
+    runtime = fabric_runtime.FabricAgentRuntime(config=config, work_root=tmp_path / "fabric", skills=[skill])
 
     await runtime.run_tasks([_TASK])
 
-    overlay = next(p for p in client_cls.recorded[0]["profiles"] if p.name == "eval_skill")
-    paths = overlay.mapping["skills"]["paths"]
-    # Config- and profile-declared skills are preserved, in order, ahead of the evaluated skill.
+    paths = client_cls.recorded[0]["agent"].skill_paths
+    # Config-declared skills are preserved, in order, ahead of the evaluated skill.
     assert paths[:2] == ["/pre/existing-a", "/pre/existing-b"]
     assert paths[-1].endswith("/code-review")
 
@@ -732,12 +848,11 @@ async def test_fabric_runtime_native_skill_on_runtime_discovered_adapter(
     client_cls = _install_fake_fabric(monkeypatch, handler)
     custom = {"metadata": {"name": "a"}, "harness": {"adapter_id": "acme.custom.native"}}
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
-    runtime = fabric_runtime.FabricAgentRuntime(config=custom, work_root=tmp_path / "fabric", skill=skill)
+    runtime = fabric_runtime.FabricAgentRuntime(config=custom, work_root=tmp_path / "fabric", skills=[skill])
 
     trials = await runtime.run_tasks([_TASK])
 
-    profiles = client_cls.recorded[0]["profiles"]
-    assert any(p.name == "eval_skill" for p in profiles)
+    assert any(p.endswith("/code-review") for p in client_cls.recorded[0]["agent"].skill_paths)
     assert trials[0].metadata["skill"]["mode"] == "native"
 
 
@@ -757,7 +872,7 @@ async def test_fabric_runtime_codex_skill_staged_for_run_then_excluded_from_evid
 
     client_cls = _install_fake_fabric(monkeypatch, handler)
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path))
-    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skill=skill)
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=[skill])
 
     trials = await runtime.run_tasks([_TASK])
 
@@ -767,9 +882,8 @@ async def test_fabric_runtime_codex_skill_staged_for_run_then_excluded_from_evid
     # the injected files don't read as agent output to workspace-reading metrics.
     workspace = next((tmp_path / "fabric").glob("*/000000-task-1/workspace"))
     assert not (workspace / ".agents").exists()
-    # No skills overlay; provenance still records the codex injection.
-    names = [p.name for p in client_cls.recorded[0]["profiles"]]
-    assert "eval_skill" not in names
+    # No skills path added to the config; provenance still records the codex injection.
+    assert client_cls.recorded[0]["agent"].skill_paths == []
     assert trials[0].metadata["skill"]["mode"] == "codex_skills_dir"
 
 
@@ -787,7 +901,7 @@ async def test_fabric_runtime_skill_on_unsupported_adapter_fails_fast(
     runtime = fabric_runtime.FabricAgentRuntime(
         config=unsupported,
         work_root=tmp_path / "fabric",
-        skill=AgentSkill.from_directory(_skill_bundle(tmp_path, name="s")),
+        skills=[AgentSkill.from_directory(_skill_bundle(tmp_path, name="s"))],
     )
 
     with pytest.raises(RuntimeError, match="no known skill-injection strategy"):
@@ -819,5 +933,170 @@ def test_with_skill_returns_independent_copy() -> None:
 
     # A new instance is returned; the original is untouched.
     assert treated is not base
-    assert base._skill is None
-    assert treated._skill is skill
+    assert base._skill_set.skills == ()
+    assert treated._skill_set.skills == (skill,)
+
+
+def test_with_skills_returns_independent_copy_of_the_set() -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, model="m", work_root="/tmp/x")
+    skills = [
+        AgentSkill(name="docx", directory=Path("/skills/docx")),
+        AgentSkill(name="pptx", directory=Path("/skills/pptx")),
+    ]
+
+    treated = base.with_skills(skills)
+
+    # A new instance carries the added set; the original is untouched.
+    assert treated is not base
+    assert base._skill_set.skills == ()
+    assert treated._skill_set.skills == tuple(skills)
+
+
+def test_with_skill_is_additive_and_chainable() -> None:
+    # Regression: with_skill must ADD, not replace. Chaining injects every skill, not just the last.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, model="m", work_root="/tmp/x")
+    a = AgentSkill(name="docx", directory=Path("/skills/docx"))
+    b = AgentSkill(name="pptx", directory=Path("/skills/pptx"))
+
+    chained = base.with_skill(a).with_skill(b)
+
+    # Both skills are present, in order; each intermediate runtime is left untouched.
+    assert chained._skill_set.skills == (a, b)
+    assert base._skill_set.skills == ()
+    assert base.with_skill(a)._skill_set.skills == (a,)
+    # with_skills extends the same way (equivalent to chaining the single-skill calls).
+    assert base.with_skills([a, b])._skill_set.skills == (a, b)
+    assert base.with_skill(a).with_skills([b])._skill_set.skills == (a, b)
+
+
+def test_with_skills_rejects_duplicate_names() -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root="/tmp/x")
+    dupes = [AgentSkill(name="docx", directory=Path("/a/docx")), AgentSkill(name="docx", directory=Path("/b/docx"))]
+
+    # Two bundles claiming the same <name>/ would collide when staged, so it is rejected up front.
+    with pytest.raises(ValueError, match="duplicate skill name"):
+        base.with_skills(dupes)
+
+
+def test_with_skill_rejects_re_adding_same_name() -> None:
+    # Adding a skill whose name is already present collides on the combined set — rejected, not silently
+    # deduped, so a caller notices the double-add.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    base = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root="/tmp/x")
+    first = base.with_skill(AgentSkill(name="docx", directory=Path("/a/docx")))
+
+    with pytest.raises(ValueError, match="duplicate skill name"):
+        first.with_skill(AgentSkill(name="docx", directory=Path("/b/docx")))
+
+
+def test_constructor_rejects_duplicate_skill_names(tmp_path: Path) -> None:
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    # Same name, distinct source directories — still a <name>/ bundle collision; fail before any run.
+    dup_a = AgentSkill.from_directory(_skill_bundle(tmp_path / "a", name="docx"))
+    dup_b = AgentSkill.from_directory(_skill_bundle(tmp_path / "b", name="docx"))
+
+    with pytest.raises(ValueError, match="duplicate skill name"):
+        fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=[dup_a, dup_b])
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_multiple_native_skills_all_reach_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # LAB hands the agent all of its skills on every task. A native harness must stage each skill into its
+    # own <name>/ bundle and every one of them must reach the config's skills.paths, in order.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    skills = [AgentSkill.from_directory(_skill_bundle(tmp_path, name=name)) for name in ("docx", "pptx", "xlsx")]
+    runtime = fabric_runtime.FabricAgentRuntime(config=_HERMES_CONFIG, work_root=tmp_path / "fabric", skills=skills)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Every staged <name>/ bundle is on the config handed to client.run, in order.
+    paths = client_cls.recorded[0]["agent"].skill_paths
+    assert [Path(p).name for p in paths] == ["docx", "pptx", "xlsx"]
+    # Each bundle is staged on disk under its own <name>/ dir with its SKILL.md.
+    for path in paths:
+        assert (Path(path) / "SKILL.md").is_file()
+    # One provenance per skill is stamped for the A/B diff; the single-skill `skill` field is None (multi).
+    provs = trials[0].metadata["skills"]
+    assert [prov["name"] for prov in provs] == ["docx", "pptx", "xlsx"]
+    assert all(prov["mode"] == "native" for prov in provs)
+    assert trials[0].metadata["skill"] is None
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_multiple_codex_skills_each_staged_then_excluded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Codex self-discovers each bundle from .agents/skills/<name>/ in its workspace during the run; all are
+    # then removed before the workspace is exposed as evidence so they don't read as agent output.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    names = ("docx", "pptx", "xlsx")
+    seen: dict[str, bool] = {}
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        workspace = Path(agent.environment.workspace)
+        seen["all_present_during_run"] = all(
+            (workspace / ".agents" / "skills" / name / "SKILL.md").is_file() for name in names
+        )
+        return _FakeResult(status="succeeded", output={"response": "ok"})
+
+    client_cls = _install_fake_fabric(monkeypatch, handler)
+    skills = [AgentSkill.from_directory(_skill_bundle(tmp_path, name=name)) for name in names]
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=skills)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Every bundle was discoverable at its own .agents/skills/<name>/ path during the run...
+    assert seen["all_present_during_run"] is True
+    # ...then all removed (with the emptied .agents parent) before the workspace is exposed as evidence.
+    workspace = next((tmp_path / "fabric").glob("*/000000-task-1/workspace"))
+    assert not (workspace / ".agents").exists()
+    # Codex mode adds no skills path; one provenance per skill records the injection.
+    assert client_cls.recorded[0]["agent"].skill_paths == []
+    provs = trials[0].metadata["skills"]
+    assert [prov["name"] for prov in provs] == list(names)
+    assert all(prov["mode"] == "codex_skills_dir" for prov in provs)
+
+
+@pytest.mark.asyncio
+async def test_fabric_runtime_codex_skills_removed_even_when_run_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Cleanup runs in a `finally`, so a failed/errored run still removes the injected bundles from the
+    # durable workspace — they must not linger and read as agent output on any path that exposes it.
+    from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
+
+    names = ("docx", "pptx")
+
+    def handler(agent: Any, kwargs: dict[str, Any]) -> _FakeResult:
+        # The bundles were staged before the run; blow up mid-run to hit the except/finally path.
+        assert all((Path(agent.environment.workspace) / ".agents" / "skills" / n / "SKILL.md").is_file() for n in names)
+        raise RuntimeError("harness blew up")
+
+    _install_fake_fabric(monkeypatch, handler)
+    skills = [AgentSkill.from_directory(_skill_bundle(tmp_path, name=name)) for name in names]
+    runtime = fabric_runtime.FabricAgentRuntime(config=_CONFIG, work_root=tmp_path / "fabric", skills=skills)
+
+    trials = await runtime.run_tasks([_TASK])
+
+    # Failed trial, but every injected bundle (and the emptied .agents parent) was still cleaned up.
+    assert trials[0].status == "failed"
+    workspace = next((tmp_path / "fabric").glob("*/000000-task-1/workspace"))
+    assert not (workspace / ".agents").exists()
+    # Provenance is still stamped on the failed trial for the A/B diff.
+    assert [prov["name"] for prov in trials[0].metadata["skills"]] == list(names)

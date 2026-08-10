@@ -165,7 +165,7 @@ For **`automodel`/`unsloth`**, training never runs inside the `nemo` CLI process
 - **One preference fileset, two files** — `dataset` is a **single string** ref to a fileset that holds **both** `training.jsonl` and `validation.jsonl` (uploaded with `--remote-path`). Unlike automodel (`dataset.training`/`dataset.validation`) and unsloth (`dataset.path`/`validation_path`), there is no separate validation ref. See `references/dataset-formats.md` § NeMo-RL.
 - **String refs** — `model` and `dataset` are plain strings (`"workspace/name"`), not objects. The training method goes under `training` with `type: "dpo"`.
 - **Kubernetes job backend, not Docker** — rl steps run as Kubernetes pods via the `kubernetes_job` backend; the docker job backend cannot run rl. `rl submit` fails fast on a docker-runtime platform. The target cluster must have the **job-step images** (`nmp-customizer-tasks`, `nmp-rl-training`), the **jobs-launcher** image (the per-step init container), and a **job-storage PVC**. Verify the platform with `nemo jobs list-execution-profiles -f json` (expect `backend: kubernetes_job`); to configure one, see `references/rl-kubernetes-runtime.md`. Multi-node (`parallelism.num_nodes > 1`) also needs the platform-side `NMP_RL_MULTINODE_SHARED_STORAGE_PATH` (shared FS for Ray coordination) or compile fails fast.
-- **Job id prefix is `rl-<hex>`** and the platform auto-generates it — `rl submit` has **no `--name` flag** (the job JSON `name` is the *output* name, not the job id). Derive the job id from `nemo jobs list` (newest `rl-*`) for polling; `poll_customization_job.sh rl-<id>` works.
+- **Job id prefix is `rl-<hex>`** and the platform auto-generates it — `rl submit` has **no `--name` flag** (the job JSON `name` is the *output* name, not the job id). Read the job id from the `"name"` field in **submit stdout** (JSON), same as automodel/unsloth; `poll_customization_job.sh rl-<id>` works. **Do not** pick the newest `rl-*` from `nemo jobs list` — a concurrent job or an earlier failed submit selects the wrong one. If submit stdout could not be parsed, stop and re-check rather than guessing a job id.
 - **DPO main knob is `ref_policy_kl_penalty`** (β). For OOM, enable `activation_checkpointing: true` first. Full DPO field reference: `references/hyperparameters-rl.md`.
 - **`max_steps` + `epochs`** — same caveat as the other backends: `max_steps` caps mid-epoch; it's in the smoke fixture (`plugins/nemo-rl/tests/fixtures/minimal_dpo.json`) — omit for real runs.
 
@@ -180,7 +180,7 @@ Common steps then **branch by plugin pick**:
 - [ ] nemo jobs list-execution-profiles -f json — apply Plugin pick rules above (retry login on 401/403)
 - [ ] On connection error: default URL → ask to start platform (see Platform unreachable); custom URL → report unreachable and stop
 - [ ] Convert HF dataset → /tmp/train-data/*.jsonl (see references/hf-conversion.md)
-- [ ] Create dataset fileset (--exist-ok), upload train.jsonl (+ validation.jsonl), nemo files list to verify
+- [ ] Create dataset fileset (--exist-ok), upload the JSONL files, nemo files list to verify — automodel/unsloth: train.jsonl (+ validation.jsonl); rl: training.jsonl + validation.jsonl (see rl branch)
 - [ ] Gated HF base model? → confirm `hf-token` exists; ask user and stop if missing (see HuggingFace token + troubleshooting § Gated HuggingFace models)
 - [ ] Create HF weights fileset + model entity if missing (--exist-ok; gated repos need `token_secret` on fileset — see troubleshooting)
 
@@ -203,7 +203,7 @@ Common steps then **branch by plugin pick**:
 - [ ] Dataset is PREFERENCE data: upload training.jsonl + validation.jsonl ({prompt,chosen,rejected}) to ONE fileset
 - [ ] Write /tmp/job.json using the RlJobInput shape (see Fast path — rl (DPO))
 - [ ] nemo customization rl submit /tmp/job.json --workspace default [--profile <gpu-profile>]
-- [ ] Derive job id (newest rl-* from `nemo jobs list` — submit has no --name flag)
+- [ ] Read job id from the "name" field in submit stdout (JSON) — submit has no --name flag; do NOT pick the newest rl-* from `nemo jobs list`
 - [ ] Poll until top-level terminal (`poll_customization_job.sh rl-<job-id>`; default 15s interval)
 - [ ] Report using the template in `references/reporting.md`
 ```
@@ -365,13 +365,15 @@ nemo files list "$DATASET" --workspace default
 }
 ```
 
-**4. Submit and poll** — `rl submit` has **no `--name` flag** (the platform auto-generates the `rl-<hex>` job id), so derive it after submit:
+**4. Submit and poll** — `rl submit` has **no `--name` flag** (the platform auto-generates the `rl-<hex>` job id), so read it from submit stdout:
 
 ```bash
-nemo customization rl submit /tmp/job.json --workspace default   # add --profile <name> if the default gpu profile is wrong
-JOB=$(nemo jobs list -f json | python3 -c "import sys,json;d=json.load(sys.stdin);items=d.get('data',d) if isinstance(d,dict) else d;rl=[j for j in items if str(j.get('name','')).startswith('rl-')];rl.sort(key=lambda j:j.get('created_at',''),reverse=True);print(rl[0]['name'] if rl else '')")
+nemo customization rl submit /tmp/job.json --workspace default > /tmp/rl-submit.json   # add --profile <name> if the default gpu profile is wrong
+JOB=$(python3 -c "import json;print(json.load(open('/tmp/rl-submit.json'))['name'])")
 bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/poll_customization_job.sh "$JOB"
 ```
+
+**Do not** derive the job id by picking the newest `rl-*` from `nemo jobs list` — a concurrent job or an earlier failed submit selects the wrong one. If `/tmp/rl-submit.json` does not parse, the submit result is unknown: stop and inspect it (re-submitting risks a duplicate job).
 
 **Do not use `2>&1`** before `json.load` — warnings on stderr break parsing; see Gotchas. Or poll manually: `nemo jobs get-status rl-<job-id>` every 30–60s. If submit fails on an unknown profile, re-list execution profiles and pass `--profile <name>`. `nemo customization rl run …` is disabled (no local execution — it provisions a Ray cluster); `nemo customization rl explain` prints the live schema.
 
@@ -477,4 +479,4 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 | Gated HF model auth (`hf-token`, fileset `token_secret`) | `references/troubleshooting.md` § **Gated HuggingFace models** |
 | Post-training eval (base vs LoRA, CHAT format parity) | `references/post-training-eval.md`, `references/eval_helpers.py` |
 
-Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-rl/README.md`, `docs/customizer/nemo-rl-dpo-plugin-design.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.
+Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-rl/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.

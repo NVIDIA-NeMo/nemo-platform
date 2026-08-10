@@ -130,7 +130,7 @@ describe('spanKeyValues', () => {
     );
   });
 
-  it('links the trace metadata field to the bare trace route', () => {
+  it('links the trace metadata field to its canonical session route', () => {
     const span = mockSpanById('span-llm-001');
     expect(span).toBeDefined();
 
@@ -140,7 +140,7 @@ describe('spanKeyValues', () => {
 
     expect(isValidElement(traceEntry?.value)).toBe(true);
     expect((traceEntry!.value as ReactElement<{ to: string }>).props.to).toBe(
-      '/workspaces/default/intake/traces/trace-agent-run-001'
+      '/workspaces/default/intake/sessions/session-agent-run-001?traceId=trace-agent-run-001'
     );
   });
 });

@@ -15,6 +15,17 @@ from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, Field
 
 
+class MissingBackendDependencyError(RuntimeError):
+    """A backend cannot initialize because a required capability is unavailable.
+
+    Raised when an optional packaging extra is missing (e.g. ``openshell``) or when
+    a runtime substrate is unreachable (e.g. Docker daemon/socket). The executor
+    registry catches this, skips that executor with a warning, and continues
+    starting the deployments service. Subclasses ``RuntimeError`` so existing
+    ``except RuntimeError`` paths keep working.
+    """
+
+
 class BackendStatusUpdate(BaseModel):
     """Status projection returned by backends — consumed by the reconciler (758)."""
 

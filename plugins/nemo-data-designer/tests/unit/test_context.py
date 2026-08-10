@@ -82,17 +82,13 @@ async def test_remote_validate_runs_remote_validators(monkeypatch: pytest.Monkey
         assert validated_config is config
         calls.append("tools")
 
-    def validate_seed_type(validated_config: dd.DataDesignerConfig, *, is_local: bool) -> None:
-        assert validated_config is config
-        assert is_local is False
-        calls.append("seed-type")
-
     async def validate_seed(
-        validated_config: dd.DataDesignerConfig, workspace: str, async_sdk: AsyncNeMoPlatform
+        validated_config: dd.DataDesignerConfig, workspace: str, async_sdk: AsyncNeMoPlatform, is_local: bool
     ) -> None:
         assert validated_config is config
         assert workspace == u.WORKSPACE_NAME
         assert async_sdk is sdk
+        assert not is_local
         calls.append("seed")
 
     async def validate_personas(validated_config: dd.DataDesignerConfig, async_sdk: AsyncNeMoPlatform) -> None:
@@ -101,14 +97,13 @@ async def test_remote_validate_runs_remote_validators(monkeypatch: pytest.Monkey
         calls.append("personas")
 
     monkeypatch.setattr("data_designer_nemo.context.validate_no_tool_configs", validate_tools)
-    monkeypatch.setattr("data_designer_nemo.context.validate_seed_config_for_execution_context", validate_seed_type)
     monkeypatch.setattr("data_designer_nemo.context.validate_seed", validate_seed)
     monkeypatch.setattr("data_designer_nemo.context.ensure_nemotron_personas_filesets", validate_personas)
 
     errors = await RemoteDataDesignerContext(sdk, u.WORKSPACE_NAME).validate(config)
 
     assert errors == []
-    assert calls == ["tools", "seed-type", "seed", "personas"]
+    assert calls == ["tools", "seed", "personas"]
 
 
 async def test_remote_validate_rejects_unsupported_seed_config() -> None:

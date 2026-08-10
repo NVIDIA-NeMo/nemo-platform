@@ -317,55 +317,46 @@ export const DatasetInputFile: FC<DatasetInputFileProps> = ({
 
               {requirePromptKey && (
                 <FormField slotLabel="Prompt Key">
-                  {({ ...args }) => (
-                    <Select
-                      {...args}
-                      value={keyMapping.promptKey || ''}
-                      items={[
-                        { children: 'Select a key...', value: '' },
-                        ...availableKeys.map((k) => ({ children: k.label, value: k.value })),
-                      ]}
-                      onValueChange={(v: string) => handleKeyMappingChange('promptKey', v)}
-                      disabled={disabled}
-                      placeholder="Select a key"
-                    />
-                  )}
+                  <Select
+                    value={keyMapping.promptKey || ''}
+                    items={[
+                      { children: 'Select a key...', value: '' },
+                      ...availableKeys.map((k) => ({ children: k.label, value: k.value })),
+                    ]}
+                    onValueChange={(v: string) => handleKeyMappingChange('promptKey', v)}
+                    disabled={disabled}
+                    placeholder="Select a key"
+                  />
                 </FormField>
               )}
 
               {requireCompletionKey && (
                 <FormField slotLabel="Completion Key">
-                  {({ ...args }) => (
-                    <Select
-                      {...args}
-                      value={keyMapping.completionKey || ''}
-                      items={[
-                        { children: 'Select a key...', value: '' },
-                        ...availableKeys.map((k) => ({ children: k.label, value: k.value })),
-                      ]}
-                      onValueChange={(v: string) => handleKeyMappingChange('completionKey', v)}
-                      disabled={disabled}
-                      placeholder="Select a key"
-                    />
-                  )}
+                  <Select
+                    value={keyMapping.completionKey || ''}
+                    items={[
+                      { children: 'Select a key...', value: '' },
+                      ...availableKeys.map((k) => ({ children: k.label, value: k.value })),
+                    ]}
+                    onValueChange={(v: string) => handleKeyMappingChange('completionKey', v)}
+                    disabled={disabled}
+                    placeholder="Select a key"
+                  />
                 </FormField>
               )}
 
               {requireIdealResponseKey && (
                 <FormField slotLabel="Ideal Response Key">
-                  {({ ...args }) => (
-                    <Select
-                      {...args}
-                      value={keyMapping.idealResponseKey || ''}
-                      items={[
-                        { children: 'Select a key...', value: '' },
-                        ...availableKeys.map((k) => ({ children: k.label, value: k.value })),
-                      ]}
-                      onValueChange={(v: string) => handleKeyMappingChange('idealResponseKey', v)}
-                      disabled={disabled}
-                      placeholder="Select a key"
-                    />
-                  )}
+                  <Select
+                    value={keyMapping.idealResponseKey || ''}
+                    items={[
+                      { children: 'Select a key...', value: '' },
+                      ...availableKeys.map((k) => ({ children: k.label, value: k.value })),
+                    ]}
+                    onValueChange={(v: string) => handleKeyMappingChange('idealResponseKey', v)}
+                    disabled={disabled}
+                    placeholder="Select a key"
+                  />
                 </FormField>
               )}
             </Stack>

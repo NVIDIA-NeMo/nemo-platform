@@ -43,8 +43,9 @@ won't have the workspace on its import path):
 
 - `make bootstrap-python` — creates `.venv` and `uv sync --all-packages`, which
   installs the workspace packages (including `nemo_evaluator_sdk`);
-- `script/dev-install-fabric.sh` — the native `nemo-fabric` + Hermes SDK adapter +
-  `nemo-relay` gateway (not in the lockfile, so installed separately);
+- `uv sync --extra fabric` — the `nemo-fabric` SDK, its adapters, and the `nemo-relay`
+  Python bindings, all from the lock;
+- `script/dev-install-fabric.sh` — the `nemo-relay` gateway binary, which is not on PyPI;
 - `NVIDIA_API_KEY` for an account **provisioned for** `MODEL` in `run_skill_eval.py`.
 
 Then, from the repo root, run with the venv interpreter:
@@ -68,7 +69,7 @@ block and exits non-zero rather than showing an empty-but-tidy table.
 Example output (with `nvidia/nemotron-3-super-120b-a12b`):
 
 ```text
-Harness: nvidia.fabric.hermes.sdk   model: nvidia/nemotron-3-super-120b-a12b   tasks: 2
+Harness: nvidia.fabric.hermes   model: nvidia/nemotron-3-super-120b-a12b   tasks: 2
 runs: baseline (baseline) vs treated (treated)
 
   metric.output                             baseline   with-skill

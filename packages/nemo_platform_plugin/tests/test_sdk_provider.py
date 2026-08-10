@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.sdk_provider import (
     DefaultSDKProvider,
     SDKProvider,
@@ -127,6 +128,25 @@ class TestDefaultSDKProvider:
         sdk = provider.get_task_sdk("test")
         assert sdk.base_url == "http://localhost:8080"
 
+    def test_get_task_sdk_uses_workload_identity_when_token_file_configured(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
+        )
+
+        provider = DefaultSDKProvider()
+        sdk = provider.get_task_sdk("evaluator")
+        try:
+            assert sdk.default_headers["X-NMP-Internal"] == "true"
+            assert "X-NMP-Principal-Id" not in sdk.default_headers
+            assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+        finally:
+            sdk.close()
+
     def test_get_platform_sdk_as_service(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
@@ -196,6 +216,25 @@ class TestAsyncTaskSdk:
 
         provider = DefaultSDKProvider()
         assert _xnmp(provider.get_async_task_sdk("evaluator")) == _xnmp(provider.get_task_sdk("evaluator"))
+
+    @pytest.mark.asyncio
+    async def test_async_task_sdk_uses_workload_identity_when_token_file_configured(self, monkeypatch, tmp_path):
+        subject_token_file = tmp_path / "workload-token"
+        subject_token_file.write_text("subject-token-from-file\n", encoding="utf-8")
+        monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
+        monkeypatch.setenv(WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR, str(subject_token_file))
+        monkeypatch.setenv(
+            "NMP_PRINCIPAL",
+            json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
+        )
+
+        sdk = DefaultSDKProvider().get_async_task_sdk("evaluator")
+        try:
+            assert sdk.default_headers["X-NMP-Internal"] == "true"
+            assert "X-NMP-Principal-Id" not in sdk.default_headers
+            assert "X-NMP-Principal-On-Behalf-Of" not in sdk.default_headers
+        finally:
+            await sdk.close()
 
 
 # ---------------------------------------------------------------------------

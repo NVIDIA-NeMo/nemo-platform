@@ -14,6 +14,7 @@ import time
 from collections.abc import Iterator
 from contextlib import suppress
 from pathlib import Path
+from typing import cast
 
 import data_designer.config as dd
 import httpx
@@ -28,7 +29,11 @@ from nemo_anonymizer_plugin.sdk.errors import (
     AnonymizerConfigValidationError,
     AnonymizerPreviewError,
 )
-from nemo_anonymizer_plugin.sdk.job_resources import TERMINAL_INCOMPLETE_STATUSES, AnonymizerJobResource
+from nemo_anonymizer_plugin.sdk.job_resources import (
+    MAX_CONSECUTIVE_POLL_ERRORS,
+    TERMINAL_INCOMPLETE_STATUSES,
+    AnonymizerJobResource,
+)
 from nemo_anonymizer_plugin.sdk.resources import AnonymizerPreviewResult
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.files.client import FilesClient
@@ -113,13 +118,20 @@ def _workspace_client(sdk: NeMoPlatform, workspace: str) -> NeMoPlatform:
     )
 
 
+def _require_workspace(workspace: str | None) -> str:
+    assert workspace is not None
+    return workspace
+
+
 def _anonymizer_url(sdk: NeMoPlatform, workspace: str, path: str) -> str:
     return f"{str(sdk.base_url).rstrip('/')}/apis/anonymizer/v2/workspaces/{workspace}/{path.lstrip('/')}"
 
 
-def _raw_anonymizer_post(sdk: NeMoPlatform, workspace: str, path: str, payload: dict[str, object]) -> httpx.Response:
+def _raw_anonymizer_post(
+    sdk: NeMoPlatform, workspace: str | None, path: str, payload: dict[str, object]
+) -> httpx.Response:
     return sdk._client.post(
-        _anonymizer_url(sdk, workspace, path),
+        _anonymizer_url(sdk, _require_workspace(workspace), path),
         json=payload,
         headers=_string_headers(sdk),
         timeout=sdk.timeout,
@@ -166,12 +178,12 @@ def _rewrite_config() -> AnonymizerConfig:
     )
 
 
-def _fileset_ref(workspace: str, fileset: str, path: str) -> str:
-    return f"{workspace}/{fileset}#{path}"
+def _fileset_ref(workspace: str | None, fileset: str, path: str) -> str:
+    return f"{_require_workspace(workspace)}/{fileset}#{path}"
 
 
-def _fileset_uri_ref(workspace: str, fileset: str, path: str) -> str:
-    return f"fileset://{workspace}/{fileset}#{path}"
+def _fileset_uri_ref(workspace: str | None, fileset: str, path: str) -> str:
+    return f"fileset://{_require_workspace(workspace)}/{fileset}#{path}"
 
 
 def _input_spec(source: str, *, text_column: str = TEXT_COLUMN) -> AnonymizerInputSpec:
@@ -281,14 +293,32 @@ def _job_name(job: AnonymizerJobResource) -> str:
 
 def _wait_for_anonymizer_job(job: AnonymizerJobResource, *, timeout_seconds: float) -> None:
     deadline = time.monotonic() + timeout_seconds
-    status = job.get_job_status()
+    status = None
+    consecutive_poll_errors = 0
+    last_poll_error: Exception | None = None
     while status not in {"completed", *TERMINAL_INCOMPLETE_STATUSES}:
         if time.monotonic() >= deadline:
-            logs = job.get_logs()
-            tail = logs[-5:] if logs else []
-            raise TimeoutError(f"Anonymizer job {_job_name(job)} timed out with status {status!r}; logs={tail!r}")
-        time.sleep(ANONYMIZER_POLL_INTERVAL_SECONDS)
-        status = job.get_job_status()
+            try:
+                logs = job.get_logs()
+                tail = logs[-5:] if logs else []
+            except Exception as exc:
+                tail = [f"<log retrieval failed: {exc!r}>"]
+            raise TimeoutError(
+                f"Anonymizer job {_job_name(job)} timed out with status {status!r}; "
+                f"last_poll_error={last_poll_error!r}; logs={tail!r}"
+            )
+        try:
+            status = job.get_job_status()
+        except Exception as exc:
+            consecutive_poll_errors += 1
+            last_poll_error = exc
+            if consecutive_poll_errors >= MAX_CONSECUTIVE_POLL_ERRORS:
+                raise
+        else:
+            consecutive_poll_errors = 0
+            last_poll_error = None
+        if status not in {"completed", *TERMINAL_INCOMPLETE_STATUSES}:
+            time.sleep(ANONYMIZER_POLL_INTERVAL_SECONDS)
     assert status == "completed"
 
 
@@ -433,7 +463,11 @@ def test_mock_provider_chat_completion_works_through_minikube_ingress(
         },
     )
 
-    assert SUBSTITUTE_NAME in response["choices"][0]["message"]["content"]
+    choices = cast(list[dict[str, object]], response["choices"])
+    message = cast(dict[str, object], choices[0]["message"])
+    content = message["content"]
+    assert isinstance(content, str)
+    assert SUBSTITUTE_NAME in content
 
 
 def test_file_upload_round_trips_through_minikube_ingress(
@@ -558,7 +592,7 @@ def test_preview_missing_text_column_is_rejected(
 
 
 def test_preview_invalid_strategy_payload_is_rejected(anonymizer_sdk: NeMoPlatform, anonymizer_fileset: str) -> None:
-    payload = {
+    payload: dict[str, object] = {
         "config": {"replace": {"kind": "explode"}, "emit_telemetry": False},
         "data": {
             "source": _fileset_ref(anonymizer_sdk.workspace, anonymizer_fileset, CSV_REMOTE_PATH),

@@ -3,42 +3,54 @@
 
 """Trace repository tests."""
 
+import json
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import cast
 
 import pytest
-from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickHouseExternalData, ClickHouseQuery
+from nmp.intake.repository.clickhouse.tables import ClickHouseTable
+from nmp.intake.repository.clickhouse.trace import TRACE_COLUMNS, ClickHouseTraceRepository, _order_by
 from nmp.intake.spans.domain import TraceListFilter
-from nmp.intake.spans.trace_repository import TRACE_COLUMNS, TraceRepository, _order_by
+
+_TRACE_PAGE_COLUMNS = [*TRACE_COLUMNS, "started_at_us"]
 
 
 class _QueryResult:
     def __init__(self, rows: list[tuple[object, ...]], columns: list[str] | None = None) -> None:
         self.result_rows = rows
-        self.column_names = columns or []
+        self.column_names = columns or (["count()"] if rows and len(rows[0]) == 1 else [])
 
 
-class _Client:
+class _Client(ClickHouseExecutor):
     def __init__(self, query_results: list[_QueryResult] | None = None) -> None:
         self.queries: list[str] = []
         self.parameters: list[dict[str, object]] = []
+        self.external_data: list[ClickHouseExternalData | None] = []
         self.query_results = query_results or []
 
-    def table(self, name: str) -> str:
-        return name
+    def table(self, table: ClickHouseTable) -> str:
+        return table.value
 
-    async def query(self, query: str, *, parameters: dict[str, object]) -> _QueryResult:
-        self.queries.append(query)
-        self.parameters.append(parameters)
+    async def fetch_all(self, query: ClickHouseQuery) -> list[dict[str, object]]:
+        self.queries.append(query.statement)
+        self.parameters.append(dict(query.parameters))
+        self.external_data.append(query.external_data)
         if self.query_results:
-            return self.query_results.pop(0)
-        if query.lstrip().startswith("SELECT count()"):
-            return _QueryResult([(0,)])
-        return _QueryResult([])
+            result = self.query_results.pop(0)
+        elif query.statement.lstrip().startswith("SELECT count()"):
+            result = _QueryResult([(0,)], ["count()"])
+        else:
+            result = _QueryResult([])
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
 
 
-def _repository(client: _Client) -> TraceRepository:
-    return TraceRepository(cast(ClickHouseSpanClient, client))
+def _repository(client: _Client) -> ClickHouseTraceRepository:
+    return ClickHouseTraceRepository(client)
+
+
+def _with_started_at_us(row: tuple[object, ...], started_at_us: int) -> tuple[object, ...]:
+    return (*row, started_at_us)
 
 
 def test_order_by_whitelists_supported_trace_sort_keys():
@@ -57,7 +69,7 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     repository = _repository(client)
 
     await repository.list_traces(
-        filters=TraceListFilter(workspace="workspace-a"),
+        filters=TraceListFilter(workspace="workspace-a", trace_ids=["trace-a", "trace-b"]),
         page=1,
         page_size=10,
         sort="started_at",
@@ -71,6 +83,8 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
     assert "trace_roots.root_output" not in client.queries[0]
     assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[0]
     assert "span_versions" not in client.queries[0]
+    assert "trace_roots.trace_id IN %(trace_ids)s" in client.queries[0]
+    assert client.parameters[0]["trace_ids"] == ["trace-a", "trace-b"]
     assert "sumIf" not in client.queries[1]
     assert "groupUniqArrayIf" not in client.queries[1]
     assert "span_versions" not in client.queries[1]
@@ -82,8 +96,50 @@ async def test_summary_mode_reads_root_spans_without_metric_aggregates():
 
 
 @pytest.mark.asyncio
+async def test_latest_trace_started_at_by_group_aggregates_all_references_in_one_query():
+    latest = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    client = _Client(query_results=[_QueryResult([("insight-a", latest)], ["group_id", "started_at"])])
+    repository = _repository(client)
+
+    result = await repository.latest_trace_started_at_by_group(
+        workspace="workspace-a",
+        trace_refs_by_group={
+            "insight-a": ["trace-old", "trace-new"],
+            "insight-empty": [],
+            "insight-missing": ["trace-missing"],
+        },
+    )
+
+    assert result == {"insight-a": latest}
+    assert len(client.queries) == 1
+    assert "FROM trace_refs" in client.queries[0]
+    assert "max(traces.started_at) AS started_at" in client.queries[0]
+    assert "GROUP BY refs.group_id" in client.queries[0]
+    assert client.parameters[0] == {"workspace": "workspace-a"}
+    external_data = client.external_data[0]
+    assert external_data is not None
+    assert external_data.fmt == "JSONEachRow"
+    assert external_data.structure == "group_id String, trace_id String"
+    assert [json.loads(line) for line in external_data.data.splitlines()] == [
+        {"group_id": "insight-a", "trace_id": "trace-old"},
+        {"group_id": "insight-a", "trace_id": "trace-new"},
+        {"group_id": "insight-missing", "trace_id": "trace-missing"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
-    client = _Client()
+    started_at = datetime(2026, 1, 1, microsecond=123456, tzinfo=timezone.utc)
+    page_row = _with_started_at_us(
+        _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False),
+        1767225600123456,
+    )
+    client = _Client(
+        query_results=[
+            _QueryResult([(1,)]),
+            _QueryResult([page_row], _TRACE_PAGE_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     await repository.list_traces(
@@ -94,16 +150,45 @@ async def test_preview_mode_bounds_payloads_and_adds_trace_aggregate_block():
         mode="preview",
     )
 
-    assert "substringUTF8(trace_roots.root_input, 1, %(payload_char_limit)s)" in client.queries[1]
-    assert "substringUTF8(trace_roots.root_output, 1, %(payload_char_limit)s)" in client.queries[1]
-    assert client.parameters[1]["payload_char_limit"] == 300
-    assert "sumIf" in client.queries[1]
-    assert "count() AS span_count" in client.queries[1]
+    assert len(client.queries) == 3
+    assert "trace_roots.root_input" not in client.queries[1]
+    assert "trace_roots.root_output" not in client.queries[1]
+    assert "toUnixTimestamp64Micro(traces.started_at) AS started_at_us" in client.queries[1]
+    assert "LIMIT %(limit)s OFFSET %(offset)s" in client.queries[1]
+    assert "substringUTF8(trace_roots.root_input, 1, %(payload_char_limit)s)" in client.queries[2]
+    assert "substringUTF8(trace_roots.root_output, 1, %(payload_char_limit)s)" in client.queries[2]
+    assert client.parameters[2]["payload_char_limit"] == 300
+    assert "sumIf" in client.queries[2]
+    assert "count() AS span_count" in client.queries[2]
+    assert "page_traces" not in client.queries[2]
+    assert "trace_page_refs" not in client.queries[2]
+    assert "IN %(page_trace_keys)s" in client.queries[2]
+    assert "trace_id IN %(page_trace_ids)s" in client.queries[2]
+    assert "LIMIT 1 BY trace_roots.workspace, trace_roots.source_format, trace_roots.trace_id" in client.queries[2]
+    assert "indexOf(%(page_trace_keys)s" not in client.queries[2]
+    assert client.external_data[2] is None
+    assert client.parameters[2]["page_trace_ids"] == ["trace-a"]
+    assert client.parameters[2]["page_trace_keys"] == [("otel", "trace-a")]
+    assert "root_started_at >= fromUnixTimestamp64Micro(%(page_started_at_min_us)s)" in client.queries[2]
+    assert "root_started_at <= fromUnixTimestamp64Micro(%(page_started_at_max_us)s)" in client.queries[2]
+    assert client.parameters[2]["page_started_at_min_us"] == 1767225600123456
+    assert client.parameters[2]["page_started_at_max_us"] == 1767225600123456
+    assert "page_root_keys" not in client.parameters[2]
 
 
 @pytest.mark.asyncio
 async def test_detailed_mode_adds_trace_aggregate_block():
-    client = _Client()
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    page_row = _with_started_at_us(
+        _trace_row(started_at=started_at, ended_at=None, ingested_at=started_at, detailed=False),
+        1767225600000000,
+    )
+    client = _Client(
+        query_results=[
+            _QueryResult([(1,)]),
+            _QueryResult([page_row], _TRACE_PAGE_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     await repository.list_traces(
@@ -116,21 +201,22 @@ async def test_detailed_mode_adds_trace_aggregate_block():
 
     assert "FROM trace_index AS trace_roots FINAL" in client.queries[0]
     assert "span_versions" not in client.queries[0]
-    assert "page_traces AS" in client.queries[1]
-    assert "AS trace_spans" in client.queries[1]
-    assert "(span_versions.workspace, span_versions.source_format, span_versions.trace_id) IN" in client.queries[1]
-    assert "SELECT workspace, source_format, id FROM page_traces" in client.queries[1]
-    assert "argMax(span_versions.input," not in client.queries[1]
-    assert "argMax(span_versions.output," not in client.queries[1]
-    assert "argMax(span_versions.attributes_string," in client.queries[1]
-    assert "argMax(span_versions.attributes_number," in client.queries[1]
-    assert "sumIf" in client.queries[1]
-    assert "groupUniqArrayIf" in client.queries[1]
-    assert "count() AS span_count" in client.queries[1]
-    assert "trace_roots.root_input AS input" in client.queries[1]
-    assert "trace_roots.root_output AS output" in client.queries[1]
-    assert "substringUTF8(trace_roots.root_input" not in client.queries[1]
-    assert "payload_char_limit" not in client.parameters[1]
+    assert "trace_roots.root_input" not in client.queries[1]
+    assert "trace_roots.root_output" not in client.queries[1]
+    assert "AS trace_spans" in client.queries[2]
+    assert "span_versions.trace_id IN %(page_trace_ids)s" in client.queries[2]
+    assert "(span_versions.source_format, span_versions.trace_id) IN %(page_trace_keys)s" in client.queries[2]
+    assert "argMax(span_versions.input," not in client.queries[2]
+    assert "argMax(span_versions.output," not in client.queries[2]
+    assert "argMax(span_versions.attributes_string," in client.queries[2]
+    assert "argMax(span_versions.attributes_number," in client.queries[2]
+    assert "sumIf" in client.queries[2]
+    assert "groupUniqArrayIf" in client.queries[2]
+    assert "count() AS span_count" in client.queries[2]
+    assert "trace_roots.root_input AS input" in client.queries[2]
+    assert "trace_roots.root_output AS output" in client.queries[2]
+    assert "substringUTF8(trace_roots.root_input" not in client.queries[2]
+    assert "payload_char_limit" not in client.parameters[2]
 
 
 @pytest.mark.asyncio
@@ -139,7 +225,17 @@ async def test_list_traces_maps_detailed_row():
     ended_at = started_at + timedelta(milliseconds=2500)
     ingested_at = started_at + timedelta(seconds=3)
     row = _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at)
-    client = _Client(query_results=[_QueryResult([(1,)]), _QueryResult([row], TRACE_COLUMNS)])
+    page_row = _with_started_at_us(
+        _trace_row(started_at=started_at, ended_at=ended_at, ingested_at=ingested_at, detailed=False),
+        1767225600000000,
+    )
+    client = _Client(
+        query_results=[
+            _QueryResult([(1,)]),
+            _QueryResult([page_row], _TRACE_PAGE_COLUMNS),
+            _QueryResult([row], TRACE_COLUMNS),
+        ]
+    )
     repository = _repository(client)
 
     result = await repository.list_traces(
@@ -172,6 +268,71 @@ async def test_list_traces_maps_detailed_row():
     assert trace.providers == ["openai"]
     assert trace.span_count == 3
     assert trace.error_count == 1
+
+
+@pytest.mark.asyncio
+async def test_non_summary_empty_page_skips_hydration_query():
+    client = _Client(query_results=[_QueryResult([(0,)])])
+    repository = _repository(client)
+
+    result = await repository.list_traces(
+        filters=TraceListFilter(workspace="workspace-a"),
+        page=1,
+        page_size=10,
+        sort="-started_at",
+        mode="preview",
+    )
+
+    assert result.data == []
+    assert len(client.queries) == 2
+    assert all(external_data is None for external_data in client.external_data)
+
+
+@pytest.mark.asyncio
+async def test_non_summary_reconciles_hydration_misses_and_restores_page_order(caplog: pytest.LogCaptureFixture):
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    page_rows = [
+        _with_started_at_us(
+            _trace_row(
+                trace_id=trace_id,
+                started_at=started_at,
+                ended_at=None,
+                ingested_at=started_at,
+                detailed=False,
+            ),
+            1767225600000000,
+        )
+        for trace_id in ("trace-a", "trace-b", "trace-c")
+    ]
+    hydrated_rows = [
+        _trace_row(trace_id=trace_id, started_at=started_at, ended_at=None, ingested_at=started_at)
+        for trace_id in ("trace-c", "trace-a")
+    ]
+    client = _Client(
+        query_results=[
+            _QueryResult([(3,)]),
+            _QueryResult(page_rows, _TRACE_PAGE_COLUMNS),
+            _QueryResult(hydrated_rows, TRACE_COLUMNS),
+        ]
+    )
+    repository = _repository(client)
+
+    with caplog.at_level(logging.WARNING):
+        result = await repository.list_traces(
+            filters=TraceListFilter(workspace="workspace-a"),
+            page=1,
+            page_size=10,
+            sort="-started_at",
+            mode="preview",
+        )
+
+    assert [trace.id for trace in result.data] == ["trace-a", "trace-c"]
+    assert result.pagination.current_page_size == 2
+    assert result.pagination.total_results == 2
+    assert result.pagination.total_pages == 1
+    record = caplog.records[-1]
+    assert record.message == "Trace page hydration omitted refs returned by the page query"
+    assert getattr(record, "dropped_trace_refs") == [("otel", "trace-b")]
 
 
 @pytest.mark.asyncio
@@ -243,13 +404,14 @@ async def test_root_filters_use_trace_index_columns():
 
 def _trace_row(
     *,
+    trace_id: str = "trace-a",
     started_at: datetime,
     ended_at: datetime | None,
     ingested_at: datetime,
     detailed: bool = True,
 ) -> tuple[object, ...]:
     values: dict[str, object | None] = {
-        "id": "trace-a",
+        "id": trace_id,
         "workspace": "workspace-a",
         "session_id": "session-a",
         "source_format": "otel",

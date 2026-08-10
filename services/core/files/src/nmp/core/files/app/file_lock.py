@@ -64,8 +64,8 @@ class FileLockManager:
             True if lock acquired and caller should proceed with write
             False if lock not acquired and caller should skip write
         """
-        acquired = await self._try_acquire(path)
-        if not acquired:
+        lock = await self._try_acquire(path)
+        if lock is None:
             logger.debug("Lock not acquired, another request is writing")
             yield False
             return
@@ -74,16 +74,16 @@ class FileLockManager:
         try:
             yield True
         finally:
-            await self._release(path)
+            await self._release(lock)
 
-    async def _try_acquire(self, path: str, max_attempts: int = 3) -> bool:
+    async def _try_acquire(self, path: str, max_attempts: int = 3) -> FileLock | None:
         """Attempt to acquire the lock, handling conflicts and expiry.
 
         Args:
             path: The file path to lock
             max_attempts: Maximum number of attempts before giving up
 
-        Returns True if lock acquired, False if should skip.
+        Returns the acquired lock entity if lock acquired, None if should skip.
         """
         lock_name = _path_to_lock_name(path)
 
@@ -96,8 +96,8 @@ class FileLockManager:
                 acquired_at=datetime.now(UTC),
             )
             try:
-                await self.entity_client.create(lock)
-                return True
+                created = await self.entity_client.create(lock)
+                return created or lock
             except EntityConflictError:
                 pass  # Lock exists, check if we should retry
 
@@ -112,7 +112,7 @@ class FileLockManager:
             if expires_at >= datetime.now(UTC):
                 # Lock is fresh - another request is actively writing
                 logger.debug("Fresh lock held by another request")
-                return False
+                return None
 
             # Lock is stale - atomically take it over by updating with version check.
             # Only succeeds if db_version hasn't changed (no one else took it).
@@ -120,10 +120,10 @@ class FileLockManager:
             try:
                 # Update the entity - db_version is automatically included for optimistic locking
                 existing.acquired_at = datetime.now(UTC)
-                await self.entity_client.update(existing)
+                updated = await self.entity_client.update(existing)
                 # Successfully took over the stale lock
                 logger.debug("Successfully took over stale lock")
-                return True
+                return updated or existing
             except EntityConflictError:
                 # Version changed - someone else took the lock, retry on next iteration
                 logger.debug("Update failed, lock was modified by another request")
@@ -131,17 +131,24 @@ class FileLockManager:
                 pass  # Someone else deleted it, that's fine
 
         logger.debug("Lock acquisition attempts exhausted")
-        return False
+        return None
 
-    async def _release(self, path: str) -> None:
+    async def _release(self, lock: FileLock) -> None:
         """Release the lock."""
-        lock_name = _path_to_lock_name(path)
         try:
-            await self.entity_client.delete(FileLock, lock_name, workspace=self.workspace)
+            await self.entity_client.delete(
+                FileLock,
+                lock.name,
+                workspace=self.workspace,
+                expected_db_version=lock.db_version,
+            )
             logger.debug("Lock released")
         except EntityNotFoundError:
             # Lock already gone (expired and cleaned up by another request)
             logger.debug("Lock already released (expired)")
+        except EntityConflictError:
+            # Another request reacquired the lock after this holder lost ownership.
+            logger.debug("Lock version changed before release; leaving current lock in place")
 
     async def get_active_locks(self, paths: list[str]) -> set[str]:
         """Get paths that have active (non-expired) locks.

@@ -16,7 +16,7 @@ from nemo_platform_plugin.jobs.types import (
     PlatformJobStatusUpdateRequest,
     PlatformJobStepWithContext,
 )
-from nmp.common.controller import Controller
+from nmp.common.controller import Controller, HeartbeatMixin
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.observability import start_span_with_ctx
 from nmp.core.jobs.app.ctx import JobBackendContext, JobContext
@@ -34,7 +34,7 @@ DEFAULT_PROFILE = "default"
 DEFAULT_PROVIDER = "cpu"
 
 
-class JobScheduler(Controller):
+class JobScheduler(HeartbeatMixin, Controller):
     def __init__(
         self,
         backend_registry: BackendRegistry,
@@ -76,6 +76,7 @@ class JobScheduler(Controller):
             try:
                 steps = self.get_steps_for_scheduling()
                 self._is_healthy = True
+                self.emit_heartbeat()
             except NemoClientError:
                 self._is_healthy = False
                 logger.exception("Could not fetch job steps for scheduling", exc_info=True)
@@ -177,6 +178,10 @@ class JobScheduler(Controller):
                         status_details={"message": str(e)},
                         error_details={"message": str(e), "error": traceback.format_exc()},
                     )
+                finally:
+                    # Working through the queue is progress whether or not an
+                    # individual step could be scheduled.
+                    self.emit_heartbeat()
 
     def _update_step_status_with_timing(
         self,

@@ -3,7 +3,11 @@
 
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import type { SafeSynthesizerJobRequest } from '@nemo/sdk/generated/safe-synthesizer/schema';
-import { MAX_NUM_RECORDS } from '@studio/routes/SafeSynthesizerNewRoute/constants';
+import {
+  DEFAULT_PRETRAINED_MODEL,
+  MAX_NUM_RECORDS,
+  PRETRAINED_MODEL_OPTIONS,
+} from '@studio/routes/SafeSynthesizerNewRoute/constants';
 import { z } from 'zod';
 
 export const safeSynthesizerJobRequestSchema = z.object({
@@ -100,6 +104,7 @@ export const safeSynthesizerJobRequestSchema = z.object({
               }
             ),
           rope_scaling_factor: z.union([z.literal('auto'), z.number().int().min(1).max(6)]),
+          pretrained_model: z.enum(PRETRAINED_MODEL_OPTIONS).optional(),
         })
         .optional(),
       generation: z
@@ -146,6 +151,7 @@ export const getSafeSynthesizerFormDefaults = (): SafeSynthesizerFormData => ({
       training: {
         num_input_records_to_sample: 'auto',
         rope_scaling_factor: 'auto',
+        pretrained_model: DEFAULT_PRETRAINED_MODEL,
       },
       generation: {
         num_records: 1000,

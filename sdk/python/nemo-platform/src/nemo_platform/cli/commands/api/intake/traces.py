@@ -12,7 +12,12 @@ from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform.cli.core.types import (
@@ -20,6 +25,7 @@ from nemo_platform.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 app = create_typer_app(name="traces", help="Manage traces")
@@ -36,16 +42,13 @@ def list_traces(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id (or its deprecated alias experiment_id), and test_case_id.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
     filter_id: Annotated[str | None, typer.Option("--filter.id", rich_help_panel="Filter Options")] = None,
     filter_evaluation_id: Annotated[
         str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_experiment_id: Annotated[
-        str | None, typer.Option("--filter.experiment-id", rich_help_panel="Filter Options")
     ] = None,
     filter_session_id: Annotated[
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
@@ -67,11 +70,13 @@ def list_traces(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List Traces"""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -89,7 +94,6 @@ def list_traces(
             filter,
             id=filter_id,
             evaluation_id=filter_evaluation_id,
-            experiment_id=filter_experiment_id,
             session_id=filter_session_id,
             status=filter_status,
             test_case_id=filter_test_case_id,
@@ -123,6 +127,7 @@ def list_traces(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)

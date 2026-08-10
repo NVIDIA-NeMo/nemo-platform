@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import type {
   AutomodelJobInput,
   AutomodelJobsJobRequest,
@@ -9,6 +10,7 @@ import type {
 } from '@nemo/sdk/generated/customizer/schema';
 import { CustomizationCreateAutomodelJobBody } from '@nemo/sdk/generated/customizer/zod/automodel-jobs';
 import { CustomizationCreateUnslothJobBody } from '@nemo/sdk/generated/customizer/zod/unsloth-jobs';
+import { isAutomodelJob, type CustomizationJob } from '@studio/util/customizationBackend';
 import { z } from 'zod';
 
 export interface CustomizationFormFields {
@@ -189,5 +191,35 @@ export const formToUnslothCreate = (f: CustomizationFormFields): UnslothJobsJobR
       training: training && { ...training, lora: usesLora ? training.lora : undefined },
       output: { name: f.outputName || undefined, description: f.description || undefined },
     },
+  };
+};
+
+const stripNulls = <T>(value: T): T => {
+  if (value === null) return undefined as unknown as T;
+  if (Array.isArray(value)) return value.map(stripNulls) as unknown as T;
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, stripNulls(v)])
+    ) as T;
+  }
+  return value;
+};
+
+export const jobToFormFields = (job: CustomizationJob): CustomizationFormFields => {
+  if (isAutomodelJob(job)) {
+    return {
+      ...FORM_DEFAULTS,
+      outputName: generateDefaultName(),
+      description: job.description ?? '',
+      backend: 'automodel',
+      automodel: stripNulls(job.spec) as AutomodelJobInput,
+    };
+  }
+  return {
+    ...FORM_DEFAULTS,
+    outputName: generateDefaultName(),
+    description: job.description ?? '',
+    backend: 'unsloth',
+    unsloth: stripNulls(job.spec) as UnslothJobInput,
   };
 };

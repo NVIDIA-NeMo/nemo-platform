@@ -34,7 +34,7 @@ overrides:
   tiktoken: MIT # OpenAI tokenizer
   tokenizers: Apache-2.0 # HuggingFace tokenizers
   trl: Apache-2.0
-
+  cffi: MIT
   # PyTorch Ecosystem
   torch: BSD-3-Clause # https://github.com/pytorch/pytorch
   torchaudio: BSD-3-Clause # https://github.com/pytorch/audio
@@ -83,6 +83,11 @@ overrides:
   nvidia-cudnn-frontend: NVIDIA Proprietary Software
   nvidia-nvshmem-cu12: NVIDIA Proprietary Software
   triton: MIT
+  # NeMo Fabric — Apache-2.0 per PyPI (`license_expression`) and deps.dev, but osv-scanner reports
+  # UNKNOWN for the 0.1.x rc series, the same way it does for safetensors 0.8.0rc1 above. Revisit
+  # once Fabric cuts a non-prerelease 0.1.0.
+  nemo-fabric: Apache-2.0 # https://pypi.org/project/nemo-fabric/
+  nemo-fabric-runtime: Apache-2.0 # https://pypi.org/project/nemo-fabric-runtime/
 
   # ONNX Runtime
   onnxruntime: MIT # https://github.com/microsoft/onnxruntime
@@ -241,6 +246,7 @@ overrides:
   dspy: MIT
   narwhals: MIT
   rpds-py: MIT
+  sqlite-vec: MIT # https://pypi.org/project/sqlite-vec/
   uuid-utils: BSD-3-Clause
 
   # Auth service
@@ -269,6 +275,10 @@ overrides:
   quack-kernels: Apache-2.0 # https://github.com/Dao-AILab/quack/blob/main/LICENSE
   crc32c: LGPL-2.1-or-later # https://pypi.org/project/crc32c/
   detect-installer: 0BSD # https://pypi.org/project/detect-installer/
+
+  # Experimentalist plugin. Only nooa needs an entry: it is a git dependency rather than
+  # a PyPI release, so osv has no metadata to read and reports UNKNOWN.
+  nooa: Apache-2.0 # https://github.com/NVIDIA-NeMo/labs-OO-Agents
 
   databricks-sdk: Apache-2.0  # https://github.com/databricks/databricks-sdk-py/blob/main/LICENSE
   mlflow-skinny: Apache-2.0  # https://github.com/mlflow/mlflow/blob/master/LICENSE.txt

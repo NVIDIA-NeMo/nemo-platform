@@ -32,7 +32,7 @@ import {
   getWorkspaceDeploymentsRoute,
 } from '@studio/routes/utils';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 
 function getResourceRefSearchParam(params: URLSearchParams, name: string): ResourceRef | undefined {
   const value = params.get(name);
@@ -49,7 +49,8 @@ export const DeploymentsListRoute: FC = () => {
     deploymentPanelView?: string;
   }>();
 
-  const deploymentNameFromPath = deploymentNameParam ? decodeURIComponent(deploymentNameParam) : '';
+  // `useParams()` already returns decoded values; route helpers handle encoding.
+  const deploymentNameFromPath = deploymentNameParam ?? '';
 
   const [isCreateDeploymentOpen, setIsCreateDeploymentOpen] = useState(false);
   const [deploymentToDelete, setDeploymentToDelete] = useState<ModelDeployment | null>(null);

@@ -30,6 +30,7 @@ class ModelConfig(BaseModel):
     provider: str
     model: str
     api_key_env: str | None = None
+    base_url: str | None = None
     temperature: float | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
 
@@ -62,6 +63,47 @@ class TelemetryConfig(BaseModel):
     atof: dict[str, Any] | None = None
 
 
+class InstructionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, pattern=r"\S")
+    mode: Literal["replace"] = "replace"
+
+
+class InstructionsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    system: InstructionConfig | None = None
+
+
+class SkillsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paths: list[str] = Field(default_factory=list)
+
+
+class McpServerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: str
+    url: str
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    exposure: Literal["harness_native", "fabric_managed"] = "harness_native"
+
+
+class McpConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    servers: dict[str, McpServerConfig] = Field(default_factory=dict)
+
+
+class ToolsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocked: list[str] = Field(default_factory=list)
+
+
 class AgentConfig(BaseModel):
     """Platform-owned agent.yaml config for nemo-agents-spec-v1."""
 
@@ -74,7 +116,10 @@ class AgentConfig(BaseModel):
     harnesses: dict[str, HarnessConfig]
     models: dict[str, ModelConfig] = Field(default_factory=dict)
     prompts: dict[str, str] = Field(default_factory=dict)
-    skills: dict[str, Any] | list[Any] | None = None
+    instructions: InstructionsConfig | None = None
+    skills: SkillsConfig | None = None
+    mcp: McpConfig | None = None
+    tools: ToolsConfig | None = None
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 

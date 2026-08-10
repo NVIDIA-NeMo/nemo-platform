@@ -83,6 +83,8 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 
 from nemo_example_plugin.middleware_config import ExampleMiddlewareConfig
+from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.entities.client import AsyncEntitiesClient
 from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
@@ -150,7 +152,7 @@ class ExampleInferenceMiddleware(NemoInferenceMiddleware):
         from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
         sdk = get_async_platform_sdk(as_service="nemo-example-middleware", internal=True)
-        self._entity_client = NemoEntitiesClient(sdk.entities)
+        self._entity_client = NemoEntitiesClient(client_from_platform(sdk, AsyncEntitiesClient))
 
         entities = self.list_model_entities_for_workspace()
         if not entities:

@@ -28,14 +28,6 @@ variable "USE_PREBUILT_BASES" {
   default = ""
 }
 
-variable "PYTHON_BASE_TARGET" {
-  default = ""
-}
-
-variable "PYTHON_DEV_BASE_TARGET" {
-  default = ""
-}
-
 variable "NMP_PYTHON_IMAGE" {
   default = "python:3.13.14-slim-trixie"
 }
@@ -57,6 +49,10 @@ variable "MAMBA_SSM_WHEEL_CONTEXT" {
 }
 
 variable "FFMPEG_VLM_WHEEL_CONTEXT" {
+  default = ""
+}
+
+variable "TRANSFORMER_ENGINE_WHEEL_CONTEXT" {
   default = ""
 }
 
@@ -84,6 +80,30 @@ variable "BASE_TAG_PYTHON" {
 # Pin for nmp-automodel-base.
 variable "BASE_TAG_AUTOMODEL" {
   default = "2c1a9ef2535a6648a272d9b74dae97fb672b8234"
+}
+
+# Pin for nmp-rl-base (prebuilt-base tag) + the NeMo-RL / NeMo-Gym source the base builds from.
+# Defaults point at the soluwalana/{RL,Gym} forks. If the RL fork's uv.lock and the Gym ref drift,
+# build with UV_SYNC_MODE= to relock.
+variable "BASE_TAG_RL" {
+  default = "local"
+}
+variable "NEMO_RL_REPO" {
+  default = "https://github.com/soluwalana/RL.git"
+}
+# Pin to an immutable commit SHA, not the branch name. The base clones RL at this ref
+# (docker/rl/Dockerfile.nmp-rl-base, nemo-rl stage); a branch ref would let the fork move under us,
+# silently invalidating the base's heavy uv-sync layer on every training rebuild (and breaking
+# `uv sync --frozen` if that commit's lock drifted). Bump deliberately, in lockstep with the fork's
+# uv.lock, when advancing RL.
+#
+# RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
+# - no separate Gym pin needed.
+variable "NEMO_RL_REF" {
+  default = "ace40313d474f33cabc9a8fdf13d8dd4dda218c8" # soluwalana/RL nmp/customizer
+}
+variable "RL_BASE_CONTEXT" {
+  default = ""
 }
 
 # The tag for base images if needed
@@ -151,6 +171,11 @@ function "get_ffmpeg_vlm_wheel_image" {
   result = "${WHEELS_REGISTRY}/ffmpeg-vlm-wheel:${WHEELS_TAG}"
 }
 
+function "get_transformer_engine_wheel_image" {
+  params = []
+  result = "${WHEELS_REGISTRY}/transformer-engine-wheel:${WHEELS_TAG}"
+}
+
 function "get_arch_tag" {
   params = []
   result = BUILD_ARCH == "linux/arm64" ? "linux-arm64" : "linux-amd64"
@@ -163,19 +188,14 @@ function "base_tags" {
   ]
 }
 
-function "python_base_target" {
-  params = []
-  result = notequal(PYTHON_BASE_TARGET, "") ? PYTHON_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-base" : "nmp-python-base-builder"
-}
-
-function "python_dev_base_target" {
-  params = []
-  result = notequal(PYTHON_DEV_BASE_TARGET, "") ? PYTHON_DEV_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-dev-base" : "nmp-python-dev-base-builder"
-}
-
 function "automodel_base_context" {
   params = []
   result = notequal(AUTOMODEL_BASE_CONTEXT, "") ? AUTOMODEL_BASE_CONTEXT : notequal(USE_PREBUILT_BASES, "") ? "docker-image://${BASE_REGISTRY}/nmp-automodel-base:${BASE_TAG_AUTOMODEL}" : "target:nmp-automodel-base-builder"
+}
+
+function "rl_base_context" {
+  params = []
+  result = notequal(RL_BASE_CONTEXT, "") ? RL_BASE_CONTEXT : notequal(USE_PREBUILT_BASES, "") ? "docker-image://${BASE_REGISTRY}/nmp-rl-base:${BASE_TAG_RL}" : "target:nmp-rl-base-builder"
 }
 
 function "causal_conv1d_wheel_context" {
@@ -191,6 +211,11 @@ function "mamba_ssm_wheel_context" {
 function "ffmpeg_vlm_wheel_context" {
   params = []
   result = notequal(FFMPEG_VLM_WHEEL_CONTEXT, "") ? FFMPEG_VLM_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:ffmpeg-vlm-wheel" : "docker-image://${get_ffmpeg_vlm_wheel_image()}"
+}
+
+function "transformer_engine_wheel_context" {
+  params = []
+  result = notequal(TRANSFORMER_ENGINE_WHEEL_CONTEXT, "") ? TRANSFORMER_ENGINE_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:transformer-engine-wheel" : "docker-image://${get_transformer_engine_wheel_image()}"
 }
 
 function "wheel_tags" {
@@ -310,7 +335,6 @@ group "nmp-automodel-gpu-wheels" {
   targets = [
     "causal-conv1d-wheel",
     "mamba-ssm-wheel",
-    "ffmpeg-vlm-wheel",
   ]
 }
 
@@ -334,6 +358,7 @@ group "nmp-rl" {
   targets = [
     "nmp-rl-base-builder",
     "nmp-rl-training",
+    "nmp-rl-training-smoke-test",
     "nmp-customizer-tasks",
   ]
 }
@@ -398,11 +423,16 @@ target "rl-platform-workspace" {
   platforms  = get_platforms()
 }
 
-# Heavy base: NGC torch/CUDA + NeMo-RL v0.4.0 + Ray.
+# Heavy base: cuda-dl-base + NeMo-RL (with its Gym/Automodel/Megatron-Bridge submodules) built FROM
+# SOURCE (Python 3.13, CUDA 13). RL is pinned via NEMO_RL_REF; Gym rides in as RL's own submodule
 target "nmp-rl-base-builder" {
   target     = "nmp-rl-base"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-rl-base"
+  dockerfile = "docker/rl/Dockerfile.nmp-rl-base"
+  args = {
+    NEMO_RL_REPO = NEMO_RL_REPO
+    NEMO_RL_REF  = NEMO_RL_REF
+  }
   cache-to   = maybe_registry_cache_to("nmp-rl-base")
   cache-from = maybe_registry_cache_from("nmp-rl-base")
   tags       = base_tags("nmp-rl-base")
@@ -410,15 +440,15 @@ target "nmp-rl-base-builder" {
   platforms  = get_platforms()
 }
 
-# GPU DPO training image: base + platform glue. Bootstraps Ray at runtime.
+# GPU DPO + GRPO training image (also the Gym environment runtime): base + platform glue.
+# Bootstraps Ray at runtime.
 target "nmp-rl-training" {
   target     = "runtime"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-rl-training"
+  dockerfile = "docker/rl/Dockerfile.nmp-rl-training"
   contexts = {
-    platform-workspace     = "target:rl-platform-workspace"
-    nmp-rl-base            = "target:nmp-rl-base-builder"
-    ffmpeg-vlm-wheel-image = ffmpeg_vlm_wheel_context()
+    platform-workspace = "target:rl-platform-workspace"
+    nmp-rl-base        = rl_base_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")
@@ -427,14 +457,29 @@ target "nmp-rl-training" {
   platforms  = get_platforms()
 }
 
+# CPU-only import smoke tests for the training image (smoke-test stage runs pytest during build).
+target "nmp-rl-training-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/rl/Dockerfile.nmp-rl-training"
+  contexts = {
+    platform-workspace = "target:rl-platform-workspace"
+    nmp-rl-base        = rl_base_context()
+  }
+  args = {
+    SMOKE_MARKER = "smoke_nmp_rl_training"
+  }
+  cache-from = maybe_registry_cache_from("nmp-rl-training")
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
+}
+
 # Base images for consolidated containers
 target "nmp-python-base" {
-  target     = python_base_target()
+  target     = "nmp-python-base-builder"
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY    = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
     NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-from = maybe_registry_cache_from("nmp-python-base")
@@ -446,8 +491,6 @@ target "nmp-python-base-builder" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY    = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
     NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-to   = maybe_registry_cache_to("nmp-python-base")
@@ -458,12 +501,10 @@ target "nmp-python-base-builder" {
 }
 
 target "nmp-python-dev-base" {
-  target     = python_dev_base_target()
+  target     = "nmp-python-dev-base-builder"
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY    = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
     NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-from = maybe_registry_cache_from("nmp-python-dev-base")
@@ -475,8 +516,6 @@ target "nmp-python-dev-base-builder" {
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
-    BASE_REGISTRY    = "${BASE_REGISTRY}"
-    BASE_TAG_PYTHON  = "${BASE_TAG_PYTHON}"
     NMP_PYTHON_IMAGE = "${NMP_PYTHON_IMAGE}"
   }
   cache-to   = maybe_registry_cache_to("nmp-python-dev-base")
@@ -665,6 +704,29 @@ target "ffmpeg-vlm-wheel" {
   platforms  = get_platforms()
 }
 
+# transformer-engine wheel (cp313 / cu130), pinned to NeMo-RL's TE ref (release_v2.15, from RL's
+# override-dependencies) and arch (90;100, matching RL).
+#
+# NOT consumed by any image today, and deliberately not in a build group: Transformer-Engine only
+# ships in the `automodel` and `mcore` extras, and the customizer's DPO + GRPO path uses neither
+# (DPO -> fsdp, GRPO generation -> vllm). Kept because it builds cleanly and is the drop-in for
+# nmp-rl-base if a Megatron/automodel backend is ever adopted. Build on demand:
+#   docker buildx bake transformer-engine-wheel
+target "transformer-engine-wheel" {
+  target     = "transformer-engine-wheel"
+  context    = "."
+  dockerfile = "docker/base/Dockerfile.python-wheels"
+  cache-to   = maybe_registry_cache_to("transformer-engine-wheel")
+  cache-from = maybe_registry_cache_from("transformer-engine-wheel")
+  tags       = wheel_tags("transformer-engine-wheel")
+  output     = image_output()
+  args = {
+    TE_REF          = "release_v2.15"
+    NVTE_CUDA_ARCHS = "90;100"
+  }
+  platforms  = get_platforms()
+}
+
 
 target "safe-synthesizer-tasks-docker" {
   target     = "runtime"
@@ -836,7 +898,6 @@ target "nmp-automodel-base-builder" {
   contexts = {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    ffmpeg-vlm-wheel-image    = ffmpeg_vlm_wheel_context()
   }
   platforms = get_platforms()
 }

@@ -86,7 +86,7 @@ class ProjectsResource(SyncAPIResource):
 
         Args:
           name: Project name (unique within workspace). Name must start with a lowercase letter,
-              be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no
+              be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
               consecutive hyphens, cannot end with a hyphen).
 
           description: Optional description of the project
@@ -392,7 +392,7 @@ class AsyncProjectsResource(AsyncAPIResource):
 
         Args:
           name: Project name (unique within workspace). Name must start with a lowercase letter,
-              be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no
+              be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
               consecutive hyphens, cannot end with a hyphen).
 
           description: Optional description of the project

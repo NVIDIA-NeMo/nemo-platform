@@ -36,7 +36,6 @@ from ....types.intake.ingest import (
     chat_completion_create_params,
 )
 from ....types.intake.evaluation_context_param import EvaluationContextParam
-from ....types.intake.experiment_context_param import ExperimentContextParam
 from ....types.intake.ingest.chat_completions_ingest_response import ChatCompletionsIngestResponse
 from ....types.intake.ingest.captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
 from ....types.intake.ingest.captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
@@ -75,7 +74,6 @@ class ChatCompletionsResource(SyncAPIResource):
         cost_output_usd: float | Omit = omit,
         cost_usd: float | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
-        experiment_context: ExperimentContextParam | Omit = omit,
         provider: str | Omit = omit,
         session_id: str | Omit = omit,
         trace_id: str | Omit = omit,
@@ -109,9 +107,6 @@ class ChatCompletionsResource(SyncAPIResource):
               evaluation_run_id, metadata) keeps ingesting without error rather than being
               rejected.
 
-          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
-              `evaluation_context`.
-
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
           trace_id: Opt into joining an existing trace built via OTel or ATIF. This is not a
@@ -141,7 +136,6 @@ class ChatCompletionsResource(SyncAPIResource):
                     "cost_output_usd": cost_output_usd,
                     "cost_usd": cost_usd,
                     "evaluation_context": evaluation_context,
-                    "experiment_context": experiment_context,
                     "provider": provider,
                     "session_id": session_id,
                     "trace_id": trace_id,
@@ -186,7 +180,6 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
         cost_output_usd: float | Omit = omit,
         cost_usd: float | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
-        experiment_context: ExperimentContextParam | Omit = omit,
         provider: str | Omit = omit,
         session_id: str | Omit = omit,
         trace_id: str | Omit = omit,
@@ -220,9 +213,6 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
               evaluation_run_id, metadata) keeps ingesting without error rather than being
               rejected.
 
-          experiment_context: Deprecated alias for :class:`EvaluationContext`. Producers should send
-              `evaluation_context`.
-
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
           trace_id: Opt into joining an existing trace built via OTel or ATIF. This is not a
@@ -252,7 +242,6 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
                     "cost_output_usd": cost_output_usd,
                     "cost_usd": cost_usd,
                     "evaluation_context": evaluation_context,
-                    "experiment_context": experiment_context,
                     "provider": provider,
                     "session_id": session_id,
                     "trace_id": trace_id,

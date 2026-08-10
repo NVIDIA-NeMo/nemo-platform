@@ -25,6 +25,9 @@ __all__ = ["EntityListParams"]
 class EntityListParams(TypedDict, total=False):
     workspace: str
 
+    count_by: str
+    """Optional direct string data field whose matching values should be counted."""
+
     filter: str
     """Query filter expression. Supports text and JSON syntaxes:
 

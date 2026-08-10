@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Divider, Flex, Grid, Stack, Text } from '@nvidia/foundations-react-core';
+import { DescribeWithAiPanel } from '@studio/components/CreateFilesetStart/DescribeWithAiPanel';
 import { TemplateCard } from '@studio/components/CreateFilesetStart/TemplateCard';
 import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import type {
@@ -63,9 +64,12 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
   option,
   selectedTemplateId,
   onSelectTemplate,
+  workspace,
+  onValidConfig,
 }) => {
-  const content =
-    option.id === 'template' ? (
+  let content: ReactNode;
+  if (option.id === 'template') {
+    content = (
       <Grid colMinWidth="300px" gap="density-md">
         {FILESET_TEMPLATES.map((template) => (
           <TemplateCard
@@ -76,9 +80,12 @@ export const StartOptionDetail: FC<StartOptionDetailProps> = ({
           />
         ))}
       </Grid>
-    ) : (
-      DETAIL_CONTENT[option.id]
     );
+  } else if (option.id === 'ai') {
+    content = <DescribeWithAiPanel workspace={workspace} onValidConfig={onValidConfig} />;
+  } else {
+    content = DETAIL_CONTENT[option.id];
+  }
 
   if (!content) {
     return null;

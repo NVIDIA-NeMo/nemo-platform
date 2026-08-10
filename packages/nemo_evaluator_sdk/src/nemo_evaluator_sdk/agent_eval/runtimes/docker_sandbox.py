@@ -21,7 +21,7 @@ from typing import Any
 from uuid import uuid4
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from pydantic_core import to_jsonable_python
 
@@ -56,7 +56,6 @@ def _load_agents_sdk() -> SandboxSDK:
         # The OpenAI Agents SDK ships under the `nemo-evaluator-sdk[agent-runtimes]` extra and is
         # imported only when this Docker runtime is actually used, so it is absent from the default
         # type-checking environment.
-        from agents import Runner  # ty: ignore[unresolved-import]
         from agents.run import RunConfig  # ty: ignore[unresolved-import]
         from agents.sandbox import Manifest, SandboxAgent, SandboxRunConfig  # ty: ignore[unresolved-import]
         from agents.sandbox.config import DEFAULT_PYTHON_SANDBOX_IMAGE  # ty: ignore[unresolved-import]
@@ -66,6 +65,7 @@ def _load_agents_sdk() -> SandboxSDK:
             DockerSandboxClientOptions,
         )
 
+        from agents import Runner  # ty: ignore[unresolved-import]
         from docker import from_env as docker_from_env
     except ImportError as exc:
         raise RuntimeError("DockerSandboxAgentRuntime requires `nemo-evaluator-sdk[agent-runtimes]`") from exc
@@ -109,6 +109,19 @@ class DockerSandboxAgentRuntime:
         self._agent_factory = agent_factory
         self._sandbox_client_factory = sandbox_client_factory
         self._runner = runner
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the sandbox settings that shape its results."""
+        return RunnerInfo(
+            name="docker_sandbox",
+            kind="runner",
+            config={
+                "model": self._model,
+                "image": self._image,
+                "timeout_s": self._timeout_s,
+                "instructions": self._instructions,
+            },
+        )
 
     async def run_tasks(
         self,
@@ -276,7 +289,7 @@ class DockerSandboxAgentRuntime:
         )
 
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
-        root = config.output_dir if config.output_dir is not None else self._work_root
+        root = config.work_dir if config.work_dir is not None else self._work_root
         if root is None:
             root = Path(tempfile.gettempdir()) / "nemo-evaluator-agent-runtime"
         run_id = config.run_id or _new_runtime_run_id()

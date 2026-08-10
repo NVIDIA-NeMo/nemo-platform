@@ -32,10 +32,10 @@ class EvaluationPatchParams(TypedDict, total=False):
     """Human-readable description."""
 
     experiment_ids: SequenceNotStr[str]
-    """Replace the ExperimentGroups this Evaluation belongs to.
+    """Replace the Experiments this Evaluation belongs to.
 
-    Must be non-empty when provided; each group must already exist. Omit to leave
-    membership unchanged.
+    Must be non-empty when provided; each experiment must already exist. Omit to
+    leave membership unchanged.
     """
 
     metadata: Dict[str, str]

@@ -1,15 +1,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
-import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
-import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
+import { getModelEntityChatStatus } from '@nemo/common/src/utils/models';
+import type { InferenceParams, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { FormField } from '@nvidia/foundations-react-core';
-import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import { useSetFieldErrorOnApiError } from '@studio/hooks/evaluation/useSetFieldErrorOnApiError';
-import { useMemo } from 'react';
+import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { useState } from 'react';
 import { type FieldValues, type Path, useController, useFormContext } from 'react-hook-form';
+
+/** Judging needs a model that can actually serve a chat completion. */
+const isChatCapable = (model: ModelEntity): boolean =>
+  getModelEntityChatStatus(model) !== 'disabled';
 
 export interface JudgeModelSelectProps<TFieldValues extends FieldValues = FieldValues> {
   required?: boolean;
@@ -24,8 +29,8 @@ export interface JudgeModelSelectProps<TFieldValues extends FieldValues = FieldV
 }
 
 /**
- * Model selector specifically for judge models in LLM-as-a-Judge evaluation.
- * Fetches models from all workspaces, not just the current workspace.
+ * Model selector specifically for judge models in LLM-as-a-Judge evaluation. Models are searched
+ * and paged in the API, so nothing is fetched until the dropdown opens.
  */
 export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>({
   required = false,
@@ -49,11 +54,15 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
     rules: required ? { required: requiredMessage } : undefined,
   });
 
-  const { data: judgeModels, isLoading, error } = useJudgeModels({ enabled: !disabled });
+  const workspace = useWorkspaceFromPath();
+  const [open, setOpen] = useState(false);
+  const { error, ...modelSearch } = useModelSearch({
+    workspace: workspace ?? null,
+    enabled: open && !disabled,
+    include: isChatCapable,
+  });
 
   useSetFieldErrorOnApiError<TFieldValues>(formFieldName, error);
-
-  const groups = useMemo(() => groupModelsByWorkspace(judgeModels ?? []), [judgeModels]);
 
   const value: ModelSelection | null = field.value ? { model: field.value as string } : null;
 
@@ -62,6 +71,7 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
   };
 
   const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
     if (!isOpen) field.onBlur();
   };
 
@@ -73,10 +83,9 @@ export const JudgeModelSelect = <TFieldValues extends FieldValues = FieldValues>
       required={required}
     >
       <ModelSelectV2
+        {...modelSearch}
         value={value}
         onValueChange={handleValueChange}
-        groups={groups}
-        loading={isLoading}
         disabled={isSubmitting || disabled}
         placeholder={placeholder}
         showParams={showParams}

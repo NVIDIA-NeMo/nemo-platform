@@ -49,8 +49,12 @@ deployments:
         # local Docker daemon (pulled by the test's CI job), so disable the
         # per-run pull and use the image as-is.
         pull_images: false
-        port_range_start: 9000
-        port_range_end: 9100
+        port_range_start: 49152
+        port_range_end: 49251
+  controller:
+    # Do not reap peer e2e platforms' containers on the shared host daemon.
+    # See e2e/configs/disable-deployments-orphan-cleanup.yaml.
+    orphan_cleanup_interval_seconds: 0
 
 models:
   controller:
