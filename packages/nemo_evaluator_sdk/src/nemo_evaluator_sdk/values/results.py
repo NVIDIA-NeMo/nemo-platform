@@ -463,7 +463,10 @@ class AggregatedMetricResult(BaseModel):
 
     def _unknown_score_message(self, name: str) -> str:
         """Explain a lookup miss, leading with near-misses when the name looks like a typo."""
-        available = sorted(score.name for score in self.scores)
+        # Deduplicated: names are expected unique, but runner-contributed extras are appended as-is,
+        # and a repeat would otherwise be suggested twice, listed twice, and counted twice in the
+        # "N other aggregates" tally -- making a collision look like two distinct near-misses.
+        available = sorted({score.name for score in self.scores})
         if not available:
             return f"no aggregate score named {name!r}: this result has no aggregates at all"
         # Suggestions beat enumeration for the common case (a typo, or the wrong pass@k), and stay

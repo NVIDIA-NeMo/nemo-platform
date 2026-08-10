@@ -71,6 +71,29 @@ def test_score_reports_how_many_other_names_exist_alongside_a_suggestion(
         assert expected in message
 
 
+def test_miss_message_names_a_repeated_aggregate_only_once() -> None:
+    # A duplicate name is one name, not two near-misses: suggesting it twice, listing it twice, or
+    # counting it twice in the "other aggregates" tally all misrepresent what the result holds.
+    duplicated = _aggregates("reward.reward", "reward.reward", "view.solved")
+
+    with pytest.raises(KeyError) as excinfo:
+        duplicated.score("reward.rewrad")
+
+    message = str(excinfo.value)
+    assert message.count("'reward.reward'") == 1
+    assert "(1 other aggregate in this result)" in message
+
+
+def test_miss_message_does_not_repeat_a_duplicate_in_the_fallback_listing() -> None:
+    duplicated = _aggregates("alpha.one", "alpha.one", "beta.two")
+
+    with pytest.raises(KeyError) as excinfo:
+        duplicated.score("zzzzzz")
+
+    message = str(excinfo.value)
+    assert message.count("'alpha.one'") == 1
+
+
 def test_score_lists_available_names_when_nothing_is_close() -> None:
     summary = _summary("gym_reward.reward", "view.solved")
 
