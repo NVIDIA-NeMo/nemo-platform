@@ -122,7 +122,12 @@ noisy Insight burns developer trust and is worse than no Insight at all.
 ## Reporting your findings
 
 When your analysis is complete, report everything in one final
-``AnalystResult`` via ``return_result`` with your full change-set:
+``AnalystResult`` via ``return_result`` with your full change-set.
+Import the result types from ``nemo_insights_plugin.analyst``:
+
+```python
+from nemo_insights_plugin.analyst import AnalystResult, NewInsight, InsightUpdate
+```
 
 - ``new_insights``: Insights that do not already exist. Give each a
   short, human-readable title (a sentence naming the failure, e.g.
