@@ -724,7 +724,7 @@ class Coder(Agent, roles.Builder):
         await self.run_pyright(fork.workdir)
         await self.optimize_subproblem(fork.workdir, proposal.description, change, self._dataset, self._evaluator)
         await self.run_pyright(fork.workdir)
-        if not await self.integration_check(fork.workdir, self._dataset, self._evaluator):
+        if not await self.integration_check(fork.workdir, self._dataset, self._evaluator, task_ids=change.task_ids):
             raise IntegrationCheckFailed(f"{fork.workdir.name} smoke eval failed after fix attempts")
 
         # Seeded only now, after the change is final: during editing the ancestor's
@@ -890,6 +890,7 @@ class Coder(Agent, roles.Builder):
         dataset: Dataset,
         evaluator: Evaluator,
         max_fix_attempts: int | None = None,
+        task_ids: Sequence[str] | None = None,
     ) -> bool:
         """Smoke-test the build and attempt bounded LLM repairs if it fails.
 
@@ -899,6 +900,9 @@ class Coder(Agent, roles.Builder):
             evaluator: The evaluator to use for the evaluation.
             max_fix_attempts: Maximum repair iterations; defaults to
                 ``self._config.max_fix_attempts``.
+            task_ids: The tasks the change claims to fix. Checking these is what makes a
+                failure informative — a random task the change does not touch passes on
+                the first attempt, and the repair loop below never runs.
 
         Returns:
             bool: True if the build passes the smoke eval, False otherwise.
@@ -912,9 +916,12 @@ class Coder(Agent, roles.Builder):
         all_tasks = list(dataset.list_tasks())
         if not all_tasks:
             raise RuntimeError("No tasks available for integration_check")
-        # One task to keep smoke wall time low; seeded by the directory name so retries
-        # hit the same task.
-        tasks = [random.Random(workdir.name).choice(all_tasks)]
+        # The tasks the Proposal named as evidence, so a build that does not repair what
+        # it claimed fails here and gets the repair attempts below. Falling back to one
+        # random task — seeded by the directory name so retries hit the same one — keeps
+        # the old "does it run at all" check for a Proposal that names none.
+        targeted = [task for task in all_tasks if task.id in set(task_ids or ())]
+        tasks = targeted or [random.Random(workdir.name).choice(all_tasks)]
         for attempt in range(_max_fix_attempts + 1):
             evaluation = await self.run_smoke_eval(workdir, tasks, dataset, evaluator)
             if self._is_smoke_results_healthy(evaluation, tasks):
