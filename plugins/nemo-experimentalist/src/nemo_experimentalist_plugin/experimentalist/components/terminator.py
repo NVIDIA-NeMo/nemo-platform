@@ -98,24 +98,13 @@ class Terminator(Agent):
     ) -> TerminationDecision:
         """Stop when a candidate that could win already satisfies every targeted objective.
 
-        Distinct from convergence, which asks whether progress has *stalled*. This asks
-        whether there is any progress left worth making, and answers it from the numbers
-        rather than from a judgement about the analysis text. A run that has solved the
-        problem otherwise keeps buying rounds until its budget runs out, and each one can
-        only match what it already has.
+        Convergence asks whether progress has stalled; this asks whether any is left to
+        make. Not gated by ``disable_convergence_check``: that disables a judgement about
+        stagnation, this is a threshold the caller stated. To keep going, set no target.
 
-        Deliberately **not** gated by ``disable_convergence_check``. That flag turns off
-        an inference about stagnation, which is a judgement call worth disabling when the
-        signal is unreliable. This is a measurement against a threshold the caller stated,
-        and there is no reason to want it off while a target is configured -- if you do
-        not want the run to stop here, do not set a target.
-
-        Consulted at the top of every round including the first, so a baseline that
-        already meets the targets ends the run without a single round being paid for.
-
-        Only nodes that could actually win are considered -- survivors and the round-0
-        baseline, mirroring finalization. A killed candidate meeting the target would end
-        the run in favour of a winner that never reaches it.
+        Consulted before every round, so a baseline that already qualifies costs nothing.
+        Only survivors and the round-0 baseline count, mirroring finalization -- a killed
+        candidate would end the run in favour of a winner that never reaches the target.
         """
         targets = [target for target in config.objective_function if target.target is not None]
         if not targets:
