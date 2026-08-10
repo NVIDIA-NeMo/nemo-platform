@@ -297,7 +297,7 @@ async def test_create_uses_executor_policy_when_no_policy_path_override(
     )
 
     spec = mock_stub.CreateSandbox.call_args.args[0].spec
-    assert spec.policy is executor_policy
+    assert spec.policy == executor_policy
 
 
 async def test_create_uses_per_deployment_policy_when_policy_path_set(
@@ -322,7 +322,7 @@ async def test_create_uses_per_deployment_policy_when_policy_path_set(
     )
 
     spec = mock_stub.CreateSandbox.call_args.args[0].spec
-    assert spec.policy is not executor_policy
+    assert spec.policy != executor_policy
 
 
 async def test_create_requires_serve_command(
