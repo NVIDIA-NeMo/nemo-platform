@@ -2,17 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import asyncio
-import gzip
 import json
 import logging
 import uuid
-import zlib
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Union
 
 import aiohttp
-from aiohttp import ClientSession, compression_utils
+from aiohttp import ClientSession
 from fastapi import HTTPException, Request
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -445,105 +443,13 @@ async def _parse_sse_chunks(
                 yield parsed
 
 
-class UpstreamContentDecodingError(Exception):
-    """Raised when IGW cannot decode an upstream response body."""
-
-    def __init__(self, content_encoding: str):
-        self.content_encoding = content_encoding
-        super().__init__(f"Could not decode upstream Content-Encoding {content_encoding!r}")
-
-
-def _parse_content_codings(content_encoding: str) -> tuple[str, ...]:
-    """Parse the ordered content codings from a ``Content-Encoding`` value."""
-    if not content_encoding.strip():
-        return ()
-
-    codings = tuple(part.strip().lower() for part in content_encoding.split(","))
-    if any(not coding for coding in codings):
-        raise UpstreamContentDecodingError(content_encoding)
-    return tuple(coding for coding in codings if coding != "identity")
-
-
-def _decode_zstd_body(body: bytes, content_encoding: str) -> bytes:
-    """Decode one or more complete Zstandard frames."""
-    decompressor_type = getattr(compression_utils, "ZstdDecompressor", None)
-    if decompressor_type is None or not body:
-        raise UpstreamContentDecodingError(content_encoding)
-
-    decoded = bytearray()
-    remaining = body
-    while remaining:
-        decompressor = decompressor_type()
-        decoded.extend(decompressor.decompress(remaining))
-        if not decompressor.eof:
-            raise UpstreamContentDecodingError(content_encoding)
-        remaining = decompressor.unused_data
-    return bytes(decoded)
-
-
-def _decode_content_body_sync(body: bytes, content_encoding: str) -> bytes:
-    """Decode a complete body by applying content codings in reverse order."""
-    try:
-        decoded = body
-        for coding in reversed(_parse_content_codings(content_encoding)):
-            if coding == "gzip":
-                decoded = gzip.decompress(decoded)
-            elif coding == "deflate":
-                decoded = zlib.decompress(decoded)
-            elif coding == "br":
-                brotli = getattr(compression_utils, "brotli", None)
-                if brotli is None:
-                    raise UpstreamContentDecodingError(content_encoding)
-                decoded = brotli.decompress(decoded)
-            elif coding == "zstd":
-                decoded = _decode_zstd_body(decoded, content_encoding)
-            else:
-                raise UpstreamContentDecodingError(content_encoding)
-        return decoded
-    except UpstreamContentDecodingError:
-        raise
-    except Exception as exc:
-        raise UpstreamContentDecodingError(content_encoding) from exc
-
-
-async def _decode_content_body(body: bytes, content_encoding: str) -> bytes:
-    """Decode and validate a complete upstream response body."""
-    return await asyncio.to_thread(_decode_content_body_sync, body, content_encoding)
-
-
-async def _decode_upstream_body(body: bytes, content_encoding: str, upstream_url: str) -> bytes:
-    """Decode an upstream body or raise the gateway's public 502 error."""
-    try:
-        return await _decode_content_body(body, content_encoding)
-    except UpstreamContentDecodingError as exc:
-        logger.warning(
-            "Inference Gateway failed to decode upstream response from %s with Content-Encoding %r",
-            upstream_url,
-            content_encoding,
-            exc_info=exc,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"Inference Gateway could not decode the upstream response with Content-Encoding {content_encoding!r}."
-            ),
-        ) from exc
-
-
-async def _iter_response_chunks(chunks: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
-    """Yield already parsed response chunks through the streaming middleware API."""
-    for chunk in chunks:
-        yield chunk
-
-
 async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[dict[str, Any]]:
     """Yield parsed JSON objects from an SSE (text/event-stream) response.
 
-    Each ``data:`` line is parsed and yielded as a dict. ``data: [DONE]``
+    Each ``data:`` line is decoded and yielded as a dict. ``data: [DONE]``
     terminates the stream. Malformed or non-JSON data lines are silently skipped.
-    Compressed SSE responses are decoded eagerly by :func:`fetch_proxy_response`
-    instead so decoding failures can become a 502 before response output starts.
-    The underlying aiohttp response is always closed when the generator exits.
+    aiohttp decodes compressed response chunks before they reach this parser.
+    The underlying response is always closed when the generator exits.
     """
     try:
         async for parsed in _parse_sse_chunks(response.content.iter_any()):
@@ -563,12 +469,10 @@ async def fetch_proxy_response(
     responsible for applying response middleware and then streaming via
     :func:`stream_response_result`.
 
-    Unencoded ``Content-Type: text/event-stream`` responses remain backed by the
-    live aiohttp response, so the iterator **must** be fully consumed or the
-    underlying connection will leak. Compressed SSE responses are buffered and
-    validated before an iterator is returned, allowing decoding failures to be
-    reported as a 502 before response output begins. All other responses are
-    buffered, decoded according to ``Content-Encoding``, and parsed as JSON.
+    aiohttp decodes the upstream ``Content-Encoding`` for this middleware-aware
+    path. ``Content-Type: text/event-stream`` responses remain backed by the live
+    response, so the iterator **must** be fully consumed or the connection will
+    leak. Other responses are buffered and parsed as JSON.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -585,6 +489,7 @@ async def fetch_proxy_response(
             params=next_request_info.query_params,
             data=next_request_info.body,
             timeout=None,
+            auto_decompress=True,
         )
 
         if response.status >= 400:
@@ -612,34 +517,15 @@ async def fetch_proxy_response(
         content_type = response.headers.get("content-type", "")
 
         if "text/event-stream" in content_type:
-            content_encoding = response.headers.get("content-encoding", "")
-            if content_encoding.strip().lower() not in {"", "identity"}:
-                # A compressed stream must be complete before its checksum and
-                # framing can be validated. Buffer it so a corrupt stream becomes
-                # a 502 instead of failing after successful headers were sent.
-                try:
-                    raw = b"".join([chunk async for chunk in response.content.iter_any()])
-                finally:
-                    _close_response(response)
-                decoded = await _decode_upstream_body(raw, content_encoding, next_request_info.url)
-
-                async def _decoded_body() -> AsyncIterator[bytes]:
-                    yield decoded
-
-                parsed_chunks = [chunk async for chunk in _parse_sse_chunks(_decoded_body())]
-                result: ResponseResult = _iter_response_chunks(parsed_chunks)
-            else:
-                # Ownership of the live aiohttp response is transferred to the
-                # generator for unencoded streaming responses.
-                result = _parse_sse_stream(response)
+            # Ownership of the live aiohttp response is transferred to the
+            # generator for streaming responses.
+            result: ResponseResult = _parse_sse_stream(response)
         else:
-            # Non-streaming — buffer and decode the full body before parsing it.
+            # aiohttp has already decoded Content-Encoding for this request.
             raw = await response.read()
             _close_response(response)
-            content_encoding = response.headers.get("content-encoding", "")
-            decoded = await _decode_upstream_body(raw, content_encoding, next_request_info.url)
             try:
-                result = json.loads(decoded)
+                result = json.loads(raw)
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning(
                     "Inference Gateway could not parse upstream response from %s as JSON",
@@ -666,6 +552,17 @@ async def fetch_proxy_response(
 
     except HTTPException:
         raise
+    except aiohttp.ClientPayloadError as exc:
+        _close_response(response)
+        logger.warning(
+            "Inference Gateway could not decode upstream response from %s",
+            next_request_info.url,
+            exc_info=exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Inference Gateway could not decode the upstream response body.",
+        ) from exc
     except aiohttp.ClientError as exc:
         _close_response(response)
         raise HTTPException(status_code=502, detail=f"Backend networking error: {exc}")
