@@ -85,6 +85,16 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   Studio bundles the same files through its own graph. A plugin adds no CSS.
 - **`useStudioDataViewState` syncs to URL search params** on Studio's shared
   router — two DataViews on one route will fight over them.
+- **Toasts need `onNotify`.** `ToastProvider` is *not* shared: Studio mounts it
+  by deep import, so this bundle carries its own `ToastContext` with nothing in
+  it. `ConfirmationModal`, `DeleteConfirmationModal` and `LogViewer` therefore
+  take an `onNotify` prop — pass `host.notifications.notify` and the message
+  lands in Studio's toaster. Omit it and the message is dropped with a
+  `logger.warn`; nothing throws, so the miss is silent in the UI.
+
+  ```tsx
+  <DeleteConfirmationModal onNotify={host.notifications.notify} ... />
+  ```
 
 ## Contract
 
@@ -96,7 +106,13 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
     auth: { accessToken: string; getAccessToken: () => string };
     sdk: { platform: /* @nemo/sdk platform hooks */ };
     navigation: { navigate: (to: string) => void; back: () => void };
-    notifications: { notify: (message: string, type?: 'success'|'error'|'info'|'warning') => void };
+    notifications: {
+      notify: (
+        message: string,
+        type?: 'success'|'error'|'info'|'warning',
+        options?: { durationMs?: number | false },
+      ) => void;
+    };
     telemetry: { info; warn; error: (m, cause?) => void; event: (name, attrs?) => void };
     breadcrumbs: { set: (trail: { label: string; href?: string }[]) => void };
   };

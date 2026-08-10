@@ -20,9 +20,14 @@ export interface PluginNavigation {
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
+export interface NotificationOptions {
+  /** ms before auto-dismiss; `false` keeps the toast until dismissed. Defaults per type. */
+  durationMs?: number | false;
+}
+
 /** Fire a toast into Studio's shared toaster; defaults to `info`. */
 export interface PluginNotifications {
-  notify: (message: string, type?: NotificationType) => void;
+  notify: (message: string, type?: NotificationType, options?: NotificationOptions) => void;
 }
 
 export interface PluginBreadcrumb {

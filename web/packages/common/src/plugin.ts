@@ -64,6 +64,8 @@ export { getErrorMessage } from '@nemo/common/src/utils/error';
 export { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 export { logger, toError } from '@nemo/common/src/utils/logger';
 
+export type { NotifyFn, NotifyType } from '@nemo/common/src/providers/toast/types';
+
 export { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 export {
   DEFAULT_PAGE,

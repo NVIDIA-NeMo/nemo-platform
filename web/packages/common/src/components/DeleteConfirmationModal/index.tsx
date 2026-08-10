@@ -3,6 +3,7 @@
 
 import { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
 import { FormModalProps } from '@nemo/common/src/components/FormModal';
+import { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { FC } from 'react';
 
 interface DeleteModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
@@ -14,6 +15,8 @@ interface DeleteModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   successText?: string;
   errorText?: string;
   suppressResultToasts?: boolean;
+  /** Where result messages go. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
+  onNotify?: NotifyFn;
 }
 
 export const DeleteConfirmationModal: FC<DeleteModalProps> = ({

@@ -64,7 +64,7 @@ export const PluginRenderer = (): ReactElement => {
       auth: { accessToken, getAccessToken },
       sdk: STUDIO_SDK,
       navigation: { navigate: (to) => navigate(to), back: () => navigate(-1) },
-      notifications: { notify: (message, type = 'info') => toast[type](message) },
+      notifications: { notify: (message, type = 'info', options) => toast[type](message, options) },
       telemetry: makeTelemetry(pluginName ?? 'unknown'),
       breadcrumbs: { set: setPluginBreadcrumbs },
     }),
