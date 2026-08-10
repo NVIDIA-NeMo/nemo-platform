@@ -12,7 +12,7 @@ from nmp.common.config import create_service_config_class, get_platform_config, 
 from pydantic import Field
 
 
-class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]
+class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: ignore[unsupported-base]
     """Environment variables use the ``NMP_RL_`` prefix."""
 
     image_registry: str | None = Field(

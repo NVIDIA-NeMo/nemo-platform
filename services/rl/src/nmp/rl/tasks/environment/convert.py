@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from nmp.rl.schemas.environment import AdapterWheelsV1Manifest
 from nmp.rl.tasks.environment.allowlist import DEFAULT_ADAPTER_AGENT
 from nmp.rl.tasks.environment.package import (
     ConvertedPackage,
@@ -93,8 +92,7 @@ def download_hub_wheels(
         src_wheels = sorted(spec.wheels_dir.glob("*.whl"))
         if not src_wheels:
             raise ValueError(
-                f"--wheels-dir {spec.wheels_dir} has no *.whl files; "
-                "adapter-wheels-v1 requires a wheel closure"
+                f"--wheels-dir {spec.wheels_dir} has no *.whl files; adapter-wheels-v1 requires a wheel closure"
             )
         wheels_dir.mkdir(parents=True, exist_ok=True)
         for whl in src_wheels:
@@ -107,8 +105,7 @@ def download_hub_wheels(
     downloaded = sorted(wheels_dir.glob("*.whl"))
     if not downloaded:
         raise RuntimeError(
-            f"pip download produced no wheels for {packages!r}; "
-            "adapter-wheels-v1 requires a wheel closure"
+            f"pip download produced no wheels for {packages!r}; adapter-wheels-v1 requires a wheel closure"
         )
     return wheels_dir
 
@@ -120,10 +117,7 @@ def _install_hub_package_from_wheels(wheels_dir: Path, package_name: str) -> Non
         dashed = package_name.replace("_", "-")
         candidates = sorted(wheels_dir.glob(f"{dashed}-*.whl"))
     if not candidates:
-        raise RuntimeError(
-            f"No wheel for hub package {package_name!r} under {wheels_dir}; "
-            "cannot load dataset"
-        )
+        raise RuntimeError(f"No wheel for hub package {package_name!r} under {wheels_dir}; cannot load dataset")
     whl = candidates[-1]
     cmd = [
         sys.executable,
