@@ -241,7 +241,13 @@ def configured_subprocess_translation_profiles() -> set[str]:
 # Execution Profiles Endpoint
 @router.get("/v2/execution-profiles")
 async def get_execution_profiles() -> list[ExecutionProfileT]:
-    """Get all currently configured execution profiles."""
+    """Get all currently configured execution profiles.
+
+    Returns the capability-filtered merge from jobs config. In local standalone
+    the controller may prune the shared list further after registry boot; in
+    split topologies the API advertises its own merge result (not controller
+    process memory).
+    """
     return profiles
 
 

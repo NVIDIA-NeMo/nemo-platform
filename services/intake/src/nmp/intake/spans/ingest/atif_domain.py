@@ -155,6 +155,7 @@ class AtifStepBase(BaseModel):
     is_copied_context: bool | None = None
     extra: dict[str, Any] | None = None
     llm_call_count: int | None = Field(default=None, ge=0)
+    observation: AtifObservation | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -184,7 +185,6 @@ class AtifStepAgent(AtifStepBase):
     reasoning_effort: str | float | None = None
     reasoning_content: str | None = None
     tool_calls: list[AtifToolCall] | None = None
-    observation: AtifObservation | None = None
     metrics: AtifMetrics | None = None
 
 
@@ -209,10 +209,9 @@ def validate_atif_step_ids(steps: list[AtifStep]) -> None:
 def validate_atif_tool_call_references(steps: list[AtifStep]) -> None:
     """Require unique calls and resolvable observation call references."""
     for step in steps:
-        if not isinstance(step, AtifStepAgent):
-            continue
         tool_call_ids: set[str] = set()
-        for tool_call in step.tool_calls or []:
+        tool_calls = step.tool_calls if isinstance(step, AtifStepAgent) else None
+        for tool_call in tool_calls or []:
             if tool_call.tool_call_id in tool_call_ids:
                 raise ValueError(f"Duplicate tool_call_id '{tool_call.tool_call_id}' in step {step.step_id}")
             tool_call_ids.add(tool_call.tool_call_id)
@@ -229,7 +228,7 @@ def validate_atif_tool_call_references(steps: list[AtifStep]) -> None:
 def validate_atif_v17_subagent_ref_resolution_keys(steps: list[AtifStep]) -> None:
     """Require v1.7 subagent references to include a resolvable key."""
     for step in steps:
-        if not isinstance(step, AtifStepAgent) or step.observation is None:
+        if step.observation is None:
             continue
         for result in step.observation.results:
             for subagent_ref in result.subagent_trajectory_ref or []:

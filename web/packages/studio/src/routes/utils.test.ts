@@ -9,6 +9,7 @@ import {
   getEvaluationMetricsRunRoute,
   getEvaluationSessionDetailRoute,
   getFilesetDetailsRoute,
+  getFilesetRoute,
   getIntakeSessionRoute,
   getIntakeSessionTraceRoute,
   getPromptTuningFormRoute,
@@ -63,6 +64,22 @@ describe('Evaluation route helpers', () => {
         '/workspaces/test-workspace/evaluation/benchmarks/my-benchmark'
       );
     });
+  });
+});
+
+describe('getFilesetRoute', () => {
+  const workspace = 'test-workspace';
+
+  it('routes a bare name to the panel route with a full entity reference', () => {
+    expect(getFilesetRoute(workspace, 'unchanged-blue')).toBe(
+      '/workspaces/test-workspace/filesets/test-workspace%2Funchanged-blue'
+    );
+  });
+
+  it('preserves a namespace already present on the reference', () => {
+    expect(getFilesetRoute(workspace, 'default/unchanged-blue')).toBe(
+      '/workspaces/test-workspace/filesets/default%2Funchanged-blue'
+    );
   });
 });
 

@@ -274,6 +274,7 @@ def test_validate_docker_available_returns_false_on_connection_failures() -> Non
     from unittest.mock import MagicMock, patch
 
     from docker.errors import DockerException
+    from nemo_platform_plugin.capabilities import reset_capability_cache
     from nemo_platform_plugin.config import validate_docker_available
     from requests.exceptions import ConnectionError as RequestsConnectionError
 
@@ -282,11 +283,14 @@ def test_validate_docker_available_returns_false_on_connection_failures() -> Non
         RequestsConnectionError("refused"),
         OSError("no such file"),
     ):
-        with patch("nemo_platform_plugin.config.docker.from_env", side_effect=exc):
+        reset_capability_cache()
+        with patch("docker.from_env", side_effect=exc):
             assert validate_docker_available() is False
 
+        reset_capability_cache()
         client = MagicMock()
         client.ping.side_effect = exc
-        with patch("nemo_platform_plugin.config.docker.from_env", return_value=client):
+        with patch("docker.from_env", return_value=client):
             assert validate_docker_available() is False
         client.close.assert_called()
+    reset_capability_cache()

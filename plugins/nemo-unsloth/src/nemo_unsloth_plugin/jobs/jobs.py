@@ -13,6 +13,7 @@ because the compiler call convention and profile resolution are backend-specific
 
 from __future__ import annotations
 
+import asyncio
 from typing import ClassVar, cast
 
 from nemo_platform import AsyncNeMoPlatform
@@ -59,7 +60,8 @@ class UnslothJob(BaseSubmitJob):
         ``unsloth_config.default_training_execution_profile``.
         """
         del entity_client, options
-        require_container_runtime(cls.runtime_label)
+        # Probe is sync (≤5s); keep it off the event loop.
+        await asyncio.to_thread(require_container_runtime, cls.runtime_label)
         canonical = spec if isinstance(spec, UnslothJobOutput) else UnslothJobOutput.model_validate(spec.model_dump())
 
         execution_profile = profile or unsloth_config.default_training_execution_profile

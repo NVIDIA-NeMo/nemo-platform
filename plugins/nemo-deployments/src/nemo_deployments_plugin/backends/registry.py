@@ -96,9 +96,16 @@ class ExecutorRegistry:
                         exc,
                     )
             if default_executor and default_executor not in executors:
+                default_spec = next((spec for spec in specs if spec.name == default_executor), None)
+                backend_hint = (
+                    f"backend '{default_spec.backend}'"
+                    if default_spec is not None
+                    else "its required backend capability"
+                )
                 raise ExecutorNotFoundError(
                     f"default_executor '{default_executor}' is not registered "
-                    "(unavailable backend or missing from executor config)."
+                    "(the backend is unavailable or the executor is missing from configuration). "
+                    f"Configure a registered default_executor, or restore {backend_hint}."
                 )
         except Exception:
             for backend in executors.values():

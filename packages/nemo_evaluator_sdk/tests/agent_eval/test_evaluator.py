@@ -47,7 +47,6 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnlineModel,
 )
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
-from nemo_evaluator_sdk.values.results import AggregateScore
 
 
 def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
@@ -145,13 +144,6 @@ def test_metric_row_exposes_reference_but_task_row_hides_it() -> None:
 
     task_row = _task_row(task)
     assert "reference" not in task_row
-
-
-def _score(summary: AgentEvalSummary, name: str) -> AggregateScore:
-    for aggregate in summary.scores.scores:
-        if aggregate.name == name:
-            return aggregate
-    raise KeyError(name)
 
 
 class _ConstantMetric:
@@ -327,7 +319,7 @@ async def test_scores_imported_trials_with_metric_and_persists_bundle(tmp_path: 
     # run() no longer writes anything; persisting is the caller's call and defaults to the work_dir.
     location = result.persist()
 
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
     assert location.output_dir == tmp_path
     assert location.dashboard_path == tmp_path / "report.html"
     assert (tmp_path / "run.json").exists()
@@ -371,7 +363,7 @@ async def test_scores_partial_trials() -> None:
         ],
     )
 
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
 
 
 @pytest.mark.asyncio
@@ -385,7 +377,7 @@ async def test_target_runtime_produces_trials_before_scoring() -> None:
     assert result.trials[0].id == "task-1:runtime"
     assert runtime.config is not None
     assert runtime.config.run_id == result.run_id
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
 
 
 @pytest.mark.asyncio
@@ -411,7 +403,7 @@ async def test_live_model_generation_with_mocked_inference() -> None:
     assert result.trials[0].metadata["model_id"] == "target-model"
     assert result.trials[0].output is not None
     assert result.trials[0].output.output_text == "Generated model answer"
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
 
 
 @pytest.mark.asyncio
@@ -524,9 +516,9 @@ def test_summary_reports_coverage_and_merges_views_into_scores() -> None:
 
     summary = AgentEvalSummary.from_scores(scores, tasks=[task])
 
-    assert _score(summary, "constant_metric.score").mean == 1.0
-    assert _score(summary, "other_metric.quality").mean == 0.0
-    assert _score(summary, "view.outcome_correctness").mean == 0.5
+    assert summary.score("constant_metric.score").mean == 1.0
+    assert summary.score("other_metric.quality").mean == 0.0
+    assert summary.score("view.outcome_correctness").mean == 0.5
     assert summary.metric_coverage["constant_metric"]["score"].total == 1
     assert summary.metric_coverage["constant_metric"]["score"].scored == 1
 

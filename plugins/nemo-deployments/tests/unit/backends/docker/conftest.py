@@ -10,6 +10,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from nemo_deployments_plugin.backends.docker.backend import DockerDeploymentBackend
+from nemo_platform_plugin.capabilities import reset_capability_cache
+
+
+@pytest.fixture(autouse=True)
+def _reset_capability_cache() -> Iterator[None]:
+    """Prevent probe_docker process cache from poisoning later fixtures."""
+    reset_capability_cache()
+    yield
+    reset_capability_cache()
 
 
 @pytest.fixture

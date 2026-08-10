@@ -1,24 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared helpers for container-mode agent deployment e2e tests.
+"""Shared helpers for agent deployment e2e tests.
 
-Both the Docker (``test_nemo_agents_docker.py``) and Kubernetes
-(``test_nemo_agents_k8s.py``) modules deploy a real agent **container** through
-the nemo-deployments plugin and invoke it through the agents gateway. The end-to
--end chain they prove is identical apart from the backend::
+The subprocess, Docker, and Kubernetes modules deploy a real agent through the
+agents plugin and invoke it through the agents gateway. The end-to-end chain is
+identical apart from the deployment backend and endpoint projection::
 
-    sdk.agents.invoke (gateway proxy, container-mode endpoint resolution)
-      -> agent container (nat start fastapi) on docker | kubernetes
+    sdk.agents.invoke (gateway proxy, mode-specific endpoint resolution)
+      -> NAT or Fabric agent process on subprocess | docker | kubernetes
       -> Inference Gateway /openai (base_url injected at deploy time)
       -> mock provider short-circuit (no real upstream / no API key)
       -> response back through the gateway
 
-This module holds the backend-agnostic core: the mock-provider-backed agent
-config, the create -> wait-running -> assert-container-shape -> invoke -> assert
-flow, and cleanup. The per-backend modules own only what genuinely differs
-(pytest markers, how the deployment image ref is resolved, and best-effort
-container cleanup).
+This module holds the shared core: the mock-provider-backed agent config, the
+create -> wait-running -> assert-endpoint-shape -> invoke -> assert flow, and
+cleanup. The per-backend modules own only what genuinely differs (pytest
+markers, image resolution, timeouts, and best-effort backend cleanup).
 """
 
 import time
@@ -28,6 +26,7 @@ from typing import Any
 
 import httpx
 import pytest
+from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT
 from nemo_platform import NeMoPlatform
 from nmp.testing import MockProviderResponse, add_mock_provider
 
@@ -55,8 +54,8 @@ def _chat_completion_response(content: str, model: str) -> dict[str, Any]:
     }
 
 
-def _mock_backed_agent_config(model_name: str) -> dict[str, Any]:
-    """A deterministic single-LLM workflow pointed at the mock model.
+def _mock_backed_nat_agent_config(model_name: str) -> dict[str, Any]:
+    """A deterministic single-LLM NAT workflow pointed at the mock model.
 
     ``base_url``/``api_key`` are intentionally omitted so the deployment injects
     the Inference Gateway URL (and the mock provider short-circuits the call).
@@ -73,6 +72,39 @@ def _mock_backed_agent_config(model_name: str) -> dict[str, Any]:
             "llm_name": "main",
         },
     }
+
+
+def _mock_backed_fabric_agent_config(agent_name: str, model_name: str) -> dict[str, Any]:
+    """A deterministic DeepAgents-backed Fabric agent pointed at the mock model."""
+    return {
+        "config_format": NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+        "name": agent_name,
+        "default_harness": "deepagents",
+        "harnesses": {
+            "deepagents": {
+                "kind": "deepagents",
+                "settings": {
+                    "deepagents": {},
+                },
+            }
+        },
+        "models": {
+            "default": {
+                "provider": "openai",
+                "model": model_name,
+                "temperature": 0.0,
+            }
+        },
+    }
+
+
+def _mock_backed_agent_config(config_format: str, *, agent_name: str, model_name: str) -> dict[str, Any]:
+    """Return the runtime-valid mock-backed config for ``config_format``."""
+    if config_format == NAT_WORKFLOW_CONFIG_FORMAT:
+        return _mock_backed_nat_agent_config(model_name)
+    if config_format == NEMO_AGENTS_SPEC_CONFIG_FORMAT:
+        return _mock_backed_fabric_agent_config(agent_name, model_name)
+    raise ValueError(f"Unsupported agent config format: {config_format!r}")
 
 
 def _page_data(page: Any) -> list[dict[str, Any]]:
@@ -158,24 +190,24 @@ def wait_for_deployment_running(
     pytest.fail(f"Deployment {name!r} did not reach running within {timeout_seconds}s: {last_deployment}")
 
 
-def run_container_agent_deploy_and_invoke(
+def run_agent_deploy_and_invoke(
     sdk: NeMoPlatform,
     *,
     workspace: str,
     deployment_mode: str,
-    image: str,
+    config_format: str = NAT_WORKFLOW_CONFIG_FORMAT,
+    image: str | None = None,
     running_timeout_seconds: float = 300,
     reap_backend_resources: Callable[[str], None] | None = None,
 ) -> None:
-    """Deploy a mock-backed agent as a container and invoke it through the gateway.
+    """Deploy a mock-backed agent and invoke it through the gateway.
 
-    Backend-agnostic core shared by the docker and k8s e2e modules:
+    Shared core for subprocess, Docker, and Kubernetes E2E modules:
 
-    1. Register a mock inference provider + deterministic single-LLM agent.
-    2. Deploy it with ``deployment_mode`` (``"docker"`` / ``"k8s"``) from ``image``.
-    3. Wait for ``running`` and assert the container-mode endpoint shape (empty
-       scalar ``endpoint``, populated ``endpoints``) — this guards that the pass
-       came through the container path, not a subprocess fallback.
+    1. Register a mock inference provider + deterministic single-LLM agent in
+       the requested ``config_format``.
+    2. Deploy it using ``deployment_mode`` and the optional container ``image``.
+    3. Wait for ``running`` and assert the mode-specific endpoint shape.
     4. Invoke through the gateway and assert the mocked completion round-trips.
     5. Clean up the deployment and agent (best-effort, isolated steps).
 
@@ -204,7 +236,12 @@ def run_container_agent_deploy_and_invoke(
     sdk.agents.create(
         workspace=workspace,
         name=agent_name,
-        config=_mock_backed_agent_config(f"{workspace}/{model_name}"),
+        config=_mock_backed_agent_config(
+            config_format,
+            agent_name=agent_name,
+            model_name=f"{workspace}/{model_name}",
+        ),
+        config_format=config_format,
     )
 
     try:
@@ -223,13 +260,19 @@ def run_container_agent_deploy_and_invoke(
         assert deployment["agent"] == agent_name
         assert deployment["deployment_mode"] == deployment_mode
 
-        # Container-mode addressing: the loopback scalar ``endpoint`` is empty and
-        # the routable address lives in ``endpoints`` (this is what the gateway's
-        # container-mode resolution reads). Guarding this shape ensures a pass can
-        # only come through the container path, not a subprocess fallback.
-        assert deployment.get("endpoint", "") == ""
-        endpoints = deployment.get("endpoints") or []
-        assert endpoints and endpoints[0]["url"], deployment
+        if deployment_mode == "subprocess":
+            assert image is None
+            assert deployment["endpoint"]
+            assert not deployment.get("endpoints")
+            assert deployment["pid"] > 0
+        else:
+            # Container-mode addressing: the loopback scalar ``endpoint`` is
+            # empty and the routable address lives in ``endpoints``. Guarding
+            # this shape prevents a container test from passing via fallback.
+            assert image
+            assert deployment.get("endpoint", "") == ""
+            endpoints = deployment.get("endpoints") or []
+            assert endpoints and endpoints[0]["url"], deployment
 
         sdk.models.wait_for_openai_model(model_name, workspace=workspace)
 
@@ -248,6 +291,28 @@ def run_container_agent_deploy_and_invoke(
         if reap_backend_resources is not None:
             _safe(reap_backend_resources, deployment_name)
         _safe(delete_agent_if_exists, sdk, workspace=workspace, name=agent_name)
+
+
+def run_container_agent_deploy_and_invoke(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    deployment_mode: str,
+    image: str,
+    config_format: str = NAT_WORKFLOW_CONFIG_FORMAT,
+    running_timeout_seconds: float = 300,
+    reap_backend_resources: Callable[[str], None] | None = None,
+) -> None:
+    """Deploy a mock-backed container agent and invoke it through the gateway."""
+    run_agent_deploy_and_invoke(
+        sdk,
+        workspace=workspace,
+        deployment_mode=deployment_mode,
+        config_format=config_format,
+        image=image,
+        running_timeout_seconds=running_timeout_seconds,
+        reap_backend_resources=reap_backend_resources,
+    )
 
 
 def _safe(fn: Any, *args: Any, **kwargs: Any) -> None:
