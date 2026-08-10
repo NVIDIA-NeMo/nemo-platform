@@ -12,17 +12,20 @@ from typing import Any
 
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint, VolumeStatus
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.capabilities import CapabilityUnavailableError
 from pydantic import BaseModel, Field
 
 
-class MissingBackendDependencyError(RuntimeError):
+class MissingBackendDependencyError(CapabilityUnavailableError):
     """A backend cannot initialize because a required capability is unavailable.
 
     Raised when an optional packaging extra is missing (e.g. ``openshell``) or when
     a runtime substrate is unreachable (e.g. Docker daemon/socket). The executor
     registry catches this, skips that executor with a warning, and continues
-    starting the deployments service. Subclasses ``RuntimeError`` so existing
-    ``except RuntimeError`` paths keep working.
+    starting the deployments service. Subclasses
+    :class:`~nemo_platform_plugin.capabilities.CapabilityUnavailableError` (and
+    therefore ``RuntimeError``) so existing ``except RuntimeError`` paths keep
+    working and jobs/deployments share one unavailable-capability type.
     """
 
 

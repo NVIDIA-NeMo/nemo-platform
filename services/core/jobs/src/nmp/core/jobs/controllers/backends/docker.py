@@ -20,6 +20,7 @@ import docker.types
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from docker.types import LogConfig, Mount
+from nemo_platform_plugin.capabilities import CapabilityUnavailableError, probe_docker
 from nemo_platform_plugin.jobs.execution_profiles import (
     DockerJobExecutionProfile as PluginDockerJobExecutionProfile,
 )
@@ -289,6 +290,11 @@ class DockerJobBackend(JobBackend[ProviderT, DockerJobExecutionProfileConfig], G
         self._container_start_admission = threading.BoundedSemaphore(DOCKER_CONTAINER_START_WORKERS)
         self._container_run_threadpool = ThreadPoolExecutor(max_workers=DOCKER_CONTAINER_START_WORKERS)
         self._workload_identity_refreshers: dict[str, SubjectTokenRefreshLoop] = {}
+        # Short probe first — avoid docker.from_env(timeout=180) hanging when the
+        # daemon is down. CapabilityUnavailableError is soft-skipped by the registry.
+        probe = probe_docker()
+        if not probe.available:
+            raise CapabilityUnavailableError(probe.detail or "Docker daemon is unavailable")
         self._client = docker.from_env(timeout=180)
         if NEMO_JOBS_IMAGE_REGISTRY:
             logger.info(

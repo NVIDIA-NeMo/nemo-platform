@@ -87,9 +87,7 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
             {"provider", "image", "adapter_id", "skills"},
         ),
         (
-            GymAgentTaskRunner(
-                config=GymRuntimeConfig(gym_root=Path("/x"), agent="a", agent_config="c", resources_server="r")
-            ),
+            GymAgentTaskRunner(config=GymRuntimeConfig(agent="a", agent_config="c", resources_server="r")),
             "gym",
             {
                 "resources_server",
@@ -190,13 +188,10 @@ def test_harbor_records_the_effective_agent_when_a_custom_import_path_overrides_
 def test_gym_redacts_credential_looking_env_overrides() -> None:
     # env_overrides is a free-form Hydra escape hatch forwarded to `gym env start`, and RunnerInfo.config
     # is persisted into the run bundle — so a value that looks like a credential must not be written there.
-    from pathlib import Path
-
     from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
 
     runner = GymAgentTaskRunner(
         config=GymRuntimeConfig(
-            gym_root=Path("/x"),
             agent="a",
             agent_config="c",
             resources_server="r",

@@ -16,6 +16,10 @@ not-for:
   - nemo-evaluator (use to AUTHOR and RUN evaluations/metrics; this skill UPLOADS results)
   - nemo-status (use for a read-only platform health dashboard)
   - nemo-skill-selection (use for dispatch when intent is unclear)
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - clickhouse_ready
 compatibility: nemo-platform >= 0.1.0; needs a reachable local or remote intake service (with auth and entities) backed by ClickHouse for rollups/results; talks HTTP to /apis/intake/v2 (curl only, no Docker); Experiments viewing in Studio is behind the VITE_FF_EXPERIMENT feature flag.
 maturity: beta
 license: Apache-2.0

@@ -78,6 +78,18 @@ def test_services_help_lists_all_commands():
         assert cmd in result.stdout, f"'{cmd}' not in help output"
 
 
+@pytest.mark.parametrize("command", ["run", "start", "restart"])
+@pytest.mark.parametrize("timeout", ["0", "-1"])
+def test_services_reject_non_positive_keep_alive_timeout(command: str, timeout: str):
+    with patch(f"{_CLI_MODULE}.stop_instance") as mock_stop:
+        result = runner.invoke(app, ["services", command, "--keep-alive-timeout-seconds", timeout])
+
+    assert result.exit_code != 0
+    assert "--keep-alive-timeout-seconds" in f"{result.stdout}{result.stderr}"
+    if command == "restart":
+        mock_stop.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # run (foreground)
 # ---------------------------------------------------------------------------
@@ -113,6 +125,8 @@ def test_run_invokes_runner(base_dir: Path):
                 "127.0.0.1",
                 "--port",
                 "9000",
+                "--keep-alive-timeout-seconds",
+                "12",
                 "--instance",
                 "test-run",
             ],
@@ -130,6 +144,7 @@ def test_run_invokes_runner(base_dir: Path):
     assert config.config_path is None
     assert config.host == "127.0.0.1"
     assert config.port == 9000
+    assert config.keep_alive_timeout_seconds == 12
     assert kwargs["on_shutdown"] is not None
 
 
@@ -208,16 +223,18 @@ def test_start_launches_background(base_dir: Path):
 
     with (
         patch(f"{_CLI_MODULE}._require_services_extra"),
-        patch(f"{_CLI_MODULE}.start_background", return_value=mock_proc),
+        patch(f"{_CLI_MODULE}.start_background", return_value=mock_proc) as mock_start,
         patch(f"{_CLI_MODULE}._wait_for_healthy", return_value=True),
     ):
         result = runner.invoke(
             app,
-            ["services", "start", "--instance", "bg-test"],
+            ["services", "start", "--instance", "bg-test", "--keep-alive-timeout-seconds", "12"],
         )
 
     assert result.exit_code == 0
     assert "99999" in result.stdout
+    config = mock_start.call_args.args[0]
+    assert config.keep_alive_timeout_seconds == 12
 
 
 def test_start_refuses_when_already_running(base_dir: Path):
@@ -463,6 +480,7 @@ class TestServicesRestart:
                 controllers=["jobs"],
                 host="127.0.0.1",
                 port=9000,
+                keep_alive_timeout_seconds=12,
             ),
             mode="background",
             create_time=1.0,
@@ -494,6 +512,45 @@ class TestServicesRestart:
         assert config.controllers == ["jobs"]
         assert config.host == "127.0.0.1"
         assert config.port == 9000
+        assert config.keep_alive_timeout_seconds == 12
+
+    def test_restart_overrides_previous_keep_alive_timeout(self, base_dir: Path):
+        scope = "override-keep-alive-test"
+        fd = acquire_lock(scope, base_dir=base_dir)
+        desc = InstanceDescriptor(
+            pid=os.getpid(),
+            config=PlatformAppConfig(
+                scope=scope,
+                host="127.0.0.1",
+                port=9000,
+                keep_alive_timeout_seconds=12,
+            ),
+            mode="background",
+            create_time=1.0,
+        )
+        write_descriptor(desc, base_dir=base_dir)
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 22223
+        mock_proc.poll.return_value = None
+
+        try:
+            with (
+                patch(f"{_CLI_MODULE}._require_services_extra"),
+                patch(f"{_CLI_MODULE}.stop_instance", return_value=StopResult(stopped_pids=[os.getpid()])),
+                patch(f"{_CLI_MODULE}.start_background", return_value=mock_proc) as mock_start,
+                patch(f"{_CLI_MODULE}._wait_for_healthy", return_value=True),
+            ):
+                result = runner.invoke(
+                    app,
+                    ["services", "restart", "--instance", scope, "--keep-alive-timeout-seconds", "15"],
+                )
+        finally:
+            os.close(fd)
+
+        assert result.exit_code == 0
+        config = mock_start.call_args.args[0]
+        assert config.keep_alive_timeout_seconds == 15
 
 
 # ---------------------------------------------------------------------------

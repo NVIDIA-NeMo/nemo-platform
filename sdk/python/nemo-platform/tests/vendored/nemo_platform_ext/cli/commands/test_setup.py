@@ -47,6 +47,7 @@ from nemo_platform.cli.commands.setup import (
     _create_provider,
     _deploy_demo_agent,
     _detect_coding_agents,
+    _detect_startup_port_conflict,
     _ensure_port_available_for_start,
     _filter_agents_by_scope,
     _find_project_root,
@@ -68,6 +69,7 @@ from nemo_platform.cli.commands.setup import (
     _run_interactive_mode,
     _save_data_dir,
     _select_model_pair,
+    _services_log_suggests_port_conflict,
     _start_services_background,
     _validate_api_key,
     _verify_platform_health,
@@ -700,6 +702,8 @@ def maybe_start_preflight_mocks():
         patch(f"{SETUP_MOD}._start_services_background") as mock_start,
         patch(f"{SETUP_MOD}.prompt_choice", return_value="yes"),
         patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/data"),
+        # Docker preflight is covered separately; keep other start-path tests focused.
+        patch(f"{SETUP_MOD}.require_docker_for_default_local"),
     ):
         yield mock_start
 
@@ -812,6 +816,7 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data") as mock_db_prompt,
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._ensure_port_available_for_start", wraps=_ensure_port_available_for_start) as mock_port,
+            patch(f"{SETUP_MOD}.require_docker_for_default_local"),
             patch(f"{SETUP_MOD}._pause"),
         ):
             mock_start.return_value = MagicMock(pid=999)
@@ -832,6 +837,7 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict),
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data"),
+            patch(f"{SETUP_MOD}.require_docker_for_default_local"),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
         ):
@@ -864,8 +870,33 @@ class TestMaybeStartServices:
         maybe_start_preflight_mocks.assert_not_called()
         captured = capsys.readouterr()
         assert "already in use" in captured.err
+        assert "EADDRINUSE" in captured.err
         assert "lsof" in captured.err
         assert "services.log" not in captured.err
+
+    def test_early_exit_names_eaddrinuse_when_startup_log_has_bind_failure(
+        self, maybe_start_preflight_mocks, capsys, tmp_path
+    ):
+        """Post-spawn bind failures should not collapse to a generic early-exit message."""
+        dead = MagicMock(pid=999)
+        dead.poll.return_value = 1
+        log = tmp_path / "services.log"
+        log.write_text("OSError: [Errno 98] Address already in use\n", encoding="utf-8")
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
+            patch(f"{SETUP_MOD}.log_path_for", return_value=log),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=True)),
+            patch(f"{SETUP_MOD}._pause"),
+            pytest.raises(ClickExit),
+        ):
+            maybe_start_preflight_mocks.return_value = dead
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        captured = capsys.readouterr()
+        assert "Port 8080" in captured.err
+        assert "EADDRINUSE" in captured.err
+        assert "lsof -i :8080" in captured.err
+        assert "Service process exited early" not in captured.err
 
     def test_allows_start_when_port_free(self, maybe_start_preflight_mocks):
         with (
@@ -884,7 +915,7 @@ class TestMaybeStartServices:
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", wait),
-            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=False)),
             patch(f"{SETUP_MOD}.log_path_for", return_value=MagicMock(__str__=lambda self: "/tmp/services.log")),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
@@ -896,7 +927,20 @@ class TestMaybeStartServices:
         captured = capsys.readouterr()
         assert "exited early (exit code 3)" in captured.err
         assert "Check /tmp/services.log for details." in captured.err
-        assert "Docker does not appear to be available" in captured.err
+        assert "Docker is required for this default local setup" in captured.err
+
+    def test_docker_preflight_blocks_before_spawn(self, maybe_start_preflight_mocks, capsys):
+        """Default-local Docker gate exits before start_background (NVBug 6537617)."""
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(
+                f"{SETUP_MOD}.require_docker_for_default_local",
+                side_effect=typer.Exit(1),
+            ),
+            pytest.raises(ClickExit),
+        ):
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        maybe_start_preflight_mocks.assert_not_called()
 
     def test_readiness_timeout_does_not_hint_docker_without_evidence(
         self, maybe_start_preflight_mocks, capsys, tmp_path
@@ -908,7 +952,7 @@ class TestMaybeStartServices:
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
-            patch(f"{SETUP_MOD}.validate_docker_available", return_value=False),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=False)),
             patch(f"{SETUP_MOD}.log_path_for", return_value=log),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
@@ -927,7 +971,7 @@ class TestMaybeStartServices:
         with (
             patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=False),
-            patch(f"{SETUP_MOD}.validate_docker_available", return_value=True),
+            patch(f"{SETUP_MOD}.probe_docker", return_value=MagicMock(available=True)),
             patch(f"{SETUP_MOD}.log_path_for", return_value=log),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
@@ -935,7 +979,26 @@ class TestMaybeStartServices:
             maybe_start_preflight_mocks.return_value = alive
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
         captured = capsys.readouterr()
-        assert "Docker does not appear to be available" in captured.err
+        assert "Docker is required for this default local setup" in captured.err
+
+    def test_startup_port_conflict_prefers_live_port_probe(self, tmp_path):
+        log = tmp_path / "services.log"
+        log.write_text("", encoding="utf-8")
+        conflict = PortConflict(kind="foreign", port=9090)
+        with patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict):
+            assert _detect_startup_port_conflict("http://localhost:9090", log) is conflict
+
+    def test_startup_port_conflict_detects_log_marker(self, tmp_path):
+        log = tmp_path / "services.log"
+        log.write_text("RuntimeError: EADDRINUSE while binding\n", encoding="utf-8")
+        with patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None):
+            conflict = _detect_startup_port_conflict("http://localhost:9090", log)
+        assert conflict == PortConflict(kind="foreign", port=9090)
+
+    def test_services_log_suggests_port_conflict(self, tmp_path):
+        log = tmp_path / "services.log"
+        log.write_text("uvicorn failed: address already in use\n", encoding="utf-8")
+        assert _services_log_suggests_port_conflict(log) is True
 
 
 class TestRemoteConnection:
@@ -1223,9 +1286,11 @@ class TestLocalDataDirHelpers:
         with (
             patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
             patch(f"{SETUP_MOD}._kill_existing_services"),
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
             patch(f"{SETUP_MOD}._prompt_data_dir") as mock_prompt,
+            patch(f"{SETUP_MOD}.require_docker_for_default_local"),
             patch(f"{SETUP_MOD}._pause"),
         ):
             mock_start.return_value = MagicMock(pid=999)
@@ -3155,6 +3220,14 @@ class TestNonTtyEarlyExit:
 
         assert exc_info.value.exit_code == 0
         assert "Setup cancelled" in capsys.readouterr().err
+
+    def test_resume_runs_idempotent_setup_path(self, capsys):
+        ctx, _cli_context = _make_setup_command_ctx()
+        with _patch_setup_command() as mocks:
+            setup_command(ctx, resume=True)
+
+        assert "Retrying setup using the normal idempotent setup path" in capsys.readouterr().err
+        mocks.run_interactive.assert_called_once()
 
 
 class TestSetupCommandRemoteFlow:

@@ -4,9 +4,11 @@
 """Tests for the skills CLI commands."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from nemo_platform.cli.app import app
+from nemo_platform.cli.commands.skills.base import installed_skill_name
 from nemo_platform.cli.commands.skills.registry import (
     DuplicateSkillError,
     SkillProvider,
@@ -21,7 +23,11 @@ runner = CliRunner()
 
 
 def _example_plugin_skills_root() -> Path:
-    return Path(__file__).resolve().parents[6] / "plugins" / "example-plugin" / "src" / "nemo_example_plugin" / "skills"
+    relative_path = Path("plugins/example-plugin/src/nemo_example_plugin/skills")
+    for parent in Path(__file__).resolve().parents:
+        if (parent / relative_path).is_dir():
+            return parent / relative_path
+    raise FileNotFoundError(f"Could not find {relative_path} from {__file__}")
 
 
 def _platform_skill_names() -> set[str]:
@@ -99,6 +105,14 @@ class TestList:
         result = runner.invoke(app, "skills list")
         assert_exit_code(result, 1)
         assert "Error: duplicate skill" in result.output
+
+    def test_stream_requires_json_output_before_loading_skills(self):
+        with patch("nemo_platform.cli.commands.skills.cli.load_skills") as mock_load_skills:
+            result = runner.invoke(app, "skills list --output table --stream")
+
+        assert_exit_code(result, 2)
+        assert "--stream requires --output json or --output raw" in result.stderr
+        mock_load_skills.assert_not_called()
 
     def test_list_source_column_shows_distribution_names(self, example_plugin_skills):
         """JSON output is stable and easy to assert against the new ``Source`` semantics.
@@ -218,7 +232,8 @@ class TestInstall:
         # Every built-in skill should install — exercise the multi-skill path
         # without hardcoding which platform skills exist today.
         for skill_name in _platform_skill_names():
-            assert (tmp_path / ".claude" / "skills" / f"nemo-{skill_name}" / "SKILL.md").exists()
+            installed_name = installed_skill_name(skill_name)
+            assert (tmp_path / ".claude" / "skills" / installed_name / "SKILL.md").exists()
         assert "Installed" in result.stdout
 
     def test_install_selective_skills(self, tmp_path: Path, monkeypatch):
@@ -227,6 +242,15 @@ class TestInstall:
         assert_exit_code(result, 0)
         assert (tmp_path / ".claude" / "skills" / "nemo-inference" / "SKILL.md").exists()
         assert not (tmp_path / ".claude" / "skills" / "nemo-setup" / "SKILL.md").exists()
+
+    def test_install_prefixed_skill_does_not_double_prefix(self, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, "skills install --agent claude --skill nemo-files")
+        assert_exit_code(result, 0)
+        skill_file = tmp_path / ".claude" / "skills" / "nemo-files" / "SKILL.md"
+        assert skill_file.exists()
+        assert not (tmp_path / ".claude" / "skills" / "nemo-nemo-files").exists()
+        assert "name: nemo-files" in skill_file.read_text()
 
     @pytest.mark.parametrize(
         ("agent", "relative_path"),

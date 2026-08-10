@@ -21,6 +21,12 @@ not-for:
   - nemo-setup (use to install the platform first)
   - deploy-sandbox (use to deploy the built agent as a governed OpenShell sandbox)
   - generic agent framework development outside NeMo Platform
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - provider_registered
+  - agents_plugin_available
+  - agent_spec_exists
 compatibility: nemo-platform >= 0.1.0; running platform; requires agents plugin; writes files under agents/; uses nemo-agents-spec-v1 by default and preserves NAT workflow YAML as a compatibility path; macOS or Linux; safe under sandbox.
 maturity: active
 license: Apache-2.0

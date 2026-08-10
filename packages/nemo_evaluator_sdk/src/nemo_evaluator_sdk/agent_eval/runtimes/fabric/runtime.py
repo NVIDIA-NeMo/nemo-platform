@@ -635,7 +635,7 @@ class FabricAgentRuntime:
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root
         if root is None:
-            root = (config.output_dir or Path.cwd()) / "evidence" / "fabric"
+            root = (config.work_dir or Path.cwd()) / "evidence" / "fabric"
         # The run id isolates this run's evidence from other runs sharing the same root (A/B baseline
         # vs. skilled); run_tasks always populates it, so the fallback only guards a direct call.
         run_id = config.run_id or _new_run_id()

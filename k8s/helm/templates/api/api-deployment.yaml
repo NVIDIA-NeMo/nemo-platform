@@ -52,6 +52,7 @@ spec:
             - "--service-group=all"
             - "--host={{ include "nemo-platform.bindHost" . }}"
             - "--port={{ .Values.api.service.port }}"
+            - "--keep-alive-timeout-seconds={{ .Values.api.server.keepAliveTimeoutSeconds }}"
             {{- range .Values.api.extraArgs }}
             - {{ . | quote }}
             {{- end }}

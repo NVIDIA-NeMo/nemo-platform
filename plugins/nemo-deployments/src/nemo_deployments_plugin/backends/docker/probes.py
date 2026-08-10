@@ -16,6 +16,11 @@ from nemo_deployments_plugin.entities import Probe
 
 logger = logging.getLogger(__name__)
 
+# Timeout for the default reachability probe used when a container declares no
+# readinessProbe. Keep it well under the reconciler poll interval so a probe never
+# stalls the reconcile loop.
+_DEFAULT_TCP_PROBE_TIMEOUT_SECONDS = 2.0
+
 
 async def check_readiness_probe(
     *,
@@ -25,9 +30,17 @@ async def check_readiness_probe(
     host_ports: dict[int, int] | None = None,
     named_ports: dict[str, int] | None = None,
 ) -> tuple[bool, str]:
-    """Return (ready, reason). When no probe is configured, running implies ready."""
+    """Return (ready, reason).
+
+    With a declared probe, evaluate it. With no declared probe, a workload that
+    publishes a port is only ready once that port accepts a connection, so status does
+    not race the process's bind(); a portless workload has no socket to reach, so running
+    implies ready.
+    """
     if probe is None:
-        return True, "no readiness probe configured"
+        if host_url is None or not host_ports:
+            return True, "no readiness probe configured"
+        return await _check_default_tcp(host_url)
 
     if probe.exec_action is not None and probe.exec_action.command:
         return await _check_exec_probe(container, probe)
@@ -149,6 +162,25 @@ async def _check_tcp_probe(
         return True, "tcp probe connected"
     except Exception as exc:
         return False, f"tcp probe failed: {exc}"
+
+
+async def _check_default_tcp(host_url: str) -> tuple[bool, str]:
+    """Default reachability check: TCP-connect the primary published host port."""
+    parsed = urlparse(host_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port
+    if port is None:
+        return True, "no host port to probe"
+
+    def _connect() -> None:
+        with socket.create_connection((host, port), timeout=_DEFAULT_TCP_PROBE_TIMEOUT_SECONDS):
+            return
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_connect), timeout=_DEFAULT_TCP_PROBE_TIMEOUT_SECONDS)
+        return True, f"default tcp probe connected ({host}:{port})"
+    except Exception as exc:
+        return False, f"default tcp probe not ready ({host}:{port}): {exc}"
 
 
 def host_url_for_port(host: str, host_port: int, *, scheme: str = "http") -> str:

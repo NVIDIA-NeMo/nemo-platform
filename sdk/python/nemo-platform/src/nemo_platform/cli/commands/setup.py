@@ -27,8 +27,8 @@ import httpx
 import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.config import validate_docker_available
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
@@ -43,12 +43,14 @@ from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform.cli.telemetry import emit
 from nemo_platform.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
 from nemo_platform.client.tls import client_verify_from_env
 from nemo_platform.config.config import Config
 from nemo_platform.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig, NoAuthUser
 from nemo_platform.local.process import (
+    PortConflict,
     check_port_available_for_start,
     compute_scope,
     format_port_conflict,
@@ -997,6 +999,14 @@ _DOCKER_FAILURE_LOG_MARKERS = (
     "Error while fetching server API version",
 )
 
+_PORT_CONFLICT_LOG_MARKERS = (
+    "EADDRINUSE",
+    "address already in use",
+    "address is already in use",
+    "Errno 98",
+    "Only one usage of each socket address",
+)
+
 
 def _services_log_suggests_docker_failure(log_path: Path | None) -> bool:
     """Return True when services.log contains known Docker skip / daemon errors."""
@@ -1009,6 +1019,36 @@ def _services_log_suggests_docker_failure(log_path: Path | None) -> bool:
     return any(marker in text for marker in _DOCKER_FAILURE_LOG_MARKERS)
 
 
+def _services_log_suggests_port_conflict(log_path: Path | None) -> bool:
+    """Return True when services.log contains known TCP bind failure markers."""
+    if log_path is None or not log_path.is_file():
+        return False
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    lower_text = text.lower()
+    return any(marker.lower() in lower_text for marker in _PORT_CONFLICT_LOG_MARKERS)
+
+
+def _detect_startup_port_conflict(base_url: str, log_path: Path | None) -> PortConflict | None:
+    """Detect a startup-time port conflict after the services process exits.
+
+    The preflight normally catches busy ports before spawning services. This
+    fallback handles races where the port becomes busy between preflight and
+    uvicorn binding, or where the service process writes the bind failure to
+    ``services.log`` before exiting.
+    """
+    port = _resolve_services_port(base_url)
+    scope = compute_scope(port=port)
+    conflict = check_port_available_for_start(DEFAULT_LOCAL_SERVICES_BIND_HOST, port, scope)
+    if conflict is not None:
+        return conflict
+    if _services_log_suggests_port_conflict(log_path):
+        return PortConflict(kind="foreign", port=port)
+    return None
+
+
 def _should_hint_docker_unavailable(*, exit_code: int | None, log_path: Path | None) -> bool:
     """Decide whether to print a Docker-missing hint after a failed startup wait.
 
@@ -1018,7 +1058,7 @@ def _should_hint_docker_unavailable(*, exit_code: int | None, log_path: Path | N
     """
     if _services_log_suggests_docker_failure(log_path):
         return True
-    if exit_code is not None and not validate_docker_available():
+    if exit_code is not None and not probe_docker(use_cache=False).available:
         return True
     return False
 
@@ -1119,6 +1159,9 @@ def _maybe_start_services(
         console.print("    [cyan]PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install 'nemo-platform\\[all]'[/cyan]")
         raise typer.Exit(1)
 
+    # Fail before stop/spawn when default local needs Docker (NVBug 6537617).
+    require_docker_for_default_local(console=console)
+
     if already_running:
         console.print("  Restarting platform services...")
         _kill_existing_services(base_url)
@@ -1134,17 +1177,20 @@ def _maybe_start_services(
 
     if not _wait_for_platform(base_url, timeout=timeout, log_path=log, proc=proc):
         exit_code = proc.poll()
-        if exit_code is not None:
+        startup_conflict = _detect_startup_port_conflict(base_url, log) if exit_code is not None else None
+        if startup_conflict is not None:
+            lines = format_port_conflict(startup_conflict)
+            console.print(f"{CROSS} {lines[0]}")
+            for line in lines[1:]:
+                console.print(f"  {line}")
+        elif exit_code is not None:
             console.print(f"{CROSS} Service process exited early (exit code {exit_code})")
         else:
             proc.terminate()
             console.print(f"{CROSS} Platform did not become ready within {timeout}s")
         console.print(f"  Check {log} for details.")
         if _should_hint_docker_unavailable(exit_code=exit_code, log_path=log):
-            console.print(
-                "  Docker does not appear to be available. "
-                "Install and start Docker, or configure non-Docker executors, then retry."
-            )
+            console.print(f"  {DOCKER_PREFLIGHT_MESSAGE}")
         raise typer.Exit(1)
 
     console.print(f"{CHECK} Platform running at {base_url} (pid {proc.pid})\n")
@@ -2073,6 +2119,13 @@ def setup_command(
         bool | None,
         typer.Option("--deploy-agent/--no-deploy-agent", help="Deploy the demo calculator agent"),
     ] = None,
+    resume: Annotated[
+        bool,
+        typer.Option(
+            "--resume",
+            help="Retry an interrupted setup using the normal idempotent setup path.",
+        ),
+    ] = False,
     ready_timeout: Annotated[
         int | None,
         typer.Option(
@@ -2120,6 +2173,8 @@ def setup_command(
     base_url = cli_context.get_base_url() or DEFAULT_BASE_URL
 
     console.print("\n[bold cyan]NeMo Platform Setup[/bold cyan]\n")
+    if resume:
+        console.print(f"{CHECK} Retrying setup using the normal idempotent setup path.\n")
 
     if not auto and not is_interactive():
         console.print(f"\n{CROSS} Detected non-interactive shell. Pass [bold]--auto[/bold] or run in a TTY.\n")

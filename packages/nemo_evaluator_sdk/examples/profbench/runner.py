@@ -121,13 +121,14 @@ async def run_profbench_mode(
         trials=trials,
         target=target,
         config=AgentEvalRunConfig(
-            output_dir=output_dir,
+            work_dir=output_dir,
             run_id=f"{run_instance_id}-{mode.value}",
             params=params,
             labels=benchmark_labels,
-            write_dashboard=False,
         ),
     )
+    # This example renders its own dashboards below, so persistence skips the built-in one.
+    result.persist(write_dashboard=False)
     sdk_dashboard_path, dashboard_path = write_example_dashboards(result, output_dir)
 
     overall = _profbench_overall(result)

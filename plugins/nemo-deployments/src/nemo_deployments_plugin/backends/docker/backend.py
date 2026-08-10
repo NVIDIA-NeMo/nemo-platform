@@ -60,6 +60,7 @@ from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
+from nemo_platform_plugin.capabilities import docker_from_env_kwargs, probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
@@ -114,6 +115,13 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
+        docker_host = self._executor_config.docker_host
+        probe = probe_docker(docker_host=docker_host)
+        if not probe.available:
+            detail = probe.detail or "Docker daemon unreachable"
+            raise MissingBackendDependencyError(
+                f"Docker daemon is unavailable ({detail}). Docker-backed deployments will be disabled."
+            )
         try:
             self._client = self._create_client()
         except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:
@@ -122,10 +130,14 @@ class DockerDeploymentBackend(DeploymentBackend):
             ) from exc
 
     def _create_client(self) -> docker.DockerClient:
-        kwargs: dict[str, Any] = {"timeout": self._executor_config.docker_timeout}
-        if self._executor_config.docker_host:
-            kwargs["base_url"] = self._executor_config.docker_host
-        client = self._docker.from_env(**kwargs)
+        # docker-py 7.x rejects base_url= on from_env; override DOCKER_HOST instead
+        # so TLS env vars (DOCKER_TLS_VERIFY, cert paths) still apply.
+        client = self._docker.from_env(
+            **docker_from_env_kwargs(
+                timeout=self._executor_config.docker_timeout,
+                docker_host=self._executor_config.docker_host,
+            )
+        )
         client.api.timeout = self._executor_config.docker_timeout
         client.ping()
         return client
@@ -608,7 +620,11 @@ class DockerDeploymentBackend(DeploymentBackend):
             return map_docker_state_to_starting(container_id, state)
 
         if state == "running":
-            host_url = self._primary_host_url(host_ports)
+            # The default (no-declared-probe) reachability check TCP-connects the port, so
+            # it must see only TCP mappings: a UDP-only workload has no TCP listener and
+            # would otherwise be gated STARTING forever. Endpoints still carry every port.
+            tcp_host_ports = self._extract_host_ports(container, protocol="tcp")
+            host_url = self._primary_host_url(tcp_host_ports)
             config = await self._load_config_from_labels(workspace, labels)
             probe = None
             if config is not None and config.containers:
@@ -617,7 +633,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 container=container,
                 probe=probe,
                 host_url=host_url,
-                host_ports=host_ports,
+                host_ports=tcp_host_ports,
             )
             if ready and restart_policy == "Always":
                 sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name, config)
@@ -1088,13 +1104,21 @@ class DockerDeploymentBackend(DeploymentBackend):
         except Exception:
             return None
 
-    def _extract_host_ports(self, container: DockerContainer) -> dict[int, int]:
+    def _extract_host_ports(self, container: DockerContainer, *, protocol: str | None = None) -> dict[int, int]:
+        """Map container port -> published host port.
+
+        With *protocol* (e.g. ``"tcp"``) only mappings of that protocol are returned;
+        docker keys the port map as ``"<port>/<proto>"``. Defaults to every protocol.
+        """
         result: dict[int, int] = {}
         ports = container.ports or {}
         for key, bindings in ports.items():
             if not bindings:
                 continue
-            container_port = int(str(key).split("/")[0])
+            key_str = str(key)
+            if protocol is not None and not key_str.endswith(f"/{protocol}"):
+                continue
+            container_port = int(key_str.split("/")[0])
             host_port = bindings[0].get("HostPort")
             if host_port:
                 result[container_port] = int(host_port)

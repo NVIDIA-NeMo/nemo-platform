@@ -4,9 +4,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
-import { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
+import { ENTITY_NAME_HELP, entityNameSchema, toCopyName } from '@nemo/common/src/utils/entityName';
 import { useGuardrailsCreateConfig } from '@nemo/sdk/generated/platform/api';
-import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
+import type {
+  GuardrailConfig,
+  GuardrailConfigInput,
+  GuardrailConfigInputData,
+} from '@nemo/sdk/generated/platform/schema';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
@@ -25,12 +29,17 @@ type FormData = z.infer<typeof createGuardrailFormSchema>;
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** When set, the modal duplicates this config instead of creating an empty one. */
+  sourceConfig?: GuardrailConfig;
 }
 
-export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
+export const CreateGuardrailModal: FC<Props> = ({ open, onClose, sourceConfig }) => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const isDuplicate = Boolean(sourceConfig);
+  const defaultName = sourceConfig?.name ? toCopyName(sourceConfig.name) : '';
 
   const {
     control,
@@ -39,7 +48,7 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
     formState: { isValid },
   } = useForm<FormData>({
     resolver: zodResolver(createGuardrailFormSchema),
-    defaultValues: { name: '' },
+    defaultValues: { name: defaultName },
     mode: 'onChange',
   });
 
@@ -54,24 +63,34 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
 
   useEffect(() => {
     if (!open) return;
+    // The modal can stay mounted across opens, so seed the name for this open.
+    reset({ name: defaultName });
     // setTimeout 0 lets the dialog's built-in focus management run first (it would otherwise
     // focus the slotInfo icon button, which appears before the input in DOM order).
     const id = setTimeout(() => {
-      containerRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+      const input = containerRef.current?.querySelector<HTMLInputElement>('input');
+      input?.focus();
+      input?.select();
     }, 0);
     return () => clearTimeout(id);
-  }, [open]);
+  }, [open, defaultName, reset]);
 
   const handleClose = () => {
-    reset();
+    reset({ name: defaultName });
     resetMutation();
     onClose();
   };
 
   const onSubmit = async (data: FormData) => {
+    const payload: GuardrailConfigInput = { name: data.name };
+    if (sourceConfig) {
+      if (sourceConfig.description) payload.description = sourceConfig.description;
+      if (sourceConfig.data) payload.data = { ...sourceConfig.data } as GuardrailConfigInputData;
+    }
+
     let config: GuardrailConfig;
     try {
-      config = await createConfig({ workspace, data: { name: data.name } });
+      config = await createConfig({ workspace, data: payload });
     } catch {
       // The modal stays open and surfaces the failure via `errorText` below.
       return;
@@ -86,7 +105,7 @@ export const CreateGuardrailModal: FC<Props> = ({ open, onClose }) => {
   return (
     <FormModal
       open={open}
-      title="Create Guardrail"
+      title={isDuplicate ? 'Duplicate Guardrail' : 'Create Guardrail'}
       submitButtonText="Create"
       disabled={isPending}
       loading={isPending}

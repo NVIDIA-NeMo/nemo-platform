@@ -644,6 +644,7 @@ class TestStartBackground:
                     controllers=["jobs"],
                     host="127.0.0.1",
                     port=8080,
+                    keep_alive_timeout_seconds=12,
                     state_root=base_dir,
                 ),
             )
@@ -653,6 +654,8 @@ class TestStartBackground:
         assert call_kwargs["start_new_session"] is True
         assert call_kwargs["stdin"] == subprocess.DEVNULL
         assert call_kwargs["close_fds"] is True
+        args = mock_popen.call_args.args[0]
+        assert args[args.index("--keep-alive-timeout-seconds") + 1] == "12"
 
     def test_injects_nmp_data_dir_when_unset(self, base_dir: Path, monkeypatch) -> None:
         monkeypatch.delenv("NMP_DATA_DIR", raising=False)

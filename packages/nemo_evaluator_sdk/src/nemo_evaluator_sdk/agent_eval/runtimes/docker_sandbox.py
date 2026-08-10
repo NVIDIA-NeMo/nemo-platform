@@ -289,7 +289,7 @@ class DockerSandboxAgentRuntime:
         )
 
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
-        root = config.output_dir if config.output_dir is not None else self._work_root
+        root = config.work_dir if config.work_dir is not None else self._work_root
         if root is None:
             root = Path(tempfile.gettempdir()) / "nemo-evaluator-agent-runtime"
         run_id = config.run_id or _new_runtime_run_id()

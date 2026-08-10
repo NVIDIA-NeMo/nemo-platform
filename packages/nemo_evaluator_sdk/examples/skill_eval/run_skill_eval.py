@@ -258,15 +258,17 @@ async def _main() -> int:
         baseline = await AgentEvaluator().run(
             tasks=tasks,
             target=baseline_runtime,
-            config=AgentEvalRunConfig(run_id="baseline", output_dir=output_dir / "baseline", write_dashboard=False),
+            config=AgentEvalRunConfig(run_id="baseline", work_dir=output_dir / "baseline"),
         )
+        baseline.persist(write_dashboard=False)
         treated = await AgentEvaluator().run(
             tasks=tasks,
             target=baseline_runtime.with_skill(
                 skill
             ),  # We include the skill in the treated arm, so the two runs differ in *exactly* the skill.
-            config=AgentEvalRunConfig(run_id="treated", output_dir=output_dir / "treated", write_dashboard=False),
+            config=AgentEvalRunConfig(run_id="treated", work_dir=output_dir / "treated"),
         )
+        treated.persist(write_dashboard=False)
     except SkillInjectionError as exc:
         print(f"skill eval failed to load the bundled skill: {exc}")
         return 1

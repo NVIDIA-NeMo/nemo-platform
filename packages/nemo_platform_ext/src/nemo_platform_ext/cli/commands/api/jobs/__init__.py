@@ -13,7 +13,12 @@ from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
-from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform_ext.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
@@ -22,6 +27,7 @@ from nemo_platform_ext.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 _cli_child_results = _importlib_import_module("nemo_platform_ext.cli.commands.api.jobs.results")
@@ -200,11 +206,13 @@ def get_logs_jobs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """Get paginated logs for a platform job."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -247,6 +255,7 @@ def get_logs_jobs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)
@@ -318,11 +327,13 @@ def list_jobs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List platform jobs with filtering and pagination."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -373,6 +384,7 @@ def list_jobs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)
@@ -386,10 +398,12 @@ def list_execution_profiles_jobs(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """Get all currently configured execution profiles."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -418,6 +432,7 @@ def list_execution_profiles_jobs(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
 
 

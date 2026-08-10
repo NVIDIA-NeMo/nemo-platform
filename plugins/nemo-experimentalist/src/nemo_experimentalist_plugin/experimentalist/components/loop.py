@@ -52,8 +52,10 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     restore_heldout_splits,
 )
 from nemo_experimentalist_plugin.experimentalist.components.models import (
+    EvolutionNode,
     EvolutionTree,
     OptimizationType,
+    pareto_front,
     pareto_sort,
 )
 from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
@@ -127,6 +129,95 @@ def _coerce_optimization_type(optimization_type: str | None) -> OptimizationType
     if optimization_type in get_args(OptimizationType):
         return cast(OptimizationType, optimization_type)
     return None
+
+
+def _creation_order(node: EvolutionNode) -> tuple[int, str]:
+    """Order candidates by creation, independently of how the caller ordered them.
+
+    Labels are run-scoped and assigned in sequence (``agent-0``, ``agent-1``, ...), so
+    the numeric suffix recovers creation order. The label itself is the final component
+    so the key stays total if a label ever stops matching that shape.
+    """
+    _, _, suffix = node.label.rpartition("-")
+    return (int(suffix) if suffix.isdigit() else 0, node.label)
+
+
+def _regresses(
+    node: EvolutionNode,
+    baseline: EvolutionNode,
+    regression_metrics: list[MetricTarget],
+) -> bool:
+    """Whether *node* is worse than *baseline* on any metric that must not regress.
+
+    A target missing from either side is skipped: absent evidence is not a regression.
+    """
+    if node is baseline:
+        return False
+    for target in regression_metrics:
+        before = baseline.val_reward.get(target.name)
+        after = node.val_reward.get(target.name)
+        if before is None or after is None:
+            continue
+        if after < before if target.direction == "maximize" else after > before:
+            return True
+    return False
+
+
+def finalization_pool(
+    evolution_tree: EvolutionTree,
+    objective_function: list[MetricTarget],
+) -> tuple[list[EvolutionNode], EvolutionNode | None]:
+    """Return the nodes that may win, and the round-0 baseline they are measured against.
+
+    Survivor selection runs mid-loop and can kill the baseline: it is told to always
+    keep a candidate created this round, and the baseline never is one. Finalization
+    asks a different question -- "is any of this better than shipping nothing?" -- so
+    the baseline is re-admitted here regardless of ``is_survivor``. Without that, a run
+    whose baseline was killed mid-loop can only choose among diffs, and the regression
+    comparison silently rehomes onto the oldest surviving candidate.
+
+    The baseline is returned separately so it is used as the regression reference even
+    if it is not itself the winner. It is None when the run has no round-0 result, or
+    when that result lacks the configured objective dimensions.
+    """
+    scored = [node for node in evolution_tree.nodes.values() if node.is_survivor and node.val_reward]
+    baseline = next(
+        (node for node in evolution_tree.nodes.values() if node.round == 0 and node.val_reward),
+        None,
+    )
+    if baseline is not None and all(node is not baseline for node in scored):
+        scored.insert(0, baseline)
+    eligible = [node for node in scored if has_metric_dimensions(node.val_reward, objective_function)]
+    if baseline is not None and all(node is not baseline for node in eligible):
+        baseline = None
+    return eligible, baseline
+
+
+def select_winner_node(
+    eligible: list[EvolutionNode],
+    objective_function: list[MetricTarget],
+    regression_metrics: list[MetricTarget] | None = None,
+    baseline: EvolutionNode | None = None,
+) -> EvolutionNode | None:
+    """Return the run's winner, or None when there is nothing eligible.
+
+    Candidates that worsen a ``regression_metrics`` target against *baseline* are
+    dropped before ranking, so a gain on the objectives cannot pay for a regression.
+    The winner is then taken from the Pareto front over ``objective_function``, with
+    ties going to the lowest round and then to creation order.
+
+    *baseline* is the reference for regression and is never dropped by it, so a run
+    whose candidates all regress -- or all merely tie -- keeps the baseline rather than
+    shipping a diff that bought nothing. It defaults to the oldest eligible node, which
+    is only correct when the true baseline is still present; callers that can tell
+    should pass it explicitly (see ``finalization_pool``).
+    """
+    if not eligible:
+        return None
+    reference = baseline if baseline is not None else min(eligible, key=lambda n: (n.round, _creation_order(n)))
+    kept = [node for node in eligible if not _regresses(node, reference, regression_metrics or [])]
+    front = pareto_front(kept or eligible, lambda node: pareto_objectives(node.val_reward, objective_function))
+    return min(front, key=lambda node: (node.round, _creation_order(node))) if front else None
 
 
 def _with_insight_objective(
@@ -1783,20 +1874,16 @@ class EvolutionaryOptimizer(Agent):
         agent_name: str,
     ) -> Candidate | None:
         """Select the winner, copy to workspace root, write final report."""
-        # Only survivors that actually have a validation reward are eligible winners.
-        scored = [n for n in evolution_tree.nodes.values() if n.is_survivor and n.val_reward]
-        eligible = [node for node in scored if has_metric_dimensions(node.val_reward, self.config.objective_function)]
-        ranked_nodes = pareto_sort(
+        # Survivors with a validation reward, plus the baseline even if it was killed
+        # mid-loop -- finalization must still be able to decide to ship nothing.
+        eligible, baseline = finalization_pool(evolution_tree, self.config.objective_function)
+        best = select_winner_node(
             eligible,
-            lambda node: pareto_objectives(node.val_reward, self.config.objective_function),
-        )
-        finalists = await self.select_diverse_survivors(
-            [node.candidate for node in ranked_nodes],
-            1,
             self.config.objective_function,
             self.config.regression_metrics,
+            baseline,
         )
-        best_id = finalists[0].label if finalists else None
+        best_id = best.label if best else None
 
         restore_heldout_splits(self.working_dir)
 

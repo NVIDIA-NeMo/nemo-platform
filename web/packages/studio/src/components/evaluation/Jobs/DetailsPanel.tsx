@@ -22,7 +22,7 @@ import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getFilesetDetailRoute } from '@studio/routes/utils';
+import { getFilesetRoute } from '@studio/routes/utils';
 import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChartBar, CircleX } from 'lucide-react';
@@ -111,7 +111,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
   const targetIsAgent = evaluationJob.spec.target?.format !== undefined;
   const datasetRef =
     typeof evaluationJob.spec.dataset === 'string' ? evaluationJob.spec.dataset : undefined;
-  const datasetFileset = datasetRef?.split('#')[0]?.split('/').pop();
+  const datasetFileset = datasetRef?.split('#')[0];
 
   return (
     <>
@@ -208,7 +208,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
               label="Dataset"
               value={
                 <Link
-                  to={getFilesetDetailRoute(workspace, datasetFileset)}
+                  to={getFilesetRoute(workspace, datasetFileset)}
                   className="text-primary underline"
                 >
                   {datasetRef}

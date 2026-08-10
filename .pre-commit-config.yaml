@@ -83,8 +83,8 @@ repos:
   - repo: local
     hooks:
       - id: uv-lock
-        name: Run uv lock
-        entry: uv lock
+        name: Run uv lock with platform uv
+        entry: bash script/uv-lock.sh
         language: system
         files: 'pyproject\.toml$'
         pass_filenames: false
