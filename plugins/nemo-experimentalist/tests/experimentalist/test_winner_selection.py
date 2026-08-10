@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from nemo_experimentalist_plugin.config import MetricTarget
 from nemo_experimentalist_plugin.entities import Candidate, RewardRecord
-from nemo_experimentalist_plugin.experimentalist.components.loop import select_winner_node
-from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionNode
+from nemo_experimentalist_plugin.experimentalist.components.loop import finalization_pool, select_winner_node
+from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionNode, EvolutionTree
 
 MAXIMIZE = [MetricTarget(name="reward", direction="maximize")]
 TWO_OBJECTIVES = [
@@ -253,5 +253,96 @@ def test_a_regression_metric_missing_from_a_candidate_is_not_a_regression() -> N
         MAXIMIZE,
         LATENCY_MUST_NOT_RISE,
     )
+    assert winner is not None
+    assert winner.label == "agent-1"
+
+
+def _tree(*nodes: EvolutionNode) -> EvolutionTree:
+    tree = EvolutionTree()
+    for node in nodes:
+        tree.add(node.candidate)
+    return tree
+
+
+def _killed(node: EvolutionNode, round_: int) -> EvolutionNode:
+    node.candidate.killed_round = round_
+    return node
+
+
+def test_a_baseline_killed_mid_loop_can_still_win() -> None:
+    """Survivor selection may kill agent-0; deciding to ship nothing must survive that.
+
+    `_finalize` filters on `is_survivor`, so without re-admitting the baseline a run
+    whose baseline was killed could only choose among diffs -- reintroducing the very
+    bug this module exists to prevent, one level down.
+    """
+    eligible, baseline = finalization_pool(
+        _tree(
+            _killed(_node("agent-0", 0, reward=0.5), 1),
+            _node("agent-1", 1, reward=0.5),
+        ),
+        MAXIMIZE,
+    )
+    assert baseline is not None and baseline.label == "agent-0"
+    assert "agent-0" in {node.label for node in eligible}
+
+    winner = select_winner_node(eligible, MAXIMIZE, [], baseline)
+    assert winner is not None
+    assert winner.label == "agent-0"
+
+
+def test_regression_is_measured_against_the_real_baseline_not_the_oldest_survivor() -> None:
+    """A killed baseline must still anchor the regression comparison."""
+    eligible, baseline = finalization_pool(
+        _tree(
+            _killed(_node("agent-0", 0, reward=0.5, latency=1.0), 1),
+            _node("agent-1", 1, reward=0.7, latency=2.0),
+            _node("agent-2", 2, reward=0.9, latency=2.5),
+        ),
+        MAXIMIZE,
+    )
+    assert baseline is not None and baseline.label == "agent-0"
+
+    # Against agent-1 (the oldest *survivor*) agent-2 looks fine on latency at 2.5 > 2.0
+    # only by a little; against the real baseline at 1.0 both candidates regress.
+    winner = select_winner_node(eligible, MAXIMIZE, LATENCY_MUST_NOT_RISE, baseline)
+    assert winner is not None
+    assert winner.label == "agent-0"
+
+
+def test_surviving_candidates_are_all_eligible() -> None:
+    eligible, baseline = finalization_pool(
+        _tree(
+            _node("agent-0", 0, reward=0.5),
+            _node("agent-1", 1, reward=0.7),
+            _killed(_node("agent-2", 1, reward=0.9), 1),
+        ),
+        MAXIMIZE,
+    )
+    assert baseline is not None and baseline.label == "agent-0"
+    assert {node.label for node in eligible} == {"agent-0", "agent-1"}
+
+
+def test_a_baseline_missing_the_objective_dimensions_is_not_used_as_reference() -> None:
+    """It cannot be ranked, so it cannot anchor; the selector falls back rather than crash."""
+    eligible, baseline = finalization_pool(
+        _tree(
+            _node("agent-0", 0, unrelated=1.0),
+            _node("agent-1", 1, reward=0.7),
+        ),
+        MAXIMIZE,
+    )
+    assert baseline is None
+    assert {node.label for node in eligible} == {"agent-1"}
+
+    winner = select_winner_node(eligible, MAXIMIZE, [], baseline)
+    assert winner is not None
+    assert winner.label == "agent-1"
+
+
+def test_a_run_with_no_baseline_result_still_finalizes() -> None:
+    eligible, baseline = finalization_pool(_tree(_node("agent-1", 1, reward=0.7)), MAXIMIZE)
+    assert baseline is None
+    winner = select_winner_node(eligible, MAXIMIZE, [], baseline)
     assert winner is not None
     assert winner.label == "agent-1"
