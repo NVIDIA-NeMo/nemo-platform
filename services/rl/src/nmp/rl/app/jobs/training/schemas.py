@@ -69,6 +69,17 @@ class GRPOConfig(BaseModel):
     max_grad_norm: float = Field(default=1.0, ge=0.0)
 
 
+class LoRAConfig(BaseModel):
+    """LoRA settings carried on the training step (maps to NeMo-RL lora_cfg)."""
+
+    rank: int = Field(default=16, gt=0)
+    alpha: int = Field(default=32, gt=0)
+    dropout: float = Field(default=0.0, ge=0.0, le=1.0)
+    target_modules: list[str] | None = None
+    exclude_modules: list[str] | None = None
+    use_triton: bool = True
+
+
 class WandBConfig(BaseModel):
     project: str | None = None
     name: str | None = None
@@ -104,6 +115,7 @@ class TrainingStepConfig(BaseModel):
         finetuning_type: FinetuningType | None = None
         dpo: DPOConfig | None = None
         grpo: GRPOConfig | None = None
+        lora: LoRAConfig | None = None
 
     class GymConfig(BaseModel):
         """NeMo Gym environment paths and sandbox mode (GRPO only)."""

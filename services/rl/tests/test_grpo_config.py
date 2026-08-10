@@ -12,6 +12,7 @@ import pytest
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.jobs.training.schemas import (
     GRPOConfig,
+    LoRAConfig,
     ModelConfig,
     TrainingBackend,
     TrainingStepConfig,
@@ -48,7 +49,14 @@ def _write_gym_dataset(root: Path) -> None:
     (root / "training.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
 
 
-def _sandboxed_step(tmp_path: Path, dataset_pvc: Path) -> TrainingStepConfig:
+def _make_grpo_step(
+    tmp_path: Path,
+    dataset_pvc: Path,
+    *,
+    finetuning_type: FinetuningType = FinetuningType.ALL_WEIGHTS,
+    lora: LoRAConfig | None = None,
+    tensor_parallel_size: int = 1,
+) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
     env_root.mkdir(exist_ok=True)
     (env_root / "nemo-environment.yaml").write_text(
@@ -69,15 +77,42 @@ def _sandboxed_step(tmp_path: Path, dataset_pvc: Path) -> TrainingStepConfig:
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
-            finetuning_type=FinetuningType.ALL_WEIGHTS,
+            finetuning_type=finetuning_type,
             grpo=GRPOConfig(num_generations_per_prompt=4),
+            lora=lora,
         ),
         schedule=TrainingStepConfig.ScheduleConfig(epochs=1),
         batch=TrainingStepConfig.BatchConfig(global_batch_size=8, micro_batch_size=1),
         optimizer=TrainingStepConfig.OptimizerConfig(),
-        parallelism=TrainingStepConfig.ParallelismConfig(num_gpus_per_node=1),
+        parallelism=TrainingStepConfig.ParallelismConfig(
+            num_gpus_per_node=1,
+            tensor_parallel_size=tensor_parallel_size,
+        ),
         output_model="out",
         workspace_path=str(tmp_path / "workspace"),
+    )
+
+
+def _prepared_step(
+    tmp_path: Path,
+    *,
+    finetuning_type: FinetuningType = FinetuningType.ALL_WEIGHTS,
+    lora: LoRAConfig | None = None,
+    tensor_parallel_size: int = 1,
+) -> tuple[TrainingStepConfig, Path]:
+    dataset_pvc = tmp_path / "dataset"
+    dataset_pvc.mkdir(exist_ok=True)
+    _write_gym_dataset(dataset_pvc)
+    (tmp_path / "workspace").mkdir(exist_ok=True)
+    return (
+        _make_grpo_step(
+            tmp_path,
+            dataset_pvc,
+            finetuning_type=finetuning_type,
+            lora=lora,
+            tensor_parallel_size=tensor_parallel_size,
+        ),
+        dataset_pvc,
     )
 
 
@@ -85,14 +120,7 @@ def test_compile_grpo_config_sandboxed_paths(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
-    dataset_pvc = tmp_path / "dataset"
-    dataset_pvc.mkdir()
-    _write_gym_dataset(dataset_pvc)
-
-    (tmp_path / "workspace").mkdir()
-
-    step = _sandboxed_step(tmp_path, dataset_pvc)
-
+    step, dataset_pvc = _prepared_step(tmp_path)
     cfg = compile_grpo_config(step, job_ctx)
 
     nemo_gym = cfg["env"]["nemo_gym"]
@@ -110,6 +138,7 @@ def test_compile_grpo_config_sandboxed_paths(
     assert nemo_gym["config_paths"] == ["configs/verifiers_agent.yaml"]
     # job_id is a sandbox pod label; without it every job shares one default.
     assert nemo_gym["job_id"] == "job-123"
+    assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["enabled"] is False
 
     sandbox = nemo_gym["sandbox"]
     assert sandbox["environment_pvc_claim"] == "nmp-job-storage"
@@ -123,12 +152,7 @@ def test_compile_grpo_config_sandboxed_requires_pvc_claim(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("NMP_JOB_STORAGE_PVC_CLAIM", raising=False)
-    dataset_pvc = tmp_path / "dataset"
-    dataset_pvc.mkdir()
-    _write_gym_dataset(dataset_pvc)
-    (tmp_path / "workspace").mkdir()
-
-    step = _sandboxed_step(tmp_path, dataset_pvc)
+    step, _ = _prepared_step(tmp_path)
     with pytest.raises(ValueError, match="NMP_JOB_STORAGE_PVC_CLAIM"):
         compile_grpo_config(step, job_ctx)
 
@@ -139,12 +163,8 @@ def test_compile_grpo_config_disables_validation_without_val_split(
     """A Gym dataset only has to ship training.jsonl; NeMo-RL asserts on a missing
     val dataset whenever val_period / val_at_start / val_at_end is set."""
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
-    dataset_pvc = tmp_path / "dataset"
-    dataset_pvc.mkdir()
-    _write_gym_dataset(dataset_pvc)
-    (tmp_path / "workspace").mkdir()
-
-    cfg = compile_grpo_config(_sandboxed_step(tmp_path, dataset_pvc), job_ctx)
+    step, _ = _prepared_step(tmp_path)
+    cfg = compile_grpo_config(step, job_ctx)
 
     assert cfg["data"]["validation"] is None
     assert cfg["grpo"]["val_period"] == 0
@@ -170,12 +190,8 @@ def test_compiled_config_selects_only_prefetched_actors(
     verification loop first.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
-    dataset_pvc = tmp_path / "dataset"
-    dataset_pvc.mkdir()
-    _write_gym_dataset(dataset_pvc)
-    (tmp_path / "workspace").mkdir()
-
-    cfg = compile_grpo_config(_sandboxed_step(tmp_path, dataset_pvc), job_ctx)
+    step, _ = _prepared_step(tmp_path)
+    cfg = compile_grpo_config(step, job_ctx)
 
     # _v2 selects DTensorPolicyWorkerV2 -> PY_EXECUTABLES.AUTOMODEL, which is neither
     # built nor prefetched. Unset (or False) keeps DTensorPolicyWorker -> `fsdp`.
@@ -184,3 +200,37 @@ def test_compiled_config_selects_only_prefetched_actors(
     assert cfg["policy"]["megatron_cfg"]["enabled"] is False
     # vLLM is the only prefetched generation backend (`vllm`); sglang/trtllm are not.
     assert cfg["policy"]["generation"]["backend"] == "vllm"
+
+
+def test_compile_grpo_config_enables_lora(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=32, alpha=64, use_triton=True),
+    )
+    cfg = compile_grpo_config(step, job_ctx)
+    lora_cfg = cfg["policy"]["dtensor_cfg"]["lora_cfg"]
+    assert lora_cfg["enabled"] is True
+    assert lora_cfg["dim"] == 32
+    assert lora_cfg["alpha"] == 64
+    assert lora_cfg["use_triton"] is True
+    assert cfg["policy"]["dtensor_cfg"]["_v2"] is True
+
+
+def test_compile_grpo_config_disables_triton_for_tp(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(
+        tmp_path,
+        finetuning_type=FinetuningType.LORA,
+        lora=LoRAConfig(rank=16, use_triton=True),
+        tensor_parallel_size=2,
+    )
+    # Fix batch divisibility for tp=2 on 1 gpu would fail validate — compiler path
+    # only; here we only compile YAML so TP is just a knob on lora_cfg.
+    cfg = compile_grpo_config(step, job_ctx)
+    assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["use_triton"] is False

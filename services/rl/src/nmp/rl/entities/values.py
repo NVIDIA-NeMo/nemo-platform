@@ -38,3 +38,4 @@ class CheckpointFormat(str, Enum):
 
     SAFETENSORS = "safetensors"
     HF = "hf"
+    HF_PEFT = "hf-peft"  # HuggingFace PEFT adapter (GRPO LoRA)

@@ -48,7 +48,7 @@ from nmp.customization_common.schemas.file_io import (
     FileSetRef,
     UploadItem,
 )
-from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig
+from nmp.customization_common.schemas.model_entity import ModelEntityTaskConfig, PEFTConfig
 from nmp.customization_common.service.platform_client import fetch_model_entity
 from nmp.customization_common.tasks.file_io_metadata import build_output_fileset_metadata_from_model_entity
 from nmp.rl.app.constants import (
@@ -68,6 +68,7 @@ from nmp.rl.app.constants import (
 from nmp.rl.app.jobs.training.schemas import (
     DPOConfig,
     GRPOConfig,
+    LoRAConfig,
     MLflowConfig,
     ModelConfig,
     TrainingBackend,
@@ -149,14 +150,22 @@ def _build_model_entity_config(
     workspace: str, job_spec: RlJobOutput, *, trust_remote_code: bool
 ) -> ModelEntityTaskConfig:
     method = job_spec.training_type.value.upper()
+    peft: PEFTConfig | None = None
+    if isinstance(job_spec.training, GRPOTraining) and job_spec.training.finetuning_type == "lora":
+        lora = job_spec.training.lora
+        assert lora is not None  # validated on GRPOTraining
+        peft = PEFTConfig(type=FinetuningType.LORA, rank=lora.rank, alpha=lora.alpha)
+        description = f"{method}-trained LoRA adapter from nmp-rl job ({job_spec.model})"
+    else:
+        description = f"{method}-trained model from nmp-rl job ({job_spec.model})"
     return ModelEntityTaskConfig(
         name=job_spec.output.name,
         workspace=workspace,
-        description=f"{method}-trained model from nmp-rl job ({job_spec.model})",
+        description=description,
         fileset=FileSetRef(workspace=None, name=job_spec.output.fileset),
         model_entity=job_spec.model,
         base_model=job_spec.model,
-        peft=None,
+        peft=peft,
         trust_remote_code=trust_remote_code,
         deployment_config=None,
     )
@@ -306,7 +315,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
-            finetuning_type=FinetuningType.ALL_WEIGHTS,
+            finetuning_type=FinetuningType.LORA if t.finetuning_type == "lora" else FinetuningType.ALL_WEIGHTS,
             grpo=GRPOConfig(
                 num_generations_per_prompt=t.num_generations_per_prompt,
                 num_prompts_per_step=t.num_prompts_per_step,
@@ -317,6 +326,18 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
                 ratio_clip_min=t.ratio_clip_min,
                 ratio_clip_max=t.ratio_clip_max,
                 max_grad_norm=t.max_grad_norm,
+            ),
+            lora=(
+                LoRAConfig(
+                    rank=t.lora.rank,
+                    alpha=t.lora.alpha,
+                    dropout=t.lora.dropout,
+                    target_modules=t.lora.target_modules,
+                    exclude_modules=t.lora.exclude_modules,
+                    use_triton=t.lora.use_triton,
+                )
+                if t.finetuning_type == "lora" and t.lora is not None
+                else None
             ),
         ),
         schedule=TrainingStepConfig.ScheduleConfig(

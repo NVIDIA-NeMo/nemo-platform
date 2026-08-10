@@ -287,6 +287,51 @@ def test_grpo_training_step_config_sandboxed(monkeypatch: pytest.MonkeyPatch) ->
     assert sc.gym.sandbox_environment_path == "/job/environment"
     assert sc.training.grpo is not None
     assert sc.training.grpo.num_generations_per_prompt == 8
+    assert sc.training.finetuning_type is FinetuningType.ALL_WEIGHTS
+    assert sc.training.lora is None
+
+
+def test_grpo_lora_training_step_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandboxed_gym_default", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.sandbox_cluster_capable", True, raising=False)
+    monkeypatch.setattr("nmp.rl.app.jobs.compiler.config.job_storage_pvc_claim", "nmp-job-storage", raising=False)
+    from nmp.rl.schemas import LoRAParams
+
+    job = RlJobOutput(
+        model="default/base-model",
+        dataset="default/prefs",
+        environment="default/env",
+        training=GRPOTraining(
+            type="grpo",
+            finetuning_type="lora",
+            lora=LoRAParams(rank=32, alpha=64, use_triton=True),
+            parallelism=ParallelismParams(num_nodes=1, num_gpus_per_node=1),
+        ),
+        output=OutputResponse(name="my-lora", type=OutputNameType.ADAPTER, fileset="my-lora-fs"),
+    )
+    sc = _build_training_step_config(job, trust_remote_code=False)
+    assert sc.training.finetuning_type is FinetuningType.LORA
+    assert sc.training.lora is not None
+    assert sc.training.lora.rank == 32
+    assert sc.training.lora.alpha == 64
+
+
+def test_grpo_lora_model_entity_peft(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nmp.rl.app.jobs.compiler import _build_model_entity_config
+    from nmp.rl.schemas import LoRAParams
+
+    job = RlJobOutput(
+        model="default/base-model",
+        dataset="default/prefs",
+        environment="default/env",
+        training=GRPOTraining(type="grpo", finetuning_type="lora", lora=LoRAParams(rank=8, alpha=16)),
+        output=OutputResponse(name="my-lora", type=OutputNameType.ADAPTER, fileset="my-lora-fs"),
+    )
+    cfg = _build_model_entity_config("default", job, trust_remote_code=False)
+    assert cfg.peft is not None
+    assert cfg.peft.rank == 8
+    assert cfg.peft.alpha == 16
+    assert cfg.peft.type is FinetuningType.LORA
 
 
 def test_grpo_compile_fails_closed_without_sandbox_capability(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -305,6 +350,6 @@ def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) 
     job = _make_job_output(GRPOTraining(type="grpo"), environment="default/env")
     step = _build_training_step(job, [], trust_remote_code=False, profile=None)
     assert step["name"] == "grpo-training"
-    env_names = {env["name"] for env in step["environment"]}
+    env_names = {(env["name"] if isinstance(env, dict) else env.name) for env in step["environment"]}
     assert "NMP_VLLM_SERVICE_HOST" in env_names
     assert "NMP_BROKER_SERVICE_PORT" in env_names

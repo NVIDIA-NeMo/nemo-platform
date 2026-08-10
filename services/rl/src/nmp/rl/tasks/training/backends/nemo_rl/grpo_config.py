@@ -19,6 +19,7 @@ from nmp.customization_common.service.constants import (
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.constants import NMP_JOB_STORAGE_PVC_ENVVAR
 from nmp.rl.app.jobs.training.schemas import GRPOConfig, TrainingStepConfig
+from nmp.rl.entities.values import FinetuningType
 from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import (
     _adapt_precision,
     _build_logger_config,
@@ -41,6 +42,28 @@ from nmp.rl.tasks.training.datasets.preparation import compute_val_check_interva
 from nmp.rl.tasks.training.datasets.validation import DatasetValidator
 
 logger = logging.getLogger(__name__)
+
+
+def _build_lora_cfg(customizer_config: TrainingStepConfig) -> dict[str, Any]:
+    """Map TrainingStepConfig LoRA settings onto NeMo-RL DTensor lora_cfg."""
+    enabled = customizer_config.training.finetuning_type == FinetuningType.LORA
+    lora = customizer_config.training.lora
+    tp = customizer_config.parallelism.tensor_parallel_size
+    use_triton = True if lora is None else lora.use_triton
+    if tp > 1:
+        use_triton = False
+    return {
+        "enabled": enabled,
+        "target_modules": list(lora.target_modules) if lora and lora.target_modules else [],
+        "exclude_modules": list(lora.exclude_modules) if lora and lora.exclude_modules else [],
+        "match_all_linear": not bool(lora and lora.target_modules),
+        "dim": lora.rank if lora else 16,
+        "alpha": lora.alpha if lora else 32,
+        "dropout": lora.dropout if lora else 0.0,
+        "dropout_position": "post",
+        "lora_A_init": "xavier",
+        "use_triton": use_triton,
+    }
 
 
 def _count_jsonl_rows(path: Path) -> int:
@@ -311,6 +334,7 @@ def compile_grpo_config(
             "context_parallel_size": parallelism.context_parallel_size,
             "custom_parallel_plan": None,
             "env_vars": {"PYTORCH_CUDA_ALLOC_CONF": ""},
+            "lora_cfg": _build_lora_cfg(customizer_config),
         },
         "megatron_cfg": _megatron_cfg_disabled(precision, grpo_hp.max_grad_norm),
         "optimizer": _build_optimizer_config(customizer_config),
