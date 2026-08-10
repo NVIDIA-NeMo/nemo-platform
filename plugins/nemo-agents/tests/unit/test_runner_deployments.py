@@ -217,7 +217,7 @@ def test_executor_for_mode_prefers_mode_specific() -> None:
 
 
 def test_config_mount_path_default_is_under_writable_workspace() -> None:
-    assert DeploymentsRunnerConfig().config_mount_path.startswith("/tmp/nemo/")
+    assert DeploymentsRunnerConfig().config_mount_path == "/tmp/nemo/config.yaml"
 
 
 def test_build_deployment_config_always_single_container() -> None:
