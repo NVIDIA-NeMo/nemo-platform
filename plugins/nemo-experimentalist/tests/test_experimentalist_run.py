@@ -18,6 +18,7 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import ConfiguredModelRefs
 
 
 @dataclass
@@ -26,6 +27,30 @@ class ClosingClient:
 
     async def close(self) -> None:
         self.closed = True
+
+
+@dataclass
+class ClosingModelClients:
+    """Stands in for the resolved Model Entity clients (#1159)."""
+
+    default: object = "default"
+    fast: object = "fast"
+    refs: ConfiguredModelRefs = ConfiguredModelRefs(default="default/quality", fast="default/fast")
+    closed: bool = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture
+def model_clients(monkeypatch: pytest.MonkeyPatch) -> ClosingModelClients:
+    clients = ClosingModelClients()
+
+    async def resolve(*_: object) -> ClosingModelClients:
+        return clients
+
+    monkeypatch.setattr(experimentalist_run, "resolve_model_clients", resolve)
+    return clients
 
 
 @dataclass
@@ -46,7 +71,6 @@ class BackendFactoryCall:
 class AgentFactoryCall:
     working_dir: Path
     config: EvolutionaryOptimizerConfig
-    models: object
 
 
 @dataclass
@@ -79,6 +103,7 @@ def _make_run_paths(tmp_path: Path) -> ExperimentRunPaths:
 
 @pytest.mark.asyncio
 async def test_run_experimentalist_builds_and_runs_complete_local_contract(
+    model_clients: ClosingModelClients,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -106,10 +131,9 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
         working_dir: Path,
         config: EvolutionaryOptimizerConfig,
         framework_skills_dirs: list[Path] | None,
-        models: object,
     ) -> object:
         assert framework_skills_dirs is None
-        agent_calls.append(AgentFactoryCall(working_dir=working_dir, config=config, models=models))
+        agent_calls.append(AgentFactoryCall(working_dir=working_dir, config=config))
         return strategy
 
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", make_backend)
@@ -150,13 +174,11 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     assert call["train_dataset"] == train_dataset
     assert call["validation_dataset"] == validation_dataset
     assert call["agent_spec"] is None
-    # One tiers object for the run: the strategy must not resolve its own, or the
-    # ``deployment`` block in the run record describes models the strategy never used.
-    assert agent_calls[0].models is call["models"]
 
 
 @pytest.mark.asyncio
 async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
+    model_clients: ClosingModelClients,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -185,6 +207,7 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
 
 @pytest.mark.asyncio
 async def test_run_experimentalist_forwards_agent_spec_uri(
+    model_clients: ClosingModelClients,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -214,6 +237,7 @@ async def test_run_experimentalist_forwards_agent_spec_uri(
 
 @pytest.mark.asyncio
 async def test_run_experimentalist_does_not_close_caller_client_when_backend_creation_fails(
+    model_clients: ClosingModelClients,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:

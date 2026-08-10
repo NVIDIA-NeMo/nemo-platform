@@ -568,6 +568,85 @@ class TestConfigErrors:
 class TestConfigWrite:
     """Test Config.write() method for creating/updating config files."""
 
+    def test_write_with_result_reports_context_and_creation(self, tmp_path: Path):
+        config_path = tmp_path / "config.yaml"
+
+        created = Config.write_with_result(
+            {"base_url": "https://staging.example.com"},
+            context_name="staging",
+            config_path=config_path,
+        )
+
+        assert created.context_name == "staging"
+        assert created.created is True
+        assert created.config.get_config_file().current_context == "staging"
+
+        updated = Config.write_with_result(
+            {"workspace": "updated-workspace"},
+            context_name="staging",
+            config_path=config_path,
+        )
+
+        assert updated.context_name == "staging"
+        assert updated.created is False
+        assert updated.config.resolve().workspace == "updated-workspace"
+
+    def test_write_can_leave_current_context_unset(self, tmp_path: Path):
+        result = Config.write_with_result(
+            {"base_url": "https://staging.example.com"},
+            context_name="staging",
+            config_path=tmp_path / "config.yaml",
+            set_current_if_unset=False,
+        )
+
+        assert result.created is True
+        assert result.config.get_config_file().current_context is None
+
+    def test_write_without_context_name_falls_back_to_default_when_current_context_unset(self, tmp_path: Path):
+        config_path = tmp_path / "config.yaml"
+        # Create a named context without activating it (current_context stays None).
+        Config.write_with_result(
+            {"base_url": "https://staging.example.com"},
+            context_name="staging",
+            config_path=config_path,
+            set_current_if_unset=False,
+        )
+        assert Config.load(config_path=config_path).get_config_file().current_context is None
+
+        # A subsequent write without context_name must not raise (regression: config.resolve() raised
+        # ValueError when contexts existed but current_context was None). It targets DEFAULT_CONTEXT.
+        result = Config.write_with_result({"base_url": "https://default.example.com"}, config_path=config_path)
+
+        assert result.context_name == "default"
+
+    def test_write_rejects_unknown_context_selected_by_environment(
+        self, temp_config_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("NMP_CURRENT_CONTEXT", "prodction")
+
+        with pytest.raises(
+            ValueError,
+            match="Context 'prodction' not found. Available contexts: production, development, local",
+        ):
+            Config.write_with_result({"workspace": "updated-workspace"}, config_path=temp_config_file)
+
+        config = Config.load(config_path=temp_config_file)
+        assert "prodction" not in {context.name for context in config.get_config_file().contexts}
+
+    def test_write_allows_explicit_context_when_environment_selects_unknown_context(
+        self, temp_config_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("NMP_CURRENT_CONTEXT", "prodction")
+
+        result = Config.write_with_result(
+            {"base_url": "https://new.example.com", "workspace": "new-workspace"},
+            context_name="new-context",
+            config_path=temp_config_file,
+        )
+
+        assert result.context_name == "new-context"
+        assert result.created is True
+
     def test_write_creates_new_config_file(self, tmp_path: Path):
         """Test that write() creates a new config file when none exists."""
         config_path = tmp_path / "new_config.yaml"
@@ -832,6 +911,19 @@ class TestConfigWrite:
         assert config_file.current_context == "default"
         assert len(config_file.contexts) == 1
         assert config_file.contexts[0].name == "default"
+
+    def test_first_write_respects_current_context_env_var(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        config_path = tmp_path / "new_config.yaml"
+        monkeypatch.setenv("NMP_CURRENT_CONTEXT", "staging")
+
+        result = Config.write_with_result(
+            {"base_url": "https://staging.example.com"},
+            config_path=config_path,
+        )
+
+        assert result.context_name == "staging"
+        assert result.config.get_config_file().current_context == "staging"
+        assert result.config.resolve().context_name == "staging"
 
 
 class TestConfigFilePermissions:

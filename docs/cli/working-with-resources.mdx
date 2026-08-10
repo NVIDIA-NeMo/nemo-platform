@@ -6,7 +6,7 @@ This page covers how to list, view, and create resources with the CLI.
 
 ## Output Formats
 
-Control how output is displayed with the `--output-format` (or `-f`) option.
+Control how output is displayed with the `--output-format` (or `--output`, `-f`) option.
 
 ### Table (Default for Lists)
 
@@ -24,6 +24,12 @@ Machine-readable JSON, ideal for scripting and piping to `jq`:
 ```bash
 nemo workspaces list -f json
 nemo workspaces get default -f json | jq '.id'
+```
+
+For list commands, add `--stream` with JSON or raw output to emit one newline-delimited JSON record per item:
+
+```bash
+nemo workspaces list --output json --stream | jq -c '.'
 ```
 
 ### YAML

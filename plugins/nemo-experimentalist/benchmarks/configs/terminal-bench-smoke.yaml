@@ -5,9 +5,6 @@ suite_partition: fast
 test_attempts: 1
 models:
   aut: aws/anthropic/claude-haiku-4-5-v1
-  experimentalist_smart: openai/openai/openai/gpt-5-mini
-  experimentalist_mid: openai/openai/openai/gpt-5-mini
-  experimentalist_fast: openai/openai/openai/gpt-5-mini
 optimizer:
   max_rounds: 1
   min_rounds_before_stopping: 1

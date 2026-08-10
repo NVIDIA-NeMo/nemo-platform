@@ -12,11 +12,18 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import httpx
-from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, Proposal, Task, TrialResult
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
+    Dataset,
+    EvaluationResult,
+    Proposal,
+    Task,
+    TrialResult,
+)
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
 from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -28,7 +35,6 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import ModelTiers, api_base, api_key
 from .proposer import CODE_CHANGE, CodeChange
 from .tools import GuardedShellTools
 from .util import load_framework_skills
@@ -44,10 +50,6 @@ class CoderConfig(BaseModel):
     max_fix_attempts: int = Field(
         default=2,
         description="Max LLM repair iterations inside integration_check before giving up on a candidate.",
-    )
-    timeout_model_list_secs: float = Field(
-        default=10.0,
-        description="HTTP timeout in seconds when fetching the list of available LLM models.",
     )
     model_catalog_path: Path | None = Field(
         default=None,
@@ -289,7 +291,7 @@ class ArchitectureSkill(Skill):
     solid entrypoint from framework, all LLM-driven calls dashed.
 
     ```python
-    class MyAgent(Agent, llm=get_smart_model()):
+    class MyAgent(Agent, llm=get_default_model()):
         '''You are a research assistant.'''
 
         def __init__(self):
@@ -387,7 +389,7 @@ class ArchitectureSkill(Skill):
     with a different model and non-default temperature; deterministic orchestrator method.
 
     ```python
-    class WriterAgent(Agent, llm=get_smart_model()):
+    class WriterAgent(Agent, llm=get_default_model()):
         '''You are a writing assistant. Draft and refine content.'''
 
         def __init__(self):
@@ -398,7 +400,7 @@ class ArchitectureSkill(Skill):
             '''Write a first draft from the brief.'''
             ...
 
-        @strategy(PredictStrategy(), llm=self._models.fast, temperature=0.0)
+        @strategy(PredictStrategy(), llm=get_fast_model(), temperature=0.0)
         async def critique(self, draft: str) -> str:
             '''List exactly three weaknesses in the draft. Be terse.'''
             ...
@@ -441,7 +443,7 @@ class ArchitectureSkill(Skill):
     sequence as a chain (not fan-out), every stochastic method gets dashed arrows to all tools.
 
     ```python
-    class Orchestrator(Agent, llm=get_smart_model()):
+    class Orchestrator(Agent, llm=get_default_model()):
         '''You are an optimization orchestrator.'''
 
         def __init__(self):
@@ -603,7 +605,6 @@ class Coder(Agent, roles.Builder):
         workspace: Path,
         config: CoderConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        models: ModelTiers | None = None,
         *,
         evaluator: Evaluator | None = None,
         dataset: Dataset | None = None,
@@ -611,22 +612,15 @@ class Coder(Agent, roles.Builder):
         entrypoint: str | None = None,
         **kwargs: Any,
     ):
-        """Initialize the coder for the given workspace.
-
-        Everything a build needs beyond the Proposal arrives here, because
-        :meth:`build`'s signature is the ``builder`` role's contract and is not the
-        Coder's to widen. The strategy that resolves this Builder supplies them.
-        """
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
-        self._models = tiers
+        """Initialize the coder for the given workspace."""
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
+        # Architecture extraction requires the same quality-oriented model as
+        # the rest of the coding work.
         self._evaluator = evaluator
         self._dataset = dataset
         self._source_path = source_path
         self._entrypoint = entrypoint
-        # create_architecture_doc runs on the mid tier. Resolved here, like every other
-        # tier this component uses, and read off the instance by the decorator's callable.
-        self._mid_model = tiers.mid
+        self._architecture_model = get_default_model()
         self._config = config or CoderConfig()
         self._workspace_path = workspace.resolve()
         self.shell = GuardedShellTools(cwd=self._workspace_path)
@@ -644,10 +638,9 @@ class Coder(Agent, roles.Builder):
         self.optimize = Optimize(model_catalog_path=self._config.model_catalog_path)
         self.skills.register("ext.optimize", self.optimize)
         self.skills.activate(["cmd.*", "ext.*"])
-        self._models_cache: list[str] | None = None
         TokenBudgetSummarizer.install(
             self,
-            llm=self._models.fast,
+            llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
@@ -656,44 +649,14 @@ class Coder(Agent, roles.Builder):
         await self.create_architecture_doc(artifact, source_path=self._source_path, entrypoint=self._entrypoint)
 
     async def list_available_models(self) -> list[str]:
-        """Fetch available LLM model IDs from the configured inference API.
-
-        Results are cached in memory for the lifetime of this instance.
+        """Return the curated model IDs allowed for agent-under-test mutations.
 
         Returns:
-            list[str]: model ID strings as returned by the API.
-
-        Raises:
-            ValueError: if the endpoint or its credential is configured nowhere.
-            httpx.HTTPStatusError: if the API returned a non-2xx response.
-            httpx.RequestError: if there was a network or connection failure.
+            list[str]: Model IDs from the configured Experimentalist catalog.
 
         """
-        if self._models_cache is not None:
-            return self._models_cache
-
-        base, key = api_base(), api_key()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{base}/models",
-                headers={"Authorization": f"Bearer {key}"},
-                timeout=self._config.timeout_model_list_secs,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        rows = data.get("data", [])
-        if not isinstance(rows, list):
-            raise ValueError("Invalid /models response: expected data to be a list")
-        models = [
-            model_id
-            for row in rows
-            if isinstance(row, dict) and isinstance(model_id := row.get("id"), str) and model_id
-        ]
-        if not models:
-            raise ValueError("No model ids found in /models response")
-        self._models_cache = models
-        return models
+        catalog = self.optimize.optimize_model_capability.read_model_catalog()
+        return [model.model_id for model in catalog.models]
 
     async def build(self, ctx: BuilderContext, proposal: Proposal, *, generation: int) -> Candidate:
         """Implement *proposal*, verify it integrates, and commit the Candidate for it.
@@ -1083,7 +1046,8 @@ class Coder(Agent, roles.Builder):
         )
 
     @strategy(
-        CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)), llm=lambda self: self._mid_model
+        CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)),
+        llm=lambda self: self._architecture_model,
     )
     async def create_architecture_doc(
         self, workdir: Path, source_path: str | None = None, entrypoint: str | None = None

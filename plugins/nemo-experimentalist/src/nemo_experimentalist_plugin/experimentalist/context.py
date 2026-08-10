@@ -42,12 +42,12 @@ from nemo_experimentalist_plugin.entities import (
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
+from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
 from nemo_experimentalist_plugin.experimentalist.registry import resolve
-from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, Fork
 from nemo_platform import AsyncNeMoPlatform
 
@@ -126,7 +126,6 @@ class ExperimentContext:
         datasets: Evaluator-domain datasets keyed by split. ``validation`` is always
             present; ``train`` and ``insight`` are present when the run has them.
         evaluator: Evaluation component the run was configured with.
-        models: The run's resolved model tiers, handed to every component it builds.
         resuming: True when the runner re-opened an existing run, so the strategy
             should rebuild its state from :meth:`candidates` instead of starting over.
         reporter: Optional human narration sink. Best-effort and never load-bearing.
@@ -143,9 +142,9 @@ class ExperimentContext:
         agent_spec: Path | None = None,
         datasets: Mapping[str, Dataset],
         evaluator: Evaluator,
-        models: ModelTiers,
         resuming: bool = False,
         reporter: RunReporter | None = None,
+        objective_metrics: list[MetricTarget] | None = None,
     ) -> None:
         if PRIMARY_SPLIT not in datasets:
             raise ValueError(f"ExperimentContext requires a {PRIMARY_SPLIT!r} dataset; got {sorted(datasets)}")
@@ -153,7 +152,7 @@ class ExperimentContext:
         self._run = run
         self._evaluator = evaluator
         self._reporter = reporter
-        self.models = models
+        self._objective_metrics = objective_metrics or [MetricTarget(name="reward", direction="maximize")]
         self.workspace = workspace
         self.root = root
         self.agent_dir = agent_dir
@@ -449,7 +448,8 @@ class ExperimentContext:
             self._reporter.candidate_evaluated(
                 label=candidate.label,
                 split=split,
-                reward=reward_scalar(result.aggregate_metrics),
+                metrics=result.aggregate_metrics,
+                objective_metrics=self._objective_metrics,
                 artifacts=self.root / "eval-and-optimize" / "results" / result.id,
             )
         return result
@@ -493,7 +493,6 @@ class ExperimentContext:
         # `workspace` and `working_dir` are the same run root under two spellings that
         # predate the registry; both are offered so a component keeps whichever it uses.
         supplied: dict[str, Any] = {
-            "models": self.models,
             "workspace": self.root,
             "working_dir": self.root,
             "evaluator": self._evaluator,

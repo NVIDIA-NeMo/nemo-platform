@@ -1,21 +1,26 @@
 ---
 name: nemo-experiments-upload
-description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up as Experiments. Create an Experiment, create an Evaluation, then log traces and evaluator results via the ATIF (Harbor), chat-completions, or OTLP ingest endpoint — and view the rollups in Studio. Use when a user wants to upload, log, ingest, publish, or send evaluation runs, agent traces, or scores to NeMo Experiments / Intake.
+description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up in the Experiments leaderboard. Create an Experiment, create an Evaluation, then log traces and evaluator results via ATIF (Harbor), chat-completions, or OTLP and view the rollups in Studio. Use when a user wants to create named evaluation runs, publish evaluation results, or compare runs in NeMo Experiments.
 triggers:
-  - log traces to intake
+  - log evaluation traces to experiments
   - upload experiment results
   - ingest evaluation data
   - how do I log to experiments
-  - send traces to nemo intake
+  - send evaluation traces to nemo experiments
   - publish evaluation results
   - log to experiments
   - upload harbor / atif results
   - get my eval data into nemo
 not-for:
+  - nemo-intake (use for general instrumentation, telemetry ingestion, trace queries, or evaluator results outside an Experiments leaderboard)
   - nemo-evaluator (use to AUTHOR and RUN evaluations/metrics; this skill UPLOADS results)
   - nemo-status (use for a read-only platform health dashboard)
   - nemo-skill-selection (use for dispatch when intent is unclear)
-compatibility: nemo-platform >= 0.1.0; needs the intake service running (auth, entities, intake) and ClickHouse for rollups/results; talks HTTP to /apis/intake/v2 (curl only, no Docker); Experiments viewing in Studio is behind the VITE_FF_EXPERIMENT feature flag.
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - clickhouse_ready
+compatibility: nemo-platform >= 0.1.0; needs a reachable local or remote intake service (with auth and entities) backed by ClickHouse for rollups/results; talks HTTP to /apis/intake/v2 (curl only, no Docker); Experiments viewing in Studio is behind the VITE_FF_EXPERIMENT feature flag.
 maturity: beta
 license: Apache-2.0
 user-invocable: true
@@ -26,20 +31,45 @@ allowed-tools: [Bash, Read, Write]
 
 Get evaluation runs into the platform end-to-end: **create an Experiment → create an Evaluation → log traces + scores to an ingest endpoint → see the rollups.** The API calls the parent (the leaderboard) an **Experiment** and each row an **Evaluation**; the whole feature is called **Experiments**.
 
-Everything below uses `${NMP_BASE_URL}` (default `http://localhost:8080`) and a `${WORKSPACE}` (default `default`). All routes are under `/apis/intake/v2/workspaces/${WORKSPACE}`.
+Everything below uses `${NMP_BASE_URL}` (default `http://localhost:8080`) and a `${WORKSPACE}`
+(default `default`). Point `NMP_BASE_URL` at the local platform or a remote HTTPS origin. Reject
+non-loopback `http://` targets, and never send authentication across an HTTP redirect. All routes
+are under `/apis/intake/v2/workspaces/${WORKSPACE}`.
 
 ## Pre-flight
 
-Confirm intake is up before doing anything. If this fails, the platform isn't running — route to `setup`/`nemo-status` and stop.
+Confirm the target platform is reachable before doing anything. If this fails, report the target as
+unreachable and stop; route to `setup`/`nemo-status` only for a local platform.
 
 ```bash
 set -euo pipefail
 : "${NMP_BASE_URL:=http://localhost:8080}"
 : "${WORKSPACE:=default}"
+nmp_authority=${NMP_BASE_URL#*://}
+nmp_authority=${nmp_authority%%/*}
+case "${nmp_authority}" in
+  *@*) echo "NMP_BASE_URL must not contain userinfo" >&2; exit 1 ;;
+esac
+case "${NMP_BASE_URL}" in
+  https://*) ;;
+  http://*)
+    case "${nmp_authority}" in
+      localhost|127.0.0.1) ;;
+      localhost:*|127.0.0.1:*)
+        nmp_port=${nmp_authority#*:}
+        case "${nmp_port}" in
+          ""|*[!0-9]*) echo "loopback NMP_BASE_URL has an invalid port" >&2; exit 1 ;;
+        esac
+        ;;
+      *) echo "HTTP NMP_BASE_URL must use exactly localhost or 127.0.0.1" >&2; exit 1 ;;
+    esac
+    ;;
+  *) echo "remote NMP_BASE_URL must use https://" >&2; exit 1 ;;
+esac
 if curl -sf "${NMP_BASE_URL}/health/ready" >/dev/null; then
   echo "platform ready"
 else
-  echo "NOT READY — platform isn't running; route to setup/nemo-status and stop" >&2
+  echo "NOT READY — target platform is unreachable or not ready" >&2
   exit 1
 fi
 ```
@@ -97,20 +127,22 @@ curl -sf -X POST \
 
 ### 3. Log traces + evaluator results
 
-Pick the ingest endpoint that matches your producer. **Read `references/ingest-formats.md` for the full schema and a copy-pasteable example for each.** How you attach evaluation identity depends on the endpoint:
+Pick the ingest endpoint that matches your producer. **Read `../nemo-intake/references/ingest-formats.md` for the full schema and a copy-pasteable example for each.** How you attach evaluation identity depends on the endpoint:
 
 - **ATIF and chat-completions** (JSON body) — add an `evaluation_context = {evaluation_id: "<the Evaluation name>", test_case_id: "<task id>"}` object to the payload.
-- **OTLP** — there is no body field; set identity as **root-span resource attributes** `nemo.experiment.id` (the Evaluation **name**) and `nemo.test_case.id`. Spans missing these still ingest but won't associate to an Evaluation.
+- **OTLP** — there is no body field; set `nemo.experiment.id` (the Evaluation **name**) and
+  `nemo.test_case.id` (the task ID) as **attributes on the root span**. Spans missing these still
+  ingest but won't associate to an Evaluation.
 
 | Producer | Endpoint | Read |
 |---|---|---|
 | **Harbor / agent trajectories** (most common) | `POST .../ingest/atif` | `references/harbor-quickstart.md` |
-| A single captured model call | `POST .../ingest/chat-completions` | `references/ingest-formats.md` |
-| OpenTelemetry spans | `POST .../ingest/otlp/v1/traces` | `references/ingest-formats.md` |
+| A single captured model call | `POST .../ingest/chat-completions` | `../nemo-intake/references/ingest-formats.md` |
+| OpenTelemetry spans | `POST .../ingest/otlp/v1/traces` | `../nemo-intake/references/ingest-formats.md` |
 
 Evaluator **scores** arrive one of two ways (both covered in the references):
 - **Automatically** with ATIF — put rewards under `extra.verifier_result.rewards` (one key per criterion).
-- **Explicitly** — `POST .../evaluator-results` with `{span_id, session_id, name, data_type, value}` — use `string_value` instead of `value` for `CATEGORICAL`/`TEXT` results (see `references/ingest-formats.md`).
+- **Explicitly** — `POST .../evaluator-results` with `{span_id, session_id, name, data_type, value}` — use `string_value` instead of `value` for `CATEGORICAL`/`TEXT` results (see `../nemo-intake/references/ingest-formats.md`).
 
 ### 4. Verify the data landed
 
@@ -134,7 +166,7 @@ Open Studio → the **Experiments** area (behind the `VITE_FF_EXPERIMENT` flag) 
 
 Read these before hand-writing a payload:
 
-- **`references/ingest-formats.md`** — the three ingest endpoints in full: request schemas, how `evaluation_context` and evaluator results attach, and a working example for each (ATIF, chat-completions, OTLP).
+- **`../nemo-intake/references/ingest-formats.md`** — the shared Intake request schemas, evaluation context, evaluator results, and examples for ATIF, chat-completions, and OTLP.
 - **`references/harbor-quickstart.md`** — the Harbor path specifically: mapping a Harbor trial result → an ATIF payload, including verifier rewards → evaluator scores.
 - **`references/troubleshooting.md`** — every common `400`/`422`/`503` from the ingest and CRUD endpoints, with the fix.
 
@@ -151,7 +183,7 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `400 "…must be created before it can be logged."` | Ingested before the Evaluation existed, or `evaluation_id` doesn't match | Create the Evaluation (step 2); ensure `evaluation_context.evaluation_id` equals its **name** |
-| `422 Unprocessable` on ingest | Unknown/typo'd top-level key (ATIF/chat-completions are `extra="forbid"`) or bad `schema_version` | Check the exact schema in `references/ingest-formats.md`; remove stray keys |
+| `422 Unprocessable` on ingest | Unknown/typo'd top-level key (ATIF/chat-completions are `extra="forbid"`) or bad `schema_version` | Check the exact schema in `../nemo-intake/references/ingest-formats.md`; remove stray keys |
 | Ingest 2xx but `run_count` stays 0 | Evaluation identity missing/wrong — `evaluation_context.evaluation_id` (ATIF/chat-completions) or the `nemo.experiment.id` root-span attribute (OTLP) ≠ the Evaluation's name | Attach the identity for your endpoint; use the Evaluation **name**, not its id |
 | `503` on GET evaluation / sessions | ClickHouse (telemetry store) not running | Start ClickHouse; rollups and sessions require it |
 | Scores don't show up | Rewards not under `extra.verifier_result.rewards`, or wrong `data_type` on `/evaluator-results` | See `references/troubleshooting.md` |

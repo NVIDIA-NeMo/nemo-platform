@@ -93,7 +93,6 @@ def _make_runner(tmp_path: Path, strategy: Any, monkeypatch: pytest.MonkeyPatch)
             },
         )(),
     )
-    monkeypatch.setattr(runner_module, "ModelTiers", lambda *_, **__: _Tiers())
 
     config = EvolutionaryOptimizerConfig(storage=CandidateStorageConfig(archive_candidates=False, publish_winner=False))
     return ExperimentRunner(
@@ -106,13 +105,6 @@ def _make_runner(tmp_path: Path, strategy: Any, monkeypatch: pytest.MonkeyPatch)
         train_dataset=DatasetRef(uri=str(dataset_path), description="train"),
         validation_dataset=DatasetRef(uri=str(dataset_path), description="validation"),
     )
-
-
-class _Tiers:
-    """No model is ever called here; the runner only records what it resolved."""
-
-    def describe(self) -> dict[str, object]:
-        return {"api_base": "http://fake", "models": {"smart": "fake/smart"}}
 
 
 async def _import_baseline(ctx, description: str = "baseline") -> Candidate:

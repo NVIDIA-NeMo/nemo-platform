@@ -43,6 +43,8 @@ class TestPluginsHelp:
         assert_exit_code(result, 0)
         assert "List installed plugins." in result.stdout
         assert "--output-format" in result.stdout
+        assert "--output" in result.stdout
+        assert "--stream" in result.stdout
 
 
 class TestPluginsList:
@@ -87,6 +89,40 @@ class TestPluginsList:
         assert '"name": "example"' in result.stdout
         assert '"version": "0.1.0"' in result.stdout
         assert '"description": "Example plugin"' in result.stdout
+
+    def test_list_accepts_output_alias(self):
+        manifests = {
+            "example": PluginManifest(name="example", version="0.1.0", description="Example plugin"),
+        }
+
+        with patch("nemo_platform_plugin.discovery.discover_manifests", return_value=manifests):
+            result = _invoke("plugins", "list", "--output", "json")
+
+        assert_exit_code(result, 0)
+        assert '"name": "example"' in result.stdout
+
+    def test_list_streams_json_lines(self):
+        manifests = {
+            "beta": PluginManifest(name="beta", version="1.5.0", description="Beta plugin"),
+            "alpha": PluginManifest(name="alpha", version="1.0.0", description="Alpha plugin"),
+        }
+
+        with patch("nemo_platform_plugin.discovery.discover_manifests", return_value=manifests):
+            result = _invoke("plugins", "list", "--output", "json", "--stream")
+
+        assert_exit_code(result, 0)
+        assert result.stdout.splitlines() == [
+            '{"name":"alpha","version":"1.0.0","description":"Alpha plugin"}',
+            '{"name":"beta","version":"1.5.0","description":"Beta plugin"}',
+        ]
+
+    def test_stream_requires_json_output(self):
+        with patch("nemo_platform_plugin.discovery.discover_manifests") as mock_discover:
+            result = _invoke("plugins", "list", "--output", "table", "--stream")
+
+        assert_exit_code(result, 2)
+        assert "--stream requires --output json or --output raw" in result.stderr
+        mock_discover.assert_not_called()
 
     def test_list_empty_result(self):
         with patch("nemo_platform_plugin.discovery.discover_manifests", return_value={}):

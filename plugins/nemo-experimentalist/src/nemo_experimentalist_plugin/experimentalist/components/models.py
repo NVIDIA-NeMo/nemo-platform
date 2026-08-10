@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable
 from typing import Literal, TypeVar
 
 from nemo_experimentalist_plugin.entities import Candidate
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Pareto utilities
@@ -316,3 +316,32 @@ class EvolutionTree:
         for i, child_id in enumerate(sorted(children)):
             lines.extend(self._build_tree_lines(child_id, child_prefix, i == len(children) - 1))
         return lines
+
+
+class MetricTarget(BaseModel):
+    """One evaluator-produced metric and the desired direction of change."""
+
+    name: str = Field(min_length=1, description="Exact metric name emitted by the evaluator.")
+    direction: Literal["maximize", "minimize"] = Field(
+        description="Whether higher or lower values are better for this target."
+    )
+
+
+def pareto_objectives(metrics: dict[str, float], objective_function: list[MetricTarget]) -> dict[str, float]:
+    """Project evaluator metrics onto the configured objectives for Pareto ranking.
+
+    The generic Pareto utility maximizes every dimension. Minimized objective
+    values are sign-inverted here; regression metrics are intentionally absent.
+    """
+    objectives: dict[str, float] = {}
+    for target in objective_function:
+        value = metrics.get(target.name)
+        if value is None:
+            return {}
+        objectives[target.name] = float(value) if target.direction == "maximize" else -float(value)
+    return objectives
+
+
+def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
+    """Return whether an evaluator result contains every required metric target."""
+    return all(target.name in metrics for target in targets)

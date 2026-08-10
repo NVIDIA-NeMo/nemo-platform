@@ -28,7 +28,6 @@ def quiet_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
         Probes(
             run_cmd=lambda argv: (0, "ok"),
             http_ok=lambda url: True,
-            env={"NEMO_EXPERIMENTALIST_API_BASE": "http://llm", "NEMO_EXPERIMENTALIST_API_KEY": "k"},
         ),
     )
 
@@ -226,7 +225,9 @@ def test_experiment_cli_passes_dataset_driven_contract_to_runner(
     # reads insight files with json.loads, so YAML-authored files must not
     # reach it raw); platform ids still pass through verbatim.
     assert runner.captured.insight == str(paths.experiment / "resolved" / "insight.json")
-    assert Path(runner.captured.insight).read_text(encoding="utf-8").strip() == "{}"
+    captured_insight = runner.captured.insight
+    assert captured_insight is not None
+    assert Path(captured_insight).read_text(encoding="utf-8").strip() == "{}"
     # Datasets and the task template are forwarded as DatasetRef URI handles,
     # tagged with a stable id the evaluator adapter uses when building datasets.
     assert runner.captured.train_dataset == DatasetRef(uri=str(paths.train), metadata={"id": "train"})

@@ -8,6 +8,8 @@ description: >
   RAG/agentic, and tool-calling evaluations. Use when a task involves
   questions/rubrics/responses files, rubric criteria, benchmark scoring,
   evaluator primitive selection, or reusable evaluation artifacts.
+preconditions:
+  - evaluator_sdk_available
 compatibility: Designed for installed NeMo Platform skill use; repo-relative SDK paths are developer fallbacks when a checkout is available.
 metadata:
   user-invocable: true

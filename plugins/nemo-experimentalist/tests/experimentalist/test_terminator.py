@@ -12,6 +12,7 @@ constructed with an injected ``FakeLLMClient`` so the tests need no
 import json
 
 from doubles import make_candidate, seed_reward
+from nemo_experimentalist_plugin.config import MetricTarget
 from nemo_experimentalist_plugin.entities import Candidate, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.terminator import (
     TerminationDecision,
@@ -43,7 +44,7 @@ def _exec_response(code: str) -> LLMResponse:
     )
 
 
-def _terminator(*, stop_verdict: bool | None = None) -> Terminator:
+def _terminator(*, stop_verdict: bool | None = None, objectives: list[MetricTarget] | None = None) -> Terminator:
     """Build a Terminator with an injected fake LLM.
 
     When ``stop_verdict`` is None the fake makes no scripted response (used by tests
@@ -51,13 +52,13 @@ def _terminator(*, stop_verdict: bool | None = None) -> Terminator:
     strategy resolves to that boolean via a scripted ``return_result``.
     """
     if stop_verdict is None:
-        return Terminator(llm=FakeLLMClient())
+        return Terminator(llm=FakeLLMClient(), objective_metrics=objectives)
     fake = FakeLLMClient(scripted_responses=[_exec_response(f"return_result(result={stop_verdict})")])
-    return Terminator(llm=fake)
+    return Terminator(llm=fake, objective_metrics=objectives)
 
 
 async def test_run_stops_on_convergence_when_budget_not_hit() -> None:
-    term = _terminator()
+    term = _terminator(objectives=[MetricTarget(name="score", direction="maximize")])
     # Budget not exhausted (round 2 < max_rounds 15), but the front has stagnated.
     tree = _candidates(
         _candidate("a0", 0, {"score": 0.9}),
@@ -109,6 +110,8 @@ async def test_has_converged_false_when_too_few_rounds() -> None:
             candidates=tree,
             prior_analysis="ignored",
             min_rounds_before_stopping=3,
+            objective_metrics=[MetricTarget(name="score", direction="maximize")],
+            regression_metrics=[],
         )
         is False
     )
@@ -129,6 +132,8 @@ async def test_has_converged_ignores_unscored_nodes() -> None:
             candidates=tree,
             prior_analysis="ignored",
             min_rounds_before_stopping=3,
+            objective_metrics=[MetricTarget(name="score", direction="maximize")],
+            regression_metrics=[],
         )
         is False
     )
@@ -148,6 +153,8 @@ async def test_has_converged_true_when_front_stagnates() -> None:
             candidates=tree,
             prior_analysis="ignored",
             min_rounds_before_stopping=2,
+            objective_metrics=[MetricTarget(name="score", direction="maximize")],
+            regression_metrics=[],
         )
         is True
     )
@@ -172,6 +179,8 @@ async def test_qualitative_fallback_true() -> None:
             candidates=tree,
             prior_analysis="plateaued: same root cause every round",
             min_rounds_before_stopping=2,
+            objective_metrics=[MetricTarget(name="score", direction="maximize")],
+            regression_metrics=[],
         )
         is True
     )

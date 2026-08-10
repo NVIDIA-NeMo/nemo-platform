@@ -475,7 +475,7 @@ components:
       type: object
       title: Annotate
       description: Tag each entity with a readable label token.
-    AnonymizerConfigInput:
+    AnonymizerConfig:
       properties:
         detect:
           allOf:
@@ -502,7 +502,7 @@ components:
             out at the environment or CLI level.
           default: true
       type: object
-      title: AnonymizerConfigInput
+      title: AnonymizerConfig
       description: Primary user-facing config for anonymization behavior.
     AnonymizerInputSpec:
       properties:
@@ -542,7 +542,7 @@ components:
     AnonymizerRequest:
       properties:
         config:
-          $ref: '#/components/schemas/AnonymizerConfigInput'
+          $ref: '#/components/schemas/AnonymizerConfig'
         data:
           $ref: '#/components/schemas/AnonymizerInputSpec'
         model_configs:
@@ -1289,7 +1289,7 @@ components:
     PreviewRequest:
       properties:
         config:
-          $ref: '#/components/schemas/AnonymizerConfigInput'
+          $ref: '#/components/schemas/AnonymizerConfig'
         data:
           $ref: '#/components/schemas/AnonymizerInputSpec'
         model_configs:

@@ -9,21 +9,25 @@ a stale ``NEMO_EXPERIMENTALIST_MAX_ROUNDS`` silently truncating a run whose conf
 says otherwise would be a bad failure, and it would make ``config_snapshot`` a dishonest
 record of what ran. It is therefore a plain ``BaseModel`` with no environment binding.
 
-The other half of the configuration -- which endpoint this install talks to and with which
-models -- is a deployment setting, lives in ``settings.py`` as a :class:`NemoConfig` like
-every other plugin's, and *does* let the environment win over the config file.
+The optimizer's own default/fast model pair is selected by ``nemo setup`` and
+stored in the active Platform CLI context.
 
 Component-owned slices (``CoderConfig``, ``AnalyzerConfig``, ...) are imported from the
 components that consume them rather than redeclared here.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
 from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
+from nemo_experimentalist_plugin.experimentalist.components.models import (  # noqa: F401 - re-exported
+    MetricTarget,
+    has_metric_dimensions,
+    pareto_objectives,
+)
 from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
 from nemo_experimentalist_plugin.experimentalist.components.selector import SelectorConfig
 from nemo_experimentalist_plugin.experimentalist.components.terminator import TerminatorConfig
@@ -43,7 +47,7 @@ class CandidateStorageConfig(BaseModel):
 
     archive_candidates: bool = False
     candidate_branch_prefix: str = "optimizer"
-    publish_winner: bool = False
+    publish_winner: bool = True
     pr_draft: bool = True
     pr_base_branch: str | None = None
     pr_title: str | None = None
@@ -57,8 +61,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     Deliberately not a :class:`NemoConfig`: these values describe a single experiment, are
     named explicitly on the command line, and are recorded in ``config_snapshot`` as the
     account of what ran. Letting an ambient environment variable override them would make
-    that account wrong. Endpoint and model settings live in
-    :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`.
+    that account wrong. Agent model settings live in the active Platform CLI context.
 
     Unknown keys are tolerated, so a key that was *removed* has to be rejected explicitly
     below — silently ignoring one would change what the run does.
@@ -89,9 +92,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
                 )
         if "models" in data:
             raise ValueError(
-                "'models' is no longer a run-config key; model tiers are deployment settings. "
-                "Set them under the 'experimentalist:' config section or as "
-                "NEMO_EXPERIMENTALIST_MODELS_{SMART,MID,FAST}."
+                "'models' is no longer a run-config key. Run `nemo setup` to select the default and fast agent models."
             )
         return data
 
@@ -155,6 +156,15 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default=None, description="Model catalog overriding the packaged assets/models.yaml."
     )
 
+    objective_function: list[MetricTarget] = Field(
+        default_factory=lambda: [MetricTarget(name="reward", direction="maximize")],
+        min_length=1,
+        description="Ordered evaluator metric targets this run should improve.",
+    )
+    regression_metrics: list[MetricTarget] = Field(
+        default_factory=list,
+        description="Metric target(s) that must not regress while the objective improves.",
+    )
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
     trajectory_scorer_config: GoalTreeConfig = Field(
@@ -168,3 +178,32 @@ class EvolutionaryOptimizerConfig(BaseModel):
         description="Config for the selected 'evaluation' component; its own model validates it.",
     )
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
+
+    @model_validator(mode="after")
+    def validate_metric_contract(self) -> Self:
+        objective_names = [target.name for target in self.objective_function]
+        if len(objective_names) != len(set(objective_names)):
+            raise ValueError("objective_function target names must be unique")
+        regression_names = [target.name for target in self.regression_metrics]
+        if len(regression_names) != len(set(regression_names)):
+            raise ValueError("regression_metrics target names must be unique")
+        overlap = set(objective_names).intersection(regression_names)
+        if overlap:
+            raise ValueError(
+                "A metric cannot be both an objective and a regression target: " + ", ".join(sorted(overlap))
+            )
+        return self
+
+    def optimization_policy(self) -> str:
+        """Render the declared metric contract for optimizer-facing reasoning prompts."""
+
+        def render(target: MetricTarget) -> str:
+            return f"{target.name} ({target.direction})"
+
+        objectives = ", ".join(render(target) for target in self.objective_function)
+        regressions = ", ".join(render(target) for target in self.regression_metrics) or "none"
+        return (
+            f"Optimize these objective metric(s): {objectives}. "
+            f"Do not regress these metric(s): {regressions}. "
+            "Metric values, including aggregates, are produced by the evaluator; do not invent formulas or weights."
+        )

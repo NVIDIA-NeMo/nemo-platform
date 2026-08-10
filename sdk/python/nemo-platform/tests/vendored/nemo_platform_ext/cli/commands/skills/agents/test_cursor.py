@@ -36,6 +36,12 @@ def test_project_install_path(tmp_path: Path):
     assert path == tmp_path / ".cursor" / "rules" / "nemo-inference" / "SKILL.md"
 
 
+def test_project_install_path_keeps_existing_nemo_prefix(tmp_path: Path):
+    installer = CursorInstaller()
+    path = installer.get_install_path(Scope.PROJECT, tmp_path, "nemo-files")
+    assert path == tmp_path / ".cursor" / "rules" / "nemo-files" / "SKILL.md"
+
+
 def test_install_creates_files(tmp_path: Path):
     installer = CursorInstaller()
     skills = {"alpha": _make_skill("alpha")}

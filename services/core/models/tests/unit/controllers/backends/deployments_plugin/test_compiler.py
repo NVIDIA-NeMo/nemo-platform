@@ -359,15 +359,62 @@ def test_lora_uses_native_sidecar_on_k8s_and_container_on_docker() -> None:
     sidecar = k8s.server_config.init_containers[-1]
     assert sidecar.restart_policy == "Always"
     assert sidecar.image == "registry/nmp-api:tag"
+    assert sidecar.command == ["python", "-m", "nmp.core.models.sidecars.adapters.main"]
     env = {item.name: item.value for item in sidecar.env}
     assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
-    # Sidecar `nemo services run` writes both its instance state ($XDG_STATE_HOME) and its
-    # local data dir ($XDG_DATA_HOME, via nmp_user_data_dir) -- both must land on the
-    # writable scratch volume, not the nmp-api image's $HOME (unwritable under the pod's
-    # vLLM uid, so the sidecar crash-loops on PermissionError). See _lora_sidecar.
+    # Sidecar writes under $XDG_STATE_HOME, $XDG_DATA_HOME (via nmp_user_data_dir), and
+    # $XDG_CONFIG_HOME. All three must land on the writable scratch volume, not the image
+    # $HOME (unwritable under the pod's vLLM uid). Invoking the adapters module directly
+    # (not `nemo services run`) avoids the platform runner's home-dir writes that caused
+    # PermissionError / READY→PENDING regressions (NVBug 6573168). See _lora_sidecar.
     assert env["XDG_STATE_HOME"] == "/scratch/.local"
     assert env["XDG_DATA_HOME"] == "/scratch/.local"
+    assert env["XDG_CONFIG_HOME"] == "/scratch/.local"
     assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
     assert env["NMP_BASE_URL"] == "http://platform.example:8080"
     assert env["VLLM_ENDPOINT"] == "http://127.0.0.1:8000"
     assert len(docker.server_config.containers) == 2
+
+
+def test_lora_sidecar_rewrites_loopback_nmp_base_url_for_docker() -> None:
+    """Docker LoRA sidecars must not keep host loopback as NMP_BASE_URL (jobs/auth-proxy pattern)."""
+    config = DeploymentsPluginConfig()
+    platform = MagicMock()
+    platform.base_url = "http://127.0.0.1:8080"
+    platform.loopback_address = None
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-api:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.determine_loopback_override",
+            return_value=None,
+        ),
+    ):
+        k8s = compile_model_deployment(_resolved("vllm", lora=True), config)
+        docker = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
+
+    k8s_env = {item.name: item.value for item in k8s.server_config.init_containers[-1].env}
+    docker_env = {item.name: item.value for item in docker.server_config.containers[1].env}
+    assert k8s_env["NMP_BASE_URL"] == "http://127.0.0.1:8080"
+    assert docker_env["NMP_BASE_URL"] == "http://host.docker.internal:8080"
+
+    platform.loopback_address = "172.16.83.1"
+    with (
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_qualified_image",
+            return_value="registry/nmp-api:tag",
+        ),
+        patch(
+            "nmp.core.models.controllers.backends.deployments_plugin.compiler.get_platform_config",
+            return_value=platform,
+        ),
+    ):
+        docker_bridge = compile_model_deployment(_resolved("vllm", lora=True, runtime=Runtime.DOCKER), config)
+    bridge_env = {item.name: item.value for item in docker_bridge.server_config.containers[1].env}
+    assert bridge_env["NMP_BASE_URL"] == "http://172.16.83.1:8080"

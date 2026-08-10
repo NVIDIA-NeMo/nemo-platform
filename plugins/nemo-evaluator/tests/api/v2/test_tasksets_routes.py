@@ -9,7 +9,7 @@ Covers route wiring, the get_taskset_service dependency, and status-code mapping
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import hashlib
 
 import pytest
 from fastapi import FastAPI
@@ -18,65 +18,7 @@ from nemo_evaluator.api.dependencies import get_taskset_service
 from nemo_evaluator.api.schemas import TaskRef, TasksetInput
 from nemo_evaluator.api.service.taskset_service import TasksetService
 from nemo_evaluator.api.v2 import tasksets as tasksets_routes
-from nemo_evaluator.entities import TasksetEntity
-from nemo_platform_plugin.entities import ListResponse, PaginationInfo
 from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEntityNotFoundError
-from nemo_platform_plugin.filter_ops import FilterOperation
-
-
-class _FakeEntityClient:
-    def __init__(self) -> None:
-        self.entities: dict[tuple[str, str, str], TasksetEntity] = {}
-
-    async def create(self, entity: TasksetEntity) -> TasksetEntity:
-        key = (entity.__entity_type__, entity.workspace, entity.name)
-        if key in self.entities:
-            raise NemoEntityConflictError(f"{key} exists")
-        now = datetime.now(timezone.utc)
-        entity._id = f"{entity.__entity_type__}-{entity.name}"
-        entity._created_at = now
-        entity._updated_at = now
-        self.entities[key] = entity
-        return entity
-
-    async def get(self, entity_type: type[TasksetEntity], *, workspace: str, name: str) -> TasksetEntity:
-        key = (entity_type.__entity_type__, workspace, name)
-        if key not in self.entities:
-            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
-        return self.entities[key]
-
-    async def delete(
-        self,
-        entity_type: type[TasksetEntity],
-        name: str,
-        *,
-        workspace: str,
-        expected_db_version: int | None = None,
-    ) -> None:
-        key = (entity_type.__entity_type__, workspace, name)
-        if key not in self.entities:
-            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
-        del self.entities[key]
-
-    async def list(
-        self,
-        entity_type: type[TasksetEntity],
-        *,
-        workspace: str,
-        filter_operation: FilterOperation | None = None,
-        sort: str | None = None,
-        page: int = 1,
-        page_size: int = 100,
-    ) -> ListResponse[TasksetEntity]:
-        items = [
-            e for (etype, ws, _), e in self.entities.items() if etype == entity_type.__entity_type__ and ws == workspace
-        ]
-        return ListResponse(
-            data=items,
-            pagination=PaginationInfo(
-                page=page, page_size=page_size, current_page_size=len(items), total_pages=1, total_results=len(items)
-            ),
-        )
 
 
 class _FakeTaskService:
@@ -85,20 +27,27 @@ class _FakeTaskService:
     async def get_task(self, workspace: str, name: str) -> object | None:
         return object() if name in {"task-a", "task-b"} else None
 
+    async def resolve_revision(self, workspace: str, name: str, fragment: str = "latest") -> str:
+        """A stable per-task digest; raises for an unknown task, as the real service does."""
+        if name not in {"task-a", "task-b"}:
+            raise NemoEntityNotFoundError(f"{workspace}/{name} not found")
+        return hashlib.sha256(f"{workspace}/{name}".encode()).hexdigest()
+
 
 @pytest.fixture
-def client() -> TestClient:
+def client(entity_store) -> TestClient:
     app = FastAPI()
     app.include_router(tasksets_routes.router, prefix="/v2/workspaces/{workspace}")
-    service = TasksetService(_FakeEntityClient(), _FakeTaskService())
+    service = TasksetService(entity_store, _FakeTaskService())
     app.dependency_overrides[get_taskset_service] = lambda: service
     return TestClient(app)
 
 
-def _body() -> dict:
+def _body(*, description: str = "A grouping.", members: list[str] | None = None, tags: list[str] | None = None) -> dict:
     return TasksetInput(
-        description="A grouping.",
-        tasks=[TaskRef("task-a"), TaskRef("default/task-b")],
+        description=description,
+        tasks=[TaskRef(m) for m in (members or ["task-a", "default/task-b"])],
+        tags=tags or [],
     ).model_dump(mode="json")
 
 
@@ -114,7 +63,9 @@ def test_create_then_get(client: TestClient) -> None:
     assert got.status_code == 200
     body = got.json()
     assert body["description"] == "A grouping."
-    assert body["tasks"] == ["task-a", "default/task-b"]  # TaskRef serializes to a bare string
+    # TaskRef serializes to a bare string, and stored membership is workspace-qualified and
+    # digest-pinned — a bare "task-a" is resolved to an exact revision on write.
+    assert [t.split("#")[0] for t in body["tasks"]] == ["default/task-a", "default/task-b"]
 
 
 def test_create_rejects_unknown_body_key(client: TestClient) -> None:
@@ -196,3 +147,102 @@ def test_delete_conflict_returns_409() -> None:
     client = TestClient(app)
 
     assert client.delete(f"{_BASE}/ts-1").status_code == 409
+
+
+# --- Publishing revisions (POST creates, PUT replaces) ------------------------
+
+
+def test_create_publishes_revision_one(client: TestClient) -> None:
+    created = client.post(f"{_BASE}/ts-1", json=_body()).json()
+    assert created["revision"] == 1
+    assert created["tags"] == {"latest": 1}
+
+
+def test_members_are_stored_digest_pinned(client: TestClient) -> None:
+    """A published grouping names exact revisions. Storing '#latest' would let a member republish
+    silently change what this taskset contains — which is the whole failure this design prevents."""
+    body = client.post(f"{_BASE}/ts-1", json=_body()).json()
+    assert all(len(ref.split("#")[1]) == 64 for ref in body["tasks"])
+
+
+def test_tag_pinned_member_is_resolved_to_a_digest(client: TestClient) -> None:
+    """Tags are resolution *inputs*: accepted on the way in, never persisted."""
+    body = client.post(f"{_BASE}/ts-1", json=_body(members=["task-a#latest"])).json()
+    assert "#latest" not in body["tasks"][0]
+    assert len(body["tasks"][0].split("#")[1]) == 64
+
+
+def test_put_on_missing_taskset_creates_it(client: TestClient) -> None:
+    response = client.put(f"{_BASE}/ts-1", json=_body())
+    assert response.status_code == 201
+    assert response.json()["revision"] == 1
+
+
+def test_put_with_changed_membership_publishes_a_new_revision(client: TestClient) -> None:
+    client.post(f"{_BASE}/ts-1", json=_body())
+    response = client.put(f"{_BASE}/ts-1", json=_body(members=["task-a"]))
+    assert response.status_code == 201
+    assert response.json()["revision"] == 2
+
+
+def test_put_with_identical_membership_publishes_nothing(client: TestClient) -> None:
+    """Idempotent when nothing underneath moved — the member digests resolve the same."""
+    client.post(f"{_BASE}/ts-1", json=_body())
+    response = client.put(f"{_BASE}/ts-1", json=_body())
+    assert response.status_code == 200
+    assert response.json()["revision"] == 1
+
+
+def test_put_applies_tags_without_publishing(client: TestClient) -> None:
+    client.post(f"{_BASE}/ts-1", json=_body())
+    response = client.put(f"{_BASE}/ts-1", json=_body(tags=["blessed"]))
+    assert response.status_code == 200
+    assert response.json()["tags"] == {"latest": 1, "blessed": 1}
+
+
+def test_post_on_existing_taskset_still_conflicts(client: TestClient) -> None:
+    client.post(f"{_BASE}/ts-1", json=_body())
+    assert client.post(f"{_BASE}/ts-1", json=_body(description="Other.")).status_code == 409
+
+
+# --- Reading and tagging a specific revision ---------------------------------
+
+
+def test_list_revisions_newest_first(client: TestClient) -> None:
+    client.post(f"{_BASE}/ts-1", json=_body())
+    client.put(f"{_BASE}/ts-1", json=_body(members=["task-a"]))
+
+    revisions = client.get(f"{_BASE}/ts-1/revisions").json()["data"]
+    assert [r["revision"] for r in revisions] == [2, 1]
+    assert revisions[0]["tags"] == ["latest"]
+
+
+def test_get_by_digest_returns_published_membership(client: TestClient) -> None:
+    """The reason a dataset is reproducible: a pinned read returns the membership as published."""
+    client.post(f"{_BASE}/ts-1", json=_body())
+    digest = client.get(f"{_BASE}/ts-1/revisions").json()["data"][0]["content_hash"]
+    client.put(f"{_BASE}/ts-1", json=_body(members=["task-a"]))
+
+    pinned = client.get(f"{_BASE}/ts-1/revisions/{digest}").json()
+    assert len(pinned["tasks"]) == 2
+    assert len(client.get(f"{_BASE}/ts-1").json()["tasks"]) == 1
+
+
+def test_tag_an_existing_revision(client: TestClient) -> None:
+    client.post(f"{_BASE}/ts-1", json=_body())
+    digest = client.get(f"{_BASE}/ts-1/revisions").json()["data"][0]["content_hash"]
+    client.put(f"{_BASE}/ts-1", json=_body(members=["task-a"]))
+
+    tagged = client.put(f"{_BASE}/ts-1/tags/blessed", params={"revision": digest})
+    assert tagged.status_code == 200
+    assert tagged.json()["tags"] == {"latest": 2, "blessed": 1}
+
+
+def test_cannot_move_latest_by_hand(client: TestClient) -> None:
+    client.post(f"{_BASE}/ts-1", json=_body())
+    digest = client.get(f"{_BASE}/ts-1/revisions").json()["data"][0]["content_hash"]
+    assert client.put(f"{_BASE}/ts-1/tags/latest", params={"revision": digest}).status_code == 422
+
+
+def test_list_revisions_missing_taskset_returns_404(client: TestClient) -> None:
+    assert client.get(f"{_BASE}/nope/revisions").status_code == 404

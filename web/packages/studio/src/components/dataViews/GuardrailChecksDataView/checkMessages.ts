@@ -4,7 +4,7 @@
 import type { GuardrailCheckMessage } from '@studio/api/guardrail-checks/types';
 
 /** Coerce a message's `content` (string or content-part array) to plain display text. */
-const textFromContent = (content: unknown): string => {
+export const textFromContent = (content: unknown): string => {
   if (typeof content === 'string') {
     return content;
   }

@@ -123,22 +123,22 @@ async def test_project_candidate_skips_when_no_reward():
     experiments.create.assert_not_awaited()
 
 
-async def test_project_candidate_creates_insight_experiment_when_evaluated():
+async def test_project_candidate_creates_experiment_for_custom_reward_channel():
     experiments = AsyncMock()
-    experiments.create.return_value = SimpleNamespace(id="exp-insight")
+    experiments.create.return_value = SimpleNamespace(id="exp-custom")
     mirror = ExperimentMirror(_client(AsyncMock(), experiments), workspace="default")
-    candidate = _cand(rewards={"insight": RewardRecord(metrics={"uses_required_tool": 0.5}, trials=[])})
+    candidate = _cand(rewards={"custom": RewardRecord(metrics={"custom_score": 0.5}, trials=[])})
 
     await mirror.project_candidate(candidate)
 
     kwargs = experiments.create.await_args.kwargs
-    assert kwargs["name"] == "opt-run-1-agent-0-insight"
-    assert kwargs["dataset_name"] == "insight"
+    assert kwargs["name"] == "opt-run-1-agent-0-custom"
+    assert kwargs["dataset_name"] == "custom"
     assert kwargs["metadata"] == {
         "generation": "0",
         "candidate_id": "id-agent-0",
         "candidate_label": "agent-0",
-        "split": "insight",
+        "split": "custom",
     }
 
 

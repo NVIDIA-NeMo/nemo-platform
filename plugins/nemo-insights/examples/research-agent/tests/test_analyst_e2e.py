@@ -19,11 +19,11 @@ Docker):
 - ``NMP_INSIGHTS_E2E=1`` — opt in; otherwise the test skips.
 - ``NVIDIA_API_KEY`` and ``TAVILY_API_KEY`` — for the research agent's NIM
   model + Tavily search. Read from the example's ``.env`` (or the shell).
-- ``INFERENCE_API_KEY`` — the ``sk-...`` NVIDIA Inference Gateway virtual key
-  for the analyst's Claude Opus (served over the Anthropic wire format). The
-  analyst's LLM ``base_url`` is pinned in
-  :mod:`nemo_insights_plugin.analyst.agent`, so no base-url override is
-  required.
+  The test also runs ``nemo setup --auto`` against its isolated Platform, so
+  the NVIDIA provider supplies the persisted default and fast model entities
+  used by the analyst. ``NEMO_DEFAULT_INFERENCE_KEY`` and its base URL can be
+  supplied in addition when the optimizer models use another provider; they do
+  not replace the NVIDIA credential required by the research agent under test.
 - Docker — required to auto-start ClickHouse if one isn't already at
   ``NMP_INTAKE_CLICKHOUSE_URL`` (default ``http://localhost:8123``). A missing
   Docker daemon fails the test.
@@ -121,6 +121,8 @@ def _subprocess_env() -> dict[str, str]:
     env.update(_load_dotenv(EXAMPLE_DIR / ".env"))
     env.update(
         {
+            "NMP_BASE_URL": BASE_URL,
+            "NMP_CONFIG_FILE": str(TMP_DIR / "e2e-nmp-config.yaml"),
             "NMP_INTAKE_CLICKHOUSE_URL": CLICKHOUSE_URL,
             "NMP_INTAKE_CLICKHOUSE_USER": CLICKHOUSE_USER,
             "NMP_INTAKE_CLICKHOUSE_PASSWORD": CLICKHOUSE_PASSWORD,
@@ -148,9 +150,15 @@ def _cli_cmd(name: str, *args: str) -> list[str]:
 
 def _require_keys() -> None:
     env = _subprocess_env()
-    missing = [key for key in ("NVIDIA_API_KEY", "TAVILY_API_KEY", "INFERENCE_API_KEY") if not env.get(key)]
+    missing = [key for key in ("NVIDIA_API_KEY", "TAVILY_API_KEY") if not env.get(key)]
     if missing:
         pytest.skip(f"missing required API keys: {', '.join(missing)}")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def required_keys() -> None:
+    """Skip before provisioning services when the opt-in credentials are absent."""
+    _require_keys()
 
 
 # --------------------------------------------------------------------------- #
@@ -282,6 +290,28 @@ def platform_server(clickhouse: None) -> Iterator[str]:  # noqa: ARG001 - orderi
             time.sleep(2.0)
         else:
             pytest.fail(f"platform server not ready after {SERVER_START_TIMEOUT_S}s; see {log_path}")
+
+        setup_result = subprocess.run(
+            _cli_cmd(
+                "nemo",
+                "--base-url",
+                BASE_URL,
+                "setup",
+                "--auto",
+                "--workspace",
+                WORKSPACE,
+                "--no-start-services",
+                "--no-install-skills",
+                "--no-deploy-agent",
+            ),
+            cwd=str(EXAMPLE_DIR),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if setup_result.returncode != 0:
+            pytest.fail(f"isolated `nemo setup --auto` failed:\n{setup_result.stdout}\n{setup_result.stderr}")
         yield BASE_URL
     finally:
         try:
@@ -417,8 +447,6 @@ def _wait_for_analyst_spans(timeout_s: int) -> list[dict]:
 # The test                                                                    #
 # --------------------------------------------------------------------------- #
 def test_analyst_creates_insight_end_to_end(platform_server: str) -> None:  # noqa: ARG001
-    _require_keys()
-
     # 1. Clean slate: drop any spans + Insights left by a previous run.
     _clear_spans_for_project()
     _delete_insights(_list_insight_ids())
@@ -464,7 +492,7 @@ def test_analyst_creates_insight_end_to_end(platform_server: str) -> None:  # no
         f"--- analyst stdout ---\n{result.stdout}\n--- analyst stderr ---\n{result.stderr}"
     )
 
-    # 6. The analyst's own Pydantic AI spans should be queryable in Intake.
+    # 6. The analyst's own Nooa spans should be queryable in Intake.
     analyst_spans = _wait_for_analyst_spans(SPAN_VISIBLE_TIMEOUT_S)
     assert analyst_spans, (
         f"expected Intake spans for {ANALYST_OBSERVABILITY_AGENT_NAME}; "

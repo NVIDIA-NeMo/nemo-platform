@@ -1,11 +1,11 @@
 ---
 title: "Reading Results"
-description: "Reference for what a run returns — the in-memory AgentEvalResult (summary, per-metric scores, trials, run id) — and the on-disk run bundle it writes when you set output_dir, including the browsable HTML report."
+description: "Reference for what a run returns — the in-memory AgentEvalResult (summary, per-metric scores, trials, run id) — and the on-disk run bundle you get by calling persist(), including the browsable HTML report."
 ---
 
-`AgentEvaluator().run(...)` returns an `AgentEvalResult`. Set an `output_dir` and it *also* writes a
-**run bundle** to disk. The object and the bundle hold the same data — use the object for programmatic
-follow-up, and the bundle (especially `report.html`) to inspect or share a run.
+`AgentEvaluator().run(...)` returns an `AgentEvalResult` and writes nothing. Call `result.persist()` to
+store it as a **run bundle** on disk. The object and the bundle hold the same data — use the object for
+programmatic follow-up, and the bundle (especially `report.html`) to inspect or share a run.
 
 ## The result object
 
@@ -20,7 +20,7 @@ result = await AgentEvaluator().run(tasks=..., target=...)
 | `result.scores` | one entry per **(task, trial, metric)** |
 | `result.trials` | one entry per **trial** |
 | `result.tasks` | the tasks that were evaluated |
-| `result.output_dir` / `result.dashboard_path` | where the bundle and `report.html` were written (when `output_dir` was set) |
+| `result.work_dir` | the directory the run worked in, where runtimes wrote trial evidence (`None` for an in-memory run) |
 
 ### The summary
 
@@ -53,7 +53,7 @@ are the durable, scorer-agnostic record — they can be re-scored offline later.
 
 ## The run bundle
 
-Set `output_dir` and `run()` writes these files (the same data, on disk):
+Call `result.persist()` and it writes these files (the same data, on disk):
 
 | File | Contents |
 |---|---|
@@ -62,16 +62,20 @@ Set `output_dir` and `run()` writes these files (the same data, on disk):
 | `scores.jsonl` | one row per (task, trial, metric) |
 | `trials.jsonl` | one row per trial — output, evidence, status |
 | `tasks.jsonl` | the tasks that were evaluated |
-| `benchmark.json` | benchmark-grouping metadata for the run |
+| `metadata.json` | run provenance — labels, target identity, timings, SDK version |
 | `report.html` | a browsable dashboard — open it in a browser |
+
+`persist()` returns a `BundleLocation` telling you where the bundle landed:
 
 ```python
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 
 result = await AgentEvaluator().run(
-    tasks=..., target=..., config=AgentEvalRunConfig(output_dir="./agent-eval-run"),
+    tasks=..., target=..., config=AgentEvalRunConfig(work_dir="./agent-eval-run"),
 )
+location = result.persist()
 # -> ./agent-eval-run/report.html, summary.json, scores.jsonl, trials.jsonl, ...
+print(location.output_dir, location.dashboard_path)
 ```
 
 `report.html` is the fastest way to eyeball a run or hand it to someone else; the `.jsonl` files are
@@ -79,9 +83,19 @@ convenient for loading scores and trials into your own tooling.
 
 <Note>
 
-`report.html` is written only when `AgentEvalRunConfig.write_dashboard` is `True` (the default). Set
-`write_dashboard=False` to emit just the JSON/JSONL artifacts and skip the HTML; the `.json` and
-`.jsonl` files are always written whenever `output_dir` is set.
+`persist()` defaults to `work_dir`, which is where the run's trial evidence already lives — that keeps
+the bundle self-contained, so it survives being moved or copied. Passing an explicit
+`persist("./elsewhere")` is supported, but the bundle's evidence references still point back at the
+original directory and only resolve while it exists.
+
+A run with no `work_dir` and no explicit target raises rather than inventing a directory.
+
+</Note>
+
+<Note>
+
+`report.html` is written unless you pass `persist(write_dashboard=False)`, which emits just the
+JSON/JSONL artifacts and skips the HTML. The `.json` and `.jsonl` files are always written.
 
 </Note>
 

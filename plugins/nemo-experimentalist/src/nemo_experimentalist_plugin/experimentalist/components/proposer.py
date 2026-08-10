@@ -8,8 +8,10 @@ from typing import Any, ClassVar, Literal, cast, get_args
 from nemo_experimentalist_plugin.entities import Candidate, Proposal, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
+    MetricTarget,
     OptimizationType,
 )
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -19,11 +21,11 @@ from nooa.skill_registry import SkillRegistry
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
-from .model_config import ModelTiers
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
 logger = logging.getLogger(__name__)
+
 
 #: What this Proposer produces and the built-in Coder accepts. An opaque
 #: discriminator, not a global enumeration — it only has to match a Builder.
@@ -118,13 +120,14 @@ class Proposer(Agent, roles.Proposer):
         workspace: Path,
         config: ProposerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        models: ModelTiers | None = None,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
         **kwargs: Any,
     ):
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
-        self._models = tiers
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or ProposerConfig()
+        self._objective_metrics = objective_metrics or []
+        self._regression_metrics = regression_metrics or []
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)
         self.context["workspace_tool_documentation"] = doc(WorkspaceTool)
@@ -136,7 +139,7 @@ class Proposer(Agent, roles.Proposer):
         self.optimize = Optimize()
         TokenBudgetSummarizer.install(
             self,
-            llm=self._models.fast,
+            llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
@@ -170,6 +173,8 @@ class Proposer(Agent, roles.Proposer):
             round_num: current optimization round number; used to filter survivors.
             phase: "exploration" for novel directions, "exploitation" to refine the best.
             max_candidates: maximum number of Improvement objects to return.
+            objective_metrics: Evaluator metric dimensions this round must improve.
+            regression_metrics: Evaluator metric dimensions this round must preserve.
 
         Returns:
             list[Proposal]: up to max_candidates build requests, each routed to a
@@ -221,14 +226,16 @@ class Proposer(Agent, roles.Proposer):
             cards_index=doc(self.optimize),
             phase=cast("Literal['exploration', 'exploitation']", hint or "exploration"),
             max_candidates=max_candidates,
+            objective_metrics=[t.model_dump() for t in self._objective_metrics],
+            regression_metrics=[t.model_dump() for t in self._regression_metrics],
         )
         usable = self._usable_improvements(
             improvements,
             known_ancestors={c.id for c in proposal_survivors},
             allowed_types=set(available_types) or all_types,
         )
-        self._validate_improvements(improvements=usable, max_candidates=max_candidates)
-        return [improvement.as_proposal() for improvement in usable]
+        kept = self._validate_improvements(improvements=usable, max_candidates=max_candidates)
+        return [improvement.as_proposal() for improvement in kept]
 
     @staticmethod
     def _usable_improvements(
@@ -271,13 +278,18 @@ class Proposer(Agent, roles.Proposer):
         return usable
 
     @staticmethod
-    def _validate_improvements(*, improvements: list[Improvement], max_candidates: int) -> None:
-        """Reject a batch that is malformed as a whole, after the unusable ones are gone."""
+    def _validate_improvements(*, improvements: list[Improvement], max_candidates: int) -> list[Improvement]:
+        """Reject a batch that is malformed as a whole, and return the ones worth building.
+
+        Deduplicates by optimization text and truncates to the round's budget — the cut
+        falls on the kept list, since a surplus improvement past it may be the only
+        usable one.
+        """
+        seen_types: set[str] = set()
         if not improvements:
             raise ValueError("Proposer returned no improvements")
-        if len(improvements) > max_candidates:
-            raise ValueError(f"Proposer returned {len(improvements)} improvements; maximum is {max_candidates}")
-        seen_types: set[str] = set()
+
+        kept: list[Improvement] = []
         seen_descriptions: set[str] = set()
         for improvement in improvements:
             optimization_type = improvement.optimization_type
@@ -287,8 +299,27 @@ class Proposer(Agent, roles.Proposer):
 
             description = improvement.optimization.strip()
             if description in seen_descriptions:
-                raise ValueError(f"Proposer returned duplicate optimization text: {description!r}")
+                logger.warning("dropping improvement with duplicate optimization text: %r", description)
+                continue
             seen_descriptions.add(description)
+            kept.append(improvement)
+
+        if not kept:
+            raise ValueError(
+                f"Proposer returned {len(improvements)} improvements, none of them usable; "
+                "see the warnings above for why each was dropped"
+            )
+
+        # Truncate last: a surplus improvement past the cut may be the only usable
+        # one, so the cut has to fall on the kept list rather than the raw one.
+        if len(kept) > max_candidates:
+            logger.warning(
+                "Proposer returned %d usable improvements; keeping the first %d",
+                len(kept),
+                max_candidates,
+            )
+            kept = kept[:max_candidates]
+        return kept
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)))
     async def _run_with_context(
@@ -301,21 +332,25 @@ class Proposer(Agent, roles.Proposer):
         cards_index: str,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
     ) -> list[Improvement]:
         """Pick up to `max_candidates` targeted improvements grounded in root causes.
 
         Args:
         - analysis (str): round analysis with root causes already enumerated
         - evolution_history (str): markdown table of prior rounds, for context
-        - tried_types (list[str]): optimization_types already attempted — AVOID these
-        - available_types (list[str]): types not yet tried — PICK FROM THESE
-        - survivors (list[dict]): each {id, reward, trajectory_reward, metadata,
+        - tried_types (list[str]): optimization_types already attempted
+        - available_types (list[str]): types not yet tried — PREFER THESE
+        - survivors (list[dict]): each {id, metrics, trajectory_reward, metadata,
           architecture}; these are your branching candidates with their architecture.md
           already loaded
         - cards_index (str): pre-rendered `doc(self.optimize)` showing the card index.
           Load a specific card on demand via `print(doc(self.optimize.<name>))`.
         - phase (Literal): "exploration" = novel directions; "exploitation" = improve current best
         - max_candidates (int): max number of Improvements to return (typically 3)
+        - objective_metrics (list[dict]): evaluator dimensions to improve
+        - regression_metrics (list[dict]): evaluator dimensions to preserve
 
         Returns:
         - list[Improvement]: up to `max_candidates` Improvements.
@@ -328,14 +363,15 @@ class Proposer(Agent, roles.Proposer):
 
         ## Per-improvement requirements
         For each Improvement you propose:
-        1. Identify ONE root cause from the analysis: the specific reason the agent
+        1. Identify ONE root cause from the analysis that limits an active objective:
+           the specific reason the agent
            underperforms, stated as a diagnosis ("The agent fails because X is absent /
            misconfigured / too vague"). Do NOT include the proposed remedy here — that
            belongs in `optimization`. If you cannot articulate the failure cause
            independently of the fix, drop the hypothesis.
         2. Pick the ancestor from `survivors` most affected by that root cause.
         3. Load the matching card with `doc(self.optimize.<name>)` and pick ONE
-           optimization_type from `available_types` that the card covers.
+           optimization_type that the card covers, preferring `available_types`.
         4. Read the ancestor's architecture diagram (in `survivors[*].architecture`)
            to understand the current graph shape. If the change touches a skill,
            find it in the diagram — do NOT open source files.
@@ -350,6 +386,17 @@ class Proposer(Agent, roles.Proposer):
            validate the fix. Pick 2-3 tasks the ancestor actually fails (or barely
            passes) for this reason; do not pad with unrelated passing tasks.
 
+        ## Metric contract
+        - Optimize these objective metrics: `objective_metrics`. Every proposed
+          change must have a concrete, evidence-based path to improving at least one
+          of these dimensions.
+        - Preserve these regression metrics: `regression_metrics`. They are
+          guardrails, not proposal targets: do not choose a root cause or frame an
+          optimization solely around improving a regression metric. Instead, ensure
+          the proposed objective improvement does not sacrifice them.
+        - Evaluator metric values are authoritative. Do not invent an aggregate,
+          scalarization, weighting, or threshold.
+
         ## Branching rules
         - Branch from any survivor — usually the top scorer, but a lower-scoring
           ancestor is the right base when it uniquely passes tasks the top scorer fails.
@@ -359,13 +406,15 @@ class Proposer(Agent, roles.Proposer):
         ## Phase
         - exploration: novel directions, even speculative ones
         - exploitation: refine the current best survivor. When the obvious targeted
-          improvements have already been tried, do NOT stop — pick the best untried
-          direction from `available_types` and explore it.
+          improvements have already been tried, do NOT stop — take the best remaining
+          direction, an untried type when one fits and a tried one when it does not.
 
         ## MANDATORY
         - Return between 1 and max_candidates Improvements. NEVER return [].
-        - Each Improvement.optimization_type MUST be in `available_types`. If
-          `available_types` is empty, pick the least-tried type from the tried set.
+        - Each Improvement.optimization_type MUST be in `available_types` or
+          `tried_types`. Prefer `available_types`; reuse a tried type when it is
+          the tool that actually addresses the root cause. A type that worked in
+          an earlier round is not spent.
         - Each improvement in a round should target a different degree of freedom;
           two improvements touching the same axis are only allowed when no other
           viable direction exists.

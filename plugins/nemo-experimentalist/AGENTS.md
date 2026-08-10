@@ -28,7 +28,7 @@ to the user.
 ### 2026-07-28: Eval Author extracted to its own plugin, heading for standalone
 
 `plugins/nemo-eval-author/` (`nemo-eval-author-plugin`) owns the Eval Author agent package
-(`eval_author/`) plus its own `AUTHOR_*` `model_config`.
+(`eval_author/`).
 
 **The target is one arrow: Experimentalist → Eval Author.** Eval Author is meant to stop
 depending on Experimentalist entirely, even where that means duplicating code. Today the
@@ -42,23 +42,11 @@ arrow points both ways:
   and the backend factory.
 
 `plugins/nemo-eval-author/tests/test_plugin_boundary.py` pins that second list so it can
-only shrink. **When you are tempted to share a helper between the two plugins, duplicate it
-into Eval Author instead.** Sharing reads like a cleanup and is a regression here; the
-boundary test will reject it, which is the intended answer, not an obstacle to route
-around. `uv` resolves the current cycle fine — install both with
-`uv sync --group experimentalist`.
-
-Two transitional mechanisms exist only because of the second arrow. Both should be deleted
-with the last `nemo_experimentalist_plugin` import, and both are tagged
-`TODO(eval-author-standalone)` — `rg 'eval-author-standalone'` lists every site:
-
-- `EvalAuthor.__init__` calls `bridge_author_env_to_experimentalist()`, copying `AUTHOR_*`
-  into unset `NEMO_EXPERIMENTALIST_*` slots so the Experimentalist agents Eval Author borrows
-  resolve their models. This was a `_env_bridge.py` side-effect import until agents stopped
-  binding their LLM in the class body; an ordinary call in `__init__` now suffices because
-  those agents resolve when constructed, not when imported.
-- `AUTHOR_*` falls back to `NEMO_EXPERIMENTALIST_*` in `model_config`. `AUTHOR_*` is the real
-  contract; the fallback only keeps one credential set working in insight mode.
+only shrink. **Do not share Eval Author implementation helpers with Experimentalist.**
+The Platform-owned model client integration is intentionally different: both plugins use
+`nemo_platform_plugin.nooa_model_client` so provider routing, Platform authentication,
+and configured model selection have one owner outside either plugin. `uv` resolves the
+remaining package cycle; install both with `uv sync --group experimentalist`.
 
 ### 2026-07-24: Optimizer renamed to Experimentalist
 
@@ -128,11 +116,14 @@ instead of restoring Curator imports, configuration, or aliases. The obsolete
   Configure Platform services, trace storage, and Insights analysis according
   to the Platform documentation; this repository does not own a service,
   scheduler, or testbed setup.
-- `nooa` is pinned to an immutable public GitHub revision in `pyproject.toml`,
-  currently a commit rather than a tag because the MCP transport-timeout fix
-  landed after `v0.0.6`. Update the revision, the matching pin in
-  `examples/tau3-nooa-agent/pyproject.toml`, and both lock files together. Keep
-  the Platform-supplied Insights plugin separate.
+- `nooa` is pinned to an immutable public GitHub revision in the workspace root
+  `pyproject.toml` under `[tool.uv.sources]`; this plugin's `pyproject.toml` only
+  declares the dependency. It is a commit rather than a tag because the callable
+  `@strategy(llm=...)` support this plugin depends on landed after `v0.0.8`.
+  Update the root pin, the matching pin in
+  `examples/tau3-nooa-agent/pyproject.toml`, the revision quoted in
+  `framework-skills/nooa/SKILL.md`, and both lock files together. Keep the
+  Platform-supplied Insights plugin separate.
 - This branch uses merged Platform PR 718 contracts only. After the Platform
   handoff lands, rebase and repin before adopting any new Platform testbed or
   installer interfaces.

@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import math
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from nemo_evaluator.intake.publish import PublishError, publish_to_intake
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
@@ -113,6 +114,9 @@ def _score(
     )
 
 
+STARTED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+
 def _result(trials: list[AgentEvalTrial], scores: list[AgentEvalTaskScore]) -> AgentEvalResult:
     return AgentEvalResult(
         run_id="run-1",
@@ -120,6 +124,7 @@ def _result(trials: list[AgentEvalTrial], scores: list[AgentEvalTaskScore]) -> A
         trials=trials,
         scores=scores,
         summary=AgentEvalSummary(),
+        metadata=RunMetadata(started_at=STARTED_AT),
     )
 
 

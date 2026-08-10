@@ -70,6 +70,11 @@ export interface ColumnField {
    * Defaults to `'string'`. Also drives validation (numbers must parse, JSON must be well-formed).
    */
   dataType?: FieldDataType;
+  /**
+   * Seeded into a column's `values` when it is created, in the same string form the form
+   * holds (so `'true'` for a boolean switch). Template-supplied values take precedence.
+   */
+  defaultValue?: string;
 }
 
 /** Not yet the SDK column config — that's produced by {@link buildDataDesignerConfig}. */
@@ -150,8 +155,24 @@ const SYSTEM_PROMPT_FIELD: ColumnField = {
   helperText: 'Optional. Also supports {{ column_name }} references.',
 };
 
+/**
+ * Reasoning models otherwise emit their chain of thought as part of the column value —
+ * "We need to produce... Let's craft body:" ends up in the generated text. Turning this on
+ * routes it to a sibling `{column_name}__reasoning_content` column instead, leaving the
+ * value clean regardless of whether the backend can disable thinking outright.
+ */
+const EXTRACT_REASONING_FIELD: ColumnField = {
+  key: 'extract_reasoning_content',
+  label: 'Separate reasoning content',
+  kind: 'switch',
+  dataType: 'boolean',
+  defaultValue: 'true',
+  helperText:
+    'Move a reasoning model\'s chain of thought into a "__reasoning_content" column instead of leaving it in the generated value.',
+};
+
 const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnField[]> = {
-  'llm-text': [PROMPT_FIELD, MODEL_ALIAS_FIELD, SYSTEM_PROMPT_FIELD],
+  'llm-text': [PROMPT_FIELD, MODEL_ALIAS_FIELD, SYSTEM_PROMPT_FIELD, EXTRACT_REASONING_FIELD],
   'llm-code': [
     PROMPT_FIELD,
     MODEL_ALIAS_FIELD,
@@ -163,6 +184,7 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       options: asOptions(CODE_LANGS),
     },
     SYSTEM_PROMPT_FIELD,
+    EXTRACT_REASONING_FIELD,
   ],
   'llm-structured': [
     PROMPT_FIELD,
@@ -176,6 +198,7 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       helperText: 'JSON schema describing the structured output.',
     },
     SYSTEM_PROMPT_FIELD,
+    EXTRACT_REASONING_FIELD,
   ],
   'llm-judge': [
     PROMPT_FIELD,
@@ -191,6 +214,7 @@ const FIELDS_BY_COLUMN_TYPE: Record<NonNullable<DataDesignerColumnType>, ColumnF
       helperText: 'JSON array of judge score definitions.',
     },
     SYSTEM_PROMPT_FIELD,
+    EXTRACT_REASONING_FIELD,
   ],
   image: [
     { ...PROMPT_FIELD, placeholder: 'Generate an image of {{ subject }}.' },
@@ -608,6 +632,21 @@ export const getColumnFields = (
   return base;
 };
 
+/**
+ * The `values` a freshly created column starts with, from its fields' {@link
+ * ColumnField.defaultValue}. Fields without one are omitted so the column stays empty
+ * wherever no default applies.
+ */
+export const defaultColumnValues = (
+  option: Pick<ColumnTypeOption, 'columnType' | 'samplerType'>
+): Record<string, string> => {
+  const values: Record<string, string> = {};
+  for (const field of getColumnFields(option)) {
+    if (field.defaultValue !== undefined) values[field.key] = field.defaultValue;
+  }
+  return values;
+};
+
 /** Accent color → NVIDIA Foundations text token, matching `CardNode`'s idle styling. */
 const ACCENT_VAR_CLASS: Record<ColumnTypeColor, string> = {
   blue: 'text-[color:var(--text-color-accent-blue)]',
@@ -640,7 +679,12 @@ export const buildColumnsFromTemplate = (
   for (const spec of specs) {
     const option = findColumnOption(spec);
     if (!option) continue;
-    columns.push({ id: `col-${nextId++}`, option, name: spec.name, values: { ...spec.values } });
+    columns.push({
+      id: `col-${nextId++}`,
+      option,
+      name: spec.name,
+      values: { ...defaultColumnValues(option), ...spec.values },
+    });
   }
   return columns;
 };

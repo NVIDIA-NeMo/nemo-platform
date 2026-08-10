@@ -7,8 +7,8 @@ from typing import Any
 
 from nemo_experimentalist_plugin.entities import Candidate
 from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.models import pareto_front, pareto_sort
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agents import TokenBudgetSummarizer
 from nooa.config import CodeActConfig
@@ -42,15 +42,13 @@ class ParetoDiversitySelector(Agent, roles.Selector):
     def __init__(
         self,
         config: SelectorConfig | None = None,
-        models: ModelTiers | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the selector."""
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or SelectorConfig()
         TokenBudgetSummarizer.install(
-            self, llm=tiers.fast, config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens)
+            self, llm=get_fast_model(), config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens)
         )
 
     def rank(self, candidates: list[Candidate]) -> list[Candidate]:
@@ -88,6 +86,11 @@ class ParetoDiversitySelector(Agent, roles.Selector):
         changes, complementary task coverage, and different trajectory strengths.
 
         To avoid getting stuck on the same agents round after round:
+        - Always include at least one candidate created this round — the ones whose
+          `generation` equals the highest across `ranked`. If every new candidate sits on
+          a worse Pareto front, still take the best of them.
+        - Prefer candidates with different `optimization_type` values, or that address
+          different root causes.
         - Prefer a mix of recent and older lineages over k agents from one branch.
         - Prefer an agent whose failures differ from the others already chosen.
         - Read each candidate's `description` and `generated_from` to tell what

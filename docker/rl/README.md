@@ -349,18 +349,11 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile, but it is not built at all now — it
   only exists in the unused `automodel` / `mcore` extras (see the note above).
-
-## CVE handling
-
-- **Version floors** for the ecosystem (aiohttp, cryptography, urllib3, protobuf, av,
-  …) come from NeMo-RL's `constraint-dependencies` / `override-dependencies` in its
-  `pyproject.toml`. We inherit them by building from RL's lock — nothing to do here.
-- **FFmpeg-bundling wheels** (`av`, `opencv-python-headless`, `decord2`) statically
-  embed FFmpeg codec libraries that carry CVEs regardless of the Python package
-  version, so a version bump alone doesn't fix them. The base deletes the PyPI copies
-  and reinstalls clean `cp313` wheels built against a patched FFmpeg (from
-  `docker/base/Dockerfile.python-wheels`).
-- **Ray's bundled aiohttp** is removed from the uv cache to fully address its CVE.
+  `.python-version` pinning an exact patch release, which uv honours over whatever
+  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
+  every venv came up on RL's version while ours sat unused on disk, so the image shipped
+  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
+  and persists into the runtime image, so node-built venvs agree too.
 
 ## Layering for fast CI rebuilds
 
@@ -384,9 +377,11 @@ whenever the *dependency graph* hasn't changed:
 
 ### Prefetching the per-worker venvs (build once, not per job)
 
-The warmup `uv sync --extra …` calls populate the **uv cache**, which is a build-time
-cache mount and never enters the image. The venvs training actually runs in are the
-per-worker ones under `/opt/ray_venvs`, so the base runs
+The warmup `uv sync --extra …` calls populate the **uv cache at `/opt/uv_cache`, which
+ships inside the image** — it has to, because the prefetched venvs symlink into it (see
+"Link mode" below). Do not confuse it with the `--mount=type=cache` the training image
+uses for its editable install, which is build-only and never enters the image. The venvs
+training actually runs in are the per-worker ones under `/opt/ray_venvs`, so the base runs
 `nemo_rl/utils/prefetch_venvs.py` after the source copy to bake them in — the same
 approach NeMo-RL's own release stage uses.
 
@@ -441,6 +436,33 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 
 A useful side effect: environments installed at runtime (user Gym FileSets, actors that
 were not prefetched) resolve against a warm cache instead of downloading from scratch.
+
+#### `vllm/` is a private copy per vLLM venv
+
+NeMo-RL **patches vLLM in place at worker startup** (`nemo_rl/models/generation/vllm/patches.py`
+rewrites `v1/executor/ray_executor.py`, `model_executor/models/llama_eagle3.py` and
+`tool_parsers/hermes_tool_parser.py`, taking a `<file>.patch_lock` beside each). Symlinking breaks
+that in two independent ways, both observed on the shipped image:
+
+1. **Permission** — the prefetched venvs are root-owned and the runtime is UID 1000, so creating
+   `ray_executor.py.patch_lock` fails with `EACCES` and the `VllmAsyncGenerationWorker` actor dies
+   in its creation task.
+2. **Sharing** — every vLLM-tier venv symlinks that file to *one* physical copy in `/opt/uv_cache`.
+   The patch writes a **per-venv `py_executable`** into it, so two venvs cannot share it. No amount
+   of `chown` fixes this; the file must not be shared at all.
+
+So the publish stage replaces `site-packages/vllm/` with a real, private, UID-1000-owned copy in
+each vLLM-tier venv.
+
+The two need separate fixes: **ownership** solves (1), **private copies** solve (2). Running as root
+would silence the `EACCES` but leaves the sharing intact — the first venv to patch wins and the next
+one launches under another venv's interpreter.
+
+Note this is *not* what upstream NeMo-RL does. Its published image symlinks too (74,567 symlinks vs
+925 real files in one vLLM venv, both vLLM venvs sharing one `ray_executor.py`), and it runs as
+**root** — so (1) never surfaces there and (2) stays latent, because vLLM 0.25 defaults
+`VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1` and the V2 executor never reads the patched call site. Running
+non-root is required here, so we can inherit neither the root workaround nor that assumption.
 
 ## Image size
 

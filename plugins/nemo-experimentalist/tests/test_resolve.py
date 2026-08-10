@@ -657,8 +657,7 @@ def make_profile_tree(tmp_path: Path) -> Path:
     (tmp_path / "optimizer.yaml").write_text(
         "agent: flight-planner\n"
         "task_template: ./evals/task_template\n"
-        "datasets:\n  train: ./evals/train\n  validation: ./evals/val\n"
-        "experiment_config:\n  storage:\n    publish_winner: true\n",
+        "datasets:\n  train: ./evals/train\n  validation: ./evals/val\n",
         encoding="utf-8",
     )
     return tmp_path / "optimizer.yaml"
@@ -704,6 +703,7 @@ def test_full_resolution_from_profile(tmp_path: Path) -> None:
     assert inputs.agent_spec == str((tmp_path / "AGENT-SPEC.md").resolve())  # auto-pick
     assert inputs.train_dataset.uri == str((tmp_path / "evals" / "train").resolve())
     assert inputs.train_dataset.metadata == {"id": "train"}
+    assert inputs.task_template is not None
     assert inputs.task_template.uri == str((tmp_path / "evals" / "task_template").resolve())
     assert inputs.workspace == "default"
     assert inputs.config.storage.publish_winner is True
@@ -806,7 +806,7 @@ def test_config_unknown_top_level_key_is_tolerated(tmp_path: Path) -> None:
         )
     )
     assert inputs.config.max_rounds == 2
-    assert inputs.config.storage.publish_winner is False
+    assert inputs.config.storage.publish_winner is True
 
 
 @pytest.mark.parametrize(
@@ -889,8 +889,8 @@ def test_profile_agent_spec_must_be_readable_utf8(tmp_path: Path) -> None:
 
 
 def test_profile_storage_flags_reads_inline_and_path_forms(tmp_path: Path) -> None:
-    profile = load_profile(make_profile_tree(tmp_path))  # inline dict with publish_winner: true
-    assert profile_storage_flags(profile) == {"publish_winner": True}
+    profile = load_profile(make_profile_tree(tmp_path))
+    assert profile_storage_flags(profile) == {}
 
     (tmp_path / "exp.yaml").write_text("storage:\n  archive_candidates: true\n", encoding="utf-8")
     (tmp_path / "optimizer.yaml").write_text(
@@ -914,7 +914,7 @@ def test_run_config_rejects_a_models_block() -> None:
     import pytest
     from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 
-    with pytest.raises(ValueError, match="NEMO_EXPERIMENTALIST_MODELS"):
+    with pytest.raises(ValueError, match="nemo setup"):
         EvolutionaryOptimizerConfig.model_validate({"models": {"smart": "a/b"}})
 
 

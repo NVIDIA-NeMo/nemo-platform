@@ -58,7 +58,7 @@ class AgentEvalPipeline:
         tasks: Sequence[AgentEvalTask],
         *,
         target: AgentEvalTarget,
-        benchmark: dict[str, object] | None = None,
+        labels: dict[str, str] | None = None,
         output_dir: Path | None = None,
         run_id: str | None = None,
         prepare_task: Callable[[AgentEvalTask], None] | None = None,
@@ -72,9 +72,9 @@ class AgentEvalPipeline:
         result = await AgentEvaluator().run(
             tasks=prepared,
             target=target,
-            config=self._run_config(output_dir=output_dir, run_id=run_id, benchmark=benchmark),
+            config=self._run_config(output_dir=output_dir, run_id=run_id, labels=labels),
         )
-        self._maybe_write_gate(result)
+        self._persist_and_gate(result, output_dir)
         return result
 
     async def score_trials(
@@ -82,7 +82,7 @@ class AgentEvalPipeline:
         tasks: Sequence[AgentEvalTask],
         *,
         trials: Sequence[AgentEvalTrial],
-        benchmark: dict[str, object] | None = None,
+        labels: dict[str, str] | None = None,
         output_dir: Path | None = None,
         run_id: str | None = None,
     ) -> AgentEvalResult:
@@ -91,9 +91,9 @@ class AgentEvalPipeline:
         result = await AgentEvaluator().run(
             tasks=prepared,
             trials=list(trials),
-            config=self._run_config(output_dir=output_dir, run_id=run_id, benchmark=benchmark),
+            config=self._run_config(output_dir=output_dir, run_id=run_id, labels=labels),
         )
-        self._maybe_write_gate(result)
+        self._persist_and_gate(result, output_dir)
         return result
 
     def _run_config(
@@ -101,14 +101,13 @@ class AgentEvalPipeline:
         *,
         output_dir: Path | None,
         run_id: str | None,
-        benchmark: dict[str, object] | None,
+        labels: dict[str, str] | None,
     ) -> AgentEvalRunConfig:
         return AgentEvalRunConfig(
-            output_dir=output_dir,
+            work_dir=output_dir,
             run_id=run_id,
             parallelism=self.config.parallelism,
-            write_dashboard=self.config.write_dashboard,
-            benchmark=dict(benchmark or {}),
+            labels=dict(labels or {}),
         )
 
     def _with_extra_metrics(self, task: AgentEvalTask) -> AgentEvalTask:
@@ -122,8 +121,12 @@ class AgentEvalPipeline:
             return task
         return task.model_copy(update={"metrics": metrics + appended})
 
-    def _maybe_write_gate(self, result: AgentEvalResult) -> None:
-        if not (self.config.write_gate and result.output_dir is not None):
+    def _persist_and_gate(self, result: AgentEvalResult, output_dir: Path | None) -> None:
+        """Store the run (when a directory was given) and write the gate report beside it."""
+        if output_dir is None:
+            return
+        location = result.persist(write_dashboard=self.config.write_dashboard)
+        if not self.config.write_gate:
             return
         baseline = (
             load_baseline_summary(self.config.baseline_summary_path)
@@ -131,7 +134,7 @@ class AgentEvalPipeline:
             else None
         )
         report = evaluate_gate(result, thresholds=self.config.gate_thresholds, baseline_summary=baseline)
-        write_gate_report(report, result.output_dir)
+        write_gate_report(report, location.output_dir)
 
 
 __all__ = [

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CreateFilesetStart } from '@studio/components/CreateFilesetStart';
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 
 const renderStart = () => {
   const onContinue = vi.fn();
-  render(<CreateFilesetStart onContinue={onContinue} />);
+  render(<CreateFilesetStart workspace="default" onContinue={onContinue} />);
   return { onContinue };
 };
 
@@ -24,16 +24,6 @@ describe('CreateFilesetStart', () => {
     renderStart();
 
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
-  });
-
-  it('does not select disabled options (they are no-ops)', async () => {
-    const user = userEvent.setup();
-    const { onContinue } = renderStart();
-
-    await user.click(screen.getByText('Describe with AI'));
-
-    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
-    expect(onContinue).not.toHaveBeenCalled();
   });
 
   it('selecting Build from scratch reveals Continue and invokes onContinue with "scratch"', async () => {
@@ -89,6 +79,31 @@ describe('CreateFilesetStart', () => {
     await user.click(screen.getByText('Start from a template'));
 
     // Template selection was reset when the option changed, so Continue is blocked again.
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+  });
+
+  it('selecting Describe with AI keeps Continue disabled until a config is generated', async () => {
+    const user = userEvent.setup();
+    renderStart();
+
+    await user.click(screen.getByText('Describe with AI'));
+
+    expect(
+      screen.getByRole('textbox', { name: /what do you want to generate/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    expect(screen.getByText('Generate a valid config to continue.')).toBeInTheDocument();
+  });
+
+  it('blocks an empty generate with field errors instead of calling the model', async () => {
+    const user = userEvent.setup();
+    renderStart();
+
+    await user.click(screen.getByText('Describe with AI'));
+    await user.click(screen.getByRole('button', { name: /generate/i }));
+
+    expect(await screen.findByText('Choose a model to draft the config.')).toBeInTheDocument();
+    expect(screen.getByText('Describe the fileset you want.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
 });

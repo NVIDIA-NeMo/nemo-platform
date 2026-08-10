@@ -42,6 +42,22 @@ def url(platform: PlatformClient, path: str, workspace: str | None = None) -> st
     return _join_url(str(platform.base_url), f"{_API_PREFIX}/{resolved_path}")
 
 
+def revision_selector(revision: str | None, tag: str | None) -> str | None:
+    """Encode a revision selector for a ``/revisions/{selector}`` path segment.
+
+    The route takes one selector that may be either a digest or a tag, but the SDK splits it into
+    two named arguments. One argument would mean writing ``revision="blessed"`` to read a tag, which
+    reads as a contradiction at the call site even though the server resolves it happily; two names
+    make the caller's intent explicit and cost nothing, since both still resolve server-side.
+
+    Returns ``None`` when neither is given — the caller then reads current content instead.
+    """
+    if revision is not None and tag is not None:
+        raise ValueError("pass either 'revision' (a content digest) or 'tag', not both")
+    selector = revision if revision is not None else tag
+    return None if selector is None else quote(selector, safe="")
+
+
 def platform_default_headers(platform: PlatformClient) -> dict[str, str]:
     """Return string-valued default platform headers for direct evaluator HTTP calls."""
     return {str(key): value for key, value in platform.default_headers.items() if isinstance(value, str)}

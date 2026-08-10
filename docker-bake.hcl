@@ -100,7 +100,7 @@ variable "NEMO_RL_REPO" {
 # RL pins Gym as a git submodule (-> soluwalana/Gym over https), so Gym rides in with the RL git ADD
 # - no separate Gym pin needed.
 variable "NEMO_RL_REF" {
-  default = "706382658e8b3b6292d0b96e83102a610b5f5491" # soluwalana/RL nmp/customizer
+  default = "ace40313d474f33cabc9a8fdf13d8dd4dda218c8" # soluwalana/RL nmp/customizer
 }
 variable "RL_BASE_CONTEXT" {
   default = ""
@@ -335,7 +335,6 @@ group "nmp-automodel-gpu-wheels" {
   targets = [
     "causal-conv1d-wheel",
     "mamba-ssm-wheel",
-    "ffmpeg-vlm-wheel",
   ]
 }
 
@@ -426,14 +425,10 @@ target "rl-platform-workspace" {
 
 # Heavy base: cuda-dl-base + NeMo-RL (with its Gym/Automodel/Megatron-Bridge submodules) built FROM
 # SOURCE (Python 3.13, CUDA 13). RL is pinned via NEMO_RL_REF; Gym rides in as RL's own submodule
-# (no separate pin). The ffmpeg-vlm wheels are reused for the cp313 av/opencv/decord2 CVE swap.
 target "nmp-rl-base-builder" {
   target     = "nmp-rl-base"
   context    = "."
   dockerfile = "docker/rl/Dockerfile.nmp-rl-base"
-  contexts = {
-    ffmpeg-vlm-wheel-image = ffmpeg_vlm_wheel_context()
-  }
   args = {
     NEMO_RL_REPO = NEMO_RL_REPO
     NEMO_RL_REF  = NEMO_RL_REF
@@ -903,7 +898,6 @@ target "nmp-automodel-base-builder" {
   contexts = {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
-    ffmpeg-vlm-wheel-image    = ffmpeg_vlm_wheel_context()
   }
   platforms = get_platforms()
 }

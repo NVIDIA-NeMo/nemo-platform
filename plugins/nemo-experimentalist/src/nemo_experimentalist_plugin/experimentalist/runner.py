@@ -34,18 +34,11 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory im
     EvaluatorFactory,
 )
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import restore_heldout_splits
-from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
-    insight_suite_provenance,
-    select_insight_promotion_suggestions,
-    write_insight_comparison_section,
-    write_insight_promotion_section,
-)
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
-from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
+from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 
@@ -103,7 +96,6 @@ class ExperimentRunner:
         validation_dataset: DatasetRef,
         task_template: DatasetRef | None = None,
         reporter: RunReporter | None = None,
-        models: ModelTiers | None = None,
     ) -> None:
         if agent is None and insight is None:
             raise ValueError("One of 'insight' or 'agent' must be set.")
@@ -123,7 +115,6 @@ class ExperimentRunner:
         self._reporter = reporter
         # One object for the whole run, so every component runs on the tiers the run
         # record reports and not on whatever the environment says at each construction.
-        self._models = models or ModelTiers()
         self._eo = self._root / "eval-and-optimize"
 
     async def run(self) -> ExperimentalistResult:
@@ -131,13 +122,11 @@ class ExperimentRunner:
         self._preflight()
         for subdir in ("agents", "analysis", "results"):
             (self._eo / subdir).mkdir(parents=True, exist_ok=True)
-
-        models = self._models
         evaluator = EvaluatorFactory().build_evaluator(
             self._config.evaluation, self._config.evaluation_config, experiment_dir=self._root
         )
         inputs = await self._prepare_inputs()
-        run, resuming = await self._open_run(inputs, models)
+        run, resuming = await self._open_run(inputs)
         ctx = ExperimentContext(
             backend=self._backend,
             workspace=self._workspace,
@@ -147,7 +136,6 @@ class ExperimentRunner:
             agent_spec=inputs.agent_spec,
             datasets=inputs.datasets,
             evaluator=evaluator,
-            models=models,
             resuming=resuming,
             reporter=self._reporter,
         )
@@ -261,7 +249,7 @@ class ExperimentRunner:
             datasets=datasets,
         )
 
-    async def _open_run(self, inputs: PreparedInputs, models: ModelTiers) -> tuple[ExperimentRun, bool]:
+    async def _open_run(self, inputs: PreparedInputs) -> tuple[ExperimentRun, bool]:
         """Re-open this run if one already exists here, else create it.
 
         Resume is strategy-independent at this level: the runner restores the
@@ -300,7 +288,6 @@ class ExperimentRunner:
                 # settings live outside the run config, so without this the record
                 # cannot answer "which models did this run use". Never the credential:
                 # the snapshot is written to disk and mirrored to the platform.
-                "deployment": models.describe(),
             },
             status="running",
         )
@@ -321,7 +308,7 @@ class ExperimentRunner:
             logger.debug("[RESUME] could not seed the narration baseline: %s", exc)
             return
         if baseline is not None and baseline.rewards["validation"].metrics:
-            self._reporter.seed_baseline(reward_scalar(baseline.rewards["validation"].metrics))
+            self._reporter.seed_baseline(baseline.rewards["validation"].metrics or {})
 
     async def _has_candidate_records(self) -> bool:
         """Whether this directory already holds committed candidates.
@@ -367,7 +354,6 @@ class ExperimentRunner:
 
         if winner is not None:
             self._copy_winner_to_workspace(ctx.candidate_dir(winner))
-            self._write_insight_sections(report_path, inputs, candidates, baseline, winner)
 
         result = ExperimentalistResult(
             summary=summary,
@@ -405,39 +391,6 @@ class ExperimentRunner:
                 shutil.copytree(entry, dst)
             else:
                 shutil.copy2(entry, dst)
-
-    def _write_insight_sections(
-        self,
-        report_path: Path,
-        inputs: PreparedInputs,
-        candidates: list[Candidate],
-        baseline: Candidate | None,
-        winner: Candidate,
-    ) -> None:
-        """Append the Insight-suite comparison and promotion sections to the report.
-
-        The insight suite is a reward channel the selector ignores, so it never affects
-        the winner — it only reports whether the scenarios authored for the motivating
-        Insight improved, and which of them are worth promoting.
-        """
-        insight_dataset = inputs.datasets.get("insight")
-        if insight_dataset is None or not report_path.exists():
-            return
-        # Membership below is a value comparison, and these candidates were re-read from
-        # the store while the winner is the strategy's in-memory object. Anything that
-        # does not round-trip byte-identically would make the winner "absent" and drop
-        # the section with no warning, so match on identity instead.
-        winner = next((c for c in candidates if c.id == winner.id), winner)
-        try:
-            provenance = insight_suite_provenance(insight_dataset)
-            if baseline is not None:
-                write_insight_comparison_section(report_path, baseline, winner, provenance)
-            write_insight_promotion_section(
-                report_path,
-                select_insight_promotion_suggestions(insight_dataset, candidates, winner=winner),
-            )
-        except ValueError as exc:
-            logger.warning("[FINAL] Skipping Insight Suite report sections: %s", exc)
 
 
 def _render_summary(completed: int, unit: str, baseline: Candidate | None, winner: Candidate | None) -> str:

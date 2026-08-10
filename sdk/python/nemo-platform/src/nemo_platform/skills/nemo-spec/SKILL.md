@@ -13,6 +13,10 @@ not-for:
   - nemo-explore (use to gather the design before writing the spec)
   - nemo-build-agent (use to scaffold and deploy once the spec is signed off)
   - nemo-skill-selection (use for dispatch when intent is unclear)
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - agent_design_complete
 compatibility: nemo-platform >= 0.1.0; writes one markdown file under agents/; uploads it to a NeMo Filesets fileset (the canonical copy) — local file is a write-through cache; safe under any sandbox; idempotent if user confirms overwrite.
 maturity: active
 license: Apache-2.0

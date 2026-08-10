@@ -23,10 +23,20 @@ from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import (
+    AgentEvalTrial,
+    AgentEvalTrialStatus,
+    AgentOutput,
+    RunnerInfo,
+    callable_identity,
+)
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
+#: Wall-clock ceiling for a single task's Codex CLI invocation — one ``process.communicate()`` covering
+#: the agent's whole run on that task, not a per-request or per-turn limit. Tasks run independently, so
+#: this is not a budget for the evaluation as a whole. On expiry the process is terminated and the task
+#: is recorded as a failed trial; it does not abort the run.
 DEFAULT_CODEX_TIMEOUT_S = 600
 DEFAULT_CODEX_DOCKER_MODEL = "gpt-5.4"
 DEFAULT_CODEX_DOCKER_CLI_IMAGE = "node:22-alpine"
@@ -75,6 +85,23 @@ class CodexCliAgentRuntime:
         self._prompt_builder = prompt_builder or AgentEvalTask.agent_prompt
         self._process_factory = process_factory or asyncio.create_subprocess_exec
         self._runtime_name = runtime_name
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the Codex CLI settings that shape its results.
+
+        Uses ``runtime_name``, which subclasses already set (the Docker variant reports
+        ``codex_docker_cli``) and which trials are stamped with, so provenance agrees with them.
+        """
+        return RunnerInfo(
+            name=self._runtime_name,
+            kind="runner",
+            config={
+                "model": self._model,
+                "timeout_s": self._timeout_s,
+                "codex_bin": self._codex_bin,
+                "prompt_builder": callable_identity(self._prompt_builder),
+            },
+        )
 
     async def run_tasks(
         self,
@@ -261,7 +288,7 @@ class CodexCliAgentRuntime:
     def _evidence_dir(self, index: int, task: AgentEvalTask, config: AgentEvalRunConfig) -> Path:
         root = self._work_root
         if root is None:
-            root = (config.output_dir or Path.cwd()) / "evidence" / "codex"
+            root = (config.work_dir or Path.cwd()) / "evidence" / "codex"
         safe_task_id = _safe_path_name(task.id)
         task_dir = f"{index:06d}-{safe_task_id}" if safe_task_id else f"task-{index:06d}"
         return Path(root) / task_dir

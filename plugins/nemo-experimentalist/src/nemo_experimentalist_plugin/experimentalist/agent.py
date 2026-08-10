@@ -6,7 +6,6 @@
 from pathlib import Path
 
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.registry import get_component
 from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 
@@ -15,7 +14,6 @@ def build_experimentalist_agent(
     working_dir: Path,
     config: EvolutionaryOptimizerConfig | None = None,
     framework_skills_dirs: list[Path] | None = None,
-    models: ModelTiers | None = None,
 ) -> Strategy:
     """Resolve ``config.strategy`` by name and construct it.
 
@@ -43,5 +41,4 @@ def build_experimentalist_agent(
         working_dir=working_dir,
         config=resolved,
         framework_skills_dirs=framework_skills_dirs or [],
-        models=models,
     )

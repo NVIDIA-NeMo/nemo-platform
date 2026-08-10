@@ -42,6 +42,19 @@ def _redact_url(url: str) -> str:
     return _CREDENTIAL_RE.sub("://***@", url)
 
 
+def _provenance_url(url: str) -> str:
+    """Return an HTTP(S) URL suitable for an Experiment ``source_link``."""
+    if url.startswith("git@"):
+        host, separator, path = url.removeprefix("git@").partition(":")
+        if host and separator and path:
+            return f"https://{host}/{path}"
+    parsed = urlsplit(url)
+    if parsed.scheme in {"ssh", "git"} and parsed.hostname:
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        return f"https://{parsed.hostname}{port}/{parsed.path.lstrip('/')}"
+    return _redact_url(url)
+
+
 def _validated_agent_path(agent_path: str) -> str:
     """Return a safe relative POSIX agent path or raise a controlled error."""
     agent_path = agent_path.removesuffix("/").removeprefix("./")
@@ -88,22 +101,9 @@ def split_agent_spec(spec: str) -> tuple[str, str]:
     return core, _validated_agent_path(agent_path)
 
 
-# Glob patterns for files never copied into the published branch: generated/run-local
-# files, VCS/tool dirs, and build artifacts. Matched with fnmatch against each name.
-# ``harbor_wrapper.py``/``dind_environment.py`` are the evaluator's scaffolding, which
-# the registered evaluation component will own once it exists.
-_EXCLUDE_GLOBS = (
-    "harbor_wrapper.py",
-    "dind_environment.py",
-    "architecture.md",
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    "*.pyc",
-    "*.pyo",
-)
+# Candidate files are staged with ``git add -A``, so the repository's .gitignore
+# determines what is committed. Never copy a nested Git repository from a candidate.
+_EXCLUDE_GLOBS = (".git",)
 
 
 class AgentSource(BaseModel):
@@ -208,9 +208,8 @@ def clone_agent_repo(spec: str, dest: Path, *, clone_depth: int | None = None) -
             ["git", "-C", str(dest), "rev-parse", "--abbrev-ref", "HEAD"],
             "git rev-parse",
         ).stdout.strip()
-    # repo_url is provenance (it becomes the candidate's source_link), so keep it
-    # credential-free; the conventional ssh ``git`` user is not a secret.
-    repo_url = url if url.startswith("ssh://git@") or "://" not in url else _redact_url(url)
+    # repo_url becomes an Experiment source_link, which accepts HTTP(S) URLs only.
+    repo_url = _provenance_url(url)
     return AgentSource(repo_url=repo_url, ref=ref, agent_path=agent_path)
 
 
@@ -279,11 +278,7 @@ class PRPublisher:
 
     @staticmethod
     def _overlay(winner_dir: Path, dest: Path) -> None:
-        """Copy the winner's agent files over *dest*, excluding files matching ``_EXCLUDE_GLOBS``.
-
-        Exclusions apply at the top level and recursively (via ``shutil.ignore_patterns``),
-        so nested ``__pycache__``/``*.pyc`` and the like never reach the published branch.
-        """
+        """Copy candidate files over *dest*; Git decides what is staged via .gitignore."""
         dest.mkdir(parents=True, exist_ok=True)
         ignore = shutil.ignore_patterns(*_EXCLUDE_GLOBS)
         for item in winner_dir.iterdir():
@@ -316,16 +311,17 @@ class PRPublisher:
         """Replace the ``agent_path`` subtree with *src_dir*'s files (deletions captured).
 
         ``git rm`` the existing subtree first so files the candidate removed don't linger,
-        using literal pathspec semantics, then overlay the candidate's files. ``agent_path``
+        using literal pathspec semantics, then overlay the candidate's files. ``git add -A``
+        applies the repository's .gitignore when staging the resulting delta. ``agent_path``
         ``"."`` targets the whole repo.
         """
         self._validated_subtree(agent_path)
         self._run(["git", "--literal-pathspecs", "rm", "-r", "-q", "-f", "--ignore-unmatch", "--", agent_path])
         subtree = self._validated_subtree(agent_path)
-        stale_items = (
-            (item for item in subtree.iterdir() if item.name.casefold() != ".git") if agent_path == "." else (subtree,)
-        )
-        for item in stale_items:
+        subtree.mkdir(parents=True, exist_ok=True)
+        for item in subtree.iterdir():
+            if item.name.casefold() == ".git":
+                continue
             if item.is_dir() and not item.is_symlink():
                 shutil.rmtree(item)
             else:

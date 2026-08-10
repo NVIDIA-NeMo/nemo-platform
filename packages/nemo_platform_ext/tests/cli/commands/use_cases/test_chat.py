@@ -29,6 +29,8 @@ from nemo_platform_ext.cli.app import app
 from nemo_platform_ext.cli.commands.use_cases.chat import _parse_model_and_workspace
 from typer.testing import CliRunner
 
+REMOTE_ERROR_EXIT_CODE = 3
+
 # =============================================================================
 # Unit Tests for _parse_model_and_workspace
 # =============================================================================
@@ -80,7 +82,7 @@ def test_parse_model_and_workspace_no_workspace_error() -> None:
 # CLI Syntax Validation Tests
 #
 # These tests verify the CLI accepts valid syntax. They run against a fake
-# server URL so commands fail with connection errors (exit code 1), not
+# server URL so commands fail with connection errors (exit code 3), not
 # syntax errors (exit code 2).
 # =============================================================================
 
@@ -139,20 +141,19 @@ def test_chat_missing_model_fails_with_usage_error(runner: CliRunner) -> None:
 def test_chat_model_only(runner: CliRunner) -> None:
     """Chat with just model argument parses correctly."""
     result = runner.invoke(app, ["chat", "my-model", "hello"])
-    # Exit code 1 = runtime error (connection), not 2 = syntax error
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_model_with_inline_workspace(runner: CliRunner) -> None:
     """Chat with workspace/model syntax parses correctly."""
     result = runner.invoke(app, ["chat", "my-workspace/my-model", "hello"])
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_with_workspace_flag(runner: CliRunner) -> None:
     """Chat with --workspace flag parses correctly."""
     result = runner.invoke(app, ["chat", "my-model", "hello", "--workspace", "test-ws"])
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_with_provider_flag(runner: CliRunner) -> None:
@@ -160,7 +161,7 @@ def test_chat_with_provider_flag(runner: CliRunner) -> None:
     result = runner.invoke(
         app, ["chat", "nvidia/model-id", "hello", "--provider", "nvidia-build", "--workspace", "test-ws"]
     )
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_provider_rejects_workspace_prefix(runner: CliRunner) -> None:
@@ -177,19 +178,19 @@ def test_chat_provider_rejects_workspace_prefix(runner: CliRunner) -> None:
 def test_chat_with_temperature(runner: CliRunner) -> None:
     """Chat with --temperature parses correctly."""
     result = runner.invoke(app, ["chat", "ws/model", "hello", "--temperature", "0.7"])
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_with_max_tokens(runner: CliRunner) -> None:
     """Chat with --max-tokens parses correctly."""
     result = runner.invoke(app, ["chat", "ws/model", "hello", "--max-tokens", "512"])
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_with_system_message(runner: CliRunner) -> None:
     """Chat with --system-message parses correctly."""
     result = runner.invoke(app, ["chat", "ws/model", "hello", "--system-message", "You are helpful."])
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_all_options(runner: CliRunner) -> None:
@@ -212,7 +213,7 @@ def test_chat_all_options(runner: CliRunner) -> None:
             "Be concise.",
         ],
     )
-    assert result.exit_code == 1
+    assert result.exit_code == REMOTE_ERROR_EXIT_CODE
 
 
 def test_chat_temperature_rejects_non_numeric(runner: CliRunner) -> None:

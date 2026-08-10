@@ -474,11 +474,18 @@ class DockerDeploymentBackend(DeploymentBackend):
             run_kwargs["volumes"] = volume_bindings
 
         # When joining another container's network namespace, docker forbids
-        # publishing ports (they belong to the primary). Only the primary maps
-        # host ports.
+        # publishing ports (they belong to the primary) and also forbids
+        # ExtraHosts. Only the primary maps host ports / host.docker.internal.
+        # Drop the image HEALTHCHECK on netns-joined sidecars: nmp-api ships a
+        # probe for localhost:8080/health/ready, which fails forever for LoRA
+        # adapters (``python -m ...adapters.main`` has no HTTP listener).
         if network is not None and network.startswith("container:"):
             run_kwargs["network"] = network
+            run_kwargs["healthcheck"] = {"test": ["NONE"]}
         else:
+            # Linux Docker Engine does not define host.docker.internal by default;
+            # jobs/agents rewrite loopback platform URLs to that hostname.
+            run_kwargs["extra_hosts"] = {"host.docker.internal": "host-gateway"}
             if container.ports:
                 run_kwargs["ports"] = build_port_bindings(container, host_ports)
             if network:
@@ -601,7 +608,11 @@ class DockerDeploymentBackend(DeploymentBackend):
             return map_docker_state_to_starting(container_id, state)
 
         if state == "running":
-            host_url = self._primary_host_url(host_ports)
+            # The default (no-declared-probe) reachability check TCP-connects the port, so
+            # it must see only TCP mappings: a UDP-only workload has no TCP listener and
+            # would otherwise be gated STARTING forever. Endpoints still carry every port.
+            tcp_host_ports = self._extract_host_ports(container, protocol="tcp")
+            host_url = self._primary_host_url(tcp_host_ports)
             config = await self._load_config_from_labels(workspace, labels)
             probe = None
             if config is not None and config.containers:
@@ -610,7 +621,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 container=container,
                 probe=probe,
                 host_url=host_url,
-                host_ports=host_ports,
+                host_ports=tcp_host_ports,
             )
             if ready and restart_policy == "Always":
                 sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name, config)
@@ -1081,13 +1092,21 @@ class DockerDeploymentBackend(DeploymentBackend):
         except Exception:
             return None
 
-    def _extract_host_ports(self, container: DockerContainer) -> dict[int, int]:
+    def _extract_host_ports(self, container: DockerContainer, *, protocol: str | None = None) -> dict[int, int]:
+        """Map container port -> published host port.
+
+        With *protocol* (e.g. ``"tcp"``) only mappings of that protocol are returned;
+        docker keys the port map as ``"<port>/<proto>"``. Defaults to every protocol.
+        """
         result: dict[int, int] = {}
         ports = container.ports or {}
         for key, bindings in ports.items():
             if not bindings:
                 continue
-            container_port = int(str(key).split("/")[0])
+            key_str = str(key)
+            if protocol is not None and not key_str.endswith(f"/{protocol}"):
+                continue
+            container_port = int(key_str.split("/")[0])
             host_port = bindings[0].get("HostPort")
             if host_port:
                 result[container_port] = int(host_port)

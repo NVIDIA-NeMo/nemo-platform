@@ -8,13 +8,10 @@ Registered under ``nemo.cli.agents`` and mounted by ``AgentsCLI`` as
 """
 
 import asyncio
-import os
 import uuid
-from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
-from urllib.parse import urlsplit
 
 import httpx
 import typer
@@ -228,11 +225,9 @@ class ExperimentalistCLI(NemoCLI):
                         f"Insight file: {effective_insight.ref} (default; pass --insight to override)",
                         err=True,
                     )
-                _announce_credential_defaults()
                 # Phase 1 — cheap environment checks BEFORE resolution: certain failures
-                # (missing creds, docker down, harbor absent) surface as the grouped
-                # report before any dataset download or the loop-chain import (which
-                # itself requires NEMO_EXPERIMENTALIST_API_* env) can preempt them. check_profile is
+                # (missing models, docker down, harbor absent) surface as the grouped
+                # report before any dataset download. check_profile is
                 # doctor-only on purpose: flags may fully specify the run, and resolution
                 # reports missing inputs with the skeleton.
                 _preflight_or_exit(
@@ -274,7 +269,7 @@ class ExperimentalistCLI(NemoCLI):
                         profile,
                         task_template=plan.task_template,
                         agent_source=plan.agent,
-                        storage=plan.config.storage.model_dump(),
+                        storage=plan.config.storage.model_dump(exclude_unset=True),
                         require_template=plan.insight is not None,
                         probes=_PREFLIGHT_PROBES,
                     )
@@ -363,7 +358,7 @@ class ExperimentalistCLI(NemoCLI):
                 envvar="NMP_BASE_URL",
             ),
         ) -> None:
-            """Diagnose Experimentalist setup: profile, artifacts, credentials, platform, runtime."""
+            """Diagnose Experimentalist setup: profile, artifacts, models, platform, runtime."""
             found = profile_path or discover_profile()
             profile_obj, profile_error = None, None
             env_results: list[CheckResult] = []
@@ -386,7 +381,6 @@ class ExperimentalistCLI(NemoCLI):
                         )
                     )
             base_url_resolved = resolve_base_url(base_url)
-            _announce_credential_defaults()
             insight_results: list[CheckResult] = []
             try:
                 effective_insight = resolve_effective_insight(
@@ -516,49 +510,6 @@ def _announce_env_file(profile_dir: Path) -> None:
     loaded = load_env_file(env_path)
     if loaded:
         typer.echo(f"Loaded .env from {env_path} ({len(loaded)} vars)", err=True)
-
-
-_GATEWAY_BASE = "https://inference-api.nvidia.com/v1"
-_GATEWAY_HOST = "inference-api.nvidia.com"
-
-
-def _is_gateway_base(value: str) -> bool:
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return False
-    return parsed.scheme == "https" and parsed.hostname == _GATEWAY_HOST
-
-
-def _apply_credential_defaults(env: MutableMapping[str, str] = os.environ) -> list[str]:
-    """Fill gateway-shaped credential gaps; returns what was applied.
-
-    ``NEMO_EXPERIMENTALIST_API_BASE`` defaults to the NVIDIA Inference Gateway, and when
-    the effective base IS the gateway, ``INFERENCE_API_KEY`` can power the
-    experimentalist too. A custom base never inherits the gateway key.
-
-    This still writes to the environment rather than to
-    :class:`~nemo_experimentalist_plugin.settings.ExperimentalistConfig`, because the
-    environment is the highest-precedence source and this runs before anything resolves
-    the config. Whether the copy should exist at all is a separate open question.
-    """
-    applied: list[str] = []
-    if not env.get("NEMO_EXPERIMENTALIST_API_BASE", "").strip():
-        env["NEMO_EXPERIMENTALIST_API_BASE"] = _GATEWAY_BASE
-        applied.append(f"NEMO_EXPERIMENTALIST_API_BASE={_GATEWAY_BASE}")
-    if _is_gateway_base(env["NEMO_EXPERIMENTALIST_API_BASE"]):
-        inference = env.get("INFERENCE_API_KEY", "").strip()
-        optimizer = env.get("NEMO_EXPERIMENTALIST_API_KEY", "").strip()
-        if inference and not optimizer:
-            env["NEMO_EXPERIMENTALIST_API_KEY"] = inference
-            applied.append("NEMO_EXPERIMENTALIST_API_KEY=INFERENCE_API_KEY")
-    return applied
-
-
-def _announce_credential_defaults() -> None:
-    applied = _apply_credential_defaults()
-    if applied:
-        typer.echo("Credential defaults: " + ", ".join(applied), err=True)
 
 
 def _load_config_payload(config: Path | None) -> dict | None:

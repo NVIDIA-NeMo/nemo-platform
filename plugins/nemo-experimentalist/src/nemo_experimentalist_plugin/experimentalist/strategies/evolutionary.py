@@ -30,16 +30,9 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     restore_heldout_splits,
 )
 from nemo_experimentalist_plugin.experimentalist.components.importer import IMPORT, import_proposal
-from nemo_experimentalist_plugin.experimentalist.components.insight_promotion import (
-    candidate_metric_keys,
-    candidate_suite_identity,
-    insight_suite_provenance,
-    stamp_insight_evaluation_result,
-    validate_insight_evaluation_result,
-)
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
+    MetricTarget,
 )
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -49,6 +42,7 @@ from nemo_experimentalist_plugin.experimentalist.components.util import load_fra
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -59,6 +53,28 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match
 
 logger = logging.getLogger(__name__)
+
+
+def _with_insight_objective(
+    config: EvolutionaryOptimizerConfig, metric_keys: tuple[str, ...]
+) -> EvolutionaryOptimizerConfig:
+    """Make insight metrics objectives and preserve all configured targets as guardrails."""
+    if not metric_keys:
+        return config
+    insight_metric_names = set(metric_keys)
+    objective = [MetricTarget(name=metric_key, direction="maximize") for metric_key in metric_keys]
+    regression_by_name = {
+        target.name: target
+        for target in [*config.objective_function, *config.regression_metrics]
+        if target.name not in insight_metric_names
+    }
+    return EvolutionaryOptimizerConfig.model_validate(
+        config.model_dump(mode="python")
+        | {
+            "objective_function": [target.model_dump(mode="python") for target in objective],
+            "regression_metrics": [target.model_dump(mode="python") for target in regression_by_name.values()],
+        }
+    )
 
 
 class AnalysisSkill(Skill):
@@ -238,12 +254,9 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         working_dir: Path,
         config: EvolutionaryOptimizerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        models: ModelTiers | None = None,
         **kwargs: Any,
     ) -> None:
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
-        self._models = tiers
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self.working_dir = working_dir.resolve()
         self.config = config or EvolutionaryOptimizerConfig()
         self._config = self.config
@@ -261,7 +274,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         self.skills.activate(["cmd.*", "ext.*"])
         TokenBudgetSummarizer.install(
             self,
-            llm=self._models.fast,
+            llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self.config.max_summary_tokens),
         )
 
@@ -296,10 +309,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         config = self.config
         self._check_proposer_builder_pairing(config)
         agents_dir, analysis_dir, _ = self._init_structure()
-        # train and validation are guaranteed by the runner; insight exists only when the
-        # run was given an Insight, which is why it alone is optional.
         train_eval_dataset = ctx.datasets["train"]
-        insight_eval_dataset = ctx.datasets.get("insight")
         agent_spec_path = ctx.agent_spec
 
         # ---- Resume or fresh start ---------------------------------------
@@ -328,13 +338,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             )
             await self._record_baseline_validation(
                 ctx=ctx, baseline=candidates[0], results=validation_candidate_results
-            )
-
-        if insight_eval_dataset is not None:
-            await self._evaluate_and_persist_insight_candidates(
-                ctx=ctx,
-                dataset=insight_eval_dataset,
-                candidates=candidates,
             )
 
         phase: Literal["exploration", "exploitation"] = "exploration" if round_num % 2 == 0 else "exploitation"
@@ -429,12 +432,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 generation=round_num + 1,
                 config=config,
             )
-            if insight_eval_dataset is not None:
-                await self._evaluate_and_persist_insight_candidates(
-                    ctx=ctx,
-                    dataset=insight_eval_dataset,
-                    candidates=new_candidates,
-                )
             for c in new_candidates:
                 evolution_tree.add(c)
 
@@ -766,82 +763,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             ensure_heldout_hidden(self.working_dir, splits=splits)
         return {candidate.label: result for candidate, result in candidate_results}
 
-    async def _evaluate_insight_candidates(
-        self,
-        *,
-        ctx: StrategyContext,
-        dataset: Dataset,
-        candidates: list[Candidate],
-    ) -> dict[str, EvaluationResult]:
-        """Evaluate candidates that do not yet have metrics for this Insight suite."""
-        if not list(dataset.list_tasks()):
-            return {}
-        provenance = insight_suite_provenance(dataset)
-        pending = [
-            candidate
-            for candidate in candidates
-            # Channel presence, not emptiness: a RewardRecord carries metrics and trials
-            # together, and empty `trials` is valid cached state, not a missing measurement.
-            if "insight" not in candidate.rewards
-            or candidate_suite_identity(candidate) != provenance.identity
-            or not candidate_metric_keys(candidate)
-        ]
-        evaluated = await asyncio.gather(
-            *[self._evaluate_agent(ctx, candidate, "insight", minimum_attempts=2) for candidate in pending]
-        )
-        return {candidate.label: result for candidate, result in evaluated}
-
-    async def _evaluate_and_persist_insight_candidates(
-        self,
-        *,
-        ctx: StrategyContext,
-        dataset: Dataset,
-        candidates: list[Candidate],
-    ) -> None:
-        """Evaluate and persist Insight-suite metrics for the supplied candidates."""
-        provenance = insight_suite_provenance(dataset)
-        results = await self._evaluate_insight_candidates(
-            ctx=ctx,
-            dataset=dataset,
-            candidates=candidates,
-        )
-        dataset_metric_keys = dataset.metadata.get("insight_metric_keys")
-        if dataset_metric_keys is not None and (
-            not isinstance(dataset_metric_keys, list) or not all(isinstance(key, str) for key in dataset_metric_keys)
-        ):
-            raise ValueError("Insight suite runtime metric keys have invalid metadata")
-        cached_metric_key_sets = {
-            tuple(sorted(candidate_metric_keys(candidate)))
-            for candidate in candidates
-            if candidate_suite_identity(candidate) == provenance.identity and candidate_metric_keys(candidate)
-        }
-        if isinstance(dataset_metric_keys, list):
-            cached_metric_key_sets.add(tuple(sorted(dataset_metric_keys)))
-        if len(cached_metric_key_sets) > 1:
-            raise ValueError(
-                f"Cached Insight evaluations disagree on required metric keys: {sorted(cached_metric_key_sets)}"
-            )
-        expected_metric_keys = next(iter(cached_metric_key_sets), None)
-        for candidate in candidates:
-            result = results.get(candidate.label)
-            if result is None:
-                continue
-            metric_keys = validate_insight_evaluation_result(
-                result,
-                expected_metric_keys=expected_metric_keys,
-            )
-            if expected_metric_keys is None:
-                expected_metric_keys = metric_keys
-            result = stamp_insight_evaluation_result(result, provenance)
-            await ctx.record_reward(
-                candidate,
-                channel="insight",
-                result=result,
-                metadata={"suite_identity": provenance.identity, "metric_keys": list(metric_keys)},
-            )
-        if expected_metric_keys is not None:
-            dataset.metadata["insight_metric_keys"] = list(expected_metric_keys)
-
     def _check_proposer_builder_pairing(self, config: EvolutionaryOptimizerConfig) -> None:
         """Fail before the run spends anything if no proposal could ever be built.
 
@@ -950,7 +871,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     workspace=self.working_dir,
                     config=config.analyzer_config,
                     framework_skills_dirs=self._framework_skills_dirs,
-                    models=self._models,
                     client=client,
                     nmp_workspace=nmp_workspace,
                 ).run(
@@ -985,7 +905,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             workspace=self.working_dir,
             config=config.proposer_config,
             framework_skills_dirs=self._framework_skills_dirs,
-            models=self._models,
         )
         return await proposer.run(
             analysis=analysis,
@@ -1064,7 +983,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
 
     def _selector(self, config: EvolutionaryOptimizerConfig) -> roles.Selector:
         """Resolve this run's selector."""
-        return get_component("selector", config.selector, config=config.selector_config, models=self._models)
+        return get_component("selector", config.selector, config=config.selector_config)
 
     def _new_builder(
         self, *, ctx: StrategyContext, dataset: Dataset, config: EvolutionaryOptimizerConfig
@@ -1084,7 +1003,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             workspace=self.working_dir,
             config=self._coder_config(config),
             framework_skills_dirs=self._framework_skills_dirs,
-            models=self._models,
             evaluator=ctx.evaluation,
             dataset=dataset,
             source_path=config.source.source_path,

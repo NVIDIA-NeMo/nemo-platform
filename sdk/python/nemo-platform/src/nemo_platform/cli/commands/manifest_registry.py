@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from nemo_platform.cli.commands.config_help import CONFIG_APP_HELP
 from nemo_platform.cli.manifest import TopLevelEntry
 
 TOP_LEVEL_ENTRIES = (
@@ -15,16 +16,7 @@ TOP_LEVEL_ENTRIES = (
     ),
     TopLevelEntry(
         import_path="nemo_platform.cli.commands.config:app",
-        help="""\
-Manage NeMo Platform CLI configuration.
-
-Examples:
-# Set the cluster base URL (most common first step).
-nemo config set --base-url https://nmp.example.com
-# View current effective configuration.
-nemo config view
-# Switch to a named context.
-nemo config use-context dev""",
+        help=CONFIG_APP_HELP,
         name="config",
         panel="Setup",
         kind="group",
@@ -37,8 +29,8 @@ Set up NeMo Platform: connect or start services, configure a provider, install s
 
 Uses an already-running platform, starts local services, or connects the
 CLI to an existing remote deployment. Then selects and registers an
-inference provider, picks a default model, installs coding agent skills,
-and optionally deploys a demo agent.
+inference provider, picks default and fast agent models, installs coding
+agent skills, and optionally deploys a demo agent.
 
 The active config context remembers the Platform URL. When a remote
 deployment is already reachable, setup asks whether to continue with it,
@@ -56,7 +48,7 @@ Requires an interactive terminal (TTY). In non-interactive contexts
 Use --auto for non-interactive setup from environment variables
 (NEMO_DEFAULT_INFERENCE_KEY, NVIDIA_API_KEY, OPENAI_API_KEY,
 ANTHROPIC_API_KEY, GEMINI_API_KEY).
-Override the default model with NEMO_DEFAULT_MODEL.
+Override the selected pair with NEMO_DEFAULT_MODEL and NEMO_FAST_MODEL.
 
 Examples:
   nemo setup

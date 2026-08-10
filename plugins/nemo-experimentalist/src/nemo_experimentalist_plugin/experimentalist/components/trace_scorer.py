@@ -12,13 +12,13 @@ from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, StrategyContext
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
 from pydantic import BaseModel, Field
 
 from .goal_tree import GoalNode, GoalTree, GoalTreeConfig, GoalTreeGenerator, leaf_weights_by_id, traverse_tree
-from .model_config import ModelTiers
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,11 @@ class GroupLeafScore(BaseModel):
     reason: str
     span_ids: list[str] = Field(
         default_factory=list,
-        description="Span IDs from the trace that contain the key evidence cited in `reason`.",
+        description=(
+            "Span IDs from the trace that contain the key evidence cited in `reason`. "
+            "Empty when the trace has no turns to look them up from, which is the normal "
+            "case for an agent that makes no LLM calls."
+        ),
     )
 
 
@@ -69,7 +73,6 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         llm: Any | None = None,
         client: AsyncNeMoPlatform | None = None,
         nmp_workspace: str | None = None,
-        models: ModelTiers | None = None,
         config: GoalTreeConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
@@ -78,8 +81,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
 
         Args:
             workspace: Path to the workspace directory.
-            llm: Language model instance; defaults to this run's mid tier.
-            models: Resolved model tiers; falls back to this install's settings.
+            llm: Language model instance; defaults to the configured fast model.
             client: NeMo Platform client; required to load ``intake://`` traces.
             nmp_workspace: NeMo Platform workspace name; required to load ``intake://`` traces.
             **kwargs: Additional arguments passed to parent Agent class.
@@ -88,9 +90,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
             ValueError: if workspace does not exist or is invalid.
 
         """
-        tiers = models or ModelTiers()
-        super().__init__(llm=llm or tiers.mid, **kwargs)
-        self._models = tiers
+        super().__init__(llm=llm or get_fast_model(), **kwargs)
         self.workspace = workspace
         self._client = client
         self._nmp_workspace = nmp_workspace
@@ -104,7 +104,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         node: GoalNode,
         trials: dict[str, TrialResult],
         dataset: Dataset,
-    ) -> dict[str, GroupLeafScore]:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
+    ) -> dict[str, GroupLeafScore]:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Compute the relative group advantage score for a group of traces coming from different agents for a given node.
         All scores must be strictly ordered: score_a < score_b < ... < score_n (no ties).
 
@@ -158,6 +158,14 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         the turn's contents — and copied verbatim from the returned values, never abbreviated, guessed,
         or constructed from the overview text.  Include only spans that directly support the score —
         not every span.
+
+        A trace with no turns is expected, not a failure. Both lookups above are indexed by
+        turn, so an agent that makes no LLM calls — deterministic, rule-based, or purely
+        tool-driven — has nothing for them to return, and they yield `None` however many times
+        you call them. When `get_overview()` reports `Turns: 0`, leave `span_ids` empty and
+        ground the reason in the call graph instead: name the methods that ran, the order they
+        ran in, and their status. That is sufficient evidence for such a trace. Do not retry the
+        turn lookups, and do not put the abbreviated ids from the overview text into `span_ids`.
 
         Returns:
             dict[str, GroupLeafScore]: scores indexed by agent ID; each entry includes a numeric
@@ -243,7 +251,6 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
                 workspace=self.workspace,
                 config=self._goal_config,
                 framework_skills_dirs=self._framework_skills_dirs,
-                models=self._models,
             ).generate(dataset, agent_spec=agent_spec)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[TRAJ] Failed to generate initial goal tree; continuing without trajectory scoring: {exc}")
@@ -269,7 +276,6 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
             workspace=self.workspace,
             config=goal_config,
             framework_skills_dirs=self._framework_skills_dirs,
-            models=self._models,
         )
         updated_tree = await generator.update(goal_tree, analysis, round_num, dataset, agent_spec=agent_spec)
         next_goal_path.parent.mkdir(parents=True, exist_ok=True)

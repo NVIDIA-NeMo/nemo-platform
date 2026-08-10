@@ -10,7 +10,6 @@ from typing import Protocol, TextIO, cast
 
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     make_experimentalist_backend,
 )
@@ -18,6 +17,12 @@ from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, V
 from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import (
+    ConfiguredModelClients,
+    ConfiguredModelRefs,
+    activate_model_clients,
+    resolve_model_clients,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,7 @@ async def run_experimentalist(
     experiment_dir: Path,
     workspace: str,
     client: AsyncNeMoPlatform | None,
+    model_refs: ConfiguredModelRefs | None = None,
     config: EvolutionaryOptimizerConfig,
     task_template: DatasetRef | None = None,
     framework_skills_dirs: list[Path] | None = None,
@@ -71,6 +77,8 @@ async def run_experimentalist(
         task_template: Evaluator-specific task template used for production traces.
         experiment_dir: Working directory for optimization artifacts.
         workspace: Platform workspace.
+        model_refs: Optional explicit default/fast Model Entity IDs. Unset uses the
+            active Platform CLI context.
         client: Optional caller-owned Platform client. Local-only Mode 2 runs
             may pass ``None``; Platform Insight access, mirroring, and Intake
             persistence require a client.
@@ -102,27 +110,40 @@ async def run_experimentalist(
         experiments_output=str(experiment_dir),
         storage=config.storage,
     )
-    models = ModelTiers()
-    result = await ExperimentRunner(
-        backend=backend,
-        models=models,
-        strategy=build_experimentalist_agent(
-            working_dir=experiment_dir,
-            config=config,
-            framework_skills_dirs=framework_skills_dirs,
-            models=models,
-        ),
-        config=config,
-        workspace=workspace,
-        root=experiment_dir,
-        agent=agent,
-        agent_spec=agent_spec,
-        insight=insight,
-        train_dataset=train_dataset,
-        validation_dataset=validation_dataset,
-        task_template=task_template,
-        reporter=reporter,
-    ).run()
+    # Every component resolves its models through the platform (#1159), so the resolved
+    # clients have to stay active for the whole run, not just while the runner is built.
+    model_platform_client = client or AsyncNeMoPlatform()
+    owns_model_platform_client = client is None
+    model_clients: ConfiguredModelClients | None = None
+    try:
+        model_clients = await resolve_model_clients(model_platform_client, model_refs)
+        with activate_model_clients(model_clients):
+            result = await ExperimentRunner(
+                backend=backend,
+                strategy=build_experimentalist_agent(
+                    working_dir=experiment_dir,
+                    config=config,
+                    framework_skills_dirs=framework_skills_dirs,
+                ),
+                config=config,
+                workspace=workspace,
+                root=experiment_dir,
+                agent=agent,
+                agent_spec=agent_spec,
+                insight=insight,
+                train_dataset=train_dataset,
+                validation_dataset=validation_dataset,
+                task_template=task_template,
+                reporter=reporter,
+            ).run()
+    finally:
+        try:
+            if model_clients is not None:
+                await model_clients.aclose()
+        finally:
+            if owns_model_platform_client:
+                await model_platform_client.close()
+
     winner = result.winner
     reporter.run_finished(
         winner=winner.label if winner is not None else None,

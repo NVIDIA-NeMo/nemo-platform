@@ -95,6 +95,7 @@ class IntakeAdapter:
             base_url=cfg["base_url"],
             client=client,
             insights_output=str(out_path),
+            local_only=True,
             verbose=verbose,
             since=since,
         )
@@ -301,6 +302,7 @@ class BenchmarkAdapter:
             base_url=str(record["base_url"]),
             client=make_client(str(record["base_url"])),
             insights_output=str(out_path),
+            local_only=True,
             verbose=verbose,
             since=since,
             evaluation_id=evaluation_id,

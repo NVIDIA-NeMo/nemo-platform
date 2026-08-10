@@ -32,7 +32,6 @@ from nemo_experimentalist_plugin.entities import (
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import Evaluator, EvaluatorConfig
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.repository import AgentSource
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import ExperimentalistBackend
@@ -237,7 +236,6 @@ def make_context(
     workspace: str = "default",
     resuming: bool = False,
     reporter: RunReporter | None = None,
-    models: ModelTiers | None = None,
 ) -> ExperimentContext:
     """Build a context over *root*, defaulting every collaborator to a double."""
     run = run or ExperimentRun(workspace=workspace, agent="agent-under-test")
@@ -253,7 +251,6 @@ def make_context(
         agent_dir=agent_dir,
         datasets=datasets or {"train": Dataset(id="train"), "validation": Dataset(id="validation")},
         evaluator=evaluator or FakeEvaluator(),
-        models=models or ModelTiers(),
         resuming=resuming,
         reporter=reporter,
     )

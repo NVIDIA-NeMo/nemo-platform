@@ -23,13 +23,15 @@ from typing import Any, ClassVar, cast
 import pytest
 from doubles import make_candidate
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
+from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     AgentAnalyzer,
     AnalyzerConfig,
     FailureClassification,
     PeerComparison,
+    TrialSelection,
 )
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
+from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 
@@ -64,6 +66,7 @@ class _FakeDataset:
 class _FakeEvaluation:
     id: str = "eval-1"
     aggregate_metrics: dict[str, float] = field(default_factory=lambda: {"reward": 1.0})
+    trials: list[_FakeTrial] = field(default_factory=list)
 
 
 class _RecordingTraceAnalyzer:
@@ -94,10 +97,21 @@ class _RecordingTraceAnalyzer:
         agent_path: Any,
         rationale: Any = None,
         insight: Any = None,
+        selection_reason: str = "",
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
         client: Any = None,
         workspace: Any = None,
     ) -> Diagnostic:
-        type(self).calls.append({"client": client, "workspace": workspace})
+        type(self).calls.append(
+            {
+                "client": client,
+                "workspace": workspace,
+                "selection_reason": selection_reason,
+                "objective_metrics": objective_metrics,
+                "regression_metrics": regression_metrics,
+            }
+        )
         return Diagnostic(outcome="SUCCESS", summary="stub", failure_point=None, root_cause="stub")
 
 
@@ -124,18 +138,40 @@ class _SelectTrials:
     def __init__(self, trials: list[Any]) -> None:
         self._trials = trials
 
-    async def __call__(self, agent_id: str, dataset: Any, evaluation: Any) -> list[Any]:
-        return self._trials
+    async def __call__(
+        self,
+        agent_id: str,
+        dataset: Any,
+        evaluation: Any,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
+    ) -> list[TrialSelection]:
+        return [
+            TrialSelection(trial_id=trial.id, reason=f"Analyze {trial.id} for this test.") for trial in self._trials
+        ]
 
 
 class _ClassifyFailures:
-    async def __call__(self, agent_id: str, diagnoses: Any, trials: Any) -> FailureClassification:
+    async def __call__(
+        self,
+        agent_id: str,
+        diagnoses: Any,
+        trials: Any,
+        objective_metrics: list[dict[str, str]],
+        regression_metrics: list[dict[str, str]],
+    ) -> FailureClassification:
         return FailureClassification(systematic=[], mechanical=[])
 
 
 class _CompareWithPeers:
     async def __call__(
-        self, agent_id: str, evaluation: Any, diagnoses: Any, peer_evaluations: Any = None
+        self,
+        agent_id: str,
+        evaluation: Any,
+        diagnoses: Any,
+        peer_evaluations: Any = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> PeerComparison:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
@@ -148,11 +184,11 @@ def _make_analyzer(
     analyzer._workspace_path = tmp_path
     analyzer._client = client
     analyzer._nmp_workspace = nmp_workspace
+    analyzer._objective_metrics = []
+    analyzer._regression_metrics = []
     analyzer._config = AnalyzerConfig()
     analyzer._framework_skills_dirs = []
-    # __init__ is skipped, so supply what run() reads: it hands its tiers to the
     # sub-components it builds.
-    analyzer._models = ModelTiers()
     analyzer.select_trials = _SelectTrials(trials)  # type: ignore[method-assign,assignment]
     analyzer.classify_failures = _ClassifyFailures()  # type: ignore[method-assign,assignment]
     analyzer.compare_with_peers = _CompareWithPeers()  # type: ignore[method-assign,assignment]
@@ -171,7 +207,32 @@ def _install_fakes(monkeypatch: pytest.MonkeyPatch, calls: list[dict[str, Any]])
 def _fixtures() -> tuple[_FakeTrial, _FakeDataset, _FakeEvaluation]:
     trial = _FakeTrial(id="trial-1", task_id="task-1", trace=object(), metrics={"reward": _FakeMetric(0.0)})
     dataset = _FakeDataset(tasks=[_FakeTask(id="task-1")])
-    return trial, dataset, _FakeEvaluation()
+    return trial, dataset, _FakeEvaluation(trials=[trial])
+
+
+def test_trace_cache_key_uses_trace_uri_namespace() -> None:
+    """Trace-analysis cache files must not be named as agent-analysis cache files."""
+    assert cache.trace_uri_hash("intake://trace-1:objective-metrics:[]").startswith("trace-uri-")
+
+
+def test_peer_comparison_respects_minimize_metric_directions(tmp_path: Path) -> None:
+    analyzer = _make_analyzer(tmp_path, [])
+    focal = _FakeEvaluation(
+        trials=[_FakeTrial("focal", "task-1", None, {"quality": _FakeMetric(0.8), "tokens": _FakeMetric(10.0)})]
+    )
+    peer = _FakeEvaluation(
+        trials=[_FakeTrial("peer", "task-1", None, {"quality": _FakeMetric(0.7), "tokens": _FakeMetric(5.0)})]
+    )
+    directions = analyzer._metric_directions(
+        [{"name": "quality", "direction": "maximize"}, {"name": "tokens", "direction": "minimize"}], []
+    )
+
+    pairs = analyzer._select_divergent_pairs("focal", focal, {"peer": peer}, directions)
+    complementary = analyzer._find_complementary_failures("focal", focal, {"peer": peer}, directions)
+
+    assert pairs[0]["winner"] == "peer"
+    assert complementary["task-1"]["quality"]["leaders"] == ["focal"]
+    assert complementary["task-1"]["tokens"]["leaders"] == ["peer"]
 
 
 @pytest.mark.asyncio
@@ -200,6 +261,9 @@ async def test_run_threads_client_and_workspace_into_trace_analyzer(
     assert len(calls) == 1
     assert calls[0]["client"] is sentinel_client
     assert calls[0]["workspace"] == "tau2-airline-ws"
+    assert calls[0]["selection_reason"] == "Analyze trial-1 for this test."
+    assert calls[0]["objective_metrics"] == []
+    assert calls[0]["regression_metrics"] == []
 
 
 @pytest.mark.asyncio
@@ -220,6 +284,30 @@ async def test_run_defaults_client_and_workspace_to_none(tmp_path: Path, monkeyp
     assert len(calls) == 1
     assert calls[0]["client"] is None
     assert calls[0]["workspace"] is None
+
+
+@pytest.mark.asyncio
+async def test_run_threads_metric_contract_into_trace_analyzer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trace analysis receives the same objective and regression metrics as selection."""
+    calls: list[dict[str, Any]] = []
+    _install_fakes(monkeypatch, calls)
+    trial, dataset, evaluation = _fixtures()
+    objective_metrics = [MetricTarget(name="success_rate", direction="maximize")]
+    regression_metrics = [MetricTarget(name="tokens", direction="minimize")]
+    analyzer = _make_analyzer(tmp_path, [trial])
+    # Objectives arrive at construction, so the role's own signature names no run config.
+    analyzer._objective_metrics = objective_metrics
+    analyzer._regression_metrics = regression_metrics
+
+    await analyzer.run(
+        candidate=make_candidate(label="agent-a"),
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round_num=0,
+    )
+
+    assert calls[0]["objective_metrics"] == [t.model_dump() for t in objective_metrics]
+    assert calls[0]["regression_metrics"] == [t.model_dump() for t in regression_metrics]
 
 
 @pytest.mark.asyncio
@@ -251,45 +339,3 @@ async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypa
     assert len(calls) == 2
     assert calls[0]["client"] is None
     assert calls[1]["client"] is not None
-
-
-def test_a_method_level_tier_reaches_the_model_it_names(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The canary for tier injection: nothing else proves a method-level ``llm=`` works.
-
-    ``AgentAnalyzer`` binds the smart tier at the class level but overrides
-    ``select_trials`` onto the fast one. The tests above deliberately stub past the
-    decorator, so if that override silently stopped resolving — a nooa pin bump dropping
-    callable ``llm=`` support is how it would happen — every one of them would still pass
-    while the run quietly moved to the wrong, more expensive model.
-
-    Resolved through nooa's own ``resolve_method_llm`` rather than by calling the method,
-    so this asserts on our wiring and needs no LLM.
-
-    The tiers are set through the environment rather than passed to
-    ``ExperimentalistConfig``, because for a ``NemoConfig`` the environment wins over
-    constructor arguments — passing them here would read back whatever the suite's
-    conftest exported, and all three tiers would collapse onto one client.
-    """
-    from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
-    from nemo_experimentalist_plugin.settings import ExperimentalistConfig
-    from nemo_platform_plugin.config import Configuration
-    from nooa.method_llm import resolve_method_llm
-
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "http://canary.invalid/v1")
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "canary-key")
-    for tier in ("SMART", "MID", "FAST"):
-        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", f"canary/{tier.lower()}")
-    Configuration.clear_cache()
-
-    tiers = ModelTiers(ExperimentalistConfig())
-    assert tiers.fast is not tiers.smart, "the tiers must be distinguishable for this to prove anything"
-    analyzer = AgentAnalyzer(workspace=tmp_path, models=tiers)
-
-    resolved = resolve_method_llm(
-        AgentAnalyzer.select_trials._strategy_llm,  # type: ignore[attr-defined]
-        analyzer,
-        "select_trials",
-    )
-
-    assert resolved is tiers.fast
-    assert resolved is not tiers.smart, "the method-level override never took effect"

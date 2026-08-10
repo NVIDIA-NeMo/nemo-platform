@@ -13,10 +13,10 @@ from urllib.parse import unquote, urlparse
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, MetricResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools, WorkspaceTool
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -111,7 +111,6 @@ class TraceAnalyzer(Agent):
         experiment_dir: Path,
         config: TraceAnalyzerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        models: ModelTiers | None = None,
         **kwargs: Any,
     ):
         """Initialize the trace analyzer for the given experiment directory.
@@ -123,9 +122,7 @@ class TraceAnalyzer(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
-        self._models = tiers
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or TraceAnalyzerConfig()
         self._experiment_dir = experiment_dir
         self.shell = GuardedShellTools(cwd=experiment_dir)
@@ -146,7 +143,7 @@ class TraceAnalyzer(Agent):
         load_framework_skills(self.skills, framework_skills_dirs or [])
         TokenBudgetSummarizer.install(
             self,
-            llm=self._models.fast,
+            llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
@@ -196,6 +193,9 @@ class TraceAnalyzer(Agent):
         agent_path: Path,
         runtime: DependencyRuntime | None,
         insight: Insight | None = None,
+        selection_reason: str = "",
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> StepAnalysis:
         """Trace the agent's path and find where it went wrong.
 
@@ -207,6 +207,10 @@ class TraceAnalyzer(Agent):
             rationale (Rationale): reference solution; may have empty steps
             insight: Production insight. If present, use its title and
                 description as the analysis lens.
+            selection_reason: Why the trial was selected for in-depth analysis.
+            objective_metrics: Evaluator metric dimensions the optimization run
+                aims to improve.
+            regression_metrics: Evaluator metric dimensions that must not worsen.
             agent_path: Local path to the agent root.
             runtime: Dependency runtime to use for analyzing the trace.
 
@@ -218,6 +222,14 @@ class TraceAnalyzer(Agent):
         If insight is present, look specifically for the behavior described by
         ``insight.title`` and ``insight.description``. If ``agent_path`` is present,
         inspect agent code there when it helps explain the trace.
+        Use ``selection_reason`` to focus on the evidence that motivated this
+        analysis. Interpret the trace and ``trial.metrics`` against
+        ``objective_metrics`` (dimensions to improve) and ``regression_metrics``
+        (dimensions to preserve). Do not invent scalar formulas, weights, or
+        thresholds for evaluator-defined metrics.
+        Frame decision points around the objective metric shortfall. A regression
+        metric may identify a guardrail risk, but is not by itself the failure this
+        optimization round is trying to diagnose.
 
         All TraceExplorer methods are async — always `await` them.
 
@@ -247,6 +259,8 @@ class TraceAnalyzer(Agent):
         trace: TraceExplorer,
         analysis: StepAnalysis,
         insight: Insight | None = None,
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
     ) -> Diagnostic:
         """Determine the primary root cause and produce a Diagnostic.
 
@@ -255,6 +269,9 @@ class TraceAnalyzer(Agent):
             analysis (StepAnalysis): result from analyze_trajectory
             insight: Optional production insight. If present, diagnose the root cause
                 of that insight's failure behavior.
+            objective_metrics: Evaluator metric dimensions the optimization run
+                aims to improve.
+            regression_metrics: Evaluator metric dimensions that must not worsen.
 
         Returns:
             Diagnostic: result with outcome, summary, failure_point, and root_cause.
@@ -270,6 +287,10 @@ class TraceAnalyzer(Agent):
         Return a complete Diagnostic with outcome, summary, failure_point, and root_cause.
         If insight is present and the trace does not match the insight's behavior,
         set ``outcome="SUCCESS"`` with ``failure_point=None``.
+        Use the metric contract to distinguish objective shortfalls from regression
+        risks. The root cause must explain an objective metric's underperformance;
+        describe regression effects only as constraints. Do not invent scalar
+        formulas, weights, or thresholds.
         """  # noqa: D413
         ...
 
@@ -280,6 +301,9 @@ class TraceAnalyzer(Agent):
         agent_path: Path,
         rationale: Rationale | None = None,
         insight: Insight | None = None,
+        selection_reason: str = "",
+        objective_metrics: list[dict[str, str]] | None = None,
+        regression_metrics: list[dict[str, str]] | None = None,
         client: AsyncNeMoPlatform | None = None,
         workspace: str | None = None,
     ) -> Diagnostic:
@@ -292,6 +316,10 @@ class TraceAnalyzer(Agent):
             rationale: Optional reference solution produced by Rationalizer; used as
                 a compass for trajectory analysis. Pass ``None`` to skip comparison.
             insight: Optional production insight to use as the failure lens.
+            selection_reason: Why the analyzer selected this trial for inspection.
+            objective_metrics: Evaluator metric dimensions the optimization run
+                aims to improve.
+            regression_metrics: Evaluator metric dimensions that must not worsen.
             client: Existing NeMo Platform client for Intake trace identifiers.
             workspace: NMP workspace request context for Intake trace identifiers.
 
@@ -329,7 +357,11 @@ class TraceAnalyzer(Agent):
         # only ever diagnosed through one lens and cannot collide here. If a future
         # caller analyzes the same trace under different insights in one experiment_dir,
         # fold the insight identity into this key to avoid returning a stale-lens Diagnostic.
-        key = _trace_cache_key(trial.trace.uri)
+        metric_contract_key = (
+            f"{_trace_cache_key(trial.trace.uri)}:selection-reason:{selection_reason}:"
+            f"objective-metrics:{objective_metrics or []}:regression-metrics:{regression_metrics or []}"
+        )
+        key = cache.trace_uri_hash(metric_contract_key)
 
         cached = cache.load(self._experiment_dir, key, Diagnostic)
         if cached is not None:
@@ -346,9 +378,18 @@ class TraceAnalyzer(Agent):
                 overview=overview,
                 rationale=rationale,
                 insight=insight,
+                selection_reason=selection_reason,
+                objective_metrics=objective_metrics,
+                regression_metrics=regression_metrics,
                 agent_path=agent_path,
                 runtime=runtime,
             )
-            diagnostic = await self.diagnose(trace, analysis, insight)
+            diagnostic = await self.diagnose(
+                trace,
+                analysis,
+                insight,
+                objective_metrics,
+                regression_metrics,
+            )
             cache.store(self._experiment_dir, key, diagnostic)
         return diagnostic

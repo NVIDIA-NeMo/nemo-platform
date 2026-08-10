@@ -313,10 +313,8 @@ def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_regis
     class Greedy(Builder):
         name = "acme-greedy"
 
-        def __init__(self, workspace, working_dir, models, evaluator, dataset, **kwargs: Any) -> None:
-            seen.update(
-                workspace=workspace, working_dir=working_dir, models=models, evaluator=evaluator, dataset=dataset
-            )
+        def __init__(self, workspace, working_dir, evaluator, dataset, **kwargs: Any) -> None:
+            seen.update(workspace=workspace, working_dir=working_dir, evaluator=evaluator, dataset=dataset)
 
         async def build(self, ctx: Any, proposal: Proposal, *, generation: int) -> Candidate:
             raise NotImplementedError
@@ -328,7 +326,6 @@ def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_regis
     assert seen == {
         "workspace": ctx.root,
         "working_dir": ctx.root,
-        "models": ctx.models,
         "evaluator": ctx.evaluation,
         "dataset": ctx.datasets["train"],
     }

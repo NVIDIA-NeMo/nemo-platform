@@ -8,7 +8,7 @@ dependencies = [
     "nemo-evaluator-sdk",
     "nemo-platform-plugin",
     "nemo-platform-sdk",
-    "pydantic>=2.10.6",
+    "pydantic>=2.12.0",
     "typer>=0.20.0",
 ]
 version = "0.0.0"
@@ -28,9 +28,6 @@ evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 
 [project.entry-points."nemo.skills"]
 evaluator = "nemo_evaluator.skills:get_skills_path"
-
-[project.entry-points."nemo.docs"]
-evaluator = "nemo_evaluator.docs:get_docs_path"
 
 [build-system]
 requires = ["hatchling"]

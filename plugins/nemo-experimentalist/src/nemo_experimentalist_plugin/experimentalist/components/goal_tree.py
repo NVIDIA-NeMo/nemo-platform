@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Dataset
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -18,7 +19,6 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match, ShellTools, TodoManager
 from pydantic import BaseModel, Field, model_validator
 
-from .model_config import ModelTiers
 from .tools import WorkspaceTool
 from .util import load_framework_skills
 
@@ -297,7 +297,6 @@ class GoalTreeGenerator(Agent):
         workspace: Path,
         config: GoalTreeConfig,
         framework_skills_dirs: list[Path] | None = None,
-        models: ModelTiers | None = None,
         **kwargs: Any,
     ):
         """Initialize the goal tree generator.
@@ -309,9 +308,7 @@ class GoalTreeGenerator(Agent):
             **kwargs: additional arguments passed to the parent Agent.
 
         """
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.fast, **kwargs)
-        self._models = tiers
+        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
         self._config = config
         self._workspace_path = workspace.resolve()
 
@@ -322,7 +319,7 @@ class GoalTreeGenerator(Agent):
         self.skills: SkillRegistry = SkillRegistry(self)
         spec(self, "skills", hidden=True)
         load_framework_skills(self.skills, framework_skills_dirs or [])
-        TokenBudgetSummarizer.install(self, llm=self._models.fast, config=TokenBudgetConfig(max_tokens=80_000))
+        TokenBudgetSummarizer.install(self, llm=get_fast_model(), config=TokenBudgetConfig(max_tokens=80_000))
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=40, cell_timeout=3600.0)))
     async def _generate(self, dataset: Dataset, agent_spec: Path | None = None) -> GoalTree:  # pyright: ignore[reportReturnType]
@@ -475,7 +472,7 @@ class GoalTreeGenerator(Agent):
         analysis: str,
         round_num: int,
         agent_spec: Path | None = None,
-    ) -> GoalTree:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
+    ) -> GoalTree:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Propose a reweighted goal tree informed by a round of agent analysis.
 
         # What you receive

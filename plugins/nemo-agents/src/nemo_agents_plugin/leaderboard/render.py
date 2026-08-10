@@ -19,6 +19,10 @@ from rich.table import Table
 
 COMPACT_WIDTH_THRESHOLD = 100
 
+# Upper bound for the in-memory console height; large enough to never clip
+# leaderboard rows while forcing Rich to honour the explicit width.
+_RENDER_HEIGHT = 10_000
+
 
 def render_entries(
     entries: tuple[AgentLeaderboardEntry, ...],
@@ -32,7 +36,18 @@ def render_entries(
     use_compact = compact if compact is not None else resolved_width < COMPACT_WIDTH_THRESHOLD
 
     table = _build_table(entries, compact=use_compact)
-    console = Console(file=StringIO(), width=resolved_width, record=True, legacy_windows=False)
+    # Pin both dimensions so the in-memory render honours the requested width even
+    # under a dumb terminal (``TERM=dumb``), where Rich otherwise clamps the
+    # console to 80x25 and truncates columns. ``size`` returns the explicit
+    # dimensions verbatim when both width and height are set. The height is a
+    # generous upper bound; ``print`` does not vertically clip table rows.
+    console = Console(
+        file=StringIO(),
+        width=resolved_width,
+        height=_RENDER_HEIGHT,
+        record=True,
+        legacy_windows=False,
+    )
     console.print(table)
     return console.file.getvalue()
 

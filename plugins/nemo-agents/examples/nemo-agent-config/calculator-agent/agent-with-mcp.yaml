@@ -1,0 +1,50 @@
+config_format: nemo-agents-spec-v1
+name: calculator-agent-with-mcp
+description: Calculator agent executed with DeepAgents and a calculator MCP server
+
+instructions:
+  system:
+    content: |
+      You are a concise calculator agent. You must use the appropriate
+      calculator MCP tool for every arithmetic or numeric comparison request
+      and base your answer on its result.
+
+default_harness: deepagents
+
+harnesses:
+  deepagents:
+    kind: deepagents
+    settings:
+      deepagents: {}
+
+models:
+  default:
+    provider: nvidia
+    model: nvidia-nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+
+skills:
+  paths: []
+
+mcp:
+  servers:
+    calculator:
+      transport: stdio
+      url: calculator-server
+
+tools:
+  blocked: []
+
+environment:
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: true
+  provider: relay
+  output_dir: ./artifacts/relay
+  project: calculator-agent-with-mcp
+  atof:
+    enabled: true
+    filename: events.atof.jsonl
+    mode: append

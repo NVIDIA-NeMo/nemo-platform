@@ -15,13 +15,18 @@ from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
 from nemo_insights_plugin.entities import Insight
 
 
-class _UnreachedStrategy:
-    """Never runs: Eval Author raises while the runner is still preparing inputs."""
+class _StopAfterStaging:
+    """Ends the run as soon as inputs are prepared.
+
+    What is under test is that Eval Author was handed *staged copies* under the
+    experiment directory rather than the caller's own dataset, so the run only has to
+    get as far as the strategy.
+    """
 
     supports_resume = True
 
     async def run(self, ctx: object) -> None:
-        raise AssertionError("the strategy must not start when input preparation fails")
+        raise RuntimeError("stop after eval_author")
 
 
 def _write_tree(root: Path, content: str) -> None:
@@ -31,7 +36,7 @@ def _write_tree(root: Path, content: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_insight_run_stages_inputs_before_eval_author(
+async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -44,6 +49,13 @@ async def test_insight_run_stages_inputs_before_eval_author(
     _write_tree(template, "template source")
     experiment = tmp_path / "experiment"
     captured: dict[str, Path] = {}
+
+    class EvalAuthorHandoff:
+        def __init__(self, train_dataset: SimpleNamespace, validation_dataset: SimpleNamespace) -> None:
+            self.train_dataset = train_dataset
+            self.validation_dataset = validation_dataset
+            self.insight_suite = None
+            self.metric_keys = ("reward",)
 
     class RecordingDatasetFactory:
         def build_dataset(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
@@ -63,13 +75,13 @@ async def test_insight_run_stages_inputs_before_eval_author(
             train_dataset: SimpleNamespace,
             validation_dataset: SimpleNamespace,
             **kwargs: object,
-        ) -> None:
+        ) -> EvalAuthorHandoff:
             captured["train"] = Path(train_dataset.ref.uri)
             captured["validation"] = Path(validation_dataset.ref.uri)
             captured["template"] = Path(task_template.uri)
             (captured["train"] / "task-1" / "tests" / "test.sh").write_text("curated", encoding="utf-8")
             (captured["template"].parent / "generated-task").mkdir()
-            raise RuntimeError("stop after eval_author")
+            return EvalAuthorHandoff(train_dataset, validation_dataset)
 
     monkeypatch.setattr(
         runner_module,
@@ -86,7 +98,7 @@ async def test_insight_run_stages_inputs_before_eval_author(
             client=fake_client(),
             insight=Insight(workspace="default", agent=str(agent_dir), title="t", description="d"),
         ),
-        strategy=_UnreachedStrategy(),
+        strategy=_StopAfterStaging(),
         config=EvolutionaryOptimizerConfig(),
         workspace="default",
         root=experiment,

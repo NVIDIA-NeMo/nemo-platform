@@ -11,7 +11,12 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "strict": true
+    "strict": true,
+    "paths": {
+      "@nemo/common": ["../../../web/packages/common/src/plugin.ts"],
+      "@nemo/common/*": ["../../../web/packages/common/*"],
+      "@nemo/sdk/*": ["../../../web/packages/sdk/*"]
+    }
   },
   "include": ["src"]
 }

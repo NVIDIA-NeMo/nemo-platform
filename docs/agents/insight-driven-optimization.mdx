@@ -49,10 +49,9 @@ want to automate portions of the agent improvement loop.
   runtime configuration) and a way to run or evaluate the agent reproducibly.
 - Traces in Intake for the agent under test. The Analyst diagnoses only what
   it can observe, so an agent with no telemetry cannot be analyzed.
-- Model access for the optimization agents themselves. The Analyst uses Claude Opus 4.8 through the
-  NVIDIA Inference Gateway. The Experimenter and Eval Author use configurable large language models
-  (LLMs) through an OpenAI-compatible endpoint. This access is separate from the model access that
-  your AUT needs at runtime.
+- A supported inference provider and default/fast model pair configured by
+  `nemo setup` for the optimization agents. This access is separate from the
+  model access that your agent under test needs at runtime.
 - Train and validation datasets in a Harbor-compatible layout, plus a task
   template and an output directory for artifacts. This is what the Eval Author
   works from and what the Experimenter uses to validate changes.
@@ -292,8 +291,8 @@ their implementations are available.
 
 ### Set Up
 
-Point the CLI at a platform and set model access for the optimization agents.
-The examples use a local platform; replace the base URL for a remote
+Point the CLI at a platform and configure model access for the optimization
+agents. The examples use a local platform; replace the base URL for a remote
 deployment.
 
 ```bash
@@ -303,16 +302,15 @@ export NMP_STUDIO_URL="$NMP_BASE_URL/studio"
 export NMP_ACCESS_TOKEN="$(nemo auth token)"
 export AGENT=your-agent-name           # This agent must have traces in Intake.
 
-# The Analyst uses Claude Opus 4.8 through NVIDIA Inference Gateway.
-export INFERENCE_API_KEY=sk-...
-
-# The Experimenter and Eval Author use an OpenAI-compatible endpoint.
-export NEMO_EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
-export NEMO_EXPERIMENTALIST_API_KEY=sk-...
-export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.6-sol
-export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5.6-terra
-export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5.6-luna
+nemo setup
 ```
+
+During setup, register a supported provider and select the default and fast
+Platform Model Entities. The default model handles quality-critical work and
+the fast model handles latency-sensitive work; press Enter at the fast-model
+prompt to reuse the default. The Analyst, Eval Author, and Experimentalist all
+use this pair. Provider credentials are stored in Platform Secrets rather than
+plugin-specific environment variables.
 
 Set `NMP_STUDIO_URL` explicitly if Studio uses a different origin or path.
 For an authenticated remote deployment, log in against that base URL before
@@ -457,8 +455,8 @@ come from the profile:
 nemo agents experimentalist run
 ```
 
-The Experimenter's own models are configured through environment variables
-(refer to [Models](#models)). Train and validation datasets are required, and they must be local
+The Experimenter's own models come from the default/fast pair selected by
+`nemo setup` (refer to [Models](#models)). Train and validation datasets are required, and they must be local
 paths for the Harbor evaluator. The loop runs a baseline evaluation,
 performs root cause analysis, implements changes, then validates and picks a
 winner.
@@ -498,6 +496,10 @@ loop, finds every agent opted in across workspaces, and submits one Analyst job
 per agent that is *due* and has enough new telemetry. Runs are incremental:
 each successful run records a cursor (`last_successful_run_at`), and subsequent
 runs only consider traces newer than that cursor.
+
+`enable` captures the effective default/fast pair in the server-side analysis
+config. Re-run it after changing the pair with `nemo setup`; enabled records
+created before model-pair persistence must also be re-enabled.
 
 ### Configure the Analysis Schedule
 
@@ -540,14 +542,15 @@ Run the Analyst for one analysis of an agent's traces.
 | `--workspace` | no | profile `workspace`, else `default` | Workspace to operate in. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance the Analyst's tools call. |
 | `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
-| `--insights-file-output` | no | `<profile-dir>/.nemo-optimizer/insights.yaml` when a profile is found, else the Insights API | Read and write Insights from a local YAML file. |
+| `--insights-file-output` | no | off — Insights go to the platform only | Additionally mirror the Insights the platform stored into a local YAML file, platform ids included. Each run merges into the file. |
 | `--verbose` / `-v` | no | off | Stream tool calls and reasoning to standard error. |
 
 ### `nemo insights analysis enable | disable | status`
 
 Manage per-agent opt-in for periodic analysis. `enable` and `disable` require
 `--agent`; `status` takes an optional `--agent` (omit it to list all configs in
-the workspace). All three accept `--workspace` and `--base-url`.
+the workspace). `enable` stores the active default/fast model pair for future
+scheduled jobs. All three accept `--workspace` and `--base-url`.
 
 ### `nemo agents analyst doctor`
 
@@ -577,7 +580,7 @@ Run the local Experimenter loop.
 
 ### `nemo agents experimentalist doctor`
 
-Diagnose the Experimenter setup: profile, credentials, Insight resolution,
+Diagnose the Experimenter setup: profile, configured models, Insight resolution,
 datasets, and the experiment plan.
 
 ### `nemo agents eval-author`
@@ -588,21 +591,26 @@ exit with a nonzero status until their implementations are available.
 
 ### Models
 
-The optimization agents use the following model configuration:
+The optimization agents use the active Platform CLI context:
 
 | Variable | Used by | Default and notes |
 |----------|---------|-------------------|
-| `INFERENCE_API_KEY` | Analyst | Required. API key for Claude Opus 4.8 through the NVIDIA Inference Gateway. The Analyst model and endpoint are fixed. |
-| `NEMO_EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | OpenAI-compatible model API base URL. `run` and `doctor` fall back to the NVIDIA Inference Gateway when it is unset, so it is only required against another endpoint. Also settable as `api_base` under the `experimentalist:` config section; the environment wins. |
-| `NEMO_EXPERIMENTALIST_API_KEY` | Experimenter, Eval Author | Required. Model API key. On the gateway, `INFERENCE_API_KEY` fills this. |
-| `NEMO_EXPERIMENTALIST_MODELS_SMART` | Experimenter, Eval Author | Required. High-capability model for analysis, proposing, coding, and curation. No default: a model name is only meaningful against a specific endpoint. |
-| `NEMO_EXPERIMENTALIST_MODELS_MID` | Experimenter, Eval Author | Required. Mid-tier model used for trajectory scoring and architecture documentation. No default. |
-| `NEMO_EXPERIMENTALIST_MODELS_FAST` | Experimenter, Eval Author | Required. Low-latency model for lightweight steps such as termination checks and summarization. No default. |
-| `AUTHOR_API_BASE` | Eval Author | Optional override for the OpenAI-compatible model API base URL. Falls back to `NEMO_EXPERIMENTALIST_API_BASE`. |
-| `AUTHOR_API_KEY` | Eval Author | Optional override for the model API key. Falls back to `NEMO_EXPERIMENTALIST_API_KEY`, or to `INFERENCE_API_KEY` for the NVIDIA Inference Gateway. |
-| `AUTHOR_SMART_MODEL_NAME` | Eval Author | Optional high-capability model override. |
-| `AUTHOR_MID_MODEL_NAME` | Eval Author | Optional mid-tier model override for Experimentalist helpers used by Eval Author. |
-| `AUTHOR_FAST_MODEL_NAME` | Eval Author | Optional low-latency model override. |
+| stored `default_model` | Analyst, Experimenter, Eval Author | Required workspace-qualified Model Entity selected by `nemo setup`. Used for quality-critical analysis, authoring, proposing, and coding. |
+| stored `fast_model` | Analyst, Experimenter, Eval Author | Selected by `nemo setup`; defaults to the default model. Used for high-volume scoring, summarization, and control steps. |
+| `NEMO_DEFAULT_MODEL` | Analyst, Experimenter, Eval Author | Optional non-interactive override for `default_model`, in `workspace/model-name` form. |
+| `NEMO_FAST_MODEL` | Analyst, Experimenter, Eval Author | Optional non-interactive override for `fast_model`, in `workspace/model-name` form. Falls back to the effective default model. |
+
+Each Model Entity owns its backend format and provider route. OpenAI-compatible
+and Anthropic entities are adapted to Nooa's unified completion client through the
+Platform route; the agents never inspect provider model-name conventions or
+read provider credentials directly.
+
+For OpenAI Chat Completions entities, the shared client disables reasoning while
+function tools are active and disables LiteLLM's automatic Responses bridge.
+This keeps frontier models on the Model Entity's declared Chat Completions
+contract without a model-name allowlist; LiteLLM drops the reasoning parameter
+for models that do not support it. Anthropic entities use their native Messages
+route.
 
 ## Troubleshooting
 
@@ -616,7 +624,8 @@ flowing and that you are filtering by the right `agent` name.
 Check that the agent is enabled
 (`nemo insights analysis status`), that `insights.analyst.enabled` is true,
 that the scheduled window has passed in the configured `timezone`, and that at
-least 10 new sessions have landed since the last run.
+least 10 new sessions have landed since the last run. If status shows no model
+selection, re-run `nemo insights analysis enable` after `nemo setup`.
 
 ### Insights Are Not in the Platform
 

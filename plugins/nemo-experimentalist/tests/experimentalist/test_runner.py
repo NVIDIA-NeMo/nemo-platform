@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
-from doubles import FakeBackend, FakeEvaluator, fake_client, make_candidate, seed_reward
+from doubles import FakeBackend, FakeEvaluator, fake_client, make_candidate
 from nemo_experimentalist_plugin.config import CandidateStorageConfig, EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
     Candidate,
@@ -21,7 +21,6 @@ from nemo_experimentalist_plugin.entities import (
     Task,
 )
 from nemo_experimentalist_plugin.experimentalist import runner as runner_module
-from nemo_experimentalist_plugin.experimentalist.components.model_config import ModelTiers
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
 from nemo_experimentalist_plugin.experimentalist.runner import ExperimentRunner
@@ -130,8 +129,8 @@ async def test_a_completed_run_persists_its_result_and_winner(monkeypatch, tmp_p
     assert result.winner is winner
     assert "winner=agent-1" in result.summary
     assert backend.results == [result]
-    # publish_winner is off by default, so nothing was published.
-    assert backend.published == []
+    # publish_winner defaults to True upstream, so the winner is published.
+    assert backend.published == ["agent-1"]
 
 
 @pytest.mark.asyncio
@@ -399,39 +398,6 @@ def _async(fn):
     return wrapper
 
 
-@pytest.mark.asyncio
-async def test_a_fallback_report_still_carries_the_insight_suite_sections(monkeypatch, tmp_path) -> None:
-    """The strategy wrote no report, but the Insight sections are the runner's to add."""
-    baseline = _insight_candidate("agent-0", round_num=0, insight=0.0, validation=0.5)
-    winner = _insight_candidate("agent-1", round_num=1, insight=1.0, validation=0.75)
-
-    await _run_with_insight_suite(tmp_path, monkeypatch, dataset=_insight_dataset(), candidates=[baseline, winner])
-
-    report = (tmp_path / "experiment" / "eval-and-optimize" / "OPTIMIZATION.md").read_text()
-    assert "## Compact Run Summary" in report
-    # The strategy never reported progress, so the counter is at its default unit.
-    assert "Optimization complete: 0 step(s) completed" in report
-    assert "## Deterministic Insight Suite Comparison" in report
-    assert "## Insight Suite Promotion Suggestions" in report
-
-
-@pytest.mark.asyncio
-async def test_an_insight_suite_mismatch_does_not_fail_a_completed_run(monkeypatch, tmp_path, caplog) -> None:
-    baseline = _insight_candidate("agent-0", round_num=0, insight=0.0, validation=0.5)
-    winner = _insight_candidate("agent-1", round_num=1, insight=1.0, validation=0.75)
-    # The winner was scored against a different suite than the run ended up with.
-    seed_reward(
-        winner,
-        "insight",
-        RewardRecord(metadata={**winner.rewards["insight"].metadata, "suite_identity": "sha256:" + "e" * 64}),
-    )
-
-    with caplog.at_level("WARNING"):
-        await _run_with_insight_suite(tmp_path, monkeypatch, dataset=_insight_dataset(), candidates=[baseline, winner])
-
-    assert "Skipping Insight Suite report sections" in caplog.text
-
-
 def test_a_run_needs_either_an_agent_or_an_insight(tmp_path) -> None:
     with pytest.raises(ValueError, match="One of 'insight' or 'agent'"):
         ExperimentRunner(
@@ -468,31 +434,6 @@ def test_the_run_entity_carries_a_progress_counter_not_a_round_count() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_run_record_says_which_models_it_actually_used(monkeypatch, tmp_path) -> None:
-    """`config_snapshot` is the only durable record of how a run was configured.
-
-    Model tiers are deployment settings, so they are not in the run config at all — dump
-    it alone and the record cannot answer "which models did this run use".
-    """
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://example.test/v1")
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "secret-value")
-    for tier, name in (("SMART", "vendor/smart-1"), ("MID", "vendor/mid-1"), ("FAST", "vendor/fast-1")):
-        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", name)
-    Configuration.clear_cache()
-
-    strategy = RecordingStrategy()
-    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
-    await runner.run()
-
-    assert strategy.ctx is not None
-    deployment = strategy.ctx._run.config_snapshot["deployment"]
-    assert deployment["api_base"] == "https://example.test/v1"
-    assert deployment["models"] == {"smart": "vendor/smart-1", "mid": "vendor/mid-1", "fast": "vendor/fast-1"}
-    # Run parameters are still there alongside it.
-    assert "max_rounds" in strategy.ctx._run.config_snapshot
-
-
-@pytest.mark.asyncio
 async def test_the_run_record_never_carries_the_credential(monkeypatch, tmp_path) -> None:
     """It is written to run.json on disk and mirrored to the platform."""
     monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://example.test/v1")
@@ -518,27 +459,3 @@ async def test_the_strategy_receives_the_runs_resolved_tiers(monkeypatch, tmp_pa
     await runner.run()
 
     assert strategy.ctx is not None
-    assert isinstance(strategy.ctx.models, ModelTiers)
-
-
-@pytest.mark.asyncio
-async def test_the_run_record_strips_userinfo_from_the_endpoint(monkeypatch, tmp_path) -> None:
-    """A URL is a normal way to pass a key to an OpenAI-compatible proxy.
-
-    The snapshot is written to run.json and mirrored to the platform, so the endpoint is
-    sanitized the same way the log banner already sanitizes it.
-    """
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_BASE", "https://user:sk-live-abc123@endpoint.internal/v1")
-    monkeypatch.setenv("NEMO_EXPERIMENTALIST_API_KEY", "unused")
-    for tier in ("SMART", "MID", "FAST"):
-        monkeypatch.setenv(f"NEMO_EXPERIMENTALIST_MODELS_{tier}", "vendor/m")
-    Configuration.clear_cache()
-
-    strategy = RecordingStrategy()
-    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
-    await runner.run()
-
-    assert strategy.ctx is not None
-    snapshot = json.dumps(strategy.ctx._run.config_snapshot)
-    assert "sk-live-abc123" not in snapshot
-    assert strategy.ctx._run.config_snapshot["deployment"]["api_base"] == "https://endpoint.internal/v1"

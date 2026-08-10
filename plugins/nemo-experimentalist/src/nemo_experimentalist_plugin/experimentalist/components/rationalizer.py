@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import DependencyRuntime, Task
+from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
@@ -20,7 +21,6 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from . import cache
-from .model_config import ModelTiers
 from .rationale import Rationale, RationaleStep
 from .tools import GuardedShellTools
 from .util import load_framework_skills
@@ -67,7 +67,6 @@ class Rationalizer(Agent):
         workspace: Path,
         config: RationalizerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        models: ModelTiers | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the Rationalizer with workspace path and optional config.
@@ -79,9 +78,7 @@ class Rationalizer(Agent):
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.smart, **kwargs)
-        self._models = tiers
+        super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or RationalizerConfig()
         self._workspace_path = workspace
         self.shell = GuardedShellTools(cwd=workspace)
@@ -93,7 +90,7 @@ class Rationalizer(Agent):
         load_framework_skills(self.skills, framework_skills_dirs or [])
         TokenBudgetSummarizer.install(
             self,
-            llm=self._models.fast,
+            llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 

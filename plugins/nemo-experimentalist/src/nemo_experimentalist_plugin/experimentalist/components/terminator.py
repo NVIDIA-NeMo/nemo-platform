@@ -15,18 +15,22 @@ import logging
 from typing import Any
 
 from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.experimentalist import roles
 
 # Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
 # this module, so going through it would be circular.
-from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.models import pareto_front
+from nemo_experimentalist_plugin.experimentalist.components.models import (
+    MetricTarget,
+    has_metric_dimensions,
+    pareto_front,
+    pareto_objectives,
+)
 from nemo_experimentalist_plugin.skills import skills_dir
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
 from pydantic import BaseModel, Field
-
-from .model_config import ModelTiers
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +61,17 @@ class Terminator(Agent, roles.Terminator):
     name = "convergence"
 
     def __init__(
-        self, *, models: ModelTiers | None = None, config: TerminatorConfig | None = None, **kwargs: Any
+        self,
+        *,
+        config: TerminatorConfig | None = None,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
+        **kwargs: Any,
     ) -> None:
-        tiers = models or ModelTiers()
-        super().__init__(llm=kwargs.pop("llm", None) or tiers.fast, **kwargs)
-        self._models = tiers
+        super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
         self._config = config or TerminatorConfig()
+        self._objective_metrics = objective_metrics or [MetricTarget(name="reward", direction="maximize")]
+        self._regression_metrics = regression_metrics or []
         self.terminator_skill = TextSkill(path=skills_dir() / "terminator")
 
     @hidden
@@ -113,6 +122,8 @@ class Terminator(Agent, roles.Terminator):
             candidates=candidates,
             prior_analysis=prior_analysis,
             min_rounds_before_stopping=self._config.min_rounds_before_stopping,
+            objective_metrics=self._objective_metrics,
+            regression_metrics=self._regression_metrics,
         )
         if converged:
             return TerminationDecision(stop=True, reason="optimization converged (Pareto front stagnated)")
@@ -125,6 +136,8 @@ class Terminator(Agent, roles.Terminator):
         candidates: list[Candidate],
         prior_analysis: str,
         min_rounds_before_stopping: int,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget],
     ) -> bool:
         """Return True if the optimization has converged and should stop early."""
         # Truthy check, not ``is not None``: an unscored candidate has an empty metrics
@@ -137,20 +150,41 @@ class Terminator(Agent, roles.Terminator):
         old = [n for n in scored if n.generation <= cutoff_round]
         if not old:
             return False
-        metrics = lambda c: c.rewards["validation"].metrics or {}  # noqa: E731
-        old_front_ids = {c.id for c in pareto_front(old, metrics)}
-        full_front_ids = {c.id for c in pareto_front(scored, metrics)}
+        objectives = objective_metrics or []
+        scored = [c for c in scored if has_metric_dimensions(c.rewards["validation"].metrics or {}, objectives)]
+        if not scored:
+            return False
+        old = [c for c in old if c in scored]
+        if not old:
+            return False
+        ranked = lambda c: pareto_objectives(c.rewards["validation"].metrics or {}, objectives)  # noqa: E731
+        old_front_ids = {c.id for c in pareto_front(old, ranked)}
+        full_front_ids = {c.id for c in pareto_front(scored, ranked)}
         if full_front_ids.issubset(old_front_ids):
             return True
-        return await self.qualitative_stop_check(prior_analysis)
+        return await self.qualitative_stop_check(
+            prior_analysis,
+            objectives,
+            regression_metrics,
+        )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5)))
-    async def qualitative_stop_check(self, analysis: str) -> bool:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
+    async def qualitative_stop_check(
+        self,
+        analysis: str,
+        objective_metrics: list[MetricTarget],
+        regression_metrics: list[MetricTarget],
+    ) -> bool:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
         """Decide whether the optimization has qualitatively plateaued; return True to stop.
 
         Judge the round ``analysis`` text against the terminator skill's stop
         heuristics (prefilled below). Return True only with concrete textual
         evidence of stagnation in ``analysis``; when in doubt, return False.
+
+        ``objective_metrics`` are the evaluator metrics being improved;
+        ``regression_metrics`` are those that must not worsen. Judge stagnation
+        only in that context; do not invent a scalar score, weights, or a new
+        selection rule.
         """
         print(doc(self.terminator_skill))
         ...

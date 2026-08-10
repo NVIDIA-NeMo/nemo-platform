@@ -476,7 +476,7 @@ def test_fileset_fragment_and_glob_datasets(evaluator_sdk: NeMoPlatform) -> None
 
         cases = {
             "specific file": (f"{workspace}/{fileset_name}#part-a.json", [1.0, 0.0]),
-            "glob": (f"{workspace}/{fileset_name}#part-*.json", [1.0, 1.0, 0.0]),
+            "glob": (f"{workspace}/{fileset_name}#part-*.json", [1.0, 0.0, 1.0]),
         }
         for label, (reference, expected_scores) in cases.items():
             job = evaluator_sdk.evaluator.submit(

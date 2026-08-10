@@ -126,9 +126,6 @@ class SuiteSpec(BaseModel):
 
 class ModelSpec(BaseModel):
     aut: str
-    experimentalist_smart: str
-    experimentalist_mid: str
-    experimentalist_fast: str
     user_simulator: str | None = None
 
 
@@ -214,19 +211,14 @@ def validate_canonical_suite(
 
 
 def _configure_models(models: ModelSpec) -> None:
-    api_key = os.environ.get("INFERENCE_API_KEY") or os.environ.get("NEMO_EXPERIMENTALIST_API_KEY")
+    api_key = os.environ.get("INFERENCE_API_KEY")
     if not api_key:
-        raise RuntimeError("INFERENCE_API_KEY or NEMO_EXPERIMENTALIST_API_KEY is required")
-    api_base = os.environ.get("INFERENCE_API_BASE") or os.environ.get("NEMO_EXPERIMENTALIST_API_BASE")
+        raise RuntimeError("INFERENCE_API_KEY is required for the agent under test")
+    api_base = os.environ.get("INFERENCE_API_BASE")
     api_base = api_base or "https://inference-api.nvidia.com/v1"
     os.environ.setdefault("INFERENCE_API_KEY", api_key)
-    os.environ.setdefault("NEMO_EXPERIMENTALIST_API_KEY", api_key)
     os.environ.setdefault("INFERENCE_API_BASE", api_base)
-    os.environ.setdefault("NEMO_EXPERIMENTALIST_API_BASE", api_base)
     os.environ["AUT_MODEL_NAME"] = models.aut
-    os.environ["NEMO_EXPERIMENTALIST_MODELS_SMART"] = models.experimentalist_smart
-    os.environ["NEMO_EXPERIMENTALIST_MODELS_MID"] = models.experimentalist_mid
-    os.environ["NEMO_EXPERIMENTALIST_MODELS_FAST"] = models.experimentalist_fast
     os.environ.setdefault("NEMO_EXPERIMENTALIST_RUNTIME_CACHE", str(DEFAULT_RUNTIME_CACHE))
     if models.user_simulator is not None:
         # tau-style tasks run a user simulator and NL-assertion judge inside the task
@@ -349,14 +341,22 @@ def summarize_experimentalist_jobs(results_dir: Path) -> dict[str, Any]:
         if not isinstance(payload, dict) or not isinstance(payload.get("stats"), dict):
             continue
         stats = payload["stats"]
-        job: dict[str, Any] = {
+        integer_fields = {
+            "trials": payload.get("n_total_trials"),
+            "completed_trials": stats.get("n_completed_trials"),
+            "errored_trials": stats.get("n_errored_trials"),
+            "input_tokens": stats.get("n_input_tokens"),
+            "cache_tokens": stats.get("n_cache_tokens"),
+            "output_tokens": stats.get("n_output_tokens"),
+        }
+        for field, value in integer_fields.items():
+            if value is None:
+                integer_fields[field] = 0
+            elif isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"Expected integer job summary field {field!r}, got {type(value).__name__}")
+        job = {
             "name": result_path.parent.name,
-            "trials": int(payload.get("n_total_trials") or 0),
-            "completed_trials": int(stats.get("n_completed_trials") or 0),
-            "errored_trials": int(stats.get("n_errored_trials") or 0),
-            "input_tokens": int(stats.get("n_input_tokens") or 0),
-            "cache_tokens": int(stats.get("n_cache_tokens") or 0),
-            "output_tokens": int(stats.get("n_output_tokens") or 0),
+            **integer_fields,
             "cost_usd": stats.get("cost_usd") if isinstance(stats.get("cost_usd"), int | float) else None,
             "evals": stats.get("evals") if isinstance(stats.get("evals"), dict) else {},
         }
@@ -370,7 +370,7 @@ def summarize_experimentalist_jobs(results_dir: Path) -> dict[str, Any]:
             "cache_tokens",
             "output_tokens",
         ):
-            totals[key] = int(totals[key]) + int(job[key])
+            totals[key] += integer_fields[key]
         if job["cost_usd"] is not None:
             costs.append(float(job["cost_usd"]))
     return {**totals, "cost_usd": sum(costs) if costs else None, "job_results": jobs}
@@ -415,12 +415,9 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
 
     package_client = PackageDatasetClient()
     metadata = await package_client.get_dataset_metadata(suite.dataset.requested_reference)
-    canonical_task_ids = {_canonical_task_id(task) for task in metadata.task_ids}
+    canonical_task_ids = {task.get_name() for task in metadata.task_ids}
     if metadata.version is None:
-        raise RuntimeError(
-            f"Dataset {suite.dataset.requested_reference} resolved to no version; a suite pins an "
-            f"immutable revision, and there is nothing to check {suite.dataset.resolved_ref} against"
-        )
+        raise ValueError(f"Dataset {suite.dataset.requested_reference} did not resolve to an immutable version")
     canonical_task_ids = validate_canonical_suite(
         suite, canonical_task_ids=canonical_task_ids, resolved_ref=metadata.version
     )
@@ -438,6 +435,9 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
 
     _configure_models(benchmark_config.models)
     from nemo_experimentalist_plugin.experimentalist.run import run_experimentalist  # noqa: PLC0415
+    from nemo_platform_plugin.nooa_model_client import configured_model_refs  # noqa: PLC0415
+
+    optimizer_model_refs = configured_model_refs()
 
     run_dir = args.output.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -485,6 +485,7 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
         client=None,
         config=benchmark_config.optimizer,
         framework_skills_dirs=framework_skills_dirs,
+        model_refs=optimizer_model_refs,
     )
     winner_candidate = load_winner(experimentalist_dir / "eval-and-optimize")
     winner_label = winner_candidate.label
@@ -522,6 +523,10 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
             "config_path": str(args.config.resolve()),
         },
         "models": benchmark_config.models.model_dump(),
+        "optimizer_models": {
+            "default": optimizer_model_refs.default,
+            "fast": optimizer_model_refs.fast,
+        },
         "config": benchmark_config.model_dump(mode="json"),
         "baseline": baseline,
         "optimizer": {

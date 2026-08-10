@@ -184,6 +184,22 @@ class TestNemoApiTool:
             workspace="developer-workspace",
         )
 
+    def test_sdk_prefers_agent_base_url_override(self, monkeypatch):
+        monkeypatch.setenv("NMP_BASE_URL", "http://platform-gateway:8080")
+        monkeypatch.setenv("NEMO_BASE_URL", "http://127.0.0.1:8090")
+        monkeypatch.delenv("NMP_WORKSPACE", raising=False)
+
+        with (
+            patch("nemo_studio_copilot.register._client", None),
+            patch("nemo_studio_copilot.register.NeMoPlatform") as platform_client,
+        ):
+            _get_client()
+
+        platform_client.assert_called_once_with(
+            base_url="http://127.0.0.1:8090",
+            workspace="default",
+        )
+
     def test_sdk_defaults_to_default_workspace(self, monkeypatch):
         monkeypatch.delenv("NMP_WORKSPACE", raising=False)
 
@@ -889,7 +905,10 @@ class TestNemoStudioCopilotWrapper:
 
         value = NemoStudioCopilotWrapperFunction.convert_chat_request(request)
 
-        assert NemoStudioCopilotWrapperFunction._invocation_config(value) == TRUSTED_CONFIG
+        # ``callbacks`` may also carry the NAT profiler handler; assert the
+        # session config specifically rather than the whole dict.
+        config = NemoStudioCopilotWrapperFunction._invocation_config(value)
+        assert config["configurable"] == TRUSTED_CONFIG["configurable"]
 
     @pytest.mark.asyncio
     async def test_wrapper_passes_trusted_session_config_to_graph(self):
@@ -907,7 +926,8 @@ class TestNemoStudioCopilotWrapper:
         result = await wrapper._ainvoke(value)
 
         assert result.value == "done"
-        assert graph.configs == [TRUSTED_CONFIG]
+        assert len(graph.configs) == 1
+        assert graph.configs[0]["configurable"] == TRUSTED_CONFIG["configurable"]
 
     @pytest.mark.parametrize(
         "message",
