@@ -44,7 +44,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
   getAgentEvaluationsListRoute,
   getAgentsListRoute,
-  getFilesetDetailRoute,
+  getFilesetRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -223,7 +223,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
                   label="Eval Config"
                   value={
                     <Link
-                      to={getFilesetDetailRoute(workspace, evalConfigName(job) ?? '')}
+                      to={getFilesetRoute(workspace, evalConfigName(job) ?? '')}
                       className="text-primary underline"
                     >
                       {evalConfigName(job)}
@@ -246,7 +246,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
                   label="Artifacts"
                   value={
                     <Link
-                      to={getFilesetDetailRoute(workspace, artifactsFileset)}
+                      to={getFilesetRoute(workspace, artifactsFileset)}
                       className="text-primary underline"
                     >
                       View files

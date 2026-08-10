@@ -39,6 +39,21 @@ export function toValidEntityName(input: string, fallback: string): string {
   return sanitizeEntityName(input) ?? fallback;
 }
 
+/** Suffix appended to a duplicated entity's name to distinguish it from the original. */
+export const COPY_NAME_SUFFIX = '-copy';
+
+/**
+ * `<name>-copy`, trimmed so the suffix still fits within `ENTITY_NAME_MAX_LENGTH`.
+ * Trailing hyphens are stripped first, since truncating mid-name can land on one and
+ * `ENTITY_NAME_REGEXP` forbids consecutive hyphens.
+ */
+export function toCopyName(name: string): string {
+  const base = name
+    .slice(0, ENTITY_NAME_MAX_LENGTH - COPY_NAME_SUFFIX.length)
+    .replace(STRIP_TRAILING_DASH, '');
+  return `${base}${COPY_NAME_SUFFIX}`;
+}
+
 function listInvalidChars(value: string): string[] {
   const found = value.replace(/[A-Z]/g, '').match(INVALID_BODY_CHAR) ?? [];
   return [...new Set(found)].map((char) => (char === ' ' ? 'spaces' : `"${char}"`));

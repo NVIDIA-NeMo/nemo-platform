@@ -214,7 +214,10 @@ def test_registry_missing_dependency_default_executor_fails(
     # register must fail fast so misconfiguration is obvious at startup.
     sdk = AsyncNeMoPlatform(base_url="http://localhost:8080")
     classes = {**backend_classes, "sandbox": _MissingDepBackend}
-    with pytest.raises(ExecutorNotFoundError, match="default_executor 'sandbox-local' is not registered"):
+    with pytest.raises(
+        ExecutorNotFoundError,
+        match=r"default_executor 'sandbox-local' is not registered.*backend 'sandbox'",
+    ):
         ExecutorRegistry.from_config(
             sdk,
             [ExecutorSpec(name="sandbox-local", backend="sandbox", config={})],
@@ -256,7 +259,10 @@ def test_registry_unavailable_docker_default_executor_fails(
             raise MissingBackendDependencyError("Docker daemon is unavailable")
 
     classes = {**backend_classes, "docker": _UnavailableDocker}
-    with pytest.raises(ExecutorNotFoundError, match="default_executor 'local-docker' is not registered"):
+    with pytest.raises(
+        ExecutorNotFoundError,
+        match=r"default_executor 'local-docker' is not registered.*backend 'docker'",
+    ):
         ExecutorRegistry.from_config(
             sdk,
             [

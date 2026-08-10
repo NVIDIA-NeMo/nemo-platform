@@ -488,6 +488,20 @@ export const getFilesetDetailRoute = (
   return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 
+export const getFilesetRoute = (
+  workspace: string,
+  filesetRef: string,
+  options?: { tab?: FilesetDetailTab }
+) => {
+  if (FILESET_DETAILS_ENABLED) {
+    return getFilesetDetailRoute(workspace, filesetRef.split('/').pop() ?? filesetRef, options);
+  }
+  return getFilesetDetailsRoute(
+    workspace,
+    filesetRef.includes('/') ? filesetRef : `${workspace}/${filesetRef}`
+  );
+};
+
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {
   return generatePath(ROUTES.workspace.filesetFile, {
     workspace,

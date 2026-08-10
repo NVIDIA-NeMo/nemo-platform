@@ -60,6 +60,7 @@ from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
 from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
+from nemo_platform_plugin.capabilities import docker_from_env_kwargs, probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
@@ -114,6 +115,13 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
+        docker_host = self._executor_config.docker_host
+        probe = probe_docker(docker_host=docker_host)
+        if not probe.available:
+            detail = probe.detail or "Docker daemon unreachable"
+            raise MissingBackendDependencyError(
+                f"Docker daemon is unavailable ({detail}). Docker-backed deployments will be disabled."
+            )
         try:
             self._client = self._create_client()
         except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:
@@ -122,10 +130,14 @@ class DockerDeploymentBackend(DeploymentBackend):
             ) from exc
 
     def _create_client(self) -> docker.DockerClient:
-        kwargs: dict[str, Any] = {"timeout": self._executor_config.docker_timeout}
-        if self._executor_config.docker_host:
-            kwargs["base_url"] = self._executor_config.docker_host
-        client = self._docker.from_env(**kwargs)
+        # docker-py 7.x rejects base_url= on from_env; override DOCKER_HOST instead
+        # so TLS env vars (DOCKER_TLS_VERIFY, cert paths) still apply.
+        client = self._docker.from_env(
+            **docker_from_env_kwargs(
+                timeout=self._executor_config.docker_timeout,
+                docker_host=self._executor_config.docker_host,
+            )
+        )
         client.api.timeout = self._executor_config.docker_timeout
         client.ping()
         return client
