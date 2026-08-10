@@ -123,6 +123,43 @@ multinodeNetworking:
 # -- NetworkPolicy configuration.
 # @default -- This object has the following default values for optional NetworkPolicy resources.
 networkPolicies:
+  # -- NetworkPolicy configuration for the Platform API pods.
+  # @default -- This object has the following default values for API pod ingress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+  api:
+    # -- Create NetworkPolicy resources that isolate Platform API pod ingress.
+    enabled: false
+    # -- Optional NetworkPolicy port for the Platform API. Empty uses api.service.port.
+    port: ""
+    # -- Allow pods from the same Helm release namespace that carry the chart selector labels to reach the Platform API pods.
+    sameReleasePods:
+      # -- Enable ingress from same-release pods.
+      enabled: true
+    # -- Allow managed job pods to reach the Platform API pods.
+    managedJobs:
+      # -- Enable ingress from managed job pods.
+      enabled: true
+      # -- Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller.
+      podSelector:
+        matchLabels:
+          app: nemo-job
+          nmp.nvidia.com/managed_by: jobs-controller
+    # -- Extra NetworkPolicy ingress rules appended to the API policy, for cluster-specific ingress controllers, gateways, monitoring, or debugging pods.
+    extraIngress: []
+
+  # -- NetworkPolicy configuration for the core controller pods.
+  # @default -- This object has the following default values for core controller pod ingress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+  controller:
+    # -- Create NetworkPolicy resources that isolate core controller pod ingress.
+    enabled: false
+    # -- Optional NetworkPolicy port for the core controller. Empty uses core.controller.service.port.
+    port: ""
+    # -- Allow pods from the same Helm release namespace that carry the chart selector labels to reach the core controller pods.
+    sameReleasePods:
+      # -- Enable ingress from same-release pods.
+      enabled: true
+    # -- Extra NetworkPolicy ingress rules appended to the core controller policy, for cluster-specific monitoring or debugging pods.
+    extraIngress: []
+
   # -- NetworkPolicy configuration for pods created by the jobs controller.
   # @default -- This object has the following default values for managed job pod egress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
   jobs:
@@ -133,7 +170,7 @@ networkPolicies:
       matchLabels:
         app: nemo-job
         nmp.nvidia.com/managed_by: jobs-controller
-    # -- Allow managed job pods to reach the in-namespace NeMo Platform API pods.
+    # -- Allow managed job pods to reach the in-namespace Platform API pods.
     platformApi:
       # -- Enable egress to the platform API pods.
       enabled: true

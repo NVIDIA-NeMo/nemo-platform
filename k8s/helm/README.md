@@ -121,6 +121,29 @@ See the upstream
 and
 [OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
 
+## NetworkPolicy Smoke Test
+
+The chart can render optional NetworkPolicy resources for the Platform API, core
+controller, and managed job pods. They are disabled by default.
+
+For a local Kind run that installs Calico as the enforcing CNI, enables the
+optional policies, installs the chart, and verifies allowed and denied
+in-cluster traffic:
+
+```shell
+export NGC_API_KEY=<your-ngc-api-key>
+e2e/k8s/scripts/run_network_policy_e2e.sh
+```
+
+Set `CALICO_IMAGE_REGISTRY` to override the Calico image registry used by the
+local Kind setup script. The default is `docker.io/calico`.
+
+When running from a source checkout, set `NMP_E2E_REGISTRY` and `NMP_E2E_TAG`
+to a branch-built `nmp-api` image. CI supplies these from the CPU smoke image
+build job.
+If that image is in private GHCR, export `GITHUB_TOKEN` so the setup script can
+create the pull secret.
+
 ## Values
 
 For the complete default values, see [values.yaml](values.yaml).
@@ -400,6 +423,21 @@ For the complete default values, see [values.yaml](values.yaml).
 | ncclTest.validation.minBandwidthMBpsAt1024MB | int | `8000` | Minimum allreduce bandwidth (MB/s) at 1024MB message size; 0 disables the floor check in nccl_test.py. |
 | ncclTest.waitTimeoutSeconds | int | `900` | Max seconds to wait for each worker pod to complete. |
 | networkPolicies | object | This object has the following default values for optional NetworkPolicy resources. | NetworkPolicy configuration. |
+| networkPolicies.api | object | This object has the following default values for API pod ingress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled. | NetworkPolicy configuration for the Platform API pods. |
+| networkPolicies.api.enabled | bool | `false` | Create NetworkPolicy resources that isolate Platform API pod ingress. |
+| networkPolicies.api.extraIngress | list | `[]` | Extra NetworkPolicy ingress rules appended to the API policy, for cluster-specific ingress controllers, gateways, monitoring, or debugging pods. |
+| networkPolicies.api.managedJobs | object | `{"enabled":true,"podSelector":{"matchLabels":{"app":"nemo-job","nmp.nvidia.com/managed_by":"jobs-controller"}}}` | Allow managed job pods to reach the Platform API pods. |
+| networkPolicies.api.managedJobs.enabled | bool | `true` | Enable ingress from managed job pods. |
+| networkPolicies.api.managedJobs.podSelector | object | `{"matchLabels":{"app":"nemo-job","nmp.nvidia.com/managed_by":"jobs-controller"}}` | Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller. |
+| networkPolicies.api.port | string | `""` | Optional NetworkPolicy port for the Platform API. Empty uses api.service.port. |
+| networkPolicies.api.sameReleasePods | object | `{"enabled":true}` | Allow pods from the same Helm release namespace that carry the chart selector labels to reach the Platform API pods. |
+| networkPolicies.api.sameReleasePods.enabled | bool | `true` | Enable ingress from same-release pods. |
+| networkPolicies.controller | object | This object has the following default values for core controller pod ingress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled. | NetworkPolicy configuration for the core controller pods. |
+| networkPolicies.controller.enabled | bool | `false` | Create NetworkPolicy resources that isolate core controller pod ingress. |
+| networkPolicies.controller.extraIngress | list | `[]` | Extra NetworkPolicy ingress rules appended to the core controller policy, for cluster-specific monitoring or debugging pods. |
+| networkPolicies.controller.port | string | `""` | Optional NetworkPolicy port for the core controller. Empty uses core.controller.service.port. |
+| networkPolicies.controller.sameReleasePods | object | `{"enabled":true}` | Allow pods from the same Helm release namespace that carry the chart selector labels to reach the core controller pods. |
+| networkPolicies.controller.sameReleasePods.enabled | bool | `true` | Enable ingress from same-release pods. |
 | networkPolicies.jobs | object | This object has the following default values for managed job pod egress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled. | NetworkPolicy configuration for pods created by the jobs controller. |
 | networkPolicies.jobs.dns | object | `{"enabled":true,"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"kube-system"}},"podSelector":{"matchLabels":{"k8s-app":"kube-dns"}},"ports":[{"port":53,"protocol":"UDP"},{"port":53,"protocol":"TCP"}]}` | Allow DNS lookup from managed job pods. |
 | networkPolicies.jobs.dns.enabled | bool | `true` | Enable egress to DNS pods. |
@@ -412,7 +450,7 @@ For the complete default values, see [values.yaml](values.yaml).
 | networkPolicies.jobs.externalEgress.ipBlocks | list | `[{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","100.64.0.0/10","127.0.0.0/8","169.254.0.0/16","172.16.0.0/12","192.168.0.0/16"]}]` | External destination CIDR blocks for managed job pods. |
 | networkPolicies.jobs.externalEgress.ports | list | `[]` | Optional list of ports for external egress. Empty allows all ports to the configured ipBlocks. |
 | networkPolicies.jobs.extraEgress | list | `[]` | Extra NetworkPolicy egress rules appended to the managed job policy, for cluster-specific dependencies or additional allowed CIDRs. |
-| networkPolicies.jobs.platformApi | object | `{"enabled":true,"port":""}` | Allow managed job pods to reach the in-namespace NeMo Platform API pods. |
+| networkPolicies.jobs.platformApi | object | `{"enabled":true,"port":""}` | Allow managed job pods to reach the in-namespace Platform API pods. |
 | networkPolicies.jobs.platformApi.enabled | bool | `true` | Enable egress to the platform API pods. |
 | networkPolicies.jobs.platformApi.port | string | `""` | Optional NetworkPolicy port for the platform API. Empty uses api.service.port. |
 | networkPolicies.jobs.podSelector | object | `{"matchLabels":{"app":"nemo-job","nmp.nvidia.com/managed_by":"jobs-controller"}}` | Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller. |

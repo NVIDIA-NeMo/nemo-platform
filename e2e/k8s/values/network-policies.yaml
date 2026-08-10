@@ -1,0 +1,11 @@
+# Enables optional NetworkPolicy resources for local and CI enforcement smoke tests.
+httpRoute:
+  enabled: false
+
+networkPolicies:
+  api:
+    enabled: true
+  controller:
+    enabled: true
+  jobs:
+    enabled: true
