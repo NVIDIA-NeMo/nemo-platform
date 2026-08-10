@@ -88,11 +88,13 @@ is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot:
 
+Before running `make bootstrap`, install Flox from the [Flox installation guide](https://flox.dev/docs/install-flox/install). Flox is the recommended source-development toolchain and does not need to be activated first. Contributors using a preinstalled host toolchain instead need uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler; they must use `make TOOLCHAIN=system bootstrap`.
+
 === "Interactive"
 
 ```bash
 make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
-source .venv/bin/activate
+flox activate            # enter the managed development environment
 nemo setup               # interactive: prompts for provider, picks default/fast models, optionally deploys calculator-agent
 ```
 
@@ -114,7 +116,7 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 ### Toolchain: uv, Node.js, pnpm
 
-Flox pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js to match `.nvmrc`, and pnpm to match `web/package.json`. `make` invokes tools through `flox activate --`, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
+Flox pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js to match `.nvmrc`, and pnpm to match `web/package.json`. `make` invokes tools through Flox, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
 
 **Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through Flox. On a machine that does not have Flox yet, they fail like this:
 
@@ -123,7 +125,7 @@ Flox pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Nod
 make: *** [test-unit] Error 127
 ```
 
-`make bootstrap` fixes it, as does `make verify-flox` on its own. CI uses `NMP_SKIP_FLOX=1` only after it has provisioned the matching toolchain explicitly.
+`make bootstrap` fixes it, as does `make verify-toolchain` on its own. CI uses `TOOLCHAIN=system` only after it has provisioned the matching toolchain explicitly.
 
 That covers the `make` targets only. To run `uv` or `pnpm` directly, activate Flox first:
 
@@ -131,7 +133,7 @@ That covers the `make` targets only. To run `uv` or `pnpm` directly, activate Fl
 flox activate
 ```
 
-Without Flox, a system Node.js may not satisfy `engines`, and a globally installed uv outside `required-version` fails `uv sync` with a version mismatch.
+Without Flox, install uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.
 
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 

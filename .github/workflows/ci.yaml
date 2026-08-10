@@ -32,9 +32,8 @@ concurrency:
 env:
   # Keep the CI uv binary aligned with the Flox development environment.
   UV_VERSION: "0.9.14"
-  # Jobs here provision their own toolchain, so the Makefile uses those tools
-  # rather than activating Flox for each command.
-  NMP_SKIP_FLOX: 1
+  # Jobs here provision their own toolchain, so Make bypasses Flox activation.
+  TOOLCHAIN: system
 
 jobs:
   changes:

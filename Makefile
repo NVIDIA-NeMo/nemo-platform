@@ -20,7 +20,7 @@ PYTEST_EXTRA ?=
 PYTHON_VERSION ?= 3.12
 BOOTSTRAP_CREATE_VENV ?= 1
 BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
-BOOTSTRAP_ACTIVATION_REMINDER = if [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
+BOOTSTRAP_ACTIVATION_REMINDER = if [ "$(TOOLCHAIN)" = "flox" ] && [ "$${FLOX_ENV_PROJECT:-}" != "$(CURDIR)" ]; then echo ""; echo "Next steps:"; echo "  flox activate"; echo "  nemo --help"; elif [ "$(TOOLCHAIN)" = "system" ] && [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
 
 # Display platform info
 $(info local system architecture: $(PLATFORM)/$(ARCH))
@@ -70,7 +70,7 @@ stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SD
 generate: stainless ## Alias for SDK generation via Stainless
 
 .PHONY: update-web-sdk
-update-web-sdk: verify-flox ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
+update-web-sdk: verify-toolchain ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
 	cd web && $(FLOX_PNPM) gen
 
 .PHONY: update-sdk
@@ -163,7 +163,7 @@ clean-python: ## remove python virtual environment
 	rm -rf .venv/
 
 .PHONY: verify-python-version
-verify-python-version: verify-flox ## Verify Python version and install if necessary
+verify-python-version: verify-toolchain ## Verify Python version and install if necessary
 	@echo "~~~~~~"
 	@echo "verifying python version"
 	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
@@ -201,7 +201,7 @@ verify-python-version: verify-flox ## Verify Python version and install if neces
 BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
 
 .PHONY: bootstrap-python
-bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
+bootstrap-python: verify-python-version verify-compiler ## Bootstrap Python dependencies.
 	@echo "~~~~~~"
 	@echo "installing python dependencies"
 	$(UV) sync --python $(PYTHON_VERSION) --frozen --all-packages
@@ -212,37 +212,51 @@ bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
 		$(BOOTSTRAP_ACTIVATION_REMINDER); \
 	fi
 
-# Set NMP_SKIP_FLOX=1 when CI has already provisioned the required tools.
-NMP_SKIP_FLOX ?=
+TOOLCHAIN ?= flox
 FLOX ?= flox
-ifeq ($(NMP_SKIP_FLOX),)
+ifeq ($(TOOLCHAIN),flox)
 ifeq ($(FLOX_ENV_PROJECT),$(CURDIR))
 FLOX_EXEC :=
 else
 FLOX_EXEC := $(FLOX) activate --dir "$(CURDIR)" --
 endif
-else
+else ifeq ($(TOOLCHAIN),system)
 FLOX_EXEC :=
+else
+$(error TOOLCHAIN must be either flox or system)
 endif
 UV := $(FLOX_EXEC) uv
-FLOX_PNPM := $(FLOX_EXEC) bash -c 'node "$$(command -v pnpm)" "$$@"' --
+FLOX_PNPM := TOOLCHAIN=$(TOOLCHAIN) $(FLOX_EXEC) $(CURDIR)/script/pnpm
 
-.PHONY: verify-flox
-verify-flox: ## Verify Flox is available for the repository toolchain
-	@if [ -n "$(NMP_SKIP_FLOX)" ]; then \
-		echo "NMP_SKIP_FLOX set, using the CI-provisioned toolchain"; \
-	elif [ "$(FLOX_ENV_PROJECT)" = "$(CURDIR)" ]; then \
+.PHONY: verify-toolchain
+verify-toolchain: ## Verify the selected Flox or system toolchain
+ifeq ($(TOOLCHAIN),flox)
+	@if [ "$(FLOX_ENV_PROJECT)" = "$(CURDIR)" ]; then \
 		echo "Using the active Flox environment"; \
 	elif ! command -v "$(FLOX)" >/dev/null 2>&1; then \
 		echo "flox is required. Install it, then rerun this command."; \
 		exit 1; \
 	fi
+else
+	@bash script/verify-system-toolchain.sh
+endif
+
+.PHONY: verify-compiler
+verify-compiler: ## Verify a C compiler is available for Python package builds
+	@if ! command -v cc >/dev/null 2>&1; then \
+		echo "A C compiler is required for Python package builds (for example, annoy)." >&2; \
+		echo "Install Xcode Command Line Tools on macOS or build-essential on Debian/Ubuntu." >&2; \
+		exit 1; \
+	fi
 
 .PHONY: verify-pnpm
-verify-pnpm: verify-flox ## Verify pnpm is available for Studio bootstrap
+verify-pnpm: verify-toolchain ## Verify pnpm is available for Studio bootstrap
+ifeq ($(TOOLCHAIN),system)
+	@bash script/verify-system-toolchain.sh web
+endif
 	@$(FLOX_PNPM) --version || { \
 		echo "pnpm not found."; \
-		echo "Install Flox, or provision pnpm before setting NMP_SKIP_FLOX=1."; \
+		echo "Install Flox or use TOOLCHAIN=system with pnpm on PATH."; \
 		exit 1; \
 	}
 

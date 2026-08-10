@@ -10,9 +10,9 @@ WEB_DIR="$REPO_ROOT/web"
 for tool in node pnpm; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "$tool is not on PATH."
-    if [ -n "${NMP_SKIP_FLOX:-}" ]; then
-      echo "NMP_SKIP_FLOX is set, so $tool has to come from your PATH."
-      echo "Install it, or re-run without NMP_SKIP_FLOX to use the Flox-managed one."
+    if [ "${TOOLCHAIN:-flox}" = "system" ]; then
+      echo "TOOLCHAIN=system is set, so $tool has to come from your PATH."
+      echo "Install it, or re-run without TOOLCHAIN=system to use Flox."
     else
       echo "Install Flox, then rerun this command."
     fi
