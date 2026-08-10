@@ -31,25 +31,19 @@ from nmp.intake.spans.api.spans_schemas import (
 )
 from nmp.intake.spans.domain import SpanAttributeFilter, SpanListFilter
 from nmp.intake.spans.service import SpanNotFoundError
+from nmp.intake.spans.span_attribute_catalog import ATTRIBUTE_SPECS, AttributeBag
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Spans"
-ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
-    {
-        "project",
-        "evaluation_id",
-        "dataset_id",
-        "dataset_name",
-        "dataset_version",
-        "test_case_id",
-        "model",
-        "tool_name",
-        "provider",
-        "agent_id",
-        "agent_name",
-        "prompt_name",
-        "prompt_version",
-    }
+# Which SpanFilter fields resolve to a span attribute, derived rather than listed.
+#
+# A hand-kept list drifts from the catalog, and the failure is severe: the repository
+# calls spec_for_field on every attribute filter, and an uncatalogued field raises
+# ValueError there, which surfaces as HTTP 500 rather than a rejected request. Deriving
+# the set means a SpanFilter field with no catalog entry falls through to the explicit
+# 400 below instead.
+ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(SpanFilter.model_fields) & frozenset(
+    spec.field.value for spec in ATTRIBUTE_SPECS if spec.bag == AttributeBag.STRING
 )
 
 
@@ -61,9 +55,9 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=SpanFilter,
         filter_description=(
-            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, "
-            "source, kind, status, model, tool_name, provider, agent_id, agent_name, "
-            "prompt_name, prompt_version, and started_at."
+            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, "
+            "source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. "
+            "Every field takes one exact value, except started_at, which takes gte and lte."
         ),
     ),
 )

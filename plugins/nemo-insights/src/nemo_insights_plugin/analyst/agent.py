@@ -221,9 +221,12 @@ class Analyst(Agent):
                 ``kind`` ("LLM"/"TOOL"/"AGENT"/"CHAIN"/"EVALUATOR"/...),
                 ``session_id``, ``trace_id``, ``parent_span_id`` (direct
                 children of a span), ``model``, ``provider``, ``tool_name``,
-                ``source``, ``evaluation_run_id``, ``dataset_name``,
+                ``source``, ``project``, ``agent_id``, ``evaluation_id``,
                 ``test_case_id``, and ``started_at`` (a range, e.g.
-                ``{"gte": "2026-06-01T00:00:00"}``). ``agent_name`` defaults
+                ``{"gte": "2026-06-01T00:00:00"}``). Those are the only keys
+                Intake serves. Every one takes a single exact value;
+                ``started_at`` is the only key that takes a range, and no key
+                accepts ``$in``. ``agent_name`` defaults
                 to the run's agent under test when omitted; pass an explicit
                 value to query another agent, or ``"__all__"`` to disable
                 agent scoping. There is no span-id filter; use ``get_span``.
