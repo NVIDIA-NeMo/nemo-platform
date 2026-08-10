@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
+from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector
 from nemo_experimentalist_plugin.experimentalist.strategies import evolutionary
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
@@ -34,6 +35,7 @@ def test_the_selector_is_built_with_the_configured_targets(tmp_path: Path, confi
     """Without this the winner is chosen against 'reward', whatever the run configured."""
     selector = EvolutionaryStrategy(working_dir=tmp_path, config=config)._selector(config)
 
+    assert isinstance(selector, ParetoDiversitySelector)
     assert selector._objective_metrics == OBJECTIVES
     assert selector._regression_metrics == REGRESSIONS
 
@@ -69,6 +71,7 @@ def test_defaults_are_used_when_the_run_configures_none(tmp_path: Path) -> None:
     default = EvolutionaryOptimizerConfig()
     selector = EvolutionaryStrategy(working_dir=tmp_path, config=default)._selector(default)
 
+    assert isinstance(selector, ParetoDiversitySelector)
     assert [target.name for target in selector._objective_metrics] == [
         target.name for target in default.objective_function
     ]

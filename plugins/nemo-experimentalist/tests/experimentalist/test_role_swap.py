@@ -18,7 +18,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-from nemo_experimentalist_plugin.entities import Candidate, Proposal, RewardRecord
+from nemo_experimentalist_plugin.entities import Candidate, EvaluationResult, Proposal, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.registry import (
     Component,
     get_component,
@@ -50,9 +50,19 @@ ROLES = {
 }
 
 
-async def _no_results(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-    """Stand in for a per-round step that needs a model."""
+async def _no_evaluations(*_args: Any, **_kwargs: Any) -> dict[str, EvaluationResult]:
+    """Stand in for an evaluation step that needs a model."""
     return {}
+
+
+async def _no_analysis(*_args: Any, **_kwargs: Any) -> str:
+    """Stand in for the round analysis, which needs a model."""
+    return ""
+
+
+async def _nothing(*_args: Any, **_kwargs: Any) -> None:
+    """Stand in for a per-round step whose result nothing here reads."""
+    return None
 
 
 async def _no_proposals(*_args: Any, **_kwargs: Any) -> list[Proposal]:
@@ -147,7 +157,9 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
 
 
 @pytest.mark.asyncio
-async def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(tmp_path, isolated_registry: None) -> None:
+async def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`analyzer: null` must skip the train evaluation, which is the expensive half.
 
     Driven through the loop: the config echoing back what it was handed says nothing
@@ -164,13 +176,12 @@ async def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(tmp_path, i
 
     config = EvolutionaryOptimizerConfig(max_rounds=1, analyzer=None, terminator=None, trajectory_scorer=None)
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
-    loop._ensure_baseline = _one_baseline
-    loop._evaluate_train_candidates = train_eval
-    loop._evaluate_validation_candidates = _no_results
-    loop._record_baseline_validation = _no_results
-    loop._analyze_round = _no_results
-    loop._generate_initial_goal_tree = _no_results
-    loop._propose_improvements = _no_proposals
+    monkeypatch.setattr(loop, "_ensure_baseline", _one_baseline)
+    monkeypatch.setattr(loop, "_evaluate_train_candidates", train_eval)
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", _no_evaluations)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
+    monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
 
     await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
 
@@ -245,7 +256,9 @@ async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isol
             return await ctx.commit_candidate(proposal=proposal, artifact=fork.workdir, generation=generation)
 
     config = EvolutionaryOptimizerConfig(max_rounds=1, max_candidates=1, builder="acme-noop-build")
-    strategy = resolve("strategy", "random-search")(config=config)
+    # resolve() is typed to the role protocol, which is the point: the host knows a
+    # Strategy, not this package's class.
+    strategy = cast("Strategy", resolve("strategy", "random-search")(config=config))
 
     winner = await strategy.run(ctx)
 
@@ -254,7 +267,9 @@ async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isol
 
 
 @pytest.mark.asyncio
-async def test_the_round_budget_bounds_the_loop_without_a_terminator(tmp_path, isolated_registry: None) -> None:
+async def test_the_round_budget_bounds_the_loop_without_a_terminator(
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`max_rounds` must hold even when no terminator is selected.
 
     A component's opinion must not be the only thing between a config and an unbounded
@@ -276,12 +291,11 @@ async def test_the_round_budget_bounds_the_loop_without_a_terminator(tmp_path, i
             raise AssertionError(f"loop ran round {rounds} with max_rounds={config.max_rounds}")
         return []
 
-    loop._ensure_baseline = _one_baseline
-    loop._propose_improvements = one_round
-    loop._evaluate_validation_candidates = _no_results
-    loop._record_baseline_validation = _no_results
-    loop._analyze_round = _no_results
-    loop._generate_initial_goal_tree = _no_results
+    monkeypatch.setattr(loop, "_ensure_baseline", _one_baseline)
+    monkeypatch.setattr(loop, "_propose_improvements", one_round)
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", _no_evaluations)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
 
     await loop._run(ctx)
 
@@ -428,7 +442,9 @@ async def test_a_proposal_no_builder_accepts_is_dropped_not_raised(tmp_path, iso
 
 
 @pytest.mark.asyncio
-async def test_naming_a_trajectory_scorer_reaches_it(tmp_path, isolated_registry: None) -> None:
+async def test_naming_a_trajectory_scorer_reaches_it(
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A gate that skips the scoring step is indistinguishable from `trajectory_scorer:
     null`, so the run silently loses a reward channel it was configured to measure."""
     from doubles import FakeBackend, make_context
@@ -451,12 +467,11 @@ async def test_naming_a_trajectory_scorer_reaches_it(tmp_path, isolated_registry
     config = EvolutionaryOptimizerConfig(max_rounds=1, analyzer=None, terminator=None, trajectory_scorer="acme-steps")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
 
-    loop._ensure_baseline = _one_baseline
-    loop._evaluate_validation_candidates = _no_results
-    loop._record_baseline_validation = _no_results
-    loop._analyze_round = _no_results
-    loop._generate_initial_goal_tree = _no_results
-    loop._propose_improvements = _no_proposals
+    monkeypatch.setattr(loop, "_ensure_baseline", _one_baseline)
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", _no_evaluations)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
+    monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     await loop._run(ctx)
@@ -499,7 +514,7 @@ async def test_the_architecture_doc_comes_from_the_configured_builder(tmp_path, 
 
 @pytest.mark.asyncio
 async def test_the_loop_carries_full_candidates_forward_not_the_selectors_slim_copies(
-    tmp_path, isolated_registry: None
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The selector is handed `slim()` copies so trials never reach a prompt. What it
     returns are those same copies, and persisting one empties every channel's trials.
@@ -535,12 +550,11 @@ async def test_the_loop_carries_full_candidates_forward_not_the_selectors_slim_c
 
         return {c.label: RewardRecord(metrics={"reward": 0.5}) for c in candidates}
 
-    loop._ensure_baseline = two_candidates
-    loop._evaluate_validation_candidates = scored
-    loop._record_baseline_validation = _no_results
-    loop._analyze_round = _no_results
-    loop._generate_initial_goal_tree = _no_results
-    loop._propose_improvements = _no_proposals
+    monkeypatch.setattr(loop, "_ensure_baseline", two_candidates)
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", scored)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
+    monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
 
     await loop._run(ctx)
 
@@ -597,7 +611,9 @@ async def _one(ctx: Any) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(tmp_path, isolated_registry: None) -> None:
+async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`Candidate` is a pydantic model and unhashable, so a dict keyed by one raises at
     the moment of return — after the round has already paid for the scoring."""
     from doubles import FakeBackend, make_context
@@ -610,9 +626,9 @@ async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(tmp_path
     async def scored(**_: Any) -> dict[str, Any]:
         return {baseline.label: {"details": {"n1": {}}, "reward": {"aggregate": 0.5}}}
 
-    scorer._ensure_goal_tree = _no_results
-    scorer._update_goal_tree = _no_results
-    scorer._reward_trajectories = scored
+    monkeypatch.setattr(scorer, "_ensure_goal_tree", _nothing)
+    monkeypatch.setattr(scorer, "_update_goal_tree", _nothing)
+    monkeypatch.setattr(scorer, "_reward_trajectories", scored)
 
     result = await scorer.run(ctx, candidates=[baseline], round_num=0, analysis="x")
 
@@ -621,7 +637,9 @@ async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_the_scorer_is_told_the_round_its_analysis_describes(tmp_path, isolated_registry: None) -> None:
+async def test_the_scorer_is_told_the_round_its_analysis_describes(
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The loop's counter has already advanced when the scorer is called, and the scorer
     names its persisted state after the round — so passing the raw counter skips a number
     (observed: a round-1 goal tree written as `round-2-goal.json`)."""
@@ -644,11 +662,11 @@ async def test_the_scorer_is_told_the_round_its_analysis_describes(tmp_path, iso
         max_rounds=1, analyzer=None, terminator=None, trajectory_scorer="acme-round-recorder"
     )
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
-    loop._ensure_baseline = _one_baseline
-    loop._evaluate_validation_candidates = _no_results
-    loop._record_baseline_validation = _no_results
-    loop._analyze_round = _no_results
-    loop._propose_improvements = _no_proposals
+    monkeypatch.setattr(loop, "_ensure_baseline", _one_baseline)
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", _no_evaluations)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
+    monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
 
     await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
 
