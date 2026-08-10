@@ -18,6 +18,14 @@ from nmp.rl.tasks.environment.validate import load_manifest, validate_package_la
 logger = logging.getLogger(__name__)
 
 
+def _validation_fraction(raw: str) -> float:
+    """Fraction in [0, 1). At 1.0 (or above) the split would leave no training rows."""
+    value = float(raw)
+    if not 0.0 <= value < 1.0:
+        raise argparse.ArgumentTypeError(f"must be in [0, 1), got {value}")
+    return value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -45,9 +53,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset-seed", type=int, default=None)
     parser.add_argument(
         "--validation-fraction",
-        type=float,
+        type=_validation_fraction,
         default=0.0,
-        help="Fraction of rows to write to validation.jsonl (0 = train only)",
+        help="Fraction of rows to write to validation.jsonl, in [0, 1) (0 = train only)",
     )
     parser.add_argument(
         "--wheels-dir",

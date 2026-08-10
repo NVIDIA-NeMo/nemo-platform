@@ -37,6 +37,7 @@ __all__ = [
     "NMP_BROKER_PORT_ENVVAR",
     "NMP_FILES_URL_ENVVAR",
     "NMP_JOBS_URL_ENVVAR",
+    "NMP_JOB_STORAGE_PVC_ENVVAR",
     "NMP_VLLM_HOST_ENVVAR",
     "NMP_VLLM_PORT_ENVVAR",
     "SANDBOX_DATASET_PATH",
@@ -54,6 +55,11 @@ NMP_VLLM_HOST_ENVVAR = "NMP_VLLM_SERVICE_HOST"
 NMP_VLLM_PORT_ENVVAR = "NMP_VLLM_SERVICE_PORT"
 NMP_BROKER_HOST_ENVVAR = "NMP_BROKER_SERVICE_HOST"
 NMP_BROKER_PORT_ENVVAR = "NMP_BROKER_SERVICE_PORT"
+
+# Job-storage PVC claim name, injected by the compiler so the training master can
+# tell the Gym host which claim to re-mount for the environment/dataset directories.
+# The training container is given the storage *path* but not the claim behind it.
+NMP_JOB_STORAGE_PVC_ENVVAR = "NMP_JOB_STORAGE_PVC_CLAIM"
 
 # File name the training runner writes the serialized TrainingResult to under
 # the workspace path; downstream steps read it back.

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import Mock  # noqa: F401 — reserved for future SDK mocks
 
 import pytest
 from nmp.customization_common.service.context import NMPJobContext
@@ -49,19 +48,15 @@ def _write_gym_dataset(root: Path) -> None:
     (root / "training.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
 
 
-def test_compile_grpo_config_sandboxed_paths(tmp_path: Path, job_ctx: NMPJobContext) -> None:
-    dataset_pvc = tmp_path / "dataset"
-    dataset_pvc.mkdir()
-    _write_gym_dataset(dataset_pvc)
-
+def _sandboxed_step(tmp_path: Path, dataset_pvc: Path) -> TrainingStepConfig:
     env_root = tmp_path / "environment"
-    env_root.mkdir()
+    env_root.mkdir(exist_ok=True)
     (env_root / "nemo-environment.yaml").write_text(
-        "format: adapter-wheels-v1\nadapter:\n  agent: verifiers_agent\nconfig_paths: []\n",
+        "format: adapter-wheels-v1\nadapter:\n  agent: verifiers_agent\n"
+        "config_paths:\n  - configs/verifiers_agent.yaml\n",
         encoding="utf-8",
     )
-
-    step = TrainingStepConfig(
+    return TrainingStepConfig(
         backend=TrainingBackend.NEMO_RL,
         model=ModelConfig(path=str(tmp_path / "model"), max_seq_length=512),
         dataset=TrainingStepConfig.DatasetConfig(path=str(dataset_pvc)),
@@ -84,15 +79,76 @@ def test_compile_grpo_config_sandboxed_paths(tmp_path: Path, job_ctx: NMPJobCont
         output_model="out",
         workspace_path=str(tmp_path / "workspace"),
     )
+
+
+def test_compile_grpo_config_sandboxed_paths(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    dataset_pvc = tmp_path / "dataset"
+    dataset_pvc.mkdir()
+    _write_gym_dataset(dataset_pvc)
+
     (tmp_path / "workspace").mkdir()
+
+    step = _sandboxed_step(tmp_path, dataset_pvc)
 
     cfg = compile_grpo_config(step, job_ctx)
 
+    nemo_gym = cfg["env"]["nemo_gym"]
     assert cfg["env"]["should_use_nemo_gym"] is True
-    assert cfg["env"]["nemo_gym"]["sandboxed"] is True
-    assert cfg["env"]["nemo_gym"]["environment_path"] == "/job/environment"
-    assert cfg["data"]["train"]["data_path"] == "/job/dataset/training.jsonl"
-    assert cfg["env"]["nemo_gym"]["sandbox"]["network_policy"]["egress_allow"]
-    assert "host_work_path" in cfg["env"]["nemo_gym"]
-    assert cfg["env"]["nemo_gym"]["bootstrap_env"]["NMP_JOB_ID"] == "job-123"
-    assert "/nmp-rl/job-123/work" in cfg["env"]["nemo_gym"]["bootstrap_env"]["NMP_WORK_PATH"]
+    assert nemo_gym["sandboxed"] is True
+    assert nemo_gym["environment_path"] == "/job/environment"
+    # The master reads the dataset itself, so the dataloader path stays on job storage
+    # even though the sandbox sees the same file at /job/dataset.
+    assert cfg["data"]["train"]["data_path"] == str(dataset_pvc / "training.jsonl")
+    assert nemo_gym["sandbox"]["network_policy"]["egress_allow"]
+    assert "host_work_path" in nemo_gym
+    assert nemo_gym["bootstrap_env"]["NMP_JOB_ID"] == "job-123"
+    assert "/nmp-rl/job-123/work" in nemo_gym["bootstrap_env"]["NMP_WORK_PATH"]
+    # config_paths must reach Gym in sandboxed mode too, or no servers start.
+    assert nemo_gym["config_paths"] == ["configs/verifiers_agent.yaml"]
+    # job_id is a sandbox pod label; without it every job shares one default.
+    assert nemo_gym["job_id"] == "job-123"
+
+    sandbox = nemo_gym["sandbox"]
+    assert sandbox["environment_pvc_claim"] == "nmp-job-storage"
+    assert sandbox["workspace_pvc_claim"] == "nmp-job-storage"
+    assert sandbox["dataset_pvc_claim"] == "nmp-job-storage"
+    assert sandbox["environment_sub_path"] == "jobs/default/job-123/environment"
+    assert sandbox["dataset_sub_path"] == "jobs/default/job-123/dataset"
+
+
+def test_compile_grpo_config_sandboxed_requires_pvc_claim(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NMP_JOB_STORAGE_PVC_CLAIM", raising=False)
+    dataset_pvc = tmp_path / "dataset"
+    dataset_pvc.mkdir()
+    _write_gym_dataset(dataset_pvc)
+    (tmp_path / "workspace").mkdir()
+
+    step = _sandboxed_step(tmp_path, dataset_pvc)
+    with pytest.raises(ValueError, match="NMP_JOB_STORAGE_PVC_CLAIM"):
+        compile_grpo_config(step, job_ctx)
+
+
+def test_compile_grpo_config_disables_validation_without_val_split(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Gym dataset only has to ship training.jsonl; NeMo-RL asserts on a missing
+    val dataset whenever val_period / val_at_start / val_at_end is set."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    dataset_pvc = tmp_path / "dataset"
+    dataset_pvc.mkdir()
+    _write_gym_dataset(dataset_pvc)
+    (tmp_path / "workspace").mkdir()
+
+    cfg = compile_grpo_config(_sandboxed_step(tmp_path, dataset_pvc), job_ctx)
+
+    assert cfg["data"]["validation"] is None
+    assert cfg["grpo"]["val_period"] == 0
+    assert cfg["grpo"]["val_at_end"] is False
+    assert cfg["grpo"]["val_at_start"] is False
+    assert cfg["checkpointing"]["metric_name"] is None
+    assert cfg["checkpointing"]["save_period"] > 0

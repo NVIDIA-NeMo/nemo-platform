@@ -9,8 +9,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from nmp.customization_common.service.constants import SANDBOX_DATASET_PATH, SANDBOX_ENVIRONMENT_PATH, SANDBOX_WORK_PATH
+import yaml
+from nmp.customization_common.service.constants import (
+    DEFAULT_ENVIRONMENT_PATH,
+    SANDBOX_DATASET_PATH,
+    SANDBOX_ENVIRONMENT_PATH,
+    SANDBOX_WORK_PATH,
+)
 from nmp.customization_common.service.context import NMPJobContext
+from nmp.rl.app.constants import NMP_JOB_STORAGE_PVC_ENVVAR
 from nmp.rl.app.jobs.training.schemas import GRPOConfig, TrainingStepConfig
 from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import (
     _adapt_precision,
@@ -25,7 +32,9 @@ from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
     SandboxNetworkPolicy,
     assemble_master_egress_allow,
     bootstrap_env_from_job,
+    build_sandbox_mounts,
     resolve_ephemeral_work_path,
+    resolve_job_storage_pvc_claim,
 )
 from nmp.rl.tasks.training.chat_templates import resolve_chat_template
 from nmp.rl.tasks.training.datasets.preparation import compute_val_check_interval, prepare_dataset
@@ -45,22 +54,40 @@ def _count_jsonl_rows(path: Path) -> int:
     return count
 
 
+def _read_manifest_config_paths(environment_path: str | None) -> list[str]:
+    """Read ``config_paths`` from the environment package manifest on job storage."""
+    if not environment_path:
+        return []
+    manifest_path = Path(environment_path) / "nemo-environment.yaml"
+    if not manifest_path.is_file():
+        logger.warning("No nemo-environment.yaml at %s; Gym will start with no config_paths", environment_path)
+        return []
+    manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or not manifest.get("config_paths"):
+        return []
+    return list(manifest["config_paths"])
+
+
 def _resolve_gym_paths(
     customizer_config: TrainingStepConfig,
     workspace_dir: Path,
 ) -> tuple[Path, Path, int, int]:
-    """Return train/val paths and sample counts for Gym JSONL."""
+    """Return train/val paths and sample counts for Gym JSONL.
+
+    The returned paths feed ``cfg["data"]``, which NeMo-RL opens in the *training
+    master* (``setup_response_data`` -> ``NemoGymDataset``). They must therefore stay
+    job-storage paths even in sandboxed mode — the ``/job/...`` mounts exist only
+    inside the Gym sandbox, and the master would not be able to read them.
+    """
     gym = customizer_config.gym
     if gym and gym.sandboxed and gym.sandbox_dataset_path:
-        train_path = Path(gym.sandbox_dataset_path) / "training.jsonl"
-        val_path = Path(gym.sandbox_dataset_path) / "validation.jsonl"
         pvc_train = Path(customizer_config.dataset.path) / "training.jsonl"
         pvc_val = Path(customizer_config.dataset.path) / "validation.jsonl"
         validator = DatasetValidator(training_type=customizer_config.training.training_type)
         validator.validate_dataset(str(pvc_train))
         if pvc_val.is_file():
             validator.validate_dataset(str(pvc_val))
-        return train_path, val_path, _count_jsonl_rows(pvc_train), _count_jsonl_rows(pvc_val)
+        return pvc_train, pvc_val, _count_jsonl_rows(pvc_train), _count_jsonl_rows(pvc_val)
 
     prepared = prepare_dataset(
         dataset_path=Path(customizer_config.dataset.path),
@@ -87,24 +114,47 @@ def _build_nemo_gym_env_config(
         raise ValueError("GRPO jobs require gym configuration on TrainingStepConfig")
 
     sandboxed = gym.sandboxed
+    nemo_gym: dict[str, Any] = {
+        "port_range_low": 5000,
+        "port_range_high": 5999,
+    }
     env_block: dict[str, Any] = {
         "should_use_nemo_gym": True,
         "should_log_nemo_gym_responses": False,
         "should_mask_flagged_samples": True,
-        "nemo_gym": {
-            "port_range_low": 5000,
-            "port_range_high": 5999,
-        },
+        "nemo_gym": nemo_gym,
     }
 
-    nemo_gym = env_block["nemo_gym"]
+    # config_paths tells Gym which server/agent YAMLs to load out of the environment
+    # package. It is read from the manifest on the job-storage copy in both modes —
+    # the sandbox mounts the same package, it just sees it at a different path.
+    config_paths = _read_manifest_config_paths(gym.environment_path)
+    if config_paths:
+        nemo_gym["config_paths"] = config_paths
+
     if sandboxed:
         runtime_image = gym.gym_runtime_image or "nvcr.io/nvidia/nemo-gym-runtime:latest"
+        pvc_claim = resolve_job_storage_pvc_claim()
+        if not pvc_claim:
+            raise ValueError(
+                "Sandboxed GRPO requires the job-storage PVC claim name so the Gym sandbox "
+                f"can mount the environment and dataset; {NMP_JOB_STORAGE_PVC_ENVVAR} is unset. "
+                "Set NMP_RL_JOB_STORAGE_PVC_CLAIM on the rl service."
+            )
+        mounts = build_sandbox_mounts(
+            pvc_claim=pvc_claim,
+            workspace=job_ctx.workspace,
+            job_id=job_ctx.job_id,
+            storage_root=job_ctx.storage_path,
+            environment_path=gym.environment_path or DEFAULT_ENVIRONMENT_PATH,
+            dataset_path=customizer_config.dataset.path,
+        )
 
         sandbox_cfg = NemoGymSandboxedConfig(
             sandboxed=True,
             host_provider="opensandbox",
             environment_path=gym.sandbox_environment_path or SANDBOX_ENVIRONMENT_PATH,
+            job_id=job_ctx.job_id,
             sandbox=SandboxConfig(
                 image=runtime_image,
                 env_mount_path=SANDBOX_ENVIRONMENT_PATH,
@@ -115,6 +165,12 @@ def _build_nemo_gym_env_config(
                     # Defaults until the training master resolves live vLLM/broker endpoints.
                     egress_allow=assemble_master_egress_allow(),
                 ),
+                environment_pvc_claim=mounts.environment_pvc_claim,
+                environment_sub_path=mounts.environment_sub_path,
+                dataset_pvc_claim=mounts.dataset_pvc_claim,
+                dataset_sub_path=mounts.dataset_sub_path,
+                workspace_pvc_claim=mounts.workspace_pvc_claim,
+                workspace_sub_path=mounts.workspace_sub_path,
             ),
         )
         nemo_gym.update(sandbox_cfg.model_dump(mode="python", exclude_none=True))
@@ -130,14 +186,6 @@ def _build_nemo_gym_env_config(
         nemo_gym["host_work_path"] = work_path
     else:
         nemo_gym["environment_path"] = gym.environment_path
-        if gym.environment_path:
-            manifest_path = Path(gym.environment_path) / "nemo-environment.yaml"
-            if manifest_path.is_file():
-                import yaml
-
-                manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-                if isinstance(manifest, dict) and manifest.get("config_paths"):
-                    nemo_gym["config_paths"] = list(manifest["config_paths"])
 
     return env_block
 
@@ -168,7 +216,16 @@ def compile_grpo_config(
         max_steps=max_steps,
         val_check_interval=customizer_config.schedule.val_check_interval,
     )
-    val_period = val_check_interval
+    # NeMo-RL asserts a validation dataset exists whenever any of val_period /
+    # val_at_start / val_at_end is set. A Gym dataset fileset only has to carry
+    # training.jsonl, so turn validation off entirely rather than assert in setup().
+    has_validation = bool(val_samples)
+    val_period = val_check_interval if has_validation else 0
+    val_at_end = customizer_config.schedule.val_at_end and has_validation
+    if not has_validation and customizer_config.schedule.val_at_end:
+        logger.warning(
+            "No validation.jsonl in the Gym dataset; disabling validation and best-checkpoint selection for this run."
+        )
 
     cfg["grpo"] = {
         "num_prompts_per_step": num_prompts,
@@ -182,7 +239,7 @@ def compile_grpo_config(
         "val_period": val_period,
         "val_start_at": -1,
         "val_at_start": False,
-        "val_at_end": customizer_config.schedule.val_at_end,
+        "val_at_end": val_at_end,
         "overlong_filtering": False,
         "max_val_samples": val_samples if val_samples else None,
         "val_batch_size": val_samples if val_samples else num_prompts,
@@ -208,10 +265,12 @@ def compile_grpo_config(
     cfg["checkpointing"] = {
         "enabled": True,
         "checkpoint_dir": str(workspace_dir / "checkpoints"),
-        "metric_name": "val:total_reward/mean",
+        # Ranking by a val metric only works when validation runs; without it,
+        # metric_name=None makes NeMo-RL fall back to latest-checkpoint selection.
+        "metric_name": "val:total_reward/mean" if has_validation else None,
         "higher_is_better": True,
         "keep_top_k": customizer_config.schedule.keep_top_k,
-        "save_period": val_period,
+        "save_period": val_period or val_check_interval,
         "checkpoint_must_save_by": None,
         "save_optimizer": True,
     }
