@@ -11,7 +11,17 @@ if [[ ! "${_flox_ver}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
+_workflows=()
 while IFS= read -r _workflow; do
+  _workflows+=("${_workflow}")
+done < <(find .github/workflows -type f \( -name '*.yaml' -o -name '*.yml' \) -exec grep -l 'astral-sh/setup-uv' {} +)
+
+if [[ "${#_workflows[@]}" -eq 0 ]]; then
+  echo "No workflows using astral-sh/setup-uv were found." >&2
+  exit 1
+fi
+
+for _workflow in "${_workflows[@]}"; do
   _ci_ver="$(yq '.env.UV_VERSION' "${_workflow}")"
 
   if [[ "${_ci_ver}" != "${_flox_ver}" ]]; then
@@ -19,4 +29,4 @@ while IFS= read -r _workflow; do
     printf "workflow flox-env\n%s %s\n" "${_workflow}:${_ci_ver}" "${_flox_ver}" | column -t >&2
     exit 1
   fi
-done < <(rg -l 'astral-sh/setup-uv' .github/workflows)
+done

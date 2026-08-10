@@ -25,8 +25,8 @@ assert_setup_node_uses_nvmrc() {
   local setup_node_count
   local version_file_count
 
-  setup_node_count="$(rg -c 'uses: actions/setup-node@' "${workflow}")"
-  version_file_count="$(rg -F -c "node-version-file: ${version_file}" "${workflow}")"
+  setup_node_count="$(grep -c 'uses: actions/setup-node@' "${workflow}" || true)"
+  version_file_count="$(grep -F -c "node-version-file: ${version_file}" "${workflow}" || true)"
 
   if [[ "${setup_node_count}" -eq 0 || "${setup_node_count}" != "${version_file_count}" ]]; then
     echo "Every setup-node step in ${workflow} must use ${version_file}." >&2
