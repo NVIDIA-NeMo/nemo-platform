@@ -11,14 +11,9 @@ The key in metadata should match the fileset's purpose field.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-if TYPE_CHECKING:
-    from nemo_platform_plugin.files.types import FilesetPurpose
 
 
 class DatasetMetadataContent(BaseModel):
@@ -140,10 +135,8 @@ class FilesetMetadata(BaseModel):
     environment: EnvironmentMetadataContent | None = None
 
     @model_validator(mode="after")
-    def _purpose_key_matches(self) -> "FilesetMetadata":
-        populated = sum(
-            1 for key in (self.dataset, self.model, self.environment) if key is not None
-        )
+    def _at_most_one_typed_key(self) -> "FilesetMetadata":
+        populated = sum(1 for key in (self.dataset, self.model, self.environment) if key is not None)
         if populated > 1:
             raise ValueError("FilesetMetadata must have at most one typed key populated")
         return self
@@ -161,11 +154,3 @@ def environment_metadata_from_manifest(manifest_dict: dict) -> EnvironmentMetada
         vf_env_id=meta.get("vf_env_id"),
         config_paths=list(manifest_dict.get("config_paths") or []),
     )
-
-
-def metadata_for_purpose(purpose: FilesetPurpose, content: EnvironmentMetadataContent) -> FilesetMetadata:
-    from nemo_platform_plugin.files.types import FilesetPurpose as _FilesetPurpose
-
-    if purpose == _FilesetPurpose.ENVIRONMENT:
-        return FilesetMetadata(environment=content)
-    raise ValueError(f"Cannot build environment metadata for purpose {purpose!r}")

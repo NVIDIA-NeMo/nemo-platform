@@ -505,6 +505,13 @@ basePlatformConfig: |
   unsloth:
     default_training_execution_profile: default
 
+  # -- rl is the configuration specific to NeMo-RL customization jobs (DPO / GRPO)
+  rl:
+    # -- job_storage_pvc_claim is the claim sandboxed GRPO re-mounts into the Gym host so
+    # the sandbox can read the downloaded environment and dataset. Must match the claim the
+    # Jobs controller mounts for job storage.
+    job_storage_pvc_claim: {{ (include "nmp-core.persistentVolumeClaim" . ) }}
+
   # -- safe_synthesizer is the configuration specific to the Safe Synthesizer service
   safe_synthesizer:
     job_mode: container

@@ -9,9 +9,9 @@ Validates package layout, then offline-installs wheels when the format requires 
 from __future__ import annotations
 
 import logging
-import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -115,7 +115,11 @@ def bootstrap_environment_package(
     venv_path: Path | None = None
     if install_wheels and offline_wheel_install_required(manifest):
         if work_venv is None:
-            work_venv = environment_root / ".venv"
+            # Never default inside environment_root. validate_package_layout rejects any
+            # *.jsonl under the package, and site-packages routinely ships them, so a venv
+            # placed in-tree makes every later bootstrap of the same PVC fail — which
+            # includes job resume and rerun, since job storage is keyed by job id.
+            work_venv = Path(tempfile.mkdtemp(prefix="nmp-rl-envpkg-")) / "venv"
         _ensure_venv(work_venv)
         _offline_pip_install(environment_root / "wheels", target_venv=work_venv)
         venv_path = work_venv
@@ -134,8 +138,3 @@ def bootstrap_environment_package(
         work_venv=venv_path,
         image_config_root=image_root,
     )
-
-
-def which_bootstrap_python() -> str:
-    """Interpreter used for bootstrap subprocesses (image default)."""
-    return shutil.which("python3") or sys.executable

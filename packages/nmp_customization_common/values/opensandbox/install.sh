@@ -53,16 +53,31 @@ ensure_api_key_secret() {
     echo "Secret ${name} already exists — keeping"
     return
   fi
+  # The script runs under `set -x`, and the key must never reach the trace, the
+  # terminal, or a CI log. Disable xtrace for the handling of the key itself and
+  # pass it via a 0600 temp file so it also stays out of kubectl's argv (visible
+  # in `ps` for the lifetime of the process).
+  { set +x; } 2>/dev/null
   local key="${!env_var:-}"
+  local generated="no"
   if [[ -z "${key}" ]]; then
     key="$(openssl rand -hex 32)"
-    echo "Generated ${name} (set ${env_var}=... to supply your own)"
-  else
-    echo "Creating ${name} from \$${env_var}"
+    generated="yes"
   fi
+  local key_file
+  key_file="$(umask 077 && mktemp)"
+  printf '%s' "${key}" >"${key_file}"
+  unset key
   kubectl create secret generic "${name}" \
     -n opensandbox-system \
-    --from-literal=api-key="${key}"
+    --from-file=api-key="${key_file}"
+  rm -f "${key_file}"
+  set -x
+  if [[ "${generated}" == "yes" ]]; then
+    echo "Generated ${name} (set ${env_var}=... to supply your own)"
+  else
+    echo "Created ${name} from \$${env_var}"
+  fi
 }
 ensure_api_key_secret opensandbox-server-crun-api-key CRUN_API_KEY
 ensure_api_key_secret opensandbox-server-kata-api-key KATA_API_KEY
