@@ -18,10 +18,6 @@ import { z } from 'zod';
 //    that tool's Python package:
 //      _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
 //      _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
-//      _type: review_messages         -> plugins/nemo-agents/examples/email-security-analyst
-//      _type: triage_message          -> plugins/nemo-agents/examples/email-security-analyst
-//      _type: trace_thread            -> plugins/nemo-agents/examples/email-security-analyst
-//      _type: draft_warning           -> plugins/nemo-agents/examples/email-security-analyst
 //
 // 2. Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
 //    console script on PATH, since Fabric spawns it as a stdio MCP child:
@@ -44,14 +40,6 @@ export interface SampleAgent {
 }
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
-  {
-    key: 'email_security_analyst',
-    displayName: 'Email Security Analyst',
-    description:
-      'An analyst-facing email security assistant: select one or more messages, optionally ask a question, and it routes to the capability that answers it.',
-    namePrefix: 'email-security-analyst',
-    agentConfigPath: 'sample-agents/email-security-analyst/agent.yml',
-  },
   {
     key: 'email_phishing_agent',
     displayName: 'Email Phishing Analyzer (Fabric)',
