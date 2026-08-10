@@ -25,7 +25,7 @@ export const CollapsedNavItem: FC<CollapsedNavItemProps> = ({ item, isActive }) 
   );
 
   return (
-    <VerticalNavListItem>
+    <VerticalNavListItem {...item.attributes?.VerticalNavListItem}>
       <Tooltip slotContent={item.slotLabel} side="right">
         <StudioNavItem
           active={resolveActive(item, isActive)}
