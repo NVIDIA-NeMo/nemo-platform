@@ -15,3 +15,5 @@ Auditor tasks
   - `run`: `{}`
   - `system`: `{"lite": true}`
 - Follow full lifecycle: create temp resource, verify/list/update/delete, then create final verification resource.
+- Retrieve or list the final audit resource and compare every required target or
+  config field before reporting success.

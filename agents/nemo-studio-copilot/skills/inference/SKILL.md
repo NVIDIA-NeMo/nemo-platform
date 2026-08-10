@@ -11,6 +11,10 @@ Inference provider tasks
   4) Get provider details
   5) Delete temporary provider
   6) Create final verification provider
-- Use `nemo_api` with resource `secrets` for the API key secret.
-- Use `nemo_api` with resource `inference.providers` for provider CRUD.
+- Use `nemo_api` with resource `secrets` for the API key secret, passing
+  `workspace="<active request workspace>"`.
+- Use `nemo_api` with resource `inference.providers` for provider CRUD, passing
+  `workspace="<active request workspace>"` on every call.
 - Ensure final provider uses exactly the requested host URL and description.
+- Retrieve or list the final provider and compare its host URL and description
+  with the requested values before reporting success.

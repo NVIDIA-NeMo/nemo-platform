@@ -2,7 +2,7 @@
 name: workspace
 description: NeMo Platform workspace CRUD playbook through `nemo_api(resource='workspaces')`. Use for workspace creation, listing, retrieval, or deletion.
 ---
-Workspace tasks
+# Workspace tasks
 
 - If instructions mention MCP workspace tools (`create_workspace`, `list_workspaces`),
   complete the same intent with the corresponding `nemo_api` workspace operation below.

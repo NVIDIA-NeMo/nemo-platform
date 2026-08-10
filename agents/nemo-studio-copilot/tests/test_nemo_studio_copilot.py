@@ -245,6 +245,30 @@ def test_mutating_nemo_api_rejects_approved_workspace_change(monkeypatch: pytest
     assert calls == []
 
 
+@pytest.mark.parametrize(("field", "value"), [("resource", []), ("action", 7)])
+def test_mutating_nemo_api_rejects_non_string_approved_paths(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    def approve(_session: str, _tool_name: str, arguments: dict[str, object], **_kwargs: object) -> dict[str, object]:
+        input_value = arguments["input"]
+        assert isinstance(input_value, dict)
+        updated_input = dict(input_value)
+        updated_input[field] = value
+        return {"behavior": "allow", "updatedInput": updated_input}
+
+    monkeypatch.setattr(register, "_call_studio_tool", approve)
+
+    response = register.nemo_api(
+        "workspaces",
+        "create",
+        '{"name": "demo"}',
+        studio_session_id="90a877d5-19f6-49a8-bf09-d0020ae0833a",
+        workspace="default",
+    )
+
+    assert response == f"Error: ValueError: approved {field} must be a string"
+
+
 def test_mutating_nemo_api_validates_params_before_approval(monkeypatch: pytest.MonkeyPatch) -> None:
     approval_requested = False
 
@@ -298,6 +322,63 @@ def test_nemo_api_requires_request_workspace() -> None:
     response = register.nemo_api("models", "list")
 
     assert response == "Clarification required: which workspace should this operation use?"
+
+
+@pytest.mark.parametrize(
+    ("service", "client", "expected"),
+    [
+        (
+            "evaluator",
+            SimpleNamespace(
+                evaluator=SimpleNamespace(
+                    get_job_resource=lambda name: SimpleNamespace(
+                        get_job_status=lambda: {"name": name, "status": "done"}
+                    )
+                )
+            ),
+            {"name": "job-1", "status": "done"},
+        ),
+        (
+            "data_designer",
+            SimpleNamespace(
+                data_designer=SimpleNamespace(
+                    get_job_resource=lambda name: SimpleNamespace(
+                        get_job_status=lambda: {"name": name, "status": "done"}
+                    )
+                )
+            ),
+            {"name": "job-1", "status": "done"},
+        ),
+        (
+            "auditor",
+            SimpleNamespace(auditor=SimpleNamespace(get_job=lambda name: {"name": name, "status": "done"})),
+            {"name": "job-1", "status": "done"},
+        ),
+        (
+            "customization.automodel",
+            SimpleNamespace(
+                customization=SimpleNamespace(
+                    automodel=SimpleNamespace(
+                        jobs=SimpleNamespace(
+                            get_job_resource=lambda name: SimpleNamespace(
+                                get_status=lambda: {"name": name, "status": "done"}
+                            )
+                        )
+                    )
+                )
+            ),
+            {"name": "job-1", "status": "done"},
+        ),
+    ],
+)
+def test_check_status_uses_service_job_resource(
+    monkeypatch: pytest.MonkeyPatch, service: str, client: object, expected: dict[str, str]
+) -> None:
+    monkeypatch.setattr(register, "_clients", {"default": client})
+
+    response = json.loads(register.check_status(service, "job-1", workspace="default"))
+
+    assert response == expected
 
 
 def test_studio_callback_url_validates_session(monkeypatch: pytest.MonkeyPatch) -> None:

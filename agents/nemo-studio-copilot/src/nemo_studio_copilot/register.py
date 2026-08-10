@@ -210,8 +210,14 @@ def nemo_api(
                 return approved_input
             if approved_input.get("workspace", workspace) != workspace:
                 return "Denied: mutation approval cannot change the request workspace"
-            resource = approved_input.get("resource", resource)
-            action = approved_input.get("action", action)
+            approved_resource = approved_input.get("resource", resource)
+            approved_action = approved_input.get("action", action)
+            if not isinstance(approved_resource, str):
+                raise ValueError("approved resource must be a string")
+            if not isinstance(approved_action, str):
+                raise ValueError("approved action must be a string")
+            resource = approved_resource
+            action = approved_action
             approved_params = approved_input.get("params", params)
             if approved_params != params:
                 params = approved_params
@@ -375,7 +381,22 @@ def check_status(service: str, job_name: str, workspace: str | None = None) -> s
     try:
         if workspace is None or not workspace.strip():
             return "Clarification required: which workspace should this status check use?"
-        svc = getattr(_get_client(workspace), service)
+        client = _get_client(workspace)
+        if service == "evaluator":
+            result = _resolve_resource(client, service).get_job_resource(job_name).get_job_status()
+            return json.dumps(_serialize(result), indent=2, default=str)
+        if service == "data_designer":
+            result = _resolve_resource(client, service).get_job_resource(job_name).get_job_status()
+            return json.dumps(_serialize(result), indent=2, default=str)
+        if service == "auditor":
+            result = _resolve_resource(client, service).get_job(job_name)
+            return json.dumps(_serialize(result), indent=2, default=str)
+        if service.startswith("customization."):
+            jobs = _resolve_resource(client, f"{service}.jobs")
+            result = jobs.get_job_resource(job_name).get_status()
+            return json.dumps(_serialize(result), indent=2, default=str)
+
+        svc = getattr(client, service)
         last_error: Exception | None = None
         for sub_resource in ("metric_jobs", "benchmark_jobs", "jobs"):
             resource = getattr(svc, sub_resource, None)

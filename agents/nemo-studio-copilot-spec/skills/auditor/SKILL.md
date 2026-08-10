@@ -2,7 +2,7 @@
 name: auditor
 description: NeMo Platform auditor playbook for audit target and config CRUD through the platform SDK. Use when the task involves audit targets, audit configs, or probes.
 ---
-Auditor tasks
+# Auditor tasks
 
 - Use `nemo_api` with `audit.targets` for target CRUD and `audit.configs`
   for config CRUD.
@@ -15,3 +15,5 @@ Auditor tasks
   - `run`: `{}`
   - `system`: `{"lite": true}`
 - Follow full lifecycle: create temp resource, verify/list/update/delete, then create final verification resource.
+- Retrieve or list the final audit resource and compare every required target or
+  config field before reporting success.

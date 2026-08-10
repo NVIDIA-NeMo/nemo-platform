@@ -2,7 +2,7 @@
 name: files
 description: platform fileset and file CRUD playbook with the exact `nemo_api(resource='files'|'files.filesets', ...)` sequence used by harbor benchmarks. Use when the task involves filesets, file uploads/downloads, `verify.txt`, `harbor-test-fileset`, or `harbor-final-fileset`.
 ---
-File tasks
+# File tasks
 
 - Use `nemo_api` for small file content uploads:
   - resource: `files`
@@ -19,16 +19,14 @@ File tasks
 - For `create`, `upload_content`, and `delete`, treat a `nemo_api` error as an
   unknown commit state unless it explicitly confirms a pre-commit validation
   failure. Correct a confirmed pre-commit validation failure and retry once.
-- Before retrying or continuing after any other mutation error, use the stable
-  identity (fileset name for create/delete; fileset plus remote path for
-  upload/delete) only to locate candidate state; stable identity alone never
-  proves commit state. Attribute the state to this run with a unique run marker
-  (including a supported idempotency key), or verify every applicable expected
-  attribute: description, content or checksum, and ownership.
-- Retry once only when attributed read-back confirms the mutation did not commit
-  or the run marker makes replay safe. Continue only when attributed read-back
-  confirms the intended state. Otherwise commit state is unknown: do not retry
-  or continue; stop and report it.
+- Before retrying or continuing after any other mutation error, use stable
+  identity only to locate candidate state; neither identity nor a negative
+  read-back proves commit state. Retry only when a server-side idempotency key
+  makes replay safe or server-side operation status confirms the mutation did
+  not commit.
+- Continue only when read-back confirms the intended description, content or
+  checksum, and ownership. Otherwise commit state is unknown: do not retry or
+  continue; stop and report it.
 - If a safe retry also fails, stop the sequence and return the error or request
   one focused clarification; do not continue to later steps after an
   unrecoverable failure.
