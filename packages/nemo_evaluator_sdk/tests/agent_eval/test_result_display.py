@@ -81,6 +81,59 @@ def test_row_records_keep_the_task_grouping_that_pass_at_k_depends_on() -> None:
     assert records[0]["output.reward"] == 1.0
 
 
+def test_row_records_carry_score_identity_for_joining_and_stacking() -> None:
+    # An export is joined, concatenated, and kept: `id` addresses a row, and `run_id` keeps a frame
+    # self-describing once several runs are stacked together.
+    record = _passing_run().to_records()[0]
+
+    assert record["id"] == "t1-a"
+    assert record["run_id"] == "run-1"
+
+
+def test_row_records_flatten_caller_supplied_metadata() -> None:
+    # Metadata is the caller's, not the SDK's -- dropping it from the export discards data nothing
+    # else records. Flattened into dotted columns so the export stays tabular.
+    scored = _score("t1", "a", 1.0)
+    scored.metadata = {"backend": "gym", "attempt": {"index": 2}}
+
+    record = _result(scored).to_records()[0]
+
+    assert record["metadata.backend"] == "gym"
+    assert record["metadata.attempt.index"] == 2
+
+
+def test_summary_preview_stays_narrow_and_omits_export_only_columns() -> None:
+    # The preview is read on a terminal; identity and metadata columns belong in the export, which
+    # is the same split the dataset path makes between to_records and summary_row_base_record.
+    summary = _passing_run().format_summary()
+
+    assert "run_id" not in summary
+    assert "metadata" not in summary
+
+
+def test_summary_tolerates_max_rows_larger_than_the_run() -> None:
+    # A slice past the end is the whole list, so an over-large preview limit is not an error.
+    summary = _passing_run().format_summary(max_rows=1000)
+
+    assert "Score preview (first 3 of 3)" in summary
+
+
+def test_a_negative_error_limit_shows_no_failures_rather_than_all_but_some() -> None:
+    # Slicing would read a negative limit as an offset from the end -- failed[:-1] would show all
+    # but the last failure, which is not what "show at most -1" can sensibly mean.
+    result = _result(
+        *(
+            _score(f"t{index}", "a", status=AgentEvalScoreStatus.FAILED, diagnostics=(_METRIC_FAILURE,))
+            for index in range(3)
+        )
+    )
+
+    summary = result.format_summary(max_error_rows=-1)
+
+    assert "Error details (0 of 3 failed scores)" in summary
+    assert "3 more failed scores omitted" in summary
+
+
 def test_row_records_carry_error_text_and_diagnostics_only_for_failures() -> None:
     records = _run_with_failures().to_records()
 

@@ -363,11 +363,24 @@ def _score_preview_record(score: AgentEvalTaskScore) -> dict[str, Any]:
 
 
 def _score_record(score: AgentEvalTaskScore) -> dict[str, Any]:
-    """Full export record for one score: preview columns plus error text and diagnostics."""
-    record = _score_preview_record(score)
+    """Full export record for one score: identity, preview columns, error text, and diagnostics.
+
+    Carries ``id``, ``run_id``, and ``metadata`` that the summary preview leaves out. An export is
+    the thing a caller joins, concatenates, and keeps: ``id`` is what a row is addressable by,
+    ``run_id`` keeps a frame self-describing once several runs are stacked into one, and
+    ``metadata`` is caller-supplied — dropping it silently discards data the SDK never owned. The
+    preview stays narrow because it is read on a terminal, the same split the dataset path makes
+    between ``to_records`` and ``summary_row_base_record``.
+    """
+    record: dict[str, Any] = {"id": score.id, "run_id": score.run_id}
+    record.update(_score_preview_record(score))
     if error_text := _score_error_text(score):
         record["error"] = error_text
     record.update(_score_diagnostics_columns(score))
+    # Flattened rather than JSON-encoded: metadata is free-form but usually shallow and scalar, so
+    # dotted columns keep it queryable. Diagnostics get the JSON treatment instead because their
+    # shape is metric-defined and variable-width.
+    flatten_dict("metadata", serialize_value(score.metadata), record)
     return record
 
 
@@ -410,6 +423,9 @@ def _format_score_errors(
     if not failed:
         return []
 
+    # max(0, ...) guards a negative limit, which slicing would otherwise read as an offset from the
+    # end: failed[:-2] shows all but the last two rather than none. An over-large limit needs no
+    # guard, since a slice past the end is simply the whole list. Mirrors format_error_details.
     shown_limit = len(failed) if max_error_rows is None else max(0, max_error_rows)
     shown = failed[:shown_limit]
     parts = ["", f"Error details ({len(shown)} of {len(failed)} failed scores)"]
