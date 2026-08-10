@@ -16,6 +16,7 @@ from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.integrations import IntegrationsSpec, MlflowIntegration, WandbIntegration
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.entities.utils import get_random_id
+from nmp.customization_common.schemas.values import OutputNameType
 from nmp.rl.app.jobs.compiler import (
     _build_download_config,
     _build_training_step,
@@ -53,17 +54,24 @@ def _make_job_output(
         environment=environment,
         training=training,
         integrations=integrations,
-        output=OutputResponse(name="my-dpo", type="model", fileset="my-dpo-fs"),
+        output=OutputResponse(name="my-dpo", type=OutputNameType.MODEL, fileset="my-dpo-fs"),
     )
 
 
-# Job specs/steps/executors/containers are all TypedDicts (plain dicts).
-def _container(step: dict[str, Any]) -> dict[str, Any]:
+# Job specs/steps/executors/containers are all TypedDicts (plain dicts at runtime), so
+# these take Any rather than a specific TypedDict: the compiler returns them typed as
+# PlatformJobStepSpecParam, which is not assignable to dict[str, Any].
+def _container(step: Any) -> dict[str, Any]:
     return step["executor"]["container"]
 
 
-def _provider(step: dict[str, Any]) -> str:
+def _provider(step: Any) -> str:
     return step["executor"]["provider"]
+
+
+def _steps(spec: Any) -> list[Any]:
+    """spec["steps"] is typed as an Iterable, so index through a concrete list."""
+    return list(spec["steps"])
 
 
 @pytest.fixture
@@ -219,7 +227,7 @@ async def test_compiler_emits_four_steps(monkeypatch: pytest.MonkeyPatch, mock_s
     )
     spec = await platform_job_config_compiler("default", _make_job_output(), mock_sdk)
 
-    steps = spec["steps"]
+    steps = _steps(spec)
     names = [s["name"] for s in steps]
     assert names == ["model-and-dataset-download", "dpo-training", "model-upload", "model-entity-creation"]
 
@@ -294,9 +302,7 @@ def test_grpo_training_step_injects_egress_env(monkeypatch: pytest.MonkeyPatch) 
     job = _make_job_output(GRPOTraining(), environment="default/env")
     step = _build_training_step(job, [], trust_remote_code=False, profile=None)
     assert step["name"] == "grpo-training"
-    env_names = {
-        (env["name"] if isinstance(env, dict) else env.name)
-        for env in step["environment"]
-    }
+    # Step env entries are TypedDicts, i.e. plain dicts at runtime — no attribute branch.
+    env_names = {env["name"] for env in step["environment"]}
     assert "NMP_VLLM_SERVICE_HOST" in env_names
     assert "NMP_BROKER_SERVICE_PORT" in env_names

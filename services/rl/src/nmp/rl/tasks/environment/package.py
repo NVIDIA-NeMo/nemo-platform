@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from nmp.rl.schemas.environment import (
     AdapterRef,
     AdapterWheelsV1Manifest,

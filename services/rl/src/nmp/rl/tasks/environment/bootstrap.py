@@ -17,7 +17,6 @@ from pathlib import Path
 
 from nmp.rl.schemas.environment import (
     AdapterWheelsV1Manifest,
-    EnvironmentFormat,
     EnvironmentManifest,
     NativeV1Manifest,
     WheelsV1Manifest,
@@ -46,9 +45,7 @@ def resolve_adapter_image_root(manifest: EnvironmentManifest) -> str | None:
         return None
     agent = manifest.adapter.agent
     if agent not in IMAGE_ADAPTER_ALLOWLIST:
-        raise EnvironmentPackageValidationError(
-            f"adapter.agent {agent!r} is not on the image allowlist"
-        )
+        raise EnvironmentPackageValidationError(f"adapter.agent {agent!r} is not on the image allowlist")
     return manifest.adapter.image_config_root or IMAGE_ADAPTER_ALLOWLIST[agent]
 
 

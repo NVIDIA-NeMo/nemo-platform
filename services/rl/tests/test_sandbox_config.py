@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import pytest
-
 from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
     GymHostEgressRule,
     SandboxConfig,
@@ -47,9 +46,7 @@ def test_assemble_master_egress_allow_explicit_overrides_env(monkeypatch: pytest
 def test_apply_master_egress_to_sandbox_config() -> None:
     sandbox = SandboxConfig(
         image="nvcr.io/example/rl:latest",
-        network_policy=SandboxNetworkPolicy(
-            egress_allow=[GymHostEgressRule(host="placeholder", port=1)]
-        ),
+        network_policy=SandboxNetworkPolicy(egress_allow=[GymHostEgressRule(host="placeholder", port=1)]),
     )
     updated = apply_master_egress_to_sandbox_config(sandbox)
     assert updated.network_policy.egress_allow == assemble_master_egress_allow()
