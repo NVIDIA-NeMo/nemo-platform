@@ -89,13 +89,10 @@
       "WIDTH": "50"
     },
     "hook": {
-      "on-activate": "  set -euo pipefail\n\n  if uv sync --frozen --all-packages --check; then\n    return 0\n  fi\n\n  echo \"Python environment is out of sync; synchronizing...\"\n  uv sync --frozen --all-packages\n"
+      "on-activate": "  set -euo pipefail\n\n  export VIRTUAL_ENV=\"$PWD/.venv\"\n  export PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n\n  if uv sync --frozen --all-packages --check; then\n    return 0\n  fi\n\n  echo \"Python environment is out of sync; synchronizing...\"\n  uv sync --frozen --all-packages\n"
     },
     "profile": {
-      "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n",
-      "bash": "  source .venv/bin/activate\n",
-      "zsh": "  source .venv/bin/activate\n",
-      "fish": "  set -gx VIRTUAL_ENV \"$PWD/.venv\"\n  set -gx PATH \"$VIRTUAL_ENV/bin\" $PATH\n"
+      "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
     },
     "options": {
       "systems": [
@@ -1705,12 +1702,7 @@
             "UV_VENV_SEED": "1"
           },
           "hook": {
-            "on-activate": "  set -euo pipefail\n\n  if uv sync --frozen --all-packages --check; then\n    return 0\n  fi\n\n  echo \"Python environment is out of sync; synchronizing...\"\n  uv sync --frozen --all-packages\n"
-          },
-          "profile": {
-            "bash": "  source .venv/bin/activate\n",
-            "zsh": "  source .venv/bin/activate\n",
-            "fish": "  set -gx VIRTUAL_ENV \"$PWD/.venv\"\n  set -gx PATH \"$VIRTUAL_ENV/bin\" $PATH\n"
+            "on-activate": "  set -euo pipefail\n\n  export VIRTUAL_ENV=\"$PWD/.venv\"\n  export PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n\n  if uv sync --frozen --all-packages --check; then\n    return 0\n  fi\n\n  echo \"Python environment is out of sync; synchronizing...\"\n  uv sync --frozen --all-packages\n"
           },
           "options": {}
         },

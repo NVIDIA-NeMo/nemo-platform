@@ -14,22 +14,13 @@ UV_PYTHON_INSTALL_DIR="${FLOX_ENV_CACHE}/python"
 on-activate = '''
   set -euo pipefail
 
+  export VIRTUAL_ENV="$PWD/.venv"
+  export PATH="$VIRTUAL_ENV/bin:$PATH"
+
   if uv sync --frozen --all-packages --check; then
     return 0
   fi
 
   echo "Python environment is out of sync; synchronizing..."
   uv sync --frozen --all-packages
-'''
-
-[profile]
-bash = '''
-  source .venv/bin/activate
-'''
-zsh = '''
-  source .venv/bin/activate
-'''
-fish = '''
-  set -gx VIRTUAL_ENV "$PWD/.venv"
-  set -gx PATH "$VIRTUAL_ENV/bin" $PATH
 '''
