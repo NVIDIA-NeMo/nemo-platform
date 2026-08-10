@@ -1,11 +1,13 @@
 # Tutorial: Deploy and try the email phishing agent
 
 Deploy a Fabric (`nemo-agents-spec-v1`) agent end to end and watch it classify a
-phishing email. The agent is a DeepAgents orchestrator that delegates the verdict
-to a phishing sub-agent, which calls a deterministic `extract_iocs` tool.
+phishing email. The agent is a DeepAgents orchestrator that calls a deterministic
+`extract_iocs` tool, fans out to specialist sub-agents (brand impersonation,
+attack category, SMTP header auth), and delegates the final verdict to a phishing
+sub-agent.
 
-**What you'll do:** deploy the example, send it an email, read the verdict, find
-the tool call in the trace, and score it against labeled data.
+**What you'll do:** deploy the example, send it an email, read the verdict, watch
+a specialist fire, find the steps in the trace, and score it against labeled data.
 
 **Time:** ~5 minutes.
 
@@ -33,21 +35,41 @@ nemo agents invoke --agent-deployment email-phishing-agent-deployment \
   --input $'From: it-support@paypa1-secure.example\nSubject: Verify your account\n\nYour account is locked. Confirm your password at http://paypa1-secure.example/login'
 ```
 
-The agent returns a YAML verdict with `is_likely_phishing: true` and lists the
-lookalike sender domain (`paypa1-secure.example`) among its indicators.
+The agent returns a YAML verdict with `is_likely_phishing: true`, listing the
+lookalike sender domain (`paypa1-secure.example`) among its indicators. Two fields
+come from specialists rather than the classifier: `attack_type: credential` (from
+`attack-attributor`) and `impersonated_brand: paypal` (from `url-brand-analyst`).
 
-## Step 3: Find the tool call in the trace
+## Step 3: Watch the header specialist fire
+
+`header-auth-analyst` reads SMTP authentication results, so it only runs when the
+email actually carries them. Send one that does:
+
+```bash
+nemo agents invoke --agent-deployment email-phishing-agent-deployment \
+  --input $'Received: from mail.evil.example (203.0.113.9)\nFrom: security@paypal.com\nReturn-Path: bounce@evil.example\nAuthentication-Results: mx.example.com; spf=fail smtp.mailfrom=evil.example; dkim=pass header.d=paypal.com; dmarc=pass header.from=paypal.com\nSubject: Unusual sign-in\n\nReview the sign-in at http://paypal-secure-review.example/verify'
+```
+
+`spf=fail` now appears among the indicators — the `From:` claims `paypal.com` but
+the message was sent by `evil.example`.
+
+The labeled dataset in Step 5 carries no SMTP headers, so this specialist stays
+idle there. That is deliberate: synthesizing auth results per row would put the
+`phishing`/`benign` label into the input and inflate the score.
+
+## Step 4: Find the steps in the trace
 
 ```bash
 nemo agents logs --agent email-phishing-agent
 ```
 
-The deployment's `artifacts/.../events.atof.jsonl` records an `extract_iocs` tool
-call — evidence the orchestrator delegated to the sub-agent and the tool ran, not
-the model guessing. With NeMo Studio Intake enabled (`VITE_FF_INTAKE_ENABLED=true`),
-the same run appears under **Traces**.
+The deployment's `artifacts/.../events.atof.jsonl` records the `extract_iocs` tool
+call and one task per sub-agent — evidence that the tool ran and each specialist
+was consulted, not that the model guessed. With NeMo Studio Intake enabled
+(`VITE_FF_INTAKE_ENABLED=true`), the same run appears under **Traces**, one span
+per step.
 
-## Step 4: Evaluate against labeled emails
+## Step 5: Evaluate against labeled emails
 
 ```bash
 nemo agents evaluate run \
@@ -60,6 +82,6 @@ The judge scores each verdict against the `label` column in
 
 ## Next Steps
 
-- **Make it your own:** [CUSTOMIZE.md](CUSTOMIZE.md) — swap the tool, prompts, model, and data for your own agent.
+- **Make it your own:** [CUSTOMIZE.md](CUSTOMIZE.md) — swap the tool, prompts, specialists, model, and data for your own agent.
 - **Container deploys (docker/k8s):** [docs/agents/deploy-agents.mdx](../../../../../docs/agents/deploy-agents.mdx).
 - **Compare with/without a tool:** the sibling [calculator-agent](../calculator-agent) example.
