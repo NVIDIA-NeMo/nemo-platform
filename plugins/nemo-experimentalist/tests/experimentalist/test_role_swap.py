@@ -621,3 +621,38 @@ async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(tmp_path
 
     assert list(result) == [baseline.id], "records must be keyed by candidate id, not by the Candidate"
     assert baseline.trajectory_detail == {"n1": {}}
+
+
+@pytest.mark.asyncio
+async def test_the_scorer_is_told_the_round_its_analysis_describes(tmp_path, isolated_registry: None) -> None:
+    """The loop's counter has already advanced when the scorer is called, and the scorer
+    names its persisted state after the round — so passing the raw counter skips a number
+    (observed: a round-1 goal tree written as `round-2-goal.json`)."""
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    rounds: list[int] = []
+
+    class RecordingScorer(TrajectoryScorer):
+        name = "acme-round-recorder"
+
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def run(self, ctx: Any, *, candidates: list[Candidate], round_num: int = 0, **kw: Any) -> dict[str, Any]:
+            rounds.append(round_num)
+            return {}
+
+    config = EvolutionaryOptimizerConfig(
+        max_rounds=1, analyzer=None, terminator=None, trajectory_scorer="acme-round-recorder"
+    )
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    loop._ensure_baseline = _one_baseline
+    loop._evaluate_validation_candidates = _no_results
+    loop._record_baseline_validation = _no_results
+    loop._analyze_round = _no_results
+    loop._propose_improvements = _no_proposals
+
+    await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
+
+    assert rounds == [0], f"scorer told round {rounds}, but it scored round 0's analysis"

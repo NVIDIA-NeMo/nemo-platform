@@ -476,7 +476,9 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                         framework_skills_dirs=self._framework_skills_dirs,
                     ),
                 )
-                scored = await scorer.run(ctx, candidates=candidates, round_num=round_num, analysis=analysis)
+                # round_num - 1: the counter has already advanced past the round this
+                # analysis describes, and the scorer names its state after that round.
+                scored = await scorer.run(ctx, candidates=candidates, round_num=round_num - 1, analysis=analysis)
                 for candidate in candidates:
                     if (record := scored.get(candidate.id)) is not None:
                         await ctx.record_reward(candidate, channel="validation-trajectory", result=record)
