@@ -52,12 +52,12 @@ AUTO_END = "<!-- nemo:auto:end -->"
 AUTO_BANNER = "<!-- Observed by `nemo agents analyst run`. Edits between these markers are replaced. -->"
 EMPTY_ZONE = "_No observations recorded yet._"
 
-# The whole document is injected into the analyst's instructions on every run,
+# The maintained zone is injected into the analyst's instructions on every run,
 # so the budget is a context cost paid forever, not a storage limit. It is
 # enforced here rather than merely requested in the prompt: an advisory limit
-# on a machine-written file is how context windows quietly fill up.
-MAX_NOTES = 40
-MAX_AUTO_BYTES = 8_000
+# on a machine-written file is how context windows quietly fill up. 2,200
+# characters is roughly 800 tokens, or 8-15 notes.
+MAX_MEMORY_CHARS = 2_200
 
 _HUMAN_ZONE_HINT = (
     "Context the optimization loop keeps about this agent. Anything you write\n"
@@ -101,20 +101,50 @@ def render_auto_zone(notes: Sequence[MemoryNote], *, stamp: str) -> tuple[str, i
     the first note that does not fit rather than skipping it and continuing —
     keeping a later short note over an earlier important one would silently
     invert the analyst's own ranking.
+
+    Dropping is a backstop, not the mechanism. The analyst is shown how full
+    memory is and told to consolidate, so overflow means it did not; the run
+    reports that as a warning rather than as a routine statistic.
     """
     lines: list[str] = []
     used = 0
     dropped = 0
     for index, note in enumerate(notes):
         line = render_note(note, stamp=stamp)
-        size = len(line.encode("utf-8")) + 1
-        if len(lines) >= MAX_NOTES or used + size > MAX_AUTO_BYTES:
+        projected = used + len(line) + (1 if lines else 0)
+        if projected > MAX_MEMORY_CHARS:
             dropped = len(notes) - index
             break
         lines.append(line)
-        used += size
+        used = projected
     body = "\n".join(lines) if lines else EMPTY_ZONE
     return f"{AUTO_START}\n{AUTO_BANNER}\n\n{body}\n\n{AUTO_END}", dropped
+
+
+def auto_zone_entries(document: str) -> str:
+    """The maintained zone's notes, without the markers, banner, or placeholder."""
+    start = document.find(AUTO_START)
+    end = document.find(AUTO_END, start + len(AUTO_START)) if start != -1 else -1
+    if start == -1 or end == -1:
+        return ""
+    lines = [
+        line
+        for line in document[start + len(AUTO_START) : end].splitlines()
+        if line.strip() and not line.lstrip().startswith("<!--") and line.strip() != EMPTY_ZONE
+    ]
+    return "\n".join(lines)
+
+
+def render_usage(document: str) -> str:
+    """A capacity gauge for the maintained zone, such as ``67% — 1,474/2,200 chars``.
+
+    Shown to the analyst alongside the document so remaining capacity is
+    something it can plan against, rather than a wall it discovers by being
+    truncated after the fact.
+    """
+    used = len(auto_zone_entries(document))
+    percent = round(100 * used / MAX_MEMORY_CHARS)
+    return f"{percent}% — {used:,}/{MAX_MEMORY_CHARS:,} chars"
 
 
 def replace_auto_zone(
@@ -232,10 +262,13 @@ class FilesetMemoryStore:
             return f"- warning: memory could not be written to {MEMORY_FILESET}#{self.remote_path}: {detail}"
 
         kept = len(notes) - dropped
-        line = f"- memory: wrote {kept} note(s) to {MEMORY_FILESET}#{self.remote_path}"
         if dropped:
-            line += f", dropped {dropped} over the {MAX_NOTES}-note / {MAX_AUTO_BYTES}-byte budget"
-        return line
+            return (
+                f"- warning: memory over budget — kept {kept} note(s), dropped {dropped} past "
+                f"{MAX_MEMORY_CHARS:,} chars. The analyst should have consolidated instead; "
+                f"review {MEMORY_FILESET}#{self.remote_path}"
+            )
+        return f"- memory: wrote {kept} note(s) to {MEMORY_FILESET}#{self.remote_path} ({render_usage(document)})"
 
 
 def _today() -> str:

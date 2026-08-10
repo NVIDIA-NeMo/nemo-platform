@@ -12,9 +12,10 @@ from nemo_insights_plugin.analyst.memory import (
     AUTO_END,
     AUTO_START,
     EMPTY_ZONE,
-    MAX_NOTES,
+    MAX_MEMORY_CHARS,
     FilesetMemoryStore,
     memory_remote_path,
+    render_usage,
     replace_auto_zone,
 )
 from nemo_insights_plugin.analyst.result import MemoryNote
@@ -71,14 +72,28 @@ def test_content_after_the_maintained_zone_survives_a_rewrite() -> None:
     assert document.rstrip().endswith("## Appendix\n- mine")
 
 
-def test_over_budget_notes_are_dropped_in_rank_order_and_counted() -> None:
-    notes = [MemoryNote(note=f"note {index}") for index in range(MAX_NOTES + 5)]
+def test_maintained_zone_is_capped_at_the_character_budget_in_rank_order() -> None:
+    note = "x" * 200
+    notes = [MemoryNote(note=f"{index:03d} {note}") for index in range(20)]
 
     document, dropped = replace_auto_zone("", notes, agent="research-agent", stamp=STAMP)
 
-    assert dropped == 5
-    assert "- note 0 (2026-08-10)" in document
-    assert f"- note {MAX_NOTES} " not in document
+    entries = memory_module.auto_zone_entries(document)
+    assert len(entries) <= MAX_MEMORY_CHARS
+    assert dropped == 20 - len(entries.splitlines())
+    assert dropped > 0
+    assert "- 000 " in document, "highest-ranked note must survive"
+    assert "- 019 " not in document, "lowest-ranked note must be the one dropped"
+
+
+def test_usage_gauge_reports_maintained_zone_occupancy() -> None:
+    assert render_usage("") == f"0% — 0/{MAX_MEMORY_CHARS:,} chars"
+
+    document = _document([MemoryNote(note="a fact")])
+
+    used = len(memory_module.auto_zone_entries(document))
+    assert used == len("- a fact (2026-08-10)")
+    assert render_usage(document) == f"{round(100 * used / MAX_MEMORY_CHARS)}% — {used}/{MAX_MEMORY_CHARS:,} chars"
 
 
 def test_note_is_flattened_to_one_bullet_so_it_cannot_break_the_markers() -> None:
@@ -128,19 +143,30 @@ async def test_empty_note_list_leaves_the_document_untouched() -> None:
     assert "unchanged" in line
 
 
-async def test_write_uploads_to_the_agent_path_and_reports_the_budget() -> None:
+async def test_write_uploads_to_the_agent_path_and_reports_usage() -> None:
     files = FakeFiles(stored=HUMAN_ZONE)
-    notes = [MemoryNote(note=f"note {index}") for index in range(MAX_NOTES + 2)]
 
-    line = await _store(files).write(notes)
+    line = await _store(files).write([MemoryNote(note="a fact")])
 
     upload = files.uploads[0]
     assert upload["remote_path"] == "research-agent/AGENT-MEMORY.md"
     assert upload["fileset"] == memory_module.MEMORY_FILESET
     assert upload["fileset_auto_create"] is True
     assert "search_web" in upload["content"]
-    assert f"wrote {MAX_NOTES} note(s)" in line
-    assert "dropped 2" in line
+    assert line == (
+        f"- memory: wrote 1 note(s) to nemo-agent-memory#research-agent/AGENT-MEMORY.md "
+        f"(1% — 21/{MAX_MEMORY_CHARS:,} chars)"
+    )
+
+
+async def test_overflow_is_reported_as_a_warning_not_a_routine_statistic() -> None:
+    files = FakeFiles(stored=HUMAN_ZONE)
+    notes = [MemoryNote(note=f"{index:03d} " + "x" * 300) for index in range(20)]
+
+    line = await _store(files).write(notes)
+
+    assert line.startswith("- warning: memory over budget")
+    assert "should have consolidated" in line
 
 
 async def test_unwritable_fileset_warns_instead_of_failing_the_run() -> None:

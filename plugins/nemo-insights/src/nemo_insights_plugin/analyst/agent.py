@@ -32,7 +32,7 @@ from typing import Annotated, Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
 from nemo_insights_plugin.analyst.functions import annotations, insights, spans
-from nemo_insights_plugin.analyst.memory import MAX_NOTES
+from nemo_insights_plugin.analyst.memory import MAX_MEMORY_CHARS, render_usage
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, hidden, strategy
@@ -139,11 +139,24 @@ newly learned. This matters most on scheduled runs, which only look at traces
 newer than the previous run: a still-true note you leave out because this
 window did not happen to re-prove it is a note you have deleted.
 
-A note earns its place only if it would save work on a future run. Do not
-record findings that belong in an Insight, anything true of a single trace, or
-anything already covered by the agent spec. Order the list most important
-first; only the first {max_notes} are kept. Returning an empty list leaves the
-document untouched rather than clearing it.
+Memory is bounded at {max_chars} characters and does not grow: the header
+above shows how full it is. Consolidate to fit rather than letting notes fall
+off the end — merge overlapping notes into one denser note, and drop the ones
+that have stopped earning their place. Order what you return most important
+first; anything past the limit is dropped and reported as a problem with the
+run. Returning an empty list leaves the document untouched rather than
+clearing it.
+
+Save environment and telemetry facts, conventions, tool quirks, and
+corrections. Do not save findings that belong in an Insight, anything true of
+a single trace, a log of what this run did, facts already in the agent spec,
+or anything you could rediscover in one query. Pack related facts into one
+compact note:
+
+- Good: "Sessions hold one trace each; agent_name is only on the AGENT span,
+  so tool and LLM children must be reached via parent_span_id."
+- Bad: "The agent had an error." Too vague to act on, and no future run is
+  helped by it.
 
 ## Reporting your findings
 
@@ -184,11 +197,12 @@ developer of the application and should be considered the purpose and goals.
 """
 
 AGENT_MEMORY_HEADER = """
-## Agent Memory
+## Agent Memory [{usage}]
 
 The current memory document for this agent. Everything outside the
 ``nemo:auto`` markers was written by the developer and is authoritative; the
-section between them is what you maintain.
+section between them is what you maintain. The gauge above is how full that
+section is — plan the set you return against the space that is left.
 """
 
 KICKOFF = (
@@ -219,11 +233,12 @@ class Analyst(Agent):
             config=TokenBudgetConfig(max_tokens=MAX_SUMMARY_TOKENS),
         )
 
-        instructions = INSTRUCTIONS.format(agent=agent, max_notes=MAX_NOTES)
+        instructions = INSTRUCTIONS.format(agent=agent, max_chars=f"{MAX_MEMORY_CHARS:,}")
         if agent_spec and agent_spec.strip():
             instructions = f"{instructions}\n{AGENT_SPEC_HEADER}\n\n{agent_spec.strip()}\n"
         if agent_memory and agent_memory.strip():
-            instructions = f"{instructions}\n{AGENT_MEMORY_HEADER}\n\n{agent_memory.strip()}\n"
+            header = AGENT_MEMORY_HEADER.format(usage=render_usage(agent_memory))
+            instructions = f"{instructions}\n{header}\n\n{agent_memory.strip()}\n"
         self.context["analyst_instructions"] = instructions
 
     async def fetch_spans(

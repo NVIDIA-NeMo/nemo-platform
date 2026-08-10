@@ -265,10 +265,13 @@ nemo files upload AGENT-MEMORY.md nemo-agent-memory \
   --remote-path "$AGENT/" --workspace "$WORKSPACE"
 ```
 
-Only the first 40 notes are kept, and the maintained section is capped at 8,000
-bytes; the run reports anything it dropped. The whole document is loaded into
-the Analyst's context on every run, so that ceiling is a budget you pay
-continuously rather than a storage limit.
+The maintained section is capped at 2,200 characters — roughly 800 tokens, or
+8 to 15 notes — and it does not grow. That ceiling is deliberate: the section
+enters the Analyst's context on every run, so it is a cost you pay
+continuously rather than a storage limit. The Analyst is shown how full memory
+is and is expected to consolidate to fit; if it overruns anyway, the lowest
+ranked notes are dropped and the run reports a warning, which is a signal to
+read the document rather than a routine statistic.
 
 ### Experimenter
 

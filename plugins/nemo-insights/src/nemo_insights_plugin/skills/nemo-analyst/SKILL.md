@@ -141,9 +141,13 @@ nemo files upload AGENT-MEMORY.md nemo-agent-memory \
   --remote-path <agent-name>/ --workspace <workspace>
 ```
 
-Do not use it as a place to record failures — those are Insights. A run prints
-`- memory: wrote <n> note(s) ...`, `- memory: unchanged (no notes returned)`, or
-a warning when the fileset could not be written, which never fails the run.
+Memory is capped at 2,200 characters and does not grow, so it holds durable
+facts, conventions, and corrections — not failures, which are Insights, and not
+a log of what a run did. A run prints `- memory: wrote <n> note(s) ... (41% —
+902/2,200 chars)`, `- memory: unchanged (no notes returned)`, or a warning: the
+fileset could not be written, or the Analyst overran the budget instead of
+consolidating. Neither warning fails the run, but the second one means the
+document is worth reading.
 
 ## Verify
 
