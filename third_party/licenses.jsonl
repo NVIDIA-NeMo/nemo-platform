@@ -14,7 +14,7 @@
 {"name": "annotated-doc", "license": "MIT", "compatible": true}
 {"name": "annotated-types", "license": "MIT", "compatible": true}
 {"name": "anthropic", "license": "MIT", "compatible": true}
-{"name": "antlr4-python3-runtime", "license": "NON-STANDARD", "compatible": false}
+{"name": "antlr4-python3-runtime", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "anyascii", "license": "ISC", "compatible": true}
 {"name": "anyio", "license": "MIT", "compatible": true}
 {"name": "appdirs", "license": "MIT", "compatible": true}
@@ -424,7 +424,7 @@
 {"name": "wcwidth", "license": "MIT", "compatible": true}
 {"name": "websocket-client", "license": "APACHE-2.0", "compatible": true}
 {"name": "websockets", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "wget", "license": "NON-STANDARD", "compatible": false}
+{"name": "wget", "license": "PUBLIC DOMAIN", "compatible": true}
 {"name": "wikipedia", "license": "MIT", "compatible": true}
 {"name": "wrapt", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "xdg-base-dirs", "license": "ISC", "compatible": true}
