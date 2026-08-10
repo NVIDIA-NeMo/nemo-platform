@@ -20,6 +20,7 @@ from typing import Optional
 from ..._models import BaseModel
 from .model_metadata_content import ModelMetadataContent
 from .dataset_metadata_content import DatasetMetadataContent
+from .environment_metadata_content import EnvironmentMetadataContent
 
 __all__ = ["FilesetMetadata"]
 
@@ -37,6 +38,9 @@ class FilesetMetadata(BaseModel):
 
     dataset: Optional[DatasetMetadataContent] = None
     """Content for dataset-type filesets."""
+
+    environment: Optional[EnvironmentMetadataContent] = None
+    """Content for environment-type filesets (GRPO Gym packages)."""
 
     model: Optional[ModelMetadataContent] = None
     """Content for model-type filesets.

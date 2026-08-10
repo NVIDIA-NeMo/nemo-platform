@@ -11147,6 +11147,36 @@ components:
       - data
       title: EntityUpdate
       description: Schema for updating an entity.
+    EnvironmentMetadataContent:
+      properties:
+        format:
+          type: string
+          title: Format
+          description: Environment package format (native-v1, wheels-v1, adapter-wheels-v1).
+        name:
+          type: string
+          title: Name
+        adapter_agent:
+          title: Adapter Agent
+          type: string
+        hub_id:
+          title: Hub Id
+          type: string
+        vf_env_id:
+          title: Vf Env Id
+          type: string
+        config_paths:
+          items:
+            type: string
+          type: array
+          title: Config Paths
+      additionalProperties: false
+      type: object
+      required:
+      - format
+      - name
+      title: EnvironmentMetadataContent
+      description: Content for environment-type filesets (GRPO Gym packages).
     EvaluationContext:
       properties:
         evaluation_name:
@@ -12348,6 +12378,8 @@ components:
           $ref: '#/components/schemas/DatasetMetadataContent'
         model:
           $ref: '#/components/schemas/ModelMetadataContent'
+        environment:
+          $ref: '#/components/schemas/EnvironmentMetadataContent'
       type: object
       title: FilesetMetadata
       description: "Tagged metadata container - the key indicates the type.\n\nExample:\n\
@@ -12434,6 +12466,7 @@ components:
       type: string
       enum:
       - dataset
+      - environment
       - generic
       - model
       title: FilesetPurpose
