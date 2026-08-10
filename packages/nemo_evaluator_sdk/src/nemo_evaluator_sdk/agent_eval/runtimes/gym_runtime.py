@@ -183,6 +183,40 @@ def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> di
     return redacted
 
 
+def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
+    """The environment/agent/model selection passed to Gym.
+
+    Built once and handed verbatim to both ``gym env validate`` and ``gym env start``, so what is
+    validated is exactly what runs — a pre-flight against a different config would be worse than
+    none.
+    """
+    selection = [
+        "--config",
+        config.agent_config,
+        "--model-type",
+        config.model_type,
+        "--resources-server",
+        config.resources_server,
+    ]
+    if config.bind_resources_server:
+        # Composable (Pattern-A) agents leave resources_server.name unbound ('???'); bind it to the
+        # env we're running. Assumes the agent config's top-level key equals the agent name (the
+        # simple_agent convention) *and* that the resources-server is registered under the
+        # environment's own name — not universally true, so self-contained or differently-named
+        # servers set bind_resources_server=False and bind themselves via env_overrides.
+        selection.append(
+            f"+{config.agent}.responses_api_agents.{config.agent}.resources_server.name={config.resources_server}"
+        )
+    selection.extend(_flatten_overrides(config.env_overrides))
+    # Gym is a Hydra app, so each invocation writes a timestamped run directory — by default
+    # `outputs/<date>/<time>/` under the *current* directory. Since the subprocesses inherit this
+    # process's cwd (so Gym can find env.yaml), the default would litter whatever directory the
+    # caller happened to run from. Redirect it under the run's work dir, with the rest of the run's
+    # artifacts. Applies to every Gym entry point, `gym list` included.
+    selection.append(f"hydra.run.dir={work_dir / _HYDRA_SUBDIR}")
+    return selection
+
+
 def _canonical_row_hash(row: Mapping[str, Any]) -> str:
     """Stable ``sha256`` of a Gym dataset row, excluding runtime-injected fields.
 
@@ -582,30 +616,7 @@ class GymAgentTaskRunner:
         # hook is wrong for Gym (servers manage their own deps), so disable it for the subprocesses.
         subprocess_env = {**os.environ, "RAY_ENABLE_UV_RUN_RUNTIME_ENV": "0"}
 
-        # The environment/agent/model selection, shared verbatim by `env validate` and `env start` so
-        # what we validate is exactly what we then run.
-        selection = [
-            "--config",
-            cfg.agent_config,
-            "--model-type",
-            cfg.model_type,
-            "--resources-server",
-            cfg.resources_server,
-        ]
-        if cfg.bind_resources_server:
-            # Composable (Pattern-A) agents leave resources_server.name unbound ('???'); bind it to the
-            # env we're running. Assumes the agent config's top-level key equals the agent name (the
-            # simple_agent convention). Self-contained agents set bind_resources_server=False.
-            selection.append(
-                f"+{cfg.agent}.responses_api_agents.{cfg.agent}.resources_server.name={cfg.resources_server}"
-            )
-        selection.extend(_flatten_overrides(cfg.env_overrides))
-        # Gym is a Hydra app, so each invocation writes a timestamped run directory — by default
-        # `outputs/<date>/<time>/` under the *current* directory. Since the subprocesses inherit this
-        # process's cwd (so Gym can find env.yaml), the default would litter whatever directory the
-        # caller happened to run from. Redirect it under the run's work dir, where it belongs with the
-        # rest of the run's artifacts.
-        selection.append(f"hydra.run.dir={work_dir / _HYDRA_SUBDIR}")
+        selection = _selection_args(cfg, work_dir)
 
         await self._validate_config(gym, selection, subprocess_env, work_dir)
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from collections import Counter, deque
 from pathlib import Path
 
@@ -22,17 +23,23 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
     _LOG_TAIL_LINES,
     NG_ROLLOUT_INDEX,
     NG_TASK_INDEX,
+    GymAgentTaskRunner,
     GymRewardMetric,
+    GymRuntimeConfig,
     _aggregate_metrics_path_for,
     _canonical_row_hash,
     _content_text,
     _drain_pumps,
     _ensure_fresh_output,
+    _flatten_overrides,
+    _gym_executable,
+    _hydra_scalar,
     _materialize_dataset,
     _pump_stream,
     _read_run_aggregations,
     _render_instruction,
     _require_full_coverage,
+    _selection_args,
     _source_datasets,
     _trials_from_rollouts,
     discover_gym_tasks,
@@ -578,3 +585,109 @@ def test_aggregate_metrics_sidecar_with_invalid_utf8_is_skipped_not_raised(tmp_p
     _aggregate_metrics_path_for(rollouts_path).write_bytes(b'[{"agent_ref": {"name": "a"}, "x": \xff}]')
 
     assert _read_run_aggregations(rollouts_path) is None
+
+
+# ---------------------------------------------------------------------------
+# Config pre-flight: override serialization, selection args, `gym env validate`
+# ---------------------------------------------------------------------------
+
+
+def test_hydra_scalars_use_hydra_spellings_not_python_ones() -> None:
+    # `str(None)` is "None" and `str(True)` is "True" — both of which Hydra reads back as *strings*,
+    # silently setting the literal text instead of a null or a boolean.
+    assert _hydra_scalar(None) == "null"
+    assert _hydra_scalar(True) == "true"
+    assert _hydra_scalar(False) == "false"
+    assert _hydra_scalar([1, "x", None]) == "[1,x,null]"
+    assert _hydra_scalar(0.7) == "0.7"
+    # Interpolations survive untouched, which is what lets an override defer to Gym's global config.
+    assert _hydra_scalar("${policy_base_url}") == "${policy_base_url}"
+
+
+def test_flatten_overrides_produces_forcing_dotted_paths() -> None:
+    flattened = _flatten_overrides({"a": {"b": {"c": 1}}, "d": "x"})
+    # `++` not `+`: a bare `+` fails on a key the merged config already defines, which is precisely
+    # the case an override exists for.
+    assert flattened == ["++a.b.c=1", "++d=x"]
+    assert _flatten_overrides({}) == []
+
+
+def _config(**kwargs: object) -> GymRuntimeConfig:
+    return GymRuntimeConfig(agent="simple_agent", agent_config="cfg.yaml", resources_server="mcqa", **kwargs)  # type: ignore[arg-type]
+
+
+def test_selection_binds_the_resources_server_by_default(tmp_path: Path) -> None:
+    selection = _selection_args(_config(), tmp_path)
+    assert "--resources-server" in selection and "mcqa" in selection
+    assert "+simple_agent.responses_api_agents.simple_agent.resources_server.name=mcqa" in selection
+
+
+def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_path: Path) -> None:
+    # gdpval registers its server as `gdpval_resources_server`, so the automatic binding is wrong for
+    # it and the caller supplies their own. Emitting both would leave the config ambiguous.
+    selection = _selection_args(
+        _config(
+            bind_resources_server=False,
+            env_overrides={
+                "simple_agent": {"responses_api_agents": {"simple_agent": {"resources_server": {"name": "other"}}}}
+            },
+        ),
+        tmp_path,
+    )
+    assert not [arg for arg in selection if arg.startswith("+simple_agent.")]
+    assert "++simple_agent.responses_api_agents.simple_agent.resources_server.name=other" in selection
+
+
+def test_selection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
+    # Gym writes `outputs/<date>/<time>/` relative to cwd, and the subprocesses inherit ours so Gym
+    # can find env.yaml — so without this every run litters the caller's directory.
+    selection = _selection_args(_config(), tmp_path)
+    assert f"hydra.run.dir={tmp_path / 'gym_hydra'}" in selection
+
+
+def _stub_gym(tmp_path: Path, *, exit_code: int, message: str) -> str:
+    """A stand-in for the `gym` CLI that records its argv and exits how the test wants."""
+    script = tmp_path / "stub-gym"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(tmp_path / 'argv.txt')!r}).write_text('\\n'.join(sys.argv[1:]))\n"
+        f"print({message!r})\n"
+        f"sys.exit({exit_code})\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+@pytest.mark.asyncio
+async def test_validate_config_passes_the_selection_and_logs_the_report(tmp_path: Path) -> None:
+    runner = GymAgentTaskRunner(config=_config())
+    gym = _stub_gym(tmp_path, exit_code=0, message="Config is valid.")
+
+    await runner._validate_config(gym, ["--resources-server", "mcqa"], {}, tmp_path)
+
+    assert (tmp_path / "argv.txt").read_text().splitlines() == ["env", "validate", "--resources-server", "mcqa"]
+    # Kept next to the run's other logs so a passing pre-flight is still auditable afterwards.
+    assert (tmp_path / "gym_validate.log").read_text().strip() == "Config is valid."
+
+
+@pytest.mark.asyncio
+async def test_validate_config_raises_with_gyms_own_report(tmp_path: Path) -> None:
+    # The whole point of the pre-flight: surface Gym's diagnosis before a Ray cluster and several
+    # uvicorn servers start, rather than as a readiness timeout that says nothing about the cause.
+    complaint = "Error: references resources_servers/'gdpval', which is not defined"
+    runner = GymAgentTaskRunner(config=_config())
+    gym = _stub_gym(tmp_path, exit_code=1, message=complaint)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner._validate_config(gym, [], {}, tmp_path)
+
+    assert complaint in str(excinfo.value)
+    assert "mcqa" in str(excinfo.value)
+
+
+def test_gym_executable_reports_how_to_install_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    with pytest.raises(RuntimeError, match="own environment"):
+        _gym_executable()
