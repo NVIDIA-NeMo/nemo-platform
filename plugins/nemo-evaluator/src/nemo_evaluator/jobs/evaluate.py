@@ -39,7 +39,7 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform import AsyncNeMoPlatform, DefaultAsyncHttpxClient, NeMoPlatform
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -77,6 +77,25 @@ class EvaluationResultFiles:
     artifacts_dir: Path
 
 
+async def _download_dataset_with_cloned_async_sdk(
+    async_sdk: AsyncNeMoPlatform,
+    dataset: FilesetRef,
+    destination: str,
+) -> Path:
+    """Download via a throwaway httpx client so the injected async SDK stays reusable.
+
+    ``run_sync`` uses ``asyncio.run``, which closes its loop. Binding the shared
+    ``async_sdk`` httpx client to that loop would leave it unusable for later
+    ``run_sync`` calls (e.g. result-entity persistence).
+    """
+    async with DefaultAsyncHttpxClient() as http_client:
+        return await download_dataset(
+            sdk=async_sdk.copy(http_client=http_client),
+            dataset=dataset,
+            destination=destination,
+        )
+
+
 def _resolve_run_dataset(
     dataset: DatasetSpec,
     *,
@@ -101,10 +120,10 @@ def _resolve_run_dataset(
         )
     if async_sdk is not None:
         return run_sync(
-            lambda: download_dataset(
-                sdk=async_sdk,
-                dataset=dataset,
-                destination=destination,
+            lambda: _download_dataset_with_cloned_async_sdk(
+                async_sdk,
+                dataset,
+                destination,
             )
         )
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")

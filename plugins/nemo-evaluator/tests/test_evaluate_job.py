@@ -1202,16 +1202,23 @@ class TestEvaluateJobRun:
             create=True,
         )
         download_dataset_sync = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset_sync", create=True)
+        cloned_sdk = mocker.Mock(name="cloned_async_sdk")
+        async_sdk = mocker.Mock(name="async_sdk")
+        async_sdk.copy.return_value = cloned_sdk
+        http_client = mocker.AsyncMock(name="http_client")
+        http_client.__aenter__.return_value = http_client
+        http_client.__aexit__.return_value = None
+        mocker.patch("nemo_evaluator.jobs.evaluate.DefaultAsyncHttpxClient", return_value=http_client)
         ctx = _make_job_context(tmp_path)
-        async_sdk = mocker.Mock()
         dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
         config = {**_exact_match_spec(), "dataset": dataset}
 
         run_result = EvaluateJob().run(config, ctx=ctx, async_sdk=async_sdk)
 
         _assert_saved_result_artifact(run_result, ctx, result_payload)
+        async_sdk.copy.assert_called_once_with(http_client=http_client)
         download_dataset.assert_awaited_once_with(
-            sdk=async_sdk,
+            sdk=cloned_sdk,
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
