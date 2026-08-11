@@ -169,13 +169,18 @@ async def check_find_agent_traces(
         f"summary={target['span_count']} counted={counted['count']}",
     )
     # A two-span scan window still has to report the whole trace, or the second call is
-    # not doing its job.
+    # not doing its job. Compare against the real count of whichever trace it picked,
+    # because the newest trace may legitimately hold one or two spans.
     narrow = await traces.find_agent_traces(client, agent=agent, workspace=workspace, limit=1, span_budget=2)
     if narrow["count"]:
+        scanned = narrow["traces"][0]
+        whole = await traces.query_spans(
+            client, workspace=workspace, filter={"trace_id": scanned["trace_id"]}, limit=1000
+        )
         report.check(
-            "a tiny scan window still reports the whole trace",
-            narrow["traces"][0]["span_count"] is not None and narrow["traces"][0]["span_count"] > 2,
-            f"span_budget=2 scanned 2 spans, reported span_count={narrow['traces'][0]['span_count']}",
+            "a two-span scan window still reports the whole trace",
+            scanned["span_count"] == whole["count"],
+            f"span_budget=2 scanned 2 spans, reported span_count={scanned['span_count']}, trace holds {whole['count']}",
         )
 
     report.section("find_agent_traces: since, and the empty case")
@@ -231,6 +236,8 @@ async def main() -> int:
     parser.add_argument("--workspace", default=None, help="Skip discovery and use this workspace.")
     parser.add_argument("--agent", default=None, help="Skip discovery and use this agent_name.")
     args = parser.parse_args()
+    if bool(args.workspace) != bool(args.agent):
+        parser.error("--workspace and --agent must be given together, or neither.")
 
     async with AsyncNeMoPlatform(base_url=args.base_url) as client:
         if args.workspace and args.agent:

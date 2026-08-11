@@ -110,11 +110,22 @@ def detail(exc: Exception) -> str:
     return match.group(2) if match else text[:80]
 
 
-async def run(kind: str, client: AsyncNeMoPlatform, workspace: str, filter: dict[str, Any]) -> str:
+def uses_sentinel(field: str) -> bool:
+    """True when the probe value is one nothing can hold, so the reply must be empty."""
+    return field not in DATE_FIELDS and field not in ENUM_VALUES
+
+
+async def run(
+    kind: str,
+    client: AsyncNeMoPlatform,
+    workspace: str,
+    filter: dict[str, Any],
+    *,
+    expect_no_rows: bool = False,
+) -> str:
     query = traces.query_spans if kind == "span" else traces.query_traces
     try:
-        await query(client, workspace=workspace, filter=filter, limit=1)
-        return "WORKS"
+        result = await query(client, workspace=workspace, filter=filter, limit=1)
     except traces.TraceQueryError as exc:
         text = str(exc)
         if "failed internally" in text or "HTTP 500" in text:
@@ -122,20 +133,39 @@ async def run(kind: str, client: AsyncNeMoPlatform, workspace: str, filter: dict
         if "Unknown filter field" in text:
             return "no (not a field)"
         return f"no ({detail(exc)})"
+    if expect_no_rows and result["count"]:
+        # Accepting a request is not applying a filter. Nothing holds the sentinel value,
+        # so a row here means Intake took the field and then ignored it, which would make
+        # every answer built on that field wrong.
+        return "ACCEPTED BUT NOT APPLIED"
+    return "WORKS"
 
 
 async def probe_fields(client: AsyncNeMoPlatform, workspace: str, kind: str, fields: tuple[str, ...]) -> None:
     print(f"\n{'=' * 66}\n{kind.upper()} FILTER FIELDS\n{'=' * 66}")
     works: list[str] = []
     broken: list[str] = []
+    ignored: list[str] = []
     for field in fields:
-        verdict = await run(kind, client, workspace, {field: value_for(field)})
+        verdict = await run(kind, client, workspace, {field: value_for(field)}, expect_no_rows=uses_sentinel(field))
         print(f"  {field:<18} {verdict}")
         if verdict == "WORKS":
             works.append(field)
         elif verdict.startswith("BROKEN"):
             broken.append(field)
+        elif verdict.startswith("ACCEPTED"):
+            ignored.append(field)
     print(f"\n  filterable ({len(works)}): {', '.join(works)}")
+    unconfirmed = [field for field in works if not uses_sentinel(field)]
+    if unconfirmed:
+        # An enum or a date needs a real value, so these queries return rows either way
+        # and an empty reply cannot be required. intake_tool_checks.py asserts that kind
+        # and agent_name narrow for real.
+        print(f"  accepted, application not confirmed: {', '.join(unconfirmed)}")
+    if ignored:
+        print(f"\n  ACCEPTED BUT NOT APPLIED ({len(ignored)}): {', '.join(ignored)}")
+        print("  Intake takes these filters and returns rows that do not match.")
+        print("  Treat any answer that relies on them as wrong.")
     if broken:
         print(f"\n  BROKEN ({len(broken)}): {', '.join(broken)}")
         print("  Intake publishes these filters and answers them with HTTP 500.")
@@ -143,9 +173,11 @@ async def probe_fields(client: AsyncNeMoPlatform, workspace: str, kind: str, fie
 
 
 async def probe_operators(client: AsyncNeMoPlatform, workspace: str) -> None:
-    print(f"\n{'=' * 66}\nOPERATORS\n{'=' * 66}")
+    print(f"\n{'=' * 66}\nOPERATORS (which operators Intake accepts per field)\n{'=' * 66}")
     for kind, label, filter in OPERATOR_CASES:
-        print(f"  {kind:<6} {label:<22} {await run(kind, client, workspace, filter)}")
+        # The $in cases pass values nothing holds, so they must come back empty. The date
+        # ranges are deliberately wide, so rows are expected and only acceptance is shown.
+        print(f"  {kind:<6} {label:<22} {await run(kind, client, workspace, filter, expect_no_rows='$in' in label)}")
 
 
 async def probe_group_by(client: AsyncNeMoPlatform, workspace: str) -> None:

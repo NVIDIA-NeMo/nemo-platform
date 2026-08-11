@@ -16,7 +16,7 @@ Start the platform and confirm that Intake is ready:
 
 ```bash
 curl -sf http://localhost:8080/health/ready
-curl -fsS http://localhost:8080/status | python3 -c "import json,sys; print('intake' in json.load(sys.stdin)['services']['ready'])"
+curl -fsS http://localhost:8080/status | uv run --frozen python -c "import json,sys; print('intake' in json.load(sys.stdin)['services']['ready'])"
 ```
 
 Ingest some traces if the platform is empty. A script that finds no spans reports that
