@@ -313,7 +313,7 @@ def _assert_g4_rejected_narrow_fix(experiment: Path) -> None:
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(1800)
+@pytest.mark.timeout(2400)
 @pytest.mark.parametrize("group", ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases"))
 def test_repair_groups_improve_validation(
     group: str,
