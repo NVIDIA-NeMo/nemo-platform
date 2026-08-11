@@ -4,11 +4,11 @@
 import { EntitiesSection } from '@studio/routes/AnonymizerBuilderRoute/components/EntitiesSection';
 import { ENTITY_MODE_AUTO } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
-  AnonymizerFormData,
+  type AnonymizerFormData,
   getAnonymizerFormDefaults,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { render, screen } from '@testing-library/react';
-import { FC, ReactNode } from 'react';
+import type { FC, ReactNode } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 
 vi.mock('@nemo/sdk/generated/anonymizer/api', () => ({
