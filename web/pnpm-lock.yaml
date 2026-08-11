@@ -388,6 +388,9 @@ importers:
       react-router:
         specifier: 'catalog:'
         version: 8.3.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      recharts:
+        specifier: 'catalog:'
+        version: 2.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
@@ -452,9 +455,6 @@ importers:
       react-hook-form:
         specifier: 'catalog:'
         version: 7.71.2(react@19.2.7)
-      recharts:
-        specifier: 'catalog:'
-        version: 2.15.4(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       tsx:
         specifier: 'catalog:'
         version: 4.22.4
