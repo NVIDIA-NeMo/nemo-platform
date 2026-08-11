@@ -1153,6 +1153,7 @@ httpx==0.28.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-auditor-plugin
     #   nemo-data-designer-plugin
     #   nemo-deployments-plugin
+    #   nemo-evaluator-sdk
     #   nemo-experimentalist-plugin
     #   nemo-insights-plugin
     #   nemo-platform-ext
