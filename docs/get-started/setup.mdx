@@ -24,15 +24,15 @@ Choose the install path that matches what you want to do.
 Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest local install. The `all` extra includes the SDK, CLI, platform services, and default first-party plugins:
 
 ```bash
-uv tool install "nemo-platform[all]"
+uv tool install --python 3.13 "nemo-platform[all]"
 ```
 
-[uv](https://docs.astral.sh/uv/) installs the tool in its own isolated environment and puts the `nemo` command on your PATH, so there is no virtual environment to create or activate. uv uses your default interpreter; add `--python 3.13` when that default is outside the supported Python range.
+[uv](https://docs.astral.sh/uv/) installs the tool in its own isolated environment and puts the `nemo` command on your PATH, so there is no virtual environment to create or activate. `--python 3.13` pins the tool to a supported interpreter and downloads one when your machine has none; without it uv uses your default interpreter, which may be outside the supported 3.12-3.13 range.
 
 For SDK and CLI usage only, install the base package. Local services are unavailable until you add the `all` extra:
 
 ```bash
-uv tool install nemo-platform
+uv tool install --python 3.13 nemo-platform
 ```
 
 To import the SDK from your own project, or when tool installs are unavailable, install into a virtual environment instead:

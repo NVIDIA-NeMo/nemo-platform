@@ -86,7 +86,7 @@ is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 ## Bootstrap and start
 
-This section is the **source checkout** path: use it to work on NeMo Platform itself, on a local plugin, or on Studio assets. To only *use* the platform, install the published wheel instead — `uv tool install "nemo-platform[all]"` needs no checkout and no toolchain, then continue at `nemo setup`.
+This section is the **source checkout** path: use it to work on NeMo Platform itself, on a local plugin, or on Studio assets. To only *use* the platform, install the published wheel instead — `uv tool install --python 3.13 "nemo-platform[all]"` needs no checkout and no toolchain, then continue at `nemo setup`.
 
 The steps below cover prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot. Prefer them over the manual sections further down whenever the task fits:
 
