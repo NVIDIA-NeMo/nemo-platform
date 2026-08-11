@@ -52,7 +52,15 @@ done
 
 echo "----- nemo on PATH -----"
 command -v nemo
-nemo --version
+# `nemo version 0.0.0` is what the CLI prints when its importlib.metadata
+# lookup misses the distribution it was installed from, which is invisible
+# unless the output is asserted.
+version_output="$(nemo --version)"
+echo "${version_output}"
+if [[ ! "${version_output}" =~ ^nemo\ version\ [0-9]+\.[0-9]+\.[0-9]+ ]] || [[ "${version_output}" == "nemo version 0.0.0"* ]]; then
+  echo "::error::nemo --version did not report an installed version: ${version_output}" >&2
+  exit 1
+fi
 
 # Import-time checks for commands that ship in the bundled wrapper. We don't
 # call `nemo services --help` here because `nemo services run` below is a
