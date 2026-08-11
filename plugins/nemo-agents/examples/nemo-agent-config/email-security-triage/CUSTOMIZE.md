@@ -1,7 +1,8 @@
 # How to adapt this example for your own agent
 
 **Goal:** turn the Email Security Triage example into your own agent — a DeepAgents
-orchestrator that delegates to a sub-agent and calls your tool.
+orchestrator that delegates to a verdict sub-agent, consults specialist sub-agents,
+and calls your tool.
 
 **Prerequisites:** you can deploy and invoke the example ([README.md](README.md)).
 
