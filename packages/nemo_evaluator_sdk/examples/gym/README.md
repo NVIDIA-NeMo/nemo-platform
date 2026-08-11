@@ -58,9 +58,13 @@ Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/...
 ## Read the results
 
 `inspect_results.py` reads `summary.json` and shows each result layer: run aggregates from
-`summary.scores`, ordered per-task attempt values from `summary.task_metric_values`, and runner-owned
+`summary.scores`, ordered per-task attempts from `summary.task_metric_attempts`, and runner-owned
 aggregates under `runner.gym.*`. Per-task keys use `<metric_type>.<output>`; a `null` attempt is a trial
 that failed before scoring, while an empty list means the metric produced no usable measurement.
+
+Each attempt names the trial that produced it, so `trial_id` — not list position — is what joins two
+outputs of the same task, or joins out to `trials.jsonl`. An attempt whose metric failed is absent
+rather than `null`, so two lists for one task need not be the same length.
 
 No bundle is checked in; the run above produces one. Give it a stable `--output-dir` and point the reader at the same path:
 

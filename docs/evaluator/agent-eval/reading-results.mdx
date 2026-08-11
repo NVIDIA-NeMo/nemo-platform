@@ -37,6 +37,21 @@ result = await AgentEvaluator().run(tasks=..., target=...)
 
 - **`summary.metric_coverage`** — per metric output, how many trials were `total` / `scored` / failed /
   missing, so you can tell a low mean from low coverage.
+- **`summary.task_metric_attempts`** — per task, the individual attempts behind those means, keyed
+  `<metric.type>.<output>`. Each attempt carries the `trial_id` that produced it and its `value`, so
+  you can answer "which tasks were flaky, and on which attempt?" without regrouping `result.scores`
+  yourself:
+
+  ```python
+  for task_id, by_output in result.summary.task_metric_attempts.items():
+      # .get: keys are per task, so a task scored by a different metric simply has none.
+      print(task_id, [(a.trial_id, a.value) for a in by_output.get("reward.score", [])])
+  ```
+
+  A `value` of `None` is a trial that died before scoring — an attempt that did not pass. An attempt
+  whose *metric* failed is absent entirely, because that leaves it unmeasured rather than
+  unsuccessful. Join by `trial_id` rather than by position: the two rules above mean lists for
+  different outputs of one task need not be the same length.
 - **`summary.task_count`**, **`summary.trial_count`**, **`summary.score_count`**.
 
 ### Per-metric scores

@@ -31,7 +31,7 @@ import argparse
 import json
 from pathlib import Path
 
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalAttemptValue, AgentEvalSummary, attempt_values
 from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
 
 #: Value at which an attempt counts as a pass, matching the SDK's pass@k definition (full credit).
@@ -68,12 +68,32 @@ def per_task_outcomes(
 
     ``None`` is a failed trial and therefore a failed attempt. An empty list means the task had no
     usable measurement because its metric failed or omitted the output.
+
+    Use :func:`per_task_attempts` when you need to know *which* trial produced a value.
+    """
+    return {
+        task_id: attempt_values(attempts)
+        for task_id, attempts in per_task_attempts(summary, metric_type=metric_type, output_name=output_name).items()
+    }
+
+
+def per_task_attempts(
+    summary: AgentEvalSummary,
+    *,
+    metric_type: str,
+    output_name: str,
+) -> dict[str, list[AgentEvalAttemptValue]]:
+    """The same attempts, each still naming the trial that produced it.
+
+    An attempt whose metric failed is absent rather than null, so lists for two different outputs of
+    one task need not be the same length — ``trial_id``, not position, is what lines them up. It is
+    also the join key out to ``trials.jsonl``, which is where a failed attempt's error lives.
     """
     key = f"{metric_type}.{output_name}"
     return {
-        task_id: list(metric_values[key])
-        for task_id, metric_values in summary.task_metric_values.items()
-        if key in metric_values
+        task_id: list(metric_attempts[key])
+        for task_id, metric_attempts in summary.task_metric_attempts.items()
+        if key in metric_attempts
     }
 
 

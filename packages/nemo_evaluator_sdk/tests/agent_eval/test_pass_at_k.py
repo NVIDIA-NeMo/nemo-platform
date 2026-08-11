@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary, _pass_at_k
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary, _pass_at_k, attempt_values
 from nemo_evaluator_sdk.agent_eval.scores import (
     TRIAL_STATUS_DETAIL,
     AgentEvalDiagnostic,
@@ -111,11 +111,11 @@ def test_task_pass_at_k_gated_and_uniform_across_metric_types() -> None:
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {score.name: score for score in summary.scores.scores}
 
-    assert summary.task_metric_values["t1"] == {
+    assert {key: attempt_values(a) for key, a in summary.task_metric_attempts["t1"].items()} == {
         "gym_reward.reward": [1.0, 0.0],
         "harbor_reward.reward": [1.0, 0.0],
     }
-    assert summary.task_metric_values["t2"] == {
+    assert {key: attempt_values(a) for key, a in summary.task_metric_attempts["t2"].items()} == {
         "gym_reward.reward": [1.0, 1.0],
         "harbor_reward.reward": [1.0, 1.0],
     }
@@ -178,7 +178,7 @@ def test_a_failed_trial_is_a_failed_attempt_not_an_absent_one() -> None:
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {s.name: s for s in summary.scores.scores}
 
-    assert summary.task_metric_values["t1"]["reward.reward"] == [1.0, None]
+    assert attempt_values(summary.task_metric_attempts["t1"]["reward.reward"]) == [1.0, None]
     assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.5)  # 1 of 2 attempts, not 1 of 1
     assert by_name["reward.reward.pass@2"].mean == pytest.approx(1.0)
     assert by_name["reward.reward.pass@1"].nan_count == 0  # the task was measured, so nothing is missing
@@ -199,7 +199,7 @@ def test_a_metric_that_raised_leaves_the_attempt_unmeasured_rather_than_failed()
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {s.name: s for s in summary.scores.scores}
 
-    assert summary.task_metric_values["t1"]["reward.reward"] == [1.0]
+    assert attempt_values(summary.task_metric_attempts["t1"]["reward.reward"]) == [1.0]
     assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.75)  # mean(1.0, 0.5), not mean(0.5, 0.5)
     # t1 drops out of pass@2 for having fewer than k attempts. That is the estimator working as defined,
     # not missing data, so it is not counted as nan.

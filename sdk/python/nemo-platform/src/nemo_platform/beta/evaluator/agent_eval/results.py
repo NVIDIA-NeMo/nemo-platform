@@ -36,7 +36,7 @@ from nemo_platform.beta.evaluator.values.results import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-#: Metric-output value schemas retained in the ordered per-task attempt-value mapping.
+#: Metric-output value schemas retained in the ordered per-task attempt mapping.
 _TASK_METRIC_VALUE_SCHEMAS = (ContinuousScore, DiscreteScore, BooleanValue)
 
 #: Metric-output value schemas eligible for pass@k (a per-attempt "did it pass?" signal). Labels,
@@ -61,6 +61,32 @@ class AgentEvalMetricOutputCoverage(BaseModel):
     missing: int = Field(default=0, description="Scores where the output was expected but absent.")
 
 
+class AgentEvalAttemptValue(BaseModel):
+    """One attempt at a task under one metric output: which trial made it, and what it measured.
+
+    Frozen because these records are handed out by reference from the summary: a consumer rescaling
+    values in place (Gym reports reward on 0-100 where we use 0-1) would otherwise rewrite the run's
+    own results, and a later persist would save the rewrite.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    trial_id: str = Field(
+        description=(
+            "Identifier of the trial that made this attempt. Joins to AgentEvalTrial.id "
+            "(trials.jsonl) and AgentEvalTaskScore.trial_id (scores.jsonl)."
+        )
+    )
+    value: float | None = Field(
+        description=(
+            "What the metric output measured, or None when the trial failed before it could be "
+            "measured -- an attempt that did not pass. Required rather than defaulted: None is a "
+            "load-bearing signal pass@k counts as a failed attempt, so an omitted value must not "
+            "quietly become one."
+        ),
+    )
+
+
 class AgentEvalSummary(BaseModel):
     """Aggregated scores, coverage, per-task attempt values, and run counts for an agent-eval run."""
 
@@ -78,14 +104,15 @@ class AgentEvalSummary(BaseModel):
         default_factory=dict,
         description="Per-metric, per-output coverage counts (total/scored/failed/missing).",
     )
-    task_metric_values: dict[str, dict[str, list[float | None]]] = Field(
+    task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]] = Field(
         default_factory=dict,
         description=(
-            "Per task, the values each '<metric_type>.<output>' measured, in trial order. A failed "
-            "trial is None: an attempt that did not pass. An unmeasured attempt (metric failed, output "
-            "absent) has no entry, so each key's list is independent and positions align within a key, "
-            "not across keys. An empty list means nothing was measured, including a task that produced "
-            "no trial."
+            "Per task, the attempts each '<metric_type>.<output>' measured, in trial order. Each "
+            "attempt names the trial that made it, so attempts join across keys -- and out to "
+            "trials.jsonl and scores.jsonl -- by trial_id. A failed trial has value None: an attempt "
+            "that did not pass. An unmeasured attempt (metric failed, output absent) has no entry at "
+            "all, so each key's list is independent: align by trial_id, never by position. An empty "
+            "list means nothing was measured, including a task that produced no trial."
         ),
     )
     task_count: int = Field(default=0, description="Number of tasks represented in the run.")
@@ -118,16 +145,16 @@ class AgentEvalSummary(BaseModel):
         ``runner.<name>.``), merged in so a backend's own figures are addressable the same way as ours.
         """
         task_list = list(tasks) if tasks is not None else None
-        task_metric_values = _task_metric_values(scores, task_list)
+        task_metric_attempts = _task_metric_attempts(scores, task_list)
         return AgentEvalSummary(
             scores=_aggregate_scores(
                 scores,
                 task_list,
                 extra_scores,
-                task_metric_values=task_metric_values,
+                task_metric_attempts=task_metric_attempts,
             ),
             metric_coverage=_metric_coverage(scores, task_list),
-            task_metric_values=task_metric_values,
+            task_metric_attempts=task_metric_attempts,
             task_count=len(task_list) if task_list is not None else len({score.task_id for score in scores}),
             trial_count=len({score.trial_id for score in scores}),
             score_count=len(scores),
@@ -476,7 +503,7 @@ def _aggregate_scores(
     tasks: Sequence[AgentEvalTask] | None,
     extra_scores: Sequence[AggregateScore] = (),
     *,
-    task_metric_values: dict[str, dict[str, list[float | None]]] | None = None,
+    task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]] | None = None,
 ) -> AggregatedMetricResult:
     """Aggregate per-metric-output, per-semantic-view, and task-level pass@k values into range scores.
 
@@ -509,11 +536,21 @@ def _aggregate_scores(
     for view_name, (values, total) in sorted(_semantic_view_values(scores, tasks).items()):
         aggregated.append(_aggregate_range_score(f"view.{view_name}", values, total))
 
-    attempt_values = task_metric_values if task_metric_values is not None else _task_metric_values(scores, tasks)
-    aggregated.extend(_task_pass_at_k_scores(attempt_values, tasks))
+    attempts = task_metric_attempts if task_metric_attempts is not None else _task_metric_attempts(scores, tasks)
+    aggregated.extend(_task_pass_at_k_scores(attempts, tasks))
     aggregated.extend(extra_scores)
 
     return AggregatedMetricResult(scores=aggregated)
+
+
+def attempt_values(attempts: Sequence[AgentEvalAttemptValue]) -> list[float | None]:
+    """The bare per-attempt values, for consumers scoring attempts without caring which trial made them.
+
+    Preserves order, cardinality, and the None-versus-absent distinction exactly as recorded, so
+    anything counting attempts (pass@k above all) reads the same sequence it would have read before
+    attempts carried a trial id.
+    """
+    return [attempt.value for attempt in attempts]
 
 
 def _pass_at_k(n: int, c: int, k: int) -> float:
@@ -549,11 +586,11 @@ def _scorelike_outputs(tasks: Sequence[AgentEvalTask] | None) -> set[tuple[str, 
     return scorelike
 
 
-def _task_metric_values(
+def _task_metric_attempts(
     scores: Sequence[AgentEvalTaskScore],
     tasks: Sequence[AgentEvalTask] | None,
-) -> dict[str, dict[str, list[float | None]]]:
-    """Ordered per-attempt values per task, keyed ``<metric_type>.<output>``.
+) -> dict[str, dict[str, list[AgentEvalAttemptValue]]]:
+    """Ordered per-attempt records per task, keyed ``<metric_type>.<output>``.
 
     ``task-a`` declares ``reward.score`` (continuous), ``steps.count`` (discrete) and
     ``usage.prompt_tokens`` (a free model) and runs four trials::
@@ -563,8 +600,10 @@ def _task_metric_values(
              t2  <trial died>                            # every metric fails as a trial failure
              t3  reward 0.0        steps 7  usage 1100
 
-        out  {"task-a": {"reward.score": [1.0, None, 0.0],
-                         "steps.count":  [5.0, 9.0, None, 7.0]}}
+        out  {"task-a": {"reward.score": [(t0, 1.0), (t2, None), (t3, 0.0)],
+                         "steps.count":  [(t0, 5.0), (t1, 9.0), (t2, None), (t3, 7.0)]}}
+
+    (shown as ``(trial_id, value)`` pairs; each is an :class:`AgentEvalAttemptValue`)
 
     ``usage.prompt_tokens`` is absent because its declared schema is not in
     :data:`_TASK_METRIC_VALUE_SCHEMAS`; t1 is missing from ``reward.score`` but present in
@@ -580,13 +619,16 @@ def _task_metric_values(
 
     What each score contributes to its key, in trial order:
 
-    - failed trial (:func:`is_trial_failure`) -> ``None``, an attempt that did not pass
+    - failed trial (:func:`is_trial_failure`) -> value ``None``, an attempt that did not pass
     - failed metric, or the output absent -> no entry; the attempt is unmeasured, not unsuccessful
     - otherwise -> the numeric value
 
     pass@k needs that asymmetry, and it is why a list is indexed by surviving measurement rather than
-    by attempt: above, index 1 is t2 under ``reward.score`` but t1 under ``steps.count``. Compare
-    positions within a key, never across keys.
+    by attempt: above, index 1 is t2 under ``reward.score`` but t1 under ``steps.count``. Every entry
+    therefore names its trial, and ``trial_id`` — not position — is what joins two keys of one task,
+    or joins out to ``trials.jsonl`` and ``scores.jsonl``. Ids are recorded as the runner reported
+    them and are never deduplicated: two attempts sharing an id stay two attempts, so a runner that
+    reuses one costs pass@k nothing.
     """
     output_keys: dict[str, set[tuple[str, str]]] = {}
     # Declared under a schema this mapping does not retain. Tracked so an emitted numeric value cannot
@@ -615,28 +657,28 @@ def _task_metric_values(
             if _semantic_value(output) is not None:
                 task_keys.add((score.metric_type, output.name))
 
-    by_task: dict[str, dict[str, list[float | None]]] = {}
+    by_task: dict[str, dict[str, list[AgentEvalAttemptValue]]] = {}
     for task_id, keys in output_keys.items():
-        task_values: dict[str, list[float | None]] = {}
+        task_values: dict[str, list[AgentEvalAttemptValue]] = {}
         for metric_type, output_name in sorted(keys):
-            values: list[float | None] = []
+            values: list[AgentEvalAttemptValue] = []
             for score in scores_by_task_metric.get((task_id, metric_type), []):
                 if is_trial_failure(score):
-                    values.append(None)
+                    values.append(AgentEvalAttemptValue(trial_id=score.trial_id, value=None))
                     continue
                 if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
                     continue
                 output = _score_output(score, output_name)
                 value = _semantic_value(output) if output is not None else None
                 if value is not None:
-                    values.append(value)
+                    values.append(AgentEvalAttemptValue(trial_id=score.trial_id, value=value))
             task_values[f"{metric_type}.{output_name}"] = values
         by_task[task_id] = task_values
     return by_task
 
 
 def _task_pass_at_k_scores(
-    task_metric_values: dict[str, dict[str, list[float | None]]],
+    task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]],
     tasks: Sequence[AgentEvalTask] | None,
 ) -> list[AggregateScore]:
     """Task-level pass@k over the R trials per task, aggregated across tasks (uniform for any runner).
@@ -666,7 +708,7 @@ def _task_pass_at_k_scores(
     aggregated: list[AggregateScore] = []
     for metric_type, output_name in sorted(scorelike):
         key = f"{metric_type}.{output_name}"
-        values_by_task = [outputs[key] for outputs in task_metric_values.values() if key in outputs]
+        values_by_task = [attempt_values(outputs[key]) for outputs in task_metric_attempts.values() if key in outputs]
         measured = [values for values in values_by_task if values]
         if not measured:
             continue
