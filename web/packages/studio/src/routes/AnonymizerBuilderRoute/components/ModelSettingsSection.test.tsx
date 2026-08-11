@@ -4,13 +4,14 @@
 import { ModelSettingsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ModelSettingsSection';
 import {
   activeRolesForStrategy,
+  GLINER_ROLE,
   STRATEGY_SUBSTITUTE,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
   AnonymizerFormData,
   getAnonymizerFormDefaults,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { FC, ReactNode } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 
@@ -38,5 +39,16 @@ describe('ModelSettingsSection', () => {
 
     const triggers = await screen.findAllByTestId('params-dropdown-trigger');
     expect(triggers).toHaveLength(activeRolesForStrategy(STRATEGY_SUBSTITUTE).length - 1);
+
+    expect(
+      within(screen.getByTestId(`role-settings-${GLINER_ROLE}`)).queryByTestId(
+        'params-dropdown-trigger'
+      )
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('role-settings-entity_validator')).getByTestId(
+        'params-dropdown-trigger'
+      )
+    ).toBeInTheDocument();
   });
 });

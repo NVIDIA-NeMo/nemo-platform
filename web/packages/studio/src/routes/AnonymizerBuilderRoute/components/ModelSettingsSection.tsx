@@ -37,7 +37,7 @@ export const ModelSettingsSection: FC = () => {
   return (
     <Stack gap="density-2xl">
       {roles.map((role, index) => (
-        <Stack key={role} gap="density-lg">
+        <Stack key={role} gap="density-lg" data-testid={`role-settings-${role}`}>
           {index > 0 && <Divider orientation="horizontal" width="small" />}
           <Text kind="label/bold/lg">{ROLE_LABELS[role] ?? role}</Text>
           <Flex gap="density-md" align="end">
