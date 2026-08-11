@@ -131,21 +131,32 @@ Submit body is wrapped: `{"spec": { ...AgentEvalInputSpec }}`.
   "kind": "agent",
   "agent": {
     "format": "generic",
-    "url": ".../agents/<agent>/-/generate",
+    "url": ".../agents/<agent>/-/v1/chat/completions",
     "name": "<agent>",
-    "body": { "input_message": "{{ instruction }}" },
-    "response_path": "$.value",
+    "body": {
+      "model": "<agent>",
+      "messages": [{ "role": "user", "content": "{{ instruction }}" }],
+      "stream": false
+    },
+    "response_path": "$.choices[0].message.content",
     "stream": false
   }
 }
 ```
 
-Use the non-streaming `/generate` endpoint. Do **not** use `/generate/full` — its per-token
-SSE stream leaves only the last token in the captured output and every score collapses to 0.
+Use the non-streaming chat-completions endpoint, which both agent config formats serve: a
+`nemo-agents-spec-v1` agent through the Platform-owned Fabric server, a `nat-workflow-v1`
+agent through NAT's FastAPI front end (`workflow.openai_api_v1_path`, on by default). NAT
+also serves the legacy `/generate`, but Fabric does not — it 404s — so the target must not
+branch on the agent's format.
 
-**`body` renders against the task inputs directly.** A generic agent's request is a passthrough
-of the task row, so `body` references task input fields by name — `{{ instruction }}` — not a
-chat wrapper. `instruction` is the single canonical task input.
+Do **not** use NAT's `/generate/full` — its per-token SSE stream leaves only the last token
+in the captured output and every score collapses to 0. Keep `stream: false` in the body for
+the same reason.
+
+**`body` renders against the task inputs.** `render_template` recurses into dicts and lists,
+so `{{ instruction }}` substitutes inside the nested `messages` entry. `instruction` is the
+single canonical task input; the dataset-driven target renders `{{ prompt }}` instead.
 
 ### Task
 
@@ -272,13 +283,22 @@ per-task bundle (trials, evidence, traces) lives in the fileset referenced by `b
   dataset/fileset/taskset reference yet (planned). Large datasets must be inlined for now.
 - **Agent must be deployed and running before submit** — a not-yet-ready agent connection
   fails the job.
-- **Use `/generate`, not `/generate/full`** (per-token SSE zeroes the score).
+- **Use `/-/v1/chat/completions`, never `/generate`.** Only NAT serves `/generate`; a Fabric
+  (`nemo-agents-spec-v1`) agent 404s on it, and Fabric is what `nemo-build-agent` and Studio's
+  Create Example Agent produce. Chat completions is the one shape both formats serve.
+- **Never use `/generate/full`** (per-token SSE zeroes the score).
 - **Run tasks serially (`max_concurrent_tasks: 1`) by default.** NAT currently reports workflow
   failures such as output truncation as **422**; `422` is not retried, so one failure kills the
   whole job. Serial execution is conservative but does not fix truncation. Configure an adequate
   agent output budget, or set `target.params.ignore_request_failure: true` to accept `NaN` trials.
-- **`body` uses `{{ instruction }}`, not a `messages` wrapper** — a generic agent's request is a
-  task-row passthrough with no `messages` key to index.
+- **`{{ instruction }}` is the task input, wherever it sits in `body`.** The template variable
+  names a task-row field, not a chat field — it happens to be rendered inside the `messages`
+  wrapper the agent's endpoint expects. `render_template` recurses through dicts and lists, so
+  nesting it is fine.
+- **Every eval request opens a new Fabric session.** Fabric starts a fresh runtime per
+  chat-completions call that carries no `X-Nemo-Session-Id`, and the evaluator sends none.
+  Sessions are reclaimed only by the 30-minute idle sweep, so a long task list leaves that many
+  runtimes alive and pays a cold start per task.
 
 ---
 
@@ -302,8 +322,13 @@ Shape (reference only):
     ],
     "target": {
       "format": "generic",
-      "url": ".../-/generate",
-      "response_path": "$.value",
+      "url": ".../-/v1/chat/completions",
+      "body": {
+        "model": "<agent>",
+        "messages": [{ "role": "user", "content": "{{ prompt }}" }],
+        "stream": false
+      },
+      "response_path": "$.choices[0].message.content",
       "stream": false
     },
     "prompt_template": { "messages": [{ "role": "user", "content": "{{ item.<col> }}" }] },
