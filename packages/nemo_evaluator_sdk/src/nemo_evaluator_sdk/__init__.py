@@ -6,9 +6,9 @@
 The public surface resolves lazily (PEP 562). Importing this package must not drag in the
 execution/backend or metric stack: importing any submodule runs this module first, so eager
 re-exports made ``import nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime`` — all the
-optimizer needs — cost ~1400 modules (openai, sacrebleu, zstandard, pyarrow, ...) instead
-of ~480, and turned every one of those transitive packages into an evaluation-time failure mode
-for the SDK-backed evaluator.
+optimizer needs — cost ~1400 modules (openai, sacrebleu, zstandard, ...) instead of ~485, and
+turned every one of those transitive packages into an evaluation-time failure mode for the
+SDK-backed evaluator.
 
 Add a new re-export to ``_LAZY_ATTRS``, the ``TYPE_CHECKING`` block and ``__all__`` — never as a
 module-level import. ``tests/test_lazy_public_api.py`` locks the boundary in.
@@ -16,14 +16,19 @@ module-level import. ``tests/test_lazy_public_api.py`` locks the boundary in.
 
 # ruff: noqa: I001 - the vendored SDK mirror uses different import-order settings.
 
-from importlib import import_module
-from importlib.metadata import PackageNotFoundError
+from importlib import import_module as _import_module
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
 from importlib.metadata import version as _package_version
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     # Annotations and static analysis only; these must never execute at run time. Listing the
     # names in ``__all__`` is what marks them as re-exports for ruff and the type checkers.
+    #
+    # AGENTS.md ("Python Style notes") says not to import types under TYPE_CHECKING and to use a
+    # regular import "when possible". A regular import is exactly what this module exists to
+    # remove, so the exception is deliberate: these names are re-exports, not annotations, and
+    # every one of them resolves for real through ``__getattr__`` below.
     from nemo_evaluator_sdk.agent_stream_translation import (
         AgentStreamTranslation,
         AgentStreamTranslationContext,
@@ -97,10 +102,24 @@ if TYPE_CHECKING:
         SecretRef,
     )
 
-try:
-    version = _package_version("nemo-evaluator-sdk")
-except PackageNotFoundError:
-    version = "0.0.0"
+
+def _resolve_version() -> str:
+    """Report the version of whichever distribution actually shipped this code.
+
+    ``nemo-evaluator-sdk`` is not published on its own — this package is also vendored into the
+    ``nemo-platform`` wheel as ``nemo_platform.beta.evaluator``. There the SDK distribution does
+    not exist, so resolving only that name reported ``"0.0.0"`` unconditionally and any telemetry
+    or support log that read it got a useless constant.
+    """
+    for distribution in ("nemo-evaluator-sdk", "nemo-platform"):
+        try:
+            return _package_version(distribution)
+        except _PackageNotFoundError:
+            continue
+    return "0.0.0"
+
+
+version = _resolve_version()
 
 # Re-exported name -> the submodule that defines it, relative to this package. Relative on
 # purpose: the vendoring tool mirrors this file into nemo_platform.beta.evaluator by rewriting
@@ -251,21 +270,29 @@ __all__ = [
 def __getattr__(name: str) -> object:
     """Import the submodule that defines ``name`` on first access (PEP 562).
 
-    ``AttributeError`` is the required failure mode, not ``ImportError``: ``from pkg import sub``
-    only falls back to importing a submodule when attribute lookup raises ``AttributeError``, and
-    ``hasattr`` checks against this package depend on it too.
+    An *unknown* name raises ``AttributeError``, which is required: ``from pkg import sub`` only
+    falls back to importing a submodule when attribute lookup raises ``AttributeError``.
+
+    A *known* name whose submodule fails to import propagates that ``ImportError`` unchanged, and
+    that is deliberate — ``ModuleNotFoundError: No module named 'sacrebleu'`` is far more useful
+    than an ``AttributeError`` claiming ``BLEUMetric`` does not exist. The consequence is that
+    ``hasattr(nemo_evaluator_sdk, name)`` raises rather than returning ``False`` when a name's
+    dependencies are not installed, since ``hasattr`` only swallows ``AttributeError``. To probe
+    for an optional part of the surface, catch ``ImportError`` around the access instead of using
+    ``hasattr``; to probe only for name membership, test against ``__all__``.
     """
     submodule = _LAZY_ATTRS.get(name)
     if submodule is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(submodule, __name__), name)
+    value = getattr(_import_module(submodule, __name__), name)
     globals()[name] = value  # cache, so later lookups skip __getattr__ entirely
     return value
 
 
 def __dir__() -> list[str]:
-    # The declared surface plus any submodule the caller has already imported. ``import_module``
-    # and ``TYPE_CHECKING`` are machinery for __getattr__, not API, so keep them out of
-    # autocomplete and inspect.getmembers.
-    public = {name for name in globals() if not name.startswith("_")} - {"TYPE_CHECKING", "import_module"}
+    # The declared surface plus any submodule the caller has already imported. Everything this
+    # module needs for its own machinery is imported under a leading underscore so the filter
+    # below keeps it out of autocomplete and inspect.getmembers without a name-by-name denylist;
+    # ``TYPE_CHECKING`` is the one exception, kept unaliased so type checkers still recognise it.
+    public = {name for name in globals() if not name.startswith("_")} - {"TYPE_CHECKING"}
     return sorted(set(__all__) | public)

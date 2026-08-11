@@ -406,6 +406,40 @@ async def test_create_fails_on_unresolved_value_from(
     mock_stub.CreateSandbox.assert_not_called()
 
 
+async def test_create_injects_serve_path_into_sandbox_environment(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    update = await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    assert update.status == "STARTING"
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    expected = openshell_backend._executor_config.serve_path
+    assert spec.environment["PATH"] == expected
+    assert spec.template.environment["PATH"] == expected
+
+
+async def test_create_respects_a_container_declared_path(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config_with_env([EnvVar(name="PATH", value="/custom/bin")])
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    update = await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    assert update.status == "STARTING"
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert spec.environment["PATH"] == "/custom/bin"
+
+
 async def test_create_fails_when_secret_resolution_errors(
     openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
 ) -> None:

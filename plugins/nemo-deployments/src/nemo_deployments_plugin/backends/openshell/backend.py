@@ -341,6 +341,8 @@ class OpenShellDeploymentBackend(DeploymentBackend):
                     "backend and secret references must resolve to a value."
                 ),
             )
+        if "PATH" not in env:
+            env["PATH"] = self._executor_config.serve_path
         all_labels = {
             **labels,
             **config.labels,

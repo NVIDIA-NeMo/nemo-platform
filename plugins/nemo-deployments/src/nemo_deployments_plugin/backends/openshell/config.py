@@ -112,6 +112,15 @@ class OpenShellExecutorConfig(BaseModel):
             "per-run temp dir is written here instead. Empty string disables the chdir."
         ),
     )
+    serve_path: str = Field(
+        default="/workspace/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        description=(
+            "PATH injected into the sandbox environment so exec'd processes find "
+            "image-installed binaries. The supervisor resets PATH to a system default, so an "
+            "image's ENV PATH is not seen by exec'd children. Ignored when the deployment "
+            "config already declares PATH."
+        ),
+    )
     landlock_compatibility: Literal["best_effort", "hard_requirement"] = Field(
         default="best_effort",
         description=(

@@ -53,9 +53,8 @@ class SandboxSDK:
 
 def _load_agents_sdk() -> SandboxSDK:
     try:
-        # The OpenAI Agents SDK ships under the `nemo-evaluator-sdk[agent-runtimes]` extra and is
-        # imported only when this Docker runtime is actually used, so it is absent from the default
-        # type-checking environment.
+        # The OpenAI Agents SDK is imported only when this Docker runtime is actually used, so it
+        # is absent from the default type-checking environment.
         from agents.run import RunConfig  # ty: ignore[unresolved-import]
         from agents.sandbox import Manifest, SandboxAgent, SandboxRunConfig  # ty: ignore[unresolved-import]
         from agents.sandbox.config import DEFAULT_PYTHON_SANDBOX_IMAGE  # ty: ignore[unresolved-import]
@@ -68,7 +67,14 @@ def _load_agents_sdk() -> SandboxSDK:
         from agents import Runner  # ty: ignore[unresolved-import]
         from docker import from_env as docker_from_env
     except ImportError as exc:
-        raise RuntimeError("DockerSandboxAgentRuntime requires `nemo-evaluator-sdk[agent-runtimes]`") from exc
+        # Audience split is in the error text: SDK extras are not propagated into the
+        # vendored nemo_platform.beta.evaluator mirror.
+        raise RuntimeError(
+            "DockerSandboxAgentRuntime requires the openai-agents[docker] Python packages. "
+            "Standalone SDK: pip install 'nemo-evaluator-sdk[agent-runtimes]'. "
+            "Vendored nemo-platform.beta.evaluator (no SDK extras): "
+            "pip install 'openai-agents[docker]'"
+        ) from exc
 
     return SandboxSDK(
         Runner=Runner,
