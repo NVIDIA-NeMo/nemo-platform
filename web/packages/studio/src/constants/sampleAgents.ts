@@ -21,7 +21,7 @@ import { z } from 'zod';
 //
 // 2. Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
 //    console script on PATH, since Fabric spawns it as a stdio MCP child:
-//      email-phishing-iocs -> plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent
+//      email-security-triage-iocs -> plugins/nemo-agents/examples/nemo-agent-config/email-security-triage
 //
 // Each public/sample-agents/<dir>/agent.yml is an independent copy of the
 // example's config; keep them in sync by hand.
@@ -41,12 +41,12 @@ export interface SampleAgent {
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
   {
-    key: 'email_phishing_agent',
-    displayName: 'Email Phishing Analyzer (Fabric)',
+    key: 'email_security_triage',
+    displayName: 'Email Security Triage',
     description:
       'A Fabric DeepAgents orchestrator that delegates the phishing verdict to a sub-agent and calls a deterministic extract_iocs tool, so each step is tunable in config and emits its own trace span.',
-    namePrefix: 'email-phishing-agent',
-    agentConfigPath: 'sample-agents/email-phishing-agent/agent.yml',
+    namePrefix: 'email-security-triage',
+    agentConfigPath: 'sample-agents/email-security-triage/agent.yml',
     configFormat: 'nemo-agents-spec-v1',
   },
 ];

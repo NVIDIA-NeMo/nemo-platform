@@ -65,7 +65,7 @@ def extract_iocs(text: str) -> dict[str, list[str]]:
     return {"urls": sorted(urls), "domains": sorted(domains)}
 
 
-mcp = FastMCP("email-phishing-iocs")
+mcp = FastMCP("email-security-triage-iocs")
 
 
 @mcp.tool(name="extract_iocs")
