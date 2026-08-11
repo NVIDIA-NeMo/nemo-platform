@@ -35,3 +35,4 @@ packages = ["src/nemo_experimentalist_plugin"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["e2e: requires Docker, a running Platform, and configured real models"]

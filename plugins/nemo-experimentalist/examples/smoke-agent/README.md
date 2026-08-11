@@ -227,15 +227,10 @@ documented outside this directory — see the note at the top of this file.
 
 ## Checking a run
 
-```bash
-SMOKE_EXPERIMENT_DIR=/tmp/smoke-repair uv run pytest \
-  plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_gate.py -v
-```
-
-Five assertions, each covering a different way a result can look better than it
-is: the winner's code actually changed, reward improved beyond noise, controls
-still pass, the analysis named the cause, and the winner handles held-out
-instances rather than the ones it trained on.
+The Mode 1 and Mode 2 E2E tests check the experiment artifacts themselves. They
+verify source changed, held-out tasks pass, controls do not regress, and the
+Analyzer named each group's problem. They also verify that G4 keeps the baseline
+when a train-only change fails to generalize.
 
 **Also run the guard suite after every loop run:**
 
