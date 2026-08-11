@@ -118,6 +118,69 @@ async def test_remove_expired_removes_only_idle_sessions(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
+async def test_evict_over_capacity_removes_least_recently_used_first() -> None:
+    registry = FabricSessionRegistry()
+    oldest = await registry.register(cast(Any, object()), session_id="oldest")
+    middle = await registry.register(cast(Any, object()), session_id="middle")
+    newest = await registry.register(cast(Any, object()), session_id="newest")
+    oldest.last_accessed_at = 10.0
+    middle.last_accessed_at = 20.0
+    newest.last_accessed_at = 30.0
+
+    evicted = await registry.evict_over_capacity(max_sessions=1, keep="newest")
+
+    assert evicted == [oldest, middle]
+    assert oldest.closing is True
+    assert middle.closing is True
+    assert newest.closing is False
+    assert await registry.count() == 1
+
+
+@pytest.mark.asyncio
+async def test_evict_over_capacity_keeps_the_session_just_opened() -> None:
+    registry = FabricSessionRegistry()
+    established = await registry.register(cast(Any, object()), session_id="established")
+    opened = await registry.register(cast(Any, object()), session_id="opened")
+    established.last_accessed_at = 90.0
+    opened.last_accessed_at = 10.0
+
+    evicted = await registry.evict_over_capacity(max_sessions=1, keep="opened")
+
+    assert evicted == [established]
+    assert await registry.count() == 1
+
+
+@pytest.mark.asyncio
+async def test_evict_over_capacity_never_evicts_a_session_mid_invocation() -> None:
+    registry = FabricSessionRegistry()
+    busy = await registry.register(cast(Any, object()), session_id="busy")
+    opened = await registry.register(cast(Any, object()), session_id="opened")
+    busy.last_accessed_at = 10.0
+    opened.last_accessed_at = 20.0
+
+    await busy.invocation_lock.acquire()
+    try:
+        evicted = await registry.evict_over_capacity(max_sessions=1, keep="opened")
+    finally:
+        busy.invocation_lock.release()
+
+    assert evicted == []
+    assert busy.closing is False
+    assert await registry.count() == 2
+
+
+@pytest.mark.asyncio
+async def test_evict_over_capacity_is_a_no_op_under_the_cap_or_when_unlimited() -> None:
+    registry = FabricSessionRegistry()
+    await registry.register(cast(Any, object()), session_id="session-1")
+    await registry.register(cast(Any, object()), session_id="session-2")
+
+    assert await registry.evict_over_capacity(max_sessions=4, keep="session-2") == []
+    assert await registry.evict_over_capacity(max_sessions=0, keep="session-2") == []
+    assert await registry.count() == 2
+
+
+@pytest.mark.asyncio
 async def test_drain_removes_sessions_and_rejects_new_registrations() -> None:
     registry = FabricSessionRegistry()
     first = await registry.register(cast(Any, object()), session_id="session-1")

@@ -35,6 +35,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_CONCURRENT_INVOCATIONS = 8
 DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS = 30 * 60
 DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS = 5 * 60
+# A chat-completions call that carries no session header opens a session the caller has no
+# way to close, so without a cap a workload that never reuses one — an evaluation job, whose
+# every task is a fresh request — leaves a runtime per request alive until the idle sweep.
+# Matches the invocation cap so a saturated server keeps as many runtimes as it can use.
+DEFAULT_MAX_LIVE_SESSIONS = 8
 
 
 class FabricSessionStartError(RuntimeError):
@@ -56,14 +61,18 @@ class FabricSessionManager:
         session_registry: FabricSessionRegistry,
         fabric: Fabric | None = None,
         max_concurrent_invocations: int = DEFAULT_MAX_CONCURRENT_INVOCATIONS,
+        max_live_sessions: int = DEFAULT_MAX_LIVE_SESSIONS,
     ) -> None:
         if max_concurrent_invocations < 0:
             raise ValueError("max_concurrent_invocations must be greater than or equal to zero.")
+        if max_live_sessions < 0:
+            raise ValueError("max_live_sessions must be greater than or equal to zero.")
 
         self._agent_config = agent_config
         self._base_dir = base_dir
         self._session_registry = session_registry
         self._fabric = fabric
+        self._max_live_sessions = max_live_sessions
         self._invocation_semaphore = (
             asyncio.Semaphore(max_concurrent_invocations) if max_concurrent_invocations > 0 else None
         )
@@ -87,7 +96,7 @@ class FabricSessionManager:
             raise FabricSessionStartError(f"Fabric runtime startup failed: {error}") from error
 
         try:
-            return await self._session_registry.register(runtime)
+            session = await self._session_registry.register(runtime)
         except BaseException:
             # A started runtime must not leak if registration fails or is cancelled.
             try:
@@ -95,6 +104,22 @@ class FabricSessionManager:
             except FabricError:
                 logger.exception("Failed to stop Fabric runtime after session registration failed.")
             raise
+
+        await self._evict_over_capacity(keep=session.session_id)
+        return session
+
+    async def _evict_over_capacity(self, *, keep: str) -> None:
+        """Stop the least recently used idle sessions above the live-session cap."""
+        evicted = await self._session_registry.evict_over_capacity(
+            max_sessions=self._max_live_sessions,
+            keep=keep,
+        )
+        for session in evicted:
+            logger.info("Evicting idle Fabric session %s to stay within the live-session cap.", session.session_id)
+            try:
+                await self._stop_session(session)
+            except FabricSessionStopError:
+                logger.exception("Failed to stop evicted Fabric session %s.", session.session_id)
 
     async def resolve_session(self, session_id: str | None) -> FabricRuntimeSession:
         """Open a new session or resolve an existing session by its opaque ID."""

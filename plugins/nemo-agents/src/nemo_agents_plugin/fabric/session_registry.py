@@ -95,6 +95,32 @@ class FabricSessionRegistry:
                 session.closing = True
             return session
 
+    async def evict_over_capacity(self, *, max_sessions: int, keep: str) -> list[FabricRuntimeSession]:
+        """Remove the least recently used idle sessions above *max_sessions*.
+
+        A session that is mid-invocation is never evicted, so the registry can sit above
+        the cap while every session is busy. *keep* is the session the caller just opened
+        and is about to use, which is idle but must survive.
+        """
+        if max_sessions <= 0:
+            return []
+
+        evicted: list[FabricRuntimeSession] = []
+        async with self._lock:
+            while len(self._sessions) > max_sessions:
+                candidates = [
+                    session
+                    for session in self._sessions.values()
+                    if session.session_id != keep and not session.invocation_lock.locked()
+                ]
+                if not candidates:
+                    break
+                victim = min(candidates, key=lambda session: session.last_accessed_at)
+                victim.closing = True
+                evicted.append(victim)
+                del self._sessions[victim.session_id]
+        return evicted
+
     async def remove_expired(self, *, idle_timeout_seconds: float) -> list[FabricRuntimeSession]:
         """Remove inactive sessions that are not currently invoking."""
         cutoff = time.monotonic() - idle_timeout_seconds
