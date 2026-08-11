@@ -1,4 +1,4 @@
-# Tutorial: Deploy and try the email phishing agent
+# Tutorial: Deploy and try the Email Security Triage agent
 
 Deploy a Fabric (`nemo-agents-spec-v1`) agent end to end and watch it classify a
 phishing email. The agent is a DeepAgents orchestrator that calls a deterministic
@@ -15,15 +15,15 @@ a specialist fire, find the steps in the trace, and score it against labeled dat
 
 - NeMo Platform running locally (see [SETUP.md](../../../../../SETUP.md)); `export NMP_BASE_URL=http://localhost:8080`.
 - `export NVIDIA_API_KEY=<your key>`.
-- Dependencies synced from the repo root: `uv sync --all-packages` (installs the `email-phishing-iocs` tool this agent calls).
+- Dependencies synced from the repo root: `uv sync --all-packages` (installs the `email-security-triage-iocs` tool this agent calls).
 
 ## Step 1: Deploy the agent
 
 ```bash
-nemo agents create --name email-phishing-agent \
-  --agent-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/agent.yaml
-nemo agents deploy --agent email-phishing-agent \
-  --name email-phishing-agent-deployment --mode subprocess
+nemo agents create --name email-security-triage \
+  --agent-config plugins/nemo-agents/examples/nemo-agent-config/email-security-triage/agent.yaml
+nemo agents deploy --agent email-security-triage \
+  --name email-security-triage-deployment --mode subprocess
 ```
 
 The deploy command waits until the deployment reports `running` on a loopback port.
@@ -31,7 +31,7 @@ The deploy command waits until the deployment reports `running` on a loopback po
 ## Step 2: Classify an email
 
 ```bash
-nemo agents invoke --agent-deployment email-phishing-agent-deployment \
+nemo agents invoke --agent-deployment email-security-triage-deployment \
   --input $'From: it-support@paypa1-secure.example\nSubject: Verify your account\n\nYour account is locked. Confirm your password at http://paypa1-secure.example/login'
 ```
 
@@ -49,7 +49,7 @@ silent.
 email actually carries them. Send one that does:
 
 ```bash
-nemo agents invoke --agent-deployment email-phishing-agent-deployment \
+nemo agents invoke --agent-deployment email-security-triage-deployment \
   --input $'Received: from mail.evil.example (203.0.113.9)\nFrom: security@paypal.com\nReturn-Path: bounce@evil.example\nAuthentication-Results: mx.example.com; spf=fail smtp.mailfrom=evil.example; dkim=fail header.d=paypal.com; dmarc=fail header.from=paypal.com\nSubject: Unusual sign-in\n\nReview the sign-in at http://paypal-secure-review.example/verify'
 ```
 
@@ -65,7 +65,7 @@ idle there. That is deliberate: synthesizing auth results per row would put the
 ## Step 4: Find the steps in the trace
 
 ```bash
-nemo agents logs --agent email-phishing-agent
+nemo agents logs --agent email-security-triage
 ```
 
 The deployment's `artifacts/.../events.atof.jsonl` records the `extract_iocs` tool
@@ -80,8 +80,8 @@ same run appears under **Traces**, one span per step.
 
 ```bash
 nemo agents evaluate run \
-  --eval-config plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent/email-phishing-eval.yml \
-  --agent email-phishing-agent
+  --eval-config plugins/nemo-agents/examples/nemo-agent-config/email-security-triage/email-security-triage-eval.yml \
+  --agent email-security-triage
 ```
 
 The judge scores each verdict against the `label` column in

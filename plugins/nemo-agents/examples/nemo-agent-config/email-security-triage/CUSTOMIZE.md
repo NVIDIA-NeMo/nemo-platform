@@ -1,6 +1,6 @@
 # How to adapt this example for your own agent
 
-**Goal:** turn the email-phishing example into your own agent — a DeepAgents
+**Goal:** turn the Email Security Triage example into your own agent — a DeepAgents
 orchestrator that delegates to a sub-agent and calls your tool.
 
 **Prerequisites:** you can deploy and invoke the example ([README.md](README.md)).
@@ -19,9 +19,9 @@ orchestrator (deepagents) ── delegates ──▶ <your> verdict sub-agent
 |---|---|---|
 | `agent.yaml` | The `nemo-agents-spec-v1` config: harness, sub-agents, model, MCP server, telemetry | Rewrite the orchestrator `instructions.system` and each sub-agent `system_prompt` + `description`; set `models.default` (+ `temperature`); rename `name` / `telemetry.project` |
 | `mcps/iocs.py` | `extract_iocs` (pure regex) + a FastMCP stdio server | Replace the function body with your tool's logic; keep the `@mcp.tool()` wrapper + `main()`. Rename the module and tool |
-| `pyproject.toml` | Packages `mcps/`; exposes console `email-phishing-iocs` | Set `name` and `[project.scripts] <console> = "mcps.<module>:main"` |
+| `pyproject.toml` | Packages `mcps/`; exposes console `email-security-triage-iocs` | Set `name` and `[project.scripts] <console> = "mcps.<module>:main"` |
 | `data/smaller_test.csv` + `build_dataset.py` | Labeled eval rows; the builder assembles a sender-inclusive `email` column | Drop in your rows; edit the assembly to the fields your agent reads |
-| `email-phishing-eval.yml` | Eval config (`question_key: email`, `answer_key: label`, `id_key: subject`) | Point the keys at your columns; tune the judge weights/prompt |
+| `email-security-triage-eval.yml` | Eval config (`question_key: email`, `answer_key: label`, `id_key: subject`) | Point the keys at your columns; tune the judge weights/prompt |
 | `tests/test_extract_iocs.py` | Unit tests for the tool | Rewrite for your tool's contract |
 
 ## Keep in sync

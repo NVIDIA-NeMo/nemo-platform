@@ -1,7 +1,28 @@
+# Studio sample agent: Fabric (nemo-agents-spec-v1) Email Security Triage.
+# Served as a static asset and fetched by Studio's Create Example Agent flow.
+# `models.default.model` is overwritten with the user's selected model at create
+# time (parse-then-set), so the value here is only a default.
+#
+# This agent is a DeepAgents orchestrator: it calls a deterministic `extract_iocs`
+# MCP tool, fans out to specialist subagents (brand impersonation, attack category,
+# SMTP header auth), then delegates the verdict to a phishing subagent — so the
+# classification is tunable in this config and each step emits its own trace span.
+#
+# REQUIRES the `email-security-triage-iocs` console script on PATH in the deploy
+# environment (shipped by nemo-agent-config-example-email-security-triage); Fabric
+# launches it as a stdio MCP server. Without it the deployment starts but the
+# tool call fails.
+#
+# NOTE: this is an independent copy of
+# plugins/nemo-agents/examples/nemo-agent-config/email-security-triage/agent.yaml
+# (the source of truth). Keep the two in sync by hand.
+#
+# The telemetry endpoint below assumes a Platform on 127.0.0.1:8080; ATIF export
+# is best-effort and a mismatch costs traces, not the run.
 config_format: nemo-agents-spec-v1
-name: email-phishing-agent
+name: email-security-triage
 description: >-
-  Email phishing analyzer as a Fabric deepagents orchestrator. It calls a
+  Email Security Triage: a Fabric deepagents orchestrator. It calls a
   deterministic extract_iocs MCP tool, fans out to specialist subagents (brand
   impersonation, attack category, SMTP header auth), then delegates the final
   verdict to a phishing subagent. Every prompt, model, and hyperparameter lives
@@ -197,7 +218,7 @@ skills:
   paths: []
 
 # extract_iocs is shipped by this example's package as the console script
-# `email-phishing-iocs` (see pyproject.toml). Fabric launches it as a stdio MCP
+# `email-security-triage-iocs` (see pyproject.toml). Fabric launches it as a stdio MCP
 # server — a parallel child process — resolving this command on PATH. It is on
 # PATH for local `--mode subprocess` runs (installed into .venv by
 # `uv sync --all-packages` as a workspace member) and baked into the image by
@@ -207,7 +228,7 @@ mcp:
   servers:
     iocs:
       transport: stdio
-      url: email-phishing-iocs
+      url: email-security-triage-iocs
 
 tools:
   blocked: []
@@ -220,7 +241,7 @@ telemetry:
   enabled: true
   provider: relay
   output_dir: ./artifacts/relay
-  project: email-phishing-agent
+  project: email-security-triage
   atif:
     enabled: true
     filename_template: trajectory-{session_id}.atif.json
