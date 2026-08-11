@@ -28,11 +28,35 @@ _DEFAULT_MODEL = os.environ.get("NEMO_DEFAULT_MODEL", "default/openai-openai-gpt
 _FAST_MODEL = os.environ.get("NEMO_FAST_MODEL", "default/openai-openai-gpt-5-mini")
 _RECORDS = _FIXTURE / "dataset" / "_shared" / "records.json"
 _REPAIR_GROUPS = ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases")
-_FAILING_TRAIN_TASKS = {
-    "g1-aggregation": ("total-hours-engineers", "total-hours-research"),
-    "g2-name-patterns": ("lookup-obrien", "lookup-zoe"),
-    "g3-long-inputs": ("preamble-dept", "preamble-role"),
-    "g5-edge-cases": ("empty-role", "missing-person"),
+_INSIGHT_EVIDENCE_TASKS = {
+    "g1-aggregation": (
+        "total-hours-engineers",
+        "total-hours-research",
+        "total-hours-analysts",
+        "total-hours-operators",
+        "total-hours-ops",
+    ),
+    "g2-name-patterns": (
+        "lookup-obrien",
+        "lookup-zoe",
+        "lookup-ann-marie",
+        "lookup-obrien-hours",
+        "lookup-ann-marie-role",
+    ),
+    "g3-long-inputs": (
+        "preamble-dept",
+        "preamble-role",
+        "preamble-dept-zoe",
+        "preamble-role-grace",
+        "preamble-hours-obrien",
+    ),
+    "g5-edge-cases": (
+        "empty-role",
+        "missing-person",
+        "missing-person-linus",
+        "missing-person-marie",
+        "missing-person-katherine",
+    ),
 }
 _ROOT_CAUSE_TERMS = {
     "g1-aggregation": ("total", "sum", "aggregat", "arithmetic"),
@@ -180,6 +204,8 @@ def _record_trace_ids(
             str(local_fixture / "scripts" / "record_traces.py"),
             "--group",
             group,
+            "--split",
+            "insight-evidence",
             "--workspace",
             workspace,
             "--agent",
@@ -195,11 +221,12 @@ def _record_trace_ids(
         environment=_process_environment(environment),
     )
     published = dict(re.findall(r"^(\S+)\s+([0-9a-f]{32})$", output, flags=re.MULTILINE))
-    expected = _FAILING_TRAIN_TASKS[group]
+    expected = _INSIGHT_EVIDENCE_TASKS[group]
     missing = sorted(set(expected) - set(published))
     assert not missing, f"{group} recording did not publish failing task traces {missing}; see {log}"
     trace_ids = [published[task_id] for task_id in expected]
     assert len(trace_ids) == len(set(trace_ids)), f"{group} recording published duplicate trace ids: {trace_ids}"
+    assert len(trace_ids) >= 5, f"{group} Insight has too few evidence traces: {trace_ids}"
     return trace_ids
 
 
@@ -306,11 +333,15 @@ def _agent_source(experiment: Path, label: str) -> str:
 
 def _replays_correctly(experiment: Path, label: str, task_dir: Path) -> bool:
     """Check one committed task against a saved candidate."""
+    return _agent_replays_correctly(experiment / "eval-and-optimize" / "agents" / label / "agent.py", label, task_dir)
+
+
+def _agent_replays_correctly(agent_path: Path, label: str, task_dir: Path) -> bool:
+    """Check one task against an agent source file."""
     os.environ["RECORDS_PATH"] = str(_RECORDS)
     os.environ.setdefault("TRACE_DIR", tempfile.mkdtemp(prefix="smoke-mode-1-traces-"))
-    path = experiment / "eval-and-optimize" / "agents" / label / "agent.py"
-    spec = importlib.util.spec_from_file_location(f"_smoke_mode_1_{label}", path)
-    assert spec is not None and spec.loader is not None, f"cannot import {path}"
+    spec = importlib.util.spec_from_file_location(f"_smoke_mode_1_{label}", agent_path)
+    assert spec is not None and spec.loader is not None, f"cannot import {agent_path}"
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     try:
@@ -322,6 +353,22 @@ def _replays_correctly(experiment: Path, label: str, task_dir: Path) -> bool:
     expected = (task_dir / "tests" / "expected.txt").read_text(encoding="utf-8")
     actual = module.ReportAgent().solve(instruction) + "\n"
     return _normalize(actual) == _normalize(expected)
+
+
+@pytest.mark.parametrize("group", _REPAIR_GROUPS)
+def test_insight_evidence_tasks_fail_on_the_baseline(group: str, tmp_path: Path) -> None:
+    """Check that five Insight evidence tasks show the group's baseline failure."""
+    local_fixture = tmp_path / "smoke-agent"
+    shutil.copytree(_FIXTURE, local_fixture)
+    evidence = local_fixture / "dataset" / "groups" / group / "insight-evidence"
+    tasks = [evidence / name for name in _INSIGHT_EVIDENCE_TASKS[group]]
+    assert all(task.is_dir() for task in tasks), f"{group} did not create all Insight evidence tasks"
+    still_passing = [
+        task.name
+        for task in tasks
+        if _agent_replays_correctly(local_fixture / "agent" / "agent.py", f"baseline_{task.name}", task)
+    ]
+    assert not still_passing, f"{group} Insight evidence does not show the baseline failure: {still_passing}"
 
 
 def _normalize(text: str) -> str:
@@ -463,25 +510,6 @@ def _check_insight_suite(experiment: Path) -> None:
             f"generated task {task.name} produced no reward.json"
         )
 
-    agents_dir = experiment / "eval-and-optimize" / "agents"
-    scored = {
-        path.parent.name: (json.loads(path.read_text(encoding="utf-8")).get("rewards", {}).get("validation") or {}).get(
-            "metrics", {}
-        )
-        for path in agents_dir.glob("*/metadata.json")
-    }
-    baseline = scored.get("agent-0")
-    improved = {
-        label: metrics
-        for label, metrics in scored.items()
-        if label != "agent-0" and metrics.get("reward", 0.0) > (baseline or {}).get("reward", 0.0)
-    }
-    assert baseline and improved, "no repaired candidate is available to judge the authored metric"
-    blind = sorted(
-        key for key in authored if all(metrics.get(key) == baseline.get(key) for metrics in improved.values())
-    )
-    assert not blind, "authored metrics did not change when reward improved: " + ", ".join(blind)
-
 
 def _assert_committed_validation_passes(experiment: Path, group: str) -> None:
     """Check that the Mode 1 winner repairs every committed validation task."""
@@ -509,6 +537,47 @@ def _assert_loop_only_evaluated_generated_tasks(experiment: Path) -> None:
     assert task_names, "the loop produced no trial results"
     leaked = sorted(name for name in task_names if not name.startswith("smoke/generated__"))
     assert not leaked, f"the Mode 1 loop evaluated committed tasks instead of only the Insight suite: {leaked}"
+
+
+def _validation_metrics(experiment: Path, label: str) -> dict[str, float]:
+    """Read one candidate's final validation metric values."""
+    path = experiment / "eval-and-optimize" / "agents" / label / "metadata.json"
+    metrics = (json.loads(path.read_text(encoding="utf-8")).get("rewards", {}).get("validation") or {}).get(
+        "metrics", {}
+    )
+    assert isinstance(metrics, dict), f"{label} has no validation metrics"
+    return {str(name): float(value) for name, value in metrics.items()}
+
+
+def _assert_winner_improves_objectives_without_regression(experiment: Path) -> None:
+    """Check that the selected Mode 1 winner improves objectives and preserves guardrails."""
+    run = json.loads((experiment / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
+    winner = _winner_label(experiment)
+    assert winner != "agent-0", "Mode 1 retained the baseline instead of selecting an improved winner"
+    baseline = _validation_metrics(experiment, "agent-0")
+    selected = _validation_metrics(experiment, winner)
+    snapshot = run.get("config_snapshot", {})
+    objectives = snapshot.get("objective_function")
+    regressions = snapshot.get("regression_metrics")
+    assert isinstance(objectives, list) and objectives, "run.json has no Mode 1 objective metrics"
+    assert isinstance(regressions, list), "run.json has no Mode 1 regression metrics"
+
+    for target in objectives:
+        assert isinstance(target, dict) and isinstance(target.get("name"), str), f"invalid objective target: {target}"
+        name = target["name"]
+        assert name in baseline and name in selected, f"objective {name!r} is missing from winner or baseline metrics"
+        assert selected[name] > baseline[name], (
+            f"winner {winner} did not improve objective {name!r}: {baseline[name]} -> {selected[name]}"
+        )
+
+    for target in regressions:
+        assert isinstance(target, dict) and isinstance(target.get("name"), str), f"invalid regression target: {target}"
+        name = target["name"]
+        direction = target.get("direction")
+        assert direction in {"maximize", "minimize"}, f"invalid regression direction for {name!r}: {direction!r}"
+        assert name in baseline and name in selected, f"regression {name!r} is missing from winner or baseline metrics"
+        worsened = selected[name] < baseline[name] if direction == "maximize" else selected[name] > baseline[name]
+        assert not worsened, f"winner {winner} regressed {name!r}: {baseline[name]} -> {selected[name]}"
 
 
 def _assert_analysis_named_problem(experiment: Path, group: str) -> None:
@@ -593,6 +662,7 @@ def _run_mode_1_case(group: str, tmp_path: Path, *, generated_only: bool) -> Non
         _assert_loop_only_evaluated_generated_tasks(experiment)
     _assert_analysis_named_problem(experiment, group)
     _check_insight_suite(experiment)
+    _assert_winner_improves_objectives_without_regression(experiment)
     if generated_only:
         _assert_committed_validation_passes(experiment, group)
 
