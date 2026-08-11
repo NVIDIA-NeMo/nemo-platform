@@ -52,12 +52,14 @@ done
 
 echo "----- nemo on PATH -----"
 command -v nemo
-# `nemo version 0.0.0` is what the CLI prints when its importlib.metadata
-# lookup misses the distribution it was installed from, which is invisible
-# unless the output is asserted.
 version_output="$(nemo --version)"
 echo "${version_output}"
-if [[ ! "${version_output}" =~ ^nemo\ version\ [0-9]+\.[0-9]+\.[0-9]+ ]] || [[ "${version_output}" == "nemo version 0.0.0"* ]]; then
+# A bare `0.0.0` is the CLI's fallback when its importlib.metadata lookup
+# misses the distribution it was installed from, which is invisible unless the
+# output is asserted. Match it exactly: CI test wheels are stamped with a
+# sentinel `0.0.0.dev<timestamp>` that is a legitimate version string.
+version="${version_output#nemo version }"
+if [[ "${version}" == "0.0.0" ]] || [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
   echo "::error::nemo --version did not report an installed version: ${version_output}" >&2
   exit 1
 fi
