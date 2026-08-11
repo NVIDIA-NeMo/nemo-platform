@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { Button, Flex } from '@nvidia/foundations-react-core';
 import type { PromptSuggestionPillsProps } from '@studio/components/PromptSuggestionPills/types';
 import classNames from 'classnames';
 import type { FC } from 'react';
@@ -14,18 +15,22 @@ import type { FC } from 'react';
 export const PromptSuggestionPills: FC<PromptSuggestionPillsProps> = ({
   suggestions,
   onSelect,
+  disabled,
   className,
 }) => (
-  <div className={classNames('flex w-full min-w-0 flex-wrap items-start gap-2', className)}>
+  <Flex className={classNames('w-full min-w-0 gap-2', className)} wrap="wrap" justify="start">
     {suggestions.map((suggestion) => (
-      <button
+      <Button
         key={suggestion.label}
         type="button"
+        kind="secondary"
+        size="tiny"
+        disabled={disabled}
         onClick={() => onSelect(suggestion.prompt)}
-        className="cursor-pointer rounded-full border border-base bg-surface-base px-3 py-1.5 text-xs text-fg-base transition-colors hover:border-emphasis hover:bg-surface-sunken"
+        className="cursor-pointer rounded-full border border-base bg-surface-base px-3 py-1.5 text-xs text-secondary transition-colors hover:border-interaction-hover hover:bg-surface-sunken hover:text-primary disabled:pointer-events-none disabled:border-disabled disabled:text-disabled"
       >
         {suggestion.label}
-      </button>
+      </Button>
     ))}
-  </div>
+  </Flex>
 );

@@ -9,6 +9,8 @@ import { type FC, type ReactNode, useMemo } from 'react';
 interface SeedQuestionsProps {
   questions?: string[];
   onSelect: (prompt: string) => void;
+  /** Mirrors the composer's disabled state, so a seed can't target a dead composer. */
+  disabled?: boolean;
   /** Rendered bottom-aligned at the leading end of the row (e.g. metrics). */
   slotStart?: ReactNode;
   /** Rendered bottom-aligned at the trailing end of the row. */
@@ -23,6 +25,7 @@ interface SeedQuestionsProps {
 export const SeedQuestions: FC<SeedQuestionsProps> = ({
   questions = DEFAULT_SEED_QUESTIONS,
   onSelect,
+  disabled,
   slotStart,
   slotEnd,
 }) => {
@@ -34,7 +37,12 @@ export const SeedQuestions: FC<SeedQuestionsProps> = ({
   return (
     <div className="flex items-start gap-2">
       {slotStart && <div className="shrink-0 self-end">{slotStart}</div>}
-      <PromptSuggestionPills suggestions={suggestions} onSelect={onSelect} className="flex-1" />
+      <PromptSuggestionPills
+        suggestions={suggestions}
+        onSelect={onSelect}
+        disabled={disabled}
+        className="flex-1"
+      />
       {slotEnd && <div className="shrink-0 self-end">{slotEnd}</div>}
     </div>
   );

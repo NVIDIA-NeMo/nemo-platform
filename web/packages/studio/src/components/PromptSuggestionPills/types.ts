@@ -12,6 +12,7 @@ export interface PromptSuggestion {
 export interface PromptSuggestionPillsProps {
   suggestions: PromptSuggestion[];
   onSelect: (prompt: string) => void;
+  disabled?: boolean;
   /** Merged into the row's classes, for callers that own the row's flex behaviour. */
   className?: string;
 }
