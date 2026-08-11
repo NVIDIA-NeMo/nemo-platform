@@ -81,7 +81,7 @@ SDK — pass a metric sequence in one call:
 
 ```python
 from nemo_evaluator_sdk import Evaluator
-result = Evaluator().run_dataset_sync(metrics=[accuracy, style], dataset=rows)
+result = Evaluator().run_sync(metrics=[accuracy, style], dataset=rows)
 ```
 
 Platform job — put multiple stored metrics on the job spec:
@@ -92,5 +92,5 @@ uv run nemo evaluator evaluate submit --spec \
 ```
 
 Each `metrics` entry may be an inline metric bundle, a stored `MetricRef`, or
-a mix of both. The high-level `client.evaluator.evaluate_dataset` helper takes a
-list of runtime metrics and returns the job handle.
+a mix of both. The high-level `client.evaluator.submit` helper still accepts
+only one runtime metric per call.
