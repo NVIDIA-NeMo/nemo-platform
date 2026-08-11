@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { triggerDownload } from '@nemo/common/src/utils/file';
 import {
@@ -12,7 +13,6 @@ import {
   Flex,
 } from '@nvidia/foundations-react-core';
 import { useDatasetFileDelete } from '@studio/api/datasets/useDatasetFileDelete';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { CreateFileSplitsModal } from '@studio/components/FilesTable/CreateFileSplitsModal';
 import { RenameFileModal } from '@studio/components/FilesTable/RenameFileModal';
 import { FileSystemFile, FileSystemNode } from '@studio/components/FilesTable/utils';

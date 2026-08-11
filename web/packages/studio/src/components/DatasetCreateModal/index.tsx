@@ -9,6 +9,7 @@ import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal
 import { FilesetFileUploadError } from '@nemo/common/src/datasets/constants';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { useFilesUpdateFilesetMetadata } from '@nemo/sdk/generated/platform/api';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Select, Stack } from '@nvidia/foundations-react-core';
@@ -26,7 +27,6 @@ import { CUSTOMIZATION_FILESET_FILE_PREFIXES } from '@studio/constants/customiza
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
 import { renameFile } from '@studio/util/files';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC, useState } from 'react';
 import { Controller, SubmitHandler, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';

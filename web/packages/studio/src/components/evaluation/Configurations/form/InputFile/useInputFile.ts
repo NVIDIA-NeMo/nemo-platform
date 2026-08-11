@@ -9,6 +9,7 @@ import {
   FileValidationResult,
   FileFormatDetectionResult,
 } from '@nemo/common/src/utils/fileValidation';
+import { logger } from '@nemo/common/src/utils/logger';
 import { datasetFileContentQueryOptions } from '@studio/api/datasets/useDatasetFileContent';
 import { buildTemplatePreview } from '@studio/components/evaluation/Configurations/form/InputFile/helpers';
 import {
@@ -18,7 +19,6 @@ import {
 } from '@studio/hooks/evaluation/useCreateConfigurationForm';
 import { useFileValidation } from '@studio/hooks/evaluation/useFileValidation';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';

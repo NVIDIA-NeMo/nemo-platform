@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { modelToFormData } from '@studio/routes/PromptTuningFormRoute/utils';
 import { getPromptTuningFormRoute } from '@studio/routes/utils';
 import { GitFork, Trash, FolderOpen } from 'lucide-react';

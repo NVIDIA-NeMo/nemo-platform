@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { FileTag, FileTagProps } from '@nemo/common/src/components/FileTag';
 import { Stack } from '@nvidia/foundations-react-core';
-import { FileTag, FileTagProps } from '@studio/components/FileTag';
 import {
   CUSTOMIZATION_FILESET_FILE_ICONS,
   CUSTOMIZATION_FILESET_FILE_LABELS,

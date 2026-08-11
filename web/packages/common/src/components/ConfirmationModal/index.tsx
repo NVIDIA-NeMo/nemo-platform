@@ -4,10 +4,11 @@
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
+import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
+import { getErrorMessage } from '@nemo/common/src/utils/error';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/components/NewDataDesignerJobForm/utils';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { type ComponentProps, type FC, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -34,6 +35,8 @@ export interface ConfirmationModalProps extends Pick<FormModalProps, 'open' | 'o
   submitButtonColor?: SubmitButtonColor;
   /** When true, success and error toasts from this modal are skipped (caller handles feedback). */
   suppressResultToasts?: boolean;
+  /** Where result messages go. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
+  onNotify?: NotifyFn;
 }
 
 export const ConfirmationModal: FC<ConfirmationModalProps> = ({
@@ -49,6 +52,7 @@ export const ConfirmationModal: FC<ConfirmationModalProps> = ({
   submitButtonText = 'Confirm',
   submitButtonColor,
   suppressResultToasts = false,
+  onNotify,
 }) => {
   const {
     reset,
@@ -60,7 +64,7 @@ export const ConfirmationModal: FC<ConfirmationModalProps> = ({
     defaultValues: { confirmText: '' },
   });
   const [isPending, setIsPending] = useState(false);
-  const toast = useToast();
+  const notify = useNotify(onNotify);
 
   const resetAndClose = () => {
     reset();
@@ -73,13 +77,13 @@ export const ConfirmationModal: FC<ConfirmationModalProps> = ({
       const ok = await onConfirm();
       if (!suppressResultToasts) {
         if (ok) {
-          toast.success(successText);
+          notify(successText, 'success');
         } else {
-          toast.error(errorText);
+          notify(errorText, 'error');
         }
       }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error));
+      notify(getErrorMessage(error), 'error');
     } finally {
       resetAndClose();
       setIsPending(false);

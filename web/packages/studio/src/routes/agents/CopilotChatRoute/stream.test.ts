@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { COPILOT_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/CopilotChatRoute/jobProgressConsts';
 import {
   getAssistantPartsFromCopilotEvent,
@@ -9,7 +10,6 @@ import {
   parseSseChunk,
 } from '@studio/routes/agents/CopilotChatRoute/stream';
 import { COPILOT_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/CopilotChatRoute/toolParts';
-import { logger } from '@studio/util/logger';
 
 describe('Copilot stream utilities', () => {
   it('parses SSE events and preserves incomplete trailing data', () => {

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { logger } from '@nemo/common/src/utils/logger';
 import { Flex, PageHeader, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
-import { logger } from '@studio/util/logger';
 import { FileX } from 'lucide-react';
 import { ComponentProps, FC, ReactNode, useEffect } from 'react';
 import { useRouteError, isRouteErrorResponse } from 'react-router';

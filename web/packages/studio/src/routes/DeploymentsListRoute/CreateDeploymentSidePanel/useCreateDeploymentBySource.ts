@@ -10,6 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
@@ -27,7 +28,6 @@ import {
   type CreateFilesetRequest,
   type CreateModelDeploymentConfigRequest,
 } from '@nemo/sdk/generated/platform/schema';
-import { getErrorMessage } from '@studio/api/common/utils';
 import {
   additionalEnvsFormToApi,
   configNameFromWizardBaseName,

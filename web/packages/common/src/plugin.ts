@@ -4,6 +4,20 @@
 // Plugin API: the surface Studio serves to plugin bundles as `@nemo/common`.
 // Removals are breaking. Explicit exports, not `export *`.
 
+export { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+export { AccordionSection } from '@nemo/common/src/components/AccordionSection';
+export { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
+export { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+export type { AccordionSectionProps } from '@nemo/common/src/components/AccordionSection';
+export { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
+export { FileTag } from '@nemo/common/src/components/FileTag';
+export type { FileTagProps, FileTagStatus } from '@nemo/common/src/components/FileTag';
+export { FileUpload } from '@nemo/common/src/components/FileUpload';
+export type { FileUploadProps, RenderFileTagFn } from '@nemo/common/src/components/FileUpload';
+export { InputErrorText } from '@nemo/common/src/components/InputErrorText';
+export { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
+export type { QuickActionItem } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
+
 export {
   StudioDataView,
   StudioDataViewToolbar,
@@ -46,6 +60,13 @@ export {
 } from '@nemo/common/src/utils/query';
 export { triggerDownload } from '@nemo/common/src/utils/file';
 
+export { getErrorMessage } from '@nemo/common/src/utils/error';
+export { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
+export { logger, toError } from '@nemo/common/src/utils/logger';
+
+export type { NotifyFn, NotifyType } from '@nemo/common/src/providers/toast/types';
+
+export { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 export {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,

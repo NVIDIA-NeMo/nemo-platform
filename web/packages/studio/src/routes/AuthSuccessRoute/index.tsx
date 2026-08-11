@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { entitiesCreateWorkspace, entitiesGetWorkspace } from '@nemo/sdk/generated/platform/api';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useAuthProfile } from '@studio/providers/auth';
-import { logger } from '@studio/util/logger';
 import { isAxiosError } from 'axios';
 import { FC, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router';

@@ -13,6 +13,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { getListExperimentsQueryKey, useCreateExperiment } from '@nemo/sdk/generated/platform/api';
 import {
   CodeSnippet,
@@ -32,7 +33,6 @@ import {
   experimentCreateSchema,
   type ExperimentCreateFormFields,
 } from '@studio/components/ExperimentCreateModal/constants';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { AxiosError } from 'axios';
 import { useState, type FC } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';

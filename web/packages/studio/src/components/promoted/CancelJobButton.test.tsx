@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CancelJobButton } from '@nemo/common/src/components/CancelJobButton';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import { CancelJobButton } from '@studio/components/CancelJobButton';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
@@ -18,7 +18,7 @@ const JOB_NAME = 'test-job-abc123';
 const renderButton = (status?: PlatformJobStatus) =>
   render(
     <TestProviders>
-      <CancelJobButton jobName={JOB_NAME} jobStatus={status} />
+      <CancelJobButton workspace={workspace1.name} jobName={JOB_NAME} jobStatus={status} />
     </TestProviders>
   );
 

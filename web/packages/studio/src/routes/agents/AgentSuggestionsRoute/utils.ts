@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema/ModelEntity';
 import { SAMPLE_EVAL_CONFIG_PATH } from '@studio/api/evaluation/eval-config-fileset';
 import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
@@ -11,7 +12,6 @@ import type {
   SnapshotShape,
   SuggestionApplySpec,
 } from '@studio/routes/agents/AgentSuggestionsRoute/types';
-import { logger } from '@studio/util/logger';
 
 /** Fileset name for an agent's eval bundle. */
 export const evalFilesetForAgent = (agentName: string): string => `${agentName}-eval`;
