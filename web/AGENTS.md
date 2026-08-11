@@ -10,6 +10,8 @@
 
 Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for example `unit-test`, `e2e-test`, `feature-flags`, `ux-guidelines`, `visual-dev`, `test-coverage-improvement`).
 
+The `kaizen-ui` skill is not committed — it is synced from the `@nvidia/foundations-react-core` design system package on `pnpm install` (root `sync-skills` script) and is gitignored.
+
 ## Package Overview
 
 - **packages/studio** — Main React frontend application

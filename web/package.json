@@ -6,7 +6,8 @@
   "description": "A monorepo comprising the packages for nemo studio.",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "postinstall": "pnpm --filter @nemo/sdk gen:all",
+    "postinstall": "pnpm --filter @nemo/sdk gen:all && pnpm run sync-skills",
+    "sync-skills": "node packages/studio/node_modules/@nvidia/foundations-react-core/scripts/sync-skills.mjs --dir .agents || true",
     "test": "pnpm run -r test",
     "test:e2e": "pnpm run -r test:e2e",
     "build": "pnpm run -r build",
