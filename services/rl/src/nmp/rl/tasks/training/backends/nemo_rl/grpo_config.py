@@ -25,6 +25,7 @@ from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import (
     _build_logger_config,
     _build_optimizer_config,
     _build_scheduler_config,
+    _build_tokenizer_config,
     _megatron_cfg_disabled,
 )
 from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
@@ -311,11 +312,7 @@ def compile_grpo_config(
 
     cfg["policy"] = {
         "model_name": model_path,
-        "tokenizer": {
-            "name": model_path,
-            "chat_template": chat_template,
-            "chat_template_kwargs": None,
-        },
+        "tokenizer": _build_tokenizer_config(model_path, chat_template),
         "train_global_batch_size": batch_size,
         "train_micro_batch_size": micro_batch_size,
         "generation_batch_size": micro_batch_size * 4,

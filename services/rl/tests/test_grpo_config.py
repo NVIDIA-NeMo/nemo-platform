@@ -249,6 +249,42 @@ def test_compiled_config_has_master_config_required_fields(
     assert policy["make_sequence_length_divisible_by"] == step.parallelism.tensor_parallel_size
 
 
+def test_tokenizer_omits_chat_template_when_none(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A model with no chat template must omit the key, not emit ``None``.
+
+    TokenizerConfig declares ``chat_template: NotRequired[str]``, so absent is
+    valid and ``None`` is not -- MasterConfig rejects it with "Input should be a
+    valid string". ``resolve_chat_template`` returns None whenever the model ships
+    no template and the user gave none, which is every model without a built-in
+    one. Qwen3 has one, so a single-model GPU run never sees this.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    # The fixture model dir has no tokenizer, so resolution falls through to None.
+    tokenizer = compile_grpo_config(step, job_ctx)["policy"]["tokenizer"]
+
+    assert "chat_template" not in tokenizer
+    # chat_template_kwargs is NotRequired[dict | None], so None is accepted there.
+    assert tokenizer["chat_template_kwargs"] is None
+    assert tokenizer["name"] == step.model.path
+
+
+def test_tokenizer_keeps_chat_template_when_present(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    monkeypatch.setattr(
+        "nmp.rl.tasks.training.backends.nemo_rl.grpo_config.resolve_chat_template",
+        lambda **_: "{{ bos_token }}",
+    )
+    step, _ = _prepared_step(tmp_path)
+    tokenizer = compile_grpo_config(step, job_ctx)["policy"]["tokenizer"]
+
+    assert tokenizer["chat_template"] == "{{ bos_token }}"
+
+
 def test_compiled_vllm_cfg_has_required_typeddict_fields(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
