@@ -16,7 +16,7 @@ from typing import List, Literal, Tuple
 
 import tomlkit
 import typer
-from nemo_platform_sdk_tools.sdk.core.common import SdkInfo, get_sdk_info
+from nemo_platform_sdk_tools.sdk.core.common import WRAPPER_DISTRIBUTION_NAME, SdkInfo, get_sdk_info
 from nemo_platform_sdk_tools.sdk.post_generation_exist_ok import inject_exist_ok
 
 app = typer.Typer(
@@ -24,7 +24,14 @@ app = typer.Typer(
 )
 
 
-def sdk_version_file_content(package_name: str) -> str:
+def sdk_version_file_content(distribution_name: str) -> str:
+    """Render ``_version.py``, which reads the version from installed metadata.
+
+    ``distribution_name`` is the distribution to query at runtime, which is not
+    the distribution being built: the SDK ships bundled inside the
+    ``nemo-platform`` wheel, so ``nemo-platform-sdk`` metadata only exists in
+    the workspace. Both report the same version there.
+    """
     return f'''# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -32,7 +39,7 @@ from importlib.metadata import PackageNotFoundError, version as _package_version
 
 __title__ = "nemo_platform"
 try:
-    __version__ = _package_version("{package_name}")
+    __version__ = _package_version("{distribution_name}")
 except PackageNotFoundError:
     __version__ = "0.0.0"
 # Injected at release time for non-production builds; None for RC and production releases.
@@ -624,7 +631,7 @@ def ensure_api_image_field() -> None:
 
     version_file = sdk_info.sdk_dir / "src" / sdk_info.module_name / "_version.py"
     content = version_file.read_text(encoding="utf-8")
-    expected = sdk_version_file_content(sdk_info.package_name)
+    expected = sdk_version_file_content(WRAPPER_DISTRIBUTION_NAME)
     if content == expected:
         typer.echo("  - Dynamic version metadata already present, skipping.")
         return
