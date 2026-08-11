@@ -117,6 +117,13 @@ class EvalAuthor(Agent):
     ) -> dict[str, Any]:
         """Query production spans from Intake, flat or rolled up into groups.
 
+        Use this to find which traces are worth opening, not to read what happened in
+        them. A span is one step of a trajectory, so on its own it hides what led to it
+        and what followed: a slow call may be waiting on the retry before it, and an
+        error may be one the next span handles. Every row carries ``trace_ref``, so open
+        the trace with ``read_trace`` before you quote a span, treat it as evidence, or
+        turn it into a test case.
+
         Write your own filter. The server does the narrowing, which is exact, so
         prefer one precise filter over counting a wide result yourself. Group by
         ``trace_id`` to turn any filter into the set of traces that match it, then

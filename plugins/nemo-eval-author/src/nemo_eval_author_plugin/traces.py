@@ -105,6 +105,18 @@ async def _drain(paginator: Any, *, limit: int) -> tuple[list[dict[str, Any]], b
     return rows, truncated
 
 
+def _with_trace_ref(row: dict[str, Any]) -> dict[str, Any]:
+    """Attach the ref that opens the whole trace a row came from.
+
+    A span is one step of a trajectory. Carrying the ref on every row keeps the way
+    back to its context one call away instead of a string the caller has to build.
+    """
+    trace_id = row.get("trace_id") or row.get("group", {}).get("trace_id")
+    if trace_id:
+        row["trace_ref"] = f"intake://{trace_id}"
+    return row
+
+
 async def query_spans(
     client: AsyncNeMoPlatform,
     *,
@@ -116,6 +128,13 @@ async def query_spans(
     limit: int = DEFAULT_ROW_LIMIT,
 ) -> dict[str, Any]:
     """Query the spans of Intake, flat or rolled up into groups.
+
+    Use this to choose which traces to open, not to read what happened. A span is one
+    step of a trajectory, and read on its own it omits what led to it and what followed.
+    A slow call may be slow because of the retry before it; an error may be the handled
+    kind that the next span recovers from. Every row carries ``trace_ref``, so open the
+    trace with ``read_trace`` before you treat a span as evidence, quote it, or build a
+    test case from it.
 
     Args:
         client: Platform client.
@@ -144,14 +163,17 @@ async def query_spans(
         sort: ``"-started_at"`` (default, newest first) or ``"started_at"``. Ignored
             when ``group_by`` is set.
         mode: ``"summary"`` omits payloads, ``"preview"`` truncates them, ``"detailed"``
-            returns them in full. Stay on ``"summary"`` while exploring.
+            returns them in full. Stay on ``"summary"``, which is all that choosing a
+            trace needs. Payloads pulled from many traces at once are the fragments this
+            docstring warns about; ``read_trace`` gives you the same text in context.
         limit: Maximum rows to return. Clamped to ``MAX_ROW_LIMIT``.
 
     Returns:
         Flat: ``{"spans": [...], "count": int, "truncated": bool}``. Grouped:
         ``{"groups": [...], "grouped_by": str, "count": int, "truncated": bool}``,
-        where a group is ``{"group": {...}, "span_count": int}``. ``truncated`` means
-        that more rows matched than ``limit``, so narrow the filter or raise ``limit``.
+        where a group is ``{"group": {...}, "span_count": int}``. Rows that belong to a
+        trace also carry ``trace_ref`` for ``read_trace``. ``truncated`` means that more
+        rows matched than ``limit``, so narrow the filter or raise ``limit``.
 
     Raises:
         TraceQueryError: The Intake read failed.
@@ -163,11 +185,13 @@ async def query_spans(
     try:
         if group_by is not None:
             rows, truncated = await _drain(client.intake.spans.groups.list(by=group_by, **kwargs), limit=limit)
-            return {"groups": rows, "grouped_by": group_by, "count": len(rows), "truncated": truncated}
+            groups = [_with_trace_ref(row) for row in rows]
+            return {"groups": groups, "grouped_by": group_by, "count": len(groups), "truncated": truncated}
         kwargs["mode"] = mode
         kwargs["sort"] = sort or "-started_at"
         rows, truncated = await _drain(client.intake.spans.list(**kwargs), limit=limit)
-        return {"spans": rows, "count": len(rows), "truncated": truncated}
+        spans = [_with_trace_ref(row) for row in rows]
+        return {"spans": spans, "count": len(spans), "truncated": truncated}
     except Exception as exc:
         raise _explain(exc, doing="Querying spans", workspace=workspace) from exc
 

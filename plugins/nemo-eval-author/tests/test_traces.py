@@ -171,6 +171,32 @@ async def test_query_spans_groups_server_side() -> None:
     assert result["groups"][0]["span_count"] == 12
 
 
+async def test_every_span_row_carries_the_way_back_to_its_trace() -> None:
+    """A span read alone loses the trajectory around it, so the ref home travels with it."""
+    client = _client(spans=[_span("t-1", minute=5, tool_name="search")])
+
+    result = await traces.query_spans(client, workspace="ws")
+
+    assert result["spans"][0]["trace_ref"] == "intake://t-1"
+
+
+async def test_every_trace_group_carries_the_way_back_to_its_trace() -> None:
+    client = _client(groups=[_Row(group={"trace_id": "t-1"}, span_count=12)])
+
+    result = await traces.query_spans(client, workspace="ws", group_by="trace_id")
+
+    assert result["groups"][0]["trace_ref"] == "intake://t-1"
+
+
+async def test_a_session_group_has_no_trace_to_point_at() -> None:
+    """Grouping by session spans many traces, so there is no single trace to open."""
+    client = _client(groups=[_Row(group={"session_id": "s-1"}, span_count=12)])
+
+    result = await traces.query_spans(client, workspace="ws", group_by="session_id")
+
+    assert "trace_ref" not in result["groups"][0]
+
+
 async def test_query_traces_defaults_to_preview_for_the_rollups() -> None:
     client = _client(summaries=[_summary("t-1", minute=5, span_count=40, error_count=3)])
 
