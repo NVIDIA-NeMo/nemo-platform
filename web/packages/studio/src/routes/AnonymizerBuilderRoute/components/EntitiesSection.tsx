@@ -34,7 +34,11 @@ export const EntitiesSection: FC = () => {
   const available = useMemo(() => data?.data ?? [], [data?.data]);
 
   const isCustom = entityMode === ENTITY_MODE_CUSTOM;
+  const isAuto = entityMode === ENTITY_MODE_AUTO;
   const selected = useMemo(() => selectedLabels ?? [], [selectedLabels]);
+  const defaultEntitiesLabel = available.length
+    ? `all ${available.length} default entities`
+    : 'all default entities';
 
   const items = useMemo(() => {
     const sections = buildEntitySections([...available]).map((section) => ({
@@ -65,9 +69,9 @@ export const EntitiesSection: FC = () => {
         useControllerProps={{ name: 'entityMode', control }}
       />
       <Text kind="body/regular/md">
-        {entityMode === ENTITY_MODE_AUTO
-          ? 'Auto-detect mode allows the augmenter to create additional labels beyond the defaults. To restrict the output entities to a defined list, use Custom.'
-          : 'Custom mode only outputs entities defined by you. To allow the augmenter to create additional labels beyond the defaults, use Auto-detect mode.'}
+        {isAuto
+          ? `Auto-detect includes ${defaultEntitiesLabel} and lets the augmenter add more labels it finds. To restrict the output to a defined list, use Custom.`
+          : 'Custom mode only outputs the labels selected below. Auto-detect cannot be combined with custom labels.'}
       </Text>
       {isCustom && (
         <Stack gap="density-md">
@@ -107,11 +111,13 @@ export const EntitiesSection: FC = () => {
           )}
         </Stack>
       )}
-      <ControlledCheckbox
-        slotLabel={`Include all ${available.length} default entities`}
-        disabled={isLoading}
-        useControllerProps={{ name: 'includeDefaultEntities', control }}
-      />
+      {isCustom && (
+        <ControlledCheckbox
+          slotLabel={`Also include ${defaultEntitiesLabel}`}
+          disabled={isLoading}
+          useControllerProps={{ name: 'includeDefaultEntities', control }}
+        />
+      )}
     </Stack>
   );
 };
