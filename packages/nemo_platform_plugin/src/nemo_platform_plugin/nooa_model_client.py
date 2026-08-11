@@ -23,6 +23,7 @@ from nooa.unifiedllm import CompletionClient, UnifiedLLM
 _PLACEHOLDER_API_KEY = "not-needed"
 _OPENAI_FORMAT = "OPENAI_CHAT"
 _ANTHROPIC_FORMAT = "ANTHROPIC_MESSAGES"
+_OPENAI_CHAT_REASONING_EFFORT: str | None = None
 _ACCEPT_ENCODING_HEADER = "accept-encoding"
 _IDENTITY_ENCODING = "identity"
 
@@ -102,6 +103,7 @@ def _completion_client(
         litellm_model = f"openai/{served_model_name}"
         return CompletionClient(
             litellm_model,
+            **({"reasoning_effort": _OPENAI_CHAT_REASONING_EFFORT} if _OPENAI_CHAT_REASONING_EFFORT else {}),
             api_base=api_base,
             api_key=_PLACEHOLDER_API_KEY,
             # Platform rewrites the response model to the Model Entity ID. Keep
