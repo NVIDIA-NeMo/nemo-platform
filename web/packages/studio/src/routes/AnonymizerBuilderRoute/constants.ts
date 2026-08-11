@@ -105,6 +105,17 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
   { value: ENTITY_MODE_AUTO, children: 'Auto-detect' },
 ];
 
+/** The count comes from the entity-labels endpoint, so it is unknown until that call lands. */
+export const defaultEntitiesLabel = (count: number): string =>
+  count ? `all ${count} default entities` : 'all default entities';
+
+export const ENTITY_MODE_DESCRIPTIONS: Record<EntityMode, (defaults: string) => string> = {
+  [ENTITY_MODE_AUTO]: (defaults) =>
+    `Auto-detect includes ${defaults} and lets the augmenter add more labels it finds. To restrict the output to a defined list, use Custom.`,
+  [ENTITY_MODE_CUSTOM]: () =>
+    'Custom mode only outputs the labels selected below. Auto-detect cannot be combined with custom labels.',
+};
+
 export type EntityTagColor = NonNullable<ComponentProps<typeof Tag>['color']>;
 
 interface EntityCategory {

@@ -8,8 +8,9 @@ import { useAnonymizerListEntityLabels } from '@nemo/sdk/generated/anonymizer/ap
 import { Flex, Stack, Tag, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
-  ENTITY_MODE_AUTO,
+  defaultEntitiesLabel,
   ENTITY_MODE_CUSTOM,
+  ENTITY_MODE_DESCRIPTIONS,
   ENTITY_MODE_OPTIONS,
   entityTagColor,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
@@ -34,11 +35,8 @@ export const EntitiesSection: FC = () => {
   const available = useMemo(() => data?.data ?? [], [data?.data]);
 
   const isCustom = entityMode === ENTITY_MODE_CUSTOM;
-  const isAuto = entityMode === ENTITY_MODE_AUTO;
   const selected = useMemo(() => selectedLabels ?? [], [selectedLabels]);
-  const defaultEntitiesLabel = available.length
-    ? `all ${available.length} default entities`
-    : 'all default entities';
+  const defaultsLabel = defaultEntitiesLabel(available.length);
 
   const items = useMemo(() => {
     const sections = buildEntitySections([...available]).map((section) => ({
@@ -68,11 +66,7 @@ export const EntitiesSection: FC = () => {
         items={ENTITY_MODE_OPTIONS}
         useControllerProps={{ name: 'entityMode', control }}
       />
-      <Text kind="body/regular/md">
-        {isAuto
-          ? `Auto-detect includes ${defaultEntitiesLabel} and lets the augmenter add more labels it finds. To restrict the output to a defined list, use Custom.`
-          : 'Custom mode only outputs the labels selected below. Auto-detect cannot be combined with custom labels.'}
-      </Text>
+      <Text kind="body/regular/md">{ENTITY_MODE_DESCRIPTIONS[entityMode](defaultsLabel)}</Text>
       {isCustom && (
         <Stack gap="density-md">
           <ControlledCombobox
@@ -113,7 +107,7 @@ export const EntitiesSection: FC = () => {
       )}
       {isCustom && (
         <ControlledCheckbox
-          slotLabel={`Also include ${defaultEntitiesLabel}`}
+          slotLabel={`Also include ${defaultsLabel}`}
           disabled={isLoading}
           useControllerProps={{ name: 'includeDefaultEntities', control }}
         />
