@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import json
 import math
 from copy import deepcopy
@@ -876,6 +877,49 @@ class TestLLMJudgeMetric:
         assert result.outputs[0].value == 4
         assert "guided_json" in json.dumps(captured_requests[0])
         assert "guided_json" not in json.dumps(captured_requests[1])
+        assert hook.mode == StructuredOutputMode.UNSUPPORTED
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_falls_back_for_concurrent_in_flight_requests(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.ROOT_GUIDED_JSON)
+        error = ClientInferenceError(
+            mocker.Mock(
+                status_code=400,
+                response=mocker.Mock(text="unknown field `guided_json`, expected one of `greed_sampling`"),
+            )
+        )
+        captured_requests: list[dict] = []
+        both_requests_in_flight = asyncio.Event()
+        structured_request_count = 0
+
+        async def inference_fn(*args, **kwargs):
+            nonlocal structured_request_count
+            request = kwargs.get("request", args[1])
+            captured_requests.append(deepcopy(request))
+            if "guided_json" in json.dumps(request):
+                structured_request_count += 1
+                if structured_request_count == 2:
+                    both_requests_in_flight.set()
+                await both_requests_in_flight.wait()
+                raise error
+            return {"choices": [{"message": {"content": '{"helpfulness": 4}'}}]}
+
+        metric.set_inference_fn(inference_fn)
+
+        results = await asyncio.gather(
+            compute_scores(metric, {"prompt": "hello"}, {"output_text": "first"}),
+            compute_scores(metric, {"prompt": "hello"}, {"output_text": "second"}),
+        )
+
+        assert [result.outputs[0].value for result in results] == [4, 4]
+        assert structured_request_count == 2
+        assert len(captured_requests) == 4
+        assert all("guided_json" not in json.dumps(request) for request in captured_requests[2:])
         assert hook.mode == StructuredOutputMode.UNSUPPORTED
 
     @pytest.mark.asyncio

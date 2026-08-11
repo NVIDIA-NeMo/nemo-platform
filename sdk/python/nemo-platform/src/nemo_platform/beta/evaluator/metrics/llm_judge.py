@@ -25,7 +25,12 @@ from nemo_platform.beta.evaluator.metrics.template_rendering import (
     sample_template_payload,
 )
 from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, SecretResolver
-from nemo_platform.beta.evaluator.structured_output import InferenceStructuredOutput, detect_structured_output_mode
+from nemo_platform.beta.evaluator.structured_output import (
+    InferenceStructuredOutput,
+    StructuredOutputMode,
+    detect_structured_output_mode,
+    looks_like_unsupported_structured_output_error,
+)
 from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.llm_judge_defaults import (
@@ -328,6 +333,34 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
 
         return self._apply_preprocess_hooks(request)
 
+    def _structured_output_hook(self) -> InferenceStructuredOutput | None:
+        for hook in self._preprocess_hooks:
+            if isinstance(hook, InferenceStructuredOutput):
+                return hook
+        return None
+
+    def _downgrade_structured_output(self, error: Exception) -> bool:
+        """Drop to prompt-level JSON when the backend rejects the structured-output parameter.
+
+        preflight() only probes when the model reports itself as NIM, so a backend
+        that accepts neither `guided_json` shape can still be sent one — and without
+        this every trial fails identically with no way to recover.
+        """
+        if not looks_like_unsupported_structured_output_error(str(error)):
+            return False
+
+        hook = self._structured_output_hook()
+        if hook is None:
+            return False
+
+        if hook.mode != StructuredOutputMode.UNSUPPORTED:
+            _logger.warning(
+                "Judge model rejected structured output mode %s; falling back to prompt-level JSON for all future requests.",
+                hook.mode.value,
+            )
+            hook.set_mode(StructuredOutputMode.UNSUPPORTED)
+        return True
+
     def _retry_with_max_completion_tokens(self, request: dict) -> dict:
         if not self._use_max_completion_tokens:
             _logger.warning(
@@ -349,6 +382,11 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         except inference.ClientInferenceError as error:
             if "max_tokens" in request and "'max_tokens' is not supported with this model" in error.args[0]:
                 request = self._retry_with_max_completion_tokens(request)
+                response = await self.inference_fn(self._require_model(), request, 3, client=self.client)
+            elif self._downgrade_structured_output(error):
+                # Re-render so the request carries the prompt-level instruction
+                # instead of the parameter the backend just rejected.
+                request = self._render_request(item, sample)
                 response = await self.inference_fn(self._require_model(), request, 3, client=self.client)
             else:
                 return self._handle_invalid_output(

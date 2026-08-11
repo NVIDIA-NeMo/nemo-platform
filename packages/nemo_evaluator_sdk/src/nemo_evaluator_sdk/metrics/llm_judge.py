@@ -350,14 +350,15 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
             return False
 
         hook = self._structured_output_hook()
-        if hook is None or hook.mode == StructuredOutputMode.UNSUPPORTED:
+        if hook is None:
             return False
 
-        _logger.warning(
-            "Judge model rejected structured output mode %s; falling back to prompt-level JSON for all future requests.",
-            hook.mode.value,
-        )
-        hook.set_mode(StructuredOutputMode.UNSUPPORTED)
+        if hook.mode != StructuredOutputMode.UNSUPPORTED:
+            _logger.warning(
+                "Judge model rejected structured output mode %s; falling back to prompt-level JSON for all future requests.",
+                hook.mode.value,
+            )
+            hook.set_mode(StructuredOutputMode.UNSUPPORTED)
         return True
 
     def _retry_with_max_completion_tokens(self, request: dict) -> dict:
