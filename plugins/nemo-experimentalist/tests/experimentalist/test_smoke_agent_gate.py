@@ -197,7 +197,9 @@ def test_3_no_regression() -> None:
 
 @repair_only
 def test_4_analysis_named_the_weakness() -> None:
-    """Guards a hollow pass: the Coder fixing it unaided while the Analyzer is broken.
+    """Check that the Analyzer identifies the aggregation problem.
+
+    This guards a hollow pass: the Coder fixing it unaided while the Analyzer is broken.
 
     The round analysis is markdown at ``analysis/round-N.md``, not JSON -- an
     earlier draft globbed ``analysis*.json``, found nothing, and would have failed

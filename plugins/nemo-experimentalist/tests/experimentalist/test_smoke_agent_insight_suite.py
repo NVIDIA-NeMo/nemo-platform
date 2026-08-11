@@ -107,7 +107,7 @@ def test_a_suite_was_materialized() -> None:
 
 
 def test_no_materialized_task_still_contains_a_placeholder() -> None:
-    """The failure this module exists for."""
+    """Check that Eval Author filled every placeholder in every generated task."""
     experiment_dir = _require_experiment_dir()
     declared = _template_placeholders()
     unfilled: list[str] = []
