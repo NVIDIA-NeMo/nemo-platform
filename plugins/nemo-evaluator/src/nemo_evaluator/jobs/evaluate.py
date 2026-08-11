@@ -23,11 +23,11 @@ from nemo_evaluator.jobs.metric_resolution import (
     unresolved_model_refs,
 )
 from nemo_evaluator.jobs.result_persistence import persist_evaluate_result
+from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution.config import resolve_params
-from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.values import (
     Agent,
     AgentBase,
@@ -89,19 +89,18 @@ def _resolve_run_dataset(
         return dataset
 
     destination = str(ctx.storage.persistent / "dataset")
-    if async_sdk is not None:
-        return run_sync(
-            lambda: download_dataset(
-                sdk=async_sdk,
-                dataset=dataset,
-                destination=destination,
-            )
-        )
+    # Prefer sync when available; async path isolates httpx so later run_sync calls
+    # (result persistence) can reuse the injected async_sdk.
     if sdk is not None:
         return download_dataset_sync(
             sdk=sdk,
             dataset=dataset,
             destination=destination,
+        )
+    if async_sdk is not None:
+        return run_with_isolated_async_sdk(
+            async_sdk,
+            lambda sdk: download_dataset(sdk=sdk, dataset=dataset, destination=destination),
         )
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
 

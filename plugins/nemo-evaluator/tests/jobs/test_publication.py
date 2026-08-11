@@ -117,12 +117,18 @@ class _FakeClient:
         self.atif_calls: list[dict[str, Any]] = []
         self.eval_result_calls: list[dict[str, Any]] = []
         self.trace_calls: _SessionIds = []
+        self.copy_calls = 0
         self.evaluations = _FakeEvaluations(missing=missing_evaluation, error=preflight_error)
         self.intake = SimpleNamespace(
             ingest=SimpleNamespace(atif=_FakeIngest(self.atif_calls, error=ingest_error)),
             evaluator_results=_FakeIngest(self.eval_result_calls),
             traces=_FakeTraces(self.trace_calls),
         )
+
+    def copy(self, **kwargs: Any) -> _FakeClient:
+        del kwargs
+        self.copy_calls += 1
+        return self
 
 
 def _client(**kwargs: Any) -> AsyncNeMoPlatform:
@@ -267,6 +273,7 @@ def test_publishes_and_reports_what_landed() -> None:
     client = _FakeClient()
     outcome = _publish(cast(AsyncNeMoPlatform, client))
 
+    assert client.copy_calls == 1
     assert outcome.status == PlatformJobStatus.COMPLETED
     assert outcome.evaluation_id == "eval-1"
     assert outcome.trial_count == 1
