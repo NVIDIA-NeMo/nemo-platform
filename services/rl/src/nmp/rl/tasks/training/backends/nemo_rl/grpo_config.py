@@ -301,6 +301,7 @@ def compile_grpo_config(
     model_path = customizer_config.model.path
     precision = _adapt_precision(customizer_config.model.precision)
     parallelism = customizer_config.parallelism
+    lora_cfg = _build_lora_cfg(customizer_config)
     chat_template = resolve_chat_template(
         model_path=model_path,
         model_name=customizer_config.model.name,
@@ -324,7 +325,17 @@ def compile_grpo_config(
         "logprob_chunk_size": 2048,
         "offload_optimizer_for_logprob": False,
         "max_grad_norm": grpo_hp.max_grad_norm,
-        # Do not set `_v2`: selects DTensorPolicyWorkerV2, whose `automodel` extra the image does not build.
+        # `_v2` picks DTensorPolicyWorkerV2, which is the ONLY worker implementing LoRA:
+        # the V1 DTensorPolicyWorker has no lora_cfg handling at all, so leaving it unset
+        # for a LoRA run would train full weights while reporting success.
+        #
+        # It is set only for LoRA because the two workers resolve to different venvs in
+        # NeMo-RL's ray_actor_environment_registry: V1 -> PY_EXECUTABLES.FSDP (prefetched
+        # into the image), V2 -> PY_EXECUTABLES.AUTOMODEL (NOT prefetched today -- see the
+        # filter list in docker/rl/Dockerfile.nmp-rl-base). Full-weight GRPO therefore
+        # keeps the prefetched path, and only LoRA runs depend on the automodel venv
+        # landing in the image; until it does, a LoRA actor builds its venv on the node at
+        # job start, which fails outright on a deny-egress training cluster.
         "dtensor_cfg": {
             "enabled": True,
             "cpu_offload": False,
@@ -334,7 +345,8 @@ def compile_grpo_config(
             "context_parallel_size": parallelism.context_parallel_size,
             "custom_parallel_plan": None,
             "env_vars": {"PYTORCH_CUDA_ALLOC_CONF": ""},
-            "lora_cfg": _build_lora_cfg(customizer_config),
+            "lora_cfg": lora_cfg,
+            **({"_v2": True} if lora_cfg["enabled"] else {}),
         },
         "megatron_cfg": _megatron_cfg_disabled(precision, grpo_hp.max_grad_norm),
         "optimizer": _build_optimizer_config(customizer_config),

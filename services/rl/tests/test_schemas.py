@@ -144,7 +144,7 @@ def test_grpo_training_discriminator() -> None:
 
 
 def test_grpo_lora_defaults_params() -> None:
-    t = GRPOTraining(finetuning_type="lora")
+    t = GRPOTraining(type="grpo", finetuning_type="lora")
     assert t.lora is not None
     assert t.lora.rank == 16
     assert t.lora.alpha == 32
@@ -154,12 +154,15 @@ def test_grpo_lora_rejects_params_with_all_weights() -> None:
     from nmp.rl.schemas import LoRAParams
 
     with pytest.raises(ValueError, match="lora must be omitted"):
-        GRPOTraining(finetuning_type="all_weights", lora=LoRAParams(rank=8))
+        GRPOTraining(type="grpo", finetuning_type="all_weights", lora=LoRAParams(rank=8))
 
 
 def test_grpo_lora_rejects_lora_merged() -> None:
-    with pytest.raises(ValueError):
-        GRPOTraining(finetuning_type="lora_merged")  # type: ignore[arg-type]
+    # `type` is required, so omitting it raises before finetuning_type is ever
+    # looked at -- this would pass even if lora_merged were accepted. Match on the
+    # field name so the assertion is about lora_merged and nothing else.
+    with pytest.raises(ValueError, match="finetuning_type"):
+        GRPOTraining(type="grpo", finetuning_type="lora_merged")  # type: ignore[arg-type]
 
 
 def test_grpo_lora_requires_adapter_output() -> None:
@@ -168,7 +171,7 @@ def test_grpo_lora_requires_adapter_output() -> None:
             model="default/base",
             dataset="default/gym-data",
             environment="default/env",
-            training=GRPOTraining(finetuning_type="lora"),
+            training=GRPOTraining(type="grpo", finetuning_type="lora"),
             output=_make_output(out_type=OutputNameType.MODEL),
         )
 
@@ -178,7 +181,7 @@ def test_grpo_lora_accepts_adapter_output() -> None:
         model="default/base",
         dataset="default/gym-data",
         environment="default/env",
-        training=GRPOTraining(finetuning_type="lora", lora=None),
+        training=GRPOTraining(type="grpo", finetuning_type="lora", lora=None),
         output=_make_output(out_type=OutputNameType.ADAPTER),
     )
     assert job.output.type is OutputNameType.ADAPTER
