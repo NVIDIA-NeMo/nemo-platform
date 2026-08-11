@@ -20,7 +20,6 @@ new versioned name.
 
 ```python
 from nemo_evaluator.api.schemas import (
-    EvaluatorTaskDefinition,
     MetricRef,
     TaskInput,
     TaskInputs,
@@ -44,12 +43,9 @@ client.evaluator.metrics.create(
 client.evaluator.tasks.create(
     "capital-france",
     task=TaskInput(
-        spec=EvaluatorTaskDefinition(
-            kind="evaluator",
-            intent="Name the capital of France.",
-            inputs=TaskInputs(instruction="What is the capital of France?"),
-            metrics=[MetricRef("answer-exact")],
-        ),
+        intent="Name the capital of France.",
+        inputs=TaskInputs(instruction="What is the capital of France?"),
+        metrics=[MetricRef("default/answer-exact")],
     ),
 )
 
@@ -57,16 +53,17 @@ client.evaluator.tasksets.create(
     "geography",
     taskset=TasksetInput(
         description="Geography smoke tasks.",
-        tasks=[TaskRef("capital-france")],
+        tasks=[TaskRef("default/capital-france")],
     ),
 )
 ```
 
-For a task that needs held-out ground truth invisible to the agent, put it in `reference` and
-use a metric that reads it. This works on a stored task, so it survives into taskset-driven runs:
+For a task that needs held-out ground truth invisible to the agent, keep the reference on an
+inline `AgentEvalTaskInput` and use a metric that reads it:
 
 ```python
-from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, MetricRef, TaskInput, TaskInputs
+from nemo_evaluator.api.schemas import MetricRef, TaskInputs
+from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
 from nemo_evaluator_sdk import ExactMatchMetric
 
 client.evaluator.metrics.create(
@@ -77,28 +74,19 @@ client.evaluator.metrics.create(
     ),
 )
 
-client.evaluator.tasks.create(
-    "capital-france-graded",
-    task=TaskInput(
-        spec=EvaluatorTaskDefinition(
-            kind="evaluator",
-            intent="Name the capital of France.",
-            inputs=TaskInputs(instruction="What is the capital of France?"),
-            reference={"expected": "Paris"},
-            metrics=[MetricRef("answer-from-reference")],
-        ),
-    ),
+inline_task = AgentEvalTaskInput(
+    id="capital-france",
+    intent="Name the capital of France.",
+    inputs=TaskInputs(instruction="What is the capital of France?"),
+    reference={"expected": "Paris"},
+    metrics=[MetricRef("default/answer-from-reference")],
 )
 ```
 
-`reference` is surfaced to metrics but never seeded into the agent's workspace or shown to the
-agent, so a metric can grade against artifacts the agent cannot edit. It is held out from the
-*agent*, not from the API — anyone who can read the task can read it. It is covered by the revision
-digest, so changing ground truth publishes a new revision.
-
 Stored tasks keep metric references. Inline task metrics are normalized into
-content-addressed derived metrics. The same `reference` field is available on an inline
-`AgentEvalTaskInput` for one-off submissions.
+content-addressed derived metrics. The stored-task example uses an output-only
+metric because stored tasks do not carry the grader-only `reference` field; use
+an inline `AgentEvalTaskInput` when held-out per-task data is required.
 
 ## Retrieve, list, and delete
 
