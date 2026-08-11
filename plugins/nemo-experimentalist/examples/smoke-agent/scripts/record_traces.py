@@ -42,7 +42,7 @@ async def _upload_trials(
     workspace: str,
     group: str,
 ) -> dict[str, str]:
-    """Upload each trial's trace; return {trial_id: trace_id}."""
+    """Upload each trial's trace; return {task_id: trace_id}."""
     url = INGEST_PATH.format(workspace=workspace)
     trace_ids: dict[str, str] = {}
 
@@ -71,7 +71,9 @@ async def _upload_trials(
                 content=payload,
                 options={"headers": {"Content-Type": "application/x-protobuf"}},
             )
-        trace_ids[trial.id] = trace_id
+        # Every recording run uses one attempt per task.  Keep the task id here
+        # so the caller can put precisely the failing task traces in an Insight.
+        trace_ids[trial.task_id] = trace_id
 
     return trace_ids
 
@@ -149,8 +151,8 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=3)
     args = parser.parse_args()
 
-    for trial_id, trace_id in asyncio.run(run(args)).items():
-        print(f"{trial_id} {trace_id}")
+    for task_id, trace_id in asyncio.run(run(args)).items():
+        print(f"{task_id} {trace_id}")
 
 
 if __name__ == "__main__":
