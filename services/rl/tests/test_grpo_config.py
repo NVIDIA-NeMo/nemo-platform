@@ -138,7 +138,8 @@ def test_compile_grpo_config_sandboxed_paths(
     assert nemo_gym["config_paths"] == ["configs/verifiers_agent.yaml"]
     # job_id is a sandbox pod label; without it every job shares one default.
     assert nemo_gym["job_id"] == "job-123"
-    assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["enabled"] is False
+    # Full-weight omits lora_cfg entirely rather than emitting enabled=False.
+    assert "lora_cfg" not in cfg["policy"]["dtensor_cfg"]
 
     sandbox = nemo_gym["sandbox"]
     assert sandbox["environment_pvc_claim"] == "nmp-job-storage"
@@ -252,7 +253,9 @@ def test_lora_and_v2_stay_coupled(
     step, _ = _prepared_step(tmp_path, finetuning_type=finetuning_type, lora=lora)
     dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
 
-    assert dtensor_cfg["lora_cfg"]["enabled"] is expected
+    # Read exactly the way NeMo-RL does, so "key omitted" and "enabled: False" are
+    # equivalent here and the test does not depend on which one we emit.
+    assert dtensor_cfg.get("lora_cfg", {}).get("enabled", False) is expected
     assert dtensor_cfg.get("_v2", False) is expected
 
 
