@@ -96,12 +96,7 @@ class FabricSessionRegistry:
             return session
 
     async def evict_over_capacity(self, *, max_sessions: int, keep: str) -> list[FabricRuntimeSession]:
-        """Remove the least recently used idle sessions above *max_sessions*.
-
-        A session that is mid-invocation is never evicted, so the registry can sit above
-        the cap while every session is busy. *keep* is the session the caller just opened
-        and is about to use, which is idle but must survive.
-        """
+        """Remove the least recently used idle sessions above *max_sessions*, never *keep*."""
         if max_sessions <= 0:
             return []
 

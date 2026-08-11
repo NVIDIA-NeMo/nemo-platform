@@ -35,11 +35,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_CONCURRENT_INVOCATIONS = 8
 DEFAULT_IDLE_SESSION_TIMEOUT_SECONDS = 30 * 60
 DEFAULT_SESSION_CLEANUP_INTERVAL_SECONDS = 5 * 60
-# A chat-completions call that carries no session header opens a session the caller has no
-# way to close, so without a cap a workload that never reuses one — an evaluation job, whose
-# every task is a fresh request — leaves a runtime per request alive until the idle sweep.
-# Matches the invocation cap so a saturated server keeps as many runtimes as it can use.
-DEFAULT_MAX_LIVE_SESSIONS = 8
+# A caller that sends no session header cannot close what it opens, so the cap does it instead.
+DEFAULT_MAX_LIVE_SESSIONS = DEFAULT_MAX_CONCURRENT_INVOCATIONS
 
 
 class FabricSessionStartError(RuntimeError):
