@@ -48,12 +48,14 @@ export const INTAKE_ENABLED = featureFlags.intakeEnabled !== false;
 export const JOBS_ENABLED = featureFlags.jobsEnabled !== false;
 export const MEMBERS_ENABLED = featureFlags.membersEnabled !== false;
 export const MODEL_COMPARE_ENABLED = featureFlags.modelCompareEnabled !== false;
+export const MONITOR_ENABLED = featureFlags.monitorEnabled !== false;
 export const OPTIMIZER_ENABLED = featureFlags.optimizerEnabled !== false;
 export const PLUGINS_ENABLED = featureFlags.pluginsEnabled !== false;
 export const SAFE_SYNTHESIZER_ENABLED = featureFlags.safeSynthesizerEnabled !== false;
 export const SECRETS_ENABLED = featureFlags.secretsEnabled !== false;
 export const SETTINGS_ENABLED = featureFlags.settingsEnabled !== false;
 export const GUARDRAILS_ENABLED = featureFlags.guardrailsEnabled !== false;
+export const TOOL_CALLING_ENABLED = featureFlags.toolCallingEnabled !== false;
 export const TOUR_ENABLED = featureFlags.tourEnabled !== false;
 
 // Vars used by OpenTelemetry

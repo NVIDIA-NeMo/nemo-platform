@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
-import { AGENTS_ENABLED } from '@studio/constants/environment';
+import { AGENTS_ENABLED, MONITOR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
 import {
@@ -28,13 +28,11 @@ const AgentDetailRoute =
       default: m.AgentDetailRoute,
     }))
   );
-const AgentMonitorRoute =
-  AGENTS_ENABLED &&
-  lazy(() =>
-    import('@studio/routes/agents/AgentMonitorRoute').then((m) => ({
-      default: m.AgentMonitorRoute,
-    }))
-  );
+const AgentMonitorRoute = lazy(() =>
+  import('@studio/routes/agents/AgentMonitorRoute').then((m) => ({
+    default: m.AgentMonitorRoute,
+  }))
+);
 const AgentEvaluationsListRoute =
   AGENTS_ENABLED &&
   lazy(() =>
@@ -56,11 +54,15 @@ export const agentRoutes: RouteObject[] = agentsRoutes([
     element: AgentsListRoute ? <AgentsListRoute /> : null,
     errorElement: <ErrorPanel title="Agents" />,
   },
-  {
-    path: ROUTES.workspace.agentMonitor,
-    element: AgentMonitorRoute ? <AgentMonitorRoute /> : null,
-    errorElement: <ErrorPanel title="Monitor" />,
-  },
+  ...(MONITOR_ENABLED
+    ? [
+        {
+          path: ROUTES.workspace.agentMonitor,
+          element: <AgentMonitorRoute />,
+          errorElement: <ErrorPanel title="Monitor" />,
+        },
+      ]
+    : []),
   {
     path: ROUTES.workspace.agentEvaluationsList,
     element: AgentEvaluationsListRoute ? <AgentEvaluationsListRoute /> : null,
@@ -88,11 +90,15 @@ export const getAgentSideNavItems = (workspace: string) =>
           slotLabel: 'Agent Evaluations',
           href: getAgentEvaluationsListRoute(workspace),
         },
-        {
-          id: 'agent-monitor',
-          slotIcon: <DatabaseCheck className={iconColorClass} />,
-          slotLabel: 'Monitor',
-          href: getAgentMonitorRoute(workspace),
-        },
+        ...(MONITOR_ENABLED
+          ? [
+              {
+                id: 'agent-monitor',
+                slotIcon: <DatabaseCheck className={iconColorClass} />,
+                slotLabel: 'Monitor',
+                href: getAgentMonitorRoute(workspace),
+              },
+            ]
+          : []),
       ]
     : [];

@@ -20,6 +20,7 @@ describe('getStudioUiNavigationSuggestion', () => {
       intakeEnabled: true,
       jobsEnabled: true,
       modelCompareEnabled: true,
+      monitorEnabled: true,
       safeSynthesizerEnabled: true,
       secretsEnabled: true,
       settingsEnabled: true,

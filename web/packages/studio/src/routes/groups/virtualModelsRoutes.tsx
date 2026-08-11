@@ -3,6 +3,7 @@
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
+import { gateGuardrailsRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -12,10 +13,10 @@ const VirtualModelsListRoute = lazy(() =>
   }))
 );
 
-export const virtualModelsRoutes: RouteObject[] = [
+export const virtualModelsRoutes: RouteObject[] = gateGuardrailsRoutes([
   {
     path: ROUTES.workspace.virtualModels,
     element: <VirtualModelsListRoute />,
     errorElement: <ErrorPanel title="Virtual Models" />,
   },
-];
+]);
