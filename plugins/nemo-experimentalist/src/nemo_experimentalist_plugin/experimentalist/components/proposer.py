@@ -101,8 +101,8 @@ class Proposer(Agent):
         round_num: int,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> list[Improvement]:
         """Return up to max_candidates targeted improvement proposals.
 
@@ -242,8 +242,8 @@ class Proposer(Agent):
         cards_index: str,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> list[Improvement]:
         """Pick up to `max_candidates` targeted improvements grounded in root causes.
 
