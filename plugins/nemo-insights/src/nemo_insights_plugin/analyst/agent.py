@@ -217,7 +217,7 @@ class Analyst(Agent):
 
         Args:
             filter: Raw Intake span filter pushed to the server. Supported keys:
-                ``agent_name`` (e.g. "codex"), ``status`` ("ok"/"error"),
+                ``agent_name`` (e.g. "codex"), ``status`` ("success"/"error"/"cancelled"/"unknown"),
                 ``kind`` ("LLM"/"TOOL"/"AGENT"/"CHAIN"/"EVALUATOR"/...),
                 ``session_id``, ``trace_id``, ``parent_span_id`` (direct
                 children of a span), ``model``, ``provider``, ``tool_name``,

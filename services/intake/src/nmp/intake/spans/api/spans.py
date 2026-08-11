@@ -31,19 +31,28 @@ from nmp.intake.spans.api.spans_schemas import (
 )
 from nmp.intake.spans.domain import SpanAttributeFilter, SpanListFilter
 from nmp.intake.spans.service import SpanNotFoundError
-from nmp.intake.spans.span_attribute_catalog import ATTRIBUTE_SPECS, AttributeBag
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Spans"
-# Which SpanFilter fields resolve to a span attribute, derived rather than listed.
+# Which SpanFilter fields resolve to a span attribute rather than a column.
 #
-# A hand-kept list drifts from the catalog, and the failure is severe: the repository
-# calls spec_for_field on every attribute filter, and an uncatalogued field raises
-# ValueError there, which surfaces as HTTP 500 rather than a rejected request. Deriving
-# the set means a SpanFilter field with no catalog entry falls through to the explicit
-# 400 below instead.
-ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(SpanFilter.model_fields) & frozenset(
-    spec.field.value for spec in ATTRIBUTE_SPECS if spec.bag == AttributeBag.STRING
+# Adding a name here is a deliberate act, because it must also exist in the span
+# attribute catalog. The repository calls spec_for_field on every attribute filter, and
+# an uncatalogued name raises ValueError there, which reaches the caller as HTTP 500
+# rather than a rejected request. test_spans_filter_contract.py holds that line: it
+# asserts every name below has a catalog entry, and that no SpanFilter field is
+# published without a way to serve it.
+ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
+    {
+        "agent_id",
+        "agent_name",
+        "evaluation_id",
+        "model",
+        "project",
+        "provider",
+        "test_case_id",
+        "tool_name",
+    }
 )
 
 

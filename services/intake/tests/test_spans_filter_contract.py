@@ -77,6 +77,17 @@ def test_no_filter_field_is_published_without_a_way_to_serve_it() -> None:
     )
 
 
+def test_no_attribute_filter_is_routed_that_the_schema_does_not_publish() -> None:
+    # The other direction of the same contract. ATTRIBUTE_EQ_FILTER_FIELDS is hand-kept,
+    # so a name left behind after a schema change is routing that nothing can reach.
+    orphaned = set(ATTRIBUTE_EQ_FILTER_FIELDS) - set(SpanFilter.model_fields)
+
+    assert not orphaned, (
+        f"ATTRIBUTE_EQ_FILTER_FIELDS routes {sorted(orphaned)}, which SpanFilter no longer publishes. "
+        "Drop the name, or publish the field again."
+    )
+
+
 def test_fields_intake_never_stores_are_not_published() -> None:
     assert not NEVER_STORED & set(SpanFilter.model_fields)
     assert not NEVER_STORED & set(ATTRIBUTE_EQ_FILTER_FIELDS)
