@@ -21,9 +21,6 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
-_INSIGHT_SUITE = (
-    _REPO_ROOT / "plugins" / "nemo-experimentalist" / "tests" / "experimentalist" / "test_smoke_agent_insight_suite.py"
-)
 _PLATFORM_URL = "http://localhost:8080"
 _WORKSPACE = "smoke-agent"
 _NO_PROXY = "localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
@@ -44,6 +41,14 @@ _ROOT_CAUSE_TERMS = {
     "g5-edge-cases": ("missing", "empty", "exception", "unknown", "lookup"),
 }
 _MIN_ROOT_CAUSE_HITS = 2
+_TEMPLATE_DIR = _FIXTURE / "dataset" / "task-template"
+_PLACEHOLDER = re.compile(r"<[A-Z][A-Z0-9_]*>")
+_FILLABLE = ("instruction.md", "task.toml", "tests/expected.txt")
+_GRAMMAR = (
+    re.compile(r"what is the \w+ of ", re.IGNORECASE),
+    re.compile(r"how many .* in the \w+ department", re.IGNORECASE),
+    re.compile(r"what is the total \w+ in the \w+ (?:department|role)", re.IGNORECASE),
+)
 
 # The Analyst is tested by the nemo-insights plugin.  This test instead supplies
 # a reviewed Insight with fresh, real trace ids so it isolates the Mode 1 loop:
@@ -324,6 +329,160 @@ def _normalize(text: str) -> str:
     return re.sub(r"\r$", "", text, flags=re.MULTILINE).rstrip("\n")
 
 
+def _template_placeholders() -> set[str]:
+    """Read every placeholder the committed task template declares."""
+    found: set[str] = set()
+    for name in _FILLABLE:
+        path = _TEMPLATE_DIR / name
+        if path.is_file():
+            found.update(_PLACEHOLDER.findall(path.read_text(encoding="utf-8")))
+    return found
+
+
+def _suite_dirs(experiment: Path) -> list[Path]:
+    """Find the materialized Insight suites from their manifests."""
+    root = experiment / "eval-and-optimize" / "eval_author"
+    return sorted(manifest.parent for manifest in root.rglob("insight-suite/manifest.json")) if root.is_dir() else []
+
+
+def _materialized_tasks(suite: Path) -> list[Path]:
+    """Read only the task directories listed in one suite manifest."""
+    tasks = json.loads((suite / "manifest.json").read_text(encoding="utf-8")).get("tasks")
+    return (
+        [suite / entry["path"] for entry in tasks if isinstance(entry, dict) and entry.get("path")]
+        if isinstance(tasks, list)
+        else []
+    )
+
+
+def _authored_metric_keys(experiment: Path) -> set[str]:
+    """Read the metrics Eval Author declared in its generated tasks."""
+    keys: set[str] = set()
+    for suite in _suite_dirs(experiment):
+        for task in _materialized_tasks(suite):
+            contract = task / "tests" / "metric-contract.json"
+            if contract.is_file():
+                keys.update(json.loads(contract.read_text(encoding="utf-8")).get("metric_keys") or [])
+    return keys
+
+
+def _baseline_split_metrics(experiment: Path, split: str) -> dict[str, float]:
+    """Read the baseline aggregate metrics for one evaluated split."""
+    result = experiment / "eval-and-optimize" / "results" / f"agent-0-{split}" / "result.json"
+    evaluations = list(json.loads(result.read_text(encoding="utf-8"))["stats"]["evals"].values())
+    assert len(evaluations) == 1, f"expected one evaluation in {result}, found {len(evaluations)}"
+    metrics = evaluations[0]["metrics"]
+    assert len(metrics) == 1, f"expected one aggregate metric record in {result}, found {len(metrics)}"
+    return {str(name): float(value) for name, value in metrics[0].items()}
+
+
+def _generated_trial_rewards(experiment: Path) -> list[dict[str, float]]:
+    """Read baseline verifier rewards for the tasks Eval Author generated."""
+    generated: list[dict[str, float]] = []
+    for result in sorted((experiment / "eval-and-optimize" / "results").glob("agent-0-*/*/result.json")):
+        payload = json.loads(result.read_text(encoding="utf-8"))
+        if not str(payload.get("task_name", "")).startswith("smoke/generated__"):
+            continue
+        rewards = payload.get("verifier_result", {}).get("rewards")
+        assert isinstance(rewards, dict), f"generated task {result.parent.name} has no verifier rewards"
+        generated.append({str(name): float(value) for name, value in rewards.items()})
+    assert generated, "no generated task produced a baseline trial result"
+    return generated
+
+
+def _check_insight_suite(experiment: Path) -> None:
+    """Check that Mode 1 produced usable generated tasks and objective metrics."""
+    declared = _template_placeholders()
+    assert declared, f"{_TEMPLATE_DIR} declares no <PLACEHOLDER> tokens"
+    unmatched_committed = [
+        path.parent.name
+        for path in sorted((_TEMPLATE_DIR.parent / "groups").rglob("instruction.md"))
+        if not any(pattern.search(path.read_text(encoding="utf-8")) for pattern in _GRAMMAR)
+    ]
+    assert not unmatched_committed, "committed tasks fall outside the agent grammar: " + ", ".join(unmatched_committed)
+    suites = _suite_dirs(experiment)
+    assert suites, "Eval Author did not materialize an Insight suite"
+    tasks = [task for suite in suites for task in _materialized_tasks(suite)]
+    assert tasks, "Insight suite manifests list no tasks"
+
+    unfilled: list[str] = []
+    empty_expected: list[str] = []
+    off_grammar: list[str] = []
+    for task in tasks:
+        for name in _FILLABLE:
+            path = task / name
+            if path.is_file() and (
+                remaining := sorted(set(_PLACEHOLDER.findall(path.read_text(encoding="utf-8"))) & declared)
+            ):
+                unfilled.append(f"{task.name}/{name}: {', '.join(remaining)}")
+        expected = task / "tests" / "expected.txt"
+        if expected.is_file() and not expected.read_text(encoding="utf-8").strip():
+            empty_expected.append(task.name)
+        instruction = task / "instruction.md"
+        if instruction.is_file() and not any(
+            pattern.search(instruction.read_text(encoding="utf-8")) for pattern in _GRAMMAR
+        ):
+            off_grammar.append(task.name)
+    assert not unfilled, "Eval Author left template placeholders: " + "; ".join(unfilled)
+    assert not empty_expected, "generated tasks have empty expected answers: " + ", ".join(empty_expected)
+    assert not off_grammar, "generated questions fall outside the agent grammar: " + ", ".join(off_grammar)
+
+    authored = _authored_metric_keys(experiment)
+    assert authored, "Eval Author wrote no metric contract for the generated suite"
+    missing_from_trials = [
+        sorted(authored - rewards.keys())
+        for rewards in _generated_trial_rewards(experiment)
+        if not authored <= rewards.keys()
+    ]
+    assert not missing_from_trials, "generated task verifier results dropped authored metric keys: " + "; ".join(
+        ", ".join(keys) for keys in missing_from_trials
+    )
+    for split in ("train", "validation"):
+        missing = sorted(authored - _baseline_split_metrics(experiment, split).keys())
+        assert not missing, f"baseline {split} aggregate dropped authored metric keys: {missing}"
+
+    run = json.loads((experiment / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
+    objectives = run.get("config_snapshot", {}).get("objective_function")
+    assert isinstance(objectives, list), "run.json has no objective_function in config_snapshot"
+    objective_names = {str(metric.get("name")) for metric in objectives if isinstance(metric, dict)}
+    assert objective_names == authored, (
+        f"Mode 1 objectives {sorted(objective_names)} do not match Eval Author metrics {sorted(authored)}"
+    )
+
+    results = experiment / "eval-and-optimize" / "results"
+    for task in tasks:
+        matches = [
+            trial
+            for trial in results.rglob("*")
+            if trial.is_dir()
+            and (base := re.sub(r"__[A-Za-z0-9]+$", "", trial.name))
+            and len(base) >= 12
+            and task.name.startswith(base)
+        ]
+        assert matches and any((trial / "verifier" / "reward.json").is_file() for trial in matches), (
+            f"generated task {task.name} produced no reward.json"
+        )
+
+    agents_dir = experiment / "eval-and-optimize" / "agents"
+    scored = {
+        path.parent.name: (json.loads(path.read_text(encoding="utf-8")).get("rewards", {}).get("validation") or {}).get(
+            "metrics", {}
+        )
+        for path in agents_dir.glob("*/metadata.json")
+    }
+    baseline = scored.get("agent-0")
+    improved = {
+        label: metrics
+        for label, metrics in scored.items()
+        if label != "agent-0" and metrics.get("reward", 0.0) > (baseline or {}).get("reward", 0.0)
+    }
+    assert baseline and improved, "no repaired candidate is available to judge the authored metric"
+    blind = sorted(
+        key for key in authored if all(metrics.get(key) == baseline.get(key) for metrics in improved.values())
+    )
+    assert not blind, "authored metrics did not change when reward improved: " + ", ".join(blind)
+
+
 def _assert_committed_validation_passes(experiment: Path, group: str) -> None:
     """Check that the Mode 1 winner repairs every committed validation task."""
     winner = _winner_label(experiment)
@@ -338,6 +497,20 @@ def _assert_committed_validation_passes(experiment: Path, group: str) -> None:
     assert not failed, f"{winner} does not answer held-out {group} tasks: {failed}"
 
 
+def _assert_loop_only_evaluated_generated_tasks(experiment: Path) -> None:
+    """Check that the Mode 1 loop evaluated only tasks created from the Insight."""
+    results = experiment / "eval-and-optimize" / "results"
+    task_names: set[str] = set()
+    for result in sorted(results.glob("agent-*/*/result.json")):
+        payload = json.loads(result.read_text(encoding="utf-8"))
+        task_name = payload.get("task_name")
+        if isinstance(task_name, str):
+            task_names.add(task_name)
+    assert task_names, "the loop produced no trial results"
+    leaked = sorted(name for name in task_names if not name.startswith("smoke/generated__"))
+    assert not leaked, f"the Mode 1 loop evaluated committed tasks instead of only the Insight suite: {leaked}"
+
+
 def _assert_analysis_named_problem(experiment: Path, group: str) -> None:
     """Check that the Analyzer named the problem measured by this group."""
     analyses = sorted((experiment / "eval-and-optimize" / "analysis").glob("round-*.md"))
@@ -347,13 +520,11 @@ def _assert_analysis_named_problem(experiment: Path, group: str) -> None:
     assert len(hits) >= _MIN_ROOT_CAUSE_HITS, f"{group} analysis did not name its problem; matched only {hits}"
 
 
-@pytest.mark.e2e
-@pytest.mark.timeout(2400)
-@pytest.mark.parametrize("group", _REPAIR_GROUPS)
-def test_insight_driven_loop_repairs_group(group: str, tmp_path: Path) -> None:
-    """Check that Mode 1 records traces, uses a mocked Insight, and repairs one group."""
+def _run_mode_1_case(group: str, tmp_path: Path, *, generated_only: bool) -> None:
+    """Run one Mode 1 group with either augmented or generated-only selection data."""
     environment = _require_e2e_environment()
-    artifact_parent = tmp_path / group
+    mode = "generated-only" if generated_only else "augmented"
+    artifact_parent = tmp_path / f"{group}-{mode}"
     local_fixture = artifact_parent / "workspace" / "smoke-agent"
     experiment = artifact_parent / "experiment"
     log = artifact_parent / "run.log"
@@ -368,6 +539,16 @@ def test_insight_driven_loop_repairs_group(group: str, tmp_path: Path) -> None:
         .replace("workspace: default", f"workspace: {workspace}"),
         encoding="utf-8",
     )
+    if generated_only:
+        empty_splits = local_fixture / "generated-only"
+        (empty_splits / "train").mkdir(parents=True)
+        (empty_splits / "validation").mkdir()
+        profile.write_text(
+            profile.read_text(encoding="utf-8")
+            .replace(f"./dataset/groups/{group}/train", "./generated-only/train")
+            .replace(f"./dataset/groups/{group}/validation", "./generated-only/validation"),
+            encoding="utf-8",
+        )
     if group == "g5-edge-cases":
         config = local_fixture / "configs" / "short.yaml"
         config.write_text(
@@ -408,15 +589,25 @@ def test_insight_driven_loop_repairs_group(group: str, tmp_path: Path) -> None:
     )
     assert experiment.is_dir(), f"Experimentalist did not create the experiment directory at {experiment}"
 
-    check_environment = os.environ | {
-        "SMOKE_EXPERIMENT_DIR": str(experiment),
-    }
-    _assert_committed_validation_passes(experiment, group)
+    if generated_only:
+        _assert_loop_only_evaluated_generated_tasks(experiment)
     _assert_analysis_named_problem(experiment, group)
-    # This includes the authored-metric check, so the E2E stays red while the
-    # known Mode 1 metric-discrimination defect remains unfixed.
-    _run(
-        ["uv", "run", "--frozen", "pytest", str(_INSIGHT_SUITE), "-v"],
-        log=log,
-        environment=check_environment,
-    )
+    _check_insight_suite(experiment)
+    if generated_only:
+        _assert_committed_validation_passes(experiment, group)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(2400)
+@pytest.mark.parametrize("group", _REPAIR_GROUPS)
+def test_insight_driven_loop_augments_the_committed_datasets(group: str, tmp_path: Path) -> None:
+    """Check that Mode 1 repairs a group when generated tasks augment its split."""
+    _run_mode_1_case(group, tmp_path, generated_only=False)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(2400)
+@pytest.mark.parametrize("group", _REPAIR_GROUPS)
+def test_insight_driven_loop_uses_only_generated_tasks(group: str, tmp_path: Path) -> None:
+    """Check that Mode 1 repairs a group using generated tasks and held-out replay."""
+    _run_mode_1_case(group, tmp_path, generated_only=True)
