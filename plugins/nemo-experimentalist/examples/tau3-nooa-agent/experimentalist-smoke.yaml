@@ -11,7 +11,7 @@ trajectory_scorer: null
 terminator: null
 storage:
   archive_candidates: true
-evaluation_config:
+outcome_evaluator_config:
   n_attempts: 1
   quiet: true
   agent_setup_timeout_multiplier: 2.0

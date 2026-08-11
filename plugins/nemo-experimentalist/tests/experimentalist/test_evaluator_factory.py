@@ -47,7 +47,7 @@ class ConcreteDataset(Dataset):
             ]
 
 
-class ConcreteEvaluator(roles.Evaluation):
+class ConcreteEvaluator(roles.OutcomeEvaluator):
     """A registered evaluation component, the way a separate package would ship one."""
 
     name = _SUPPORTED_TYPE
@@ -61,7 +61,7 @@ class ConcreteEvaluator(roles.Evaluation):
 def test_build_dataset_raises_on_a_name_no_component_claims() -> None:
     """Never falls back to the built-in: a run configured for one evaluator must not
     silently be measured by another."""
-    with pytest.raises(LookupError, match="no evaluation registered"):
+    with pytest.raises(LookupError, match="no outcome-evaluator registered"):
         DatasetFactory().build_dataset(_UNSUPPORTED_TYPE, DatasetRef(uri=_NONEXISTENT_URI, description="test"))
 
 
@@ -164,7 +164,7 @@ def test_evaluator_factory_build_evaluator_with_dict():
 
 def test_evaluator_factory_build_evaluator_unsupported():
     factory = EvaluatorFactory()
-    with pytest.raises(LookupError, match="no evaluation registered"):
+    with pytest.raises(LookupError, match="no outcome-evaluator registered"):
         factory.build_evaluator("unsupported", {})
 
 

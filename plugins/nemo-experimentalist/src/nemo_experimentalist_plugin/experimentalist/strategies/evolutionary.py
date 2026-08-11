@@ -1017,7 +1017,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             workspace=self.working_dir,
             config=self._coder_config(config),
             framework_skills_dirs=self._framework_skills_dirs,
-            evaluator=ctx.evaluation,
+            evaluator=ctx.outcome_evaluator,
             dataset=dataset,
             source_path=config.source.source_path,
             entrypoint=config.source.entrypoint,

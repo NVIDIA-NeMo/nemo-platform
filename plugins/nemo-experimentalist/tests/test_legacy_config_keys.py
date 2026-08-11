@@ -45,7 +45,8 @@ def test_a_component_name_under_the_same_key_is_still_valid(key: str, value: str
 @pytest.mark.parametrize(
     ("key", "role", "config_key"),
     [
-        ("evaluator", "evaluation", "evaluation_config"),
+        ("evaluator", "outcome_evaluator", "outcome_evaluator_config"),
+        ("evaluation", "outcome_evaluator", "outcome_evaluator_config"),
         ("coder", "builder", "builder_config"),
         ("goal_config", "trajectory_scorer", "trajectory_scorer_config"),
     ],
@@ -59,7 +60,7 @@ def test_a_renamed_role_names_both_the_role_and_its_config(key: str, role: str, 
 @pytest.mark.parametrize("value", ["harbor", {"n_attempts": 1}, None, 3])
 def test_a_renamed_role_is_rejected_whatever_the_value(value: object) -> None:
     """A string under `evaluator` reads as "use this component" and would be ignored."""
-    with pytest.raises(ValueError, match="evaluation"):
+    with pytest.raises(ValueError, match="outcome_evaluator"):
         EvolutionaryOptimizerConfig.model_validate({"evaluator": value})
 
 
@@ -80,14 +81,14 @@ def test_a_config_using_the_current_keys_is_accepted() -> None:
         {
             "terminator": None,
             "trajectory_scorer": None,
-            "evaluation": "harbor",
-            "evaluation_config": {"n_attempts": 1},
-            "builder": "coder",
+            "outcome_evaluator": "harbor",
+            "outcome_evaluator_config": {"n_attempts": 1},
+            "builder": "llm-code-edit",
             "analyzer_config": {},
             "proposer_config": {},
         }
     )
 
     assert config.terminator is None
-    assert config.evaluation == "harbor"
-    assert config.evaluation_config == {"n_attempts": 1}
+    assert config.outcome_evaluator == "harbor"
+    assert config.outcome_evaluator_config == {"n_attempts": 1}

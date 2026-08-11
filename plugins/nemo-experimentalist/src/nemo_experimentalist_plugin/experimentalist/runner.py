@@ -123,7 +123,7 @@ class ExperimentRunner:
         for subdir in ("agents", "analysis", "results"):
             (self._eo / subdir).mkdir(parents=True, exist_ok=True)
         evaluator = EvaluatorFactory().build_evaluator(
-            self._config.evaluation, self._config.evaluation_config, experiment_dir=self._root
+            self._config.outcome_evaluator, self._config.outcome_evaluator_config, experiment_dir=self._root
         )
         inputs = await self._prepare_inputs()
         run, resuming = await self._open_run(inputs)
@@ -196,8 +196,8 @@ class ExperimentRunner:
             )
 
         datasets: dict[str, Dataset] = {
-            "train": dataset_factory.build_dataset(self._config.evaluation, train_ref),
-            "validation": dataset_factory.build_dataset(self._config.evaluation, validation_ref),
+            "train": dataset_factory.build_dataset(self._config.outcome_evaluator, train_ref),
+            "validation": dataset_factory.build_dataset(self._config.outcome_evaluator, validation_ref),
         }
 
         agent_ref = self._agent if self._agent is not None else (insight.agent if insight is not None else None)
@@ -231,7 +231,7 @@ class ExperimentRunner:
             ).run(
                 insight=insight,
                 agent_path=agent_dir,
-                task_template=dataset_factory.build_task_template(self._config.evaluation, template_ref),
+                task_template=dataset_factory.build_task_template(self._config.outcome_evaluator, template_ref),
                 train_dataset=datasets["train"],
                 validation_dataset=datasets["validation"],
                 client=self._backend.client,

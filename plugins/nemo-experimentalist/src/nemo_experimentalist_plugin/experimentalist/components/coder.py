@@ -597,7 +597,7 @@ class ArchitectureSkill(Skill):
 class Coder(Agent, roles.Builder):
     """Create and modify agent source code as part of the optimization loop."""
 
-    name = "coder"
+    name = "llm-code-edit"
     accepts = frozenset({CODE_CHANGE})
 
     def __init__(

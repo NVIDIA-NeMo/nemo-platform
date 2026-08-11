@@ -48,7 +48,7 @@ class RandomSearch(Strategy):
         """Accept the arguments the runner constructs a strategy with, and ignore the rest."""
         self._rounds = getattr(config, "max_rounds", 3)
         self._per_round = getattr(config, "max_candidates", 1)
-        self._builder = getattr(config, "builder", "coder")
+        self._builder = getattr(config, "builder", "llm-code-edit")
 
     async def run(self, ctx: StrategyContext) -> Candidate | None:
         """Import the agent, then build and score random variants of it."""

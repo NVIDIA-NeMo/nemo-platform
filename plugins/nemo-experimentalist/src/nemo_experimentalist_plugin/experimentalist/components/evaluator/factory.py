@@ -15,16 +15,16 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
 from nemo_experimentalist_plugin.experimentalist.registry import resolve
 
 if TYPE_CHECKING:
-    from nemo_experimentalist_plugin.experimentalist.roles import Evaluation
+    from nemo_experimentalist_plugin.experimentalist.roles import OutcomeEvaluator
 
 
-def _evaluation(name: EvaluatorType) -> "type[Evaluation]":
+def _evaluation(name: EvaluatorType) -> "type[OutcomeEvaluator]":
     """The registered `evaluation` component called *name*.
 
     Resolved rather than looked up in a table: a table keyed on names this package knows
     is exactly what stops `evaluation:` being swappable from config.
     """
-    return cast("type[Evaluation]", resolve("evaluation", name))
+    return cast("type[OutcomeEvaluator]", resolve("outcome-evaluator", name))
 
 
 class DatasetFactory:

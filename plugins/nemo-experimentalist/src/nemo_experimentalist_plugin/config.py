@@ -97,7 +97,12 @@ class EvolutionaryOptimizerConfig(BaseModel):
         # Renamed outright. These are not fields at all, so any value here is legacy and
         # would otherwise be dropped in silence — changing what the run does.
         for removed, role, config_key in (
-            ("evaluator", "evaluation", "evaluation_config"),
+            ("evaluator", "outcome_evaluator", "outcome_evaluator_config"),
+            # 'evaluation' said what the step produces; the role is the thing that does it,
+            # and 'outcome' is what distinguishes it from the trajectory-scorer, which
+            # measures the process of the same run.
+            ("evaluation", "outcome_evaluator", "outcome_evaluator_config"),
+            ("evaluation_config", "outcome_evaluator", "outcome_evaluator_config"),
             ("coder", "builder", "builder_config"),
             ("goal_config", "trajectory_scorer", "trajectory_scorer_config"),
         ):
@@ -127,9 +132,12 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default="agent-trace",
         description="Registered 'root-cause-analyzer'. Null skips diagnosis and the train eval feeding it.",
     )
-    evaluation: str = Field(
+    outcome_evaluator: str = Field(
         default="harbor",
-        description="Registered 'evaluation' component measuring a candidate's outcome.",
+        description=(
+            "Registered 'outcome-evaluator' measuring what a candidate achieved. Named for "
+            "the outcome because the trajectory-scorer measures the process of the same run."
+        ),
     )
     proposer: str = Field(default="code-change", description="Registered 'proposer' emitting each round's Proposals.")
     terminator: str | None = Field(
@@ -149,7 +157,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default_factory=TerminatorConfig, description="Tuning for the terminator."
     )
     builder: str = Field(
-        default="coder",
+        default="llm-code-edit",
         description=(
             "Registered 'builder' component that turns a Proposal into a Candidate. "
             "Swap it for one shipped by another package to change how candidates are "
@@ -189,7 +197,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     builder_config: CoderConfig = Field(default_factory=CoderConfig, description="Tuning for the builder.")
     analyzer_config: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
     proposer_config: ProposerConfig = Field(default_factory=ProposerConfig)
-    evaluation_config: dict[str, Any] = Field(
+    outcome_evaluator_config: dict[str, Any] = Field(
         default_factory=dict,
         description="Config for the selected 'evaluation' component; its own model validates it.",
     )

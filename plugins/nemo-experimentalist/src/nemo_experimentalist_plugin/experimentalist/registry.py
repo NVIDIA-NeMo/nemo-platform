@@ -71,7 +71,7 @@ class Component:
         super().__init_subclass__(**kwargs)
         # `role` is inherited on purpose — Coder gets "builder" from Builder. `name` is
         # read from this class alone: inheriting it would make `class MyCoder(Coder)`
-        # look like a second claim on "coder" and raise at import, which is the most
+        # look like a second claim on "llm-code-edit" and raise at import, which is the most
         # obvious way someone customises a built-in Builder. A subclass registers by
         # naming itself, or not at all.
         role, name = cls.__dict__.get("role", cls.role), cls.__dict__.get("name", "")

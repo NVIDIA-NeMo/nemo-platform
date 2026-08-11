@@ -47,7 +47,7 @@ class Strategy(Component):
         raise NotImplementedError
 
 
-class Evaluation(Component, Evaluator):
+class OutcomeEvaluator(Component, Evaluator):
     """Measure a candidate's artifact and return an EvaluationResult.
 
     Named for the role rather than the implementation: it is platform vocabulary
@@ -59,7 +59,7 @@ class Evaluation(Component, Evaluator):
     type rather than an implicit pairing a plugin author has to infer.
     """
 
-    role: ClassVar[str] = "evaluation"
+    role: ClassVar[str] = "outcome-evaluator"
 
     #: Dataset implementation this evaluator consumes, and the model it validates its
     #: options with. Declared here so resolving the component is enough to build both:

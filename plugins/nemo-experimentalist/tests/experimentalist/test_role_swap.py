@@ -29,7 +29,7 @@ from nemo_experimentalist_plugin.experimentalist.registry import (
 from nemo_experimentalist_plugin.experimentalist.roles import (
     Analyzer,
     Builder,
-    Evaluation,
+    OutcomeEvaluator,
     Proposer,
     Selector,
     Strategy,
@@ -41,7 +41,7 @@ from nemo_experimentalist_plugin.experimentalist.roles import (
 ROLES = {
     "strategy": "strategy",
     "builder": "builder",
-    "evaluation": "evaluation",
+    "outcome-evaluator": "outcome_evaluator",
     "proposer": "proposer",
     "selector": "selector",
     "terminator": "terminator",
@@ -121,7 +121,7 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
         name = "acme-overlay"
         accepts: ClassVar[frozenset[str]] = frozenset({"parameters"})
 
-    class SwappedEvaluation(Swapped, Evaluation):
+    class SwappedEvaluation(Swapped, OutcomeEvaluator):
         name = "acme-scorer"
 
     class SwappedProposer(Swapped, Proposer):
@@ -143,7 +143,7 @@ def test_every_role_can_be_swapped_for_one_this_repo_does_not_know(isolated_regi
     config = EvolutionaryOptimizerConfig(
         strategy="acme-bandit",
         builder="acme-overlay",
-        evaluation="acme-scorer",
+        outcome_evaluator="acme-scorer",
         proposer="acme-hpo",
         selector="acme-crowding",
         terminator="acme-budget",
@@ -340,7 +340,7 @@ def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_regis
     assert seen == {
         "workspace": ctx.root,
         "working_dir": ctx.root,
-        "evaluator": ctx.evaluation,
+        "evaluator": ctx.outcome_evaluator,
         "dataset": ctx.datasets["train"],
     }
 
@@ -352,9 +352,9 @@ def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isola
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
 
-    coder = ctx.component("builder", "coder")
+    coder = ctx.component("builder", "llm-code-edit")
 
-    assert coder._evaluator is ctx.evaluation
+    assert coder._evaluator is ctx.outcome_evaluator
     # Train, never validation: a Builder repairs against what it is handed, and the
     # winner is chosen on validation.
     assert coder._dataset is ctx.datasets["train"]
@@ -416,7 +416,7 @@ async def test_a_proposer_and_builder_that_cannot_work_together_fail_before_the_
         name = "acme-hpo-only"
         produces: ClassVar[frozenset[str]] = frozenset({"parameters"})
 
-    config = EvolutionaryOptimizerConfig(proposer="acme-hpo-only", builder="coder")
+    config = EvolutionaryOptimizerConfig(proposer="acme-hpo-only", builder="llm-code-edit")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
 
     with pytest.raises(ValueError, match="no proposal could be built"):
@@ -429,7 +429,7 @@ async def test_a_proposal_no_builder_accepts_is_dropped_not_raised(tmp_path, iso
     from doubles import FakeBackend, make_context
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
-    config = EvolutionaryOptimizerConfig(builder="coder")
+    config = EvolutionaryOptimizerConfig(builder="llm-code-edit")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     unbuildable = Proposal(ancestor=None, description="tune a knob", kind="parameters", payload={})

@@ -85,7 +85,7 @@ def test_shipped_benchmark_configs_use_current_contracts(name: str) -> None:
 
     config = runner.load_benchmark_config(BENCHMARK_ROOT / "configs" / name)
 
-    assert config.optimizer.evaluation_config["n_attempts"] >= 1
+    assert config.optimizer.outcome_evaluator_config["n_attempts"] >= 1
     assert config.optimizer.eval_author.max_validation_repair_attempts >= 0
 
 

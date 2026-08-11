@@ -92,7 +92,7 @@ class StrategyContext(BuilderContext, Protocol):
     agent_spec: Path | None
 
     @property
-    def evaluation(self) -> Evaluator:
+    def outcome_evaluator(self) -> Evaluator:
         """The run's configured evaluation component."""
         ...
 

@@ -31,7 +31,7 @@ def test_our_own_components_are_discovered_through_the_entry_point_group() -> No
     the point of registering ours the same way rather than importing them directly.
     """
     assert "evolutionary" in registered("strategy")
-    assert "coder" in registered("builder")
+    assert "llm-code-edit" in registered("builder")
 
 
 def test_resolving_an_unknown_name_raises_and_says_what_is_known() -> None:
@@ -55,10 +55,10 @@ def test_a_role_base_class_does_not_register_itself() -> None:
 
 def test_two_different_classes_claiming_one_name_is_an_error() -> None:
     """Last-win is the wrong semantics for a named component that must exist."""
-    with pytest.raises(RuntimeError, match="duplicate component builder.coder"):
+    with pytest.raises(RuntimeError, match="duplicate component builder.llm-code-edit"):
 
         class Clashing(Builder):
-            name = "coder"
+            name = "llm-code-edit"
 
 
 def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
@@ -74,7 +74,7 @@ def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
     from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
 
     def _same_identity(namespace: dict[str, object]) -> None:
-        namespace["name"] = "coder"
+        namespace["name"] = "llm-code-edit"
         namespace["__module__"] = Coder.__module__
         namespace["__qualname__"] = Coder.__qualname__
 
@@ -83,13 +83,13 @@ def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
 
         # It really did re-register: the entry now points at the stand-in, not the real
         # Coder. Asserting the qualname instead would only re-read what was just written.
-        assert resolve("builder", "coder") is stand_in
+        assert resolve("builder", "llm-code-edit") is stand_in
         assert stand_in is not Coder
     finally:
         # Restore, or every later resolution of the builder gets a class with no build().
-        Component._registry[("builder", "coder")] = Coder
+        Component._registry[("builder", "llm-code-edit")] = Coder
 
-    assert resolve("builder", "coder") is Coder
+    assert resolve("builder", "llm-code-edit") is Coder
 
 
 def test_a_broken_third_party_package_does_not_break_unrelated_runs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -211,7 +211,7 @@ def test_subclassing_a_registered_component_is_allowed() -> None:
     """Extending the built-in Coder is the most obvious way to customise a builder.
 
     `name` must come from the subclass alone. Inheriting it made `class MyCoder(Coder)`
-    look like a second claim on "coder" and raise at class-definition time — and because
+    look like a second claim on "llm-code-edit" and raise at class-definition time — and because
     `load_plugins` swallows entry-point import errors, the author's whole package would
     have been recorded as a load failure with every component in it unresolvable.
     """
@@ -220,10 +220,10 @@ def test_subclassing_a_registered_component_is_allowed() -> None:
     class UnnamedSubclass(Coder):  # must not raise
         pass
 
-    assert ("builder", "coder") not in {
+    assert ("builder", "llm-code-edit") not in {
         (role, name) for (role, name), cls in Component._registry.items() if cls is UnnamedSubclass
     }
-    assert resolve("builder", "coder") is Coder, "the subclass must not have taken over the name"
+    assert resolve("builder", "llm-code-edit") is Coder, "the subclass must not have taken over the name"
 
     try:
 

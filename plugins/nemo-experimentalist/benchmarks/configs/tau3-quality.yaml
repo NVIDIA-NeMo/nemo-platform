@@ -16,7 +16,7 @@ optimizer:
   train_batch_seed: 20260727
   trajectory_scorer: goal-tree
   terminator: convergence
-  evaluation_config:
+  outcome_evaluator_config:
     n_attempts: 2
     # Keep at 3 or lower: each task requests 8192 MB and parallel image builds
     # have triggered Docker Hub rate limiting and DNS failures.

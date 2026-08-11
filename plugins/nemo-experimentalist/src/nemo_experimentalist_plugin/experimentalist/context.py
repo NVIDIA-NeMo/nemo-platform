@@ -125,7 +125,7 @@ class ExperimentContext:
         agent_spec: Optional markdown description of the agent under test.
         datasets: Evaluator-domain datasets keyed by split. ``validation`` is always
             present; ``train`` and ``insight`` are present when the run has them.
-        evaluator: Evaluation component the run was configured with.
+        evaluator: OutcomeEvaluator component the run was configured with.
         resuming: True when the runner re-opened an existing run, so the strategy
             should rebuild its state from :meth:`candidates` instead of starting over.
         reporter: Optional human narration sink. Best-effort and never load-bearing.
@@ -168,7 +168,7 @@ class ExperimentContext:
         return self._run.id or ""
 
     @property
-    def evaluation(self) -> Evaluator:
+    def outcome_evaluator(self) -> Evaluator:
         """The evaluation component this run was configured with.
 
         Exposed so a composite strategy can hand it to a component it owns — the Coder

@@ -1314,7 +1314,7 @@ class HarborDataset(Dataset):
         )
 
 
-class HarborEvaluator(roles.Evaluation):
+class HarborEvaluator(roles.OutcomeEvaluator):
     """Run Harbor evaluations and return parsed reward payloads."""
 
     name = "harbor"

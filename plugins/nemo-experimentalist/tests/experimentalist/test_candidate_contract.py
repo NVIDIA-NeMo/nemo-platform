@@ -469,7 +469,7 @@ async def test_a_builder_documents_the_candidates_it_builds(tmp_path: Path) -> N
         payload={"root_cause": "none", "optimization_type": "edit_config", "task_ids": []},
     )
 
-    builder = QuietCoder(workspace=tmp_path, evaluator=ctx.evaluation, dataset=ctx.datasets["train"])
+    builder = QuietCoder(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=ctx.datasets["train"])
     candidate = await builder.build(ctx, proposal, generation=1)
 
     assert described == [ctx.candidate_dir(candidate)]
@@ -499,10 +499,10 @@ async def test_the_smoke_check_evaluates_the_tasks_the_change_claims_to_fix(tmp_
 
     dataset = Dataset(id="train", tasks=[Task(id="targeted-a"), Task(id="targeted-b"), Task(id="control")])
     ctx = make_context(root=tmp_path, backend=FakeBackend(), datasets={"train": dataset, "validation": dataset})
-    coder = RecordingCoder(workspace=tmp_path, evaluator=ctx.evaluation, dataset=dataset)
+    coder = RecordingCoder(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=dataset)
     wanted = ["targeted-a", "targeted-b"]
 
-    assert await coder.integration_check(tmp_path, dataset, ctx.evaluation, task_ids=wanted)
+    assert await coder.integration_check(tmp_path, dataset, ctx.outcome_evaluator, task_ids=wanted)
 
     assert seen == [sorted(wanted)], "the smoke check ignored the tasks the change targeted"
 
@@ -526,8 +526,8 @@ async def test_the_smoke_check_still_runs_when_a_proposal_names_no_tasks(tmp_pat
 
     dataset = Dataset(id="train", tasks=[Task(id="a"), Task(id="b"), Task(id="c")])
     ctx = make_context(root=tmp_path, backend=FakeBackend(), datasets={"train": dataset, "validation": dataset})
-    coder = RecordingCoder(workspace=tmp_path, evaluator=ctx.evaluation, dataset=dataset)
+    coder = RecordingCoder(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=dataset)
 
-    assert await coder.integration_check(tmp_path, dataset, ctx.evaluation, task_ids=None)
+    assert await coder.integration_check(tmp_path, dataset, ctx.outcome_evaluator, task_ids=None)
 
     assert len(seen) == 1 and len(seen[0]) == 1, "expected the single-random-task fallback"

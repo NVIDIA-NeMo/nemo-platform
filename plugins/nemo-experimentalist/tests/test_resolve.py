@@ -843,11 +843,11 @@ def test_evaluator_payload_remains_intentionally_open(tmp_path: Path) -> None:
             profile=profile,
             scratch_dir=tmp_path / "s",
             insight="ins-1",
-            config_payload={"evaluation_config": {"plugin_specific_option": {"nested": True}}},
+            config_payload={"outcome_evaluator_config": {"plugin_specific_option": {"nested": True}}},
         )
     )
 
-    assert inputs.config.evaluation_config == {"plugin_specific_option": {"nested": True}}
+    assert inputs.config.outcome_evaluator_config == {"plugin_specific_option": {"nested": True}}
 
 
 def test_config_invalid_value_is_wrapped_with_source(tmp_path: Path) -> None:
