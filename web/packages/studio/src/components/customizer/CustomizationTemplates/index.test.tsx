@@ -16,12 +16,27 @@ import type { Mock } from 'vitest';
 
 const HF_ROWS_URL = 'https://datasets-server.huggingface.co/rows';
 
+/**
+ * Carries the fields every template converter reads (SQuAD, SPECTER, BIRD-SQL) in one
+ * row, so these tests stay valid whichever template happens to be rendered first.
+ */
+const HF_ROW = {
+  // SQuAD
+  context: 'ctx',
+  question: 'q',
+  answers: { text: ['a'] },
+  // SPECTER
+  set: ['query', 'pos', 'neg'],
+  // BIRD-SQL
+  schema: 'CREATE TABLE t (id INT);',
+  evidence: 'hint',
+  SQL: 'SELECT 1',
+};
+
 const hfRowsHandler = http.get(HF_ROWS_URL, ({ request }) => {
   const length = Number(new URL(request.url).searchParams.get('length') ?? '0');
   return HttpResponse.json({
-    rows: Array.from({ length }, () => ({
-      row: { context: 'ctx', question: 'q', answers: { text: ['a'] } },
-    })),
+    rows: Array.from({ length }, () => ({ row: HF_ROW })),
   });
 });
 

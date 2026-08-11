@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CUSTOMIZATION_TEMPLATES } from '@studio/constants/customizationTemplates';
-import { customizationFormSchema } from '@studio/util/forms/customization';
+import { customizationFormSchema, formToAutomodelCreate } from '@studio/util/forms/customization';
 
 const WORKSPACE = 'my-workspace';
 const DATASET_REF = 'my-workspace/sft-dataset';
@@ -42,6 +42,57 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
     const byId = Object.fromEntries(CUSTOMIZATION_TEMPLATES.map((t) => [t.id, t]));
     expect(byId['sft-llama'].models.every((m) => m.requiresHfToken)).toBe(true);
     expect(byId['lora-qwen3'].models.some((m) => m.requiresHfToken)).toBe(false);
+  });
+
+  describe('lora-nemotron-3-super-text2sql', () => {
+    const template = CUSTOMIZATION_TEMPLATES.find(
+      (t) => t.id === 'lora-nemotron-3-super-text2sql'
+    )!;
+    const fields = template.buildFormSpec(WORKSPACE, DATASET_REF);
+    const { automodel } = fields;
+
+    it('requires an HF token and trust_remote_code for the gated Nemotron checkpoint', () => {
+      expect(template.models).toHaveLength(1);
+      expect(template.models[0].hfRepoId).toBe('nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16');
+      expect(template.models[0].requiresHfToken).toBe(true);
+      expect(template.models[0].trustRemoteCode).toBe(true);
+    });
+
+    it('spreads the MoE experts across all 8 GPUs', () => {
+      // The point of the recipe: without ep_size matching the GPU count, a 120B A12B
+      // MoE will not fit on a single 8x80GB node.
+      expect(automodel.parallelism?.expert_parallel_size).toBe(8);
+      expect(automodel.parallelism?.num_gpus_per_node).toBe(8);
+      expect(automodel.parallelism?.num_nodes).toBe(1);
+      expect(automodel.parallelism?.tensor_parallel_size).toBe(1);
+    });
+
+    it('excludes out_proj from LoRA, where Nemotron mamba kernels bypass adapters', () => {
+      expect(automodel.training.lora?.exclude_modules).toEqual(['*.out_proj']);
+    });
+
+    it('mirrors the cookbook LoRA and optimizer settings', () => {
+      expect(automodel.training.lora?.rank).toBe(8);
+      expect(automodel.training.lora?.alpha).toBe(32);
+      expect(automodel.training.lora?.use_triton).toBe(true);
+      expect(automodel.training.max_seq_length).toBe(4096);
+      expect(automodel.training.precision).toBe('bf16');
+      expect(automodel.optimizer?.learning_rate).toBe(1e-5);
+      expect(automodel.optimizer?.weight_decay).toBe(0);
+      expect(automodel.optimizer?.optimizer).toBe('Adam');
+      expect(automodel.optimizer?.lr_decay_style).toBe('cosine');
+      expect(automodel.batch?.global_batch_size).toBe(8);
+      expect(automodel.batch?.micro_batch_size).toBe(1);
+      expect(automodel.schedule?.epochs).toBe(1);
+    });
+
+    it('survives the round trip into a create-job request', () => {
+      // exclude_modules and expert_parallel_size are optional passthrough fields; a
+      // recipe that set them only to have the mapper drop them would silently OOM.
+      const spec = formToAutomodelCreate(fields).spec;
+      expect(spec.training.lora?.exclude_modules).toEqual(['*.out_proj']);
+      expect(spec.parallelism?.expert_parallel_size).toBe(8);
+    });
   });
 
   it('sets a teacher model only for the distillation template', () => {
@@ -86,5 +137,44 @@ describe('template dataset converters', () => {
 
   it('drops SPECTER rows missing a triplet member', () => {
     expect(specterDataset.convertRow({ set: ['q', 'pos'] })).toBeNull();
+  });
+
+  describe('BIRD-SQL converter', () => {
+    const birdDataset = CUSTOMIZATION_TEMPLATES.find(
+      (t) => t.id === 'lora-nemotron-3-super-text2sql'
+    )!.dataset;
+
+    it('lays out schema, question and evidence as the cookbook prompt', () => {
+      expect(
+        birdDataset.convertRow({
+          schema: 'CREATE TABLE t (id INT);',
+          question: 'How many rows?',
+          evidence: 'rows refers to COUNT(*)',
+          SQL: 'SELECT COUNT(*) FROM t',
+        })
+      ).toEqual({
+        prompt: 'CREATE TABLE t (id INT);\n\nHow many rows?\nrows refers to COUNT(*)',
+        completion: 'SELECT COUNT(*) FROM t',
+      });
+    });
+
+    it('keeps rows with empty evidence, which is common upstream', () => {
+      const converted = birdDataset.convertRow({
+        schema: 'CREATE TABLE t (id INT);',
+        question: 'How many rows?',
+        evidence: '',
+        SQL: 'SELECT COUNT(*) FROM t',
+      });
+      expect(converted).not.toBeNull();
+      expect(converted?.prompt).toBe('CREATE TABLE t (id INT);\n\nHow many rows?\n');
+    });
+
+    it.each([
+      ['schema', { question: 'q', SQL: 'SELECT 1' }],
+      ['question', { schema: 's', SQL: 'SELECT 1' }],
+      ['SQL', { schema: 's', question: 'q' }],
+    ])('drops rows missing %s', (_field, row) => {
+      expect(birdDataset.convertRow(row)).toBeNull();
+    });
   });
 });

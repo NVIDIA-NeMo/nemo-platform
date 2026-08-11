@@ -49,7 +49,102 @@ const specterConvertRow = (row: Record<string, unknown>): Record<string, unknown
   return { query: set[0], pos_doc: set[1], neg_doc: [set[2]] };
 };
 
+/**
+ * BIRD-SQL rows into prompt/completion pairs, matching the prompt layout in the
+ * Nemotron text2SQL cookbook: the database DDL, then the question, then the
+ * evidence hint. `evidence` is frequently empty upstream, so it is not required.
+ */
+const birdSqlConvertRow = (row: Record<string, unknown>): Record<string, unknown> | null => {
+  const schema = typeof row.schema === 'string' ? row.schema : '';
+  const question = typeof row.question === 'string' ? row.question : '';
+  const evidence = typeof row.evidence === 'string' ? row.evidence : '';
+  const sql = typeof row.SQL === 'string' ? row.SQL : '';
+  if (!schema || !question || !sql) return null;
+  return { prompt: `${schema}\n\n${question}\n${evidence}`, completion: sql };
+};
+
 export const CUSTOMIZATION_TEMPLATES: CustomizationTemplate[] = [
+  {
+    // Port of the NVIDIA Nemotron cookbook:
+    // usage-cookbook/Nemotron-3-Super/lora-text2sql/nemo-automodel
+    // Hyperparameters below mirror that recipe's base-peft-config-cookbook.yaml.
+    id: 'lora-nemotron-3-super-text2sql',
+    title: 'LoRA — Nemotron 3 Super (Text-to-SQL)',
+    trainingLabel: 'LoRA',
+    description:
+      'Teach Nemotron 3 Super to write SQL from a database schema and a question, trained on BIRD-SQL. A mixture-of-experts model this size is impractical to tune by hand — this recipe ships the expert-parallel and LoRA settings that make it fit on one 8×80GB node. Requires HF token.',
+    models: [
+      {
+        hfRepoId: 'nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16',
+        name: 'nemotron-3-super-120b-a12b-bf16',
+        requiresHfToken: true,
+        trustRemoteCode: true,
+      },
+    ],
+    dataset: {
+      hfDataset: 'xu3kev/BIRD-SQL-data-train',
+      hfConfig: 'default',
+      hfSplit: 'train',
+      // The cookbook trains on the full BIRD train split. Each row embeds a complete
+      // CREATE TABLE schema (~5KB), and these rows are fetched and converted in the
+      // browser, so the template takes a slice: ~5.8MB instead of ~50MB.
+      trainingRowCount: 1000,
+      validationRowCount: 100,
+      name: 'bird-sql-text2sql',
+      convertRow: birdSqlConvertRow,
+    },
+    buildFormSpec: (workspace, datasetRef) => ({
+      ...FORM_DEFAULTS,
+      outputName: generateDefaultName(),
+      backend: 'automodel',
+      automodel: {
+        ...FORM_DEFAULTS.automodel,
+        model: `${workspace}/nemotron-3-super-120b-a12b-bf16`,
+        dataset: { training: datasetRef, validation: datasetRef },
+        training: {
+          ...FORM_DEFAULTS.automodel.training,
+          training_type: 'sft',
+          finetuning_type: 'lora',
+          lora: {
+            rank: 8,
+            alpha: 32,
+            dropout: 0,
+            merge: false,
+            use_triton: true,
+            // Nemotron's Mamba layers consume out_proj.weight directly through custom
+            // kernels, so LoRA adapters on those modules are silently ineffective.
+            exclude_modules: ['*.out_proj'],
+          },
+          max_seq_length: 4096,
+          precision: 'bf16',
+        },
+        schedule: { ...FORM_DEFAULTS.automodel.schedule, epochs: 1 },
+        // global 8 / micro 1 → grad accumulation of 8, the minimum-memory configuration
+        // the cookbook uses to stay inside 80GB per GPU.
+        batch: { ...FORM_DEFAULTS.automodel.batch, global_batch_size: 8, micro_batch_size: 1 },
+        optimizer: {
+          ...FORM_DEFAULTS.automodel.optimizer,
+          learning_rate: 1e-5,
+          weight_decay: 0,
+          adam_beta1: 0.9,
+          adam_beta2: 0.999,
+          optimizer: 'Adam',
+          lr_decay_style: 'cosine',
+        },
+        parallelism: {
+          ...FORM_DEFAULTS.automodel.parallelism,
+          num_nodes: 1,
+          // ep_size=8 spans all 8 GPUs; tensor and expert parallelism share them.
+          num_gpus_per_node: 8,
+          tensor_parallel_size: 1,
+          pipeline_parallel_size: 1,
+          context_parallel_size: 1,
+          expert_parallel_size: 8,
+          sequence_parallel: false,
+        },
+      },
+    }),
+  },
   {
     id: 'lora-qwen3',
     title: 'LoRA — Qwen3-0.6B',
