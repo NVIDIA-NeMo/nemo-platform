@@ -149,6 +149,90 @@ def test_expected_answers_are_not_empty() -> None:
     assert not empty, "materialized tasks have an empty expected answer: " + ", ".join(empty)
 
 
+def _authored_metric_keys(experiment_dir: Path) -> set[str]:
+    """The metric keys Eval Author added, read from the contract it wrote itself.
+
+    An empty result makes the check below skip rather than fail, which is right when the
+    run authored nothing and wrong if it authored metrics without writing a contract.
+    ``validate_metric_contracts`` requires the file today, so the two cases coincide -- if
+    that stops being true, this needs to distinguish them. A guard that skips silently is
+    the failure this module exists to prevent.
+    """
+    keys: set[str] = set()
+    for suite in _suite_dirs(experiment_dir):
+        for task_dir in _materialized_tasks(suite):
+            contract = task_dir / "tests" / "metric-contract.json"
+            if not contract.is_file():
+                continue
+            payload = json.loads(contract.read_text(encoding="utf-8"))
+            keys.update(payload.get("metric_keys") or [])
+    return keys
+
+
+def _agents(experiment_dir: Path) -> dict[str, dict[str, float]]:
+    """Every scored agent's validation metrics, keyed by label."""
+    agents_dir = experiment_dir / "eval-and-optimize" / "agents"
+    scored: dict[str, dict[str, float]] = {}
+    for metadata_path in sorted(agents_dir.glob("*/metadata.json")) if agents_dir.is_dir() else []:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metrics = (metadata.get("rewards", {}).get("validation") or {}).get("metrics") or {}
+        if metrics:
+            scored[metadata_path.parent.name] = metrics
+    return scored
+
+
+def test_the_authored_metric_separates_a_repair_from_the_baseline() -> None:
+    """An authored metric that cannot see a repair is not measuring the weakness.
+
+    Eval Author writes the metric that becomes the run's objective, and nothing checks
+    that it discriminates. One run authored `aggregate_total_handler_coverage` and
+    scored it 1.0 on the baseline *and* both candidates, while our own `reward` went
+    0.25 -> 1.00. The objective never moved across a complete repair, so the Pareto
+    front had nothing to rank on and the run reached a correct winner only through the
+    regression guardrail and the age tie-break.
+
+    Conditional on our ground truth, deliberately: if `reward` did not improve, the run
+    says nothing about whether the metric can see an improvement, so there is nothing
+    to assert. It only fires when a repair demonstrably happened and the authored
+    metric ignored it.
+
+    This matters most where our tasks are *not* in the loop -- with the run driven
+    purely by generated tasks, a flat objective leaves nothing steering it at all.
+    """
+    experiment_dir = _require_experiment_dir()
+    authored = _authored_metric_keys(experiment_dir)
+    if not authored:
+        pytest.skip("no authored metric contract; this is not an insight-driven run")
+
+    scored = _agents(experiment_dir)
+    baseline = scored.get("agent-0")
+    if baseline is None:
+        pytest.skip("no scored baseline to compare against")
+
+    improved = {
+        label: metrics
+        for label, metrics in scored.items()
+        if label != "agent-0" and metrics.get("reward", 0.0) > baseline.get("reward", 0.0)
+    }
+    if not improved:
+        pytest.skip("no candidate improved on the baseline; the metric cannot be judged from this run")
+
+    blind = sorted(
+        key for key in authored if all(metrics.get(key) == baseline.get(key) for metrics in improved.values())
+    )
+    assert not blind, (
+        "authored metric(s) did not move while the weakness was repaired: "
+        + ", ".join(f"{key}={baseline.get(key)}" for key in blind)
+        + "\n  baseline reward: "
+        + str(baseline.get("reward"))
+        + "\n  repaired: "
+        + ", ".join(f"{label} reward={metrics.get('reward')}" for label, metrics in sorted(improved.items()))
+        + "\n\nThe run optimized a constant. Any winner it picked was chosen by the regression "
+        "guardrail and the tie-break, not by the objective. Read this as Eval Author authoring "
+        "a metric that cannot see the weakness, not as an Experimentalist failure."
+    )
+
+
 def test_every_suite_task_was_actually_scored() -> None:
     """A task that never ran is worse than one that scored 0: it leaves no trace at all.
 
