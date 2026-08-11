@@ -3,10 +3,12 @@
 
 """Aggregation data structures and computations for metric results."""
 
+from __future__ import annotations
+
 import math
 from collections import OrderedDict, defaultdict
 from collections.abc import Mapping, Sequence
-from typing import Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from nemo_platform.beta.evaluator.metrics.protocol import (
     BooleanValue,
@@ -28,7 +30,11 @@ from nemo_platform.beta.evaluator.values.results import (
     RubricScoreStat,
     ScoreStats,
 )
-from nemo_platform.beta.evaluator.values.scores import RubricScore, Score
+
+if TYPE_CHECKING:
+    # Importing the score configuration module loads jsonschema. Aggregation's lightweight helpers
+    # (notably compute_percentiles) do not need it, so keep this typing-only edge deferred.
+    from nemo_platform.beta.evaluator.values.scores import Score
 
 
 def is_aggregateable_output_spec(output_spec: MetricOutputSpec) -> bool:
@@ -445,6 +451,8 @@ def aggregate_metrics(
 
 def rubric_definitions_from_scores(scores: Sequence[Score]) -> dict[str, list[RubricScoreStat]]:
     """Return declared rubric buckets keyed by score name."""
+    from nemo_platform.beta.evaluator.values.scores import RubricScore
+
     definitions: dict[str, list[RubricScoreStat]] = {}
     for score in scores:
         if not isinstance(score, RubricScore):
