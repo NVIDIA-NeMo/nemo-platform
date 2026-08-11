@@ -1,0 +1,7 @@
+schema-version = "1.14.0"
+
+[include]
+environments = [
+    { dir = "../common" },
+    { dir = "../osv-scanner" }
+]

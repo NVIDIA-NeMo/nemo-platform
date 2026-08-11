@@ -88,11 +88,13 @@ is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot:
 
+Before running `make bootstrap`, install Flox from the [Flox installation guide](https://flox.dev/docs/install-flox/install). Flox is the recommended source-development toolchain and does not need to be activated first. Contributors using a preinstalled host toolchain instead need uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler; they must use `make TOOLCHAIN=system bootstrap`.
+
 === "Interactive"
 
 ```bash
 make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
-source .venv/bin/activate
+flox activate            # enter the managed development environment
 nemo setup               # interactive: prompts for provider, picks default/fast models, optionally deploys calculator-agent
 ```
 
@@ -114,38 +116,24 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 ### Toolchain: uv, Node.js, pnpm
 
-`mise.toml` pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js and pnpm to satisfy `web/package.json` engines. `make bootstrap` installs mise on first run and invokes each through `mise exec --`, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
+Flox pins all three — uv to satisfy `pyproject.toml`'s `required-version`, Node.js to match `.nvmrc`, and pnpm to match `web/package.json`. `make` invokes tools through Flox, so the pinned versions win over whatever is already on your PATH. Nothing is written to your shell rc.
 
-**Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through mise but don't install mise themselves. On a machine that doesn't have it yet, they fail like this:
+**Run `make bootstrap` before any other `make` target.** Targets such as `make test-unit`, `make update-licenses` and `make refresh-openapi` call uv through Flox. On a machine that does not have Flox yet, they fail like this:
 
 ```text
-/bin/sh: /Users/you/.local/bin/mise: No such file or directory
+/bin/sh: flox: command not found
 make: *** [test-unit] Error 127
 ```
 
-`make bootstrap` fixes it, as does `make verify-mise` on its own. To use the toolchain you already have instead, pass `NMP_SKIP_MISE=1` — it works on every target.
+`make bootstrap` fixes it, as does `make verify-toolchain` on its own. CI uses `TOOLCHAIN=system` only after it has provisioned the matching toolchain explicitly.
 
-That covers the `make` targets only. To run `uv` or `pnpm` directly — `uv sync`, the Studio dev server, tests, lint — you need mise on your PATH first, since it installs to `~/.local/bin`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Then either prefix commands:
+That covers the `make` targets only. To run `uv` or `pnpm` directly, activate Flox first:
 
 ```bash
-mise exec -- pnpm dev
-mise exec -- uv sync
+flox activate
 ```
 
-or activate mise once so every shell picks up the pinned versions:
-
-```bash
-eval "$(mise activate bash)"   # ~/.bashrc
-eval "$(mise activate zsh)"    # ~/.zshrc
-```
-
-Without one of those, a system or nvm-managed Node.js takes precedence and may not satisfy `engines`, and a globally installed uv outside `required-version` fails `uv sync` with a version mismatch. To bootstrap against your own toolchain instead of mise, use `make bootstrap NMP_SKIP_MISE=1`.
+Without Flox, install uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.
 
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 

@@ -519,6 +519,7 @@ omit = [
   "*/.venv/*",
   "*/venv/*",
   "*/.tox/*",
+  "*/.flox/*",
   "*/setup.py",
   "*/site-packages/*",
 ]

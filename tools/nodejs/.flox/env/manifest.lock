@@ -1,0 +1,117 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.14.0",
+    "install": {
+      "nodejs": {
+        "pkg-path": "nodejs_22",
+        "pkg-group": "node",
+        "version": "22.23.2"
+      }
+    },
+    "vars": {
+      "COREPACK_HOME": "${FLOX_ENV_CACHE}/corepack",
+      "COREPACK_SHIMS": "${FLOX_ENV_CACHE}/corepack/bin",
+      "PNPM_VERSION": "10.34.5"
+    },
+    "hook": {
+      "on-activate": "  set -euo pipefail\n  mkdir -p \"$COREPACK_SHIMS\"\n  if ! test -x \"$COREPACK_SHIMS/pnpm\" || ! \"$COREPACK_SHIMS/pnpm\" --version | grep -Fxq \"$PNPM_VERSION\"; then\n    corepack install --global \"pnpm@$PNPM_VERSION\"\n    corepack enable --install-directory \"$COREPACK_SHIMS\"\n  fi\n  export PATH=\"$COREPACK_SHIMS:$PATH\"\n"
+    },
+    "options": {
+      "systems": [
+        "aarch64-darwin",
+        "aarch64-linux",
+        "x86_64-linux"
+      ]
+    }
+  },
+  "packages": [
+    {
+      "attr_path": "nodejs_22",
+      "broken": false,
+      "derivation": "/nix/store/98iw9769gchj4vs8vkfvkdnxczaarami-nodejs-22.23.2.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "nodejs-22.23.2",
+      "pname": "nodejs_22",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T04:55:15.826463Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "22.23.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/s0qzknz77k3lzikgywx2piilfp8w0581-nodejs-22.23.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "nodejs_22",
+      "broken": false,
+      "derivation": "/nix/store/i9h6nligglciwssrc0zdri9zji0hx20c-nodejs-22.23.2.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "nodejs-22.23.2",
+      "pname": "nodejs_22",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T05:24:46.217099Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "22.23.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/i7dq81ramvcyrzasgv8qbf07rgfiqiai-nodejs-22.23.2"
+      },
+      "system": "aarch64-linux",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "nodejs_22",
+      "broken": false,
+      "derivation": "/nix/store/1x2rjyk2j93jmsl6myl8nrv7b95viv21-nodejs-22.23.2.drv",
+      "description": "Event-driven I/O framework for the V8 JavaScript engine",
+      "install_id": "nodejs",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "name": "nodejs-22.23.2",
+      "pname": "nodejs_22",
+      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
+      "rev_count": 1049422,
+      "rev_date": "2026-08-07T12:45:23Z",
+      "scrape_date": "2026-08-09T05:59:03.273842Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "22.23.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/3vm4j8im8bzdal3dsgmhv9gb5kvanbp1-nodejs-22.23.2"
+      },
+      "system": "x86_64-linux",
+      "group": "node",
+      "priority": 5
+    }
+  ]
+}
