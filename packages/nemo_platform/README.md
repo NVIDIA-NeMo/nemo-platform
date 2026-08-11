@@ -24,12 +24,14 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. Install just the SDK and CLI, or install everything needed to run the platform locally:
 
 ```bash
-# SDK + CLI only
-pip install nemo-platform
-
 # SDK + CLI + all platform services and default plugins (recommended)
-pip install "nemo-platform[all]"
+uv tool install "nemo-platform[all]"
+
+# SDK + CLI only
+uv tool install nemo-platform
 ```
+
+[uv](https://docs.astral.sh/uv/) installs the tool in its own isolated environment and puts the `nemo` command on your PATH, so there is no virtual environment to create or activate. uv uses your default interpreter; add `--python 3.13` when that default is outside the supported Python range. To import the SDK from your own project, or when tool installs are unavailable, `pip install "nemo-platform[all]"` into a virtual environment instead.
 
 Then bring up the platform:
 

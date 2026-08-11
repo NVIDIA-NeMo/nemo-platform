@@ -28,18 +28,22 @@ If you previously installed the `nemo-microservices` package, uninstall it first
 pip uninstall nemo-microservices
 ```
 
+### Install as a Tool
+
+Install the PyPI `nemo-platform` wrapper package with [uv](https://docs.astral.sh/uv/). uv puts the `nemo` command on your PATH in its own isolated environment, so there is no virtual environment to create or activate. If you are working from a source checkout, run `make bootstrap` from the repository root instead; the generated SDK package under `sdk/python/nemo-platform/pyproject.toml` does not define the wrapper extras.
+
+```bash
+uv tool install "nemo-platform[all]"
+```
+
+uv uses your default interpreter; add `--python 3.13` when that default is outside Python 3.12-3.13.
+
 ### Install in a Virtual Environment
 
-Install the PyPI `nemo-platform` wrapper package in a Python 3.12-3.13 virtual environment. If you are working from a source checkout, run `make bootstrap` from the repository root instead; the generated SDK package under `sdk/python/nemo-platform/pyproject.toml` does not define the wrapper extras.
+To import the SDK from your own project, or when tool installs are unavailable, install into a Python 3.12-3.13 virtual environment:
 
 ```bash
 pip install "nemo-platform[all]"
-```
-
-Or with uv:
-
-```bash
-uv pip install "nemo-platform[all]"
 ```
 
 <Warning>
