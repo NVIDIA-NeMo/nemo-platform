@@ -35,10 +35,10 @@ make bootstrap
 `make bootstrap` activates Flox as needed, installs the pinned Python and Node.js
 toolchains, synchronizes Python dependencies, installs pnpm workspace
 dependencies, and builds Studio assets. Run `flox activate` afterward when you
-want to use `uv` or `node` directly. Use `script/pnpm` for pnpm commands so
-pnpm runs with the repository's pinned Node.js. Interactive activation installs
-the repository's pre-commit hook when needed; leave the environment with `flox
-deactivate` when you are done.
+want to use `uv`, `node`, or `pnpm` directly. Flox supplies Node.js and Corepack
+installs the repository-pinned pnpm into the environment cache. Interactive
+activation installs the repository's pre-commit hook when needed; leave the
+environment with `flox deactivate` when you are done.
 
 #### Python Environment Setup
 
@@ -108,13 +108,13 @@ For active UI development, you can run the Vite dev server instead of rebuilding
 
 ```bash
 cd web/packages/studio
-../../../script/pnpm dev
+pnpm dev
 ```
 
 This provides hot module replacement (HMR) at the local URL printed by Vite.
 
 When you're ready to test with the FastAPI service, rebuild with
-`../../../script/pnpm build:fastapi`.
+`pnpm build:fastapi`.
 
 ##### Running the Platform with Studio
 

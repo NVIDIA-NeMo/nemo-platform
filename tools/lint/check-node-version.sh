@@ -5,7 +5,7 @@
 set -euo pipefail
 
 node_version="$(yq '.install.nodejs.version' tools/nodejs/.flox/env/manifest.toml)"
-pnpm_version="$(yq '.install.pnpm.version' tools/nodejs/.flox/env/manifest.toml)"
+pnpm_version="$(yq -r '.vars.PNPM_VERSION' tools/nodejs/.flox/env/manifest.toml)"
 nvmrc_version="$(tr -d '[:space:]' < .nvmrc)"
 package_manager="$(yq -r '.packageManager' web/package.json)"
 
@@ -15,7 +15,7 @@ if [[ "${node_version}" != "${nvmrc_version}" ]]; then
 fi
 
 if [[ "${package_manager}" != "pnpm@${pnpm_version}" ]]; then
-  echo "Flox pnpm version ${pnpm_version} does not match web/package.json ${package_manager}." >&2
+  echo "Corepack pnpm version ${pnpm_version} does not match web/package.json ${package_manager}." >&2
   exit 1
 fi
 

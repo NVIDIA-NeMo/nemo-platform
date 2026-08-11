@@ -102,6 +102,12 @@ repos:
         language: system
         files: '^(\.github/workflows/.*\.ya?ml|tools/python/\.flox/env/manifest\.toml)$'
         pass_filenames: false
+      - id: python-version-consistency
+        name: Check Make and Flox Python versions
+        entry: ./tools/lint/check-python-version.sh
+        language: system
+        files: '^(Makefile|tools/python/\.flox/env/manifest\.toml)$'
+        pass_filenames: false
       - id: node-version-consistency
         name: Check Node.js and pnpm versions
         entry: ./tools/lint/check-node-version.sh

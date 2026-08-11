@@ -71,7 +71,7 @@ generate: stainless ## Alias for SDK generation via Stainless
 
 .PHONY: update-web-sdk
 update-web-sdk: verify-toolchain ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
-	cd web && $(FLOX_PNPM) gen
+	cd web && $(PNPM) gen
 
 .PHONY: update-sdk
 update-sdk: build-policy refresh-openapi stainless update-web-sdk update-cli ## Update the SDK by regenerating the OpenAPI spec and syncing it with Stainless
@@ -226,7 +226,11 @@ else
 $(error TOOLCHAIN must be either flox or system)
 endif
 UV := $(FLOX_EXEC) uv
-FLOX_PNPM := TOOLCHAIN=$(TOOLCHAIN) $(FLOX_EXEC) $(CURDIR)/script/pnpm
+ifeq ($(TOOLCHAIN),flox)
+PNPM := $(FLOX_EXEC) bash -c 'corepack "pnpm@$$PNPM_VERSION" "$$@"' --
+else
+PNPM := $(FLOX_EXEC) pnpm
+endif
 
 .PHONY: verify-toolchain
 verify-toolchain: ## Verify the selected Flox or system toolchain
@@ -254,7 +258,7 @@ verify-pnpm: verify-toolchain ## Verify pnpm is available for Studio bootstrap
 ifeq ($(TOOLCHAIN),system)
 	@bash script/verify-system-toolchain.sh web
 endif
-	@$(FLOX_PNPM) --version || { \
+	@$(PNPM) --version || { \
 		echo "pnpm not found."; \
 		echo "Install Flox or use TOOLCHAIN=system with pnpm on PATH."; \
 		exit 1; \
@@ -270,8 +274,8 @@ verify-node-version: verify-pnpm ## Verify pnpm and Node.js satisfy Studio's pac
 bootstrap-studio: verify-node-version ## Install web dependencies and build Studio assets for FastAPI
 	@echo "~~~~~~"
 	@echo "installing Studio web dependencies and building FastAPI assets"
-	cd web && CI=true $(FLOX_PNPM) install --frozen-lockfile
-	cd web && $(FLOX_PNPM) --filter nemo-studio-ui build:fastapi
+	cd web && CI=true $(PNPM) install --frozen-lockfile
+	cd web && $(PNPM) --filter nemo-studio-ui build:fastapi
 
 .PHONY: bootstrap-plugins
 bootstrap-plugins: .venv ## Install editable plugin packages not covered by the root uv workspace

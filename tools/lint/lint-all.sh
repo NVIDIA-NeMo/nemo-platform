@@ -7,6 +7,7 @@ cd "${PROJECT_ROOT}" || exit 1
 
 declare -a scripts=(
   "check-uv-version-consistency:tools/lint/check-uv-version.sh"
+  "check-python-version-consistency:tools/lint/check-python-version.sh"
   "check-node-version-consistency:tools/lint/check-node-version.sh"
   "check-flox-lock-consistency:tools/lint/check-flox-locks.sh"
   "lint-licenses:tools/lint/lint-licenses.sh"

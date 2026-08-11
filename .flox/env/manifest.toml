@@ -2,6 +2,8 @@ schema-version = "1.14.0"
 
 [profile]
 common = '''
+  export PATH="$COREPACK_SHIMS:$PATH"
+
   test -f .git/hooks/pre-commit || pre-commit install
 
   gum style "NeMo Platform"

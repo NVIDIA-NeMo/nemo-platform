@@ -32,9 +32,9 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 
 - Use **pnpm** exclusively — never npm or yarn
 - Run frontend commands from `web/`, not from repo root
-- Node.js and pnpm come from the root Flox environment. Run `flox activate` for interactive work. Invoke pnpm through `../script/pnpm` so it runs with the pinned Node.js.
-- Install dependencies: `../script/pnpm add <package>`
-- Run scripts: `../script/pnpm <script-name>`
+- Node.js and pnpm come from the root Flox environment. Run `flox activate` for interactive work; Corepack provides the repository-pinned pnpm.
+- Install dependencies: `pnpm add <package>`
+- Run scripts: `pnpm <script-name>`
 
 ### Bumping a shared singleton also means bumping the plugins
 

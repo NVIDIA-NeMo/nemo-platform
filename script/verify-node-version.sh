@@ -7,26 +7,24 @@ WEB_DIR="$REPO_ROOT/web"
 
 # --- Toolchain availability ---
 
-for tool in node pnpm; do
-  if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "$tool is not on PATH."
-    if [ "${TOOLCHAIN:-flox}" = "system" ]; then
-      echo "TOOLCHAIN=system is set, so $tool has to come from your PATH."
-      echo "Install it, or re-run without TOOLCHAIN=system to use Flox."
-    else
-      echo "Install Flox, then rerun this command."
-    fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "node is not on PATH." >&2
+  exit 1
+fi
+
+if [[ -n "${PNPM_VERSION:-}" ]]; then
+  if ! command -v corepack >/dev/null 2>&1; then
+    echo "corepack is not on PATH." >&2
     exit 1
   fi
-done
-
-# Flox's pnpm package may be built with a different Node.js version than the
-# one selected by this environment. Invoke its JavaScript entrypoint with the
-# selected node executable so pnpm and its child processes use the pinned Node.
-pnpm_path="$(command -v pnpm)"
-pnpm() {
-  node "${pnpm_path}" "$@"
-}
+  pnpm() {
+    corepack "pnpm@${PNPM_VERSION}" "$@"
+  }
+elif ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is not on PATH." >&2
+  echo "Install it, or rerun without TOOLCHAIN=system to use Flox." >&2
+  exit 1
+fi
 
 # --- Engine compatibility check ---
 

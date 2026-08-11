@@ -53,11 +53,6 @@
         "pkg-group": "osv-scanner",
         "version": "2.3.3"
       },
-      "pnpm": {
-        "pkg-path": "pnpm_10",
-        "pkg-group": "node",
-        "version": "10.34.5"
-      },
       "shellcheck": {
         "pkg-path": "shellcheck",
         "pkg-group": "actionlint",
@@ -76,23 +71,25 @@
       "ALIGN": "center",
       "BORDER": "double",
       "BORDER_FOREGROUND": "#76B900",
+      "COREPACK_HOME": "${FLOX_ENV_CACHE}/corepack",
+      "COREPACK_SHIMS": "${FLOX_ENV_CACHE}/corepack/bin",
       "FOREGROUND": "#76B900",
       "GUM_LOG_MESSAGE_FOREGROUND": "#76B900",
       "MARGIN": "1 2",
       "PADDING": "1 2",
-      "PNPM_HOME": "${FLOX_ENV_CACHE}/pnpm",
+      "PNPM_VERSION": "10.34.5",
       "UV_CACHE_DIR": "${FLOX_ENV_CACHE}/uv-cache",
       "UV_MANAGED_PYTHON": "1",
-      "UV_PYTHON": "3.13",
+      "UV_PYTHON": "3.12",
       "UV_PYTHON_INSTALL_DIR": "${FLOX_ENV_CACHE}/python",
       "UV_VENV_SEED": "1",
       "WIDTH": "50"
     },
     "hook": {
-      "on-activate": "  set -euo pipefail\n\n  export VIRTUAL_ENV=\"$PWD/.venv\"\n  export PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n\n  if uv sync --frozen --all-packages --check; then\n    return 0\n  fi\n\n  echo \"Python environment is out of sync; synchronizing...\"\n  uv sync --frozen --all-packages\n"
+      "on-activate": "  set -euo pipefail\n\n  export VIRTUAL_ENV=\"$PWD/.venv\"\n  export PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n\n  if uv sync --frozen --all-packages --check; then\n    return 0\n  fi\n\n  echo \"Python environment is out of sync; synchronizing...\"\n  uv sync --frozen --all-packages\n\n  set -euo pipefail\n  mkdir -p \"$COREPACK_SHIMS\"\n  if ! test -x \"$COREPACK_SHIMS/pnpm\" || ! \"$COREPACK_SHIMS/pnpm\" --version | grep -Fxq \"$PNPM_VERSION\"; then\n    corepack install --global \"pnpm@$PNPM_VERSION\"\n    corepack enable --install-directory \"$COREPACK_SHIMS\"\n  fi\n  export PATH=\"$COREPACK_SHIMS:$PATH\"\n"
     },
     "profile": {
-      "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
+      "common": "  export PATH=\"$COREPACK_SHIMS:$PATH\"\n\n  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
     },
     "options": {
       "systems": [
@@ -638,93 +635,6 @@
       ],
       "outputs": {
         "out": "/nix/store/3vm4j8im8bzdal3dsgmhv9gb5kvanbp1-nodejs-22.23.2"
-      },
-      "system": "x86_64-linux",
-      "group": "node",
-      "priority": 5
-    },
-    {
-      "attr_path": "pnpm_10",
-      "broken": false,
-      "derivation": "/nix/store/1x2hdyi7z35mpsb40q1c99rzzli3lyd1-pnpm-10.34.5.drv",
-      "description": "Fast, disk space efficient package manager for JavaScript",
-      "install_id": "pnpm",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
-      "name": "pnpm-10.34.5",
-      "pname": "pnpm_10",
-      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
-      "rev_count": 1049422,
-      "rev_date": "2026-08-07T12:45:23Z",
-      "scrape_date": "2026-08-09T04:55:29.248162Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "10.34.5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/mqihmbwcawwpgwnwfg2hwyx4y8577991-pnpm-10.34.5"
-      },
-      "system": "aarch64-darwin",
-      "group": "node",
-      "priority": 5
-    },
-    {
-      "attr_path": "pnpm_10",
-      "broken": false,
-      "derivation": "/nix/store/ykmg9frmp7x4dni86raf9m10xjb9hpz1-pnpm-10.34.5.drv",
-      "description": "Fast, disk space efficient package manager for JavaScript",
-      "install_id": "pnpm",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
-      "name": "pnpm-10.34.5",
-      "pname": "pnpm_10",
-      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
-      "rev_count": 1049422,
-      "rev_date": "2026-08-07T12:45:23Z",
-      "scrape_date": "2026-08-09T05:25:05.998051Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "10.34.5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/z4vxcxkfb4mh4ajc7gvwihqqawcnd7qs-pnpm-10.34.5"
-      },
-      "system": "aarch64-linux",
-      "group": "node",
-      "priority": 5
-    },
-    {
-      "attr_path": "pnpm_10",
-      "broken": false,
-      "derivation": "/nix/store/a4s9ni15m40b0iwglfmdrhnjwd0bab4n-pnpm-10.34.5.drv",
-      "description": "Fast, disk space efficient package manager for JavaScript",
-      "install_id": "pnpm",
-      "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=f13ff45afd1bb73e640eaa08a7066dbed07e3238",
-      "name": "pnpm-10.34.5",
-      "pname": "pnpm_10",
-      "rev": "f13ff45afd1bb73e640eaa08a7066dbed07e3238",
-      "rev_count": 1049422,
-      "rev_date": "2026-08-07T12:45:23Z",
-      "scrape_date": "2026-08-09T05:59:22.852600Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "10.34.5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/1y1j3774v84329m42q0sjy3f89n5p1fx-pnpm-10.34.5"
       },
       "system": "x86_64-linux",
       "group": "node",
@@ -1553,7 +1463,7 @@
     "composer": {
       "schema-version": "1.14.0",
       "profile": {
-        "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
+        "common": "  export PATH=\"$COREPACK_SHIMS:$PATH\"\n\n  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
       },
       "options": {
         "systems": [
@@ -1697,7 +1607,7 @@
           "vars": {
             "UV_CACHE_DIR": "${FLOX_ENV_CACHE}/uv-cache",
             "UV_MANAGED_PYTHON": "1",
-            "UV_PYTHON": "3.13",
+            "UV_PYTHON": "3.12",
             "UV_PYTHON_INSTALL_DIR": "${FLOX_ENV_CACHE}/python",
             "UV_VENV_SEED": "1"
           },
@@ -1719,15 +1629,15 @@
               "pkg-path": "nodejs_22",
               "pkg-group": "node",
               "version": "22.23.2"
-            },
-            "pnpm": {
-              "pkg-path": "pnpm_10",
-              "pkg-group": "node",
-              "version": "10.34.5"
             }
           },
           "vars": {
-            "PNPM_HOME": "${FLOX_ENV_CACHE}/pnpm"
+            "COREPACK_HOME": "${FLOX_ENV_CACHE}/corepack",
+            "COREPACK_SHIMS": "${FLOX_ENV_CACHE}/corepack/bin",
+            "PNPM_VERSION": "10.34.5"
+          },
+          "hook": {
+            "on-activate": "  set -euo pipefail\n  mkdir -p \"$COREPACK_SHIMS\"\n  if ! test -x \"$COREPACK_SHIMS/pnpm\" || ! \"$COREPACK_SHIMS/pnpm\" --version | grep -Fxq \"$PNPM_VERSION\"; then\n    corepack install --global \"pnpm@$PNPM_VERSION\"\n    corepack enable --install-directory \"$COREPACK_SHIMS\"\n  fi\n  export PATH=\"$COREPACK_SHIMS:$PATH\"\n"
           },
           "options": {
             "systems": [

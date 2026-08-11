@@ -13,11 +13,11 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
    Or install Node.js `22.23.2` and pnpm `10.34.5` yourself, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
 
 2. Copy `.env` files from `web/`. `make bootstrap-studio` already installs the
-   workspace dependencies. For later pnpm commands, use the repository launcher
-   so pnpm runs with the pinned Node.js:
+   workspace dependencies. In an activated Flox environment, Corepack provides
+   the repository-pinned pnpm:
 
    ```bash
-   ../script/pnpm install
+   pnpm install
    cp packages/studio/env/.env.dev.local.sample packages/studio/env/.env.dev.local && \
      cp packages/studio/env/.env.e2e packages/studio/env/.env.e2e.local
    ```
@@ -27,7 +27,7 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 Run the following script from `web/`:
 
 ```bash
-../script/pnpm dev
+pnpm dev
 ```
 
 This runs the vite dev server, which has hot module reloading. This server is accessible at `http://localhost:5173`.
@@ -40,15 +40,15 @@ Studio is a React + TypeScript SPA built with [Vite](https://vite.dev/), styled 
 
 ### Adding Dependencies
 
-Use `../script/pnpm add` with a filter for the package name. [More information here.](https://pnpm.io/cli/add)
+Use `pnpm add` with a filter for the package name. [More information here.](https://pnpm.io/cli/add)
 
 ```bash
-../script/pnpm add <pkg> --filter <workspace>
+pnpm add <pkg> --filter <workspace>
 ```
 
 ### eslint / prettier
 
-We use `eslint` and `prettier` for linting and formatting. `../script/pnpm install` will download those for you, and you can run the `pnpm` scripts found in `package.json` through the same launcher.
+We use `eslint` and `prettier` for linting and formatting. `pnpm install` will download those for you, and you can run the `pnpm` scripts found in `package.json` directly.
 
 It's highly recommend you set up your IDE to run these tools on save, so you don't have to worry about manually formatting/linting, and failing CI because your code isn't formatted/linted.
 
@@ -73,27 +73,27 @@ Conventions:
 From `/packages/studio`:
 
 ```bash
-../../../script/pnpm test            # run unit tests
-../../../script/pnpm test:watch      # watch mode
-../../../script/pnpm test:visual     # browser UI at http://localhost:51204/__vitest__/#
-../../../script/pnpm test -- --coverage  # coverage report
+pnpm test            # run unit tests
+pnpm test:watch      # watch mode
+pnpm test:visual     # browser UI at http://localhost:51204/__vitest__/#
+pnpm test -- --coverage  # coverage report
 ```
 
 ### Environment Variables
 
 Studio is configured using environment variables. How they make their way into the React app depends on the environment Studio is running in. For the full list of environment variables Studio accepts, look at `packages/studio/env/.env.fastapi`.
 
-When the bundle is built for the **Studio FastAPI** app (`../../../script/pnpm build --mode fastapi`), `STUDIO_UI_*` placeholders come from `packages/studio/env/.env.fastapi` and are resolved at runtime using **`services/studio/src/nmp/studio/env_mappings.py`** at the Platform repository root (alongside `web/`). Keep `.env.fastapi` and `env_mappings.py` in sync (see the parity comment in `.env.fastapi`).
+When the bundle is built for the **Studio FastAPI** app (`pnpm build --mode fastapi`), `STUDIO_UI_*` placeholders come from `packages/studio/env/.env.fastapi` and are resolved at runtime using **`services/studio/src/nmp/studio/env_mappings.py`** at the Platform repository root (alongside `web/`). Keep `.env.fastapi` and `env_mappings.py` in sync (see the parity comment in `.env.fastapi`).
 
 #### Local Development
 
 `.env` files in `packages/studio/env` control which microservice deployments your local Studio points to. `.local` files are gitignored — edit them freely to point at different deployments.
 
-| File                    | Used by                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------- |
-| `.env.dev.local`        | `../../../script/pnpm dev` - copied from `.env.dev.local.sample` during setup         |
-| `.env.dev.local.sample` | Template for `.env.dev.local`                                                         |
-| `.env.fastapi`          | `../../../script/pnpm build --mode fastapi`; must stay in sync with `env_mappings.py` |
-| `.env.test`             | Vitest, locally and in CI                                                             |
-| `.env.e2e`              | E2E tests in CI                                                                       |
-| `.env.e2e.local`        | E2E tests locally - copied from `.env.e2e`                                            |
+| File                    | Used by                                                               |
+| ----------------------- | --------------------------------------------------------------------- |
+| `.env.dev.local`        | `pnpm dev` - copied from `.env.dev.local.sample` during setup         |
+| `.env.dev.local.sample` | Template for `.env.dev.local`                                         |
+| `.env.fastapi`          | `pnpm build --mode fastapi`; must stay in sync with `env_mappings.py` |
+| `.env.test`             | Vitest, locally and in CI                                             |
+| `.env.e2e`              | E2E tests in CI                                                       |
+| `.env.e2e.local`        | E2E tests locally - copied from `.env.e2e`                            |
