@@ -44,3 +44,8 @@ class GroupListParams(TypedDict, total=False):
     """Page size."""
 
     sort: SpanGroupSortField
+    """Sort groups by size or by time.
+
+    Use -started_at to get the most recent traces or sessions first, which answers
+    'what ran lately' in one call instead of paging through spans.
+    """

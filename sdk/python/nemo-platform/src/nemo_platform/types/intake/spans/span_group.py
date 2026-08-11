@@ -16,6 +16,7 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from typing import Dict
+from datetime import datetime
 
 from ...._models import BaseModel
 
@@ -28,3 +29,10 @@ class SpanGroup(BaseModel):
 
     span_count: int
     """Number of matching spans in this group."""
+
+    started_at: datetime
+    """Start time of the earliest matching span in this group.
+
+    Only matching spans count, so a filter narrows this to when the filtered work
+    began rather than when the whole trace or session began.
+    """

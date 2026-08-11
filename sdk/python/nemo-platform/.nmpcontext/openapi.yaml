@@ -4671,7 +4671,13 @@ paths:
         schema:
           allOf:
           - $ref: '#/components/schemas/SpanGroupSortField'
+          description: Sort groups by size or by time. Use -started_at to get the
+            most recent traces or sessions first, which answers 'what ran lately'
+            in one call instead of paging through spans.
           default: -span_count
+        description: Sort groups by size or by time. Use -started_at to get the most
+          recent traces or sessions first, which answers 'what ran lately' in one
+          call instead of paging through spans.
       - in: query
         name: filter
         style: deepObject
@@ -18082,10 +18088,18 @@ components:
           minimum: 0.0
           title: Span Count
           description: Number of matching spans in this group.
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+          description: Start time of the earliest matching span in this group. Only
+            matching spans count, so a filter narrows this to when the filtered work
+            began rather than when the whole trace or session began.
       type: object
       required:
       - group
       - span_count
+      - started_at
       title: SpanGroup
     SpanGroupBy:
       type: string
@@ -18098,6 +18112,8 @@ components:
       enum:
       - span_count
       - -span_count
+      - started_at
+      - -started_at
       title: SpanGroupSortField
     SpanGroupsPage:
       properties:
