@@ -220,6 +220,42 @@ def test_compile_grpo_config_enables_lora(
     assert cfg["policy"]["dtensor_cfg"]["_v2"] is True
 
 
+@pytest.mark.parametrize(
+    ("finetuning_type", "lora", "expected"),
+    [
+        (FinetuningType.ALL_WEIGHTS, None, False),
+        (FinetuningType.LORA, LoRAConfig(rank=8), True),
+        # finetuning_type is what enables LoRA; an omitted lora block just takes defaults.
+        (FinetuningType.LORA, None, True),
+    ],
+)
+def test_lora_and_v2_stay_coupled(
+    tmp_path: Path,
+    job_ctx: NMPJobContext,
+    monkeypatch: pytest.MonkeyPatch,
+    finetuning_type: FinetuningType,
+    lora: LoRAConfig | None,
+    expected: bool,
+) -> None:
+    """``lora_cfg.enabled`` and ``_v2`` must never disagree.
+
+    LoRA is implemented only in DTensorPolicyWorkerV2; the V1 DTensorPolicyWorker
+    ignores ``lora_cfg`` entirely. So enabling LoRA without ``_v2`` does not fail --
+    it silently trains full weights and reports success. The reverse (``_v2`` without
+    LoRA) is also wrong: it moves a full-weight run onto PY_EXECUTABLES.AUTOMODEL,
+    which the image does not prefetch.
+
+    The two assertions above cover each case on its own; this pins the relationship,
+    so decoupling them fails here rather than in a training run.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path, finetuning_type=finetuning_type, lora=lora)
+    dtensor_cfg = compile_grpo_config(step, job_ctx)["policy"]["dtensor_cfg"]
+
+    assert dtensor_cfg["lora_cfg"]["enabled"] is expected
+    assert dtensor_cfg.get("_v2", False) is expected
+
+
 def test_compile_grpo_config_disables_triton_for_tp(
     tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
