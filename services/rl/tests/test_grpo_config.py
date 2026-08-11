@@ -221,6 +221,34 @@ def test_compile_grpo_config_enables_lora(
     assert cfg["policy"]["dtensor_cfg"]["_v2"] is True
 
 
+def test_compiled_config_has_master_config_required_fields(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fields NeMo-RL's ``MasterConfig`` requires but gives no default for.
+
+    ``MasterConfig`` is a pydantic model, so a missing key is a hard
+    ValidationError -- and it is raised by the *driver*, after the Ray cluster is
+    already up. On a real job that is minutes of GPU time and four pods in before
+    anything complains, and none of it is visible to the compiler's own tests.
+
+    ``make_sequence_length_divisible_by`` was set by dpo_config but not here, and
+    the three generation fields are GRPO-only (DPO runs no vLLM), so nothing
+    exercised them. Values mirror upstream's reference config
+    ``examples/configs/grpo_math_1B.yaml``.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    policy = compile_grpo_config(step, job_ctx)["policy"]
+
+    # None is meaningful, not absent: generation/__init__.py fills stop_token_ids
+    # with [tokenizer.eos_token_id] when it is None.
+    for field in ("top_k", "stop_token_ids", "stop_strings"):
+        assert field in policy["generation"], f"policy.generation.{field} missing"
+        assert policy["generation"][field] is None
+
+    assert policy["make_sequence_length_divisible_by"] == step.parallelism.tensor_parallel_size
+
+
 @pytest.mark.parametrize(
     ("finetuning_type", "lora", "expected"),
     [

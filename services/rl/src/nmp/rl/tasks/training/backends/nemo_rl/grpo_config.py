@@ -346,6 +346,9 @@ def compile_grpo_config(
             "max_new_tokens": customizer_config.model.max_seq_length,
             "temperature": 1.0,
             "top_p": 1.0,
+            "top_k": None,
+            "stop_token_ids": None,
+            "stop_strings": None,
             "vllm_cfg": {
                 "async_engine": True,
                 "precision": precision,
@@ -360,6 +363,7 @@ def compile_grpo_config(
         },
         "sequence_packing": {"enabled": False},
         "dynamic_batching": {"enabled": False},
+        "make_sequence_length_divisible_by": parallelism.tensor_parallel_size,
     }
 
     cfg["data"] = {
