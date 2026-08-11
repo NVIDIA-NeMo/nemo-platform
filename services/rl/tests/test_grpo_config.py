@@ -249,6 +249,40 @@ def test_compiled_config_has_master_config_required_fields(
     assert policy["make_sequence_length_divisible_by"] == step.parallelism.tensor_parallel_size
 
 
+def test_compiled_vllm_cfg_has_required_typeddict_fields(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Non-NotRequired members of NeMo-RL's ``VllmSpecificArgs``.
+
+    ``vllm_cfg`` is a TypedDict that MasterConfig does not validate the keys of, so
+    a missing one is not a config error — it is a KeyError raised wherever vLLM
+    first reads it, well after the Ray cluster is up.
+
+    ``skip_tokenizer_init`` is deliberately NOT asserted: it is required by the
+    TypedDict, but generation/__init__.py fills it in when absent based on
+    stop_strings and expose_http_server, and hardcoding it would override that
+    VLM-aware logic.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    vllm_cfg = compile_grpo_config(step, job_ctx)["policy"]["generation"]["vllm_cfg"]
+
+    for field in (
+        "tensor_parallel_size",
+        "pipeline_parallel_size",
+        "expert_parallel_size",
+        "gpu_memory_utilization",
+        "max_model_len",
+        "async_engine",
+        "kv_cache_dtype",
+    ):
+        assert field in vllm_cfg, f"vllm_cfg.{field} missing"
+
+    # Literal["auto", "fp8", "fp8_e4m3"]; fp8 additionally requires precision=fp8.
+    assert vllm_cfg["kv_cache_dtype"] == "auto"
+    assert "skip_tokenizer_init" not in vllm_cfg
+
+
 @pytest.mark.parametrize(
     ("finetuning_type", "lora", "expected"),
     [

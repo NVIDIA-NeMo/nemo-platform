@@ -352,8 +352,10 @@ def compile_grpo_config(
             "vllm_cfg": {
                 "async_engine": True,
                 "precision": precision,
+                "kv_cache_dtype": "auto",
                 "tensor_parallel_size": min(parallelism.tensor_parallel_size, parallelism.num_gpus_per_node),
                 "pipeline_parallel_size": 1,
+                "expert_parallel_size": 1,
                 "gpu_memory_utilization": 0.5,
                 "max_model_len": customizer_config.model.max_seq_length,
                 "enforce_eager": True,
