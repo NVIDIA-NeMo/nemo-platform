@@ -21,15 +21,20 @@ def _task(path: Path) -> None:
     (path / "task.toml").write_text('version = "1.0"\n', encoding="utf-8")
 
 
-def test_selects_the_first_config_and_warns_about_extras(tmp_path):
-    first = _config(tmp_path / "configs" / "a.yaml")
-    _config(tmp_path / "harbor" / "b.yaml")
+def test_finds_configs_through_depth_four_in_stable_order_and_prunes_jobs(tmp_path):
+    expected = [
+        _config(tmp_path / "root.yaml"),
+        _config(tmp_path / "z" / "depth-one.yml"),
+        _config(tmp_path / "a" / "a" / "depth-two.json", '{"tasks": ["task"]}'),
+        _config(tmp_path / "b" / "b" / "b" / "depth-three.yaml"),
+        _config(tmp_path / "c" / "c" / "c" / "c" / "depth-four.yaml"),
+    ]
+    _config(tmp_path / "d" / "d" / "d" / "d" / "d" / "depth-five.yaml")
 
     result = scan.scan_repository(tmp_path)
 
-    assert result.config is not None
-    assert result.config.path == first
-    assert {check.status for check in result.checks if check.name == "config"} == {"pass", "warn"}
+    assert [candidate.path for candidate in result.configs] == expected
+    assert {check.status for check in result.checks if check.name == "config"} == {"pass"}
     assert any(check.name == "ethos" and check.status == "warn" for check in result.checks)
 
 
@@ -44,7 +49,7 @@ def test_reads_yaml_yml_and_json_configs(tmp_path):
 
         result = scan.scan_repository(repo)
 
-        assert result.config is not None and result.config.path == expected
+        assert [candidate.path for candidate in result.configs] == [expected]
 
 
 def test_rejects_a_config_symlink_that_resolves_outside_the_repository(tmp_path):
@@ -56,8 +61,18 @@ def test_rejects_a_config_symlink_that_resolves_outside_the_repository(tmp_path)
 
     result = scan.scan_repository(repo)
 
-    assert result.config is None
+    assert result.configs == []
     assert next(check for check in result.checks if check.name == "config").status == "fail"
+
+
+def test_rejects_a_config_file_symlink_inside_the_repository(tmp_path):
+    config = _config(tmp_path / "configs" / "eval.yaml")
+    link = config.with_name("alias.yaml")
+    link.symlink_to(config.name)
+
+    result = scan.scan_repository(tmp_path)
+
+    assert [candidate.path for candidate in result.configs] == [config]
 
 
 def test_profile_prior_job_and_task_layout_never_become_config_candidates(tmp_path):
@@ -73,7 +88,7 @@ def test_profile_prior_job_and_task_layout_never_become_config_candidates(tmp_pa
 
     result = scan.scan_repository(tmp_path)
 
-    assert (result.config, result.dataset_paths) == (None, [dataset])
+    assert (result.configs, result.dataset_paths) == ([], [dataset])
 
 
 def test_uses_only_ethos_for_the_doctrine_contract(tmp_path):
@@ -102,6 +117,7 @@ def test_discovers_local_datasets_and_prunes_generated_trees(tmp_path):
     _task(tmp_path / "node_modules" / "package" / "task-three")
     _task(tmp_path / "vendor" / "package" / "task-four")
     _task(tmp_path / "cache" / "package" / "task-five")
+    _task(tmp_path / "jobs" / "prior-run" / "task-six")
 
     result = scan.scan_repository(tmp_path)
 
@@ -111,6 +127,7 @@ def test_discovers_local_datasets_and_prunes_generated_trees(tmp_path):
 
 def test_fingerprint_covers_config_ethos_optimizer_and_dataset_files(tmp_path):
     config = _config(tmp_path / "harbor-job.yaml")
+    other_config = _config(tmp_path / "nested" / "other.json", '{"tasks": ["task"]}')
     ethos = tmp_path / "ETHOS.md"
     optimizer = tmp_path / "optimizer.yaml"
     ethos.write_text("# One\n", encoding="utf-8")
@@ -122,10 +139,11 @@ def test_fingerprint_covers_config_ethos_optimizer_and_dataset_files(tmp_path):
 
     first = scan.scan_repository(tmp_path)
 
-    assert first.input_file_count == 5
-    assert first.config is not None and first.config.path == config
+    assert first.input_file_count == 6
+    assert [candidate.path for candidate in first.configs] == [config, other_config]
     for path, replacement in (
         (config, "datasets:\n- path: another-evals\n"),
+        (other_config, '{"tasks": ["another-task"]}'),
         (ethos, "# Two\n"),
         (optimizer, "model: two\n"),
         (task / "task.toml", 'version = "2.0"\n'),

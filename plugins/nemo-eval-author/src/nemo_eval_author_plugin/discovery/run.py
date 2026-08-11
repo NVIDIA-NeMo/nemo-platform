@@ -44,7 +44,7 @@ class DiscoverResult:
 
 
 async def discover(options: DiscoverOptions) -> DiscoverResult:
-    """Scan, revalidate, report, and optionally upload one repository."""
+    """Scan, validate, report, and optionally upload one repository."""
     repo_root = options.repo_root.resolve()
     agent = _slug(options.agent) if options.agent is not None else _infer_agent_name(repo_root)
     workspace = _active_workspace()
@@ -69,16 +69,14 @@ async def _discover(
     except Exception:
         platform_ethos = None
     scan_result = scan.scan_repository(repo_root, platform_ethos=platform_ethos)
-    validation = validate.ValidationOutcome()
-    if scan_result.config is not None:
-        validation = await validate.run_ladder(scan_result.config, repo_root)
+    validations = [await validate.run_ladder(config, repo_root) for config in scan_result.configs]
     trace_check = await scan.probe_traces(client, agent=agent, workspace=workspace)
     record = report.build_report(
         agent=agent,
         workspace=workspace,
         repo_root=repo_root,
         scan_result=scan_result,
-        validation=validation,
+        validations=validations,
         trace_check=trace_check,
     )
     markdown = report.render_markdown(record)

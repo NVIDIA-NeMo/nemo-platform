@@ -14,8 +14,8 @@ from typing import Any
 import yaml
 from nemo_insights_plugin.contracts.checks import CheckResult, CheckSeverity, CheckStatus
 
-_CONFIG_DIRS = ("configs", ".", "harbor", ".harbor", "evals")
 _CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
+_MAX_CONFIG_DEPTH = 4
 _PRUNE_DIR_NAMES = frozenset(
     {
         ".git",
@@ -36,6 +36,7 @@ _PRUNE_DIR_NAMES = frozenset(
         "build",
         "eval-and-optimize",
         ".nemo-optimizer",
+        "jobs",
     }
 )
 
@@ -47,12 +48,18 @@ class ConfigCandidate:
     path: Path
     data: dict[str, Any]
 
+    @property
+    def name(self) -> str:
+        """Return the declared job name or the file name."""
+        job_name = self.data.get("job_name")
+        return job_name.strip() if isinstance(job_name, str) and job_name.strip() else self.path.name
+
 
 @dataclass
 class RepositoryScan:
     """The repository facts that the validation ladder needs."""
 
-    config: ConfigCandidate | None
+    configs: list[ConfigCandidate]
     dataset_paths: list[Path]
     ethos_path: str | None
     fingerprint: str
@@ -71,20 +78,23 @@ def _check(
     return CheckResult(name=name, group="repository", status=status, severity=severity, message=message, hint=hint)
 
 
-def walk_dirs(root: Path) -> Iterator[Path]:
+def walk_dirs(root: Path, *, max_depth: int | None = None) -> Iterator[Path]:
     """Yield repository directories and skip generated trees."""
     for current, dir_names, _ in os.walk(root):
-        dir_names[:] = sorted(name for name in dir_names if name not in _PRUNE_DIR_NAMES)
-        yield Path(current)
+        directory = Path(current)
+        depth = len(directory.relative_to(root).parts)
+        dir_names[:] = sorted(
+            name for name in dir_names if name not in _PRUNE_DIR_NAMES and (max_depth is None or depth < max_depth)
+        )
+        yield directory
 
 
 def scan_repository(repo_root: Path, *, platform_ethos: tuple[str, bytes] | None = None) -> RepositoryScan:
-    """Find one repo-owned config and local Harbor datasets."""
+    """Find repo-owned configs and local Harbor datasets."""
     repo_root = repo_root.resolve()
-    candidates = _config_candidates(repo_root)
+    configs = _config_candidates(repo_root)
     checks: list[CheckResult] = []
-    config = candidates[0] if candidates else None
-    if config is None:
+    if not configs:
         checks.append(
             _check(
                 "config",
@@ -94,17 +104,9 @@ def scan_repository(repo_root: Path, *, platform_ethos: tuple[str, bytes] | None
             )
         )
     else:
-        checks.append(_check("config", "pass", f"Using Harbor config {config.path.relative_to(repo_root)}."))
-    if len(candidates) > 1:
-        extras = ", ".join(str(item.path.relative_to(repo_root)) for item in candidates[1:])
+        count = len(configs)
         checks.append(
-            _check(
-                "config",
-                "warn",
-                f"More Harbor config files exist: {extras}.",
-                severity="advisory",
-                hint="Discovery uses the first file in its fixed search order.",
-            )
+            _check("config", "pass", f"Found {count} repository-owned Harbor config file{'s' if count != 1 else ''}.")
         )
 
     ethos = platform_ethos
@@ -124,28 +126,26 @@ def scan_repository(repo_root: Path, *, platform_ethos: tuple[str, bytes] | None
         )
 
     datasets = _dataset_paths(repo_root)
-    fingerprint, count = _fingerprint(repo_root, config.path if config else None, ethos, datasets)
-    return RepositoryScan(config, datasets, ethos[0] if ethos else None, fingerprint, count, checks)
+    fingerprint, count = _fingerprint(repo_root, [config.path for config in configs], ethos, datasets)
+    return RepositoryScan(configs, datasets, ethos[0] if ethos else None, fingerprint, count, checks)
 
 
 def _config_candidates(repo_root: Path) -> list[ConfigCandidate]:
     candidates: list[ConfigCandidate] = []
-    for relative in _CONFIG_DIRS:
-        directory = repo_root if relative == "." else repo_root / relative
-        if not directory.is_dir():
-            continue
+    for directory in walk_dirs(repo_root, max_depth=_MAX_CONFIG_DEPTH):
         for path in sorted(directory.iterdir()):
-            if not path.is_file() or path.suffix.lower() not in _CONFIG_SUFFIXES:
-                continue
-            try:
-                if not path.resolve().is_relative_to(repo_root):
-                    continue
-            except (OSError, RuntimeError):
+            if path.is_symlink() or not path.is_file() or path.suffix.lower() not in _CONFIG_SUFFIXES:
                 continue
             data = _load_mapping(path)
             if data is not None and _has_work(data):
                 candidates.append(ConfigCandidate(path=path, data=data))
-    return candidates
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            len(candidate.path.relative_to(repo_root).parts) - 1,
+            candidate.path.relative_to(repo_root).as_posix(),
+        ),
+    )
 
 
 def _load_mapping(path: Path) -> dict[str, Any] | None:
@@ -171,16 +171,18 @@ def _dataset_paths(repo_root: Path) -> list[Path]:
 
 def _fingerprint(
     repo_root: Path,
-    config_path: Path | None,
+    config_paths: list[Path],
     ethos: tuple[str, bytes] | None,
     datasets: list[Path],
 ) -> tuple[str, int]:
-    files: set[Path] = {path for path in (config_path, repo_root / "optimizer.yaml") if path and path.is_file()}
+    files = {path for path in [*config_paths, repo_root / "optimizer.yaml"] if path.is_file()}
     for dataset in datasets:
         if not dataset.is_relative_to(repo_root):
             continue
         for directory in walk_dirs(dataset):
-            files.update(path for path in directory.iterdir() if path.is_file())
+            files.update(
+                path for path in directory.iterdir() if path.is_file() and path.resolve().is_relative_to(repo_root)
+            )
     files.discard(repo_root / "ETHOS.md")
 
     digest = hashlib.sha256()

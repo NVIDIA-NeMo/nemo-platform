@@ -3,6 +3,7 @@
 
 """End-to-end tests for the discovery command."""
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -90,7 +91,7 @@ def test_healthy_config_uploads_only_discovery_report_and_does_not_write_to_repo
     result = _invoke(app, repo, "--agent", AGENT)
 
     assert result.exit_code == 0, result.output
-    assert "Repository\n  ✓ Using Harbor config configs/eval.yaml." in result.output
+    assert "Repository\n  ✓ Found 1 repository-owned Harbor config file." in result.output
     assert "harbor job start -c configs/eval.yaml" in result.output
     assert "Uploaded ticket-triage/discovery.md to fileset 'nemo-eval-author'." in result.output
     assert client.files.stored.keys() == {f"{AGENT}/discovery.md"}
@@ -135,6 +136,50 @@ def test_rejected_config_exits_one_and_uploads_its_report(app, client, tmp_path)
     assert any(check["name"] == "schema" and check["status"] == "fail" for check in front["checks"])
     assert front["run_command"] is None
     assert result.output.rstrip().endswith("Final overview: Discovery failed with 1 failure and 2 warnings.")
+
+
+def test_preflights_every_config_sequentially_and_uploads_all_results_after_a_failure(
+    app, client, monkeypatch, tmp_path
+):
+    repo = tmp_path / "multi-config-repo"
+    first = repo / "first.yaml"
+    second = repo / "nested" / "second.yml"
+    for path, text in (
+        (first, "job_name: first-entry\ndatasets:\n- path: first\n"),
+        (second, "datasets:\n- path: second\n"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    calls: list[str] = []
+    active = False
+
+    async def preflight(candidate, root):
+        nonlocal active
+        assert root == repo
+        assert not active
+        active = True
+        await asyncio.sleep(0)
+        relative = candidate.path.relative_to(repo).as_posix()
+        calls.append(relative)
+        active = False
+        if candidate.path == first:
+            return validate.ValidationOutcome(
+                checks=[validate._check("schema", "fail", "Harbor rejected the first config.")]
+            )
+        return validate.ValidationOutcome(
+            checks=[validate._check("schema", "pass", "Harbor accepted the second config.")]
+        )
+
+    monkeypatch.setattr(validate, "run_ladder", preflight)
+
+    result = _invoke(app, repo, "--agent", AGENT)
+
+    assert result.exit_code == 1, result.output
+    assert calls == ["first.yaml", "nested/second.yml"]
+    uploaded = client.files.stored[f"{AGENT}/discovery.md"].decode()
+    assert "Harbor rejected the first config." in uploaded
+    assert "Harbor accepted the second config." in uploaded
 
 
 def test_schema_failure_does_not_upload_the_rejected_input_value(app, client, tmp_path):

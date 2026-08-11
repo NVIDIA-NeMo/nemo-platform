@@ -17,34 +17,64 @@ from nemo_insights_plugin.contracts.checks import CheckResult, format_report, re
 
 
 @dataclass
+class ConfigReport:
+    """Preflight results for one Harbor config."""
+
+    name: str
+    path: Path
+    required_env_vars: list[RequiredEnvVar]
+    checks: list[CheckResult]
+
+    @property
+    def runnable(self) -> bool:
+        """Return whether the config passed all required checks."""
+        return not required_failures(self.checks)
+
+
+@dataclass
 class DiscoveryReport:
     """Repository facts and current Harbor preflight results."""
 
     agent: str
     workspace: str
     repo_root: Path
-    config_path: Path | None
+    configs: list[ConfigReport]
     dataset_paths: list[Path]
     ethos_path: str | None
     harbor_version: str
-    required_env_vars: list[RequiredEnvVar]
     discovered_at: datetime
     fingerprint: str
     input_file_count: int
-    checks: list[CheckResult]
+    repository_checks: list[CheckResult]
+    trace_check: CheckResult
     schema_version: int = field(init=False, default=1)
 
     @property
     def runnable(self) -> bool:
-        """Return whether the repository-owned config passed all required checks."""
-        return self.config_path is not None and not required_failures(self.checks)
+        """Return whether all repository-owned configs passed required checks."""
+        return bool(self.configs) and all(config.runnable for config in self.configs)
+
+    @property
+    def checks(self) -> list[CheckResult]:
+        """Return repository, config, and trace checks in execution order."""
+        checks = list(self.repository_checks)
+        for config in self.configs:
+            checks.extend(config.checks)
+        checks.append(self.trace_check)
+        return checks
 
     @property
     def run_command(self) -> str | None:
-        """Return the Harbor command only for a runnable repository config."""
-        if not self.runnable or self.config_path is None:
+        """Return the Harbor command only for one runnable config."""
+        if len(self.configs) != 1:
             return None
-        config_path = self.config_path.resolve().relative_to(self.repo_root.resolve()).as_posix()
+        return self.run_command_for(self.configs[0])
+
+    def run_command_for(self, config: ConfigReport) -> str | None:
+        """Return the Harbor command for one runnable config."""
+        if not config.runnable:
+            return None
+        config_path = config.path.resolve().relative_to(self.repo_root.resolve()).as_posix()
         cd_command = shlex.join(["cd", str(self.repo_root.resolve())])
         harbor_command = shlex.join(["harbor", "job", "start", "-c", config_path])
         return f"{cd_command} && {harbor_command}"
@@ -61,24 +91,33 @@ def build_report(
     workspace: str,
     repo_root: Path,
     scan_result: RepositoryScan,
-    validation: ValidationOutcome,
+    validations: list[ValidationOutcome],
     trace_check: CheckResult,
     discovered_at: datetime | None = None,
 ) -> DiscoveryReport:
-    """Build one report from the repository scan and current preflight."""
+    """Build one report from the repository scan and config preflights."""
+    configs = [
+        ConfigReport(
+            name=candidate.name,
+            path=candidate.path,
+            required_env_vars=validation.required_env_vars,
+            checks=validation.checks,
+        )
+        for candidate, validation in zip(scan_result.configs, validations, strict=True)
+    ]
     return DiscoveryReport(
         agent=agent,
         workspace=workspace,
         repo_root=repo_root.resolve(),
-        config_path=scan_result.config.path if scan_result.config else None,
+        configs=configs,
         dataset_paths=scan_result.dataset_paths,
         ethos_path=scan_result.ethos_path,
         harbor_version=harbor_version(),
-        required_env_vars=validation.required_env_vars,
         discovered_at=discovered_at or datetime.now(UTC),
         fingerprint=f"sha256:{scan_result.fingerprint}",
         input_file_count=scan_result.input_file_count,
-        checks=[*scan_result.checks, *validation.checks, trace_check],
+        repository_checks=scan_result.checks,
+        trace_check=trace_check,
     )
 
 
@@ -86,23 +125,43 @@ def render_markdown(report: DiscoveryReport) -> str:
     """Render YAML front matter and a concise status report."""
     front = yaml.safe_dump(_front_matter(report), sort_keys=False, default_flow_style=False).rstrip()
     lines = [f"# Discovery report for `{report.agent}`"]
-    status = format_report(report.checks)
+    status = format_report([*report.repository_checks, report.trace_check])
     if status:
         lines.extend(["", "```text", status, "```"])
-    if report.run_command:
-        lines.extend(["", "## Run", "", "```bash", report.run_command, "```"])
+    if report.configs:
+        lines.extend(["", "## Harbor entrypoints"])
+    for config in report.configs:
+        path = _display_path(config.path, report.repo_root)
+        lines.extend(
+            [
+                "",
+                f"### `{config.name}` (`{path}`)",
+                "",
+                f"Runnable: {'true' if config.runnable else 'false'}",
+                "",
+                "```text",
+                format_report(config.checks),
+                "```",
+            ]
+        )
+        if command := report.run_command_for(config):
+            lines.extend(["", "```bash", command, "```"])
     body = "\n".join(lines)
     return f"---\n{front}\n---\n\n{body}\n"
 
 
 def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
+    config = report.configs[0] if len(report.configs) == 1 else None
     return {
         "schema_version": report.schema_version,
         "agent": report.agent,
         "workspace": report.workspace,
         "repo_root": str(report.repo_root),
         "runnable": report.runnable,
-        "config_path": _display_path(report.config_path, report.repo_root),
+        "configs": [
+            {"name": config.name, "path": _display_path(config.path, report.repo_root)} for config in report.configs
+        ],
+        "config_path": _display_path(config.path if config is not None else None, report.repo_root),
         "dataset_paths": [_display_path(path, report.repo_root) for path in report.dataset_paths],
         "run_command": report.run_command,
         "ethos_path": report.ethos_path,
@@ -113,7 +172,8 @@ def _front_matter(report: DiscoveryReport) -> dict[str, Any]:
                 "default": item.default,
                 "declared_in": _display_path(item.declared_in, report.repo_root),
             }
-            for item in report.required_env_vars
+            for config in report.configs
+            for item in config.required_env_vars
         ],
         "discovered_at": report.discovered_at.isoformat(),
         "fingerprint": report.fingerprint,
