@@ -93,7 +93,7 @@ def list_groups(
         Literal["span_count", "-span_count", "started_at", "-started_at"] | None,
         typer.Option(
             "--sort",
-            help="Sort groups by size or by time. Use -started_at to get the most recent traces or sessions first, which answers 'what ran lately' in one call instead of paging through spans.",
+            help="Sort groups by size or by start time. Use -started_at for the traces or sessions that began most recently, which answers 'what ran lately' in one call instead of paging through spans. A group's time is its earliest matching span, so this orders by when work started and not by when it was last active.",
         ),
     ] = None,
     output_format: ListOutputFormatOption = None,

@@ -89,9 +89,10 @@ class GroupsResource(SyncAPIResource):
 
           page_size: Page size.
 
-          sort: Sort groups by size or by time. Use -started_at to get the most recent traces or
-              sessions first, which answers 'what ran lately' in one call instead of paging
-              through spans.
+          sort: Sort groups by size or by start time. Use -started_at for the traces or sessions
+              that began most recently, which answers 'what ran lately' in one call instead of
+              paging through spans. A group's time is its earliest matching span, so this
+              orders by when work started and not by when it was last active.
 
           extra_headers: Send extra headers
 
@@ -178,9 +179,10 @@ class AsyncGroupsResource(AsyncAPIResource):
 
           page_size: Page size.
 
-          sort: Sort groups by size or by time. Use -started_at to get the most recent traces or
-              sessions first, which answers 'what ran lately' in one call instead of paging
-              through spans.
+          sort: Sort groups by size or by start time. Use -started_at for the traces or sessions
+              that began most recently, which answers 'what ran lately' in one call instead of
+              paging through spans. A group's time is its earliest matching span, so this
+              orders by when work started and not by when it was last active.
 
           extra_headers: Send extra headers
 
