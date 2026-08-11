@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useGuardrailsDeleteConfig } from '@nemo/sdk/generated/platform/api';
-import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import {
   type QuickActionItem,
   QuickActionsMenuRoot,
-} from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
+} from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
+import { useGuardrailsDeleteConfig } from '@nemo/sdk/generated/platform/api';
+import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { CreateGuardrailModal } from '@studio/routes/guardrails/CreateGuardrailModal';
 import { getGuardrailsRoute } from '@studio/routes/utils';

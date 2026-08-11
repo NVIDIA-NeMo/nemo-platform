@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from nemo_platform import AsyncNeMoPlatform
 from nmp.common.service.dependencies import get_sdk_client
+from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.repository.annotations import AnnotationsRepository
 from nmp.intake.repository.clickhouse.annotations import ClickHouseAnnotationsRepository
 from nmp.intake.repository.clickhouse.evaluator_results import ClickHouseEvaluatorResultsRepository
@@ -105,3 +106,12 @@ def get_spans_service(
 
 
 SpansServiceDep = Annotated[IntakeSpansService, Depends(get_spans_service)]
+
+
+def get_denormalizer(request: Request) -> EvaluationDenormalizer | None:
+    """Reach the service-owned denormalizer from the request (absent if startup didn't create one)."""
+    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
+    return getattr(service, "denormalizer", None) if service is not None else None
+
+
+DenormalizerDep = Annotated[EvaluationDenormalizer | None, Depends(get_denormalizer)]

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { PageHeader, Stack, StatusMessage } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { TraceDetailLayout } from '@studio/components/IntakeDetail/TraceDetailLayout';
 import { TraceSpanTree } from '@studio/components/IntakeDetail/TraceDetailSpanTree';
 import { SessionSummaryHeader } from '@studio/components/IntakeDetail/TraceDetailSummaryHeader';
@@ -180,6 +180,10 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
             sessionId={sessionId}
             parentBreadcrumbs={traceParentBreadcrumbs}
             traceSummary={trajectories.find(({ trace }) => trace.id === traceId)?.trace}
+            traceSummaryStatus={
+              explorer.spansLoaded ? 'resolved' : explorer.spansError ? 'error' : 'loading'
+            }
+            traceSummaryErrorMessage={explorer.spansError?.message}
           >
             {(trace) => (
               <TraceSpanAccordions

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { ENTITY_NAME_HELP, entityNameSchema, toCopyName } from '@nemo/common/src/utils/entityName';
@@ -11,7 +12,6 @@ import type {
   GuardrailConfigInput,
   GuardrailConfigInputData,
 } from '@nemo/sdk/generated/platform/schema';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getGuardrailDetailRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';

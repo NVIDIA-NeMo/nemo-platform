@@ -24,7 +24,11 @@ from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOp
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
-from nmp.intake.api.v2.experiments.dependencies import EntityClientDep, EvaluationReadServiceDep
+from nmp.intake.api.v2.experiments.dependencies import (
+    DenormalizerDep,
+    EntityClientDep,
+    EvaluationReadServiceDep,
+)
 from nmp.intake.api.v2.experiments.schemas import (
     EvaluationFilter,
     EvaluationPatchRequest,
@@ -44,6 +48,7 @@ from nmp.intake.api.v2.experiments.schemas import (
 # layer uses; only the entity's own field names (e.g. parent_experiment_id) reference Experiment directly.
 from nmp.intake.entities.experiments import Experiment as Evaluation
 from nmp.intake.entities.experiments import ExperimentGroup
+from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.experiments.read_service import (
     EvaluationNotFoundError,
     EvaluationRead,
@@ -379,6 +384,7 @@ async def list_evaluations(
     request: Request,
     read_service: EvaluationReadServiceDep,
     parsed: EvaluationFilterDep,
+    denormalizer: DenormalizerDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
     sort: str | None = Query(
@@ -415,6 +421,9 @@ async def list_evaluations(
     # Translate the exposed `experiment_group_id` filter into a membership match over `experiment_ids`
     # (plus the legacy scalar), so listing a group returns every evaluation that belongs to it.
     entity_operation = _rewrite_group_filter(entity_operation)
+    # Turn the scalar agent_name/agent_version/model_name params into $contains matches on the
+    # denormalized list facets, so a workspace-wide list can filter by name against the entity store.
+    entity_operation = _rewrite_facet_filters(entity_operation)
     # Compute-on-read: fetch the whole (entity-filtered) group, hydrate every rollup, then filter, sort,
     # and paginate in memory so a single request can sort/filter by a ClickHouse metric that lives
     # outside the entity store. Bounded to hundreds of evaluations per group (see _MAX_GROUP_EVALUATIONS).
@@ -442,6 +451,7 @@ async def list_evaluations(
                 "filter (e.g. experiment_group_id)."
             ),
         ) from exc
+    _enqueue_stale_denormalization(denormalizer, workspace=workspace, reads=result.evaluations)
     responses = [_to_evaluation_response(evaluation) for evaluation in result.evaluations]
     # A metric-backed sort or filter is meaningless without rollups: if hydration was skipped (ClickHouse
     # disabled or down) every metric value would be unset, so a metric sort would silently collapse to
@@ -480,11 +490,13 @@ async def get_evaluation(
     workspace: str,
     name: str,
     read_service: EvaluationReadServiceDep,
+    denormalizer: DenormalizerDep,
 ) -> EvaluationResponse:
     try:
         evaluation = await read_service.get_evaluation(workspace=workspace, name=name)
     except EvaluationNotFoundError as exc:
         raise _evaluation_not_found_http_error(exc) from exc
+    _enqueue_stale_denormalization(denormalizer, workspace=workspace, reads=[evaluation])
     return _to_evaluation_response(evaluation)
 
 
@@ -1004,6 +1016,34 @@ def _rewrite_group_filter(operation: FilterOperation | None) -> FilterOperation 
     return operation
 
 
+# Denormalized list facets on the Evaluation entity whose scalar filter param means "list contains value".
+_FACET_CONTAINS_FIELDS = frozenset({"data.agent_names", "data.agent_versions", "data.model_names"})
+
+
+def _rewrite_facet_filters(operation: FilterOperation | None) -> FilterOperation | None:
+    """Rewrite an equality on a denormalized name-facet field into a ``$contains`` membership match.
+
+    The user-facing params (``agent_name``/``agent_version``/``model_name``) are scalars that parse to an
+    equality, but each is stored as a list of distinct observed names (``agent_names``/``agent_versions``/
+    ``model_names``). "Matches this name" therefore means "the list contains it", mirroring how
+    ``experiment_id`` matches membership in ``experiment_ids``.
+    """
+    if operation is None:
+        return None
+    if isinstance(operation, ComparisonOperation):
+        if operation.field in _FACET_CONTAINS_FIELDS and operation.operator == FilterOperator.EQ:
+            return ComparisonOperation(operator=FilterOperator.CONTAINS, field=operation.field, value=operation.value)
+        return operation
+    if isinstance(operation, LogicalOperation):
+        return LogicalOperation(
+            operator=operation.operator,
+            operations=[
+                rewritten for op in operation.operations if (rewritten := _rewrite_facet_filters(op)) is not None
+            ],
+        )
+    return operation
+
+
 def _apply_is_deleted_filter(parsed: ParsedFilter) -> None:
     """Append an ``is_deleted`` clause so list endpoints hide soft-deleted rows by default.
 
@@ -1317,6 +1357,35 @@ def _to_evaluation_response(evaluation: EvaluationRead) -> EvaluationResponse:
     if evaluation.rollup is not None:
         _apply_rollup(response, evaluation.rollup)
     return response
+
+
+def _enqueue_stale_denormalization(
+    denormalizer: EvaluationDenormalizer | None,
+    *,
+    workspace: str,
+    reads: list[EvaluationRead],
+) -> None:
+    """Self-heal the denormalized name facets on read.
+
+    When a read's live rollup names differ from the entity's stored facets, queue the evaluation for
+    the refresher. This backfills evaluations that were ingested before the facets existed (and corrects
+    any drift) the first time they're read, with no separate migration to run on each instance — the
+    live rollup was already fetched to build this response, so the comparison is free and the write is
+    deferred to the background worker (which re-checks and skips no-ops).
+    """
+    if denormalizer is None:
+        return
+    for read in reads:
+        rollup = read.rollup
+        if rollup is None:
+            continue
+        entity = read.entity
+        if (
+            entity.agent_names != rollup.agent_names
+            or entity.agent_versions != rollup.agent_versions
+            or entity.model_names != rollup.model_names
+        ):
+            denormalizer.mark_dirty(workspace=workspace, evaluation_id=entity.name)
 
 
 async def _evaluation_response_with_rollup(

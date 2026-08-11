@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
 import { PluginProvider } from '@studio/plugins/PluginProvider';

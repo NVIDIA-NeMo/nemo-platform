@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -23,8 +25,6 @@ import {
   useOptimizerUpdateInsight,
   type InsightStatus,
 } from '@studio/api/optimizer';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { ExpandableMessage } from '@studio/components/ExpandableMessage';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';

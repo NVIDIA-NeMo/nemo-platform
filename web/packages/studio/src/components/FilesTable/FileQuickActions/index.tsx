@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import {
+  type QuickActionItem,
+  QuickActionsMenuRoot,
+} from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useDatasetFileDelete } from '@studio/api/datasets/useDatasetFileDelete';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { AddToFolderModal } from '@studio/components/filesets/AddToFolderModal';
 import { useBulkDownload } from '@studio/components/filesets/hooks/useBulkDownload';
 import { useBulkDuplicate } from '@studio/components/filesets/hooks/useBulkDuplicate';
@@ -12,10 +16,6 @@ import { CreateFileSplitsModal } from '@studio/components/FilesTable/CreateFileS
 import { RenameFileModal } from '@studio/components/FilesTable/RenameFileModal';
 import { TransformFileModal } from '@studio/components/FilesTable/TransformFileModal';
 import { FileSystemFile, FileSystemNode } from '@studio/components/FilesTable/utils';
-import {
-  type QuickActionItem,
-  QuickActionsMenuRoot,
-} from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
 import { resolveDatasetFilePath } from '@studio/util/files';
 import { FC, useState } from 'react';

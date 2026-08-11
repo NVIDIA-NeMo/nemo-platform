@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   getListAnnotationsQueryKey,
   listAnnotations,
@@ -13,7 +14,6 @@ import {
   type FeedbackAnnotationInputValue,
   NoteAnnotationInputKind,
 } from '@nemo/sdk/generated/platform/schema';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledSearchableSelect } from '@nemo/common/src/components/form/ControlledSearchableSelect';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { FormModal } from '@nemo/common/src/components/FormModal';
@@ -9,7 +10,6 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getAgentsListAgentsQueryKey, useAgentsCreateAgent } from '@nemo/sdk/generated/agents/api';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import { loadSampleAgentConfig } from '@studio/api/agents/loadSampleAgentConfig';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@studio/constants/constants';
 import {
   buildSampleAgentName,

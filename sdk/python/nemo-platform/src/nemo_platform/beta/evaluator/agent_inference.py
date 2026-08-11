@@ -27,7 +27,6 @@ from urllib.parse import urlparse
 
 import httpx
 from httpx import Timeout
-from jsonpath_ng import parse as jsonpath_parse
 from pydantic import BaseModel, ConfigDict, Field
 
 from nemo_platform.beta.evaluator.agent_stream_translation import (
@@ -788,6 +787,10 @@ def _extract_jsonpath(
     required: bool = True,
 ) -> Any:
     """Extract a value from data using a JSONPath expression."""
+    # Imported here rather than at module scope: this is jsonpath_ng's only use in the module, and
+    # the module sits on the agent_eval run-time path via agent_eval/evaluator.py.
+    from jsonpath_ng import parse as jsonpath_parse
+
     expr = jsonpath_parse(path)
     matches = expr.find(data)
     if not matches:

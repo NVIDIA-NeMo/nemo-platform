@@ -30,6 +30,12 @@ __all__ = ["EvaluationFilterParam"]
 class EvaluationFilterParam(TypedDict, total=False):
     """Filter for listing Evaluations."""
 
+    agent_name: str
+    """Filter evaluations that observed this agent name in any ingested session."""
+
+    agent_version: str
+    """Filter evaluations that observed this agent version in any ingested session."""
+
     cost_usd: MetricStatFiltersParam
     """Numeric range filters keyed by rollup aggregate stat.
 
@@ -101,6 +107,9 @@ class EvaluationFilterParam(TypedDict, total=False):
 
     filter[metadata.model]=claude-opus-4-8.
     """
+
+    model_name: str
+    """Filter evaluations that observed this model name in any ingested session."""
 
     name: str
     """Filter evaluations by name."""

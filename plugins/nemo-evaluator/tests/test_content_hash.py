@@ -14,11 +14,19 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import ClassVar
+from typing import Any, ClassVar
 
-from nemo_evaluator.api.schemas import MetadataItem, MetricRef, TaskInputs, TaskRef
+from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    HarborTaskDefinition,
+    MetadataItem,
+    MetricRef,
+    TaskInputs,
+    TaskRef,
+)
 from nemo_evaluator.content_hash import DIGEST_PATTERN, canonical_payload, content_hash
 from nemo_evaluator.entities import TaskEntity, TasksetEntity
+from nemo_evaluator.revisions import head_digest
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticReducer, SemanticView, ViewSignal
 from nemo_platform_plugin.entities import EntityBase
 from pydantic import Field
@@ -39,19 +47,37 @@ def _task(
     project: str | None = None,
     intent: str = "Answer the question.",
     inputs: TaskInputs | None = None,
+    reference: dict[str, Any] | None = None,
     metrics: list[MetricRef] | None = None,
     views: dict[str, SemanticView] | None = None,
     metadata: list[MetadataItem] | None = None,
 ) -> TaskEntity:
     return TaskEntity(
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent=intent,
+            inputs=inputs if inputs is not None else TaskInputs(instruction="What is 2+2?"),
+            reference=reference if reference is not None else {},
+            metrics=metrics if metrics is not None else [MetricRef("default/stored-metric")],
+            views=views if views is not None else _DEFAULT_VIEWS,
+        ),
         name=name,
         workspace=workspace,
         project=project,
-        intent=intent,
-        inputs=inputs if inputs is not None else TaskInputs(instruction="What is 2+2?"),
-        metrics=metrics if metrics is not None else [MetricRef("default/stored-metric")],
-        views=views if views is not None else _DEFAULT_VIEWS,
         metadata=metadata if metadata is not None else _DEFAULT_METADATA,
+    )
+
+
+def _harbor_task(*, config: dict[str, Any] | None = None, archive_digest: str = "a" * 64) -> TaskEntity:
+    return TaskEntity(
+        spec=HarborTaskDefinition(
+            kind="harbor",
+            archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz",
+            archive_digest=archive_digest,
+            config=config if config is not None else {},
+        ),
+        name="harbor-1",
+        workspace="default",
     )
 
 
@@ -147,6 +173,18 @@ def test_metric_ref_order_changes_digest() -> None:
     assert content_hash(a) != content_hash(b)
 
 
+def test_grader_only_reference_changes_digest() -> None:
+    """``reference`` decides what a metric grades *against*, so it is task content.
+
+    Two revisions that score the same output differently must not share a digest — otherwise
+    publish-time dedup would collapse them and a pin would no longer fix the grading. This is the
+    general rule for the digest: it covers anything affecting a task's execution output or the
+    mechanism used to grade it.
+    """
+    assert content_hash(_task(reference={"expected": "Paris"})) != content_hash(_task())
+    assert content_hash(_task(reference={"expected": "Paris"})) != content_hash(_task(reference={"expected": "Lyon"}))
+
+
 def test_nested_view_change_changes_digest() -> None:
     """Nested sub-models participate; a change buried in a view must not be invisible."""
     changed = _task(
@@ -190,6 +228,35 @@ def test_int_and_float_render_distinctly() -> None:
     assert content_hash(_NumericEntity(name="n", workspace="default", value=1)) != content_hash(
         _NumericEntity(name="n", workspace="default", value=1.0)
     )
+
+
+# --- Harbor: the one deliberate exclusion ------------------------------------
+
+
+def test_harbor_config_does_not_change_digest() -> None:
+    """``config`` is a *projection* of ``task.toml``, never an execution input.
+
+    Harbor reads the real ``task.toml`` out of the materialized archive at run time, so this copy
+    affects neither execution nor grading. Hashing it would buy no coverage and would make revision
+    history sensitive to Harbor's serialization — a release that reordered keys or emitted a new
+    defaulted field would cut a revision for byte-identical files.
+
+    Exercised through ``head_digest`` rather than ``content_hash``: the exclusion lives in
+    ``REVISION_POINTER_EXCLUDE``, not in the hashing primitive.
+    """
+    plain = _harbor_task()
+    configured = _harbor_task(config={"verifier": {"type": "pytest"}, "agent": {"timeout": 600}})
+    assert head_digest(plain) == head_digest(configured)
+
+
+def test_harbor_archive_digest_changes_digest() -> None:
+    """The invariant that makes excluding ``config`` safe.
+
+    ``archive_digest`` is authoritative over every file in the task directory, ``task.toml``
+    included — so a config change that genuinely alters execution or grading moves *this* field and
+    is covered. If this ever stopped holding, excluding ``config`` would become a real gap.
+    """
+    assert head_digest(_harbor_task()) != head_digest(_harbor_task(archive_digest="b" * 64))
 
 
 # --- Tasksets ----------------------------------------------------------------

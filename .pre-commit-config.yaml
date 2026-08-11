@@ -67,9 +67,9 @@ repos:
 
   - repo: https://github.com/norwoodj/helm-docs
     # The container itself is 'latest' no matter what here
-    rev: "v1.14.2"
+    rev: v1.14.2
     hooks:
-      - id: helm-docs-container
+      - id: helm-docs
         files: |
           (?x)^(
             k8s/helm/values\.yaml|
@@ -96,6 +96,24 @@ repos:
         files: 'pyproject\.toml$'
         pass_filenames: false
         verbose: true
+      - id: uv-version-consistency
+        name: Check CI and Flox uv versions
+        entry: ./tools/lint/check-uv-version.sh
+        language: system
+        files: '^(\.github/workflows/.*\.ya?ml|tools/python/\.flox/env/manifest\.toml)$'
+        pass_filenames: false
+      - id: python-version-consistency
+        name: Check Make and Flox Python versions
+        entry: ./tools/lint/check-python-version.sh
+        language: system
+        files: '^(Makefile|tools/python/\.flox/env/manifest\.toml)$'
+        pass_filenames: false
+      - id: node-version-consistency
+        name: Check Node.js and pnpm versions
+        entry: ./tools/lint/check-node-version.sh
+        language: system
+        files: '^(\.nvmrc|web/package\.json|tools/nodejs/\.flox/env/manifest\.toml|\.github/workflows/ci\.yaml|\.github/actions/build-nemo-platform-wheel/action\.yaml)$'
+        pass_filenames: false
       - id: copyright-fix
         name: Fix copyright headers
         entry: uv run script/copyright_fixer.py
@@ -148,3 +166,13 @@ repos:
       - id: check-merge-conflict
         args:
           - --assume-in-merge
+# Flox
+  - repo: local
+    hooks:
+      - id: flox-lock-consistency
+        name: Check Flox locks
+        entry: ./tools/lint/check-flox-locks.sh
+        language: system
+        files: '(^\.flox/env/manifest\.toml$|^tools/[^/]+/\.flox/env/manifest\.toml$)'
+        pass_filenames: false
+        stages: [pre-commit]

@@ -1,0 +1,20 @@
+schema-version = "1.14.0"
+
+[install]
+# Utilities
+gnumake.pkg-path = "gnumake"
+gnutar.pkg-path = "gnutar"
+gum.pkg-path = "gum"
+findutils.pkg-path = "findutils"
+diffutils.pkg-path = "diffutils"
+yq-go.pkg-path = "yq-go"
+
+[vars]
+GUM_LOG_MESSAGE_FOREGROUND="#76B900"
+FOREGROUND="#76B900"
+BORDER_FOREGROUND="#76B900"
+BORDER="double"
+ALIGN="center"
+WIDTH="50"
+MARGIN="1 2"
+PADDING="1 2"

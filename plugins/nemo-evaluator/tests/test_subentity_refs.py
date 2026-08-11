@@ -5,11 +5,13 @@
 
 A revision is addressed with the platform's standard ``#`` fragment — the same convention filesets
 use for a contained file (``workspace/fileset#path``). These tests pin two things: that an absent
-fragment means ``latest`` rather than "unpinned", and that existing fragment-unaware callers keep
-working against a pinned ref (``parse_entity_ref`` strips it).
+fragment means ``latest`` rather than "unpinned", and that a fragment-unaware caller reading a
+pinned ref still lands on the right task rather than on one literally named ``task-a#<digest>``.
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 from nemo_evaluator.api.schemas import (
@@ -17,9 +19,9 @@ from nemo_evaluator.api.schemas import (
     MetricRef,
     TaskRef,
     TasksetRef,
-    parse_entity_ref,
     parse_subentity_ref,
 )
+from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
 from pydantic import ValidationError
 
 _DIGEST = "a" * 64
@@ -60,20 +62,37 @@ def test_fragment_is_returned_verbatim() -> None:
     assert fragment == _DIGEST
 
 
-# --- Backward compatibility --------------------------------------------------
+# --- Composition with the platform's entity parser ---------------------------
 
 
-def test_parse_entity_ref_strips_the_fragment() -> None:
-    """Fragment-unaware callers (metric resolution, taskset member existence checks) keep working
-    against a pinned ref instead of trying to look up a task literally named 'task-a#<digest>'."""
-    assert parse_entity_ref(f"other/task-a#{_DIGEST}", "default") == ("other", "task-a")
-    assert parse_entity_ref("task-a#latest", "default") == ("default", "task-a")
+def test_dropping_the_fragment_recovers_the_plain_entity_ref() -> None:
+    """Fragment-unaware callers (taskset member existence checks) read a pinned ref by discarding the
+    third element, rather than through a second parser that strips ``#`` itself. Keeping one parser
+    is what stops evaluator refs and platform refs drifting on what a ``workspace/name`` is."""
+    assert parse_subentity_ref(f"other/task-a#{_DIGEST}", "default")[:2] == ("other", "task-a")
+    assert parse_subentity_ref("task-a#latest", "default")[:2] == ("default", "task-a")
 
 
 def test_pinned_and_bare_refs_resolve_to_the_same_task() -> None:
     """The property taskset duplicate-detection relies on: two refs differing only by fragment are
     the same member, and must not both be admitted."""
-    assert parse_entity_ref(f"task-a#{_DIGEST}", "default") == parse_entity_ref("task-a", "default")
+    assert parse_subentity_ref(f"task-a#{_DIGEST}", "default")[:2] == parse_subentity_ref("task-a", "default")[:2]
+
+
+def test_the_base_split_is_the_platform_parser() -> None:
+    """Not an implementation detail worth pinning for its own sake — it is the guarantee that a
+    reference means the same thing to the evaluator as it does to every other plugin."""
+    parsed = parse_entity_ref("other/task-a", "default")
+    assert parse_subentity_ref("other/task-a", "default")[:2] == (parsed.workspace, parsed.name)
+
+
+def test_subentity_pattern_is_the_entity_pattern_plus_a_fragment() -> None:
+    """The evaluator's ref shape is derived from the platform constant, so widening what counts as a
+    ``workspace/name`` widens both at once instead of leaving one behind."""
+    assert TaskRef.model_fields["root"].metadata  # the pattern is declared on the field
+    for bare in ("task-a", "other/task-a"):
+        assert re.fullmatch(ENTITY_REF_PATTERN, bare)
+        assert TaskRef(bare).root == bare
 
 
 # --- Field validation --------------------------------------------------------

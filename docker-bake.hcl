@@ -52,10 +52,6 @@ variable "FFMPEG_VLM_WHEEL_CONTEXT" {
   default = ""
 }
 
-variable "TRANSFORMER_ENGINE_WHEEL_CONTEXT" {
-  default = ""
-}
-
 variable "DISTROLESS_BASE" {
   default = "nvcr.io/nvidia/distroless/python:3.11-v4.0.8"
 }
@@ -171,11 +167,6 @@ function "get_ffmpeg_vlm_wheel_image" {
   result = "${WHEELS_REGISTRY}/ffmpeg-vlm-wheel:${WHEELS_TAG}"
 }
 
-function "get_transformer_engine_wheel_image" {
-  params = []
-  result = "${WHEELS_REGISTRY}/transformer-engine-wheel:${WHEELS_TAG}"
-}
-
 function "get_arch_tag" {
   params = []
   result = BUILD_ARCH == "linux/arm64" ? "linux-arm64" : "linux-amd64"
@@ -211,11 +202,6 @@ function "mamba_ssm_wheel_context" {
 function "ffmpeg_vlm_wheel_context" {
   params = []
   result = notequal(FFMPEG_VLM_WHEEL_CONTEXT, "") ? FFMPEG_VLM_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:ffmpeg-vlm-wheel" : "docker-image://${get_ffmpeg_vlm_wheel_image()}"
-}
-
-function "transformer_engine_wheel_context" {
-  params = []
-  result = notequal(TRANSFORMER_ENGINE_WHEEL_CONTEXT, "") ? TRANSFORMER_ENGINE_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:transformer-engine-wheel" : "docker-image://${get_transformer_engine_wheel_image()}"
 }
 
 function "wheel_tags" {
@@ -703,30 +689,6 @@ target "ffmpeg-vlm-wheel" {
   output     = image_output()
   platforms  = get_platforms()
 }
-
-# transformer-engine wheel (cp313 / cu130), pinned to NeMo-RL's TE ref (release_v2.15, from RL's
-# override-dependencies) and arch (90;100, matching RL).
-#
-# NOT consumed by any image today, and deliberately not in a build group: Transformer-Engine only
-# ships in the `automodel` and `mcore` extras, and the customizer's DPO + GRPO path uses neither
-# (DPO -> fsdp, GRPO generation -> vllm). Kept because it builds cleanly and is the drop-in for
-# nmp-rl-base if a Megatron/automodel backend is ever adopted. Build on demand:
-#   docker buildx bake transformer-engine-wheel
-target "transformer-engine-wheel" {
-  target     = "transformer-engine-wheel"
-  context    = "."
-  dockerfile = "docker/base/Dockerfile.python-wheels"
-  cache-to   = maybe_registry_cache_to("transformer-engine-wheel")
-  cache-from = maybe_registry_cache_from("transformer-engine-wheel")
-  tags       = wheel_tags("transformer-engine-wheel")
-  output     = image_output()
-  args = {
-    TE_REF          = "release_v2.15"
-    NVTE_CUDA_ARCHS = "90;100"
-  }
-  platforms  = get_platforms()
-}
-
 
 target "safe-synthesizer-tasks-docker" {
   target     = "runtime"

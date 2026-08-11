@@ -4,7 +4,7 @@
 import { Toast } from '@nvidia/foundations-react-core';
 import { ComponentProps, ReactNode } from 'react';
 
-interface MessageFnOptions {
+export interface MessageFnOptions {
   durationMs?: number | false; // How long should the toast appear for? Pass false to prevent auto-dismiss.
 }
 interface AddToastFnOptions extends MessageFnOptions {
@@ -26,6 +26,15 @@ export interface ToastObject {
   neutral: MessageFn;
   dismissToast: DismissToastFn;
 }
+
+export type NotifyType = 'success' | 'error' | 'info' | 'warning';
+
+/**
+ * Provider-independent notification sink. Components exposed across the plugin
+ * boundary take this as a prop so a plugin can route them at Studio's toaster
+ * without sharing a ToastContext module instance.
+ */
+export type NotifyFn = (message: string, type?: NotifyType, options?: MessageFnOptions) => void;
 
 export interface ToastContextValue {
   addToast: AddToastFn;

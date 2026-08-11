@@ -18,8 +18,8 @@ import logging
 
 from nemo_evaluator.intake.publish import PublishError, PublishReport, publish_to_intake
 from nemo_evaluator.jobs.agent_spec import IntakePublicationSpec, Target, target_agent_identity
+from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
-from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import NeMoPlatformError, NotFoundError
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -153,15 +153,16 @@ def publish_agent_eval_result(
         workspace,
     )
     try:
-        report = run_sync(
-            lambda: _publish(
+        report = run_with_isolated_async_sdk(
+            async_sdk,
+            lambda sdk: _publish(
                 result,
-                platform=async_sdk,
+                platform=sdk,
                 spec=spec,
                 workspace=workspace,
                 agent_name=agent_name,
                 model_name=model_name,
-            )
+            ),
         )
     except PublishError as error:
         return fail(str(error), error.report)

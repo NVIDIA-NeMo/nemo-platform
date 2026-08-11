@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import type { EvaluationSessionResponse } from '@nemo/sdk/generated/platform/schema';
 import { PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
   type BreadcrumbsItemProps,

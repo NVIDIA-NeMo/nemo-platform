@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage as getApiErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { toValidFilesetName } from '@nemo/common/src/utils/filesetName';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getFilesListFilesetsQueryKey,
   useFilesCreateFileset,
 } from '@nemo/sdk/generated/platform/api';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
 import {
   filesetCreateFormSchema,
   type FilesetCreateFormData,
@@ -26,7 +27,6 @@ import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import { getFilesetDetailRoute } from '@studio/routes/utils';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import {
   isHuggingFaceUrl,
   isNgcUrl,

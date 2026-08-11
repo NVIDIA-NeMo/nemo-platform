@@ -14,11 +14,11 @@ from __future__ import annotations
 import re
 
 import pytest
-from nemo_evaluator.api.schemas import MetadataItem, MetricRef, TaskInputs, TaskRef
+from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, MetadataItem, MetricRef, TaskInputs, TaskRef
 from nemo_evaluator.content_hash import content_hash
 from nemo_evaluator.entities import (
-    REVISION_POINTER_FIELDS,
-    REVISION_SELF_FIELDS,
+    REVISION_POINTER_EXCLUDE,
+    REVISION_SELF_EXCLUDE,
     TaskEntity,
     TaskRevisionEntity,
     TasksetEntity,
@@ -41,11 +41,9 @@ _MEMBERS = [TaskRef(f"default/task-a#{_DIGEST}")]
 
 def _task_head(*, intent: str = _INTENT, latest_revision: int = 0, tags: dict[str, int] | None = None) -> TaskEntity:
     return TaskEntity(
+        spec=EvaluatorTaskDefinition(kind="evaluator", intent=intent, inputs=_INPUTS, metrics=_METRICS),
         name="task-1",
         workspace="default",
-        intent=intent,
-        inputs=_INPUTS,
-        metrics=_METRICS,
         metadata=_ANNOTATIONS,
         latest_revision=latest_revision,
         tags=tags or {},
@@ -54,13 +52,11 @@ def _task_head(*, intent: str = _INTENT, latest_revision: int = 0, tags: dict[st
 
 def _task_revision(*, intent: str = _INTENT, revision: int = 1, digest: str = _DIGEST) -> TaskRevisionEntity:
     return TaskRevisionEntity(
+        spec=EvaluatorTaskDefinition(kind="evaluator", intent=intent, inputs=_INPUTS, metrics=_METRICS),
         name=f"rev.{revision}",
         workspace="default",
         content_hash=digest,
         revision=revision,
-        intent=intent,
-        inputs=_INPUTS,
-        metrics=_METRICS,
         metadata=_ANNOTATIONS,
     )
 
@@ -89,43 +85,43 @@ def _taskset_revision(*, members: list[TaskRef] | None = None) -> TasksetRevisio
 
 
 def test_task_head_and_revision_digests_agree() -> None:
-    assert content_hash(_task_head(), exclude=REVISION_POINTER_FIELDS) == content_hash(
-        _task_revision(), exclude=REVISION_SELF_FIELDS
+    assert content_hash(_task_head(), exclude=REVISION_POINTER_EXCLUDE) == content_hash(
+        _task_revision(), exclude=REVISION_SELF_EXCLUDE
     )
 
 
 def test_taskset_head_and_revision_digests_agree() -> None:
-    assert content_hash(_taskset_head(), exclude=REVISION_POINTER_FIELDS) == content_hash(
-        _taskset_revision(), exclude=REVISION_SELF_FIELDS
+    assert content_hash(_taskset_head(), exclude=REVISION_POINTER_EXCLUDE) == content_hash(
+        _taskset_revision(), exclude=REVISION_SELF_EXCLUDE
     )
 
 
 def test_moving_a_tag_does_not_change_the_head_digest() -> None:
     """Tags are pointers, not content. If they were digested, every retag would fork history."""
     tagged = _task_head(latest_revision=7, tags={"latest": 7, "candidate": 3})
-    assert content_hash(_task_head(), exclude=REVISION_POINTER_FIELDS) == content_hash(
-        tagged, exclude=REVISION_POINTER_FIELDS
+    assert content_hash(_task_head(), exclude=REVISION_POINTER_EXCLUDE) == content_hash(
+        tagged, exclude=REVISION_POINTER_EXCLUDE
     )
 
 
 def test_ordinal_does_not_change_the_revision_digest() -> None:
     """Two revisions of identical content digest identically regardless of when they were cut."""
-    assert content_hash(_task_revision(revision=1), exclude=REVISION_SELF_FIELDS) == content_hash(
-        _task_revision(revision=9), exclude=REVISION_SELF_FIELDS
+    assert content_hash(_task_revision(revision=1), exclude=REVISION_SELF_EXCLUDE) == content_hash(
+        _task_revision(revision=9), exclude=REVISION_SELF_EXCLUDE
     )
 
 
 def test_content_change_changes_the_revision_digest() -> None:
-    assert content_hash(_task_revision(), exclude=REVISION_SELF_FIELDS) != content_hash(
-        _task_revision(intent="Do something else."), exclude=REVISION_SELF_FIELDS
+    assert content_hash(_task_revision(), exclude=REVISION_SELF_EXCLUDE) != content_hash(
+        _task_revision(intent="Do something else."), exclude=REVISION_SELF_EXCLUDE
     )
 
 
 def test_membership_change_changes_the_taskset_revision_digest() -> None:
     """A published dataset's identity is its membership — including which revision of each member."""
     repinned = _taskset_revision(members=[TaskRef(f"default/task-a#{_OTHER_DIGEST}")])
-    assert content_hash(_taskset_revision(), exclude=REVISION_SELF_FIELDS) != content_hash(
-        repinned, exclude=REVISION_SELF_FIELDS
+    assert content_hash(_taskset_revision(), exclude=REVISION_SELF_EXCLUDE) != content_hash(
+        repinned, exclude=REVISION_SELF_EXCLUDE
     )
 
 

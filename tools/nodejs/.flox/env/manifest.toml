@@ -1,0 +1,23 @@
+schema-version = "1.14.0"
+
+[install]
+nodejs = { pkg-path = "nodejs_22", version = "22.23.2", pkg-group = "node" }
+
+[vars]
+PNPM_VERSION = "10.34.5"
+COREPACK_HOME = "${FLOX_ENV_CACHE}/corepack"
+COREPACK_SHIMS = "${FLOX_ENV_CACHE}/corepack/bin"
+
+[hook]
+on-activate = '''
+  set -euo pipefail
+  mkdir -p "$COREPACK_SHIMS"
+  if ! test -x "$COREPACK_SHIMS/pnpm" || ! "$COREPACK_SHIMS/pnpm" --version | grep -Fxq "$PNPM_VERSION"; then
+    corepack install --global "pnpm@$PNPM_VERSION"
+    corepack enable --install-directory "$COREPACK_SHIMS"
+  fi
+  export PATH="$COREPACK_SHIMS:$PATH"
+'''
+
+[options]
+systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux"]

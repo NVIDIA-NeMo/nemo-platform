@@ -1,0 +1,1000 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.14.0",
+    "install": {
+      "diffutils": {
+        "pkg-path": "diffutils"
+      },
+      "findutils": {
+        "pkg-path": "findutils"
+      },
+      "gnumake": {
+        "pkg-path": "gnumake"
+      },
+      "gnutar": {
+        "pkg-path": "gnutar"
+      },
+      "gum": {
+        "pkg-path": "gum"
+      },
+      "osv-scanner": {
+        "pkg-path": "osv-scanner",
+        "pkg-group": "osv-scanner",
+        "version": "2.3.3"
+      },
+      "yq-go": {
+        "pkg-path": "yq-go"
+      }
+    },
+    "vars": {
+      "ALIGN": "center",
+      "BORDER": "double",
+      "BORDER_FOREGROUND": "#76B900",
+      "FOREGROUND": "#76B900",
+      "GUM_LOG_MESSAGE_FOREGROUND": "#76B900",
+      "MARGIN": "1 2",
+      "PADDING": "1 2",
+      "WIDTH": "50"
+    },
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/6wq5al03q2wa5q7n1ncbd7abhl66y7b8-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:13:26.142590Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ns183jzjw9y8cs1psf76lw21005p4z0j-osv-scanner-2.3.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/qq33cdnga8jg16qj9p7f8m6llhsxvfyw-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:42:08.260295Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mry5p0m1qd8sr7hrv5pzrymdvfky1zw7-osv-scanner-2.3.3"
+      },
+      "system": "aarch64-linux",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/1js2yqnpa9m8r6pzibwx3fcz85rrfhz0-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:39.284981Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/l79gbf7zv1ry5h66xnhb544ncpxcniax-osv-scanner-2.3.3"
+      },
+      "system": "x86_64-darwin",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/y8jd2pjjlpkdsbp1hkzszsfzxx1ajz1c-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:41:14.038939Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/znf20q4b2114afsq39pn3fhmcda25rhy-osv-scanner-2.3.3"
+      },
+      "system": "x86_64-linux",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/1dm6zyrj9634fz016hnqild1zznb18jm-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:55.469692Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/lw06ap9kg9hrmsp7a534pwzh303gm02w-diffutils-3.12-info",
+        "out": "/nix/store/yw1mksapzj4v66c5ag7ng59jn2nh6klq-diffutils-3.12"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/gy9f86m4f8bay71v2aylf6ilmfdblp4c-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:22.168402Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/b0jifqs0ywlwjj5yyigk7jyllsjzgiil-diffutils-3.12-info",
+        "out": "/nix/store/qm0ch7mlxn6kjdymcznxfsf5qdxqv9lk-diffutils-3.12"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/i5r3m138kb1gihsvjf2hs3g9dmyawk32-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:00.840124Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/7rh8a74vwdb6lvvvwjd0dlpv84hl6mr6-diffutils-3.12-info",
+        "out": "/nix/store/lwghldxh6irjmbp73lpxv6mrdwb4aqhv-diffutils-3.12"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/4lqdccfv8wh1si8qh1phfjnl2v7530p9-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:24.850606Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/vajbg82rq4kq817ic61azz8z5363dy4c-diffutils-3.12-info",
+        "out": "/nix/store/3c05s0vxy8wafaa7lkj4bfh69wa0ch10-diffutils-3.12"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/971s20l3wxc0zv5c6gy4n9d04b9sxf3k-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:55.823224Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/nrk43rrjmq5dn4z0l56frzkpcya7bm7b-findutils-4.10.0-info",
+        "locate": "/nix/store/s494jb7dpfav3x14349f1gwa1xzw2hhp-findutils-4.10.0-locate",
+        "out": "/nix/store/z10ivgdarglczg1fp995rl3h6zx17ng0-findutils-4.10.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/bzhsr1f65ya9k9vh6b4cjzrdj9glg7bd-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:22.723360Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/bd7lq9h718463n6v4a8j889m7z7p1jmd-findutils-4.10.0-info",
+        "locate": "/nix/store/lr299wp5bmraayckga75pxfjjl6klz05-findutils-4.10.0-locate",
+        "out": "/nix/store/8z92qzl5h4dx7y6j5ks9zlpgy1rqi10v-findutils-4.10.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/jvn6l62vr18ih2qgn8j9iizi7gwgb9py-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.290176Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/xadm4ryq6sx6njbw97p6fvfpdhapc52w-findutils-4.10.0-info",
+        "locate": "/nix/store/f0y58n40x3ymy4q46jrl4ylynjzcl87g-findutils-4.10.0-locate",
+        "out": "/nix/store/lzlf2kma2qxsq6ijy9a9irc0g6n8cdpg-findutils-4.10.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/m1n6hnajwhnv5qm4mwh2b2briv8vrkb3-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:25.467195Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/z9xp5gx83h9j3nyn1qmlimfb9jnda70q-findutils-4.10.0-info",
+        "locate": "/nix/store/mlhv10zqih8f45hw0jqg4lzbz9ialzx3-findutils-4.10.0-locate",
+        "out": "/nix/store/zjwih3d9rrrw4ixll52wsy0538p7vdfd-findutils-4.10.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/fq3j34ffr44fa5a5nkwci5pdncl5h7hg-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:56.218409Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/v2jpgmm2fsg7b0z27cc514jdqbhm0isy-gnumake-4.4.1-doc",
+        "info": "/nix/store/dli72plfj1gcp88wv6px7qjjqvnnlql5-gnumake-4.4.1-info",
+        "man": "/nix/store/mzy3b5lxi8jbq5d63yvq52sjsq73907l-gnumake-4.4.1-man",
+        "out": "/nix/store/ij3d5cfr8h31a41l80jzid0z6kj2ajsv-gnumake-4.4.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/8g055kd88xxnsxxanrn2l1ycmd1zaqp4-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:23.879706Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/rcg8zj3391869cn266zwxynplwhyf6qw-gnumake-4.4.1-debug",
+        "doc": "/nix/store/qvl65zgm24p9sw0mzw3cxijcs8palykk-gnumake-4.4.1-doc",
+        "info": "/nix/store/2xp5f2ypvrlg6wn5s44jg3ji82l78k9q-gnumake-4.4.1-info",
+        "man": "/nix/store/3c96gbpypik8gzasv9brnka3i6mks9rz-gnumake-4.4.1-man",
+        "out": "/nix/store/v1888rzl1qf8zzd27q1vxvqqssizjx3x-gnumake-4.4.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/k8zf9n1v4hwky8xq8k83rxh7lrxwy630-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.829543Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/3b9cjf16jx4ncpp3b4k6m8q01nxsrw1n-gnumake-4.4.1-doc",
+        "info": "/nix/store/rriz5p4q8a6sca7sw3p3js1m5dl09ia8-gnumake-4.4.1-info",
+        "man": "/nix/store/wb4yn3d7vmi1hr4f8pz38rjvcl7f70ma-gnumake-4.4.1-man",
+        "out": "/nix/store/0bg5b97b9hbhz8907bfcrch1i116xppa-gnumake-4.4.1"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/ppc7b3wjgk81bxnls18vjflgw70wxss4-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:26.701509Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/054b9sxxzph2fbwmj45njf1rspjifaz6-gnumake-4.4.1-debug",
+        "doc": "/nix/store/c2skg22md4ablx0qfcrsh7vpad31zgyx-gnumake-4.4.1-doc",
+        "info": "/nix/store/6mifiq9cp2bsg9ghkhifrvlmip7z3147-gnumake-4.4.1-info",
+        "man": "/nix/store/arjpl2nnq7khwfhy16qphyxxg924apy1-gnumake-4.4.1-man",
+        "out": "/nix/store/k9ybsvscqk4lhz5ndc1ap9800im1cry1-gnumake-4.4.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/xczzf9n70psj6lrpm5pmv2cgmv1zb19r-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:56.226588Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/zzm2iycbpgdv23aibi06z0akdi43rhnx-gnutar-1.35-info",
+        "out": "/nix/store/prip7nslhk7b9hfws6y5y9lzfxjskanv-gnutar-1.35"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/lw1g8qxvdmrdphq1cv5yb50j98m2v1xm-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:23.894623Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/q9bv4apsdh5wlqv0ga7lr9i22iv6978z-gnutar-1.35-info",
+        "out": "/nix/store/r4c3r48fn312jmjls34nwz41b9y4xsvs-gnutar-1.35"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/smwpwzpldpah35vkwjgkmnh2yrwl0mh2-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.837913Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/z68xf85yapz8rjzk7spnx09cf7cyngr5-gnutar-1.35-info",
+        "out": "/nix/store/s2z5cn0gikvb2x352nizvlwpmv18jh9k-gnutar-1.35"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/45ynwydadvp0xmsy1bkag7lp2zysy1jc-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:26.716276Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/avcnv3j0l6lwsffrihbhj84pgy11yqj3-gnutar-1.35-info",
+        "out": "/nix/store/1j461raj6r4hihrq9j6alrddmx837fzs-gnutar-1.35"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/ncv12x2sfb3pnxc4z7rlspgc0vf0zvbc-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:56.472327Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/55h6jsvhnhilka36s9jkld0k0d55c174-gum-0.17.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/4lqcj3v44pcscjmnjip8ggm99hrpilxr-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:24.298504Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/51vn4xsrgzfl9g3s00byydpx6jgjgrnd-gum-0.17.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/w01nbfjmxqjr3w9sycd0jliiamnljij2-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:02.122815Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/m2wks8knnsfgjl0ikhbi0vv7bqn53385-gum-0.17.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/468b0lgb2p00hyfj24xb44yj24r33hy4-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:27.139900Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/w3h6fxv7jmapwcm3rxxwp83q16rnskm2-gum-0.17.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/fizkq87xqlj4yicyxm2610qqirk29gx6-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:15:55.233322Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lpf51yzqr105clhg4c4vyn2blyai4axn-yq-go-4.53.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/89zhpxra3dajdv5g4mi9pkf26kvff87l-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:45:10.000608Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/hnn92zxywj73282qrq31ha89drv13244-yq-go-4.53.3"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/ic6w08gsq6fhl16368y1qgpzqvhwx3if-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:12:44.816982Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/agf9fyr053m3092vsmh6vih3apz0kw05-yq-go-4.53.3"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "yq-go",
+      "broken": false,
+      "derivation": "/nix/store/jfa3lz2rbba3mrnvaz0l660han5gd0xy-yq-go-4.53.3.drv",
+      "description": "Portable command-line YAML processor",
+      "install_id": "yq-go",
+      "license": "[ MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "yq-go-4.53.3",
+      "pname": "yq-go",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:44:33.209955Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.53.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/sky6728rldnq9yzvljy25d1l6k7y1saj-yq-go-4.53.3"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    }
+  ],
+  "compose": {
+    "composer": {
+      "schema-version": "1.14.0",
+      "options": {},
+      "include": {
+        "environments": [
+          {
+            "dir": "../common"
+          },
+          {
+            "dir": "../osv-scanner"
+          }
+        ]
+      }
+    },
+    "include": [
+      {
+        "manifest": {
+          "schema-version": "1.14.0",
+          "install": {
+            "diffutils": {
+              "pkg-path": "diffutils"
+            },
+            "findutils": {
+              "pkg-path": "findutils"
+            },
+            "gnumake": {
+              "pkg-path": "gnumake"
+            },
+            "gnutar": {
+              "pkg-path": "gnutar"
+            },
+            "gum": {
+              "pkg-path": "gum"
+            },
+            "yq-go": {
+              "pkg-path": "yq-go"
+            }
+          },
+          "vars": {
+            "ALIGN": "center",
+            "BORDER": "double",
+            "BORDER_FOREGROUND": "#76B900",
+            "FOREGROUND": "#76B900",
+            "GUM_LOG_MESSAGE_FOREGROUND": "#76B900",
+            "MARGIN": "1 2",
+            "PADDING": "1 2",
+            "WIDTH": "50"
+          },
+          "options": {}
+        },
+        "name": "common",
+        "descriptor": {
+          "dir": "../common"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.14.0",
+          "install": {
+            "osv-scanner": {
+              "pkg-path": "osv-scanner",
+              "pkg-group": "osv-scanner",
+              "version": "2.3.3"
+            }
+          },
+          "options": {}
+        },
+        "name": "osv-scanner",
+        "descriptor": {
+          "dir": "../osv-scanner"
+        }
+      }
+    ],
+    "warnings": []
+  }
+}

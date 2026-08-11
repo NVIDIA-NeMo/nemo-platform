@@ -27,7 +27,12 @@ import os
 import uuid
 
 import pytest
-from nemo_evaluator.api.schemas import TaskInput, TasksetInput
+from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    HarborTaskDefinition,
+    TaskInput,
+    TasksetInput,
+)
 from nemo_platform import NeMoPlatform
 
 pytestmark = [
@@ -46,7 +51,10 @@ def _unique(prefix: str) -> str:
 
 
 def _task_input(intent: str = "Answer the question.", *, tags: list[str] | None = None) -> TaskInput:
-    return TaskInput(intent=intent, inputs={"instruction": "What is 2+2?"}, tags=tags or [])
+    return TaskInput(
+        spec=EvaluatorTaskDefinition(kind="evaluator", intent=intent, inputs={"instruction": "What is 2+2?"}),
+        tags=tags or [],
+    )
 
 
 def _client(base_url: str) -> NeMoPlatform:
@@ -71,9 +79,12 @@ def test_publish_and_read_a_pinned_revision(subprocess_platform: str) -> None:
         assert replaced.revision == 2
 
         pinned = client.evaluator.tasks.retrieve(name, revision=first_digest, workspace=WORKSPACE)
-        assert pinned.intent == "First."
+        assert isinstance(pinned.spec, EvaluatorTaskDefinition)
+        assert pinned.spec.intent == "First."
         assert pinned.revision == 1
-        assert client.evaluator.tasks.retrieve(name, workspace=WORKSPACE).intent == "Second."
+        current = client.evaluator.tasks.retrieve(name, workspace=WORKSPACE)
+        assert isinstance(current.spec, EvaluatorTaskDefinition)
+        assert current.spec.intent == "Second."
     finally:
         client.evaluator.tasks.delete(name, workspace=WORKSPACE)
 
@@ -165,7 +176,9 @@ def test_tagging_an_older_revision_leaves_latest_alone(subprocess_platform: str)
 
         assert tagged.tags["blessed"] == 1
         assert tagged.tags["latest"] == 2, "latest is machine-managed and must not follow a manual tag"
-        assert client.evaluator.tasks.retrieve(name, tag="blessed", workspace=WORKSPACE).intent == "First."
+        blessed = client.evaluator.tasks.retrieve(name, tag="blessed", workspace=WORKSPACE)
+        assert isinstance(blessed.spec, EvaluatorTaskDefinition)
+        assert blessed.spec.intent == "First."
     finally:
         client.evaluator.tasks.delete(name, workspace=WORKSPACE)
 
@@ -214,10 +227,9 @@ def test_taskset_membership_is_pinned_and_stays_pinned(subprocess_platform: str)
         client.evaluator.tasks.replace(task_name, task=_task_input("Updated."), workspace=WORKSPACE)
 
         assert client.evaluator.tasksets.retrieve(set_name, workspace=WORKSPACE).tasks[0].root == member
-        assert (
-            client.evaluator.tasks.retrieve(task_name, revision=pinned_digest, workspace=WORKSPACE).intent
-            == "Original."
-        )
+        pinned_task = client.evaluator.tasks.retrieve(task_name, revision=pinned_digest, workspace=WORKSPACE)
+        assert isinstance(pinned_task.spec, EvaluatorTaskDefinition)
+        assert pinned_task.spec.intent == "Original."
     finally:
         client.evaluator.tasksets.delete(set_name, workspace=WORKSPACE)
         client.evaluator.tasks.delete(task_name, workspace=WORKSPACE)
@@ -247,3 +259,80 @@ def test_republishing_a_taskset_after_a_member_moves_cuts_a_revision(subprocess_
     finally:
         client.evaluator.tasksets.delete(set_name, workspace=WORKSPACE)
         client.evaluator.tasks.delete(task_name, workspace=WORKSPACE)
+
+
+# --- Harbor-kind tasks --------------------------------------------------------
+
+
+def _harbor_input(digest: str = "a" * 64, *, config: dict | None = None) -> TaskInput:
+    return TaskInput(
+        spec=HarborTaskDefinition(
+            kind="harbor",
+            archive_ref="default/harbor-tasks#packages/org-name/abc/dist.tar.gz",
+            archive_digest=digest,
+            instruction="Fix the failing test.",
+            config=config if config is not None else {"verifier": {"type": "pytest"}},
+        )
+    )
+
+
+@pytest.mark.timeout(300)
+def test_harbor_and_evaluator_tasks_coexist(subprocess_platform: str) -> None:
+    """Both kinds are one record type, so they list together and a taskset can group them — the
+    point of managing every evaluation unit in one place."""
+    client = _client(subprocess_platform)
+    harbor_name, evaluator_name = _unique("harbor"), _unique("evaluator")
+    try:
+        harbor = client.evaluator.tasks.create(harbor_name, task=_harbor_input(), workspace=WORKSPACE)
+        evaluator = client.evaluator.tasks.create(evaluator_name, task=_task_input(), workspace=WORKSPACE)
+
+        assert harbor.spec.kind == "harbor"
+        assert evaluator.spec.kind == "evaluator"
+
+        listed = {t.name: t.spec.kind for t in client.evaluator.tasks.list(workspace=WORKSPACE, page_size=1000).data}
+        assert listed[harbor_name] == "harbor"
+        assert listed[evaluator_name] == "evaluator"
+    finally:
+        client.evaluator.tasks.delete(harbor_name, workspace=WORKSPACE)
+        client.evaluator.tasks.delete(evaluator_name, workspace=WORKSPACE)
+
+
+@pytest.mark.timeout(300)
+def test_harbor_task_round_trips_through_the_store(subprocess_platform: str) -> None:
+    """The discriminated union has to survive the entity store's JSON column, which is the one
+    thing a unit test against an in-memory fake cannot confirm."""
+    client = _client(subprocess_platform)
+    name = _unique("harbor")
+    try:
+        client.evaluator.tasks.create(name, task=_harbor_input(), workspace=WORKSPACE)
+
+        fetched = client.evaluator.tasks.retrieve(name, workspace=WORKSPACE)
+        assert isinstance(fetched.spec, HarborTaskDefinition)
+        assert fetched.spec.kind == "harbor"
+        assert fetched.spec.archive_digest == "a" * 64
+        assert fetched.spec.config == {"verifier": {"type": "pytest"}}
+        assert fetched.spec.instruction == "Fix the failing test."
+    finally:
+        client.evaluator.tasks.delete(name, workspace=WORKSPACE)
+
+
+@pytest.mark.timeout(300)
+def test_harbor_config_changes_do_not_cut_a_revision(subprocess_platform: str) -> None:
+    """`config` is excluded from the digest because it is a projection of task.toml inside the
+    archive. Confirmed end-to-end, since the exclusion is applied where the digest is computed."""
+    client = _client(subprocess_platform)
+    name = _unique("harbor")
+    try:
+        client.evaluator.tasks.create(name, task=_harbor_input(), workspace=WORKSPACE)
+
+        same = client.evaluator.tasks.replace(
+            name, task=_harbor_input(config={"verifier": {"type": "pytest"}, "new_field": 1}), workspace=WORKSPACE
+        )
+        assert same.revision == 1, "a config-only change must not publish"
+        assert isinstance(same.spec, HarborTaskDefinition)
+        assert same.spec.config["new_field"] == 1
+
+        moved = client.evaluator.tasks.replace(name, task=_harbor_input(digest="b" * 64), workspace=WORKSPACE)
+        assert moved.revision == 2, "an archive change must publish"
+    finally:
+        client.evaluator.tasks.delete(name, workspace=WORKSPACE)

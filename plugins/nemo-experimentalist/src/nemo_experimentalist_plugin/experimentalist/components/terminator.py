@@ -77,6 +77,9 @@ class Terminator(Agent):
         Returns:
             A :class:`TerminationDecision`.
         """
+        reached = self.assess_objective_reached(evolution_tree=evolution_tree, config=config)
+        if reached.stop:
+            return reached
         budget = self.assess_round_budget(round_num=round_num, config=config)
         if budget.stop:
             return budget
@@ -85,6 +88,34 @@ class Terminator(Agent):
             prior_analysis=prior_analysis,
             config=config,
         )
+
+    @hidden
+    def assess_objective_reached(
+        self,
+        *,
+        evolution_tree: EvolutionTree,
+        config: EvolutionaryOptimizerConfig,
+    ) -> TerminationDecision:
+        """Stop when a candidate that could win already satisfies every targeted objective.
+
+        Convergence asks whether progress has stalled; this asks whether any is left to
+        make. Not gated by ``disable_convergence_check``: that disables a judgement about
+        stagnation, this is a threshold the caller stated. To keep going, set no target.
+
+        Consulted before every round, so a baseline that already qualifies costs nothing.
+        Only survivors and the round-0 baseline count, mirroring finalization -- a killed
+        candidate would end the run in favour of a winner that never reaches the target.
+        """
+        targets = [target for target in config.objective_function if target.target is not None]
+        if not targets:
+            return TerminationDecision(stop=False)
+        for node in evolution_tree.nodes.values():
+            if not node.val_reward or not (node.is_survivor or node.round == 0):
+                continue
+            if all(target.is_satisfied_by(node.val_reward.get(target.name)) for target in targets):
+                summary = ", ".join(f"{target.name}={node.val_reward.get(target.name)}" for target in targets)
+                return TerminationDecision(stop=True, reason=f"objective reached by {node.label} ({summary})")
+        return TerminationDecision(stop=False)
 
     @hidden
     async def assess_convergence(

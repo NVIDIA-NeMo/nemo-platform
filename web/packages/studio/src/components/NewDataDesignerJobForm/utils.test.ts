@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { COPY_NAME_SUFFIX } from '@nemo/common/src/utils/entityName';
+import { getErrorMessage } from '@nemo/common/src/utils/error';
 import type {
   CreateJob as DataDesignerJob,
   CreateJobRequest as DataDesignerJobRequest,
@@ -10,7 +11,6 @@ import {
   applyFormModelToJobRequest,
   buildClonedJobRequest,
   getCloneJobRequestFromState,
-  getErrorMessage,
   getWorkspaceAndModel,
   modelsFromProviders,
   PARSE_ERROR_INVALID_JSON,
