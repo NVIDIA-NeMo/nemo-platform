@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ExcludedChatCompletionMessageParam } from '@nemo/common/src/types/chat';
+import { logger } from '@nemo/common/src/utils/logger';
 import { Row } from '@studio/util/files';
-import { logger } from '@studio/util/logger';
 import Handlebars from 'handlebars';
 
 export const extractUserMessage = (props: { row: Row; template?: string }): string => {

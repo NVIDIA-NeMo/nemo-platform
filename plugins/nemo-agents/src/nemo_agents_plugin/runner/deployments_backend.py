@@ -14,11 +14,8 @@ AgentRun (Razvan RFCs), not AgentDeployment.
 from __future__ import annotations
 
 import asyncio
-import base64
 import copy
-import json
 import logging
-import shlex
 import time
 from pathlib import PurePosixPath
 from typing import Any
@@ -67,10 +64,7 @@ _HTTP_PORT_NAME = "http"
 _PLUGIN_WHEELS_VOLUME = "plugin-wheels"
 _PLUGIN_WHEELS_MOUNT = "/opt/nemo/plugin-wheels"
 _NAT_CONFIG_ENV = "NAT_CONFIG_PATH"
-_NAT_CONFIG_YAML_ENV = "NAT_CONFIG_YAML"
-_AGENT_CONFIG_YAML_ENV = "AGENT_CONFIG_YAML"
 _AGENT_CONFIG_PATH_ENV = "AGENT_CONFIG_PATH"
-_STAGED_CONFIG_FILES_ENV = "STAGED_CONFIG_FILES_B64_JSON"
 _FABRIC_SERVER_MODULE = "nemo_agents_plugin.fabric.server"
 _AUTH_PROXY_IDENTITY = "agents"
 
@@ -256,29 +250,6 @@ def _fabric_server_cli_args(*, config_path: str, port: int) -> list[str]:
     ]
 
 
-def _materialize_config_and_exec(*, config_path: str, yaml_env: str, argv: list[str]) -> list[str]:
-    """Return ``sh -c`` args that write the config from *yaml_env*, then exec *argv*.
-
-    Docker mode needs this because the docker backend does not mount ``config_files``.
-    Paths and argv are shell-escaped so spaces/metacharacters cannot break the script.
-    """
-    quoted_path = shlex.quote(config_path)
-    quoted_argv = " ".join(shlex.quote(arg) for arg in argv)
-    return [f'mkdir -p "$(dirname {quoted_path})" && printf "%s" "${yaml_env}" > {quoted_path} && exec {quoted_argv}']
-
-
-def _materialize_staged_config_files_and_exec(*, env_name: str, argv: list[str]) -> list[str]:
-    """Return ``sh -c`` args that write staged ``config_files`` from *env_name*, then exec *argv*."""
-    quoted_argv = " ".join(shlex.quote(arg) for arg in argv)
-    inline_python = (
-        "import base64,json,os,pathlib;"
-        f"data=json.loads(os.environ[{json.dumps(env_name)}]);"
-        "[(pathlib.Path(p).parent.mkdir(parents=True,exist_ok=True),"
-        "pathlib.Path(p).write_bytes(base64.b64decode(b))) for p,b in data.items()]"
-    )
-    return [f"python -c {shlex.quote(inline_python)} && exec {quoted_argv}"]
-
-
 def executor_for_mode(config: DeploymentsRunnerConfig, mode: DeploymentMode) -> str | None:
     """Resolve the named deployments-plugin executor for *mode*."""
     if mode == "docker":
@@ -393,11 +364,9 @@ def build_deployment_config(
         env.append(EnvVar(name="PYTHONPATH", value=_PLUGIN_WHEELS_MOUNT))
 
     if is_fabric:
-        config_yaml_env = _AGENT_CONFIG_YAML_ENV
         server_command = ["python"]
         server_args = _fabric_server_cli_args(config_path=config_path, port=port)
     else:
-        config_yaml_env = _NAT_CONFIG_YAML_ENV
         server_command = ["nat", "start", "fastapi"]
         server_args = [
             "--config_file",
@@ -408,31 +377,8 @@ def build_deployment_config(
             str(port),
         ]
 
-    if mode == "docker":
-        # Docker backend does not mount config_files; materialize staged files from env.
-        if len(resolved_config_files) == 1:
-            single = resolved_config_files[0]
-            env.append(EnvVar(name=config_yaml_env, value=single.content))
-            command = ["sh", "-c"]
-            args = _materialize_config_and_exec(
-                config_path=single.path,
-                yaml_env=config_yaml_env,
-                argv=[*server_command, *server_args],
-            )
-        else:
-            payload = {
-                config_file.path: base64.b64encode(config_file.content.encode("utf-8")).decode("ascii")
-                for config_file in resolved_config_files
-            }
-            env.append(EnvVar(name=_STAGED_CONFIG_FILES_ENV, value=json.dumps(payload, separators=(",", ":"))))
-            command = ["sh", "-c"]
-            args = _materialize_staged_config_files_and_exec(
-                env_name=_STAGED_CONFIG_FILES_ENV,
-                argv=[*server_command, *server_args],
-            )
-    else:
-        command = server_command
-        args = server_args
+    command = server_command
+    args = server_args
 
     container = Container(
         name=_CONTAINER_NAME,

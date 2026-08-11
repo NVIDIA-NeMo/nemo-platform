@@ -24,6 +24,9 @@ export interface UseFilesetFileExplorerRowsOptions {
   treeRows: TreeRow[];
   expandedFolders: Set<string>;
   handleUserFolderToggle: (path: string) => void;
+  toggleFolderSubtreeExpand: (path: string) => void;
+  isFolderSubtreeExpanded: (path: string) => boolean;
+  folderHasSubfolders: (path: string) => boolean;
   datasetId: string;
   currentFolder?: string;
   onFileSelect?: (filePath: string) => void;
@@ -39,6 +42,9 @@ export function useFilesetFileExplorerRows({
   treeRows,
   expandedFolders,
   handleUserFolderToggle,
+  toggleFolderSubtreeExpand,
+  isFolderSubtreeExpanded,
+  folderHasSubfolders,
   datasetId,
   currentFolder,
   onFileSelect,
@@ -141,6 +147,9 @@ export function useFilesetFileExplorerRows({
                   directory={node}
                   datasetId={datasetId}
                   currentFolder={currentFolder}
+                  showExpandSubtree={!searchQuery && folderHasSubfolders(node.path)}
+                  isSubtreeExpanded={isFolderSubtreeExpanded(node.path)}
+                  onToggleExpandSubtree={() => toggleFolderSubtreeExpand(node.path)}
                 />
               ) : null,
             attributes: {
@@ -157,6 +166,9 @@ export function useFilesetFileExplorerRows({
       treeRows,
       expandedFolders,
       handleUserFolderToggle,
+      toggleFolderSubtreeExpand,
+      isFolderSubtreeExpanded,
+      folderHasSubfolders,
       datasetId,
       currentFolder,
       onFileSelect,

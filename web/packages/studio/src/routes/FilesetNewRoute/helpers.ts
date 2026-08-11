@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
+import { getErrorMessage as getApiErrorMessage } from '@nemo/common/src/api/common/utils';
 import { isHuggingFaceUrl, isNgcUrl } from '@studio/util/storageConfigFromUrl';
 
 export function getSampleDatasetName(workspace: string, sampleId: string): string {

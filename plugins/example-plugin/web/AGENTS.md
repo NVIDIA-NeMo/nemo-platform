@@ -31,11 +31,15 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 
 Studio injects everything a plugin needs through a **single `host` prop**
 (`host.workspaceId`, `host.auth`, `host.sdk`, `host.navigation`,
-`host.notifications`, `host.telemetry`) — grouped so new capabilities extend the
+`host.notifications`, `host.telemetry`, `host.breadcrumbs`) — grouped so new capabilities extend the
 handle without changing `Root`'s signature. Destructure what you use. All are
 backed by Studio's own singletons: `notifications` fires into Studio's shared
 toaster, `telemetry` logs to Studio's OTEL pipeline (auto-scoped to the plugin),
-`navigation` drives Studio's shared router.
+`navigation` drives Studio's shared router, and `breadcrumbs` writes Studio's
+breadcrumb bar — which lives in GlobalNav, *outside* the plugin's subtree, so a
+plugin cannot render it itself. Studio clears the trail when the plugin
+unmounts, but **not between pages within the plugin**: return a cleanup that
+clears it, or the trail follows you to the next page. See `src/SharedUiPage.tsx`.
 
 `@tanstack/react-query` **is** shared — call `useQuery`/`useMutation` and it reads
 Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the
@@ -81,6 +85,16 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   Studio bundles the same files through its own graph. A plugin adds no CSS.
 - **`useStudioDataViewState` syncs to URL search params** on Studio's shared
   router — two DataViews on one route will fight over them.
+- **Toasts need `onNotify`.** `ToastProvider` is *not* shared: Studio mounts it
+  by deep import, so this bundle carries its own `ToastContext` with nothing in
+  it. `ConfirmationModal`, `DeleteConfirmationModal` and `LogViewer` therefore
+  take an `onNotify` prop — pass `host.notifications.notify` and the message
+  lands in Studio's toaster. Omit it and the message is dropped with a
+  `logger.warn`; nothing throws, so the miss is silent in the UI.
+
+  ```tsx
+  <DeleteConfirmationModal onNotify={host.notifications.notify} ... />
+  ```
 
 ## Contract
 
@@ -92,8 +106,15 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
     auth: { accessToken: string; getAccessToken: () => string };
     sdk: { platform: /* @nemo/sdk platform hooks */ };
     navigation: { navigate: (to: string) => void; back: () => void };
-    notifications: { notify: (message: string, type?: 'success'|'error'|'info'|'warning') => void };
+    notifications: {
+      notify: (
+        message: string,
+        type?: 'success'|'error'|'info'|'warning',
+        options?: { durationMs?: number | false },
+      ) => void;
+    };
     telemetry: { info; warn; error: (m, cause?) => void; event: (name, attrs?) => void };
+    breadcrumbs: { set: (trail: { label: string; href?: string }[]) => void };
   };
 }
 ```

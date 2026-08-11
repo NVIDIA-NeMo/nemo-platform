@@ -20,9 +20,29 @@ export interface PluginNavigation {
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
+export interface NotificationOptions {
+  /** ms before auto-dismiss; `false` keeps the toast until dismissed. Defaults per type. */
+  durationMs?: number | false;
+}
+
 /** Fire a toast into Studio's shared toaster; defaults to `info`. */
 export interface PluginNotifications {
-  notify: (message: string, type?: NotificationType) => void;
+  notify: (message: string, type?: NotificationType, options?: NotificationOptions) => void;
+}
+
+export interface PluginBreadcrumb {
+  label: string;
+  /** Absolute Studio path; omit for the trailing (current) crumb. */
+  href?: string;
+}
+
+/**
+ * Write into Studio's breadcrumb bar, which renders in GlobalNav — outside the
+ * plugin's own subtree, so a plugin cannot render it itself. Studio clears the
+ * trail when the plugin unmounts.
+ */
+export interface PluginBreadcrumbs {
+  set: (trail: PluginBreadcrumb[]) => void;
 }
 
 /** Structured logging to Studio's OTEL pipeline, auto-scoped to the plugin. */
@@ -45,6 +65,7 @@ export interface PluginHost {
   navigation: PluginNavigation;
   notifications: PluginNotifications;
   telemetry: PluginTelemetry;
+  breadcrumbs: PluginBreadcrumbs;
 }
 
 export interface PluginRootProps {

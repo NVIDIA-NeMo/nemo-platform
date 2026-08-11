@@ -17,14 +17,16 @@ from typing import Protocol, cast
 
 from nemo_evaluator.api.schemas import (
     LATEST_TAG,
+    HarborTaskDefinition,
     MetricInline,
     MetricRef,
     Revision,
     Task,
+    TaskDefinition,
     TaskInput,
-    parse_entity_ref,
 )
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity
+from nemo_evaluator.metric_refs import parse_metric_ref
 from nemo_evaluator.revisions import (
     apply_tag,
     get_revision,
@@ -68,10 +70,7 @@ def _entity_to_task(entity: TaskEntity) -> Task:
         name=entity.name,
         workspace=entity.workspace,
         project=entity.project,
-        intent=entity.intent,
-        inputs=entity.inputs,
-        metrics=entity.metrics,
-        views=entity.views,
+        spec=entity.spec,
         metadata=entity.metadata,
         revision=entity.latest_revision,
         tags=entity.tags,
@@ -95,10 +94,7 @@ def _revision_to_task(head: TaskEntity, revision: TaskRevisionEntity) -> Task:
         name=head.name,
         workspace=head.workspace,
         project=head.project,
-        intent=revision.intent,
-        inputs=revision.inputs,
-        metrics=revision.metrics,
-        views=revision.views,
+        spec=revision.spec,
         metadata=revision.metadata,
         revision=revision.revision,
         tags={tag: ordinal for tag, ordinal in head.tags.items() if ordinal == revision.revision},
@@ -158,7 +154,7 @@ class TaskService:
         refs: list[MetricRef] = []
         for metric in metrics:
             if isinstance(metric, MetricRef):
-                ref_workspace, name = parse_entity_ref(metric.root, workspace)
+                ref_workspace, name = parse_metric_ref(metric.root, workspace)
                 if await self.metric_service.get_metric(ref_workspace, name) is None:
                     raise MetricRefNotFoundError(
                         f"Metric reference '{metric.root}' not found. "
@@ -170,12 +166,21 @@ class TaskService:
                 refs.append(await self.metric_service.store_derived_metric(metric, workspace=workspace))
         return refs
 
+    async def _normalize_spec(self, spec: TaskDefinition, *, workspace: str) -> TaskDefinition:
+        """Narrow a submitted spec to its stored form.
+
+        Only the agent-eval variant changes: its inline metrics are offloaded to derived stored
+        metrics so a persisted task holds references only. A Harbor spec is already in stored form —
+        its archive was uploaded before the task was submitted.
+        """
+        if isinstance(spec, HarborTaskDefinition):
+            return spec
+        # Same model in and out — only ``metrics`` narrows, from possibly-inline to references.
+        return spec.model_copy(update={"metrics": await self._normalize_metrics(spec.metrics, workspace=workspace)})
+
     async def _apply_content(self, entity: TaskEntity, task_input: TaskInput, *, workspace: str) -> TaskEntity:
         """Overwrite a head record's content from a request body (leaving revision pointers alone)."""
-        entity.intent = task_input.intent
-        entity.inputs = task_input.inputs
-        entity.metrics = await self._normalize_metrics(task_input.metrics, workspace=workspace)
-        entity.views = task_input.views
+        entity.spec = await self._normalize_spec(task_input.spec, workspace=workspace)
         entity.metadata = task_input.metadata
         return entity
 
@@ -188,10 +193,13 @@ class TaskService:
         where ``published`` is always ``True`` here — a fresh task always cuts a revision. Use
         :meth:`replace_task` to publish a further revision of an existing task.
         """
-        entity = await self._apply_content(
-            TaskEntity(name=name, workspace=workspace, project=project, intent=task_input.intent),
-            task_input,
+        # Normalize once: ``_apply_content`` would offload the same inline metrics a second time.
+        entity = TaskEntity(
+            name=name,
             workspace=workspace,
+            project=project,
+            spec=await self._normalize_spec(task_input.spec, workspace=workspace),
+            metadata=task_input.metadata,
         )
         try:
             created = await self.entity_client.create(entity)

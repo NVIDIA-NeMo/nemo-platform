@@ -6,6 +6,7 @@ import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledT
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getEntitiesGetWorkspaceQueryKey,
   getEntitiesListWorkspacesQueryKey,
@@ -15,7 +16,6 @@ import {
 import { EntitiesUpdateWorkspaceBody } from '@nemo/sdk/generated/platform/zod/entity-store';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { queryClient } from '@studio/api/queryClient';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC, useEffect } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';

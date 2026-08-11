@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { Banner, Button, Flex, Text, Tooltip } from '@nvidia/foundations-react-core';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { Empty } from '@studio/components/Empty';
 import {
   deleteCopilotSessionHistory,

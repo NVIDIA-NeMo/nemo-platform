@@ -86,3 +86,12 @@ class IntakeConfig(_BaseIntakeConfig):
         le=MAX_ATIF_MAX_SUBAGENT_DEPTH,
         description="Maximum number of trajectory levels accepted for recursive ATIF subagents.",
     )
+    denormalization_interval_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "How often the background worker drains the dirty set and denormalizes the distinct "
+            "agent/model name fields from ClickHouse onto Evaluation entities. Bounds how stale those "
+            "fields can be after ingest; ingest never blocks on it."
+        ),
+    )

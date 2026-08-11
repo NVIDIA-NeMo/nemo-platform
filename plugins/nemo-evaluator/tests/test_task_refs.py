@@ -9,6 +9,8 @@ from typing import TypeVar
 
 import pytest
 from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    HarborTaskDefinition,
     MetadataItem,
     MetricRef,
     TaskInputs,
@@ -19,7 +21,11 @@ from nemo_evaluator.api.schemas import (
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity, TasksetEntity, TasksetRevisionEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
 from nemo_evaluator.revisions import apply_tag, get_revision, head_digest, is_digest, publish_revision
-from nemo_evaluator.task_refs import resolve_agent_eval_tasks, resolve_taskset_ref
+from nemo_evaluator.task_refs import (
+    UnsupportedTaskKindError,
+    resolve_agent_eval_tasks,
+    resolve_taskset_ref,
+)
 from nemo_platform_plugin.entities import EntityBase
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 from pydantic import ValidationError
@@ -29,11 +35,14 @@ _EntityT = TypeVar("_EntityT", bound=EntityBase)
 
 def _task(name: str, *, workspace: str = "default", metric: str = "default/m") -> TaskEntity:
     return TaskEntity(
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent=f"Do {name}.",
+            inputs=TaskInputs(instruction=f"instruction for {name}"),
+            metrics=[MetricRef(metric)],
+        ),
         name=name,
         workspace=workspace,
-        intent=f"Do {name}.",
-        inputs=TaskInputs(instruction=f"instruction for {name}"),
-        metrics=[MetricRef(metric)],
         metadata=[MetadataItem(key="suite", value="geo")],
     )
 
@@ -117,8 +126,44 @@ async def test_resolves_taskset_members_to_inline_task_inputs(entity_store) -> N
     assert tasks[0].metrics == [MetricRef("default/m")]
     assert tasks[0].intent == "Do capital-of-france."
     assert tasks[0].inputs.instruction == "instruction for capital-of-france"
-    # A stored task carries no grader-only reference.
+    # A task stored without ground truth expands to an empty reference, not a missing one.
     assert tasks[0].reference == {}
+
+
+async def test_grader_only_reference_survives_taskset_expansion(entity_store) -> None:
+    """Held-out ground truth must not be the privilege of inline submissions.
+
+    Expansion projects a stored task onto the inline DTO field by field, so a field added to the
+    stored spec and forgotten here silently becomes empty at run time — the agent is then graded
+    against nothing, and the run still reports a score. That is the failure this guards.
+    """
+    task = _task("fix-bug")
+    task.spec.reference = {"expected": "Paris", "held_out_tests": ["test_capital.py"]}
+    client = await _store(entity_store, task, _taskset("geo", ["default/fix-bug"]))
+
+    tasks = await resolve_taskset_ref(TasksetRef("default/geo"), workspace="default", entity_client=client)
+
+    assert tasks[0].reference == {"expected": "Paris", "held_out_tests": ["test_capital.py"]}
+
+
+async def test_expansion_returns_the_pinned_reference_not_the_current_one(entity_store) -> None:
+    """``reference`` is digest-covered, so republishing it cuts a revision the old pin excludes.
+
+    A pin that honoured new ground truth would silently re-grade a "reproducible" dataset.
+    """
+    task = _task("fix-bug")
+    task.spec.reference = {"expected": "Paris"}
+    client = await _store(entity_store, task)
+    pinned_digest = head_digest(task)
+    await _create_published(client, _taskset("geo", [f"default/fix-bug#{pinned_digest}"]))
+
+    task.spec.reference = {"expected": "Lyon"}
+    await client.update(task)
+    await publish_revision(client, client, task, TaskRevisionEntity)
+
+    tasks = await resolve_taskset_ref(TasksetRef("default/geo"), workspace="default", entity_client=client)
+
+    assert tasks[0].reference == {"expected": "Paris"}, "expansion must return the pinned ground truth"
 
 
 async def test_bare_member_ref_resolves_against_taskset_workspace(entity_store) -> None:
@@ -191,7 +236,7 @@ async def test_expansion_uses_the_pinned_revision_not_current_content(entity_sto
     await _create_published(client, _taskset("geo", [f"default/capital-of-france#{pinned_digest}"]))
 
     # The member publishes newer content after the taskset was pinned.
-    task.intent = "Something else entirely."
+    task.spec.intent = "Something else entirely."
     await client.update(task)
     await publish_revision(client, client, task, TaskRevisionEntity)
 
@@ -216,7 +261,7 @@ async def test_a_tag_pinned_member_stores_the_tagged_revision_not_the_head(entit
     # ``apply_tag`` hands back — tagging bumps the record's version, so the original object is stale.
     stored_task = await client.get(TaskEntity, name="capital-of-france", workspace="default")
     tagged = await apply_tag(client, client, TaskRevisionEntity, stored_task, "blessed", "latest")
-    tagged.intent = "Something else entirely."
+    tagged.spec.intent = "Something else entirely."
     await client.update(tagged)
     await publish_revision(client, client, tagged, TaskRevisionEntity)
 
@@ -322,3 +367,21 @@ async def test_expansion_fails_loudly_when_a_pin_no_longer_resolves(entity_store
 
     with pytest.raises(ValueError, match="no longer resolves"):
         await resolve_taskset_ref(TasksetRef("default/geo"), workspace="default", entity_client=client)
+
+
+async def test_expansion_rejects_a_task_whose_runner_the_target_cannot_run(entity_store) -> None:
+    """A Harbor task's content is a directory of files, not fields. Projecting it onto an inline
+    agent-eval task would silently produce a task with no intent and no metrics — an evaluation that
+    runs and scores nothing. Refused instead, before the run starts."""
+    harbor_task = TaskEntity(
+        name="fix-test",
+        workspace="default",
+        spec=HarborTaskDefinition(
+            kind="harbor", archive_ref="default/harbor#packages/o-n/abc/dist.tar.gz", archive_digest="a" * 64
+        ),
+    )
+    client = await _store(entity_store, harbor_task)
+    await _create_published(client, _taskset("mixed", [f"default/fix-test#{head_digest(harbor_task)}"]))
+
+    with pytest.raises(UnsupportedTaskKindError, match="harbor"):
+        await resolve_taskset_ref(TasksetRef("default/mixed"), workspace="default", entity_client=client)

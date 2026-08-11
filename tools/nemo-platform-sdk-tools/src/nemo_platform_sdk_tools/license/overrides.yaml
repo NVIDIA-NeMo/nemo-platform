@@ -192,6 +192,9 @@ overrides:
   wrapt: BSD-3-Clause # Module for decorators and wrappers
   python-on-whales: MIT # Docker SDK for Python
 
+  # Go
+  stdlib: BSD-3-Clause # Go standard library - https://go.dev/LICENSE
+
   # Specialized
   betterproto: MIT # Better protobuf support
   cut-cross-entropy: APSL-2.0 # https://github.com/unslothai/cut-cross-entropy/blob/main/LICENSE, but it appears to be unsloth's fork https://pypi.org/project/cut-cross-entropy/

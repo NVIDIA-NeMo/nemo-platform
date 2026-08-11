@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 
-from nemo_evaluator.api.schemas import MetricRef
+from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, MetricRef
 from nemo_evaluator.entities import TaskEntity
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticReducer, SemanticView, ViewSignal
 
@@ -22,16 +22,19 @@ def _entity() -> TaskEntity:
     return TaskEntity(
         name="task-1",
         workspace="default",
-        intent="Answer the question.",
-        inputs={"instruction": "What is 2+2?"},
-        # A persisted task holds metric references only — a workspace-qualified ref and a bare name.
-        metrics=[MetricRef("default/stored-metric"), MetricRef("derived.abc123")],
-        views={
-            "correctness": SemanticView(
-                reducer=SemanticReducer.SINGLE,
-                signals=[ViewSignal(metric="exact-match", output="score")],
-            )
-        },
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent="Answer the question.",
+            inputs={"instruction": "What is 2+2?"},
+            # A persisted task holds metric references only — a workspace-qualified ref and a bare name.
+            metrics=[MetricRef("default/stored-metric"), MetricRef("derived.abc123")],
+            views={
+                "correctness": SemanticView(
+                    reducer=SemanticReducer.SINGLE,
+                    signals=[ViewSignal(metric="exact-match", output="score")],
+                )
+            },
+        ),
         metadata=[{"key": "suite", "value": "smoke"}],
     )
 
@@ -47,16 +50,16 @@ def test_roundtrip_preserves_task_fields() -> None:
 
     restored = _roundtrip(entity)
 
-    assert restored.intent == "Answer the question."
-    assert restored.inputs.instruction == "What is 2+2?"
+    assert restored.spec.intent == "Answer the question."
+    assert restored.spec.inputs.instruction == "What is 2+2?"
     assert [(m.key, m.value) for m in restored.metadata] == [("suite", "smoke")]
     # Metric refs survive as RootModel strings.
-    assert isinstance(restored.metrics[0], MetricRef)
-    assert restored.metrics[0].root == "default/stored-metric"
-    assert isinstance(restored.metrics[1], MetricRef)
-    assert restored.metrics[1].root == "derived.abc123"
+    assert isinstance(restored.spec.metrics[0], MetricRef)
+    assert restored.spec.metrics[0].root == "default/stored-metric"
+    assert isinstance(restored.spec.metrics[1], MetricRef)
+    assert restored.spec.metrics[1].root == "derived.abc123"
     # Nested SemanticView survives the JSON column.
-    assert restored.views == entity.views
+    assert restored.spec.views == entity.spec.views
 
 
 def test_entity_type_is_task() -> None:
