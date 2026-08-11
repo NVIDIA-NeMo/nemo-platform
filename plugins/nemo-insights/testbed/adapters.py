@@ -155,7 +155,7 @@ class BenchmarkAdapter:
         domain = str(cfg["domain"])
         base_url = str(cfg["base_url"])
         base = str(cfg["workspace"])  # stable workspace + agent + experiment-group name
-        run_id = mint_agent_id(base)  # the per-run Experiment name + nemo.experiment.id tag
+        run_id = mint_agent_id(base)  # the per-run Experiment name + nemo.evaluation.name tag
         agent = base  # stable agent name across runs
         created_at = datetime.now(timezone.utc).isoformat()
         # Stable workspaces: the realistic (oracle-free, blind-eval) target is always

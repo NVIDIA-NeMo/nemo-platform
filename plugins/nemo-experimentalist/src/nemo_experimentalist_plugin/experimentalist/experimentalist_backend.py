@@ -58,6 +58,8 @@ async def _upload_trace_otlp(
     workspace: str,
     ref: ResourceRef,
     *,
+    # TODO: rename experiment_id -> evaluation_name to match the ingested attribute
+    # (nemo.evaluation.name carries the Evaluation's name). Plumb the rename through callers.
     experiment_id: str,
     trial_id: str,
     task_id: str,
@@ -67,7 +69,7 @@ async def _upload_trace_otlp(
 
     path = Path(urlparse(ref.uri).path)
     attrs: dict[str, str] = {
-        "nemo.experiment.id": experiment_id,
+        "nemo.evaluation.name": experiment_id,
         "nemo.test_case.id": task_id,
         "nemo.trial.id": trial_id,
         **(extra_attrs or {}),
@@ -674,7 +676,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                 ):
                     rows.append(span.model_dump(mode="json", exclude_none=True))
                 attrs = {
-                    "nemo.experiment.id": experiment_id,
+                    "nemo.evaluation.name": experiment_id,
                     "nemo.test_case.id": trial.task_id,
                     "nemo.trial.id": trial.id,
                     **agent_attrs,

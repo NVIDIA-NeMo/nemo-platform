@@ -130,7 +130,7 @@ curl -sf -X POST \
 Pick the ingest endpoint that matches your producer. **Read `../nemo-intake/references/ingest-formats.md` for the full schema and a copy-pasteable example for each.** How you attach evaluation identity depends on the endpoint:
 
 - **ATIF and chat-completions** (JSON body) — add an `evaluation_context = {evaluation_id: "<the Evaluation name>", test_case_id: "<task id>"}` object to the payload.
-- **OTLP** — there is no body field; set `nemo.experiment.id` (the Evaluation **name**) and
+- **OTLP** — there is no body field; set `nemo.evaluation.name` (the Evaluation **name**) and
   `nemo.test_case.id` (the task ID) as **attributes on the root span**. Spans missing these still
   ingest but won't associate to an Evaluation.
 
@@ -176,7 +176,7 @@ You succeeded when `GET .../evaluations/my-eval-baseline` shows:
 - `run_count` ≥ 1 (each ingested session counts as one run), and
 - non-empty `evaluator_names` / `aggregate_scores` if you logged rewards, and/or `cost_usd` if your spans carried cost.
 
-If `run_count` is 0 after ingesting, the traces didn't associate — almost always a wrong evaluation identity: `evaluation_context.evaluation_id` for ATIF/chat-completions, or the `nemo.experiment.id` root-span attribute for OTLP (see Gotchas).
+If `run_count` is 0 after ingesting, the traces didn't associate — almost always a wrong evaluation identity: `evaluation_context.evaluation_id` for ATIF/chat-completions, or the `nemo.evaluation.name` root-span attribute for OTLP (see Gotchas).
 
 ## If verification fails
 
@@ -184,7 +184,7 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 |---|---|---|
 | `400 "…must be created before it can be logged."` | Ingested before the Evaluation existed, or `evaluation_id` doesn't match | Create the Evaluation (step 2); ensure `evaluation_context.evaluation_id` equals its **name** |
 | `422 Unprocessable` on ingest | Unknown/typo'd top-level key (ATIF/chat-completions are `extra="forbid"`) or bad `schema_version` | Check the exact schema in `../nemo-intake/references/ingest-formats.md`; remove stray keys |
-| Ingest 2xx but `run_count` stays 0 | Evaluation identity missing/wrong — `evaluation_context.evaluation_id` (ATIF/chat-completions) or the `nemo.experiment.id` root-span attribute (OTLP) ≠ the Evaluation's name | Attach the identity for your endpoint; use the Evaluation **name**, not its id |
+| Ingest 2xx but `run_count` stays 0 | Evaluation identity missing/wrong — `evaluation_context.evaluation_id` (ATIF/chat-completions) or the `nemo.evaluation.name` root-span attribute (OTLP) ≠ the Evaluation's name | Attach the identity for your endpoint; use the Evaluation **name**, not its id |
 | `503` on GET evaluation / sessions | ClickHouse (telemetry store) not running | Start ClickHouse; rollups and sessions require it |
 | Scores don't show up | Rewards not under `extra.verifier_result.rewards`, or wrong `data_type` on `/evaluator-results` | See `references/troubleshooting.md` |
 
@@ -192,7 +192,7 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 
 - **Create before you log.** The Evaluation entity must exist before any ingest referencing it — otherwise `400`.
 - **`evaluation_id` is the Evaluation's `name`, not its entity id.** But **`experiment_ids` holds the Experiment's `id`.** Different identifiers; easy to swap.
-- **OTLP uses the attribute key `nemo.experiment.id`** (and `nemo.test_case.id`) — the span-attribute key still says "experiment" even though the JSON body field is `evaluation_context`. Set `nemo.experiment.id` on your root span.
+- **OTLP uses the attribute key `nemo.evaluation.name`** (and `nemo.test_case.id`) — set it to the Evaluation's **name** on your root span, matching the `evaluation_id` field the JSON `evaluation_context` carries on the other endpoints. The pre-rename key `nemo.experiment.id` is still accepted on ingest, so older exporters keep associating.
 - **The parent lives at `/experiments`; `/experiment-groups` is a deprecated hidden alias.** Prefer `/experiments`. Evaluations are created and logged under `/evaluations`.
 - **`metadata` is `dict[str, str]`** — stringify non-string values or you'll get a `422`.
 - **ATIF and chat-completions are `extra="forbid"`** (unknown keys → 422); `evaluation_context` itself is lenient (`extra="ignore"`).

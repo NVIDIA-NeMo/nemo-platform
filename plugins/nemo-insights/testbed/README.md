@@ -183,7 +183,7 @@ Each benchmark `run` reuses **two stable workspaces** per subject — `<workspac
 (the realistic, oracle-free workspace the Analyst evaluates, blind) and
 `<workspace>-oracle` (the answer key + scores, for the UI). The stanza's `workspace`
 is that base name. Runs no longer mint a workspace each. Run isolation comes from
-the per-span `nemo.experiment.id=<run-id>` tag plus the Analyst's `evaluation_id`
+the per-span `nemo.evaluation.name=<run-id>` tag plus the Analyst's `evaluation_id`
 filter (which AND-pins every span read to that run) — that is what scopes the
 analysis. The matching **Experiment** entity registered on the `-oracle` workspace
 is metadata for the UI (run-picker + leaderboard), not the scoping mechanism. So

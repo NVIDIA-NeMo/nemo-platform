@@ -133,6 +133,8 @@ async def _upload_trials(
     trials: list[TrialResult],
     *,
     workspace: str,
+    # TODO: rename experiment_id -> evaluation_name to match the ingested attribute
+    # (nemo.evaluation.name carries the Evaluation's name). Plumb the rename through callers.
     experiment_id: str,
     agent_name: str,
     agent_version: str,
@@ -149,7 +151,7 @@ async def _upload_trials(
             raise RuntimeError(f"Trace {trace_id} was produced by more than one trial")
 
         attrs = {
-            "nemo.experiment.id": experiment_id,
+            "nemo.evaluation.name": experiment_id,
             "nemo.test_case.id": trial.task_id,
             "nemo.trial.id": trial.id,
             "gen_ai.agent.name": agent_name,

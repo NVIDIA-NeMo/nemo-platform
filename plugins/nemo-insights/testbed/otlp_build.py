@@ -78,6 +78,8 @@ def sim_to_spans(
     agent_name: str,
     agent_version: str,
     session_id: str,
+    # TODO: rename experiment_id -> evaluation_name to match the ingested attribute
+    # (nemo.evaluation.name carries the Evaluation's name). Plumb the rename through callers.
     experiment_id: str,
     task: dict[str, Any] | None = None,
     include_rewards: bool,
@@ -95,7 +97,7 @@ def sim_to_spans(
     task's ``evaluation_criteria`` only appear when it is set (the realistic twin
     withholds them so the eval is unaided).
 
-    ``experiment_id`` is stamped on every span as ``nemo.experiment.id`` (with
+    ``experiment_id`` is stamped on every span as ``nemo.evaluation.name`` (with
     the sim's task id as ``nemo.test_case.id``) so a run's spans are queryable
     back via the spans filter ``{"evaluation_id": experiment_id}`` — the per-run
     scope that lets many runs share one workspace.
@@ -113,7 +115,7 @@ def sim_to_spans(
         return {
             "gen_ai.conversation.id": session_id,
             "session.id": session_id,
-            "nemo.experiment.id": experiment_id,
+            "nemo.evaluation.name": experiment_id,
             "nemo.test_case.id": test_case_id,
         }
 
