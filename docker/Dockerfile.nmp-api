@@ -76,13 +76,16 @@ COPY --from=root-busybox /bin/tail /bin/tail
 COPY --from=root-busybox /bin/grep /bin/grep
 COPY --from=root-busybox /bin/echo /bin/echo
 COPY --from=root-busybox /bin/sleep /bin/sleep
+COPY --from=root-busybox /bin/dirname /bin/dirname
 
 ENV USERNAME=nvs \
     HOME=/home/nvs
 # DuckDB extension cache (aws, httpfs) for S3 log storage
 COPY --chown=1000:1000 --from=builder /root/.duckdb /home/nvs/.duckdb
 COPY --chown=1000:1000 --from=builder /app/.venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
+ENV VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/.venv/lib/python${PY_VERSION}/site-packages"
 COPY --chown=1000:1000 --from=nmp-jobs-launcher /artifacts/jobs-launcher /tools/jobs-launcher
 COPY --chown=1000:1000 --from=nmp-studio-ui /artifacts /static/studio
 COPY --chown=1000:1000 --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
