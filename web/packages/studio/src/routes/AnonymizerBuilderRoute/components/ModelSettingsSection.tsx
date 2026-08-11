@@ -7,8 +7,10 @@ import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   activeRolesForStrategy,
+  ANONYMIZER_PARAM_METADATA,
   GLINER_ROLE,
   ROLE_LABELS,
+  supportsSamplingParams,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerModels } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerModels';
@@ -63,15 +65,24 @@ export const ModelSettingsSection: FC = () => {
                 }}
               />
             </div>
-            <ParamsDropdown
-              open={openParamsRole === role}
-              onOpenChange={(next) => setOpenParamsRole(next ? role : null)}
-              inferenceParams={roleModelsValue?.[role]?.params as Partial<InferenceParams>}
-              onInferenceParamsChange={(params) =>
-                setValue(`roleModels.${role}.params`, params as Record<string, unknown>)
-              }
-            />
+            {supportsSamplingParams(role) && (
+              <ParamsDropdown
+                open={openParamsRole === role}
+                onOpenChange={(next) => setOpenParamsRole(next ? role : null)}
+                inferenceParams={roleModelsValue?.[role]?.params as Partial<InferenceParams>}
+                onInferenceParamsChange={(params) =>
+                  setValue(`roleModels.${role}.params`, params as Record<string, unknown>)
+                }
+                fieldMetadata={ANONYMIZER_PARAM_METADATA}
+              />
+            )}
           </Flex>
+          {!supportsSamplingParams(role) && (
+            <Text kind="body/regular/sm" className="text-secondary">
+              GLiNER detection takes entity labels and a confidence threshold, so temperature, max
+              tokens, and top P do not apply.
+            </Text>
+          )}
         </Stack>
       ))}
     </Stack>

@@ -15,7 +15,9 @@ import {
   ANNOTATE_DEFAULT_TEMPLATE,
   DETECTION_ROLES,
   DEFAULT_MODEL_MAX_TOKENS,
+  DEFAULT_MODEL_TEMPERATURE,
   DEFAULT_MODEL_TIMEOUT_SECONDS,
+  DEFAULT_MODEL_TOP_P,
   DEFAULT_PREVIEW_ROWS,
   MAX_PREVIEW_ROWS,
   ENTITY_MODE_CUSTOM,
@@ -33,11 +35,13 @@ import {
   REWRITE_STRATEGY,
   RISK_TOLERANCE_DEFAULT,
   RISK_TOLERANCE_ORDER,
+  SAMPLING_PARAM_KEYS,
   SOURCE_TYPE_DATASET,
   STRATEGY_ANNOTATE,
   STRATEGY_HASH,
   STRATEGY_REDACT,
   STRATEGY_SUBSTITUTE,
+  supportsSamplingParams,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import { trimToUndefined } from '@studio/util/strings';
 import { z } from 'zod';
@@ -207,6 +211,30 @@ const buildDetectConfig = (
   return { entity_labels: labels };
 };
 
+/**
+ * Sampling params are dropped for the GLiNER detector rather than merely hidden, so a role that
+ * once held them (or a strategy switch) can't leave them on a model that ignores them.
+ */
+const buildRoleParams = (
+  role: string,
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> => {
+  if (!supportsSamplingParams(role)) {
+    const kept = Object.entries(overrides).filter(
+      ([key]) => !SAMPLING_PARAM_KEYS.includes(key as (typeof SAMPLING_PARAM_KEYS)[number])
+    );
+    return { timeout: DEFAULT_MODEL_TIMEOUT_SECONDS, ...Object.fromEntries(kept) };
+  }
+
+  return {
+    timeout: DEFAULT_MODEL_TIMEOUT_SECONDS,
+    max_tokens: DEFAULT_MODEL_MAX_TOKENS,
+    temperature: DEFAULT_MODEL_TEMPERATURE,
+    top_p: DEFAULT_MODEL_TOP_P,
+    ...overrides,
+  };
+};
+
 export const buildAnonymizerJobRequest = (
   form: AnonymizerFormData,
   defaultEntityLabels: string[] = []
@@ -229,11 +257,7 @@ export const buildAnonymizerJobRequest = (
     const roleModel = form.roleModels[role];
     const model = roleModel?.model.trim() ?? '';
     const provider = roleModel?.provider.trim() ?? '';
-    const params = {
-      timeout: DEFAULT_MODEL_TIMEOUT_SECONDS,
-      max_tokens: DEFAULT_MODEL_MAX_TOKENS,
-      ...(roleModel?.params ?? {}),
-    };
+    const params = buildRoleParams(role, roleModel?.params);
     const key = `${provider}::${model}::${JSON.stringify(params)}`;
     let alias = aliasByModel.get(key);
     if (!alias) {
