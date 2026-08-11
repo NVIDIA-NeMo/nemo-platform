@@ -345,8 +345,11 @@ def compile_grpo_config(
             "context_parallel_size": parallelism.context_parallel_size,
             "custom_parallel_plan": None,
             "env_vars": {"PYTORCH_CUDA_ALLOC_CONF": ""},
-            "lora_cfg": lora_cfg,
-            **({"_v2": True} if lora_cfg["enabled"] else {}),
+            # Both keys are NotRequired in NeMo-RL's DTensorConfig and are read as
+            # `.get("lora_cfg", {}).get("enabled", False)` / `.get("_v2", False)`, so a
+            # full-weight run simply omits them. Emitting them together also makes the
+            # coupling structural rather than a convention two lines have to honor.
+            **({"lora_cfg": lora_cfg, "_v2": True} if lora_cfg["enabled"] else {}),
         },
         "megatron_cfg": _megatron_cfg_disabled(precision, grpo_hp.max_grad_norm),
         "optimizer": _build_optimizer_config(customizer_config),
