@@ -72,12 +72,15 @@ export const CUSTOMIZATION_TEMPLATES: CustomizationTemplate[] = [
     title: 'LoRA — Nemotron 3 Super (Text-to-SQL)',
     trainingLabel: 'LoRA',
     description:
-      'Teach Nemotron 3 Super to write SQL from a database schema and a question, trained on BIRD-SQL. A mixture-of-experts model this size is impractical to tune by hand — this recipe ships the expert-parallel and LoRA settings that make it fit on one 8×80GB node. Requires HF token.',
+      'Teach Nemotron 3 Super to write SQL from a database schema and a question, trained on BIRD-SQL. A mixture-of-experts model this size is impractical to tune by hand — this recipe ships the expert-parallel and LoRA settings that make it fit on one 8×80GB node.',
     models: [
       {
         hfRepoId: 'nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16',
         name: 'nemotron-3-super-120b-a12b-bf16',
-        requiresHfToken: true,
+        // The cookbook tells you to `huggingface-cli login`, but the repo is not gated
+        // (HF reports gated: false and config.json resolves unauthenticated). Requiring a
+        // token here would block provisioning on an `hf-token` secret nobody needs.
+        requiresHfToken: false,
         trustRemoteCode: true,
       },
     ],

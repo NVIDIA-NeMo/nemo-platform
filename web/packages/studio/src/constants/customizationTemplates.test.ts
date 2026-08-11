@@ -51,10 +51,12 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
     const fields = template.buildFormSpec(WORKSPACE, DATASET_REF);
     const { automodel } = fields;
 
-    it('requires an HF token and trust_remote_code for the gated Nemotron checkpoint', () => {
+    it('needs trust_remote_code but no HF token — the Nemotron repo is not gated', () => {
+      // Unlike the Llama templates, this checkpoint is public. Marking it gated would
+      // make provisioning fail for anyone without an `hf-token` secret configured.
       expect(template.models).toHaveLength(1);
       expect(template.models[0].hfRepoId).toBe('nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16');
-      expect(template.models[0].requiresHfToken).toBe(true);
+      expect(template.models[0].requiresHfToken).toBe(false);
       expect(template.models[0].trustRemoteCode).toBe(true);
     });
 
