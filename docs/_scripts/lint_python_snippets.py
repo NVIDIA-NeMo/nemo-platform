@@ -51,7 +51,9 @@ SKIP_NEXT_TYPE_CHECK_MARKERS = {
     "<!-- @nemo-docs: skip-python-type-check -->",
     "<!-- @nemo-nb: skip-type-check -->",
 }
-DEFAULT_IGNORED_TY_RULES = ("possibly-unbound-attribute",)
+# ``possibly-unbound-attribute`` was renamed upstream; passing the old name makes ty emit
+# ``warning[unknown-rule]``, which fails this check for every doc regardless of its snippets.
+DEFAULT_IGNORED_TY_RULES = ("possibly-missing-attribute",)
 
 
 @dataclass(frozen=True)

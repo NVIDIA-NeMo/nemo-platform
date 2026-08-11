@@ -26,7 +26,6 @@ from nemo_evaluator.api.schemas import (
     TaskRef,
     Taskset,
     TasksetInput,
-    parse_entity_ref,
     parse_subentity_ref,
 )
 from nemo_evaluator.entities import TasksetEntity, TasksetRevisionEntity
@@ -184,10 +183,14 @@ class TasksetService:
         The field validator only catches byte-identical refs; this catches refs that differ in form
         but resolve to the same ``(workspace, name)`` — e.g. ``task-a`` and ``default/task-a`` in
         the ``default`` workspace.
+
+        The revision fragment is deliberately discarded: two refs naming the same task at different
+        revisions are still the same member, and a taskset holding both would expand that task twice.
         """
         seen: set[tuple[str, str]] = set()
         for ref in tasks:
-            resolved = parse_entity_ref(ref.root, workspace)
+            ref_workspace, name, _ = parse_subentity_ref(ref.root, workspace)
+            resolved = (ref_workspace, name)
             if resolved in seen:
                 raise DuplicateTaskRefError(
                     f"Task reference '{ref.root}' resolves to '{resolved[0]}/{resolved[1]}', already in this taskset"

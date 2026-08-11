@@ -10,9 +10,6 @@ from enum import StrEnum
 from typing import Annotated, TypeAlias
 
 from nemo_evaluator.api.fields import (
-    FILESET_REF_PATTERN as FILESET_REF_PATTERN,
-)
-from nemo_evaluator.api.fields import (
     LATEST_TAG as LATEST_TAG,
 )
 from nemo_evaluator.api.fields import (
@@ -22,10 +19,19 @@ from nemo_evaluator.api.fields import (
     REF_FRAGMENT_SEPARATOR as REF_FRAGMENT_SEPARATOR,
 )
 from nemo_evaluator.api.fields import (
+    CloudpickleMetricPayload as CloudpickleMetricPayload,
+)
+from nemo_evaluator.api.fields import (
+    InlineMetricPayload as InlineMetricPayload,
+)
+from nemo_evaluator.api.fields import (
     MetadataItem as MetadataItem,
 )
 from nemo_evaluator.api.fields import (
     MetricInline as MetricInline,
+)
+from nemo_evaluator.api.fields import (
+    MetricPayload as MetricPayload,
 )
 from nemo_evaluator.api.fields import (
     MetricRef as MetricRef,
@@ -52,9 +58,6 @@ from nemo_evaluator.api.fields import (
     TasksetRef as TasksetRef,
 )
 from nemo_evaluator.api.fields import (
-    parse_entity_ref as parse_entity_ref,
-)
-from nemo_evaluator.api.fields import (
     parse_subentity_ref as parse_subentity_ref,
 )
 from nemo_evaluator.api.task_definitions.evaluator import EvaluatorTaskDefinition as EvaluatorTaskDefinition
@@ -66,6 +69,9 @@ from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ENTITY_BASE_FIELDS
+from nemo_platform_plugin.refs import (
+    FILESET_REF_PATTERN as FILESET_REF_PATTERN,
+)
 from nemo_platform_plugin.schema import DatetimeFilter, Filter
 from pydantic import BaseModel, ConfigDict, Field
 

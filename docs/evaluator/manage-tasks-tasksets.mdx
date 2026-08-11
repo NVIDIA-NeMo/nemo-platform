@@ -99,10 +99,15 @@ print(stored.id, stored.spec.metrics)
 
 ### Task kinds
 
-A task is an evaluation unit; its `kind` says which runner executes it. Both kinds are stored as the
-same record type, so a taskset can group them and you manage every evaluation unit in one place.
+A task is an evaluation unit; its `kind` says which runner executes it. There are two:
 
-`EvaluatorTaskDefinition` (`kind="evaluator"`) — scored by platform metrics:
+- `evaluator` — the task's content is fields you author, scored by platform metrics.
+- `harbor` — the task's content is a packaged directory of files, scored by Harbor's own reward.
+
+Both are stored as the same record type, so a taskset can group them and you manage every evaluation
+unit in one place regardless of which runner executes it.
+
+`EvaluatorTaskDefinition` (`kind="evaluator"`):
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -112,7 +117,7 @@ same record type, so a taskset can group them and you manage every evaluation un
 | `metrics` | `list[MetricRefOrInline]` | No | The metrics that score the task, as `MetricRef` references (`workspace/name`) to stored metrics. Pre-built inline metric bundles (`MetricInline`) are also accepted and are normalized to stored metrics on create. |
 | `views` | `dict[str, SemanticView]` | No | Optional reporting views mapping metric outputs into named semantic scores. |
 
-`HarborTaskDefinition` (`kind="harbor"`) — a Harbor task, scored by Harbor's own reward:
+`HarborTaskDefinition` (`kind="harbor"`):
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -161,9 +166,12 @@ no existence check.
 
 ```python
 revised_task = TaskInput(
-    intent="Answer the user's geography question with the capital city.",
-    inputs=TaskInputs(instruction="Name the capital city of France."),
-    metrics=[MetricRef("default/answer-exact-match")],
+    spec=EvaluatorTaskDefinition(
+        kind="evaluator",
+        intent="Answer the user's geography question with the capital city.",
+        inputs=TaskInputs(instruction="Name the capital city of France."),
+        metrics=[MetricRef("default/answer-exact-match")],
+    ),
     metadata=[MetadataItem(key="suite", value="geography")],
 )
 
@@ -199,7 +207,7 @@ original = tasks.retrieve("capital-of-france", revision=digest)  # revision 1, a
 current = tasks.retrieve("capital-of-france")                    # revision 2, the current content
 
 assert original.revision == 1 and current.revision == 2
-assert original.inputs.instruction != current.inputs.instruction
+assert original.spec.inputs.instruction != current.spec.inputs.instruction
 ```
 
 ### Tag a revision

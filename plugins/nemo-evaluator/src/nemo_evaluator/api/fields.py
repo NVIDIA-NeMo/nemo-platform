@@ -7,6 +7,12 @@ Split out of :mod:`nemo_evaluator.api.schemas` so the per-kind task definitions 
 without importing the module that composes them into DTOs — the definitions are imported *by*
 ``schemas``, so they cannot import from it.
 
+What counts as a ``workspace/name`` reference is **not** decided here: the shape
+(:data:`~nemo_platform_plugin.refs.ENTITY_REF_PATTERN`) and the parser
+(:func:`~nemo_platform_plugin.refs.parse_entity_ref`) are the platform's, shared with every other
+plugin. This module only adds what is specific to a *revisioned* evaluator entity — the ``#fragment``
+that selects a revision.
+
 Everything here is re-exported from ``schemas`` for callers that already import it from there.
 """
 
@@ -21,6 +27,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricMetadata,
 )
 from nemo_evaluator_sdk.values.common import SecretRef
+from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, parse_entity_ref
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, RootModel, field_validator
 
 
@@ -107,71 +114,53 @@ class MetricInline(BaseModel):
     payload: MetricPayload = Field(description="Format-specific serialized metric.")
 
 
-# An entity reference is ``name`` or ``workspace/name``, each segment using the platform name charset.
-# Shared by every ``workspace/name`` reference type (metrics, tasks). Enforced on the field so
-# empty/malformed refs are rejected at validation rather than during parsing.
-_ENTITY_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
-
 #: The charset a ``#fragment`` may use. Exported because anything that *mints* a fragment — notably
 #: revision tag names — has to be constrained by it: a value outside this set can be stored happily
 #: and then never appear in a reference, which is a silent dead end rather than an error.
 REF_FRAGMENT_CHARSET = r"[\w\-.]+"
 
-# A *sub-entity* reference adds an optional ``#fragment``, the platform's standard way of addressing
-# something contained within an entity (filesets address a contained file the same way:
-# ``workspace/fileset#path``). For a revisioned entity the fragment selects a revision — either a tag
-# (``#latest``, ``#candidate``) or a full 64-char content digest.
+# A *sub-entity* reference adds an optional ``#fragment`` to the platform's ``ENTITY_REF_PATTERN``,
+# which is the standard way of addressing something contained within an entity (filesets address a
+# contained file the same way: ``workspace/fileset#path``). For a revisioned entity the fragment
+# selects a revision — either a tag (``#latest``, ``#candidate``) or a full 64-char content digest.
 #
-# Deliberately a sibling of ``_ENTITY_REF_PATTERN`` rather than a widening of it: that constant is
+# Deliberately a sibling of ``ENTITY_REF_PATTERN`` rather than a widening of it: that constant is
 # still shared by ``MetricRef``, which has no revisions, and admitting a fragment there would accept
 # input nothing is built to resolve. ``TaskRef`` and ``TasksetRef`` both use this pattern, since both
 # name revisioned records; ``MetricRef`` joins them when (if) metrics gain revisions.
-_SUBENTITY_REF_PATTERN = rf"^[\w\-.]+(/[\w\-.]+)?(#{REF_FRAGMENT_CHARSET})?$"
+#
+# The base alternation is spliced in from the shared constant (minus its anchors) so the two shapes
+# cannot drift: widening what counts as a ``workspace/name`` widens both at once.
+_SUBENTITY_REF_PATTERN = rf"^{ENTITY_REF_PATTERN.removeprefix('^').removesuffix('$')}(#{REF_FRAGMENT_CHARSET})?$"
 #: The fragment separator for sub-entity references. Matches the fileset/job ref convention.
 REF_FRAGMENT_SEPARATOR = "#"
 #: The tag applied to every publish and used when a ref carries no fragment.
 LATEST_TAG = "latest"
-# A *fileset* reference: ``workspace/fileset#path/inside.ext``. The fragment is a file path, so
-# unlike a revision fragment it admits ``/`` and ``.``. Validated on the field so a malformed
-# reference is rejected at publish rather than surfacing as a download failure mid-run — the same
-# reason a metric reference is checked when a task is stored.
-FILESET_REF_PATTERN = r"^[\w\-.]+/[\w\-.]+#[\w\-./]+$"
-
-
-def parse_entity_ref(root: str, default_workspace: str) -> tuple[str, str]:
-    """Split a validated ``workspace/name`` (or bare ``name``) reference into ``(workspace, name)``.
-
-    The ``workspace/name`` vs bare-``name`` shape is guaranteed by the field's ``_ENTITY_REF_PATTERN``,
-    so this only needs to split. Shared by every reference type (metrics, tasks); lives here — next to
-    the pattern, with no entity dependency — so ref-owning modules can reuse it without cycling.
-
-    Any ``#fragment`` is stripped before splitting, so callers that don't care about revisions keep
-    working unchanged against a pinned ref. Use :func:`parse_subentity_ref` to read the fragment.
-    """
-    base, _, _ = root.partition(REF_FRAGMENT_SEPARATOR)
-    workspace, separator, name = base.partition("/")
-    if separator:
-        return workspace, name
-    return default_workspace, base
 
 
 def parse_subentity_ref(root: str, default_workspace: str) -> tuple[str, str, str]:
     """Split a reference into ``(workspace, name, fragment)``.
+
+    The ``workspace/name`` split is delegated to the platform's :func:`~nemo_platform_plugin.refs.
+    parse_entity_ref`; this only adds the revision fragment on top, so evaluator refs and every other
+    plugin's refs agree on what a ``workspace/name`` is. Callers that don't care about revisions
+    discard the third element — that, rather than a second parser, is how a pinned ref is read
+    unpinned.
 
     An absent fragment resolves to :data:`LATEST_TAG` — a bare ``workspace/name`` means "the current
     revision", never "unpinned". The fragment is returned verbatim: it may be a tag or a content
     digest, and telling them apart is resolution's job, not parsing's.
     """
     base, separator, fragment = root.partition(REF_FRAGMENT_SEPARATOR)
-    workspace, name = parse_entity_ref(base, default_workspace)
-    return workspace, name, fragment if separator and fragment else LATEST_TAG
+    parsed = parse_entity_ref(base, default_workspace)
+    return parsed.workspace, parsed.name, fragment if separator and fragment else LATEST_TAG
 
 
 class MetricRef(RootModel[str]):
     """Reference to a persisted metric (format: ``workspace/name`` or ``name``)."""
 
     root: str = Field(
-        pattern=_ENTITY_REF_PATTERN,
+        pattern=ENTITY_REF_PATTERN,
         description="Reference to a stored metric (format: workspace/metric-name, or metric-name in the job workspace).",
     )
 

@@ -24,9 +24,9 @@ from nemo_evaluator.api.schemas import (
     Task,
     TaskDefinition,
     TaskInput,
-    parse_entity_ref,
 )
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity
+from nemo_evaluator.metric_refs import parse_metric_ref
 from nemo_evaluator.revisions import (
     apply_tag,
     get_revision,
@@ -154,7 +154,7 @@ class TaskService:
         refs: list[MetricRef] = []
         for metric in metrics:
             if isinstance(metric, MetricRef):
-                ref_workspace, name = parse_entity_ref(metric.root, workspace)
+                ref_workspace, name = parse_metric_ref(metric.root, workspace)
                 if await self.metric_service.get_metric(ref_workspace, name) is None:
                     raise MetricRefNotFoundError(
                         f"Metric reference '{metric.root}' not found. "
