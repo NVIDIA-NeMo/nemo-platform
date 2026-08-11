@@ -106,7 +106,13 @@ def default_structured_output_mode(format: str) -> StructuredOutputMode:
     raise ValueError(f"Unsupported structured output format: {format}")
 
 
-def _looks_like_unsupported_guided_json_error(message: str) -> bool:
+def looks_like_unsupported_structured_output_error(message: str) -> bool:
+    """Whether *message* reads as a backend rejecting a structured-output parameter.
+
+    Backends word this differently, so match on the shape of the complaint and
+    then require the parameter itself to be named — an unrelated 400 that merely
+    says "unknown field" must not disable structured output.
+    """
     lowered = message.lower()
     signatures = (
         "guided_json is unsupported",
@@ -114,6 +120,7 @@ def _looks_like_unsupported_guided_json_error(message: str) -> bool:
         "unexpected keyword argument 'nvext'",
         "extra_forbidden",
         "extra inputs are not permitted",
+        "unknown field",
     )
     if any(sig in lowered for sig in signatures):
         return "guided_json" in lowered or "nvext" in lowered or "extra_body" in lowered
@@ -176,7 +183,7 @@ async def detect_structured_output_mode(
             if content and _is_probe_valid_json(content, probe_schema):
                 return mode
         except Exception as e:
-            if _looks_like_unsupported_guided_json_error(str(e)):
+            if looks_like_unsupported_structured_output_error(str(e)):
                 continue
             # Probe failures should not abort evaluation startup. If no mode works,
             # caller will fall back to prompt-level strict JSON instruction.

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import math
 from copy import deepcopy
 from types import SimpleNamespace
@@ -844,6 +845,62 @@ class TestLLMJudgeMetric:
         assert result.outputs[0].value == 4
         assert "max_tokens" in captured_requests[0]
         assert "max_completion_tokens" in captured_requests[1]
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_falls_back_when_backend_rejects_structured_output(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.ROOT_GUIDED_JSON)
+        error = ClientInferenceError(
+            mocker.Mock(
+                status_code=400,
+                response=mocker.Mock(text="unknown field `guided_json`, expected one of `greed_sampling`"),
+            )
+        )
+        captured_requests: list[dict] = []
+
+        async def inference_fn(*args, **kwargs):
+            request = kwargs.get("request", args[1])
+            captured_requests.append(deepcopy(request))
+            if len(captured_requests) == 1:
+                raise error
+            return {"choices": [{"message": {"content": '{"helpfulness": 4}'}}]}
+
+        metric.set_inference_fn(inference_fn)
+
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert result.outputs[0].value == 4
+        assert "guided_json" in json.dumps(captured_requests[0])
+        assert "guided_json" not in json.dumps(captured_requests[1])
+        assert hook.mode == StructuredOutputMode.UNSUPPORTED
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_does_not_retry_unrelated_400(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.ROOT_GUIDED_JSON)
+        error = ClientInferenceError(mocker.Mock(status_code=400, response=mocker.Mock(text="unknown field `top_k`")))
+        calls = 0
+
+        async def inference_fn(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            raise error
+
+        metric.set_inference_fn(inference_fn)
+
+        with pytest.raises(ClientInferenceError):
+            await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert calls == 1
+        assert hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
 
     @pytest.mark.asyncio
     async def test_compute_scores_raises_invalid_output_when_ignore_failure_disabled(self, mocker: MockerFixture):

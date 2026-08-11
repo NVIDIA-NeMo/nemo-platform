@@ -9,8 +9,8 @@ from nemo_evaluator_sdk.structured_output import (
     Model,
     ModelFormat,
     StructuredOutputMode,
-    _looks_like_unsupported_guided_json_error,
     detect_structured_output_mode,
+    looks_like_unsupported_structured_output_error,
 )
 from pydantic import ValidationError
 
@@ -218,7 +218,9 @@ async def test_detect_structured_output_mode_unsupported_signature_then_unsuppor
         ("unexpected keyword argument 'guided_json'", True),
         ("unexpected keyword argument 'nvext'", True),
         ("extra inputs are not permitted", False),
+        ("unknown field `guided_json`, expected one of `greed_sampling`, `use_raw_prompt`", True),
+        ("unknown field `temperature`", False),
     ],
 )
-def test_looks_like_unsupported_guided_json_error(message: str, expected: bool):
-    assert _looks_like_unsupported_guided_json_error(message) is expected
+def test_looks_like_unsupported_structured_output_error(message: str, expected: bool):
+    assert looks_like_unsupported_structured_output_error(message) is expected
