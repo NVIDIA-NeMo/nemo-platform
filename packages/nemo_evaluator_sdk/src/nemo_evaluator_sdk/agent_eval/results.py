@@ -99,10 +99,85 @@ class AgentEvalSummary(BaseModel):
             "'<metric_type>.<output>', plus per-semantic-view rollups named 'view.<name>'. "
             "Failed or missing scores are surfaced as nan_count."
         ),
+        examples=[
+            # Emission order is real: metric outputs, then views, then pass@k. Note that pass@k
+            # counts *tasks* (4) where the metric output counts *trials* (10).
+            {
+                "scores": [
+                    {
+                        "name": "harbor_reward.reward",
+                        "score_type": "range",
+                        "count": 10,
+                        "nan_count": 2,
+                        "mean": 0.6,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "std_dev": 0.4899,
+                    },
+                    {
+                        "name": "view.legal_quality",
+                        "score_type": "range",
+                        "count": 8,
+                        "nan_count": 4,
+                        "mean": 0.7375,
+                        "min": 0.1,
+                        "max": 1.0,
+                        "std_dev": 0.3674,
+                    },
+                    {
+                        "name": "harbor_reward.reward.pass@1",
+                        "score_type": "range",
+                        "count": 4,
+                        "nan_count": 1,
+                        "mean": 0.5,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "std_dev": 0.3727,
+                    },
+                    {
+                        "name": "harbor_reward.reward.pass@2",
+                        "score_type": "range",
+                        "count": 4,
+                        "nan_count": 1,
+                        "mean": 0.6667,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "std_dev": 0.4082,
+                    },
+                ]
+            },
+            # A separate run, because a runner's imported figures cannot co-occur with another
+            # runner's metrics. Scalars carry `value` and no distribution, and no `count` when the
+            # backend reports a figure without the sample size behind it.
+            {
+                "scores": [
+                    {
+                        "name": "gym_reward.reward",
+                        "score_type": "range",
+                        "count": 20,
+                        "nan_count": 0,
+                        "mean": 0.65,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "std_dev": 0.477,
+                    },
+                    {"name": "runner.gym.pass@1/accuracy", "score_type": "scalar", "nan_count": 0, "value": 0.68},
+                ]
+            },
+        ],
     )
     metric_coverage: dict[str, dict[str, AgentEvalMetricOutputCoverage]] = Field(
         default_factory=dict,
         description="Per-metric, per-output coverage counts (total/scored/failed/missing).",
+        examples=[
+            # Same 12 trials under two metrics, which is what distinguishes a low mean from low
+            # coverage. The two dead trials fail every metric; the judge failed once more on its own,
+            # and once completed without emitting its output at all (missing, not failed).
+            {
+                "harbor_reward": {"reward": {"total": 12, "scored": 10, "failed": 2, "missing": 0}},
+                "rubric_judge": {"criteria_pass_rate": {"total": 12, "scored": 8, "failed": 3, "missing": 1}},
+            }
+        ],
     )
     task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]] = Field(
         default_factory=dict,
@@ -114,6 +189,42 @@ class AgentEvalSummary(BaseModel):
             "all, so each key's list is independent: align by trial_id, never by position. An empty "
             "list means nothing was measured, including a task that produced no trial."
         ),
+        examples=[
+            {
+                "contract-review-msa-indemnity": {
+                    "harbor_reward.reward": [
+                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value": 1.0},
+                        {"trial_id": "contract-review-msa-indemnity__t7m2xb4", "value": 0.0},
+                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value": 1.0},
+                    ],
+                    # t7m2xb4 is absent here rather than null: its judge timed out, so that attempt
+                    # went unmeasured. Index 1 is therefore a different trial in each of these lists.
+                    "rubric_judge.criteria_pass_rate": [
+                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value": 0.75},
+                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value": 1.0},
+                    ],
+                },
+                "nda-scope-carveouts": {
+                    # p2hn8sc died in the sandbox, so it is null in every key: an attempt that
+                    # happened and did not pass, as opposed to one that was never measured.
+                    "harbor_reward.reward": [
+                        {"trial_id": "nda-scope-carveouts__p2hn8sc", "value": None},
+                        {"trial_id": "nda-scope-carveouts__w5db3qy", "value": 1.0},
+                        {"trial_id": "nda-scope-carveouts__z8kt1nf", "value": 0.0},
+                    ],
+                    "rubric_judge.criteria_pass_rate": [
+                        {"trial_id": "nda-scope-carveouts__p2hn8sc", "value": None},
+                        {"trial_id": "nda-scope-carveouts__w5db3qy", "value": 0.6},
+                        {"trial_id": "nda-scope-carveouts__z8kt1nf", "value": 0.2},
+                    ],
+                },
+                # Requested, but the runner returned no trial for it: keys declared, nothing measured.
+                "merger-hsr-filing-threshold": {
+                    "harbor_reward.reward": [],
+                    "rubric_judge.criteria_pass_rate": [],
+                },
+            }
+        ],
     )
     task_count: int = Field(default=0, description="Number of tasks represented in the run.")
     trial_count: int = Field(default=0, description="Number of distinct trials scored.")
