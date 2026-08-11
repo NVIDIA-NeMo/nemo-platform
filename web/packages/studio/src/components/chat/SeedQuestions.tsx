@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
-import { type FC, type ReactNode } from 'react';
+import { PromptSuggestionPills } from '@studio/components/PromptSuggestionPills';
+import type { PromptSuggestion } from '@studio/components/PromptSuggestionPills/types';
+import { type FC, type ReactNode, useMemo } from 'react';
 
 interface SeedQuestionsProps {
   questions?: string[];
@@ -14,10 +16,9 @@ interface SeedQuestionsProps {
 }
 
 /**
- * Row of bordered chip buttons that float just above the composer. Each
- * question is its own distinct, clickable affordance — same border + radius
- * as the composer card so they read as a related control family, but
- * detached so they feel like floating action chips, not inline text.
+ * Seed questions for the chat composer: a row of {@link PromptSuggestionPills} flanked by
+ * optional slots for metrics and composer actions. A seed question is its own label, so it
+ * maps to a suggestion whose label and prompt are the same string.
  */
 export const SeedQuestions: FC<SeedQuestionsProps> = ({
   questions = DEFAULT_SEED_QUESTIONS,
@@ -25,21 +26,15 @@ export const SeedQuestions: FC<SeedQuestionsProps> = ({
   slotStart,
   slotEnd,
 }) => {
+  const suggestions = useMemo<PromptSuggestion[]>(
+    () => questions.map((question) => ({ label: question, prompt: question })),
+    [questions]
+  );
+
   return (
     <div className="flex items-start gap-2">
       {slotStart && <div className="shrink-0 self-end">{slotStart}</div>}
-      <div className="flex min-w-0 flex-1 flex-wrap items-start gap-2">
-        {questions.map((q) => (
-          <button
-            key={q}
-            type="button"
-            onClick={() => onSelect(q)}
-            className="cursor-pointer rounded-full border border-base bg-surface-base px-3 py-1.5 text-xs text-fg-base transition-colors hover:border-emphasis hover:bg-surface-sunken"
-          >
-            {q}
-          </button>
-        ))}
-      </div>
+      <PromptSuggestionPills suggestions={suggestions} onSelect={onSelect} className="flex-1" />
       {slotEnd && <div className="shrink-0 self-end">{slotEnd}</div>}
     </div>
   );

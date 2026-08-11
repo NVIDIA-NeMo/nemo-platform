@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
-import type { PromptSuggestion, StartOption } from '@studio/components/CreateFilesetStart/types';
+import type { StartOption } from '@studio/components/CreateFilesetStart/types';
+import type { PromptSuggestion } from '@studio/components/PromptSuggestionPills/types';
 import { LayoutGrid, Plus, Sparkles } from 'lucide-react';
 
 /** "N recipe(s)" badge label, kept in sync with the number of authored templates. */
@@ -11,7 +12,7 @@ const RECIPE_COUNT_LABEL = `${FILESET_TEMPLATES.length} ${
 }`;
 
 /**
- * Example prompts offered as pills over an empty prompt field. Each is a complete,
+ * Example prompts offered as pills inside an empty prompt field. Each is a complete,
  * generation-ready description — the pill label is only the shorthand for it.
  */
 export const PROMPT_SUGGESTIONS: PromptSuggestion[] = [

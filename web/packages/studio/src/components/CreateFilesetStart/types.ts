@@ -94,19 +94,6 @@ export interface DescribeWithAiPanelProps {
   onValidConfig: (jobRequest: DataDesignerJobRequest | null) => void;
 }
 
-/** A one-click example prompt offered as a pill over the "Describe with AI" prompt field. */
-export interface PromptSuggestion {
-  /** Short pill label — a few words, not the prompt itself. */
-  label: string;
-  /** Full prompt written into the field when the pill is clicked. */
-  prompt: string;
-}
-
-export interface PromptSuggestionPillsProps {
-  suggestions: PromptSuggestion[];
-  onSelect: (prompt: string) => void;
-}
-
 export interface GeneratedConfigResultProps {
   /** Verdict on the last draft; null before the first generation. */
   validation: GeneratedConfigValidation | null;

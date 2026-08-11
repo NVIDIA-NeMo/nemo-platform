@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
+import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
-import { Block, Flex, FormField, Stack, TextArea } from '@nvidia/foundations-react-core';
+import { Flex, FormField, Stack } from '@nvidia/foundations-react-core';
 import { PROMPT_SUGGESTIONS } from '@studio/components/CreateFilesetStart/constants';
 import { GeneratedConfigResult } from '@studio/components/CreateFilesetStart/GeneratedConfigResult';
-import { PromptSuggestionPills } from '@studio/components/CreateFilesetStart/PromptSuggestionPills';
 import type { DescribeWithAiPanelProps } from '@studio/components/CreateFilesetStart/types';
 import { useDescribeWithAi } from '@studio/components/CreateFilesetStart/useDescribeWithAi';
+import { PromptSuggestionPills } from '@studio/components/PromptSuggestionPills';
 import { providerForSelection } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import type { FC } from 'react';
 import { useController } from 'react-hook-form';
@@ -37,12 +38,7 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
   });
   const modelValue: ModelSelection | null = modelField.value ? { model: modelField.value } : null;
 
-  const { field: promptField, fieldState: promptState } = useController({
-    control: form.control,
-    name: 'prompt',
-  });
-  // Suggestions only make sense on an empty field — once there is text they would cover it.
-  const showSuggestions = promptField.value.trim().length === 0 && !isBusy;
+  const showSuggestions = form.watch('prompt').trim().length === 0 && !isBusy;
 
   return (
     <form onSubmit={generate} noValidate>
@@ -73,33 +69,26 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
             />
           </FormField>
 
-          <FormField
-            slotLabel="What do you want to generate?"
-            slotError={promptState.error?.message}
-            status={promptState.error ? 'error' : undefined}
-            required
-          >
-            <Block className="relative">
-              <TextArea
-                rows={8}
-                className="w-full resize-y"
-                placeholder={PROMPT_PLACEHOLDER}
-                disabled={isBusy}
-                value={promptField.value}
-                onValueChange={promptField.onChange}
-                status={promptState.error ? 'error' : undefined}
-                attributes={{ TextAreaElement: { onBlur: promptField.onBlur } }}
-              />
-              {showSuggestions && (
+          <ControlledTextArea
+            useControllerProps={{ control: form.control, name: 'prompt' }}
+            label="What do you want to generate?"
+            formFieldProps={{ required: true }}
+            rows={8}
+            className="w-full"
+            placeholder={PROMPT_PLACEHOLDER}
+            disabled={isBusy}
+            layout="vertical"
+            slotEnd={
+              showSuggestions ? (
                 <PromptSuggestionPills
                   suggestions={PROMPT_SUGGESTIONS}
                   onSelect={(prompt) =>
                     form.setValue('prompt', prompt, { shouldValidate: true, shouldDirty: true })
                   }
                 />
-              )}
-            </Block>
-          </FormField>
+              ) : undefined
+            }
+          />
 
           <Flex justify="start">
             <LoadingButton
