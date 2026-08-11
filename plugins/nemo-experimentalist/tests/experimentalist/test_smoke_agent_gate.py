@@ -142,18 +142,7 @@ def _replays_correctly(label: str, task_dir: Path) -> bool:
 
 @repair_only
 def test_1_weakness_repaired() -> None:
-    """The winner's code actually answers the held-out aggregation questions.
-
-    Deliberately loose about *how*: an earlier draft required a new
-    ``handle_total`` method, but the real repair extended ``handle_count``
-    instead, so that assertion would have failed a perfectly good fix.
-
-    Loose is not the same as vacuous, though. A later draft asked only that the
-    source changed and contained ``sum(`` -- which the *baseline* already
-    satisfies, since ``handle_count`` sums a generator, so any unrelated edit
-    passed it. This runs the winner's own code against the two held-out
-    total-hours tasks instead, which no amount of incidental editing can fake.
-    """
+    """Check that the winner answers the held-out aggregation tasks."""
     winner = _winner_label()
     if winner == "agent-0":
         pytest.fail("winner is the baseline; nothing was repaired")
@@ -175,7 +164,7 @@ def test_1_weakness_repaired() -> None:
 
 @repair_only
 def test_2_reward_improved() -> None:
-    """Validation aggregate beat the baseline by more than noise."""
+    """Check that validation reward improves beyond the threshold."""
     baseline = _aggregate("agent-0")["reward"]
     winner = _aggregate(_winner_label())["reward"]
     assert winner - baseline >= REWARD_DELTA_THRESHOLD, (
@@ -185,11 +174,7 @@ def test_2_reward_improved() -> None:
 
 @repair_only
 def test_3_no_regression() -> None:
-    """Controls passing at baseline still pass.
-
-    Every group runs the same agent, so this also catches a candidate that
-    repairs its own group by breaking a capability another group depends on.
-    """
+    """Check that the winner still passes baseline control tasks."""
     rewards = _per_task_rewards(_winner_label())
     broken = {task for task in VALIDATION_CONTROL_TASKS if rewards.get(task, 0.0) < 1.0}
     assert not broken, f"winner regressed control tasks: {sorted(broken)}"
@@ -197,14 +182,7 @@ def test_3_no_regression() -> None:
 
 @repair_only
 def test_4_analysis_named_the_weakness() -> None:
-    """Check that the Analyzer identifies the aggregation problem.
-
-    This guards a hollow pass: the Coder fixing it unaided while the Analyzer is broken.
-
-    The round analysis is markdown at ``analysis/round-N.md``, not JSON -- an
-    earlier draft globbed ``analysis*.json``, found nothing, and would have failed
-    a healthy run with "no analyzer output".
-    """
+    """Check that the Analyzer identifies the aggregation problem."""
     analyses = sorted((_EXPERIMENT_DIR / _EO / "analysis").glob("round-*.md"))
     assert analyses, f"no analyzer output under {_EXPERIMENT_DIR / _EO / 'analysis'}"
     text = " ".join(a.read_text(encoding="utf-8") for a in analyses).lower()
@@ -214,12 +192,7 @@ def test_4_analysis_named_the_weakness() -> None:
 
 @repair_only
 def test_5_generalizes_to_held_out_instances() -> None:
-    """The winner passes *both* validation weakness tasks, not just one.
-
-    Train shows two kinds of filter and validation holds new instances of each, so
-    a fix that hardcodes one kind passes half of this and fails the rest. That is
-    the difference between a repair and a special case.
-    """
+    """Check that the winner passes both held-out weakness tasks."""
     rewards = _per_task_rewards(_winner_label())
     failed = {task for task in VALIDATION_WEAKNESS_TASKS if rewards.get(task, 0.0) < 1.0}
     assert not failed, f"winner did not generalize; still failing: {sorted(failed)}"
@@ -258,7 +231,7 @@ def _train_aggregate(label: str) -> dict[str, float]:
 
 @generalization_only
 def test_g_1_baseline_was_retained() -> None:
-    """The held-out split rejected the candidate, which is the whole point."""
+    """Check that the generalization scenario retains the baseline."""
     winner = _winner_label()
     assert winner == "agent-0", (
         f"winner is {winner}, but a generalization scenario expects the baseline to be kept. "
@@ -269,11 +242,7 @@ def test_g_1_baseline_was_retained() -> None:
 
 @generalization_only
 def test_g_2_a_candidate_actually_fixed_train() -> None:
-    """Distinguishes a rejected fix from nothing having happened.
-
-    Without this, a loop that produced no working candidate at all would pass the
-    generalization scenario for entirely the wrong reason.
-    """
+    """Check that a candidate improved on the training tasks."""
     candidates = sorted(d.name for d in (_EXPERIMENT_DIR / _EO / "agents").iterdir() if d.name != "agent-0")
     assert candidates, "no candidates were produced; the round did nothing"
     baseline_train = _train_aggregate("agent-0")["reward"]
@@ -286,14 +255,7 @@ def test_g_2_a_candidate_actually_fixed_train() -> None:
 
 @generalization_only
 def test_g_2b_the_train_winner_failed_validation() -> None:
-    """The candidate that won on train must be the one held-out data rejected.
-
-    g_1 and g_2 together still admit a broken selector: one that keeps the
-    baseline unconditionally passes both, because *some* candidate improved on
-    train and the baseline won. Neither says those facts are connected. This
-    names the best train candidate and asserts held-out data is what stopped it,
-    which is the behaviour the scenario exists to demonstrate.
-    """
+    """Check that held-out data rejects the candidate that won on training."""
     candidates = sorted(d.name for d in (_EXPERIMENT_DIR / _EO / "agents").iterdir() if d.name != "agent-0")
     best = max(candidates, key=lambda c: _train_aggregate(c)["reward"])
     baseline_validation = _aggregate("agent-0")["reward"]
@@ -307,7 +269,7 @@ def test_g_2b_the_train_winner_failed_validation() -> None:
 
 @generalization_only
 def test_g_3_no_regression() -> None:
-    """The retained baseline still passes its controls."""
+    """Check that the retained baseline still passes its controls."""
     rewards = _per_task_rewards("agent-0")
     broken = {task for task in G4_VALIDATION_CONTROL_TASKS if rewards.get(task, 0.0) < 1.0}
     assert not broken, f"baseline controls are failing: {sorted(broken)}"
