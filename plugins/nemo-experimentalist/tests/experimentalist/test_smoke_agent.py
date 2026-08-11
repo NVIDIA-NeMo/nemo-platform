@@ -42,7 +42,7 @@ def agent_module(tmp_path_factory: pytest.TempPathFactory) -> Any:
 
 
 def test_working_lookup_succeeds(agent_module: Any) -> None:
-    """The control path: plain ASCII names resolve, so controls pass at baseline."""
+    """Check that a normal lookup works at baseline."""
     agent = agent_module.ReportAgent()
     assert agent.solve("What is the department of Ada Lovelace?") == "dept=research"
 
@@ -92,21 +92,21 @@ def test_g5_empty_field_does_not_degrade(agent_module: Any) -> None:
 
 
 def test_agent_is_deterministic(agent_module: Any) -> None:
-    """Repeated identical input must give byte-identical output."""
+    """Check that repeated identical input gives identical output."""
     agent = agent_module.ReportAgent()
     question = "What is the department of Ada Lovelace?"
     assert len({agent.solve(question) for _ in range(20)}) == 1
 
 
 def test_agent_declares_no_strategy_methods() -> None:
-    """A @strategy method would make the agent LLM-driven and nondeterministic."""
+    """Check that the agent does not declare LLM-backed strategy methods."""
     source = (_EXAMPLE_DIR / "agent" / "agent.py").read_text(encoding="utf-8")
     assert "@strategy" not in source
     assert "CodeActStrategy" not in source
 
 
 def test_spec_forbids_llm_backed_changes() -> None:
-    """The Coder reads AGENT-SPEC.md first; the determinism rule has to be in it."""
+    """Check that the spec forbids LLM-backed changes."""
     spec = (_EXAMPLE_DIR / "AGENT-SPEC.md").read_text(encoding="utf-8").lower()
     for phrase in ("@strategy", "deterministic", "no llm", "offline"):
         assert phrase in spec, f"AGENT-SPEC.md must mention {phrase!r}"
@@ -120,7 +120,7 @@ _CANDIDATE_SOURCE_FILES = ("agent.py", "harbor_wrapper.py", "main.py")
 
 
 def test_candidate_copy_contains_only_the_declared_agent_source(tmp_path: Path) -> None:
-    """Exercise the production copy filter and inspect what a Coder can actually read.
+    """Check that the Coder receives only the declared agent source files.
 
     A profile spelling check cannot prove the effective path or the copied file
     set. This guards the boundary that previously leaked a live `.env` into

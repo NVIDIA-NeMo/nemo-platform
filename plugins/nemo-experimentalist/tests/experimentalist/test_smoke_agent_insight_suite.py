@@ -85,7 +85,7 @@ def _materialized_tasks(suite_dir: Path) -> list[Path]:
 
 
 def test_the_template_still_declares_placeholders() -> None:
-    """Guards the guard: with no placeholders to find, everything below passes vacuously."""
+    """Check that the template declares placeholders to fill."""
     declared = _template_placeholders()
     assert declared, (
         f"{_TEMPLATE_DIR} declares no <PLACEHOLDER> tokens, so the checks in this module "
@@ -94,7 +94,7 @@ def test_the_template_still_declares_placeholders() -> None:
 
 
 def test_a_suite_was_materialized() -> None:
-    """Mode 1 with trace_refs must produce a suite; an empty one is not a passing run."""
+    """Check that insight mode materializes a non-empty task suite."""
     experiment_dir = _require_experiment_dir()
     suites = _suite_dirs(experiment_dir)
     assert suites, (
@@ -132,12 +132,7 @@ def test_no_materialized_task_still_contains_a_placeholder() -> None:
 
 
 def test_expected_answers_are_not_empty() -> None:
-    """A blank expectation compares equal to a blank answer, which would score 1.0.
-
-    Distinct from the placeholder check: a template can be filled with nothing at all,
-    and the verifier's fail-closed guard only covers an *unreadable* fixture, not an
-    empty one.
-    """
+    """Check that generated tasks have a non-empty expected answer."""
     experiment_dir = _require_experiment_dir()
     empty = [
         f"{task_dir.name}/tests/expected.txt"
@@ -182,23 +177,7 @@ def _agents(experiment_dir: Path) -> dict[str, dict[str, float]]:
 
 
 def test_the_authored_metric_separates_a_repair_from_the_baseline() -> None:
-    """An authored metric that cannot see a repair is not measuring the weakness.
-
-    Eval Author writes the metric that becomes the run's objective, and nothing checks
-    that it discriminates. One run authored `aggregate_total_handler_coverage` and
-    scored it 1.0 on the baseline *and* both candidates, while our own `reward` went
-    0.25 -> 1.00. The objective never moved across a complete repair, so the Pareto
-    front had nothing to rank on and the run reached a correct winner only through the
-    regression guardrail and the age tie-break.
-
-    Conditional on our ground truth, deliberately: if `reward` did not improve, the run
-    says nothing about whether the metric can see an improvement, so there is nothing
-    to assert. It only fires when a repair demonstrably happened and the authored
-    metric ignored it.
-
-    This matters most where our tasks are *not* in the loop -- with the run driven
-    purely by generated tasks, a flat objective leaves nothing steering it at all.
-    """
+    """Check that the authored metric changes when a repair improves reward."""
     experiment_dir = _require_experiment_dir()
     authored = _authored_metric_keys(experiment_dir)
     if not authored:
@@ -234,17 +213,7 @@ def test_the_authored_metric_separates_a_repair_from_the_baseline() -> None:
 
 
 def test_every_suite_task_was_actually_scored() -> None:
-    """A task that never ran is worse than one that scored 0: it leaves no trace at all.
-
-    In the first Mode 1 run the generated tasks referenced a stale image tag, so their
-    containers never started -- `pull access denied for smoke-agent-env`. No
-    `reward.json` was written, the tasks were dropped from the aggregate, and the run
-    reported a perfectly ordinary baseline over the three *real* tasks. The Insight
-    suite contributed nothing and nothing said so.
-
-    A missing metric and a legitimate zero are treated very differently by the loop;
-    this is the check that tells them apart.
-    """
+    """Check that every generated task produced a score."""
     experiment_dir = _require_experiment_dir()
     results = experiment_dir / "eval-and-optimize" / "results"
     if not results.is_dir():
@@ -293,14 +262,7 @@ _GRAMMAR = (
 
 
 def test_the_grammar_matches_the_committed_tasks() -> None:
-    """Keep the patterns tied to the tasks, not to prose about them.
-
-    This runs without an experiment directory, because it is the check that would have
-    caught the mistake it exists for: the first version of the list came from the
-    template README, which still described the pre-rewording `total ... for the`
-    phrasing. It then flagged correctly-generated questions as off-grammar -- a guard
-    accusing the component it was written to exonerate.
-    """
+    """Check that the grammar accepts every committed task."""
     groups = _TEMPLATE_DIR.parent / "groups"
     if not groups.is_dir():
         pytest.skip("no committed groups to check against")
@@ -316,13 +278,7 @@ def test_the_grammar_matches_the_committed_tasks() -> None:
 
 
 def test_generated_questions_stay_inside_the_agent_grammar() -> None:
-    """A question outside the three parsed forms fails for the wrong reason.
-
-    It looks exactly like the weakness under test -- the agent returns its fallback --
-    but the cause is phrasing the agent was never able to parse, so the run measures the
-    template rather than the Experimentalist. Warned about in the template README; this
-    is that warning enforced.
-    """
+    """Check that generated questions stay within the agent's grammar."""
     experiment_dir = _require_experiment_dir()
     off_grammar: list[str] = []
 

@@ -53,7 +53,7 @@ _EXPECTED_METRIC_KEYS = ("reward", "shape_ok")
 
 
 def test_verifier_emits_exactly_the_two_metric_keys() -> None:
-    """The Experimentalist averages metrics across trials and rejects inconsistent sets.
+    """Check that the verifier emits exactly the two expected metric keys.
 
     Asserting only that both names appear somewhere would also accept a third
     key, or a second write, either of which changes the metric set every trial
@@ -107,7 +107,7 @@ def _shell_options(code: str) -> tuple[set[str], set[str]]:
 
 
 def test_verifier_sets_exactly_the_intended_shell_options() -> None:
-    """`set -uo pipefail` is the contract: nounset and pipefail on, errexit off.
+    """Check that the verifier enables only the intended shell options.
 
     Checking only that errexit is absent would also pass a verifier with no
     `set` options at all. Both of the others earn their place: without nounset an
@@ -123,7 +123,7 @@ def test_verifier_sets_exactly_the_intended_shell_options() -> None:
 
 
 def test_verifier_keeps_its_reward_hacking_guards() -> None:
-    """Each of these was a deliberate choice; losing one reopens a way to score without solving."""
+    """Check that the verifier keeps its safeguards against reward hacking."""
     code = _verifier_code()
 
     assert "tr -d" not in code, "tr -d '\\r' deletes every CR, collapsing sum=4<CR>2 into a passing sum=42"
@@ -136,7 +136,7 @@ def test_verifier_keeps_its_reward_hacking_guards() -> None:
 
 
 def test_verifier_rejects_a_symlinked_output_before_reading_it() -> None:
-    """`-f` follows symlinks, so the order of these branches is the whole guard.
+    """Check that the verifier rejects a symlink before reading the output.
 
     A `-L` test placed after `-f` never runs: `-f` follows the link, finds a regular
     file at the other end, and scores it.
@@ -153,14 +153,14 @@ def test_verifier_rejects_a_symlinked_output_before_reading_it() -> None:
 
 
 def test_verifier_does_not_echo_answers() -> None:
-    """Expected/actual values in the verifier log would let a candidate hardcode them."""
+    """Check that the verifier does not print answer values in its log."""
     code = _verifier_code()
     for forbidden in ('cat "$EXPECTED_NORM"', 'cat "$ACTUAL_NORM"'):
         assert forbidden not in code, f"{forbidden} publishes ground truth to the trial log"
 
 
 def test_dockerfile_nooa_rev_matches_workspace() -> None:
-    """A second copy of the revision string; drift means the fixture tests a different NOOA."""
+    """Check that the task image uses the workspace's NOOA revision."""
     dockerfile_path = _SHARED / "Dockerfile"
     if not dockerfile_path.is_file():
         return  # Task 4 creates it.
@@ -170,7 +170,7 @@ def test_dockerfile_nooa_rev_matches_workspace() -> None:
 
 
 def test_every_task_references_the_current_image() -> None:
-    """A stale tag means containers run against different records than the repo has."""
+    """Check that every task uses the current task image."""
     tasks = _task_tomls()
     if not tasks:
         return  # Task 6 creates them.
@@ -184,7 +184,7 @@ def test_every_task_references_the_current_image() -> None:
 
 
 def test_every_task_carries_the_current_verifier() -> None:
-    """Harbor copies tests/ per task, so test.sh is duplicated; keep the copies identical."""
+    """Check that every task uses the current verifier."""
     tasks = _task_tomls()
     if not tasks:
         return  # Task 6 creates them.
@@ -195,7 +195,7 @@ def test_every_task_carries_the_current_verifier() -> None:
 
 
 def test_the_task_template_carries_the_current_records() -> None:
-    """Insight mode needs the answer computable, so the template ships the records.
+    """Check that the task template uses the current records file.
 
     A trace holds the question and the agent's wrong answer, never the right one, so
     Eval Author cannot infer `<EXPECTED>` from it -- and an unfilled expectation scores
@@ -214,7 +214,7 @@ def test_the_task_template_carries_the_current_records() -> None:
 
 
 def test_every_task_has_an_empty_environment_dir() -> None:
-    """Harbor requires environment/ to exist, but it must stay empty here.
+    """Check that every task has an empty environment directory.
 
     ``TaskModel.is_valid_dir`` returns False when environment/ is absent, and a
     dataset whose tasks all fail that check loads with *zero tasks* rather than
@@ -250,7 +250,7 @@ def _builder() -> Any:
 
 
 def test_excluded_groups_stay_out_of_the_combined_set() -> None:
-    """A group whose scenario expects the baseline to win cannot share a run with one that expects a fix.
+    """Check that excluded groups are not part of the combined scenario.
 
     Combining them leaves the full scenario with no reachable pass criterion, so
     an accidental re-inclusion has to fail loudly rather than just lower the score.
@@ -268,7 +268,7 @@ def test_excluded_groups_stay_out_of_the_combined_set() -> None:
 
 
 def test_combined_group_matches_its_sources() -> None:
-    """`_all` is generated from the other groups; a stale copy runs old tasks silently.
+    """Check that the combined scenario matches its source task groups.
 
     Rebuild with scripts/build_all_group.py after changing any group.
     """

@@ -35,7 +35,7 @@ def _records() -> list[dict]:
 
 
 def test_department_totals_are_pinned() -> None:
-    """G1's expected outputs are derived from these sums; drift breaks every G1 task."""
+    """Check that department totals match the task expectations."""
     totals: dict[str, int] = {}
     for record in _records():
         totals[record["dept"]] = totals.get(record["dept"], 0) + record["hours"]
@@ -44,7 +44,7 @@ def test_department_totals_are_pinned() -> None:
 
 
 def test_role_scoped_hours_are_pinned() -> None:
-    """G1 scopes sums by role as well as by department, in both splits."""
+    """Check that role totals match the task expectations."""
     by_role: dict[str, int] = {}
     for record in _records():
         by_role[record["role"]] = by_role.get(record["role"], 0) + record["hours"]
@@ -53,7 +53,7 @@ def test_role_scoped_hours_are_pinned() -> None:
 
 
 def test_g2_names_carry_no_other_weakness() -> None:
-    """G2 needs punctuated / non-ASCII names, and those records must be otherwise clean.
+    """Check that G2 names do not also trigger another group’s behavior.
 
     The predicate mirrors the character class the agent's lookup pattern accepts.
     `str.isalpha()` is deliberately not used: it is Unicode-aware, so "Zoë" passes
@@ -70,7 +70,7 @@ def test_g2_names_carry_no_other_weakness() -> None:
 
 
 def test_g5_empty_field_does_not_touch_g1() -> None:
-    """G5's empty value must sit on `role`, which G1 never aggregates."""
+    """Check that G5's empty value does not affect G1 tasks."""
     empty = [r for r in _records() if r["role"] == ""]
     assert [r["name"] for r in empty] == ["Karl Jung"]
     assert all(isinstance(r["hours"], int) for r in _records()), (
@@ -162,7 +162,7 @@ def _reward_for(group: str, split: str, task_id: str) -> float:
 
 @pytest.mark.parametrize(("key", "expected"), list(_EXPECTED_BASELINE.items()))
 def test_baseline_rewards_are_pinned(key: tuple[str, str, str], expected: float) -> None:
-    """A failure here usually means someone "fixed" the agent. That is what it is for."""
+    """Check that every task has its expected baseline reward."""
     assert _reward_for(*key) == expected, (
         f"{key} no longer scores {expected} at baseline. The agent ships with deliberate "
         "weaknesses; see plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md before "
@@ -173,7 +173,7 @@ def test_baseline_rewards_are_pinned(key: tuple[str, str, str], expected: float)
 @pytest.mark.parametrize("group", GROUPS)
 @pytest.mark.parametrize("split", ["train", "validation"])
 def test_each_split_keeps_two_failures_and_one_control(group: str, split: str) -> None:
-    """The 2+1 shape is what distinguishes a real fix from a special case."""
+    """Check that every split has two failures and one control."""
     expected_ids = {task_id for (g, s, task_id) in _EXPECTED_BASELINE if g == group and s == split}
     actual_ids = {
         path.name
@@ -199,7 +199,7 @@ def test_each_split_keeps_two_failures_and_one_control(group: str, split: str) -
     ],
 )
 def test_shape_metric_discriminates(answer: str, expected_shape: float) -> None:
-    """shape_ok must vary, or the second ranking dimension is dead weight.
+    """Check that the shape metric distinguishes an answer from a fallback.
 
     Mirrors the grep in tests/test.sh. A "did the agent write a file" metric was
     rejected here: this agent always writes one, so it would be constant.
