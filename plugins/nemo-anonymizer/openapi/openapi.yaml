@@ -1301,6 +1301,7 @@ components:
           $ref: '#/components/schemas/SelectedModelsOverrides'
         num_records:
           type: integer
+          maximum: 10.0
           minimum: 1.0
           title: Num Records
           default: 10
