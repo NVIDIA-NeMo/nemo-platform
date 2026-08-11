@@ -24,17 +24,52 @@ def _record(*, jti: str = "ak_example", principal: str = "alice@example.com", re
         principal=principal,
         issued_at=NOW,
         expires_at=datetime(2030, 1, 1, tzinfo=UTC),
-        revoked_at=NOW if revoked else None,
+        status="REVOKED" if revoked else "ACTIVE",
         issuer="https://platform.example.com/apis/auth",
         audiences=["nemo-platform-access-key"],
     )
 
 
+def _suspended_record() -> AccessKeyEntity:
+    return _record(jti="ak_suspended").model_copy(update={"status": "SUSPENDED"})
+
+
 def _expired_record() -> AccessKeyEntity:
-    # Use a far-past date so the result is clock-independent.
-    # AccessKeyRegistry._status applies a 30s leeway, so expires_at must be
-    # well before now to reliably return "EXPIRED".
     return _record(jti="ak_expired").model_copy(update={"expires_at": datetime(2000, 1, 1, tzinfo=UTC)})
+
+
+def test_access_key_entity_migrates_legacy_revoked_at_to_status() -> None:
+    record = AccessKeyEntity.model_validate(
+        {
+            "name": "ak_legacy_revoked",
+            "workspace": "system",
+            "principal": "alice@example.com",
+            "issued_at": NOW,
+            "expires_at": datetime(2030, 1, 1, tzinfo=UTC),
+            "issuer": "https://platform.example.com/apis/auth",
+            "audiences": ["nemo-platform-access-key"],
+            "revoked_at": NOW,
+        }
+    )
+
+    assert record.status == "REVOKED"
+
+
+def test_access_key_entity_defaults_unrevoked_legacy_record_to_active() -> None:
+    record = AccessKeyEntity.model_validate(
+        {
+            "name": "ak_legacy_active",
+            "workspace": "system",
+            "principal": "alice@example.com",
+            "issued_at": NOW,
+            "expires_at": datetime(2030, 1, 1, tzinfo=UTC),
+            "issuer": "https://platform.example.com/apis/auth",
+            "audiences": ["nemo-platform-access-key"],
+            "revoked_at": None,
+        }
+    )
+
+    assert record.status == "ACTIVE"
 
 
 @pytest.mark.asyncio
@@ -116,6 +151,20 @@ async def test_registry_reports_expired_status() -> None:
 
 
 @pytest.mark.asyncio
+async def test_registry_reports_expired_at_timestamp_while_authentication_allows_clock_skew() -> None:
+    record = _record().model_copy(update={"expires_at": datetime.now(tz=UTC) - timedelta(seconds=1)})
+    entity_client = AsyncMock()
+    entity_client.list.return_value = SimpleNamespace(data=[record], pagination=SimpleNamespace(total_pages=1))
+    entity_client.get.return_value = record
+    registry = AccessKeyRegistry(entity_client)
+
+    result = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
+
+    assert result.data[0].status == "EXPIRED"
+    assert await registry.is_active(record.name, record.principal)
+
+
+@pytest.mark.asyncio
 async def test_registry_revokes_owned_key_without_deleting_audit_record() -> None:
     entity_client = AsyncMock()
     original = _record()
@@ -126,8 +175,8 @@ async def test_registry_revokes_owned_key_without_deleting_audit_record() -> Non
 
     updated = entity_client.update.await_args.args[0]
     assert updated is not original
-    assert original.revoked_at is None
-    assert updated.revoked_at is not None
+    assert original.status == "ACTIVE"
+    assert updated.status == "REVOKED"
     entity_client.delete.assert_not_awaited()
 
 
@@ -166,7 +215,7 @@ async def test_registry_can_newly_revoke_expired_key() -> None:
     assert await registry.revoke("ak_expired", "alice@example.com")
 
     updated = entity_client.update.await_args.args[0]
-    assert updated.revoked_at is not None
+    assert updated.status == "REVOKED"
 
 
 @pytest.mark.asyncio
@@ -225,6 +274,54 @@ async def test_registry_backfills_missing_legacy_access_key_from_validated_claim
     assert saved.audiences == ["nemo-platform-access-key"]
     assert saved.issued_at == datetime.fromtimestamp(1_785_280_000, tz=UTC)
     assert saved.expires_at == datetime.fromtimestamp(1_893_456_000, tz=UTC)
+
+
+@pytest.mark.asyncio
+async def test_registry_reports_suspended_key_as_revoked_in_list() -> None:
+    entity_client = AsyncMock()
+    entity_client.list.return_value = SimpleNamespace(
+        data=[_suspended_record()], pagination=SimpleNamespace(total_pages=1)
+    )
+    registry = AccessKeyRegistry(entity_client)
+
+    result = await registry.list_for_principal("alice@example.com", page=1, page_size=100)
+
+    assert result.data[0].status == "REVOKED"
+
+
+@pytest.mark.asyncio
+async def test_registry_revoke_transitions_suspended_key_to_revoked() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _suspended_record()
+    registry = AccessKeyRegistry(entity_client)
+
+    assert await registry.revoke("ak_suspended", "alice@example.com")
+
+    updated = entity_client.update.await_args.args[0]
+    assert updated.status == "REVOKED"
+
+
+@pytest.mark.asyncio
+async def test_registry_concurrent_revoke_retries_when_key_is_only_suspended() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.side_effect = [_record(), _suspended_record()]
+    entity_client.update.side_effect = EntityConflictError("entity version changed")
+    registry = AccessKeyRegistry(entity_client)
+
+    with pytest.raises(EntityConflictError, match="entity version changed"):
+        await registry.revoke("ak_suspended", "alice@example.com")
+
+    assert entity_client.get.await_count == 2
+    entity_client.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_registry_reports_suspended_key_as_inactive() -> None:
+    entity_client = AsyncMock()
+    entity_client.get.return_value = _suspended_record()
+    registry = AccessKeyRegistry(entity_client)
+
+    assert not await registry.is_active("ak_suspended", "alice@example.com")
 
 
 @pytest.mark.asyncio

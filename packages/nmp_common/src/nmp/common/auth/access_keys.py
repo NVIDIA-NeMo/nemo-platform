@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateResponse,
     AccessKeyListResponse,
     AccessKeyRevokeResponse,
+    AccessKeyStatus,
 )
 from nmp.common.config import AuthConfig, get_platform_config
 
@@ -35,6 +37,9 @@ ACCESS_KEY_TOKEN_TYPE = "access_key"
 ACCESS_KEY_JWKS_PATH = "/apis/auth/jwks"
 ACCESS_KEY_METADATA_VERSION = 2
 LEGACY_ACCESS_KEY_METADATA_VERSION = 1
+ACCESS_KEY_JTI_PATTERN = r"^ak_[0-9a-f]{32}$"
+_ACCESS_KEY_JTI_RE = re.compile(ACCESS_KEY_JTI_PATTERN)
+_NEWLY_CREATED_STATUS: AccessKeyStatus = "ACTIVE"
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +107,12 @@ def is_access_key_token_candidate(token: str) -> bool:
                 "verify_aud": False,
             },
         )
-    except jwt.DecodeError:
+    except jwt.PyJWTError:
         return False
-    return unverified.get("nmp_token_type") == ACCESS_KEY_TOKEN_TYPE
+    if unverified.get("nmp_token_type") != ACCESS_KEY_TOKEN_TYPE:
+        return False
+    jti = unverified.get("jti", "")
+    return isinstance(jti, str) and bool(_ACCESS_KEY_JTI_RE.match(jti))
 
 
 def _access_key_signing_key(config: AuthConfig) -> RSASigningKey:
@@ -344,7 +352,7 @@ def _access_key_response_from_payload(
         token=token,
         token_type="Bearer",
         principal=payload.principal,
-        status="ACTIVE",
+        status=_NEWLY_CREATED_STATUS,
         issuer=payload.issuer,
         audiences=payload.audiences,
         created_at=payload.created_at,

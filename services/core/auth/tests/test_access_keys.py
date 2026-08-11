@@ -131,8 +131,8 @@ def test_create_access_key_returns_token_for_current_principal(client):
     response = client.post(
         "/v2/access-keys",
         json={
-            "name": "gtc-intake",
-            "description": "GTC intake automation",
+            "name": "ci-intake",
+            "description": "CI intake automation",
             "expires_in_seconds": 3600,
         },
     )
@@ -140,8 +140,8 @@ def test_create_access_key_returns_token_for_current_principal(client):
     assert response.status_code == 200
     body = response.json()
     assert body["jti"].startswith("ak_")
-    assert body["name"] == "gtc-intake"
-    assert body["description"] == "GTC intake automation"
+    assert body["name"] == "ci-intake"
+    assert body["description"] == "CI intake automation"
     assert body["token_type"] == "Bearer"
     assert body["principal"] == "alice@example.com"
     assert body["expires_at"] is not None
@@ -152,7 +152,7 @@ def test_create_and_revoke_emit_actor_aware_audit_logs(client, caplog):
     with caplog.at_level(logging.INFO, logger="nmp.core.auth.app.access_keys"):
         created = client.post(
             "/v2/access-keys",
-            json={"name": "gtc-intake", "description": "GTC intake automation"},
+            json={"name": "ci-intake", "description": "CI intake automation"},
         ).json()
         response = client.delete(f"/v2/access-keys/{created['jti']}")
         repeat_response = client.delete(f"/v2/access-keys/{created['jti']}")
@@ -169,7 +169,7 @@ def test_create_and_revoke_emit_actor_aware_audit_logs(client, caplog):
     assert events["access_key.revoke_noop"].access_key_jti == created["jti"]
     assert events["access_key.revoke_noop"].access_key_already_revoked
     assert created["token"] not in caplog.text
-    assert "GTC intake automation" not in caplog.text
+    assert "CI intake automation" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -208,12 +208,12 @@ def test_create_access_key_allows_unnamed_tokens(client):
 
 
 def test_create_access_key_defaults_expiration_when_omitted(client):
-    response = client.post("/v2/access-keys", json={"name": "gtc-intake"})
+    response = client.post("/v2/access-keys", json={"name": "ci-intake"})
 
     assert response.status_code == 200
     body = response.json()
     assert body["jti"].startswith("ak_")
-    assert body["name"] == "gtc-intake"
+    assert body["name"] == "ci-intake"
     assert body["expires_at"] is not None
     assert body["token"].count(".") == 2
 
@@ -251,7 +251,7 @@ def test_create_access_key_is_explicitly_not_implemented(client):
 
     client.app.dependency_overrides[get_access_key_issuer] = lambda: NotImplementedIssuer()
     try:
-        response = client.post("/v2/access-keys", json={"name": "gtc-intake"})
+        response = client.post("/v2/access-keys", json={"name": "ci-intake"})
     finally:
         client.app.dependency_overrides.clear()
 
@@ -316,6 +316,10 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     assert create_responses["404"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyErrorResponse"
     }
+    assert create_responses["409"]["description"] == "Concurrent access-key update conflict"
+    assert create_responses["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccessKeyErrorResponse"
+    }
     assert create_responses["501"]["description"] == "Not Implemented"
     assert create_responses["501"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyNotImplementedErrorResponse"
@@ -377,6 +381,10 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
     assert revoke_responses["404"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyErrorResponse"
     }
+    assert revoke_responses["409"]["description"] == "Concurrent access-key update conflict"
+    assert revoke_responses["409"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AccessKeyErrorResponse"
+    }
     assert revoke_responses["501"]["description"] == "Not Implemented"
     assert revoke_responses["501"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/AccessKeyNotImplementedErrorResponse"
@@ -386,7 +394,7 @@ def test_access_key_lifecycle_openapi_documents_error_responses(client):
 def test_list_access_keys_returns_current_principals_persisted_keys(client):
     created = client.post(
         "/v2/access-keys",
-        json={"name": "gtc-intake", "description": "GTC intake automation"},
+        json={"name": "ci-intake", "description": "CI intake automation"},
     ).json()
 
     response = client.get("/v2/access-keys")
@@ -395,11 +403,11 @@ def test_list_access_keys_returns_current_principals_persisted_keys(client):
     assert response.json()["data"] == [
         {
             "jti": created["jti"],
-            "name": "gtc-intake",
+            "name": "ci-intake",
             "principal": "alice@example.com",
             "created_at": created["created_at"],
             "expires_at": created["expires_at"],
-            "description": "GTC intake automation",
+            "description": "CI intake automation",
             "status": "ACTIVE",
             "issuer": "http://testserver/apis/auth",
             "audiences": ["nemo-platform-access-key"],
@@ -429,7 +437,7 @@ def test_list_access_keys_supports_pagination(client):
 
 
 def test_revoke_access_key_marks_key_revoked_in_listing(client):
-    created = client.post("/v2/access-keys", json={"name": "gtc-intake"}).json()
+    created = client.post("/v2/access-keys", json={"name": "ci-intake"}).json()
 
     response = client.delete(f"/v2/access-keys/{created['jti']}")
 

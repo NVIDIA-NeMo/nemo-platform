@@ -7,7 +7,7 @@ from nemo_platform_plugin.client.types import PreparedRequest
 
 
 def test_create_access_key_endpoint_uses_gateway_path() -> None:
-    prepared = endpoints.create_access_key(body=AccessKeyCreateRequest(name="gtc-intake"))
+    prepared = endpoints.create_access_key(body=AccessKeyCreateRequest(name="ci-intake"))
 
     assert isinstance(prepared, PreparedRequest)
     assert prepared.method == "POST"

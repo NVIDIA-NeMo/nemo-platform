@@ -221,18 +221,23 @@ def test_create_app_openapi_registers_rebased_query_param_schemas(monkeypatch):
         clear_query_param_schemas()
 
 
-def test_create_app_injects_http_client_for_auth_callouts(monkeypatch):
+def test_create_app_uses_separate_http_clients_for_auth_callouts(monkeypatch):
     platform_cfg = _patch_platform_app_config(monkeypatch, seed_on_startup=False)
     platform_cfg.services = ""
     http_client = MagicMock()
+    lifecycle_http_client = MagicMock()
 
-    app = server.create_app(services=[PluginService()], http_client=http_client)
+    app = server.create_app(
+        services=[PluginService()],
+        http_client=http_client,
+        access_key_lifecycle_http_client=lifecycle_http_client,
+    )
 
     auth_middleware = next(
         middleware for middleware in app.user_middleware if middleware.cls is server.AuthorizationMiddleware
     )
     assert auth_middleware.kwargs["http_client"] is http_client
-    assert auth_middleware.kwargs["access_key_lifecycle_http_client"] is http_client
+    assert auth_middleware.kwargs["access_key_lifecycle_http_client"] is lifecycle_http_client
 
 
 def test_create_app_mounted_services_drive_sdk_local_routing_without_services_env(monkeypatch):
@@ -275,20 +280,32 @@ def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
     monkeypatch.setattr(runner_config, "get_controller_groups", lambda _controllers: {"all": [], "core": []})
     monkeypatch.setattr(server, "order_services_by_dependencies", lambda services: services)
 
-    def fake_create_app(services, controller_run_funcs=None, http_client=None):
+    def fake_create_app(
+        services,
+        controller_run_funcs=None,
+        http_client=None,
+        access_key_lifecycle_http_client=None,
+    ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
         captured["http_client"] = http_client
+        captured["access_key_lifecycle_http_client"] = access_key_lifecycle_http_client
         return FastAPI()
 
     monkeypatch.setattr(server, "create_app", fake_create_app)
 
-    app = server.build_platform_app(runner_config.PlatformAppConfig(services=["agents"], controllers=[]), env={})
+    lifecycle_http_client = MagicMock()
+    app = server.build_platform_app(
+        runner_config.PlatformAppConfig(services=["agents"], controllers=[]),
+        access_key_lifecycle_http_client=lifecycle_http_client,
+        env={},
+    )
 
     assert isinstance(app, FastAPI)
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {}
     assert captured["http_client"] is None
+    assert captured["access_key_lifecycle_http_client"] is lifecycle_http_client
 
 
 def test_build_platform_app_accepts_platform_app_config(monkeypatch):
@@ -300,10 +317,16 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
     monkeypatch.setattr(runner_config, "get_controller_groups", lambda _controllers: {"all": [], "core": []})
     monkeypatch.setattr(server, "order_services_by_dependencies", lambda services: services)
 
-    def fake_create_app(services, controller_run_funcs=None, http_client=None):
+    def fake_create_app(
+        services,
+        controller_run_funcs=None,
+        http_client=None,
+        access_key_lifecycle_http_client=None,
+    ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
         captured["http_client"] = http_client
+        captured["access_key_lifecycle_http_client"] = access_key_lifecycle_http_client
         return FastAPI()
 
     monkeypatch.setattr(server, "create_app", fake_create_app)
@@ -317,6 +340,7 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {}
     assert captured["http_client"] is None
+    assert captured["access_key_lifecycle_http_client"] is None
 
 
 def test_embedded_auth_preflight_invokes_policy_wasm_helper(monkeypatch):

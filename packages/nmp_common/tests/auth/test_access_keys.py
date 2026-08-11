@@ -52,6 +52,38 @@ def test_access_key_jwks_uri_uses_canonical_auth_jwks_path() -> None:
     assert "/access-keys/" not in jwks_uri
 
 
+def test_access_key_candidate_rejects_any_pyjwt_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_invalid_token(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise jwt.InvalidTokenError("invalid token")
+
+    monkeypatch.setattr(jwt, "decode", raise_invalid_token)
+
+    assert access_keys_mod.is_access_key_token_candidate("invalid") is False
+
+
+@pytest.mark.parametrize(
+    ("token_type", "jti", "expected"),
+    [
+        (ACCESS_KEY_TOKEN_TYPE, "ak_" + "a" * 32, True),
+        (ACCESS_KEY_TOKEN_TYPE, None, False),
+        (ACCESS_KEY_TOKEN_TYPE, "ak_example", False),
+        (ACCESS_KEY_TOKEN_TYPE, "ak_" + "A" * 32, False),
+        ("oidc_access_token", "ak_" + "a" * 32, False),
+    ],
+)
+def test_access_key_candidate_requires_token_type_and_canonical_jti(
+    token_type: str,
+    jti: str | None,
+    expected: bool,
+) -> None:
+    payload = {"nmp_token_type": token_type}
+    if jti is not None:
+        payload["jti"] = jti
+    token = jwt.encode(payload, key="", algorithm="none")
+
+    assert access_keys_mod.is_access_key_token_candidate(token) is expected
+
+
 def test_token_signing_private_key_file_uses_auth_service_env_override(monkeypatch):
     monkeypatch.setenv(
         "NMP_AUTH_TOKEN_SIGNING__PRIVATE_KEY_FILE",
@@ -278,16 +310,16 @@ def test_access_key_issuer_service_stamps_current_principal(tmp_path):
 
     created = issuer.create(
         AccessKeyCreateRequest(
-            name="gtc-intake",
-            description="GTC intake automation",
+            name="ci-intake",
+            description="CI intake automation",
             expires_in_seconds=600,
         )
     )
     unverified = jwt.decode(created.token, options={"verify_signature": False})
 
     assert created.jti.startswith("ak_")
-    assert created.name == "gtc-intake"
-    assert created.description == "GTC intake automation"
+    assert created.name == "ci-intake"
+    assert created.description == "CI intake automation"
     assert created.principal == "alice@example.com"
     assert created.expires_at == datetime.fromtimestamp(1785280600, tz=UTC)
     assert unverified["jti"] == created.jti
@@ -298,7 +330,7 @@ def test_access_key_issuer_service_stamps_current_principal(tmp_path):
     assert unverified["nmp_token_type"] == ACCESS_KEY_TOKEN_TYPE
     assert unverified["nmp_access_key"] == {
         "version": 2,
-        "name": "gtc-intake",
+        "name": "ci-intake",
     }
     assert unverified["exp"] == 1785280600
 
@@ -483,7 +515,7 @@ async def test_validate_access_key_token_returns_token_claims(tmp_path):
     config = _access_key_config(tmp_path, max_expires_in_seconds=None)
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
 
     claims = await validate_access_key_token(config, created.token, jwks_override=jwks)
@@ -527,7 +559,7 @@ async def test_validate_access_key_token_fetches_remote_jwks_once_with_async_cli
     config = _access_key_config(tmp_path, max_expires_in_seconds=None)
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
     jwks_uri = f"https://auth.example.test/{id(jwks)}/jwks"
 
@@ -571,7 +603,7 @@ async def test_validate_access_key_token_propagates_remote_jwks_fetch_failure(tm
     config = _access_key_config(tmp_path, max_expires_in_seconds=None)
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks_uri = "https://auth.example.test/jwks"
 
     class FakeResponse:
@@ -603,7 +635,7 @@ async def test_validate_access_key_token_rejects_wrong_audience(tmp_path):
         principal=Principal(id="alice@example.com", email="alice@example.com"),
         now=lambda: 1785280000,
     )
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
 
     assert await validate_access_key_token(wrong_config, created.token, jwks_override=jwks) is None

@@ -197,6 +197,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '409':
+          description: Concurrent access-key update conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
         '501':
           description: Not Implemented
           content:
@@ -282,6 +288,12 @@ paths:
                 $ref: '#/components/schemas/AccessKeyRevokeResponse'
         '404':
           description: Scoped Access Keys are not enabled or the key was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '409':
+          description: Concurrent access-key update conflict
           content:
             application/json:
               schema:

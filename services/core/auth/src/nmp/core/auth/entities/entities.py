@@ -4,8 +4,10 @@
 """Auth service entities."""
 
 from datetime import datetime
+from typing import Any, Literal
 
 from nmp.common.entities import EntityBase
+from pydantic import model_validator
 
 
 class RoleBindingEntity(EntityBase):
@@ -47,4 +49,12 @@ class AccessKeyEntity(EntityBase):
     audiences: list[str]
     issued_at: datetime
     expires_at: datetime | None = None
-    revoked_at: datetime | None = None
+    status: Literal["ACTIVE", "REVOKED", "SUSPENDED"] = "ACTIVE"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_revoked_at(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("revoked_at") is not None:
+            data = dict(data)
+            data["status"] = "REVOKED"
+        return data

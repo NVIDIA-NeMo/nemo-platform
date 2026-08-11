@@ -69,10 +69,13 @@ class AccessKeyRegistry:
         )
 
     async def revoke(self, jti: str, principal: str) -> bool:
+        # Note: unlike is_active, revoke has no backfill path for legacy v1 keys that have
+        # never authenticated after migration. Without the original JWT claims we cannot
+        # construct a valid entity, so callers receive 404 until the key authenticates once.
         record = await self._get_owned(jti, principal)
-        if record.revoked_at is not None:
+        if record.status == "REVOKED":
             return False
-        updated = record.model_copy(update={"revoked_at": datetime.now(tz=UTC)})
+        updated = record.model_copy(update={"status": "REVOKED"})
         try:
             await self._entity_client.update(updated)
         except EntityConflictError:
@@ -84,7 +87,7 @@ class AccessKeyRegistry:
                 # The key was concurrently hard-deleted between our update and this
                 # read. Treat as already-revoked (idempotent outcome).
                 return False
-            if current.revoked_at is not None:
+            if current.status == "REVOKED":
                 return False
             raise
         return True
@@ -98,7 +101,7 @@ class AccessKeyRegistry:
             record = await self._backfill_legacy_record(jti, principal, claims)
             if record is None:
                 return False
-        return self._status(record) == "ACTIVE"
+        return self._status(record, leeway_seconds=30) == "ACTIVE"
 
     async def _get_owned(self, jti: str, principal: str) -> AccessKeyEntity:
         try:
@@ -120,6 +123,8 @@ class AccessKeyRegistry:
             name=record.key_name,
             description=record.description,
             principal=record.principal,
+            # Report lifecycle status against the published expiration instant.
+            # Clock-skew leeway applies only while authenticating the JWT.
             status=AccessKeyRegistry._status(record),
             issuer=record.issuer,
             audiences=list(dict.fromkeys(record.audiences)),
@@ -128,10 +133,14 @@ class AccessKeyRegistry:
         )
 
     @staticmethod
-    def _status(record: AccessKeyEntity) -> AccessKeyStatus:
-        if record.revoked_at is not None:
+    def _status(record: AccessKeyEntity, *, leeway_seconds: int = 0) -> AccessKeyStatus:
+        if record.status == "REVOKED":
             return "REVOKED"
-        if record.expires_at is not None and record.expires_at <= datetime.now(tz=UTC) - timedelta(seconds=30):
+        if record.status == "SUSPENDED":
+            return "REVOKED"
+        if record.expires_at is not None and datetime.now(tz=UTC) >= record.expires_at + timedelta(
+            seconds=leeway_seconds
+        ):
             return "EXPIRED"
         return "ACTIVE"
 
@@ -160,7 +169,7 @@ class AccessKeyRegistry:
             },
         )
         # Return the locally-constructed record rather than re-fetching. The
-        # immediate caller (is_active) only reads revoked_at and expires_at,
+        # immediate caller (is_active) only reads status and expires_at,
         # both of which are set locally. If this method is extended to use
         # server-assigned fields (e.g. db_version), re-fetch here instead.
         return record
@@ -186,7 +195,15 @@ class AccessKeyRegistry:
             return None
 
         metadata = raw_claims.get("nmp_access_key")
-        if not isinstance(metadata, dict) or metadata.get("version") != LEGACY_ACCESS_KEY_METADATA_VERSION:
+        if not isinstance(metadata, dict):
+            return None
+        if metadata.get("version") != LEGACY_ACCESS_KEY_METADATA_VERSION:
+            logger.warning(
+                "Access key %s (version=%s) has no registry record and cannot be backfilled; "
+                "this key will be rejected until its record is restored",
+                jti,
+                metadata.get("version"),
+            )
             return None
         key_name = metadata.get("name")
         return AccessKeyEntity(

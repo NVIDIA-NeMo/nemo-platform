@@ -3,6 +3,7 @@
 
 """Unit tests for authorization middleware."""
 
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,11 +13,11 @@ import jwt
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+from nmp.common.auth.access_key_lifecycle import ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.dependencies import get_auth_client
 from nmp.common.auth.jwt import TokenClaims, UnsignedJWTRejectedError
 from nmp.common.auth.middleware import (
-    _ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD,
     BYPASS_PREFIXES,
     HEALTH_ENDPOINTS,
     PUBLIC_GET_PATHS,
@@ -93,7 +94,7 @@ def access_key_lifecycle_middleware(auth_config_oidc_disabled, monkeypatch: pyte
                 access_key_lifecycle_http_client=http_client,
             )
             with patch(
-                "nmp.common.auth.middleware.get_platform_config",
+                "nmp.common.sdk_factory.Configuration.get_platform_config",
                 return_value=PlatformConfig(base_url=base_url, services=""),
             ):
                 yield middleware
@@ -508,15 +509,22 @@ class TestBearerTokenAuth:
             scopes=[],
             raw_claims={"nmp_token_type": "access_key"},
         )
+        resolved = ResolvedBearerToken(claims=valid_claims, token_kind="access_key")
 
-        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_validate:
-            mock_validate.return_value = valid_claims
-            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
-                mock_authorize.return_value = MagicMock(allowed=True)
+        with patch("nmp.common.auth.access_keys.is_access_key_token_candidate", return_value=True):
+            with patch.object(
+                AuthorizationMiddleware,
+                "_authenticate_access_key_lifecycle",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ) as mock_lifecycle:
+                with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                    mock_authorize.return_value = MagicMock(allowed=True)
 
-                response = client.get("/test", headers={"Authorization": "Bearer scoped-access-key"})
+                    response = client.get("/test", headers={"Authorization": "Bearer scoped-access-key"})
 
         assert response.status_code == 200
+        mock_lifecycle.assert_called_once()
         mock_authorize.assert_called_once()
 
     def test_bearer_token_scoped_access_key_invalid_falls_back_to_oidc(self, auth_config_enabled):
@@ -534,17 +542,16 @@ class TestBearerTokenAuth:
             raw_claims={},
         )
 
-        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_access_key_validate:
-            mock_access_key_validate.return_value = None
-            with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_oidc_validate:
-                mock_oidc_validate.return_value = oidc_claims
-                with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
-                    mock_authorize.return_value = MagicMock(allowed=True)
+        # Non-access-key tokens skip validate_access_key_token entirely (is_access_key_token_candidate
+        # returns False for OIDC tokens) and fall straight through to OIDC validation.
+        with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_oidc_validate:
+            mock_oidc_validate.return_value = oidc_claims
+            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
 
-                    response = client.get("/test", headers={"Authorization": "Bearer oidc-token"})
+                response = client.get("/test", headers={"Authorization": "Bearer oidc-token"})
 
         assert response.status_code == 200
-        mock_access_key_validate.assert_called_once()
         mock_oidc_validate.assert_called_once()
 
     def test_scoped_access_key_middleware_mapping_is_skipped_when_access_keys_are_disabled(
@@ -561,32 +568,8 @@ class TestBearerTokenAuth:
         assert response.json()["detail"] == "Bearer token authentication not configured"
         mock_validate.assert_not_called()
 
-    def test_access_key_lifecycle_url_reads_platform_config_lazily_once(
-        self,
-        auth_config_oidc_disabled,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        monkeypatch.delenv("NMP_AUTH_URL", raising=False)
-        Configuration.set_override(auth_config_oidc_disabled)
-        app = FastAPI()
-        platform_config = PlatformConfig(base_url="http://platform-one:8080", services="")
-
-        with patch(
-            "nmp.common.auth.middleware.get_platform_config",
-            side_effect=AssertionError("platform config read too early"),
-        ):
-            middleware = AuthorizationMiddleware(app, service_name="test-service")
-
-        with patch(
-            "nmp.common.auth.middleware.get_platform_config",
-            side_effect=[platform_config],
-        ) as get_platform:
-            assert middleware._access_key_lifecycle_url == "http://platform-one:8080/apis/auth/authenticate"
-            assert middleware._access_key_lifecycle_url == "http://platform-one:8080/apis/auth/authenticate"
-
-        assert get_platform.call_count == 1
-
-    def test_access_key_lifecycle_url_uses_auth_service_discovery(
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_sdk_uses_auth_service_discovery(
         self,
         auth_config_oidc_disabled,
         monkeypatch: pytest.MonkeyPatch,
@@ -598,10 +581,32 @@ class TestBearerTokenAuth:
             service_discovery={"auth": "http://auth.internal:8080"},
             services="",
         )
-        middleware = AuthorizationMiddleware(FastAPI(), service_name="test-service")
+        requests: list[httpx.Request] = []
 
-        with patch("nmp.common.auth.middleware.get_platform_config", return_value=platform_config):
-            assert middleware._access_key_lifecycle_url == "http://auth.internal:8080/apis/auth/authenticate"
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "principal": "alice@example.com",
+                    "groups": [],
+                    "scopes": [],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            middleware = AuthorizationMiddleware(
+                FastAPI(),
+                service_name="test-service",
+                access_key_lifecycle_http_client=http_client,
+            )
+            with patch.object(Configuration, "get_platform_config", return_value=platform_config):
+                response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, ResolvedBearerToken)
+        assert requests[0].url == httpx.URL("http://auth.internal:8080/apis/auth/authenticate")
 
     @pytest.mark.asyncio
     async def test_access_key_lifecycle_callout_allows_active_token(self, access_key_lifecycle_middleware):
@@ -662,7 +667,7 @@ class TestBearerTokenAuth:
                 access_key_lifecycle_http_client=lifecycle_client,
             )
             with patch(
-                "nmp.common.auth.middleware.get_platform_config",
+                "nmp.common.sdk_factory.Configuration.get_platform_config",
                 return_value=PlatformConfig(base_url="unix:///tmp/nemo-platform.sock", services=""),
             ):
                 response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
@@ -721,7 +726,7 @@ class TestBearerTokenAuth:
 
         async with access_key_lifecycle_middleware(handler) as middleware:
             response = None
-            for _ in range(_ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD):
+            for _ in range(ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD):
                 response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
 
             assert isinstance(response, Response)
@@ -730,7 +735,7 @@ class TestBearerTokenAuth:
 
             circuit_response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
 
-        assert calls == _ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
+        assert calls == ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
         assert circuit_response is not None
         assert circuit_response.status_code == 503
         assert "retry-after" in circuit_response.headers
@@ -755,7 +760,7 @@ class TestBearerTokenAuth:
 
         async with access_key_lifecycle_middleware(handler) as middleware:
             response = None
-            for _ in range(_ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD):
+            for _ in range(ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD):
                 response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
 
             assert isinstance(response, Response)
@@ -764,9 +769,33 @@ class TestBearerTokenAuth:
 
             circuit_response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
 
-        assert calls == _ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
+        assert calls == ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
         assert circuit_response.status_code == 503
         assert "retry-after" in circuit_response.headers
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_rejects_wrong_typed_sdk_response(
+        self,
+        access_key_lifecycle_middleware,
+    ):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "principal": 123,
+                    "groups": [],
+                    "scopes": [],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, Response)
+        assert response.status_code == 503
+        assert response.body == b'{"detail":"Access-key lifecycle validation unavailable"}'
 
     def test_bearer_token_request_uses_shared_resolver(self, auth_config_enabled):
         app = create_test_app(auth_config_enabled)
@@ -836,34 +865,37 @@ class TestBearerTokenAuth:
                 "sub": "alice@example.com",
                 "iat": int(time.time()),
                 "nbf": int(time.time()),
-                "jti": "ak_example",
+                "jti": "ak_" + "a" * 32,
                 "nmp_token_type": "access_key",
             },
             key="",
             algorithm="none",
         )
 
-        with (
-            patch(
-                "nmp.common.auth.middleware.get_platform_config",
-                return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
-            ),
-            patch("nmp.common.auth.middleware.resolve_bearer_token", new=AsyncMock()) as resolver,
-            patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize,
-        ):
-            mock_authorize.return_value = MagicMock(allowed=True)
-            response = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+        try:
+            with (
+                patch(
+                    "nmp.common.sdk_factory.Configuration.get_platform_config",
+                    return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
+                ),
+                patch("nmp.common.auth.middleware.resolve_bearer_token", new=AsyncMock()) as resolver,
+                patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize,
+            ):
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
 
-        assert response.status_code == 200
-        assert response.json() == {
-            "principal": "alice@example.com",
-            "email": "alice@example.com",
-            "groups": ["team-ml"],
-        }
-        assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
-        assert requests[0].headers["authorization"] == f"Bearer {token}"
-        resolver.assert_not_awaited()
-        mock_authorize.assert_called_once()
+            assert response.status_code == 200
+            assert response.json() == {
+                "principal": "alice@example.com",
+                "email": "alice@example.com",
+                "groups": ["team-ml"],
+            }
+            assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
+            assert requests[0].headers["authorization"] == f"Bearer {token}"
+            resolver.assert_not_awaited()
+            mock_authorize.assert_called_once()
+        finally:
+            asyncio.run(http_client.aclose())
 
     def test_bearer_token_sets_auth_client_context_for_service_handler(self, auth_config_enabled):
         app = FastAPI()

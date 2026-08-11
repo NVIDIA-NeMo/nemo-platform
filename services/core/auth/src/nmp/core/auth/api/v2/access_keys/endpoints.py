@@ -12,8 +12,9 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
     AccessKeyOperationNotImplementedError,
 )
 from nmp.common.auth import AuthClient, get_auth_client
-from nmp.common.auth.access_keys import AccessKeyValidationError
+from nmp.common.auth.access_keys import ACCESS_KEY_JTI_PATTERN, AccessKeyValidationError
 from nmp.common.config import get_auth_config
+from nmp.common.entities import EntityConflictError
 from nmp.core.auth.app.access_keys import (
     AccessKeyNotFoundError,
     AccessKeyRegistry,
@@ -30,7 +31,7 @@ _ACCESS_KEY_DISABLED_DETAIL = "Scoped Access Keys are not enabled"
 _AccessKeyJTI = Annotated[
     str,
     Path(
-        pattern=r"^ak_[0-9a-f]{32}$",
+        pattern=ACCESS_KEY_JTI_PATTERN,
         description="Stable JWT ID of the Scoped Access Key to revoke.",
     ),
 ]
@@ -47,12 +48,17 @@ _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE: dict[str, Any] = {
     "description": "Not Implemented",
     "model": schemas.AccessKeyNotImplementedErrorResponse,
 }
+_ACCESS_KEY_CONFLICT_ERROR_RESPONSE: dict[str, Any] = {
+    "description": "Concurrent access-key update conflict",
+    "model": schemas.AccessKeyErrorResponse,
+}
 _ACCESS_KEY_CREATE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {
         "description": "Scoped Access Key creation error",
         "model": schemas.AccessKeyErrorResponse,
     },
     404: _ACCESS_KEY_DISABLED_ERROR_RESPONSE,
+    409: _ACCESS_KEY_CONFLICT_ERROR_RESPONSE,
     501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
 }
 _ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -61,6 +67,7 @@ _ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 _ACCESS_KEY_REVOKE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     404: _ACCESS_KEY_DISABLED_OR_NOT_FOUND_ERROR_RESPONSE,
+    409: _ACCESS_KEY_CONFLICT_ERROR_RESPONSE,
     501: _ACCESS_KEY_NOT_IMPLEMENTED_ERROR_RESPONSE,
 }
 
@@ -100,6 +107,8 @@ async def create_access_key(
         raise _not_implemented(exc) from exc
     except AccessKeyValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except EntityConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent conflict; retry.") from exc
 
 
 @router.get(
@@ -137,4 +146,6 @@ async def revoke_access_key(
         raise _not_implemented(exc) from exc
     except AccessKeyNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except EntityConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Concurrent update conflict; retry.") from exc
     return schemas.AccessKeyRevokeResponse(jti=jti, revoked=revoked)
