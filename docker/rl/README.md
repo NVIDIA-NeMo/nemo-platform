@@ -1,7 +1,13 @@
 # NeMo-RL training images (`nmp-rl-base`, `nmp-rl-training`)
 
-GPU images for NeMo Platform's RL customization — **DPO and GRPO** — plus the
+GPU images for NeMo Platform's RL customization — **DPO**, and **GRPO** (will be added in
+future releases) — plus the
 **NeMo-Gym** environment runtime. A single training image serves both algorithms.
+
+> **(will be added in future releases)** marks capability the image carries but the platform does
+> not expose yet: DPO is
+> the shipping algorithm, and the GRPO backend is still in review. The image builds the extras
+> and prefetches the venvs GRPO needs so it works the day that lands.
 
 The images are built **from source** on NVIDIA's `cuda-dl-base` (CUDA 13, Python
 3.13), rather than layered on a prebuilt PyTorch container. This README records the
@@ -119,19 +125,52 @@ resolve the same interpreter as their parent.
 
 | Algorithm | Actor | Extra / venv | Notable contents |
 |---|---|---|---|
-| DPO + GRPO | `DTensorPolicyWorker` (policy training) | **`fsdp`** | `flash-attn` (prebuilt multi-arch wheel), `mamba-ssm`, `causal-conv1d` |
-| GRPO | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
-| GRPO (Gym) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
+| DPO | `DTensorPolicyWorker` (policy training) | **`fsdp`** | `flash-attn` (prebuilt multi-arch wheel), `mamba-ssm`, `causal-conv1d` |
+| GRPO (future release) | `DTensorPolicyWorkerV2` (policy training) | **`automodel`** | `nemo-automodel`, Transformer-Engine, `megatron-fsdp` |
+| GRPO (future release) | `MegatronPolicyWorker` (policy training) | **`mcore`** | `megatron-bridge`, `megatron-core`, Transformer-Engine |
+| GRPO (future release) | `VllmGenerationWorker`, `SyncRolloutActor` | **`vllm`** | `vllm`, `deep_ep`, `deep_gemm`, `flashinfer` |
+| GRPO (Gym, future release) | `NemoGym` | **`nemo_gym`** | NeMo-Gym workspace member |
 
-DPO resolves to the **V1** DTensor worker (`dtensor_cfg._v2` defaults to false and the
-customizer does not set it), which maps to the `fsdp` extra.
+DPO resolves to the **V1** DTensor worker (`dtensor_cfg._v2` defaults to false and the DPO
+compiler does not set it), which maps to the `fsdp` extra. GRPO's compiler sets
+`policy.dtensor_cfg._v2: true`, which selects **V2** and therefore the `automodel` extra.
 
-### Excluded on purpose: the `automodel` and `mcore` backends
+**LoRA requires V2 or Megatron.** DTensor V1 asserts `lora_cfg.enabled is False`
+(`nemo_rl/models/policy/lm_policy.py`); the DTensor LoRA implementation lives in
+`nemo_automodel.components._peft.lora`, and Megatron carries its own `peft` path. So
+`automodel` and `mcore` are the parameter-efficient-training tiers in this image.
 
-We deliberately **do not build the `automodel` or `mcore` extras**. They are *alternative
-training backends*, and the customizer uses neither for now.
+GRPO is **critic-free** — no value model — so neither `DTensorValueWorkerV2` (automodel tier)
+nor `MegatronValueWorker` (mcore tier) is prefetched.
 
-**Why that matters: they are the only things that pull Transformer-Engine.** TE is a
+### Why the `mcore` backend is built
+
+`mcore` is a second GRPO **training** tier alongside `automodel`. It is what backs the
+capabilities DTensor does not implement in NeMo-RL today:
+
+| Capability | DTensor (`fsdp` / `automodel`) | Megatron (`mcore`) |
+|---|---|---|
+| Pipeline parallelism | ❌ `lm_policy.py` reads `pp_size` only from `megatron_cfg` | ✅ |
+| FP8 training / FP8 rollouts / FP8 KV-cache | ❌ | ✅ |
+| NVFP4 quantization-aware RL | ❌ | ✅ (with `modelopt`) |
+| Draft models / EAGLE3 speculative decoding | ❌ hard-gated in `lm_policy.py` | ✅ |
+| Megatron-native generation (no refit conversion) | ❌ | ✅ |
+| Largest models (`qwen3.5-397ba17b`, `glm5.1`, DeepSeek-V3) | ❌ tops out ~120B MoE | ✅ |
+| MoE with expert parallelism, context parallel, LoRA, VLM | ✅ | ✅ |
+
+Upstream weights this way too: of NeMo-RL's seven recipes that reference `nemo_gym`, six run
+on Megatron.
+
+Megatron-native generation needs no separate venv — it runs **in-process inside
+`MegatronPolicyWorker`**, which is the point of it (training and inference share one weight
+layout, so there is no refit conversion). That is why it has no registry entry of its own.
+
+`mcore` also requires `TORCH_CUDA_ARCH_LIST` to be set at **runtime**, not just at build
+(`lm_policy.py` raises without it; mcore's inference unified-memory API calls a torch API
+that reads it). The publish stage is `FROM builder`, so it inherits the builder's
+`TORCH_CUDA_ARCH_LIST="9.0 10.0"` — the same value NeMo-RL's own `docker/Dockerfile` sets.
+
+**Transformer-Engine is shared between `automodel` and `mcore`.** TE is a
 training-time *transformer layer* library (fused attention / LayerNorm / GEMM kernels,
 fp8). Whether a backend needs it comes down to **who implements the transformer layer**:
 
@@ -142,29 +181,31 @@ fp8). Whether a backend needs it comes down to **who implements the transformer 
 | `mcore` | **Megatron-Core** builds its parallel layers on TE primitives | ✅ |
 | `vllm` | Its own hand-written **inference** kernels (paged attention, fused MoE) | ❌ inference engine, not a training-layer library |
 
-So excluding these two removes the single longest CUDA compile (TE) from the build.
+TE is the single longest CUDA compile in the image, and `automodel` and `mcore` **share one
+build of it**. RL's `[tool.uv] override-dependencies` collapses every TE requirement —
+`automodel`'s declared `v2.14.1` and `megatron-bridge[te]`'s own rev — onto
+`git+…/TransformerEngine.git@release_v2.15`, so `uv.lock` holds exactly one resolved
+`transformer-engine 2.15.0+42b8400`. Conflicting extras resolve in separate forks, but uv's
+built-wheel cache is keyed on the resolved source identity (git URL + commit + platform
+tags), not on which extra requested it. The `mcore` sync therefore reuses the wheel the
+`automodel` sync built. `deep_ep`, `mamba-ssm` and `causal-conv1d` are pinned identically
+across the extras and are reused the same way.
 
-What is excluded, precisely:
+TE is built from source, once per image build: `uv.lock` pins it as a **git source**, so
+`uv sync --frozen` compiles it and caches the resulting wheel, and every later venv reuses
+that. A prebuilt wheel would not be picked up without changing how the lock sources TE.
 
-- `nemo-automodel` (`automodel` extra) — the HF-native DTensor **V2** backend
-  (`DTensorPolicyWorkerV2`), reachable only via `policy.dtensor_cfg._v2: true`.
-- `megatron-core` / `megatron-bridge` (`mcore` extra) — `MegatronPolicyWorker`, reachable
-  only via `policy.megatron_cfg.enabled: true`, which the customizer explicitly disables.
+**What `mcore` actually adds:** `megatron-bridge` and `megatron-core` are **editable path
+sources** from submodules already on disk, so installing them is near-free. The rest is
+wheel-only downloads (`flashinfer-*==0.6.8.post1`, `nvshmem4py-cu13`, `cupy-cuda13x`) plus
+`nvidia-modelopt` from git. Build-time cost is small; the real cost is one more prefetched
+worker venv, which is the only place an extra contributes to image size (`uv sync` is exact,
+so the warmup syncs do not accumulate).
 
-**Effect on build time and image size:** the saving is almost entirely **build time** — the
-Transformer-Engine compile is the longest step in the image, and it is now skipped. Image
-size barely changes, for three reasons: the warmup syncs never persisted those packages
-anyway (`uv sync` is exact, so each `--extra` is pruned by the next — see "Consequences"
-above), the uv cache is a build-time mount that never enters the image, and we do not
-prefetch `automodel` / `mcore` worker venvs. Prefetched worker venvs are the only place an
-extra contributes to image size, so image size would only grow if we *also* prefetched
-those two. The Automodel and Megatron-Bridge **source trees still ship** regardless: they
-are RL git submodules referenced by `uv.lock`.
-
-**Re-enabling either** is a config change plus two lines in `Dockerfile.nmp-rl-base` — add
-the extra to the warmup sync and add the worker FQN to the prefetch filters. Transformer-Engine
-is built from source when that happens: `uv.lock` pins it as a git source, so `uv sync --frozen`
-compiles it and caches the wheel, and every later venv reuses that.
+Megatron-Bridge pins `setuptools<80.0.0` for its own build, so uv builds its metadata in a
+PEP 517 environment against an old setuptools and leaves it in the shipped cache. RL's
+`setuptools>=80.10.2` override cannot reach a build environment, so the publish stage drops
+cached setuptools archives that no venv symlinks into.
 
 ### NeMo-Gym environments: a second, separate venv layer
 
@@ -219,11 +260,18 @@ IMAGE (built once)                                RUNTIME
   (each `uv sync --extra` is pruned by             (math / code / VLM environments)
    the next; extras never persist here)
 
-/opt/ray_venvs/<actor-fqn>   per-ACTOR venvs, prefetched at build
-  ├─ …DTensorPolicyWorker   [fsdp]      ────────> policy training      (DPO + GRPO)
-  ├─ …VllmGenerationWorker  [vllm]      ────────> generation           (GRPO only)
-  ├─ …SyncRolloutActor      [vllm]      ────────> rollout driver       (GRPO only)
-  └─ …NemoGym               [nemo_gym]  ────────> Gym actor            (GRPO only)
+/opt/ray_venvs/<actor-fqn>   per-ACTOR venvs, prefetched at build (nine)
+  ├─ …DTensorPolicyWorker       [fsdp]      ────> policy training      (DPO)
+  ├─ …DTensorPolicyWorkerV2     [automodel] ────> policy training      (GRPO, DTensor V2)
+  ├─ …MegatronPolicyWorker      [mcore]     ────> policy training      (GRPO, Megatron;
+  │                                                also hosts Megatron-native generation)
+  ├─ …VllmGenerationWorker      [vllm]      ────> generation           (GRPO, sync)
+  ├─ …VllmAsyncGenerationWorker [vllm]      ────> generation           (GRPO, async — Gym
+  │                                                forces async rollouts)
+  ├─ …SyncRolloutActor          [vllm]      ────> rollout driver       (GRPO, sync path)
+  ├─ …NemoGym                   [nemo_gym]  ────> Gym actor            (mode A, colocated)
+  ├─ …SandboxedGymActor         [nemo_gym]  ────> Gym proxy actor      (mode B, sandboxed)
+  └─ …SandboxEpisodeBrokerActor [nemo_gym]  ────> per-episode sandbox broker (mode B)
 
 /opt/gym_venvs/<env>         per-ENVIRONMENT venvs — empty in the shipped image
   ├─ built-in Gym envs   ── created at RUNTIME (prefetch off; opt in via
@@ -240,11 +288,13 @@ driver (base venv)
                    (init_reference_model=True — no extra worker, no extra venv)
 ```
 
-**GRPO job** — training + generation + (optionally) Gym:
+**GRPO job (future release), DTensor V2 path** — training + generation + (optionally) Gym.
+This is the path the customizer's GRPO compiler emits (`policy.dtensor_cfg._v2: true`,
+`megatron_cfg.enabled: false`); see below for the Megatron alternative.
 
 ```text
 driver (base venv)
-  ├─ Policy      ─ DTensorPolicyWorker ×N  →  /opt/ray_venvs/…DTensorPolicyWorker  [fsdp]
+  ├─ Policy      ─ DTensorPolicyWorkerV2 ×N → /opt/ray_venvs/…DTensorPolicyWorkerV2 [automodel]
   ├─ Generation  ─ VllmGenerationWorker ×N →  /opt/ray_venvs/…VllmGenerationWorker [vllm]
   │                                            └─ deep_ep / deep_gemm  → Hopper+ only
   ├─ Rollout     ─ SyncRolloutActor        →  /opt/ray_venvs/…SyncRolloutActor     [vllm]
@@ -258,6 +308,22 @@ driver (base venv)
                           └─ user FileSet → built on first use (startup cost;
                                             wheels-v1 avoids PyPI, native-v1 needs egress)
 ```
+
+**GRPO job, Megatron path** — selected by `policy.megatron_cfg.enabled: true`. Only the policy
+tier differs; generation, rollout and Gym are unchanged from the diagram above:
+
+```text
+driver (base venv)
+  ├─ Policy      ─ MegatronPolicyWorker ×N →  /opt/ray_venvs/…MegatronPolicyWorker [mcore]
+  │                 └─ Megatron-native generation runs IN-PROCESS here when
+  │                    policy.generation.mcore_generation_config is set — training and
+  │                    inference share one weight layout, so there is no refit conversion
+  │                    and no separate generation venv
+  └─ (generation / rollout / Gym as above)
+```
+
+Megatron and DTensor are mutually exclusive — `lm_policy.py` raises if both `megatron_cfg`
+and `dtensor_cfg` are enabled.
 
 ## Hardware: which GPUs run what
 
@@ -288,13 +354,14 @@ warp specialization, NVSHMEM GPU-initiated RDMA) and only build/run on
 Upstream NeMo-RL pins `TORCH_CUDA_ARCH_LIST="9.0 10.0"`;
 upstream Automodel builds DeepEP for `"9.0 10.0 12.0"` — the same Hopper floor.
 
-**Megatron backend: unused today** Transformer-Engine — the heavy
-fused-kernel library the Megatron backend depends on — is currently pinned to
-`NVTE_CUDA_ARCHS=90;100`, so the Megatron backend would be Hopper-only as built.
-The customizer's DPO disables Megatron and trains on DTensor; whether GRPO will need
-Megatron is still being determined in testing. TE is **not** inherently Hopper-only —
-upstream Automodel builds it for `80;90;100;120` — so if the Megatron backend is later
-required on A100, TE can be rebuilt to include `8.0`.
+**Megatron backend: Hopper / Blackwell as built.** Transformer-Engine — the heavy
+fused-kernel library both the Megatron and Automodel backends depend on — is pinned to
+`NVTE_CUDA_ARCHS=90;100`, matching NeMo-RL's own `docker/Dockerfile`. TE is **not**
+inherently Hopper-only — upstream Automodel builds it for `80;90;100;120` — so if
+Megatron or DTensor V2 is later required on A100, TE can be rebuilt to include `8.0`.
+`TORCH_CUDA_ARCH_LIST` is additionally a **runtime** requirement for the Megatron
+backend, which raises if it is unset; the publish stage inherits `"9.0 10.0"` from the
+builder stage.
 
 **Genuinely Hopper-only pieces:** only `deep_ep` and `deep_gemm` (their source builds
 fail for `8.0`). Everything else — the `torch`/`vllm`/`flash-attn`/`flashinfer`
@@ -351,8 +418,8 @@ the uv cache + venv prefetch rather than via wheel images:
   commits than RL (a cp312/cu128 wheel cannot import on cp313/cu130, and the version
   deltas would fail `uv sync --frozen`). Reusing the pattern would mean new cp313/cu130
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
-- **Transformer-Engine** is the longest compile, but it is not built at all now — it
-  only exists in the unused `automodel` / `mcore` extras (see the note above).
+- **Transformer-Engine** is the longest compile. It comes in with the `automodel` extra,
+  which the GRPO (future release) policy worker needs, so it is built from source here.
   `.python-version` pinning an exact patch release, which uv honours over whatever
   `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
   every venv came up on RL's version while ours sat unused on disk, so the image shipped
@@ -375,9 +442,8 @@ whenever the *dependency graph* hasn't changed:
 - To iterate on `services/rl` without re-entering the base build at all: build the base
   once and point training at it with `USE_PREBUILT_BASES=1 BASE_TAG_RL=<tag>` or
   `RL_BASE_CONTEXT=docker-image://<base-image>`.
-- Only the extras that are actually used are synced (`vllm`, `fsdp`, `modelopt`,
-  `nemo_gym`); dropping `mcore` / `automodel` removes the Transformer-Engine compile
-  entirely.
+- Only the extras that are actually used are synced (`fsdp`, `automodel`, `mcore`, `vllm`,
+  `modelopt`, `nemo_gym`); `sglang` and `trtllm` are dropped.
 
 ### Prefetching the per-worker venvs (build once, not per job)
 
@@ -393,16 +459,24 @@ Prefetched (the filters match **actor FQNs**, not extra names):
 
 | Filter | Extra | Needed by |
 |---|---|---|
-| `dtensor_policy_worker.DTensorPolicyWorker` | `fsdp` | DPO + GRPO policy training |
-| `vllm.vllm_worker` | `vllm` | GRPO generation — matches **both** `VllmGenerationWorker` and `VllmAsyncGenerationWorker` (NeMo-Gym forces async rollouts, so both are on the path) |
-| `sync_rollout_actor.SyncRolloutActor` | `vllm` | GRPO rollout driver (sync path) |
+| `dtensor_policy_worker.DTensorPolicyWorker` | `fsdp` | DPO policy training |
+| `dtensor_policy_worker_v2.DTensorPolicyWorkerV2` | `automodel` | GRPO policy training (future release) — selected by `policy.dtensor_cfg._v2: true`; the only LoRA-capable DTensor worker. The V1 filter does not match it (`dtensor_policy_worker_v2.`) |
+| `megatron_policy_worker.MegatronPolicyWorker` | `mcore` | GRPO policy training on Megatron (future release) — selected by `policy.megatron_cfg.enabled: true`; also hosts Megatron-native generation in-process. Does not match modelopt's `megatron_quant_policy_worker.MegatronQuantPolicyWorker` |
+| `vllm.vllm_worker` | `vllm` | GRPO generation (future release) — matches **both** `VllmGenerationWorker` and `VllmAsyncGenerationWorker` (NeMo-Gym forces async rollouts, so both are on the path) |
+| `sync_rollout_actor.SyncRolloutActor` | `vllm` | GRPO rollout driver (future, sync path) |
 | `nemo_gym.NemoGym` | `nemo_gym` | Gym environment actor (mode A, colocated) |
 | `nemo_gym_actor.SandboxedGymActor` | `nemo_gym` | Sandboxed Gym (mode B) — the trusted proxy actor in the training pod |
 | `broker_actor.SandboxEpisodeBrokerActor` | `nemo_gym` | Trusted episode broker — creates per-episode sandboxes so the job sandbox never holds the OpenSandbox credential |
 
-Filters are **substring matches on actor FQNs**, so six filters yield seven venvs. They are
-deliberately specific — a bare `vllm` would also match `nemo_rl.modelopt`'s
-`vllm_quant_worker` and pull in the modelopt+vllm combination.
+Filters are **substring matches on actor FQNs**, so eight filters yield nine venvs
+(`vllm.vllm_worker` matches the sync and async workers alike). They are deliberately specific —
+a bare `vllm` would also match `nemo_rl.modelopt`'s `vllm_quant_worker` and pull in the
+modelopt+vllm combination, and a bare `megatron` would pull in `MegatronValueWorker` and
+modelopt's `MegatronQuantPolicyWorker`.
+
+`tests/smoke_gpu/test_rl_training.py` asserts this set exactly
+(`test_prefetched_venvs_match_expected_set`), so a filter that drifts fails the build rather
+than silently shipping an image whose workers rebuild their venv on the node at job start.
 
 One venv is built **per actor, not per extra** — `prefetch_venvs.py` passes the actor FQN as
 the venv name — so the three `nemo_gym`-extra actors above each get their own directory and
@@ -411,9 +485,10 @@ RL declares `nemo_gym = ["nemo_gym[sandbox]"]`.
 
 Without this, each venv is built **on the node at first run**, re-resolving and
 recompiling `deep_ep` / `mamba-ssm` / `causal-conv1d` against a cold uv cache on every
-job. Not prefetched (they build on the node if a config selects them): `automodel`,
-`mcore`, `sglang`, `trtllm`, modelopt-quant workers, and the async-GRPO actors
-(`AsyncTrajectoryCollector`, `ReplayBuffer`).
+job. Not prefetched (they build on the node if a config selects them): `sglang`, `trtllm`,
+modelopt-quant workers, `DTensorValueWorkerV2` / `MegatronValueWorker` (GRPO is critic-free,
+so there is no value model), and the async-GRPO actors (`AsyncTrajectoryCollector`,
+`ReplayBuffer`).
 
 ### Link mode: why the uv cache ships inside the image
 
@@ -448,7 +523,8 @@ the node at runtime (Gym environment venvs, non-prefetched actors) starts from a
 cache and re-downloads.
 
 That is the main argument for prefetching: a venv that is not baked in is not just
-un-materialized, it is rebuilt against a cold cache.
+un-materialized, it is rebuilt against a cold cache — which for the `automodel` tier would
+mean compiling Transformer-Engine on every node at job time.
 
 #### `vllm/` is a private copy per vLLM venv
 
@@ -533,7 +609,7 @@ every import.
 |---|---|---|
 | `NEMO_RL_REPO` / `NEMO_RL_REF` | see `docker-bake.hcl` | NeMo-RL source + pinned commit. |
 | `TORCH_CUDA_ARCH_LIST` | `"9.0 10.0"` | Archs for the torch-based source extensions (deep_ep, deep_gemm, mamba, causal-conv1d). |
-| `NVTE_CUDA_ARCHS` | `90;100` | Archs for Transformer-Engine. Inert today (TE is only in the unused `automodel`/`mcore` extras); kept for when either is enabled. |
+| `NVTE_CUDA_ARCHS` | `90;100` | Archs for Transformer-Engine, which the `automodel` extra compiles from source. Narrow to one arch for a faster dev build. |
 | `UV_SYNC_MODE` | `--frozen` | Reproducible sync. Set to empty to relock if a bumped RL commit's lock has drifted. |
 | `NEMO_GYM_PREFETCH_CONFIGS` | *(empty — prefetch off)* | Space-separated Gym config paths whose environment venvs are baked into `/opt/gym_venvs`. Empty means every environment installs at runtime on first use. Set to `examples/nemo_gym/prefetch_super_all_envs.yaml` to bake NeMo-RL's curated set back in. |
 
