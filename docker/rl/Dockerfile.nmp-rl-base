@@ -305,6 +305,13 @@ RUN umask 022 && uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps 
 #
 # NOT prefetched: automodel, mcore, sglang, trtllm, modelopt-quant
 # and the async-GRPO bookkeeping actors; those build on the node if a config selects them.
+#
+# automodel is on the GRPO + LoRA path: LoRA is implemented only in DTensorPolicyWorkerV2, the
+# compiler selects it via policy.dtensor_cfg._v2, and the registry maps that actor to
+# PY_EXECUTABLES.AUTOMODEL. Because it is not prefetched, a LoRA run builds that venv on the node
+# at job start - slow at best, and a hard failure on a deny-egress cluster. Add
+# dtensor_policy_worker_v2.DTensorPolicyWorkerV2 to the filters and the verification loop below to
+# fix that. Full-weight GRPO stays on V1 -> fsdp, which is prefetched.
 RUN <<"EOF" bash -exu
 umask 022
 export UV_LINK_MODE=symlink
