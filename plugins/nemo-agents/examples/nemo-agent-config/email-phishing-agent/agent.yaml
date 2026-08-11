@@ -102,7 +102,7 @@ harnesses:
                 indicators: <YAML list of short strings>
                 explanation: <one non-empty sentence>
                 attack_type: <bec|credential|malware|spam|benign>
-                impersonated_brand: <brand name, or none>
+                impersonated_brand: <lowercase brand name, or none>
 
           # The specialists below are ported from the email-security-analyst NAT
           # example (prompts by Octavian Drulea). There they were LLM "capability

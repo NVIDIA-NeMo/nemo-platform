@@ -36,9 +36,12 @@ nemo agents invoke --agent-deployment email-phishing-agent-deployment \
 ```
 
 The agent returns a YAML verdict with `is_likely_phishing: true`, listing the
-lookalike sender domain (`paypa1-secure.example`) among its indicators. Two fields
-come from specialists rather than the classifier: `attack_type: credential` (from
-`attack-attributor`) and `impersonated_brand: paypal` (from `url-brand-analyst`).
+lookalike sender domain (`paypa1-secure.example`) among its indicators.
+`phishing-analyzer` owns the verdict and emits every field, including
+`attack_type` (e.g. `credential`) and `impersonated_brand` (e.g. `paypal`) — it
+fills those from the `attack-attributor` and `url-brand-analyst` findings, which
+are advisory: it can override them, or supply a value itself when a specialist is
+silent.
 
 ## Step 3: Watch the header specialist fire
 
@@ -47,11 +50,13 @@ email actually carries them. Send one that does:
 
 ```bash
 nemo agents invoke --agent-deployment email-phishing-agent-deployment \
-  --input $'Received: from mail.evil.example (203.0.113.9)\nFrom: security@paypal.com\nReturn-Path: bounce@evil.example\nAuthentication-Results: mx.example.com; spf=fail smtp.mailfrom=evil.example; dkim=pass header.d=paypal.com; dmarc=pass header.from=paypal.com\nSubject: Unusual sign-in\n\nReview the sign-in at http://paypal-secure-review.example/verify'
+  --input $'Received: from mail.evil.example (203.0.113.9)\nFrom: security@paypal.com\nReturn-Path: bounce@evil.example\nAuthentication-Results: mx.example.com; spf=fail smtp.mailfrom=evil.example; dkim=fail header.d=paypal.com; dmarc=fail header.from=paypal.com\nSubject: Unusual sign-in\n\nReview the sign-in at http://paypal-secure-review.example/verify'
 ```
 
-`spf=fail` now appears among the indicators — the `From:` claims `paypal.com` but
-the message was sent by `evil.example`.
+The authentication results fail across the board — critically `dmarc=fail` on
+`header.from=paypal.com`, the check tied to the visible `From:` domain, so the
+message isn't authorized to claim `paypal.com`. `header-auth-analyst` names the
+failed mechanism, and it surfaces among the indicators.
 
 The labeled dataset in Step 5 carries no SMTP headers, so this specialist stays
 idle there. That is deliberate: synthesizing auth results per row would put the
@@ -64,10 +69,12 @@ nemo agents logs --agent email-phishing-agent
 ```
 
 The deployment's `artifacts/.../events.atof.jsonl` records the `extract_iocs` tool
-call and one task per sub-agent — evidence that the tool ran and each specialist
-was consulted, not that the model guessed. With NeMo Studio Intake enabled
-(`VITE_FF_INTAKE_ENABLED=true`), the same run appears under **Traces**, one span
-per step.
+call and a task for each specialist the orchestrator consulted — evidence the tool
+ran and the specialists were invoked, not that the model guessed. Which specialists
+appear depends on the input: `url-brand-analyst` and `attack-attributor` run on the
+Step 2 email, while `header-auth-analyst` appears only for header-bearing input
+like Step 3's. With NeMo Studio Intake enabled (`VITE_FF_INTAKE_ENABLED=true`), the
+same run appears under **Traces**, one span per step.
 
 ## Step 5: Evaluate against labeled emails
 
