@@ -67,6 +67,20 @@ async def test_get_execution_profiles_parses_response(jobs_client: AsyncJobsClie
     assert isinstance(profiles, list)
 
 
+@pytest.mark.asyncio
+async def test_get_execution_profiles_available_without_controller_ready_gate(
+    test_client: AsyncClient,
+):
+    """API must advertise merge-filtered profiles without a controller ready flag.
+
+    Split topologies (API pod without controllers) previously 503'd forever when
+    readiness lived in controller-only process memory (AIRCORE-971).
+    """
+    raw = await test_client.get("/apis/jobs/v2/execution-profiles")
+    assert raw.status_code == 200
+    assert isinstance(raw.json(), list)
+
+
 async def _create_hello_world_job(test_client: AsyncClient, name: str = "e2e-client-job") -> None:
     """Create a job via the hello-world factory route (service-specific body)."""
     resp = await test_client.post(

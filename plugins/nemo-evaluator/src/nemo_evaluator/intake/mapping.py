@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
@@ -85,9 +86,11 @@ def trial_to_atif_ingest(
     run_id: str,
     experiment_id: str,
     agent_name: str,
+    started_at: datetime,
     agent_version: str = DEFAULT_AGENT_VERSION,
     model_name: str | None = None,
     final_metrics: AtifFinalMetricsParam | None = None,
+    ended_at: datetime | None = None,
 ) -> AtifCreateParams:
     """Build the ATIF ingest params for a single Trial.
 
@@ -95,12 +98,34 @@ def trial_to_atif_ingest(
     a minimal single-step trajectory carrying the trial's final output text, so
     the session/score path works end to end. Real ``steps[]`` reconstructed from
     ``trial.evidence`` arrive with D2.
+
+    ``started_at`` (the run's start time) is stamped on the step because it is what
+    makes re-ingest idempotent. Intake's ``spans`` table is a ``ReplacingMergeTree``
+    keyed on ``(workspace, session_id, start_time, id)``, and a step with no timestamp
+    falls back to the server's per-request ingest clock — so the same trajectory sent
+    twice lands as two rows that never collapse. An explicit timestamp makes the root
+    span's ``start_time`` a function of the run, not of when it was published.
     """
     output_text = trial.output.output_text if trial.output is not None else None
     agent: AtifAgentParam = {"name": agent_name, "version": agent_version}
     if model_name is not None:
         agent["model_name"] = model_name
-    step: AtifStepAgentParam = {"source": "agent", "step_id": 1, "message": output_text or ""}
+    step: AtifStepAgentParam = {
+        "source": "agent",
+        "step_id": 1,
+        "message": output_text or "",
+        "timestamp": started_at,
+    }
+    if ended_at is not None:
+        # Give the single-step trajectory a real duration so the root span's latency (end - start) is
+        # the trial's runtime instead of 0. Intake reads the window start/end from this NAT invocation
+        # block (epoch-second timestamps); ``started_at`` stays the start, so re-ingest is still idempotent.
+        step["extra"] = {
+            "invocation": {
+                "start_timestamp": started_at.timestamp(),
+                "end_timestamp": ended_at.timestamp(),
+            }
+        }
 
     body: AtifCreateParams = {
         "schema_version": ATIF_SCHEMA_VERSION,

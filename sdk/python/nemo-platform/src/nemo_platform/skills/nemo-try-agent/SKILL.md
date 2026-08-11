@@ -22,6 +22,12 @@ not-for:
   - nemo-build-agent (use to deploy an agent before querying)
   - nemo-skill-selection (use to dispatch when intent is unclear)
   - nemo-status (use for read-only platform health)
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - provider_registered
+  - agents_plugin_available
+  - agent_config_exists
 compatibility: nemo-platform >= 0.1.0; requires agents plugin and either a local agent YAML config or a running platform with a deployed agent; no destructive ops; safe under any sandbox.
 maturity: active
 license: Apache-2.0

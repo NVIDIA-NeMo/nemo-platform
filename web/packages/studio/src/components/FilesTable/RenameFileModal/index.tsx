@@ -5,9 +5,9 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { useDatasetFileRename } from '@studio/api/datasets/useDatasetFileRename';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
 
@@ -17,12 +17,13 @@ interface FormFields {
 
 interface Props extends Pick<FormModalProps, 'open' | 'onClose'> {
   filepath: string;
+  datasetId?: string;
   onSuccess?: (newFilePath: string) => void;
 }
 
-export const RenameFileModal: FC<Props> = ({ filepath, open, onClose, onSuccess }) => {
+export const RenameFileModal: FC<Props> = ({ filepath, datasetId, open, onClose, onSuccess }) => {
   const toast = useToast();
-  const datasetId = useSelectedDatasetId();
+  const resolvedDatasetId = useSelectedDatasetId({ datasetId });
   const { mutate: renameFile, isPending } = useDatasetFileRename({
     onError: (err) => {
       toast.error(`Unexpected error: ${err.message}`);
@@ -53,11 +54,11 @@ export const RenameFileModal: FC<Props> = ({ filepath, open, onClose, onSuccess 
   };
 
   const onSubmit: SubmitHandler<FormFields> = async (fields) => {
-    const { namespace, name } = getPartsFromReference(datasetId);
-    if (!namespace || !name) {
+    const { workspace, name } = getPartsFromReference(resolvedDatasetId);
+    if (!workspace || !name) {
       return;
     }
-    renameFile({ path: filepath, newFilePath: fields.name, workspace: namespace, name });
+    renameFile({ path: filepath, newFilePath: fields.name, workspace, name });
   };
 
   return (

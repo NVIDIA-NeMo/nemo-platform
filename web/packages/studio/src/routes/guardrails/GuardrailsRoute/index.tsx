@@ -10,17 +10,18 @@
  * its affiliates is strictly prohibited.
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import {
   getGuardrailsGetGuardrailConfigQueryKey,
   useGuardrailsDeleteConfig,
 } from '@nemo/sdk/generated/platform/api';
 import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
-import { PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { GuardrailsDataView } from '@studio/components/dataViews/GuardrailsDataView';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { CreateGuardrailModal } from '@studio/routes/guardrails/CreateGuardrailModal';
 import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
@@ -31,6 +32,8 @@ export const GuardrailsRoute: FC = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [configToDuplicate, setConfigToDuplicate] = useState<GuardrailConfig | null>(null);
   const [configToDelete, setConfigToDelete] = useState<GuardrailConfig | null>(null);
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
@@ -60,6 +63,11 @@ export const GuardrailsRoute: FC = () => {
           className="p-0"
           slotHeading="Guardrail Configs"
           slotDescription="Manage NeMo Guardrails configurations for your workspace."
+          slotActions={
+            <Button color="brand" onClick={() => setIsCreateOpen(true)}>
+              Create Guardrail
+            </Button>
+          }
         />
         <GuardrailsDataView
           workspace={workspace}
@@ -71,9 +79,20 @@ export const GuardrailsRoute: FC = () => {
             );
             navigate(getGuardrailDetailRoute(workspace, config.name));
           }}
+          onRequestDuplicate={setConfigToDuplicate}
           onRequestDelete={setConfigToDelete}
         />
       </Stack>
+
+      <CreateGuardrailModal open={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
+
+      {configToDuplicate ? (
+        <CreateGuardrailModal
+          open
+          sourceConfig={configToDuplicate}
+          onClose={() => setConfigToDuplicate(null)}
+        />
+      ) : null}
 
       {configToDelete ? (
         <DeleteConfirmationModal

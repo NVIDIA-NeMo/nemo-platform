@@ -6,7 +6,7 @@
 These guard the behavior-preserving extraction of the termination logic
 (``_has_converged`` + ``qualitative_stop_check`` + ``max_rounds``) out of the
 loop and into :mod:`terminator`. Every Terminator is constructed with an injected
-``FakeLLMClient`` so the tests need no ``NEMO_EXPERIMENTALIST_API_*`` env vars and make no
+``FakeLLMClient`` so the tests need no configured provider credentials and make no
 network calls.
 """
 
@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
+from nemo_experimentalist_plugin.config import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.experimentalist.components.terminator import (
     TerminationDecision,
@@ -108,7 +109,11 @@ async def test_run_stops_on_convergence_when_budget_not_hit() -> None:
         round_num=2,
         evolution_tree=tree,
         prior_analysis="prior analysis",
-        config=EvolutionaryOptimizerConfig(max_rounds=15, min_rounds_before_stopping=2),
+        config=EvolutionaryOptimizerConfig(
+            max_rounds=15,
+            min_rounds_before_stopping=2,
+            objective_function=[MetricTarget(name="score", direction="maximize")],
+        ),
     )
     assert decision.stop is True
     assert "converged" in decision.reason
@@ -214,6 +219,7 @@ async def test_has_converged_true_when_front_stagnates() -> None:
             evolution_tree=tree,
             prior_analysis="ignored",
             min_rounds_before_stopping=2,
+            objective_metrics=[MetricTarget(name="score", direction="maximize")],
         )
         is True
     )
@@ -238,6 +244,7 @@ async def test_qualitative_fallback_true() -> None:
             evolution_tree=tree,
             prior_analysis="plateaued: same root cause every round",
             min_rounds_before_stopping=2,
+            objective_metrics=[MetricTarget(name="score", direction="maximize")],
         )
         is True
     )

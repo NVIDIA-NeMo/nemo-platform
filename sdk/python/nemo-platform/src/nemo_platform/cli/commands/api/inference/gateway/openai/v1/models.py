@@ -12,13 +12,19 @@ from nemo_platform.cli.core.api import build_kwargs
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 app = create_typer_app(name="models", help="Manage models")
@@ -70,6 +76,7 @@ def list_models(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
 ) -> None:
     """This endpoint lists the routable VirtualModels in the requested workspace and
     returns them in OpenAI's list models format. Each model ID is the VirtualModel
@@ -79,6 +86,7 @@ def list_models(
     VirtualModels scoped to the request workspace."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -108,4 +116,5 @@ def list_models(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )

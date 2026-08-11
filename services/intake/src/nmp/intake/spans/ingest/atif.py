@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
+from nmp.intake.spans.api.dependencies import DenormalizerDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import TraceBatch
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
@@ -109,6 +109,7 @@ async def ingest_atif(
     request: Request,
     service: SpansServiceDep,
     entity_client: EntityClientDep,
+    denormalizer: DenormalizerDep,
 ) -> Response:
     await validate_evaluation_context(
         workspace=workspace,
@@ -135,4 +136,7 @@ async def ingest_atif(
         max_subagent_depth=max_subagent_depth,
     )
     await service.ingest_batch(TraceBatch(spans=spans, evaluator_results=evaluator_results))
+    context = body.evaluation_context
+    if denormalizer is not None and context is not None and context.evaluation_id:
+        denormalizer.mark_dirty(workspace=workspace, evaluation_id=context.evaluation_id)
     return Response(status_code=status.HTTP_201_CREATED)

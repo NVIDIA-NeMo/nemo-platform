@@ -478,7 +478,7 @@ def login(
     # Set base URL and log in
     nemo auth login --base-url https://nemo.example.com
     # Context-specific login
-    nemo auth login --context dev --base-url https://nemo.dev.example.com
+    nemo auth login --context staging --base-url https://nmp.staging.example.com
     # Device flow, open browser
     nemo auth login
     # Device flow, show code only

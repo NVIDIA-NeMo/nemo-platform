@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nemo-agents-example-email-security"
 version = "0.1.0"
-description = "NAT ``analyze_email`` and ``extract_iocs`` functions for the nemo-agents email-security-analyst example."
+description = "NAT capability functions for the nemo-agents email-security-analyst example."
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "nvidia-nat-core>=1.8.0,<1.9",

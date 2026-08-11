@@ -17,6 +17,8 @@ not-for:
   - nemo-build-agent (use after spec exists)
   - nemo-model-selection (use for the model question in step 5; explore delegates to it)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
+preconditions:
+  - nemo_cli_available
 compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-spec.
 maturity: active
 license: Apache-2.0

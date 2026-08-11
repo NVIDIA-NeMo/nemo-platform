@@ -16,15 +16,19 @@ from typing import Any
 
 # Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
 # this module, so going through it would be circular.
-from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.config import (
+    EvolutionaryOptimizerConfig,
+    MetricTarget,
+    has_metric_dimensions,
+    pareto_objectives,
+)
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree, pareto_front
 from nemo_experimentalist_plugin.skills import skills_dir
+from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
 from pydantic import BaseModel
-
-from .model_config import get_fast_model
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +77,9 @@ class Terminator(Agent):
         Returns:
             A :class:`TerminationDecision`.
         """
+        reached = self.assess_objective_reached(evolution_tree=evolution_tree, config=config)
+        if reached.stop:
+            return reached
         budget = self.assess_round_budget(round_num=round_num, config=config)
         if budget.stop:
             return budget
@@ -81,6 +88,34 @@ class Terminator(Agent):
             prior_analysis=prior_analysis,
             config=config,
         )
+
+    @hidden
+    def assess_objective_reached(
+        self,
+        *,
+        evolution_tree: EvolutionTree,
+        config: EvolutionaryOptimizerConfig,
+    ) -> TerminationDecision:
+        """Stop when a candidate that could win already satisfies every targeted objective.
+
+        Convergence asks whether progress has stalled; this asks whether any is left to
+        make. Not gated by ``disable_convergence_check``: that disables a judgement about
+        stagnation, this is a threshold the caller stated. To keep going, set no target.
+
+        Consulted before every round, so a baseline that already qualifies costs nothing.
+        Only survivors and the round-0 baseline count, mirroring finalization -- a killed
+        candidate would end the run in favour of a winner that never reaches the target.
+        """
+        targets = [target for target in config.objective_function if target.target is not None]
+        if not targets:
+            return TerminationDecision(stop=False)
+        for node in evolution_tree.nodes.values():
+            if not node.val_reward or not (node.is_survivor or node.round == 0):
+                continue
+            if all(target.is_satisfied_by(node.val_reward.get(target.name)) for target in targets):
+                summary = ", ".join(f"{target.name}={node.val_reward.get(target.name)}" for target in targets)
+                return TerminationDecision(stop=True, reason=f"objective reached by {node.label} ({summary})")
+        return TerminationDecision(stop=False)
 
     @hidden
     async def assess_convergence(
@@ -110,6 +145,8 @@ class Terminator(Agent):
             evolution_tree=evolution_tree,
             prior_analysis=prior_analysis,
             min_rounds_before_stopping=config.min_rounds_before_stopping,
+            objective_metrics=config.objective_function,
+            regression_metrics=config.regression_metrics,
         )
         if converged:
             return TerminationDecision(stop=True, reason="optimization converged (Pareto front stagnated)")
@@ -143,6 +180,8 @@ class Terminator(Agent):
         evolution_tree: EvolutionTree,
         prior_analysis: str,
         min_rounds_before_stopping: int,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
     ) -> bool:
         """Return True if the optimization has converged and should stop early."""
         # Truthy check (not ``is not None``): ``EvolutionNode.val_reward`` returns ``{}`` for
@@ -156,19 +195,46 @@ class Terminator(Agent):
         old = [n for n in scored if n.round <= cutoff_round]
         if not old:
             return False
-        old_front_ids = {n.label for n in pareto_front(old, lambda n: n.val_reward)}
-        full_front_ids = {n.label for n in pareto_front(scored, lambda n: n.val_reward)}
+        active_objectives = objective_metrics or EvolutionaryOptimizerConfig().objective_function
+        active_regressions = regression_metrics or []
+        scored = [node for node in scored if has_metric_dimensions(node.val_reward, active_objectives)]
+        if not scored:
+            return False
+        old = [node for node in old if node in scored]
+        if not old:
+            return False
+        old_front_ids = {
+            node.label for node in pareto_front(old, lambda node: pareto_objectives(node.val_reward, active_objectives))
+        }
+        full_front_ids = {
+            node.label
+            for node in pareto_front(scored, lambda node: pareto_objectives(node.val_reward, active_objectives))
+        }
         if full_front_ids.issubset(old_front_ids):
             return True
-        return await self.qualitative_stop_check(prior_analysis)
+        return await self.qualitative_stop_check(
+            prior_analysis,
+            active_objectives,
+            active_regressions,
+        )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5)))
-    async def qualitative_stop_check(self, analysis: str) -> bool:  # pyright: ignore[reportReturnType]
+    async def qualitative_stop_check(
+        self,
+        analysis: str,
+        objective_metrics: list[MetricTarget],
+        regression_metrics: list[MetricTarget],
+    ) -> bool:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
         """Decide whether the optimization has qualitatively plateaued; return True to stop.
 
         Judge the round ``analysis`` text against the terminator skill's stop
         heuristics (prefilled below). Return True only with concrete textual
         evidence of stagnation in ``analysis``; when in doubt, return False.
+
+        ``objective_metrics`` are the evaluator metrics being improved;
+        ``regression_metrics`` are those that must not worsen. Judge stagnation
+        only in that context; do not invent a scalar score, weights, or a new
+        selection rule.
         """
         print(doc(self.terminator_skill))
         ...

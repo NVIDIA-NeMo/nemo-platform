@@ -55,45 +55,45 @@ def format_licenses_table(
     if local_packages:
         print(f"Excluding {len(local_packages)} local workspace packages", file=sys.stderr)
 
-    # Extract packages from results
-    packages = []
-    if "results" in json_data and len(json_data["results"]) > 0:
-        packages = json_data["results"][0].get("packages", [])
-
     # Build package info list
     package_info = []
 
-    for pkg_data in packages:
-        pkg = pkg_data.get("package", {})
-        name = pkg.get("name", "")
-        version = pkg.get("version", "")
-        licenses = pkg_data.get("licenses", [])
+    for result in json_data.get("results", []):
+        for pkg_data in result.get("packages", []):
+            pkg = pkg_data.get("package", {})
+            name = pkg.get("name", "")
+            version = pkg.get("version", "")
+            ecosystem = pkg.get("ecosystem", "")
+            licenses = pkg_data.get("licenses", [])
 
-        # Skip local/workspace packages entirely (normalize for comparison)
-        if normalize_package_name(name) in local_packages:
-            continue
+            # Skip local/workspace packages entirely (normalize for comparison)
+            if normalize_package_name(name) in local_packages:
+                continue
 
-        # Override lookup: use base name so packages like torchao 0.14.1+cu128 match
-        override_key = get_override_key_for_package(name, version)
-        if override_key in overrides:
-            license_str = overrides[override_key]
-        elif not licenses:
-            # Skip packages without licenses
-            print(f"WARNING: No license info found for {name}", file=sys.stderr)
-            continue
-        else:
-            # Resolve to a single license, preferring allowed ones
-            license_str = resolve_license(licenses, ALLOWED_LICENSES)
+            # Override lookup: use base name so packages like torchao 0.14.1+cu128 match
+            override_key = get_override_key_for_package(name, version)
+            if override_key in overrides:
+                license_str = overrides[override_key]
+            elif not licenses:
+                # Skip packages without licenses
+                print(f"WARNING: No license info found for {name}", file=sys.stderr)
+                continue
+            else:
+                # Resolve to a single license, preferring allowed ones
+                license_str = resolve_license(licenses, ALLOWED_LICENSES)
 
-        package_info.append({"name": name, "version": version, "license": license_str.upper()})
+            package_info.append(
+                {"name": name, "version": version, "ecosystem": ecosystem, "license": license_str.upper()}
+            )
 
-    # Deduplicate by name (keep first occurrence)
+    # Deduplicate by ecosystem/name (keep first occurrence)
     # This handles platform-specific variants (e.g., torch 2.9.0 vs 2.9.0+cu128)
     seen_names = set()
     unique_packages = []
     for pkg in package_info:
-        if pkg["name"] not in seen_names:
-            seen_names.add(pkg["name"])
+        package_key = (str(pkg.get("ecosystem", "")).lower(), normalize_package_name(pkg["name"]))
+        if package_key not in seen_names:
+            seen_names.add(package_key)
             unique_packages.append(pkg)
 
     # Sort packages by name

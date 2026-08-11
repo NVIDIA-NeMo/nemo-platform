@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
+import { toCopyName } from '@nemo/common/src/utils/entityName';
 import type {
   CreateJob as DataDesignerJob,
   CreateJobRequest as DataDesignerJobRequest,
@@ -10,13 +11,6 @@ import type { ModelEntity, ModelProvider } from '@nemo/sdk/generated/platform/sc
 
 /** Model option for the form: entity plus display name used in job requests */
 export type DataDesignerModelOption = ModelEntity & { served_model_name: string };
-
-/** Get a display message from an unknown error; use default when not an Error instance */
-export function getErrorMessage(error: unknown, defaultMessage?: string): string {
-  return error instanceof Error
-    ? error.message
-    : (defaultMessage ?? 'Something went wrong. Please try again.');
-}
 
 /**
  * Resolve workspace and model name for chat/completion calls.
@@ -130,9 +124,6 @@ export function parseJsonContentToJobRequest(content: string): ParseJsonContentR
   return { jobRequest: sanitizeJobRequestName(parsed), error: null };
 }
 
-/** Suffix appended to a cloned job's name to distinguish it from the original. */
-export const CLONE_NAME_SUFFIX = '-copy';
-
 /**
  * Build a create-job request from an existing job so it can pre-fill the new-job form.
  * A job's `spec.job_config` is already the `DataDesignerJobConfig` shape a request expects,
@@ -143,7 +134,7 @@ export function buildClonedJobRequest(job: DataDesignerJob): DataDesignerJobRequ
   const jobConfig = job.spec?.job_config;
   if (!jobConfig?.config) return null;
   return {
-    name: job.name ? `${job.name}${CLONE_NAME_SUFFIX}` : undefined,
+    name: job.name ? toCopyName(job.name) : undefined,
     description: job.description,
     spec: jobConfig,
   };

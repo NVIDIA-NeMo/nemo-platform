@@ -8,6 +8,7 @@ import textwrap
 from json import JSONDecodeError
 from typing import Any, Dict, List, Optional
 
+from fastapi import FastAPI
 from pydantic import BaseModel
 from starlette.datastructures import QueryParams
 
@@ -95,24 +96,83 @@ def clear_query_param_schemas() -> None:
     _query_param_schemas.clear()
 
 
+def _strip_null_defaults(schema: Any) -> Any:
+    """Return *schema* without cosmetic ``default: null`` entries."""
+    if isinstance(schema, dict):
+        return {
+            key: _strip_null_defaults(value)
+            for key, value in schema.items()
+            if not (key == "default" and value is None)
+        }
+    if isinstance(schema, list):
+        return [_strip_null_defaults(item) for item in schema]
+    return schema
+
+
+def _promote_schema_defs(schema_name: str, schema: Dict[str, Any], components: Dict[str, Any]) -> None:
+    """Move a schema's local ``$defs`` into ``components.schemas``.
+
+    Query filter schemas are emitted with refs like
+    ``#/components/schemas/DatetimeFilter``. Those refs only resolve if the
+    matching nested definitions are promoted to global components.
+    """
+    local_defs = schema.pop("$defs", None)
+    if not local_defs:
+        return
+
+    for name, local_def in local_defs.items():
+        existing = components.get(name)
+        if existing is None:
+            components[name] = local_def
+            continue
+        if existing == local_def or _strip_null_defaults(existing) == _strip_null_defaults(local_def):
+            continue
+        raise ValueError(
+            f"Schema '{name}' from query parameter schema '{schema_name}' conflicts with existing component"
+        )
+
+
 def register_query_param_schemas(spec: Dict[str, Any]) -> Dict[str, Any]:
     """Inject filter/search classes registered via ``generate_openapi_extra_params``
     into ``components.schemas`` of ``spec`` if not already present.
 
-    The raw ``model_json_schema`` output is dropped in as-is, including any nested
-    ``$defs``. The downstream ``hoist_nested_defs`` pass is the single consolidator
-    that hoists these to top-level components with structural-equality dedup, so
-    duplicates emitted by other sites (e.g. the jobs factory's inline
-    ``openapi_extra``) don't diverge from the copy we inject here.
+    Nested ``$defs`` are promoted because these schemas use component-level refs
+    (``#/components/schemas/{model}``) for nested filter models. Without promotion,
+    live ``/openapi.json`` output can contain dangling refs until the offline
+    postprocessing pipeline runs.
     """
     if not _query_param_schemas:
         return spec
     components = spec.setdefault("components", {}).setdefault("schemas", {})
     for name, cls in _query_param_schemas.items():
         if name in components:
+            existing = components[name]
+            if isinstance(existing, dict):
+                _promote_schema_defs(name, existing, components)
             continue
-        components[name] = cls.model_json_schema(ref_template="#/components/schemas/{model}")
+        schema = cls.model_json_schema(ref_template="#/components/schemas/{model}")
+        _promote_schema_defs(name, schema, components)
+        components[name] = schema
     return spec
+
+
+def install_query_param_schema_openapi_hook(app: FastAPI) -> None:
+    """Wrap ``app.openapi`` so live specs include registered query-param schemas."""
+    default_openapi = app.openapi
+
+    def custom_openapi() -> dict[str, Any]:
+        if app.openapi_schema:
+            return app.openapi_schema
+        openapi_schema = default_openapi()
+        try:
+            openapi_schema = register_query_param_schemas(openapi_schema)
+        except Exception:
+            app.openapi_schema = None
+            raise
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 def parse_deep_object(name: str, params: QueryParams) -> Dict:

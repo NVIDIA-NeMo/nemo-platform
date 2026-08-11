@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   useAnonymizerCreateRunJob,
   useAnonymizerListEntityLabels,
@@ -15,7 +16,6 @@ import {
   SegmentedControl,
   Stack,
 } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { parseAnonymizerApiError } from '@studio/routes/AnonymizerBuilderRoute/apiErrors';
 import { ColumnsSection } from '@studio/routes/AnonymizerBuilderRoute/components/ColumnsSection';

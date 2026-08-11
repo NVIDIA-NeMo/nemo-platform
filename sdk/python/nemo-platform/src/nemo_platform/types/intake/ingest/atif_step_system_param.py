@@ -22,6 +22,7 @@ from datetime import datetime
 from typing_extensions import Literal, Required, Annotated, TypedDict
 
 from ...._utils import PropertyInfo
+from .atif_observation_param import AtifObservationParam
 from .atif_content_part_param import AtifContentPartParam
 
 __all__ = ["AtifStepSystemParam"]
@@ -39,5 +40,7 @@ class AtifStepSystemParam(TypedDict, total=False):
     llm_call_count: int
 
     message: Union[str, Iterable[AtifContentPartParam]]
+
+    observation: AtifObservationParam
 
     timestamp: Annotated[Union[str, datetime], PropertyInfo(format="iso8601")]

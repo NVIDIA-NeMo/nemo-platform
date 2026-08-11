@@ -7,10 +7,11 @@ the agents gateway. The backend-agnostic deploy/invoke/assert core is shared
 with the Kubernetes variant (``test_nemo_agents_k8s.py``) via
 ``e2e.agents_deploy_helpers``; this module owns only the docker-specific wiring.
 
-What it proves — the container-mode chain end to end::
+What it proves — the container-mode chain end to end for both supported agent
+config formats::
 
     sdk.agents.invoke (gateway proxy, container-mode endpoint resolution)
-      -> docker agent container (nat start fastapi)
+      -> docker agent container (NAT or Fabric/DeepAgents server)
       -> Inference Gateway /openai (base_url injected at deploy time)
       -> mock provider short-circuit (no real upstream / no API key)
       -> response back through the gateway
@@ -18,35 +19,34 @@ What it proves — the container-mode chain end to end::
 How it runs, and where:
 
 - The deployed agent runs from the platform's own ``nmp-api`` image, which
-  already ships the NAT runtime (``nvidia-nat-core`` / ``nvidia-nat-langchain``,
-  via ``nemo-agents-plugin``) — so ``nat`` is on ``PATH`` and the
-  ``chat_completion`` workflow / ``openai`` LLM the agent uses resolve. The
-  deployments docker executor overrides the image entrypoint with
-  ``nat start fastapi``, so the image's own entrypoint is irrelevant. No
-  agent-specific image is built.
+  already ships both the NAT runtime and Fabric/DeepAgents runtime. The
+  deployments docker executor overrides the image entrypoint with the server
+  for the selected config format, so the image's own entrypoint is irrelevant.
+  No agent-specific image is built.
 - The image is supplied prebuilt via ``NMP_E2E_IMAGE_REGISTRY`` /
   ``NMP_E2E_IMAGE_TAG`` (the existing e2e convention). Its dedicated CI job
   (``python-e2e-image-test``) builds/pulls ``nmp-api`` and sets these; the
   ``needs_nmp_api_image`` marker skips the test everywhere they are unset (the
   plain subprocess e2e job, the kind cluster job, and local runs without them).
 - The agent is registered with a deterministic single-LLM ``chat_completion``
-  workflow served by the e2e mock inference provider, so no ``NVIDIA_API_KEY``
-  or model egress is needed; we assert the exact mocked completion round-trips.
+  config served by the e2e mock inference provider, so no ``NVIDIA_API_KEY`` or
+  model egress is needed; we assert the exact mocked completion round-trips.
 - The platform runs as a normal local process (subprocess harness). The
   ``container_base_url_host`` harness option makes the harness bind the platform
   on all interfaces (``--host 0.0.0.0``) and rewrite ``platform.base_url`` to the
   docker bridge address; the runner seeds ``NMP_BASE_URL`` from that host paired
   with the actual bind port, so the Inference Gateway URL injected into the agent
   container is reachable from *inside* the container while the platform's own
-  in-process clients still reach it. This requires the Linux docker bridge, which
-  is reachable from both the container and the host process; Docker Desktop's
-  host alias is not host-resolvable, so the module skips on non-Linux.
+  in-process clients still reach it. This requires the Linux docker bridge,
+  which is reachable from both the container and the host process; Docker
+  Desktop's host alias is not host-resolvable, so the module skips on non-Linux.
 """
 
 import os
 import platform
 
 import pytest
+from nemo_agents_plugin.entities import NAT_WORKFLOW_CONFIG_FORMAT, NEMO_AGENTS_SPEC_CONFIG_FORMAT
 from nemo_platform import NeMoPlatform
 
 from e2e.agents_deploy_helpers import run_container_agent_deploy_and_invoke
@@ -59,8 +59,8 @@ from e2e.agents_deploy_helpers import run_container_agent_deploy_and_invoke
 _DOCKER_BRIDGE_HOST = "172.17.0.1"
 
 # Platform image name to deploy the agent from. The nmp-api image already ships
-# the NAT runtime and the agent components (see module docstring), so it doubles
-# as the agent runtime image. Registry and tag come from NMP_E2E_IMAGE_REGISTRY /
+# the NAT and Fabric/DeepAgents runtimes (see module docstring), so it doubles as
+# the agent runtime image. Registry and tag come from NMP_E2E_IMAGE_REGISTRY /
 # NMP_E2E_IMAGE_TAG (the existing e2e image convention).
 _AGENT_IMAGE_NAME = "nmp-api"
 
@@ -97,7 +97,7 @@ def agent_deployment_image() -> str:
 
     Composed from the e2e image convention (``NMP_E2E_IMAGE_REGISTRY`` /
     ``NMP_E2E_IMAGE_TAG``) as ``{registry}/nmp-api:{tag}``. The nmp-api image
-    already ships the NAT runtime and agent components, so no agent-specific
+    already ships the NAT and Fabric/DeepAgents runtimes, so no agent-specific
     image is built here. The ``needs_nmp_api_image`` marker guarantees both env
     vars are set before this test runs; assert defensively.
     """
@@ -131,20 +131,29 @@ def _remove_agent_container_if_present(deployment_name: str) -> None:
                 pass
 
 
-def test_docker_agent_deploys_and_invokes_through_gateway(
+def test_nat_docker_agent_deploys_and_invokes_through_gateway(
     sdk: NeMoPlatform, workspace: str, agent_deployment_image: str
 ) -> None:
-    """Deploy an agent as a docker container from the nmp-api image and invoke it.
-
-    Asserts the deployment reaches ``running`` with the container-mode endpoint
-    shape (empty scalar ``endpoint``, populated ``endpoints``), then invokes
-    through the gateway and asserts the mocked completion round-trips from inside
-    the container back to the caller.
-    """
+    """Deploy a NAT agent as a docker container and invoke it through the gateway."""
     run_container_agent_deploy_and_invoke(
         sdk,
         workspace=workspace,
         deployment_mode="docker",
         image=agent_deployment_image,
+        config_format=NAT_WORKFLOW_CONFIG_FORMAT,
+        reap_backend_resources=_remove_agent_container_if_present,
+    )
+
+
+def test_fabric_docker_agent_deploys_and_invokes_through_gateway(
+    sdk: NeMoPlatform, workspace: str, agent_deployment_image: str
+) -> None:
+    """Deploy a Fabric/DeepAgents agent as a docker container and invoke it through the gateway."""
+    run_container_agent_deploy_and_invoke(
+        sdk,
+        workspace=workspace,
+        deployment_mode="docker",
+        image=agent_deployment_image,
+        config_format=NEMO_AGENTS_SPEC_CONFIG_FORMAT,
         reap_backend_resources=_remove_agent_container_if_present,
     )

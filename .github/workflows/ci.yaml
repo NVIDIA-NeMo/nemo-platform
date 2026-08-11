@@ -29,6 +29,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Jobs here provision their own toolchain (astral-sh/setup-uv reads the same
+  # required-version out of pyproject.toml, actions/setup-node pins Node), so
+  # the Makefile should call those rather than a mise it never installed.
+  NMP_SKIP_MISE: 1
+
 jobs:
   changes:
     name: Detect Path Changes
@@ -38,6 +44,7 @@ jobs:
       test: ${{ steps.changes.outputs.test }}
       deps: ${{ steps.changes.outputs.deps }}
       fabric: ${{ steps.changes.outputs.fabric }}
+      evaluator-sdk-closure: ${{ steps.changes.outputs.evaluator-sdk-closure }}
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
@@ -99,6 +106,49 @@ jobs:
           enable-cache: false
       - name: Run NGC metadata unit tests
         run: uv run --no-cache .github/scripts/tests/test_ngc_metadata.py
+
+  uv-lock:
+    name: Check uv lock
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Install platform uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.9.14"
+          enable-cache: false
+          python-version: "3.12"
+
+      - name: Show uv version
+        run: uv --version
+
+      - name: Check lock with platform uv
+        run: bash script/uv-lock.sh --check
+
+  uv-latest-compatibility:
+    name: Check latest uv compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Install latest uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: false
+          python-version: "3.12"
+
+      - name: Show uv version
+        run: uv --version
+
+      - name: Check sync with latest uv
+        run: uv sync --frozen --all-packages
 
   docker-bake-graph:
     name: Docker bake graph
@@ -738,6 +788,8 @@ jobs:
           enable-cache: true
           python-version: "3.12"
           cache-dependency-glob: uv.lock
+      - name: Check uv lockfile
+        run: uv lock --check
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '22'
@@ -949,6 +1001,50 @@ jobs:
           uv run --frozen --no-sync pytest \
             packages/nemo_evaluator_sdk/tests/agent_eval/test_fabric_surface.py -v
 
+  # Installs only nemo-evaluator-sdk (no workspace/extras/dev) and imports
+  # agent_eval.runtimes.harbor_runtime. Catches undeclared deps (workspace sync hides them)
+  # and broken lazy barrels that pull in the metric/execution stack.
+  evaluator-sdk-closure-smoke:
+    name: Evaluator SDK dependency-closure smoke (Linux, py${{ matrix.python-version }})
+    needs: [changes]
+    if: >
+      !cancelled() &&
+      (needs.changes.outputs.deps == 'true' || needs.changes.outputs.evaluator-sdk-closure == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Must satisfy uv.lock's requires-python (>=3.12,<3.14), which this job syncs against.
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install nemo-evaluator-sdk with no extras and no dev group
+        run: uv sync --frozen --package nemo-evaluator-sdk --no-dev
+      # pytest is not in the package-only sync; install the runner only (do not add SDK deps).
+      # WHY BOTH THIS JOB AND THE UNIT TEST:
+      # - Unit-test CI syncs the whole workspace: a sibling (e.g. nemo-platform-sdk) may already
+      #   provide httpx, so an undeclared SDK dep still imports — green here, broken for consumers
+      #   who only installed nemo-evaluator-sdk.
+      # - This job: `uv sync --package nemo-evaluator-sdk --no-dev` (no extras/siblings) so that
+      #   undeclared-dep case fails, then runs test_lazy_public_api (laziness assertions; one source
+      #   of truth — no duplicated heredoc probe).
+      - name: Run lazy-import closure unit test under the stripped install
+        run: |
+          uv pip install --python .venv/bin/python pytest
+          uv run --frozen --no-sync pytest \
+            packages/nemo_evaluator_sdk/tests/test_lazy_public_api.py::test_agent_eval_import_does_not_pull_the_execution_stack -v
+
   python-integration-test:
     name: Python integration tests
     needs: [policy-wasm]
@@ -1009,6 +1105,7 @@ jobs:
       !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.cpu-smoke == 'true' ||
+        needs.changes.outputs.helm == 'true' ||
         needs.changes.outputs.auth-idp == 'true'
       )
     runs-on: ubuntu-latest
@@ -1027,6 +1124,9 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Run auth-idp static tests
         run: |
+          set -euo pipefail
+          docker pull docker.io/envoyproxy/envoy:v1.37.0
+          docker pull envoyproxy/envoy:v1.36.2
           helm dependency build k8s/helm
           helm dependency build contrib/auth/authentik/helm
           uv run --frozen pytest tests/auth_idp/static -v
@@ -1579,6 +1679,8 @@ jobs:
         run: pnpm --filter @nemo/sdk gen:all-force
       - name: Typecheck SDK generated output
         run: pnpm --filter @nemo/sdk typecheck
+      - name: Typecheck web packages against regenerated SDK
+        run: pnpm run --recursive --parallel --if-present typecheck
 
   web-studio-deps:
     name: Web studio deps check
@@ -1923,6 +2025,8 @@ jobs:
     needs:
       - changes
       - actionlint
+      - uv-lock
+      - uv-latest-compatibility
       - docker-bake-graph
       - build-cpu-smoke-images
       - kind-cpu-smoke
@@ -1934,6 +2038,7 @@ jobs:
       - python-unit-test-tools
       - python-unit-test
       - fabric-wheel-smoke
+      - evaluator-sdk-closure-smoke
       # Enable if you want this required
       # - python-integration-test
       - require-nvskills

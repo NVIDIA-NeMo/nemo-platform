@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
+import tarfile
 from typing import TYPE_CHECKING, Any
 
 from nemo_deployments_plugin.backends.base import (
@@ -31,9 +33,18 @@ from nemo_deployments_plugin.backends.docker.containers import (
     parse_docker_backend_config,
     restart_policy_kwargs,
 )
-from nemo_deployments_plugin.backends.docker.gpu import GPUAllocationError, get_shared_gpu_pool
-from nemo_deployments_plugin.backends.docker.ports import PortEnumerationError, find_available_port
-from nemo_deployments_plugin.backends.docker.probes import check_readiness_probe, host_url_for_port
+from nemo_deployments_plugin.backends.docker.gpu import (
+    GPUAllocationError,
+    get_shared_gpu_pool,
+)
+from nemo_deployments_plugin.backends.docker.ports import (
+    PortEnumerationError,
+    find_available_port,
+)
+from nemo_deployments_plugin.backends.docker.probes import (
+    check_readiness_probe,
+    host_url_for_port,
+)
 from nemo_deployments_plugin.backends.docker.status import (
     LOG_MAX_CHARS,
     map_docker_state_to_starting,
@@ -57,13 +68,25 @@ from nemo_deployments_plugin.backends.labels import (
     managed_by_filter,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import Container, Deployment, DeploymentConfig
-from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
+from nemo_deployments_plugin.entities import (
+    ConfigFile,
+    Container,
+    Deployment,
+    DeploymentConfig,
+)
+from nemo_deployments_plugin.secrets import (
+    SecretResolutionError,
+    resolve_deployment_config_secrets,
+)
 from nemo_deployments_plugin.types import Endpoint, RestartPolicy
+from nemo_platform_plugin.capabilities import docker_from_env_kwargs, probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
-from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityNotFoundError
+from nemo_platform_plugin.entity_client import (
+    NemoEntitiesClient,
+    NemoEntityNotFoundError,
+)
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import ReadTimeout
 from requests.exceptions import Timeout as RequestsTimeout
@@ -92,6 +115,30 @@ def _is_ngc_image(image: str) -> bool:
     return image == NGC_IMAGE_REGISTRY or image.startswith(f"{NGC_IMAGE_REGISTRY}/")
 
 
+def _config_files_tar(config_files: list[ConfigFile]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        seen_dirs: set[str] = set()
+        for cf in config_files:
+            rel = cf.path.lstrip("/")
+            parts = rel.split("/")
+            for i in range(1, len(parts)):
+                d = "/".join(parts[:i])
+                if d in seen_dirs:
+                    continue
+                seen_dirs.add(d)
+                info = tarfile.TarInfo(name=d)
+                info.type = tarfile.DIRTYPE
+                info.mode = 0o755
+                tar.addfile(info)
+            data = cf.content.encode("utf-8")
+            info = tarfile.TarInfo(name=rel)
+            info.size = len(data)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
 class DockerDeploymentBackend(DeploymentBackend):
     """Manage deployments and volumes as Docker containers and volumes."""
 
@@ -114,18 +161,34 @@ class DockerDeploymentBackend(DeploymentBackend):
         self._executor_config = DockerExecutorConfig.model_validate(self._config)
         self._entities = NemoEntitiesClient(client_from_platform(self._sdk, AsyncEntitiesClient))
         self._gpu_pool = get_shared_gpu_pool()
+        docker_host = self._executor_config.docker_host
+        probe = probe_docker(docker_host=docker_host)
+        if not probe.available:
+            detail = probe.detail or "Docker daemon unreachable"
+            raise MissingBackendDependencyError(
+                f"Docker daemon is unavailable ({detail}). Docker-backed deployments will be disabled."
+            )
         try:
             self._client = self._create_client()
-        except (DockerException, RequestsConnectionError, RequestsTimeout, OSError) as exc:
+        except (
+            DockerException,
+            RequestsConnectionError,
+            RequestsTimeout,
+            OSError,
+        ) as exc:
             raise MissingBackendDependencyError(
                 f"Docker daemon is unavailable ({exc}). Docker-backed deployments will be disabled."
             ) from exc
 
     def _create_client(self) -> docker.DockerClient:
-        kwargs: dict[str, Any] = {"timeout": self._executor_config.docker_timeout}
-        if self._executor_config.docker_host:
-            kwargs["base_url"] = self._executor_config.docker_host
-        client = self._docker.from_env(**kwargs)
+        # docker-py 7.x rejects base_url= on from_env; override DOCKER_HOST instead
+        # so TLS env vars (DOCKER_TLS_VERIFY, cert paths) still apply.
+        client = self._docker.from_env(
+            **docker_from_env_kwargs(
+                timeout=self._executor_config.docker_timeout,
+                docker_host=self._executor_config.docker_host,
+            )
+        )
         client.api.timeout = self._executor_config.docker_timeout
         client.ping()
         return client
@@ -192,7 +255,10 @@ class DockerDeploymentBackend(DeploymentBackend):
             )
         except Exception as exc:
             logger.exception("Failed to load deployment config %s/%s", workspace, config_name)
-            return BackendStatusUpdate(status="FAILED", status_message=f"Failed to load deployment config: {exc}")
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Failed to load deployment config: {exc}",
+            )
 
         container_spec = plan.primary
         docker_cfg = parse_docker_backend_config(backend_config)
@@ -220,11 +286,17 @@ class DockerDeploymentBackend(DeploymentBackend):
             # Could not determine what is in use — report that, rather than blaming the port range.
             if gpu_ids and gpu_pool is not None:
                 gpu_pool.release_gpu(dep_key)
-            return BackendStatusUpdate(status="FAILED", status_message=f"Could not determine host ports in use: {exc}")
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Could not determine host ports in use: {exc}",
+            )
         if host_ports is None:
             if gpu_ids and gpu_pool is not None:
                 gpu_pool.release_gpu(dep_key)
-            return BackendStatusUpdate(status="FAILED", status_message="No host ports available in configured range")
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message="No host ports available in configured range",
+            )
 
         # Pull all images in the group (init + primary + sidecars) up front.
         if self._executor_config.pull_images:
@@ -243,8 +315,14 @@ class DockerDeploymentBackend(DeploymentBackend):
                     # being masked as "image present".
                     try:
                         await asyncio.to_thread(self._client.images.get, container.image)
-                        logger.info("Image %s not pullable but present locally; using local copy", container.image)
-                    except (self._docker_errors.ImageNotFound, self._docker_errors.NotFound):
+                        logger.info(
+                            "Image %s not pullable but present locally; using local copy",
+                            container.image,
+                        )
+                    except (
+                        self._docker_errors.ImageNotFound,
+                        self._docker_errors.NotFound,
+                    ):
                         if gpu_ids and gpu_pool is not None:
                             gpu_pool.release_gpu(dep_key)
                         return BackendStatusUpdate(status="FAILED", status_message=pull_error)
@@ -306,7 +384,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         # recreate the whole group to stay consistent.
         for sidecar in plan.sidecars:
             sidecar_name = companion_container_name(workspace, name, sidecar.name)
-            sidecar_run_kwargs = self._build_run_kwargs(
+            sidecar_create_kwargs = self._build_run_kwargs(
                 workspace=workspace,
                 config=config,
                 container=sidecar,
@@ -317,13 +395,15 @@ class DockerDeploymentBackend(DeploymentBackend):
                 network=f"container:{c_name}",
             )
             try:
-                await asyncio.to_thread(self._client.containers.run, **sidecar_run_kwargs)
+                sidecar_container = await asyncio.to_thread(self._client.containers.create, **sidecar_create_kwargs)
+                await asyncio.to_thread(sidecar_container.start)
             except Exception as exc:
                 logger.exception("Failed to start sidecar container %s", sidecar_name)
                 # Tear the whole group down so we don't leave a half-started deployment.
                 await self.delete_deployment(workspace, name)
                 return BackendStatusUpdate(
-                    status="FAILED", status_message=f"Failed to start sidecar {sidecar.name}: {exc}"
+                    status="FAILED",
+                    status_message=f"Failed to start sidecar {sidecar.name}: {exc}",
                 )
 
         endpoints = self._build_endpoints(container_spec, host_ports)
@@ -399,7 +479,7 @@ class DockerDeploymentBackend(DeploymentBackend):
         attempt = 0
         while True:
             attempt += 1
-            run_kwargs = self._build_run_kwargs(
+            create_kwargs = self._build_run_kwargs(
                 workspace=workspace,
                 config=config,
                 container=container_spec,
@@ -409,10 +489,16 @@ class DockerDeploymentBackend(DeploymentBackend):
                 gpu_ids=gpu_ids,
                 network=network,
             )
+            created: DockerContainer | None = None
             try:
-                container = await asyncio.to_thread(self._client.containers.run, **run_kwargs)
-                return container, host_ports, ""
+                created = await asyncio.to_thread(self._client.containers.create, **create_kwargs)
+                if config.config_files:
+                    await self._deliver_config_files(created, config.config_files)
+                await asyncio.to_thread(created.start)
+                return created, host_ports, ""
             except Exception as exc:
+                if created is not None:
+                    await asyncio.to_thread(created.remove, force=True)
                 last_attempt = attempt == _PORT_CONFLICT_ATTEMPTS
                 if not host_ports or last_attempt or _PORT_CONFLICT_MARKER not in str(exc):
                     logger.exception("Failed to start container %s", name)
@@ -426,16 +512,29 @@ class DockerDeploymentBackend(DeploymentBackend):
                     _PORT_CONFLICT_ATTEMPTS,
                     sorted(rejected_ports),
                 )
-                # containers.run() creates then starts, so a failed start leaves the
-                # created container holding the name and blocking the retry.
-                await self._remove_container_by_name(name)
                 try:
                     reallocated = await self._allocate_host_ports(container_spec, exclude_ports=rejected_ports)
                 except PortEnumerationError as port_exc:
-                    return None, host_ports, f"Could not determine host ports in use: {port_exc}"
+                    return (
+                        None,
+                        host_ports,
+                        f"Could not determine host ports in use: {port_exc}",
+                    )
                 if reallocated is None:
-                    return None, host_ports, "No host ports available in configured range"
+                    return (
+                        None,
+                        host_ports,
+                        "No host ports available in configured range",
+                    )
                 host_ports = reallocated
+
+    async def _deliver_config_files(
+        self,
+        container: DockerContainer,
+        config_files: list[ConfigFile],
+    ) -> None:
+        archive = _config_files_tar(config_files)
+        await asyncio.to_thread(container.put_archive, "/", archive)
 
     def _build_run_kwargs(
         self,
@@ -453,7 +552,6 @@ class DockerDeploymentBackend(DeploymentBackend):
         run_kwargs: dict[str, Any] = {
             "image": container.image,
             "name": name,
-            "detach": True,
             "labels": labels,
             "environment": env_dict(container),
             **restart_policy_kwargs(config.restart_policy, config.backoff_limit),
@@ -525,30 +623,31 @@ class DockerDeploymentBackend(DeploymentBackend):
         # (lora-cache-init prepares the scratch dir). If the models compiler ever
         # emits a GPU-needing init container, this would need to plumb GPUs
         # through here.
-        run_kwargs: dict[str, Any] = {
+        create_kwargs: dict[str, Any] = {
             "image": init.image,
             "name": init_name,
-            "detach": True,
             "labels": {**base_labels, CONTAINER_ROLE_LABEL: f"init-{init.name}"},
             "environment": env_dict(init),
         }
         if init.command:
-            run_kwargs["entrypoint"] = list(init.command)
+            create_kwargs["entrypoint"] = list(init.command)
         if init.args:
-            run_kwargs["command"] = list(init.args)
+            create_kwargs["command"] = list(init.args)
         volume_bindings = build_volume_bindings(workspace, merged_volume_mounts(config, init))
         if volume_bindings:
-            run_kwargs["volumes"] = volume_bindings
+            create_kwargs["volumes"] = volume_bindings
 
         def _run_and_wait() -> int:
-            container = self._client.containers.run(**run_kwargs)
-            result = container.wait(timeout=self._executor_config.docker_timeout)
-            exit_code = self._exit_code_from_wait_result(result)
+            container = self._client.containers.create(**create_kwargs)
             try:
-                container.remove(force=True)
-            except Exception:
-                logger.warning("Failed to remove init container %s", init_name, exc_info=True)
-            return exit_code
+                container.start()
+                result = container.wait(timeout=self._executor_config.docker_timeout)
+                return self._exit_code_from_wait_result(result)
+            finally:
+                try:
+                    container.remove(force=True)
+                except Exception:
+                    logger.warning("Failed to remove init container %s", init_name, exc_info=True)
 
         try:
             exit_code = await asyncio.to_thread(_run_and_wait)
@@ -556,7 +655,10 @@ class DockerDeploymentBackend(DeploymentBackend):
             if gpu_ids and self._gpu_pool is not None:
                 self._gpu_pool.release_gpu(dep_key)
             logger.exception("Init container %s failed to run", init_name)
-            return BackendStatusUpdate(status="FAILED", status_message=f"Init container {init.name} failed: {exc}")
+            return BackendStatusUpdate(
+                status="FAILED",
+                status_message=f"Init container {init.name} failed: {exc}",
+            )
 
         if exit_code != 0:
             if gpu_ids and self._gpu_pool is not None:
@@ -608,7 +710,11 @@ class DockerDeploymentBackend(DeploymentBackend):
             return map_docker_state_to_starting(container_id, state)
 
         if state == "running":
-            host_url = self._primary_host_url(host_ports)
+            # The default (no-declared-probe) reachability check TCP-connects the port, so
+            # it must see only TCP mappings: a UDP-only workload has no TCP listener and
+            # would otherwise be gated STARTING forever. Endpoints still carry every port.
+            tcp_host_ports = self._extract_host_ports(container, protocol="tcp")
+            host_url = self._primary_host_url(tcp_host_ports)
             config = await self._load_config_from_labels(workspace, labels)
             probe = None
             if config is not None and config.containers:
@@ -617,7 +723,7 @@ class DockerDeploymentBackend(DeploymentBackend):
                 container=container,
                 probe=probe,
                 host_url=host_url,
-                host_ports=host_ports,
+                host_ports=tcp_host_ports,
             )
             if ready and restart_policy == "Always":
                 sidecar_ok, sidecar_reason = await self._sidecars_healthy(workspace, name, config)
@@ -657,7 +763,10 @@ class DockerDeploymentBackend(DeploymentBackend):
             )
 
         if state == "removing":
-            return BackendStatusUpdate(status="DELETING", status_message=f"Container removing (ID: {container_id})")
+            return BackendStatusUpdate(
+                status="DELETING",
+                status_message=f"Container removing (ID: {container_id})",
+            )
 
         return BackendStatusUpdate(status="STARTING", status_message=f"Container state: {state}")
 
@@ -875,7 +984,11 @@ class DockerDeploymentBackend(DeploymentBackend):
                     if self._container_matches_deployment_group(container, workspace, name):
                         group[container.name] = container
             except Exception:
-                logger.warning("Failed to list group containers for %s; falling back to primary", c_name, exc_info=True)
+                logger.warning(
+                    "Failed to list group containers for %s; falling back to primary",
+                    c_name,
+                    exc_info=True,
+                )
             # Ensure the primary is included even if the label list query missed it.
             if c_name not in group:
                 try:
@@ -1088,13 +1201,21 @@ class DockerDeploymentBackend(DeploymentBackend):
         except Exception:
             return None
 
-    def _extract_host_ports(self, container: DockerContainer) -> dict[int, int]:
+    def _extract_host_ports(self, container: DockerContainer, *, protocol: str | None = None) -> dict[int, int]:
+        """Map container port -> published host port.
+
+        With *protocol* (e.g. ``"tcp"``) only mappings of that protocol are returned;
+        docker keys the port map as ``"<port>/<proto>"``. Defaults to every protocol.
+        """
         result: dict[int, int] = {}
         ports = container.ports or {}
         for key, bindings in ports.items():
             if not bindings:
                 continue
-            container_port = int(str(key).split("/")[0])
+            key_str = str(key)
+            if protocol is not None and not key_str.endswith(f"/{protocol}"):
+                continue
+            container_port = int(key_str.split("/")[0])
             host_port = bindings[0].get("HostPort")
             if host_port:
                 result[container_port] = int(host_port)

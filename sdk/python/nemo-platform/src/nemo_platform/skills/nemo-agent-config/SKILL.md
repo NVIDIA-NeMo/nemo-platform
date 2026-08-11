@@ -21,6 +21,9 @@ not-for:
   - nemo-spec (use to write AGENT-SPEC.md before implementation)
   - nemo-model-selection (use when the user only wants model recommendation)
   - generic YAML editing unrelated to NeMo Platform agents
+preconditions:
+  - nemo_setup_complete
+  - agents_plugin_available
 compatibility: nemo-platform >= 0.1.0; writes or edits agents/<name>-spec/agent.yaml; validates through nemo agents create; supports nemo-agents-spec-v1 configs; safe under sandbox.
 maturity: active
 license: Apache-2.0

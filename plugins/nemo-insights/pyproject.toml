@@ -11,7 +11,7 @@ dependencies = [
   "nooa",
   "opentelemetry-exporter-otlp>=1.42.1",
   "opentelemetry-sdk>=1.42.1",
-  "pydantic>=2.10.6",
+  "pydantic>=2.12.0",
   "pyyaml>=6.0.3",
   "typer>=0.20.0",
   "tzdata==2026.2",
@@ -34,6 +34,9 @@ insights-analysis = "nemo_insights_plugin.controller:InsightsAnalysisController"
 
 [project.entry-points."nemo.sdk"]
 insights = "nemo_insights_plugin.sdk:insights_sdk_resources"
+
+[project.entry-points."nemo.skills"]
+insights = "nemo_insights_plugin.skills:skills_dir"
 
 [build-system]
 requires = ["hatchling"]

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadAssistantMessagePart } from '@assistant-ui/react';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   createCopilotToolCallPart,
   groupConsecutiveCopilotSubtleToolCalls,
 } from '@studio/routes/agents/CopilotChatRoute/toolParts';
-import { logger } from '@studio/util/logger';
 
 interface ServerSentEvent {
   event?: string;
@@ -84,6 +84,12 @@ export const getAssistantPartsFromCopilotEvent = (
   const assistantParts = parts
     .map((part, index): ThreadAssistantMessagePart | undefined => {
       if (part.type === 'text' && typeof part.text === 'string') {
+        return part.text ? { type: 'text', text: part.text } : undefined;
+      }
+      // Render the model's chain of thought as ordinary assistant text, the way
+      // Claude's narration reads between tool calls, rather than tucking it into a
+      // collapsed block.
+      if (part.type === 'reasoning' && typeof part.text === 'string') {
         return part.text ? { type: 'text', text: part.text } : undefined;
       }
       if (part.type === 'tool_use') {

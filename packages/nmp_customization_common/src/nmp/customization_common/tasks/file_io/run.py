@@ -24,23 +24,22 @@ from pathlib import Path
 
 import httpx
 from nemo_platform import (
-    APIConnectionError,
-    APITimeoutError,
-    InternalServerError,
     NeMoPlatform,
     NotFoundError,
 )
-from nemo_platform.types.files.fileset_file import FilesetFile
 from nemo_platform_plugin.client.adapter import client_from_platform
 from nemo_platform_plugin.client.errors import (
     ConflictError,
+    NemoTransportError,
+    RateLimitError,
 )
 from nemo_platform_plugin.client.errors import (
     InternalServerError as ClientInternalServerError,
 )
 from nemo_platform_plugin.client.types import RetryPolicy
 from nemo_platform_plugin.files.client import FilesClient
-from nemo_platform_plugin.files.types import CreateFilesetRequest, UpdateFilesetRequest
+from nemo_platform_plugin.files.metadata import FilesetMetadata
+from nemo_platform_plugin.files.types import CreateFilesetRequest, FilesetFileOutput, UpdateFilesetRequest
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.common.sdk_factory import get_task_sdk
 from nmp.customization_common.schemas.file_io import (
@@ -84,12 +83,23 @@ MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 1.0
 MAX_BACKOFF_SECONDS = 30.0
 
+# Transient failures worth another attempt, for every Files operation this task
+# runs. Uploads stream a one-shot body, so once it is on the wire the typed client
+# can no longer retry them itself — this is the layer that rebuilds the request
+# from the source file, so it has to catch what the client raises. Those are the
+# Nemo* entries: they wrap transport failures, 5xx responses (raise_for_status
+# maps every 5xx to InternalServerError) and 429 respectively, and are not httpx
+# types. Anything reaching this task through the typed client arrives as one of
+# them, never as the bare httpx error underneath.
 TRANSIENT_FILESYSTEM_EXCEPTIONS = (
     httpx.TimeoutException,
     httpx.ConnectError,
     httpx.ReadTimeout,
     httpx.RemoteProtocolError,
     httpx.ReadError,
+    NemoTransportError,
+    ClientInternalServerError,
+    RateLimitError,
 )
 
 
@@ -109,8 +119,8 @@ class FileIORunner:
         self.job_ctx = job_ctx
         self.service_source = service_source
 
-    def list_fileset_files(self, fileset: FileSetRef) -> list[FilesetFile]:
-        """List files in a FileSet. Returns a list of ``FilesetFile`` objects."""
+    def list_fileset_files(self, fileset: FileSetRef) -> list[FilesetFileOutput]:
+        """List files in a FileSet. Returns a list of ``FilesetFileOutput`` objects."""
         try:
             with sdk_error_handler(FileDownloadError, f"list files in fileset {fileset}", passthrough=(NotFoundError,)):
                 response = self.sdk.with_options(timeout=LIST_FILES_TIMEOUT).files.list(
@@ -272,17 +282,9 @@ class FileIORunner:
     @retry(
         stop=stop_after_attempt(MAX_RETRIES),
         wait=wait_exponential(multiplier=2, min=INITIAL_BACKOFF_SECONDS, max=MAX_BACKOFF_SECONDS),
-        retry=retry_if_exception_type(
-            (
-                InternalServerError,
-                APITimeoutError,
-                APIConnectionError,
-                ClientInternalServerError,
-                httpx.TimeoutException,
-                httpx.ConnectError,
-            )
-        ),
+        retry=retry_if_exception_type(TRANSIENT_FILESYSTEM_EXCEPTIONS),
         reraise=True,
+        before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _create_fileset_with_retry(self, fileset: FileSetRef, metadata: dict | None = None) -> None:
         """Internal method with retry logic for creating a FileSet."""
@@ -295,7 +297,7 @@ class FileIORunner:
                 "custom_fields": {"service_source": self.service_source},
             }
             if metadata is not None:
-                body_kwargs["metadata"] = metadata
+                body_kwargs["metadata"] = FilesetMetadata.model_validate(metadata)
             result = files.create_fileset(workspace=fileset.workspace, body=CreateFilesetRequest(**body_kwargs)).data()
             logger.info(f"Created FileSet: {result.workspace}/{result.name}")
         except ConflictError:
@@ -305,7 +307,7 @@ class FileIORunner:
                     files.update_fileset(
                         workspace=workspace,
                         name=fileset.name,
-                        body=UpdateFilesetRequest(metadata=metadata),
+                        body=UpdateFilesetRequest(metadata=FilesetMetadata.model_validate(metadata)),
                     )
                     logger.info(f"Patched existing FileSet metadata: {workspace}/{fileset.name}")
                 except Exception as e:

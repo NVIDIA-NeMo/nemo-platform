@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { COPILOT_JOB_PROGRESS_MCP_TOOL_NAME } from '@studio/routes/agents/CopilotChatRoute/jobProgressConsts';
 import {
   getAssistantPartsFromCopilotEvent,
@@ -9,7 +10,6 @@ import {
   parseSseChunk,
 } from '@studio/routes/agents/CopilotChatRoute/stream';
 import { COPILOT_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/CopilotChatRoute/toolParts';
-import { logger } from '@studio/util/logger';
 
 describe('Copilot stream utilities', () => {
   it('parses SSE events and preserves incomplete trailing data', () => {
@@ -252,5 +252,26 @@ describe('Copilot stream utilities', () => {
     );
 
     loggerSpy.mockRestore();
+  });
+  it('maps a reasoning part so the UI can render the chain of thought', () => {
+    const parts = getAssistantPartsFromCopilotEvent({
+      type: 'assistant',
+      message: {
+        id: 'msg-reasoning',
+        content: [{ type: 'reasoning', text: 'The user asked a math question.' }],
+      },
+    });
+
+    // Reads as ordinary narration between tool calls, like Claude's thoughts.
+    expect(parts).toEqual([{ type: 'text', text: 'The user asked a math question.' }]);
+  });
+
+  it('drops an empty reasoning part', () => {
+    const parts = getAssistantPartsFromCopilotEvent({
+      type: 'assistant',
+      message: { id: 'msg-empty', content: [{ type: 'reasoning', text: '' }] },
+    });
+
+    expect(parts).toEqual([]);
   });
 });

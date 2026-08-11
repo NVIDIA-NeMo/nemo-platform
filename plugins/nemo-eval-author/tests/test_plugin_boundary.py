@@ -12,8 +12,7 @@ would fork the contract and break comparability in Studio. This list does not sh
 ``_BORROWED_BEHAVIOUR`` is debt: Harbor, tools, trace analysis, the backend factory. Eval
 Author is meant to end up standalone, so this list can only shrink, and duplicating a
 helper beats adding a row. Emptying it is what unblocks the remaining
-TODO(eval-author-standalone) cleanup — the ``NEMO_EXPERIMENTALIST_*`` credential fallback and
-the ``bridge_author_env_to_experimentalist`` call in ``EvalAuthor.__init__``.
+TODO(eval-author-standalone) cleanup.
 """
 
 import ast
@@ -31,7 +30,7 @@ _SHARED_LAYER_A = {
 #
 #   client                  -> make_client, the platform client factory
 #   ...components           -> the cache module, for run artifacts
-#   ...dataset_staging      -> stage_task_template
+#   ...dataset_staging      -> stage_eval_author_inputs
 #   ...evaluator.base       -> EvaluatorType
 #   ...evaluator.factory    -> DatasetFactory
 #   ...evaluator.harbor     -> HarborDataset
@@ -93,14 +92,3 @@ def test_experimentalist_imports_only_shrink() -> None:
         + ", ".join(sorted(removed))
         + ". Drop them from _BORROWED_BEHAVIOUR so the list keeps meaning something."
     )
-
-
-def test_model_config_is_already_standalone() -> None:
-    """Credential resolution is the one part of the plugin that owes Experimentalist nothing.
-
-    It was briefly refactored to share Experimentalist's client cache, which read as a
-    cleanup but moved the plugin away from standalone. Keep it independent.
-    """
-    importers = {file for files in _imported_experimentalist_modules().values() for file in files}
-
-    assert "model_config.py" not in importers

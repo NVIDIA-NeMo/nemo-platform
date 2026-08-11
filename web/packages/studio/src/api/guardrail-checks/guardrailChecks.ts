@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isVersionConflictError } from '@nemo/common/src/api/common/utils';
 import {
   entitiesCreateEntity,
   entitiesDeleteEntityByName,
@@ -16,7 +17,6 @@ import type {
   GuardrailCheckResponse,
   RailsConfig,
 } from '@nemo/sdk/generated/platform/schema';
-import { isVersionConflictError } from '@studio/api/common/utils';
 import {
   GUARDRAIL_CHECKS_ENTITY_TYPE,
   type GuardrailCheckData,

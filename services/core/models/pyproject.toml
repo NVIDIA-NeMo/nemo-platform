@@ -48,7 +48,7 @@ dev = [
     "ruff>=0.11.8",
     "ty>=0.0.1a14",
     "pytest-xdist>=3.8.0",
-    "datamodel-code-generator>=0.35.0",
+    "datamodel-code-generator>=0.71.0",
     "openai>=1.0.0",  # For e2e testing of sdk.models helper methods
     "models",  # For e2e testing of sdk.models helper methods
 ]

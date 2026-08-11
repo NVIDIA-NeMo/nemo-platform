@@ -19,7 +19,7 @@ from typing import Annotated, Any, Self
 from fastapi import APIRouter, Depends, status
 from nmp.common.entities.client import EntityClient
 from nmp.common.service.dependencies import get_entity_client
-from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
+from nmp.intake.spans.api.dependencies import DenormalizerDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus, TraceBatch
 from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from nmp.intake.spans.ingest.evaluation_context_validation import validate_evaluation_context
@@ -151,6 +151,7 @@ async def ingest_chat_completion(
     body: ChatCompletionsIngestRequest,
     service: SpansServiceDep,
     entity_client: EntityClientDep,
+    denormalizer: DenormalizerDep,
 ) -> ChatCompletionsIngestResponse:
     await validate_evaluation_context(
         workspace=workspace,
@@ -160,6 +161,9 @@ async def ingest_chat_completion(
     ingested_at = utc_now()
     span = _chat_completion_to_span(workspace=workspace, body=body, ingested_at=ingested_at)
     await service.ingest_batch(TraceBatch(spans=[span]))
+    context = body.evaluation_context
+    if denormalizer is not None and context is not None and context.evaluation_id:
+        denormalizer.mark_dirty(workspace=workspace, evaluation_id=context.evaluation_id)
     return ChatCompletionsIngestResponse(
         session_id=span.session_id,
         span_id=span.external_span_id,

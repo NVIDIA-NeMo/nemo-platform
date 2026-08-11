@@ -14,6 +14,7 @@ from typing import Annotated, NoReturn
 import httpx
 import typer
 from nemo_platform.cli.core.help_formatter import create_typer_app
+from nemo_platform.cli.docker_preflight import require_docker_for_default_local
 from nemo_platform.local.process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
@@ -37,7 +38,11 @@ from nemo_platform.local.process import (
     stop_instance,
     write_descriptor,
 )
-from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, PlatformAppConfig
+from nmp.platform_runner.config import (
+    DEFAULT_LOCAL_SERVICES_BIND_HOST,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
+    PlatformAppConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +212,14 @@ def run_services(
     ] = None,
     host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = DEFAULT_LOCAL_SERVICES_BIND_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind to.")] = _DEFAULT_PORT,
+    keep_alive_timeout_seconds: Annotated[
+        int,
+        typer.Option(
+            "--keep-alive-timeout-seconds",
+            min=1,
+            help="Seconds Uvicorn keeps idle HTTP connections open.",
+        ),
+    ] = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
     instance: Annotated[
         str | None,
         typer.Option(
@@ -224,16 +237,6 @@ def run_services(
 
     _ensure_port_available(host, port, scope, base_dir=base_dir)
 
-    try:
-        lock_fd = acquire_lock(scope, base_dir=base_dir)
-    except InstanceAlreadyRunningError:
-        _fail_already_running(scope, base_dir)
-
-    # _NMP_LAUNCH_MODE is set by start_background() when this process was
-    # spawned via ``nemo services start``.  Without it we default to
-    # "foreground", which protects interactive ``run`` sessions from being
-    # killed by ``stop``.
-    mode = "background" if os.environ.get("_NMP_LAUNCH_MODE") == "background" else "foreground"
     platform_config = PlatformAppConfig(
         services=_parse_csv_option(services),
         service_group=service_group,
@@ -244,8 +247,21 @@ def run_services(
         scope=scope,
         host=host,
         port=port,
+        keep_alive_timeout_seconds=keep_alive_timeout_seconds,
         state_root=base_dir,
     )
+    require_docker_for_default_local(platform_config)
+
+    try:
+        lock_fd = acquire_lock(scope, base_dir=base_dir)
+    except InstanceAlreadyRunningError:
+        _fail_already_running(scope, base_dir)
+
+    # _NMP_LAUNCH_MODE is set by start_background() when this process was
+    # spawned via ``nemo services start``.  Without it we default to
+    # "foreground", which protects interactive ``run`` sessions from being
+    # killed by ``stop``.
+    mode = "background" if os.environ.get("_NMP_LAUNCH_MODE") == "background" else "foreground"
 
     desc = InstanceDescriptor.from_config(
         platform_config,
@@ -317,6 +333,14 @@ def start_services(
     ] = None,
     host: Annotated[str, typer.Option("--host", help="Host to bind to.")] = DEFAULT_LOCAL_SERVICES_BIND_HOST,
     port: Annotated[int, typer.Option("--port", help="Port to bind to.")] = _DEFAULT_PORT,
+    keep_alive_timeout_seconds: Annotated[
+        int,
+        typer.Option(
+            "--keep-alive-timeout-seconds",
+            min=1,
+            help="Seconds Uvicorn keeps idle HTTP connections open.",
+        ),
+    ] = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS,
     instance: Annotated[
         str | None,
         typer.Option(
@@ -358,8 +382,10 @@ def start_services(
         scope=scope,
         host=host,
         port=port,
+        keep_alive_timeout_seconds=keep_alive_timeout_seconds,
         state_root=base_dir,
     )
+    require_docker_for_default_local(platform_config)
 
     typer.echo("Starting platform services...")
     proc = start_background(platform_config)
@@ -495,6 +521,14 @@ def restart_services(
         int | None,
         typer.Option("--port", help="Port to bind to. Defaults to previous value or 8080."),
     ] = None,
+    keep_alive_timeout_seconds: Annotated[
+        int | None,
+        typer.Option(
+            "--keep-alive-timeout-seconds",
+            min=1,
+            help="Seconds Uvicorn keeps idle HTTP connections open. Defaults to the previous value or 5.",
+        ),
+    ] = None,
     instance: Annotated[
         str | None,
         typer.Option(
@@ -535,11 +569,6 @@ def restart_services(
         )
         raise typer.Exit(1)
 
-    typer.echo("Stopping platform services...")
-    # restart always produces a background instance, so force=True is
-    # appropriate even for foreground targets.
-    stop_instance(scope, base_dir=base_dir, force=True)
-
     previous_config = prev.config if prev else None
     effective_services = _parse_csv_option(services) if services is not None else None
     if services is None and previous_config is not None:
@@ -561,10 +590,16 @@ def restart_services(
         host if host is not None else (previous_config.host if previous_config else DEFAULT_LOCAL_SERVICES_BIND_HOST)
     )
     effective_port = port if port is not None else (previous_config.port if previous_config else _DEFAULT_PORT)
+    effective_keep_alive_timeout_seconds = (
+        keep_alive_timeout_seconds
+        if keep_alive_timeout_seconds is not None
+        else (
+            previous_config.keep_alive_timeout_seconds
+            if previous_config
+            else DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
+        )
+    )
 
-    _warn_bind_all(effective_host)
-
-    _ensure_port_available(effective_host, effective_port, scope, base_dir=base_dir)
     platform_config = PlatformAppConfig(
         services=effective_services,
         service_group=effective_service_group,
@@ -575,8 +610,20 @@ def restart_services(
         scope=scope,
         host=effective_host,
         port=effective_port,
+        keep_alive_timeout_seconds=effective_keep_alive_timeout_seconds,
         state_root=base_dir,
     )
+    # Preflight before stop so a missing Docker daemon does not tear down a healthy instance.
+    require_docker_for_default_local(platform_config)
+
+    typer.echo("Stopping platform services...")
+    # restart always produces a background instance, so force=True is
+    # appropriate even for foreground targets.
+    stop_instance(scope, base_dir=base_dir, force=True)
+
+    _warn_bind_all(effective_host)
+
+    _ensure_port_available(effective_host, effective_port, scope, base_dir=base_dir)
 
     typer.echo("Starting platform services...")
     proc = start_background(platform_config)

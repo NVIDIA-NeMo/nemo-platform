@@ -35,6 +35,7 @@ from nmp.platform_runner.registry import (
 DEFAULT_SCOPE = "default"
 DEFAULT_PLATFORM_BIND_HOST = "0.0.0.0"
 DEFAULT_LOCAL_SERVICES_BIND_HOST = "127.0.0.1"
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS = 5
 
 _SCOPE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _INSTANCES_DIRNAME = "instances"
@@ -59,6 +60,7 @@ class PlatformAppConfig:
     state_root: str | Path | None = None
     runtime_root: str | Path | None = None
     log_path: str | Path | None = None
+    keep_alive_timeout_seconds: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
 
     def __post_init__(self) -> None:
         self.scope = validate_scope(self.scope)
@@ -66,6 +68,7 @@ class PlatformAppConfig:
         self.state_root = _resolve_absolute_path(self.state_root, "state root")
         self.runtime_root = _resolve_absolute_path(self.runtime_root, "runtime root")
         self.log_path = _resolve_absolute_path(self.log_path, "log path")
+        self.keep_alive_timeout_seconds = validate_keep_alive_timeout_seconds(self.keep_alive_timeout_seconds)
 
     @property
     def state_root_path(self) -> Path:
@@ -109,6 +112,15 @@ def validate_scope(scope: str) -> str:
     return scope
 
 
+def validate_keep_alive_timeout_seconds(timeout_seconds: int) -> int:
+    """Ensure Uvicorn keep-alive timeout is a positive whole-second value."""
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int):
+        raise ValueError("keep_alive_timeout_seconds must be greater than 0")
+    if timeout_seconds <= 0:
+        raise ValueError("keep_alive_timeout_seconds must be greater than 0")
+    return timeout_seconds
+
+
 def default_state_root() -> Path:
     """Return the local services state root."""
     xdg = os.environ.get("XDG_STATE_HOME")
@@ -146,6 +158,7 @@ class ResolvedRunConfiguration:
     socket_path: str | None = None
     available_services: dict[str, str | Service] = field(default_factory=dict)
     available_controllers: dict[str, str | ControllerRunFunc] = field(default_factory=dict)
+    keep_alive_timeout_seconds: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS
 
 
 def default_config_path() -> str:
@@ -236,6 +249,7 @@ def resolve_run_configuration(
         socket_path=resolved_socket_path,
         available_services=available_services,
         available_controllers=available_controllers,
+        keep_alive_timeout_seconds=config.keep_alive_timeout_seconds,
     )
 
 

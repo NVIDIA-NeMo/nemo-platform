@@ -22,7 +22,7 @@ class AuditorPluginService(NemoService):
     dependencies: ClassVar[list[str]] = ["entities"]
 
     def get_routers(self) -> list[RouterSpec]:
-        from nemo_auditor.api.v2 import configs, targets
+        from nemo_auditor.api.v2 import artifacts, configs, targets
 
         healthz_router = APIRouter()
 
@@ -55,6 +55,12 @@ class AuditorPluginService(NemoService):
                 router=targets.router,
                 tag="Auditor Targets",
                 description="Audit target CRUD.",
+                prefix=crud_prefix,
+            ),
+            RouterSpec(
+                router=artifacts.router,
+                tag="Auditor Jobs",
+                description="Audit job aggregate artifact download.",
                 prefix=crud_prefix,
             ),
             RouterSpec(

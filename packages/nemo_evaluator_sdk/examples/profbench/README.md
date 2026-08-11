@@ -131,13 +131,14 @@ async def main() -> None:
         tasks=benchmark.tasks,
         target=DockerSandboxAgentRuntime(model="gpt-4.1-mini", timeout_s=180),
         config=AgentEvalRunConfig(
-            output_dir=output_dir,
+            work_dir=output_dir,
             run_id="profbench-code-sandbox-smoke",
             parallelism=1,
             labels={**{k: str(v) for k, v in benchmark.metadata.items()}, "score_source": "docker_sandbox_and_live_judge"},
-            write_dashboard=False,
         ),
     )
+    # This example renders its own dashboards below, so persistence skips the built-in one.
+    result.persist(write_dashboard=False)
     sdk_dashboard_path, dashboard_path = write_example_dashboards(result, output_dir)
     print(f"SDK dashboard: {sdk_dashboard_path}")
     print(f"Dashboard: {dashboard_path}")
@@ -258,7 +259,7 @@ result = await AgentEvaluator().run(
     tasks=benchmark.tasks,
     target=evaluated_model,
     config=AgentEvalRunConfig(
-        output_dir=output_dir,
+        work_dir=output_dir,
         params=params,
         labels={**{k: str(v) for k, v in benchmark.metadata.items()}, "score_source": "fresh_candidate_and_live_judge"},
         ...

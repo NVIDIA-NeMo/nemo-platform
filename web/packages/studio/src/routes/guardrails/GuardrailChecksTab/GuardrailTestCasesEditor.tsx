@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';

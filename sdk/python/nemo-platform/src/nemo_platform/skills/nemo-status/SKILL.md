@@ -14,6 +14,8 @@ not-for:
   - nemo-teardown (use to stop the platform)
   - nemo-try-agent (use to send a query to a deployed agent)
   - nemo-skill-selection (use for dispatch when intent is unclear)
+preconditions:
+  - nemo_cli_available
 compatibility: nemo-platform >= 0.1.0; read-only CLI calls only; no state changes; safe under any sandbox (requires `lsof`, `curl`, and a venv with the `nemo` binary — no Docker); works whether or not the agents plugin is installed (degrades gracefully).
 maturity: active
 license: Apache-2.0

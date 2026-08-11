@@ -31,8 +31,9 @@ vi.mock('@studio/constants/environment', async (importOriginal) => {
   };
 });
 
+import { handleGenericError, logger } from '@nemo/common/src/utils/logger';
 import { SeverityNumber } from '@opentelemetry/api-logs';
-import { handleGenericError, logVersion, logger } from '@studio/util/logger';
+import { logVersion } from '@studio/util/logVersion';
 
 describe('WebsiteLogger', () => {
   beforeEach(() => {

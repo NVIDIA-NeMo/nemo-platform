@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useGuardrailsDeleteConfig } from '@nemo/sdk/generated/platform/api';
-import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import {
   type QuickActionItem,
   QuickActionsMenuRoot,
-} from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
+} from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
+import { useGuardrailsDeleteConfig } from '@nemo/sdk/generated/platform/api';
+import type { GuardrailConfig } from '@nemo/sdk/generated/platform/schema';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { CreateGuardrailModal } from '@studio/routes/guardrails/CreateGuardrailModal';
 import { getGuardrailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useMemo, useState } from 'react';
@@ -22,6 +23,7 @@ export const GuardrailDetailActions: FC<GuardrailDetailActionsProps> = ({ config
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
@@ -43,6 +45,10 @@ export const GuardrailDetailActions: FC<GuardrailDetailActionsProps> = ({ config
   const actions = useMemo<QuickActionItem[]>(
     () => [
       {
+        label: 'Duplicate',
+        onSelect: () => setShowDuplicateModal(true),
+      },
+      {
         label: 'Delete',
         onSelect: () => setShowDeleteModal(true),
         danger: true,
@@ -54,6 +60,13 @@ export const GuardrailDetailActions: FC<GuardrailDetailActionsProps> = ({ config
   return (
     <>
       <QuickActionsMenuRoot actions={actions} />
+      {showDuplicateModal ? (
+        <CreateGuardrailModal
+          open
+          sourceConfig={config}
+          onClose={() => setShowDuplicateModal(false)}
+        />
+      ) : null}
       {showDeleteModal ? (
         <DeleteConfirmationModal
           open

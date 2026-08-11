@@ -44,7 +44,7 @@ def test_client_from_platform_prefers_platform_request_router() -> None:
         def resolve(self, url: str) -> str:
             return url.replace("http://gateway/apis/jobs", "http://127.0.0.1:8080/apis/jobs")
 
-    platform._nmp_request_router = RequestRouter()  # type: ignore[attr-defined]
+    platform._nmp_request_router = RequestRouter()  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
 
     client = client_from_platform(platform, JobsClient)
 
@@ -63,7 +63,7 @@ def test_client_from_platform_falls_back_to_sdk_prepare_url() -> None:
     def prepare_url(url: str) -> str:
         return url.replace("http://gateway/apis/jobs", "http://127.0.0.1:8080/apis/jobs")
 
-    platform._prepare_url = prepare_url  # type: ignore[method-assign]
+    platform._prepare_url = prepare_url  # type: ignore[method-assign]  # ty: ignore[invalid-assignment]
 
     client = client_from_platform(platform, JobsClient)
 
@@ -84,3 +84,51 @@ def test_from_client_preserves_url_resolver() -> None:
 
     request = endpoints.list_steps(workspace="default", name="job-1")
     assert clone._resolve_path(request) == ("http://127.0.0.1:8080/apis/jobs/v2/workspaces/default/jobs/job-1/steps")
+
+
+def test_client_from_platform_propagates_timeout() -> None:
+    """``platform.with_options(timeout=...)`` must reach the typed client.
+
+    Both clients share one httpx client, whose own timeout ``with_options`` does
+    not touch — so the typed client has to carry the override itself or long
+    transfers silently run on the transport's original budget.
+    """
+    upload_timeout = httpx.Timeout(30.0, write=10 * 60, read=5 * 60)
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+        timeout=httpx.Timeout(60.0),
+    )
+    platform = NeMoPlatform(base_url="http://test", workspace="default", http_client=http_client)
+
+    scoped = platform.with_options(timeout=upload_timeout)
+    client = client_from_platform(scoped, JobsClient)
+
+    assert client._timeout == upload_timeout
+    # The shared transport is untouched, which is why the override is needed.
+    assert scoped._client.timeout == httpx.Timeout(60.0)
+
+
+def test_client_from_platform_carries_default_timeout() -> None:
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+        timeout=httpx.Timeout(60.0),
+    )
+    platform = NeMoPlatform(base_url="http://test", workspace="default", http_client=http_client)
+
+    client = client_from_platform(platform, JobsClient)
+
+    assert client._timeout == platform.timeout
+
+
+def test_client_from_platform_carries_disabled_timeout() -> None:
+    """``timeout=None`` means "no timeout", not "no override"."""
+    http_client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, request=request)),
+        timeout=httpx.Timeout(60.0),
+    )
+    platform = NeMoPlatform(base_url="http://test", workspace="default", http_client=http_client)
+
+    client = client_from_platform(platform.with_options(timeout=None), JobsClient)
+
+    # Not the transport's 60s: httpx reads an all-None Timeout as "wait forever".
+    assert client._timeout == httpx.Timeout(None)

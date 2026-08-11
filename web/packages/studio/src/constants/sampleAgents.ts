@@ -11,13 +11,20 @@ import { z } from 'zod';
 // Eval configs are a SEPARATE registry (EVAL_CONFIG_SAMPLES) on purpose: either
 // paradigm can target any agent, so a config is not owned by an agent.
 //
-// INVARIANT: an entry whose agent.yml uses a custom NAT `_type` requires that
-// tool's Python package to be installed in the deploy venv, or the deployment
-// fails at startup. Current mappings:
-//   _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
-//   _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
-//   _type: analyze_email           -> plugins/nemo-agents/examples/email-security-analyst
-//   _type: extract_iocs            -> plugins/nemo-agents/examples/email-security-analyst
+// INVARIANT: a sample's deployment depends on something being installed in the
+// deploy venv/image, or it fails at startup. Two shapes:
+//
+// 1. NAT (`nat-workflow-v1`) entries whose agent.yml uses a custom `_type` need
+//    that tool's Python package:
+//      _type: calculator              -> plugins/nemo-agents/examples/calculator-agent
+//      _type: email_phishing_analyzer -> plugins/nemo-agents/examples/email-phishing-analyzer
+//
+// 2. Fabric (`nemo-agents-spec-v1`) entries need each `mcp.servers.<n>.url`
+//    console script on PATH, since Fabric spawns it as a stdio MCP child:
+//      email-phishing-iocs -> plugins/nemo-agents/examples/nemo-agent-config/email-phishing-agent
+//
+// Each public/sample-agents/<dir>/agent.yml is an independent copy of the
+// example's config; keep them in sync by hand.
 export interface SampleAgent {
   key: string;
   displayName: string;
@@ -34,12 +41,13 @@ export interface SampleAgent {
 
 export const SAMPLE_AGENTS: SampleAgent[] = [
   {
-    key: 'email_security_analyst',
-    displayName: 'Email Security Analyst',
+    key: 'email_phishing_agent',
+    displayName: 'Email Phishing Analyzer (Fabric)',
     description:
-      'An analyst-facing email security assistant: select one or more messages, optionally ask a question, and it routes to the capability that answers it.',
-    namePrefix: 'email-security-analyst',
-    agentConfigPath: 'sample-agents/email-security-analyst/agent.yml',
+      'A Fabric DeepAgents orchestrator that delegates the phishing verdict to a sub-agent and calls a deterministic extract_iocs tool, so each step is tunable in config and emits its own trace span.',
+    namePrefix: 'email-phishing-agent',
+    agentConfigPath: 'sample-agents/email-phishing-agent/agent.yml',
+    configFormat: 'nemo-agents-spec-v1',
   },
 ];
 

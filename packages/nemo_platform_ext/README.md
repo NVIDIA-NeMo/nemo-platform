@@ -85,8 +85,7 @@ contexts:
 Configure a context with `nemo config set`:
 
 ```bash
-nemo config set --base-url https://nmp.example.com
-nemo config set --context prod --base-url https://nmp.prod.example.com --activate
+nemo config set --context production --base-url https://nmp.example.com --activate
 ```
 
 ### Priority
@@ -146,10 +145,10 @@ nemo config set --api-key YOUR_API_KEY
 nemo config set --workspace my-workspace --output-format json
 
 # Configure and activate a named context in one step
-nemo config set --context prod --base-url https://api.prod.example.com --activate
+nemo config set --context production --base-url https://nmp.example.com --activate
 
 # Switch to an existing context
-nemo config use-context prod
+nemo config use-context production
 ```
 
 ## Setup (Local Development)
@@ -198,7 +197,7 @@ nemo workspaces get my-workspace --output-format code
 
 ## Output Formats
 
-Supports multiple output formats via `--output-format` / `-f`:
+Supports multiple output formats via `--output-format` / `--output` / `-f`:
 
 - **table** (default) - Rich-formatted table with borders and colors
 - **json** - Syntax-highlighted JSON
@@ -207,6 +206,8 @@ Supports multiple output formats via `--output-format` / `-f`:
 - **csv** - Standard CSV (for Excel/spreadsheets)
 - **code** - Python SDK code equivalent
 - **raw** - Compact JSON without formatting
+
+For list commands, combine `--stream` with `--output json` or `--output raw` to emit one newline-delimited JSON record per item.
 
 ## Output Columns
 

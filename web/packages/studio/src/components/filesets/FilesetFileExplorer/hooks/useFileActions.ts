@@ -37,6 +37,14 @@ export interface UseFileActionsResult {
   treeRows: TreeRow[];
   expandedFolders: Set<string>;
   toggleFolderExpand: (path: string) => void;
+  /** Expands a folder and every folder beneath it, or collapses the whole
+   *  subtree when it is already fully expanded. */
+  toggleFolderSubtreeExpand: (path: string) => void;
+  /** True when a folder and all folders beneath it are expanded. */
+  isFolderSubtreeExpanded: (path: string) => boolean;
+  /** True when a folder contains at least one subfolder — i.e. when the
+   *  expand-subtree action does more than a plain toggle. */
+  folderHasSubfolders: (path: string) => boolean;
 }
 
 /**
@@ -83,6 +91,76 @@ export function useFileActions(options: UseFileActionsOptions): UseFileActionsRe
       return next;
     });
   }, []);
+
+  const allFolderPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const file of filesList ?? []) {
+      const segments = file.path.split('/').filter(Boolean);
+      let acc = '';
+      for (let i = 0; i < segments.length - 1; i++) {
+        acc = acc ? `${acc}/${segments[i]}` : segments[i];
+        paths.add(acc);
+      }
+    }
+    return paths;
+  }, [filesList]);
+
+  const folderSubtrees = useMemo(() => {
+    const subtrees = new Map<string, string[]>();
+    for (const folder of allFolderPaths) {
+      const segments = folder.split('/');
+      let acc = '';
+      for (const segment of segments) {
+        acc = acc ? `${acc}/${segment}` : segment;
+        const subtree = subtrees.get(acc);
+        if (subtree) {
+          subtree.push(folder);
+        } else {
+          subtrees.set(acc, [folder]);
+        }
+      }
+    }
+    return subtrees;
+  }, [allFolderPaths]);
+
+  const fullyExpandedFolders = useMemo(() => {
+    const fullyExpanded = new Set<string>();
+    for (const [folder, subtree] of folderSubtrees) {
+      if (subtree.every((p) => expandedFolders.has(p))) {
+        fullyExpanded.add(folder);
+      }
+    }
+    return fullyExpanded;
+  }, [folderSubtrees, expandedFolders]);
+
+  const isFolderSubtreeExpanded = useCallback(
+    (path: string) => !folderSubtrees.has(path) || fullyExpandedFolders.has(path),
+    [folderSubtrees, fullyExpandedFolders]
+  );
+
+  const folderHasSubfolders = useCallback(
+    (path: string) => (folderSubtrees.get(path)?.length ?? 0) > 1,
+    [folderSubtrees]
+  );
+
+  const toggleFolderSubtreeExpand = useCallback(
+    (path: string) => {
+      const subtree = folderSubtrees.get(path) ?? [];
+      setExpandedFolders((prev) => {
+        const expand = !subtree.every((p) => prev.has(p));
+        const next = new Set(prev);
+        for (const p of subtree) {
+          if (expand) {
+            next.add(p);
+          } else {
+            next.delete(p);
+          }
+        }
+        return next;
+      });
+    },
+    [folderSubtrees]
+  );
 
   const handleSearchQueryChange = useCallback((value: string, onClearSelection: () => void) => {
     onClearSelection();
@@ -171,5 +249,8 @@ export function useFileActions(options: UseFileActionsOptions): UseFileActionsRe
     treeRows,
     expandedFolders,
     toggleFolderExpand,
+    toggleFolderSubtreeExpand,
+    isFolderSubtreeExpanded,
+    folderHasSubfolders,
   };
 }

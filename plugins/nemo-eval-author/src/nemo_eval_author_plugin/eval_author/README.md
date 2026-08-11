@@ -55,18 +55,16 @@ Each Eval Author invocation fills a fresh candidate suite from the current templ
 and traces. The complete suite is Harbor-validated locally, promoted to the
 experiment-local working copy with backup-and-restore failure handling, and
 analyzed for the Insight's root cause. Eval Author then adds normalized
-Insight-specific verifier metric keys to every materialized task while
-preserving the template's existing task metrics. The metric authoring step is
-scoped to the Insight suite; the user's train and validation datasets remain
-unchanged. The authored verifiers must pass static Harbor validation before the
-local suite is returned to the optimization loop.
+Insight-specific verifier metric keys to every task in the staged train,
+validation, and generated Insight datasets while preserving existing task
+metrics. All three datasets must pass static Harbor validation before they are
+returned.
 
 After authoring and validation, Eval Author hashes every task file and verifier
 file and persists deterministic suite and scorer identities in the local suite's
-manifest. The returned dataset continues to point at the single experiment-local
-suite. Candidate Insight results persist the suite identity, and resume reuses
-those results only when the identity still matches; changed task or verifier
-content is re-evaluated.
+manifest. The returned Insight dataset points at the experiment-local suite.
+Eval Author does not split, merge, or evaluate that suite. Experimentalist
+currently leaves it unconsumed for downstream integration by its owning team.
 
 Task-template inputs may be local paths, `file://` URIs, or NeMo Platform
 `fileset://<workspace>/<fileset>` references. Fileset-backed templates are
@@ -75,12 +73,6 @@ them. The staged template is refreshed on every invocation rather than reused.
 
 The returned Python contract is documented in the
 [Eval Author Python Reference](REFERENCE.md#evalauthorresult).
-
-Insight metrics remain adaptive development feedback. They may steer round
-analysis, goal-tree updates, and proposals, but validation remains the direct
-Pareto and winner-selection criterion. Promotion suggestions require complete
-repeated baseline-to-winner improvement evidence, remain advisory, and never
-mutate the canonical validation dataset.
 
 ## Intended Invocation
 

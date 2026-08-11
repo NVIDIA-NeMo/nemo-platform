@@ -12,6 +12,7 @@ from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
+from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
 from pydantic import BaseModel
 
 
@@ -83,16 +84,47 @@ def _metric_rollups(result: AgentEvalResult) -> str:
         rows.append(
             "<tr>"
             f"<td><code>{_e(score.name)}</code></td>"
-            f"<td>{_format_score(score.mean)}</td>"
-            f"<td>{_e(score.count)}</td>"
+            f"<td>{_format_score(_headline_value(score))}</td>"
+            f"<td>{_format_score(_median(score))}</td>"
+            f"<td>{_format_score(score.sample_std_dev)}</td>"
+            f"<td>{_count(score.count)}</td>"
             f"<td>{_e(score.nan_count)}</td>"
             "</tr>"
         )
     return (
-        "<table><thead><tr><th>Name</th><th>Mean</th><th>Count</th><th>NaN</th></tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table>"
+        "<table><thead><tr><th>Name</th><th>Value</th><th>Median</th><th>Std dev</th>"
+        "<th>Count</th><th>NaN</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
     )
+
+
+def _headline_value(score: AggregateScore) -> float | None:
+    """The one number to show: a scalar's ``value``, otherwise the mean of the distribution.
+
+    A scalar score has no mean — rendering the column straight off ``score.mean`` would leave every
+    runner-imported figure blank in the table where it is the only thing worth reading.
+    """
+    return score.value if isinstance(score, AggregateScalarScore) else score.mean
+
+
+def _median(score: AggregateScore) -> float | None:
+    """The median, whether it arrived as a field or only inside a percentile distribution.
+
+    Reading `percentiles.p50` alone would blank the column for every imported aggregate: a backend that
+    reports a median without a full distribution (Gym does) sets `median` and nothing else, which is the
+    case the field was added for. Natively computed scores populate both, identically.
+    """
+    if score.median is not None:
+        return score.median
+    percentiles = getattr(score, "percentiles", None)
+    return percentiles.p50 if percentiles is not None else None
+
+
+def _count(count: int | None) -> str:
+    """Sample size, or an em dash when the producer didn't report one (imported aggregates).
+
+    Tests for None specifically: a genuine 0 means every sample was NaN, which is worth seeing.
+    """
+    return "&mdash;" if count is None else _e(count)
 
 
 def _score_table(scores: list[AgentEvalTaskScore]) -> str:

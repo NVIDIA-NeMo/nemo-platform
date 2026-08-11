@@ -6,17 +6,18 @@ Mapping: one Gym dataset → one run; each distinct row → one `AgentEvalTask` 
 
 ## Prerequisites
 
-A working **NeMo Gym checkout** is required — Gym resolves its environments from the repo, not from a package install. From the Gym checkout:
+**1. NeMo Gym installed in the same environment as the SDK**, plus the target environment's own dependencies. Environments ship in the `nemo-gym` wheel — `resources_servers` and friends install beside `nemo_gym`, configs and `data/example.jsonl` included — so no checkout is needed:
 
 ```bash
-# 1. Gym venv + framework (Gym pins uv >= 0.9.30; the workspace floor must satisfy that)
-uv venv --python 3.12 .venv
-uv pip install --no-config --python .venv/bin/python -e ".[dev]" "ray[default]>=2.55.1"
+pip install nemo-gym
+pip install tiktoken        # mcqa's own dependency; each resources_server ships a requirements.txt
+```
 
-# 2. The target env's own deps (each resources_server ships a requirements.txt)
-uv pip install --no-config --python .venv/bin/python tiktoken        # mcqa needs tiktoken
+The runner shells out to whatever `gym` is on PATH. There is deliberately no setting for a checkout, another venv, or a search root: this config becomes a serialized job spec when Gym runs as a platform job, and a local path means nothing on the other side of that boundary.
 
-# 3. Model credentials for the collector — a gitignored env.yaml at the Gym repo root:
+**2. Model credentials for the collector** — a gitignored `env.yaml` in the directory you run from:
+
+```bash
 cat > env.yaml <<'YAML'
 policy_base_url: https://<your-openai-compatible-endpoint>/v1
 policy_api_key: <key>
@@ -24,17 +25,19 @@ policy_model_name: <model, e.g. nvidia/meta/llama-3.3-70b-instruct>
 YAML
 ```
 
-> `env.yaml` is gitignored by the Gym repo — the credentials stay local.
+> Gym searches the working directory, then its install root. This SDK never reads that file — the `gym` subprocess does.
 
 ## Run
 
-From the nemo-platform repo root (any Python with `nemo_evaluator_sdk` importable — the runner shells out to Gym's own venv):
+From the directory holding `env.yaml`:
 
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval --gym-root /path/to/Gym
+uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval
 ```
 
-Useful flags: `--resources-server`, `--agent`, `--model-type` (`inference_provider` for OpenAI-compatible **chat** endpoints; `openai_model` uses the OpenAI **Responses API** and 500s against chat-only endpoints), `--num-repeats`, `--output-dir`.
+Working from a Gym checkout also makes its components take precedence over the packaged ones, which is how you reach an environment whose data the wheel does not carry (bulk train/validation splits are not git-tracked, so they are not in it).
+
+Useful flags: `--resources-server`, `--agent`, `--model-type` (`inference_provider` for OpenAI-compatible **chat** endpoints; `openai_model` uses the OpenAI **Responses API** and 500s against chat-only endpoints), `--num-repeats`, `--dataset`, `--output-dir`.
 
 For the full set of knobs the underlying `gym env start` / `gym eval run` commands accept, see the [NeMo Gym documentation](https://github.com/NVIDIA-NeMo/Gym). Anything `GymRuntimeConfig` does not expose as a field can be passed through with its `env_overrides` escape hatch (Hydra `+key=value` overrides applied to `gym env start`).
 
@@ -52,6 +55,20 @@ aggregate scores:
 Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/.../gym-eval-ab12cd34
 ```
 
+## Read the results
+
+`inspect_results.py` is the companion to the above: it reads a bundle and shows how to reach each kind of result — headline aggregates, `pass@k`, per-task outcomes, and the runner's own imported numbers. Its accessors (`aggregate`, `per_task_outcomes`) are written to be lifted into your own code, and everything it shows also works on the in-memory `AgentEvalResult` that `AgentEvaluator().run(...)` returns — reading a bundle just makes it runnable without a live run.
+
+No bundle is checked in; the run above produces one. Give it a stable `--output-dir` and point the reader at the same path:
+
+```bash
+uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval \
+    --output-dir /tmp/gym-eval
+uv run python -m packages.nemo_evaluator_sdk.examples.gym.inspect_results --bundle /tmp/gym-eval
+```
+
+Aggregates named `runner.gym.*` are Gym's own figures, imported into `summary.scores` so they are addressable exactly like the SDK's — the prefix is what tells you which side computed them. The script cross-checks Gym's `pass@1` against the SDK's natively-computed one (Gym reports accuracy on a 0-100 scale where the SDK uses 0-1). It works on any agent-eval bundle: pass `--metric-type`/`--output-name` for a run scored with a different metric.
+
 ## How it runs Gym
 
 The runner uses Gym's **two-step** flow, which reads a dataset file directly (no split-driven data-prep, no HuggingFace downloads):
@@ -59,7 +76,7 @@ The runner uses Gym's **two-step** flow, which reads a dataset file directly (no
 1. `gym env start …` — brings up the resources-server + agent + model servers.
 2. `gym eval run --no-serve --input <dataset> …` — collects rollouts against them.
 
-It does **not** import `nemo_gym` and does **not** handle secrets — it invokes the `gym` executable in your checkout, and Gym reads credentials from that checkout's `env.yaml`.
+It does **not** import `nemo_gym` and does **not** handle secrets — it invokes whichever `gym` executable is on `PATH`, resolved once to an absolute path so the subprocesses cannot pick up a different one, and Gym reads credentials from the `env.yaml` in the directory you run from.
 
 The dataset handed to step 2 is not your source file. The runner **materializes** a normalized one into the run's work directory: one row per requested task, with `_ng_task_index` stamped explicitly. Gym honors a caller-supplied `_ng_task_index` (it only assigns one when a row lacks it) and echoes it back on every rollout record, so rollouts join back to tasks through a map the runner owns rather than a guess about Gym's internal row ordering. It also means running a *subset* of tasks only rolls out that subset.
 

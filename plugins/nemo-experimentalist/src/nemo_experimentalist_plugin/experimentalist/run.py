@@ -3,10 +3,9 @@
 
 """Reusable optimizer Experimentalist run orchestration."""
 
-import importlib
 import logging
 from pathlib import Path
-from typing import Protocol, TextIO, cast
+from typing import TextIO
 
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
@@ -17,12 +16,14 @@ from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import 
 )
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, Verbosity
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.nooa_model_client import (
+    ConfiguredModelClients,
+    ConfiguredModelRefs,
+    activate_model_clients,
+    resolve_model_clients,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class _LiteLLMModule(Protocol):
-    drop_params: bool
 
 
 def build_run_reporter(
@@ -42,7 +43,7 @@ def build_run_reporter(
 
 async def run_experimentalist(
     *,
-    agent: str | None = None,
+    agent: Path | str | None = None,
     agent_spec: str | None = None,
     insight: Path | str | None,
     train_dataset: DatasetRef,
@@ -53,6 +54,7 @@ async def run_experimentalist(
     config: EvolutionaryOptimizerConfig,
     task_template: DatasetRef | None = None,
     framework_skills_dirs: list[Path] | None = None,
+    model_refs: ConfiguredModelRefs | None = None,
 ) -> str:
     """Build and run the Experimentalist against an agent and dataset.
 
@@ -70,10 +72,12 @@ async def run_experimentalist(
         task_template: Evaluator-specific task template used for production traces.
         experiment_dir: Working directory for optimization artifacts.
         workspace: Platform workspace.
-        client: Optional caller-owned Platform client. Local-only Mode 2 runs
-            may pass ``None``; Platform Insight access, mirroring, and Intake
-            persistence require a client.
+        client: Optional caller-owned Platform client. When omitted, the run
+            creates one from the active Platform context for model resolution;
+            the data backend remains local-only.
         config: Evolutionary optimizer configuration.
+        model_refs: Optional explicit default/fast Model Entity IDs. Unset uses
+            the active Platform CLI context.
 
     Returns:
         Terminal optimization summary.
@@ -81,8 +85,6 @@ async def run_experimentalist(
     # Logging is configured at the entry-point boundary (the root ``nemo`` CLI
     # callback runs ``configure_logging`` before dispatching this subcommand),
     # so this library function leaves root logging untouched.
-    _enable_litellm_drop_params()
-
     experiment_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir = experiment_dir.resolve()
     # Leave ``agent`` unresolved: it may be a git ``url@ref`` (not a filesystem path).
@@ -92,7 +94,7 @@ async def run_experimentalist(
 
     reporter = build_run_reporter(
         run_dir=experiment_dir,
-        agent=agent or "(from insight)",
+        agent=str(agent) if agent else "(from insight)",
         insight=str(insight) if insight is not None else None,
     )
 
@@ -101,37 +103,41 @@ async def run_experimentalist(
         experiments_output=str(experiment_dir),
         storage=config.storage,
     )
-    deps = ExperimentalistDeps(
-        workspace=workspace,
-        agent=agent,
-        agent_spec=agent_spec,
-        insight=insight,
-        train_dataset=train_dataset,
-        validation_dataset=validation_dataset,
-        task_template=task_template,
-        backend=backend,
-        reporter=reporter,
-        config=config,
-    )
-    experimentalist = build_experimentalist_agent(
-        working_dir=experiment_dir,
-        config=config,
-        framework_skills_dirs=framework_skills_dirs,
-    )
-    result = await experimentalist.run(deps)
-    winner = result.winner
-    reporter.run_finished(
-        winner=winner.label if winner is not None else None,
-        scores=dict(winner.reward("validation").metrics) if winner and winner.reward("validation").metrics else {},
-        report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
-    )
-    return result.summary
-
-
-def _enable_litellm_drop_params() -> None:
-    """Let LiteLLM omit unsupported model parameters when it is installed."""
+    model_platform_client = client or AsyncNeMoPlatform()
+    owns_model_platform_client = client is None
+    model_clients: ConfiguredModelClients | None = None
     try:
-        litellm = cast(_LiteLLMModule, importlib.import_module("litellm"))
-    except ModuleNotFoundError:
-        return
-    litellm.drop_params = True
+        model_clients = await resolve_model_clients(model_platform_client, model_refs)
+        deps = ExperimentalistDeps(
+            workspace=workspace,
+            agent=agent,
+            agent_spec=agent_spec,
+            insight=insight,
+            train_dataset=train_dataset,
+            validation_dataset=validation_dataset,
+            task_template=task_template,
+            backend=backend,
+            reporter=reporter,
+            config=config,
+        )
+        with activate_model_clients(model_clients):
+            experimentalist = build_experimentalist_agent(
+                working_dir=experiment_dir,
+                config=config,
+                framework_skills_dirs=framework_skills_dirs,
+            )
+            result = await experimentalist.run(deps)
+        winner = result.winner
+        reporter.run_finished(
+            winner=winner.label if winner is not None else None,
+            scores=dict(winner.reward("validation").metrics) if winner and winner.reward("validation").metrics else {},
+            report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
+        )
+        return result.summary
+    finally:
+        try:
+            if model_clients is not None:
+                await model_clients.aclose()
+        finally:
+            if owns_model_platform_client:
+                await model_platform_client.close()

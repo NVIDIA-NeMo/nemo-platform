@@ -4,7 +4,7 @@ description: "Log in, call APIs, manage tokens, and create Scoped Access Keys."
 ---
 How to log in, make authenticated API calls, manage tokens, and create Scoped Access Keys with the CLI and SDK.
 
-**Prerequisites**: For OIDC login, configure an identity provider first. See [OIDC](/documentation/access-control/authentication/oidc). For local testing without OIDC, use `nemo auth login --unsigned-token --email <email>`. Scoped Access Keys also require the administrator to enable `auth.access_keys.enabled`; see [Authentication Configuration](/documentation/access-control/deployment/configuration#scoped-access-keys).
+**Prerequisites**: For OIDC login, configure an identity provider first. See [OIDC](/documentation/access-control/authentication/oidc-setup). For local testing without OIDC, use `nemo auth login --unsigned-token --email <email>`. Scoped Access Keys also require the administrator to enable `auth.access_keys.enabled`; see [Authentication Configuration](/documentation/access-control/deployment#scoped-access-keys).
 
 ## Log In
 
@@ -203,7 +203,7 @@ The OIDC token endpoint is **not** stored — it is discovered at runtime from y
 </Warning>
 ## Related
 
-- [OIDC](/documentation/access-control/authentication/oidc) — Configure your identity provider.
+- [OIDC](/documentation/access-control/authentication/oidc-setup) — Configure your identity provider.
 - [API Scopes](/documentation/access-control/authorization/api-scopes) — Scope model and available scopes.
 - [Security Model](/documentation/access-control/security-model) — Trust boundaries and the principal model.
 - [Troubleshooting](/documentation/access-control/troubleshooting) — Fix common 401/403 errors and login failures.

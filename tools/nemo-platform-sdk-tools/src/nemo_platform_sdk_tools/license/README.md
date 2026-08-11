@@ -232,7 +232,8 @@ overrides:
 
 Generated files are saved to `third_party/`:
 
-- `licenses.jsonl` (or `.jsonl`, `.csv`, etc.) - Main project licenses (format depends on `--format` flag)
-- `osv-licenses.json` - Raw OSV scanner output (main) - **always generated**
+- `licenses.jsonl` (or `.jsonl`, `.csv`, etc.) - Python and Go dependency licenses (format depends on `--format` flag)
+- `osv-licenses.json` - Merged raw OSV scanner output for the Python dependency snapshot and Go modules - **always generated**
+- `osv-licenses-jobs-launcher.json`, `osv-licenses-callouts.json` - Raw intermediate Go module scan outputs generated before merging
 
-**Note:** The `osv-licenses*.json` files are always created regardless of output format, and are used by the `find-missing` and `discover-overrides` commands.
+**Note:** The `osv-licenses*.json` files are always created regardless of output format. `osv-licenses.json` is the merged artifact used by the `find-missing` and `discover-overrides` commands; the per-module files are retained as raw scan intermediates.

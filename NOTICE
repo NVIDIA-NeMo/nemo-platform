@@ -4,12 +4,12 @@ Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 Licensed under the Apache License, Version 2.0.
 
 ================================================================================
-Third-Party / Vendored Code
+Third-Party / Vendored and Distributed Components
 ================================================================================
 
-This repository includes vendored third-party components listed below.
-Each component retains its original license, which can be found in the
-respective directory.
+This repository includes vendored and distributed third-party components listed
+below. Each component retains its original license, which can be found in the
+respective directory or package metadata.
 
 --------------------------------------------------------------------------------
 packages/garak_api/
@@ -66,6 +66,98 @@ services/auditor/third-party/
   This directory contains a pyproject.toml and lockfile used to collect
   Garak and its transitive dependencies for license auditing. No vendored
   source code is present; Garak is installed at build time from PyPI.
+
+--------------------------------------------------------------------------------
+cyrus-sasl2 / Cyrus SASL
+  License: BSD-4-Clause
+  Copyright (c) 1998-2003 Carnegie Mellon University. All rights reserved.
+  Home: https://www.cyrusimap.org/sasl/
+
+  Redistributions of any form whatsoever must retain the following
+  acknowledgment:
+  "This product includes software developed by Computing Services
+   at Carnegie Mellon University (http://www.cmu.edu/computing/)."
+
+--------------------------------------------------------------------------------
+Ray-bundled JAXB runtime dependencies
+  Scope: Unmodified transitive dependencies distributed in container images as
+  part of the Ray runtime environment.
+  License election: CDDL-1.1
+  Alternate upstream license not elected: GPL-2.0-only WITH
+  Classpath-exception-2.0
+  License text: LICENSES/CDDL-1.1.txt
+
+  Components:
+    com.sun.istack:istack-commons-runtime 3.0.5
+      Source archive:
+        https://repo1.maven.org/maven2/com/sun/istack/istack-commons-runtime/3.0.5/istack-commons-runtime-3.0.5-sources.jar
+    com.sun.mail:mailapi 1.6.2
+      Source archive:
+        https://repo1.maven.org/maven2/com/sun/mail/mailapi/1.6.2/mailapi-1.6.2-sources.jar
+    com.sun.xml.bind:jaxb-core 2.3.0
+      Source archive:
+        https://repo1.maven.org/maven2/com/sun/xml/bind/jaxb-core/2.3.0/jaxb-core-2.3.0-sources.jar
+    com.sun.xml.bind:jaxb-impl 2.3.0
+      Source archive:
+        https://repo1.maven.org/maven2/com/sun/xml/bind/jaxb-impl/2.3.0/jaxb-impl-2.3.0-sources.jar
+    javax.xml.bind:jaxb-api 2.3.0
+      Source archive:
+        https://repo1.maven.org/maven2/javax/xml/bind/jaxb-api/2.3.0/jaxb-api-2.3.0-sources.jar
+    org.glassfish.jaxb:jaxb-core 2.3.0
+      Source archive:
+        https://repo1.maven.org/maven2/org/glassfish/jaxb/jaxb-core/2.3.0/jaxb-core-2.3.0-sources.jar
+    org.glassfish.jaxb:jaxb-runtime 2.3.0
+      Source archive:
+        https://repo1.maven.org/maven2/org/glassfish/jaxb/jaxb-runtime/2.3.0/jaxb-runtime-2.3.0-sources.jar
+    org.glassfish.jaxb:txw2 2.3.0
+      Source archive:
+        https://repo1.maven.org/maven2/org/glassfish/jaxb/txw2/2.3.0/txw2-2.3.0-sources.jar
+
+  These components are distributed unmodified. NeMo Platform does not elect the
+  GPL-2.0-only WITH Classpath-exception-2.0 branch for these components.
+  Preserve the notices shipped in the upstream jars. Source code for the
+  CDDL-covered components is available from the versioned upstream source
+  archives listed for each artifact.
+
+--------------------------------------------------------------------------------
+wandb-core MPL-2.0 Go dependencies
+  Scope: Unmodified Go module dependencies linked into the wandb-core
+  executable distributed with the wandb Python package in container images.
+  wandb package version: 0.28.1
+  wandb source distribution:
+    https://files.pythonhosted.org/packages/92/fb/8d3f96a8b143060d6fa145462d0785981373e04694e4152555ccb5d23939/wandb-0.28.1.tar.gz
+  wandb upstream source:
+    https://github.com/wandb/wandb
+  wandb-core source at reported build commit:
+    https://github.com/wandb/wandb/tree/v0.28.1
+  License: MPL-2.0
+  License text: LICENSES/MPL-2.0.txt
+
+  Components:
+    github.com/NimbleMarkets/pixterm v0.0.0-20260501211346-dc18ac6c1a0f
+      Source: https://github.com/NimbleMarkets/pixterm/tree/dc18ac6c1a0f
+      Module source archive:
+        https://proxy.golang.org/github.com/!nimble!markets/pixterm/@v/v0.0.0-20260501211346-dc18ac6c1a0f.zip
+    github.com/hashicorp/go-cleanhttp v0.5.2
+      Source: https://github.com/hashicorp/go-cleanhttp/tree/v0.5.2
+      Module source archive:
+        https://proxy.golang.org/github.com/hashicorp/go-cleanhttp/@v/v0.5.2.zip
+    github.com/hashicorp/go-retryablehttp v0.7.8
+      Source: https://github.com/hashicorp/go-retryablehttp/tree/v0.7.8
+      Module source archive:
+        https://proxy.golang.org/github.com/hashicorp/go-retryablehttp/@v/v0.7.8.zip
+    github.com/hashicorp/golang-lru v1.0.2
+      Source: https://github.com/hashicorp/golang-lru/tree/v1.0.2
+      Module source archive:
+        https://proxy.golang.org/github.com/hashicorp/golang-lru/@v/v1.0.2.zip
+
+  These components are distributed unmodified as linked dependencies in the
+  wandb-core executable. The MPL-2.0 obligations apply to the MPL-covered source
+  files for those modules and do not require NeMo Platform, the rest of
+  wandb-core, or the container image to be licensed under MPL-2.0. Preserve
+  upstream notices and make the source for the exact module versions above
+  available to recipients through the listed source locations or an equivalent
+  archived source bundle.
 
 --------------------------------------------------------------------------------
 web/packages/studio/src/generated/styles.css

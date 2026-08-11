@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useGuardrailsGetGuardrailConfig } from '@nemo/sdk/generated/platform/api';
 import { Flex, PageHeader, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

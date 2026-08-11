@@ -21,14 +21,13 @@ from urllib.parse import urlparse
 
 import httpx
 import nemo_evaluator_sdk.inference as inference
-from nemo_evaluator_sdk.agent_eval.dashboard import write_dashboard
-from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import (
     AgentEvalDiagnostic,
     AgentEvalDiagnosticSeverity,
     AgentEvalScoreStatus,
     AgentEvalTaskScore,
+    TRIAL_STATUS_DETAIL,
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
@@ -37,6 +36,7 @@ from nemo_evaluator_sdk.agent_eval.trials import (
     AgentEvalTrialStatus,
     AgentOutput,
     AgentTaskRunner,
+    RunAggregationsProvider,
     RunnerInfo,
 )
 from nemo_evaluator_sdk.agent_inference import (
@@ -60,6 +60,7 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.values.results import AggregateScore
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_JSON,
     EVIDENCE_TRACE,
@@ -176,6 +177,7 @@ class AgentEvaluator:
             config=runtime_config,
             run_id=run_id,
         )
+        runner_scores = _collect_runner_aggregate_scores(target) if target is not None else []
         finished_at = datetime.now(UTC)
         metadata = RunMetadata(
             labels=dict(runtime_config.labels),
@@ -190,12 +192,11 @@ class AgentEvaluator:
             tasks=task_list,
             trials=trial_list,
             scores=scores,
-            summary=AgentEvalSummary.from_scores(scores, tasks=task_list),
+            summary=AgentEvalSummary.from_scores(scores, tasks=task_list, extra_scores=runner_scores),
             metadata=metadata,
+            work_dir=runtime_config.work_dir,
         )
 
-        if runtime_config.output_dir is not None:
-            result = _persist_with_optional_dashboard(result, runtime_config.output_dir, runtime_config.write_dashboard)
         return result
 
     def run_sync(
@@ -252,7 +253,9 @@ class AgentEvaluator:
                             severity=AgentEvalDiagnosticSeverity.ERROR,
                             message=f"trial {trial.id!r} is failed",
                             source=metric_type_name(metric),
-                            details={"trial_status": trial.status.value},
+                            # The key pass@k reads to tell "the agent produced nothing" (a failed
+                            # attempt) from "the metric raised" (an unusable measurement).
+                            details={TRIAL_STATUS_DETAIL: trial.status.value},
                         ),
                     )
                 try:
@@ -336,8 +339,8 @@ class AgentEvaluator:
                         "invocation_id": f"{config.run_id}:{task.id}:{target.name}",
                     }
                     evidence_dir = (
-                        _task_evidence_dir(Path(config.output_dir), index=index, task_id=task.id)
-                        if config.output_dir is not None and isinstance(target, AgentBase)
+                        _task_evidence_dir(Path(config.work_dir), index=index, task_id=task.id)
+                        if config.work_dir is not None and isinstance(target, AgentBase)
                         else None
                     )
                     resolved_inference_fn = self.inference_fn
@@ -732,16 +735,36 @@ def _describe_target(
     return target.runner_info()
 
 
-def _persist_with_optional_dashboard(
-    result: AgentEvalResult,
-    output_dir: Path,
-    write_html: bool,
-) -> AgentEvalResult:
-    path = Path(output_dir)
-    dashboard_path = None
-    if write_html:
-        dashboard_path = write_dashboard(result.model_copy(update={"output_dir": path}), path / "report.html")
-    return persist_run(result.model_copy(update={"output_dir": path, "dashboard_path": dashboard_path}), path)
+def _collect_runner_aggregate_scores(target: object) -> list[AggregateScore]:
+    """The typed subset of a runner's own aggregations, for merging into ``summary.scores``.
+
+    A runner that maps its numbers onto aggregate scores namespaces them under ``runner.<name>.``, so
+    they sit alongside the SDK's own without being mistaken for them. That namespace is *enforced*, not
+    merely documented: ``RunAggregationsProvider`` is a public extension point, ``summary.scores`` is a
+    flat list, and a third-party runner returning ``gym_reward.reward`` would not overwrite the SDK's
+    own aggregate but sit next to it under the same name, leaving any lookup to pick one arbitrarily.
+
+    Offending entries are dropped with a warning rather than raised on. This runs *after* ``run_tasks``,
+    so raising would sink a completed run — potentially hours of collection — over a naming bug, while
+    the numbers themselves remain in the runner's own files inside the bundle.
+    """
+    if not isinstance(target, RunAggregationsProvider):
+        return []
+    runner_info = getattr(target, "runner_info", None)  # structurally optional: the protocol is a companion
+    runner_name = runner_info().name if callable(runner_info) else None
+    prefix = f"runner.{runner_name}." if runner_name else "runner."
+    collected: list[AggregateScore] = []
+    for score in target.run_aggregate_scores():
+        if not score.name.startswith(prefix):
+            log.warning(
+                "Dropping runner-contributed aggregate %r: RunAggregationsProvider names must be "
+                "namespaced %r so an imported figure is never mistaken for one the SDK computed.",
+                score.name,
+                prefix,
+            )
+            continue
+        collected.append(score)
+    return collected
 
 
 def _new_run_id() -> str:

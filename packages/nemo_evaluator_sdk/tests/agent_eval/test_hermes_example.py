@@ -76,7 +76,7 @@ async def test_hermes_evaluation_replays_responses_sse(monkeypatch: pytest.Monke
     assert trial.output is not None
     assert trial.output.output_text == "streaming works"
 
-    aggregate = next(score for score in result.summary.scores.scores if score.name == "keyword_match.score")
+    aggregate = result.summary.score("keyword_match.score")
     assert aggregate.mean == 1.0
 
     assert trial.evidence is not None

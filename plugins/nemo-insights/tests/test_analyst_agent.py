@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
-from nemo_insights_plugin.analyst import model_config
 from nemo_insights_plugin.analyst.agent import KICKOFF, Analyst, build_analyst_agent
 from nemo_insights_plugin.analyst.analyst_backend import AnalystBackend
 from nemo_insights_plugin.analyst.deps import AnalystDeps
@@ -37,24 +36,6 @@ def _exec_response(code: str) -> LLMResponse:
             )
         ],
     )
-
-
-def test_smart_model_uses_opus_through_openai_compatible_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("INFERENCE_API_KEY", "test-key")
-    model_config.get_smart_model.cache_clear()
-    model_config._completion_client.cache_clear()
-
-    client = model_config.get_smart_model()
-    try:
-        assert client.model == "openai/aws/anthropic/bedrock-claude-opus-4-8"
-        assert client.config == {
-            "api_base": "https://inference-api.nvidia.com/v1",
-            "api_key": "test-key",
-        }
-    finally:
-        client.close()
-        model_config.get_smart_model.cache_clear()
-        model_config._completion_client.cache_clear()
 
 
 async def test_nooa_codeact_returns_typed_analyst_result_and_receives_prompt() -> None:

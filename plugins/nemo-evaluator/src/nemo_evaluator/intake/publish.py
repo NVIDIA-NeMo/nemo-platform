@@ -19,13 +19,16 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from datetime import timedelta
 
 from nemo_evaluator.intake import mapping
 from nemo_evaluator.sdk import http_utils
+from nemo_evaluator_sdk.agent_eval.metrics import TrialMeasurements
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform.types.intake.ingest.atif_final_metrics_param import AtifFinalMetricsParam
 from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -93,6 +96,24 @@ class PublishReport(BaseModel):
         return sum(trial.evaluator_result_count for trial in self.published_trials)
 
 
+def _token_final_metrics(measurements: TrialMeasurements) -> AtifFinalMetricsParam | None:
+    """Project the trial's recorded token usage onto ATIF ``final_metrics``.
+
+    Intake promotes these root totals onto the trajectory's root span, where the evaluation rollup
+    reads them — so publishing them is what makes token counts show up under the Evaluation. Only the
+    token fields the trial actually recorded are set; a trial whose harness recorded no usage yields
+    ``None`` (no ``final_metrics`` block). Cost is not captured here.
+    """
+    final_metrics: AtifFinalMetricsParam = {}
+    if measurements.prompt_tokens is not None:
+        final_metrics["total_prompt_tokens"] = measurements.prompt_tokens
+    if measurements.completion_tokens is not None:
+        final_metrics["total_completion_tokens"] = measurements.completion_tokens
+    if measurements.cache_read_tokens is not None:
+        final_metrics["total_cached_tokens"] = measurements.cache_read_tokens
+    return final_metrics or None
+
+
 async def publish_to_intake(
     result: AgentEvalResult,
     *,
@@ -115,7 +136,14 @@ async def publish_to_intake(
     collected and raised together as a :class:`PublishError` (carrying the partial
     report). The evaluation's local bundle is the system of record and is never
     touched, so the caller can re-run ``publish_to_intake`` once the issue is fixed
-    to publish the remaining trials. (Re-publish is not yet idempotent — see ask X1.)
+    to publish the remaining trials.
+
+    Re-publish is **idempotent**: the session id is derived from the run and trial
+    (``mapping.session_id_for``), the step timestamp from the run's ``started_at``,
+    and each evaluator-result id from its target — so every key Intake replaces on is
+    a function of the result, not of when it was published. Re-sending a trial that
+    already landed replaces its rows instead of duplicating them, which is what makes
+    a worker retry after a partial publish safe.
 
     ``experiment_id`` must reference an Experiment that already exists — ATIF ingest
     rejects unknown experiments with HTTP 400. Creating the Experiment/group is a
@@ -127,6 +155,17 @@ async def publish_to_intake(
     """
     resolved_workspace = http_utils.resolve_workspace(platform, workspace, strict=True)
 
+    # Required, not defaulted to "now": a fallback would silently reintroduce the
+    # publish-time clock that makes re-ingest duplicate rows (see the ingest note on
+    # ``mapping.trial_to_atif_ingest``). A real run always sets it; a hand-built result
+    # must say when it ran.
+    started_at = result.metadata.started_at
+    if started_at is None:
+        raise PublishError(
+            f"Cannot publish run {result.run_id!r}: metadata.started_at is unset, and publishing "
+            "without it would write trajectories that duplicate on re-publish."
+        )
+
     scores_by_trial: dict[str, list[AgentEvalTaskScore]] = defaultdict(list)
     for score in result.scores:
         scores_by_trial[score.trial_id].append(score)
@@ -136,13 +175,24 @@ async def publish_to_intake(
 
     async def _publish_trial(trial: AgentEvalTrial) -> PublishedTrial:
         async with semaphore:
+            measurements = TrialMeasurements.from_metadata(trial.metadata)
+            # A recorded runtime gives the trajectory a real end so Intake's latency rollup sees the
+            # trial's wall-clock duration instead of 0; absent → no window, latency stays unmeasured.
+            ended_at = (
+                started_at + timedelta(seconds=measurements.runtime_sec)
+                if measurements.runtime_sec is not None
+                else None
+            )
             body = mapping.trial_to_atif_ingest(
                 trial,
                 run_id=result.run_id,
                 experiment_id=experiment_id,
                 agent_name=agent_name,
+                started_at=started_at,
                 agent_version=agent_version,
                 model_name=model_name,
+                final_metrics=_token_final_metrics(measurements),
+                ended_at=ended_at,
             )
             body["workspace"] = resolved_workspace
             await platform.intake.ingest.atif.create(**body)
@@ -193,8 +243,14 @@ def _publish_failure_message(
     report: PublishReport,
     failures: list[tuple[str, BaseException]],
 ) -> str:
-    """Build an actionable error: what failed, where the results are cached, how to recover."""
-    location = f"cached locally at {result.output_dir}" if result.output_dir is not None else "in the local run bundle"
+    """Build an actionable error: what failed, what survives locally, how to recover."""
+    # work_dir is where the runtimes wrote trial evidence, NOT a bundle location: a bundle exists only
+    # if the caller chose to persist(), and persist() can be pointed elsewhere. Say only what is true.
+    location = (
+        f"still in memory, and the run's trial evidence is under {result.work_dir}"
+        if result.work_dir is not None
+        else "still in memory and have not been written to disk (call result.persist() to keep them)"
+    )
     detail = "\n  ".join(f"{trial_id}: {type(error).__name__}: {error}" for trial_id, error in failures)
     return (
         f"publish_to_intake: {len(failures)} of {len(result.trials)} trial(s) failed to publish "

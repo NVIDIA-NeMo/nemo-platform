@@ -520,6 +520,26 @@ class TestDiscoverFiles:
 
         assert sorted(discover_files(tmp_path / "splits", "**/*.jsonl")) == sorted([train_path, validation_path])
 
+    def test_glob_pattern_returns_files_in_sorted_order(self, tmp_path: Path):
+        for name in ("part-c.json", "part-a.json", "part-b.json"):
+            (tmp_path / name).touch()
+
+        assert discover_files(tmp_path, "part-*.json") == [
+            tmp_path / "part-a.json",
+            tmp_path / "part-b.json",
+            tmp_path / "part-c.json",
+        ]
+
+    def test_directory_without_a_pattern_returns_files_in_sorted_order(self, tmp_path: Path):
+        for name in ("c.jsonl", "a.jsonl", "b.jsonl"):
+            (tmp_path / name).touch()
+
+        assert discover_files(tmp_path, None) == [
+            tmp_path / "a.jsonl",
+            tmp_path / "b.jsonl",
+            tmp_path / "c.jsonl",
+        ]
+
 
 class TestIsCompletionsEndpoint:
     @pytest.mark.parametrize(

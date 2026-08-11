@@ -186,6 +186,32 @@ def test_span_to_domain_promotes_pydantic_ai_tool_arguments_and_response():
     assert json.loads(domain_span.output) == {"return_value": {"count": 3}}
 
 
+def test_span_to_domain_carries_evaluation_id_attribute() -> None:
+    # OTLP associates a span with an evaluation via the nemo.experiment.id attribute; the ingest path
+    # reads it off the built span to mark that evaluation dirty for facet denormalization.
+    span = _make_span()
+    _add_string_attr(span, "nemo.experiment.id", "my-eval")
+    domain_span = _span_to_domain(
+        workspace="default",
+        span=span,
+        resource_attributes={},
+        scope_data={},
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert domain_span.attributes_string.get("nemo.experiment.id") == "my-eval"
+
+
+def test_span_to_domain_without_evaluation_attribute_has_no_id() -> None:
+    domain_span = _span_to_domain(
+        workspace="default",
+        span=_make_span(),
+        resource_attributes={},
+        scope_data={},
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert domain_span.attributes_string.get("nemo.experiment.id") is None
+
+
 def _make_span(
     *,
     trace_id: bytes = DEFAULT_TRACE_ID,

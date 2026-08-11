@@ -10,12 +10,12 @@
  * its affiliates is strictly prohibited.
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { resourceRefSchema, type ResourceRef } from '@nemo/common/src/types';
 import { ModelDeployment } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DeploymentsDataView } from '@studio/components/dataViews/DeploymentsDataView';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_DEPLOYMENTS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';

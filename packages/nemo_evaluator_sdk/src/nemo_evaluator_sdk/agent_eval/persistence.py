@@ -10,15 +10,35 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
+from nemo_evaluator_sdk.agent_eval.dashboard import write_dashboard
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, BundleLocation
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from pydantic import BaseModel
 
+#: Filename of the rendered HTML dashboard inside a bundle.
+DASHBOARD_FILENAME = "report.html"
 
-def persist_run(result: AgentEvalResult, output_dir: str | Path) -> AgentEvalResult:
-    """Persist a completed run bundle to ``output_dir``."""
+
+def persist_run(
+    result: AgentEvalResult,
+    output_dir: str | Path,
+    *,
+    write_html_dashboard: bool = True,
+) -> BundleLocation:
+    """Write a completed run to a bundle at ``output_dir`` and report where it landed.
+
+    Explicit rather than a side effect of :meth:`AgentEvaluator.run`: computing an evaluation and
+    storing one are different decisions, and folding them together is what forced the result object to
+    carry paths it could not know at construction time. (Same reasoning as ``publish_to_intake``.)
+
+    Set ``write_html_dashboard=False`` to skip rendering ``report.html`` — the dashboard is written
+    here so the manifest can record it in a single pass.
+    """
     path = Path(output_dir)
     path.mkdir(parents=True, exist_ok=True)
+
+    # Render first so the manifest below can name it; the dashboard reads only the run's own contents.
+    dashboard_path = write_dashboard(result, path / DASHBOARD_FILENAME) if write_html_dashboard else None
 
     _write_json(path / "metadata.json", result.metadata)
     _write_jsonl(path / "tasks.jsonl", result.tasks)
@@ -26,16 +46,16 @@ def persist_run(result: AgentEvalResult, output_dir: str | Path) -> AgentEvalRes
     _write_jsonl(path / "scores.jsonl", result.scores)
     _write_json(path / "summary.json", result.summary)
 
-    updated = result.model_copy(update={"output_dir": path})
-    _write_json(path / "run.json", _run_manifest(updated))
-    return updated
+    location = BundleLocation(output_dir=path, dashboard_path=dashboard_path)
+    _write_json(path / "run.json", _run_manifest(result, location))
+    return location
 
 
-def _run_manifest(result: AgentEvalResult) -> dict[str, Any]:
+def _run_manifest(result: AgentEvalResult, location: BundleLocation) -> dict[str, Any]:
     return {
         "run_id": result.run_id,
-        "output_dir": str(result.output_dir) if result.output_dir is not None else None,
-        "dashboard_path": str(result.dashboard_path) if result.dashboard_path is not None else None,
+        "output_dir": str(location.output_dir),
+        "dashboard_path": str(location.dashboard_path) if location.dashboard_path is not None else None,
         "artifacts": {
             "metadata": "metadata.json",
             "tasks": "tasks.jsonl",

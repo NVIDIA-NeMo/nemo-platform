@@ -7,6 +7,7 @@ import {
   entityNameSchema,
   getEntityNameError,
   sanitizeEntityName,
+  toCopyName,
   toValidEntityName,
 } from '@nemo/common/src/utils/entityName';
 import { entitiesCreateEntityBodyNameRegExp } from '@nemo/sdk/generated/platform/zod/entity-store';
@@ -108,6 +109,32 @@ describe('sanitizeEntityName', () => {
 describe('toValidEntityName', () => {
   it('falls back when nothing valid remains', () => {
     expect(toValidEntityName('!!!', 'provider')).toBe('provider');
+  });
+});
+
+describe('toCopyName', () => {
+  it('appends the suffix', () => {
+    expect(toCopyName('my-rail')).toBe('my-rail-copy');
+  });
+
+  it('keeps the result within the entity name limit', () => {
+    const result = toCopyName('a'.repeat(ENTITY_NAME_MAX_LENGTH));
+    expect(result).toHaveLength(ENTITY_NAME_MAX_LENGTH);
+    expect(ENTITY_NAME_REGEXP.test(result)).toBe(true);
+  });
+
+  it('does not produce consecutive hyphens when the cut lands on one', () => {
+    // Truncation would otherwise leave a trailing hyphen, which the regexp rejects.
+    const name = `${'a'.repeat(ENTITY_NAME_MAX_LENGTH - 6)}-${'b'.repeat(5)}`;
+    const result = toCopyName(name);
+    expect(result).not.toContain('--');
+    expect(ENTITY_NAME_REGEXP.test(result)).toBe(true);
+  });
+
+  it('stays valid when applied twice', () => {
+    const result = toCopyName(toCopyName('my-rail'));
+    expect(result).toBe('my-rail-copy-copy');
+    expect(ENTITY_NAME_REGEXP.test(result)).toBe(true);
   });
 });
 

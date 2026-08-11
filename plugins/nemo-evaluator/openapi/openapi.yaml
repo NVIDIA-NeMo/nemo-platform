@@ -2132,6 +2132,11 @@ components:
           title: Labels
           description: Caller-supplied tags recorded on the run's metadata (e.g. benchmark,
             mode, backend).
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/PublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result bundle. Omit to publish nowhere.
         tasks:
           anyOf:
           - $ref: '#/components/schemas/TasksetRef'
@@ -2298,6 +2303,11 @@ components:
           title: Labels
           description: Caller-supplied tags recorded on the run's metadata (e.g. benchmark,
             mode, backend).
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/PublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result bundle. Omit to publish nowhere.
         tasks:
           items:
             $ref: '#/components/schemas/AgentEvalTaskSpec'
@@ -2665,9 +2675,14 @@ components:
           title: Name
           description: Name of the score.
         count:
-          type: integer
           title: Count
-          description: Number of samples evaluated (excluding NaN).
+          description: "Number of samples evaluated (excluding NaN). Omitted when\
+            \ the sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated. (``None`` on the model; the\
+            \ result routes serialize with exclude_none, so the field is absent from\
+            \ the response rather than null.)"
+          type: integer
         nan_count:
           type: integer
           title: Nan Count
@@ -2688,13 +2703,33 @@ components:
           title: Max
           description: Maximum score value.
           type: number
+        median:
+          title: Median
+          description: Median score value. Equal to percentiles.p50 when a percentile
+            distribution is also present; carried separately because a backend may
+            report a median without one.
+          type: number
         std_dev:
           title: Std Dev
-          description: Standard deviation of the scores.
+          description: Population standard deviation of the scores (divides by n).
+            Describes the spread of the values actually evaluated. See sample_std_dev
+            to estimate the spread of the wider process.
           type: number
         variance:
           title: Variance
-          description: Variance of the scores.
+          description: Population variance of the scores (divides by n). See sample_variance.
+          type: number
+        sample_std_dev:
+          title: Sample Std Dev
+          description: "Sample standard deviation of the scores (Bessel-corrected,\
+            \ divides by n-1). Estimates the spread of the process the values were\
+            \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
+            \ system. Omitted when fewer than two values (undefined, not zero)."
+          type: number
+        sample_variance:
+          title: Sample Variance
+          description: Sample variance of the scores (Bessel-corrected, divides by
+            n-1). Omitted when fewer than two values.
           type: number
         score_type:
           type: string
@@ -2714,7 +2749,6 @@ components:
       type: object
       required:
       - name
-      - count
       - nan_count
       title: AggregateRangeScore
       description: Aggregated statistics for a range-type score with percentiles and
@@ -2726,9 +2760,14 @@ components:
           title: Name
           description: Name of the score.
         count:
-          type: integer
           title: Count
-          description: Number of samples evaluated (excluding NaN).
+          description: "Number of samples evaluated (excluding NaN). Omitted when\
+            \ the sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated. (``None`` on the model; the\
+            \ result routes serialize with exclude_none, so the field is absent from\
+            \ the response rather than null.)"
+          type: integer
         nan_count:
           type: integer
           title: Nan Count
@@ -2749,13 +2788,33 @@ components:
           title: Max
           description: Maximum score value.
           type: number
+        median:
+          title: Median
+          description: Median score value. Equal to percentiles.p50 when a percentile
+            distribution is also present; carried separately because a backend may
+            report a median without one.
+          type: number
         std_dev:
           title: Std Dev
-          description: Standard deviation of the scores.
+          description: Population standard deviation of the scores (divides by n).
+            Describes the spread of the values actually evaluated. See sample_std_dev
+            to estimate the spread of the wider process.
           type: number
         variance:
           title: Variance
-          description: Variance of the scores.
+          description: Population variance of the scores (divides by n). See sample_variance.
+          type: number
+        sample_std_dev:
+          title: Sample Std Dev
+          description: "Sample standard deviation of the scores (Bessel-corrected,\
+            \ divides by n-1). Estimates the spread of the process the values were\
+            \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
+            \ system. Omitted when fewer than two values (undefined, not zero)."
+          type: number
+        sample_variance:
+          title: Sample Variance
+          description: Sample variance of the scores (Bessel-corrected, divides by
+            n-1). Omitted when fewer than two values.
           type: number
         score_type:
           type: string
@@ -2777,11 +2836,99 @@ components:
       type: object
       required:
       - name
-      - count
       - nan_count
       - rubric_distribution
       title: AggregateRubricScore
       description: Aggregated statistics for a rubric-type score with category distribution.
+    AggregateScalarScore:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name of the score.
+        count:
+          title: Count
+          description: "Number of samples evaluated (excluding NaN). Omitted when\
+            \ the sample size is unknown \u2014 e.g. a figure imported from a backend\
+            \ that reports statistics without the n behind them. Distinct from 0,\
+            \ which asserts that nothing was evaluated. (``None`` on the model; the\
+            \ result routes serialize with exclude_none, so the field is absent from\
+            \ the response rather than null.)"
+          type: integer
+        nan_count:
+          type: integer
+          title: Nan Count
+          description: Number of samples that produced NaN scores.
+        sum:
+          title: Sum
+          description: Sum of all score values.
+          type: number
+        mean:
+          title: Mean
+          description: Mean score value.
+          type: number
+        min:
+          title: Min
+          description: Minimum score value.
+          type: number
+        max:
+          title: Max
+          description: Maximum score value.
+          type: number
+        median:
+          title: Median
+          description: Median score value. Equal to percentiles.p50 when a percentile
+            distribution is also present; carried separately because a backend may
+            report a median without one.
+          type: number
+        std_dev:
+          title: Std Dev
+          description: Population standard deviation of the scores (divides by n).
+            Describes the spread of the values actually evaluated. See sample_std_dev
+            to estimate the spread of the wider process.
+          type: number
+        variance:
+          title: Variance
+          description: Population variance of the scores (divides by n). See sample_variance.
+          type: number
+        sample_std_dev:
+          title: Sample Std Dev
+          description: "Sample standard deviation of the scores (Bessel-corrected,\
+            \ divides by n-1). Estimates the spread of the process the values were\
+            \ drawn from \u2014 the right choice when repeated trials sample a stochastic\
+            \ system. Omitted when fewer than two values (undefined, not zero)."
+          type: number
+        sample_variance:
+          title: Sample Variance
+          description: Sample variance of the scores (Bessel-corrected, divides by
+            n-1). Omitted when fewer than two values.
+          type: number
+        score_type:
+          type: string
+          const: scalar
+          title: Score Type
+          description: Type of score.
+          default: scalar
+        value:
+          type: number
+          title: Value
+          description: The reported value.
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - nan_count
+      - value
+      title: AggregateScalarScore
+      description: "A single pre-computed value with no underlying distribution available.\n\
+        \nFor figures a backend reports as one number (e.g. an environment's own ``pass@1``\
+        \ or Elo) rather\nthan a set of per-sample values the SDK could aggregate\
+        \ itself. ``value`` carries the number;\n``mean``/``min``/``max`` are optional\
+        \ and normally unset, since there is no sample to describe \u2014\na producer\
+        \ may still supply them, but readers key off ``score_type`` and read ``value``.\
+        \ Distinct from\n:class:`AggregateRangeScore` so a reader can tell \"this\
+        \ is the whole story\" from \"this summarizes\n``count`` samples\", instead\
+        \ of seeing a range score with a suspicious ``count`` of 1."
     AggregatedMetricResult:
       properties:
         scores:
@@ -2789,6 +2936,7 @@ components:
             anyOf:
             - $ref: '#/components/schemas/AggregateRangeScore'
             - $ref: '#/components/schemas/AggregateRubricScore'
+            - $ref: '#/components/schemas/AggregateScalarScore'
           type: array
           title: Scores
           description: The list of aggregated scores.
@@ -3736,6 +3884,50 @@ components:
         so no code is shipped or executed on load. Used for platform-recognized
 
         built-in metric types.'
+    IntakePublicationSpec:
+      properties:
+        evaluation_id:
+          type: string
+          minLength: 1
+          title: Evaluation Id
+          description: Name of the existing Evaluation to publish under. Must already
+            exist; the job does not create it.
+        agent_name:
+          title: Agent Name
+          description: Agent name recorded on each published trajectory. Derived from
+            the target when it names one; required otherwise.
+          type: string
+          minLength: 1
+        agent_version:
+          type: string
+          minLength: 1
+          title: Agent Version
+          description: Agent version recorded on each published trajectory. Neither
+            a Model nor an Agent carries a version, so this defaults to 'unknown'
+            unless the submitter supplies one.
+          default: unknown
+        required:
+          type: boolean
+          title: Required
+          description: Fail the job when publication fails. Defaults to True so a
+            run that asked to publish does not report success with nothing in Experiments.
+            The result bundle is saved before publication runs, so a failed job still
+            leaves the results intact to re-publish. Set False to keep the job successful
+            and report the failure in its output instead.
+          default: true
+      additionalProperties: false
+      type: object
+      required:
+      - evaluation_id
+      title: IntakePublicationSpec
+      description: "Publish this run's trials and scores to Intake, under an Evaluation\
+        \ that already exists.\n\n``evaluation_id`` is the *name* of a ``client.evaluations``\
+        \ record. Intake stores that record as\nits ``Experiment`` entity and the\
+        \ SDK's ``publish_to_intake`` calls the argument\n``experiment_id``, but the\
+        \ value is the same one either way \u2014 the parent ``client.experiments``\n\
+        group is a different resource and is not what goes here. The job never creates\
+        \ the Evaluation: a\nmissing one is an error, because nothing in an eval spec\
+        \ can supply the dataset identity\n``evaluations.create`` requires."
     JsonValue:
       title: JsonValue
     MetadataItem:
@@ -4483,6 +4675,17 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    PublicationSpec:
+      properties:
+        intake:
+          allOf:
+          - $ref: '#/components/schemas/IntakePublicationSpec'
+          description: Publish trials and scores to Intake. Omit to publish nowhere.
+      additionalProperties: false
+      type: object
+      title: PublicationSpec
+      description: Where a completed run publishes its results, beyond its own result
+        bundle.
     ReasoningParams:
       properties:
         end_token:
@@ -5158,17 +5361,22 @@ components:
         \ fields (id, name, workspace,\ntimestamps)."
     TasksetRef:
       type: string
-      pattern: ^[\w\-.]+(/[\w\-.]+)?$
+      pattern: ^[\w\-.]+(/[\w\-.]+)?(#[\w\-.]+)?$
       title: TasksetRef
-      description: 'Reference to a persisted taskset (format: ``workspace/name`` or
-        ``name``).
-
-
-        Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a
-        stored taskset in place
-
-        of an inline task list; the taskset''s member tasks are loaded and expanded
-        during spec resolution.'
+      description: "Reference to a persisted taskset (format: ``workspace/name`` or\
+        \ ``name``, optionally ``#rev``).\n\nSame shape and charset as :class:`TaskRef`.\
+        \ Lets an evaluation reference a stored taskset in place\nof an inline task\
+        \ list; the taskset's member tasks are loaded and expanded during spec resolution.\n\
+        \nAn optional ``#`` fragment pins the taskset revision to expand \u2014 a\
+        \ tag or a full content digest,\nwith an absent fragment meaning ``latest``.\n\
+        \nWhat each form guarantees, precisely. A taskset revision pins its members\
+        \ by digest, so a member\ntask publishing new content never changes what *any*\
+        \ ref expands to. A **bare** ref still tracks\nthe taskset's own revisions,\
+        \ and republishing the taskset re-resolves its members on write \u2014 so\
+        \ a\n``replace`` can change both which members are named and the content they\
+        \ resolve to, even if the\nsubmitted member names were identical. A **pinned**\
+        \ ref is fixed against that too, and is what an\nevaluation needs to stay\
+        \ comparable across a ``replace``."
     TasksetSort:
       type: string
       enum:
