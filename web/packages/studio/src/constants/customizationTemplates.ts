@@ -149,6 +149,180 @@ export const CUSTOMIZATION_TEMPLATES: CustomizationTemplate[] = [
     }),
   },
   {
+    // Port of usage-cookbook/Nemotron-3-Ultra/lora-text2sql/nemo-automodel,
+    // nemotron_ultra_v3_text2sql_peft_h100.yaml (the validated 4-node H100 topology).
+    //
+    // Divergence: the cookbook also configures multi-token prediction
+    // (num_nextn_predict_layers / mtp_use_repeated_layer / mtp_loss_scaling_factor)
+    // and a FusedLinearCrossEntropy loss. Neither is expressible in the platform's
+    // automodel job schema, so this trains without MTP.
+    id: 'lora-nemotron-3-ultra-text2sql',
+    title: 'LoRA — Nemotron 3 Ultra (Text-to-SQL)',
+    trainingLabel: 'LoRA',
+    description:
+      'The 550B Text-to-SQL recipe from the Nemotron cookbook, on BIRD-SQL. Needs a 4-node, 32-GPU H100 allocation — expert parallelism spans every GPU. Trains without multi-token prediction, which the cookbook enables.',
+    models: [
+      {
+        hfRepoId: 'nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16',
+        name: 'nemotron-3-ultra-550b-a55b-bf16',
+        requiresHfToken: false,
+        trustRemoteCode: true,
+      },
+    ],
+    dataset: {
+      hfDataset: 'xu3kev/BIRD-SQL-data-train',
+      hfConfig: 'default',
+      hfSplit: 'train',
+      trainingRowCount: 1000,
+      validationRowCount: 100,
+      name: 'bird-sql-text2sql',
+      convertRow: birdSqlConvertRow,
+    },
+    buildFormSpec: (workspace, datasetRef) => ({
+      ...FORM_DEFAULTS,
+      outputName: generateDefaultName(),
+      backend: 'automodel',
+      automodel: {
+        ...FORM_DEFAULTS.automodel,
+        model: `${workspace}/nemotron-3-ultra-550b-a55b-bf16`,
+        dataset: { training: datasetRef, validation: datasetRef },
+        training: {
+          ...FORM_DEFAULTS.automodel.training,
+          training_type: 'sft',
+          finetuning_type: 'lora',
+          lora: {
+            rank: 32,
+            alpha: 32,
+            dropout: 0,
+            merge: false,
+            use_triton: true,
+            exclude_modules: ['*.out_proj'],
+          },
+          // The cookbook packs sequences to 2048 with the THD strategy. The platform
+          // estimates its own pack size, so this sets the length and lets it pack.
+          max_seq_length: 2048,
+          precision: 'bf16',
+        },
+        schedule: { ...FORM_DEFAULTS.automodel.schedule, epochs: 1, max_steps: 100 },
+        batch: {
+          ...FORM_DEFAULTS.automodel.batch,
+          global_batch_size: 128,
+          micro_batch_size: 4,
+          sequence_packing: true,
+        },
+        optimizer: {
+          ...FORM_DEFAULTS.automodel.optimizer,
+          learning_rate: 1e-4,
+          min_learning_rate: 1e-5,
+          weight_decay: 0.1,
+          adam_beta1: 0.9,
+          adam_beta2: 0.95,
+          adam_eps: 1e-8,
+          warmup_steps: 10,
+          optimizer: 'AdamW',
+          lr_decay_style: 'cosine',
+        },
+        parallelism: {
+          ...FORM_DEFAULTS.automodel.parallelism,
+          // ep_size must equal world size: 4 nodes x 8 GPUs = 32.
+          num_nodes: 4,
+          num_gpus_per_node: 8,
+          tensor_parallel_size: 1,
+          pipeline_parallel_size: 1,
+          context_parallel_size: 1,
+          expert_parallel_size: 32,
+          sequence_parallel: false,
+        },
+      },
+    }),
+  },
+  {
+    // Hyperparameters from usage-cookbook/Nemotron-3.5-Lightning/lora-text2sql/
+    // nemo-automodel, nemotron_mtp_lightning35_hellaswag_peft.yaml.
+    //
+    // Divergences: that cookbook trains on HellaSwag through automodel's built-in
+    // dataset class, which the platform's fileset-based data path cannot use, so this
+    // recipe applies the same BIRD-SQL Text-to-SQL task as its Super and Ultra
+    // siblings. It also trains without the cookbook's multi-token prediction.
+    id: 'lora-nemotron-35-lightning-text2sql',
+    title: 'LoRA — Nemotron 3.5 Lightning (Text-to-SQL)',
+    trainingLabel: 'LoRA',
+    description:
+      'The most approachable Nemotron mixture-of-experts recipe: 30B with 3B active, tuned on a single 8-GPU node. Uses the Lightning cookbook LoRA and optimizer settings, applied to BIRD-SQL Text-to-SQL.',
+    models: [
+      {
+        hfRepoId: 'nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16',
+        name: 'nemotron-35-lightning-30b-a3b-bf16',
+        requiresHfToken: false,
+        trustRemoteCode: true,
+      },
+    ],
+    dataset: {
+      hfDataset: 'xu3kev/BIRD-SQL-data-train',
+      hfConfig: 'default',
+      hfSplit: 'train',
+      trainingRowCount: 1000,
+      validationRowCount: 100,
+      name: 'bird-sql-text2sql',
+      convertRow: birdSqlConvertRow,
+    },
+    buildFormSpec: (workspace, datasetRef) => ({
+      ...FORM_DEFAULTS,
+      outputName: generateDefaultName(),
+      backend: 'automodel',
+      automodel: {
+        ...FORM_DEFAULTS.automodel,
+        model: `${workspace}/nemotron-35-lightning-30b-a3b-bf16`,
+        dataset: { training: datasetRef, validation: datasetRef },
+        training: {
+          ...FORM_DEFAULTS.automodel.training,
+          training_type: 'sft',
+          finetuning_type: 'lora',
+          lora: {
+            rank: 8,
+            alpha: 32,
+            dropout: 0,
+            merge: false,
+            use_triton: true,
+            exclude_modules: ['*.out_proj'],
+          },
+          max_seq_length: 4096,
+          precision: 'bf16',
+        },
+        schedule: { ...FORM_DEFAULTS.automodel.schedule, epochs: 1, max_steps: 100 },
+        // The cookbook sets packed_sequence_size: 0 — no packing.
+        batch: {
+          ...FORM_DEFAULTS.automodel.batch,
+          global_batch_size: 8,
+          micro_batch_size: 1,
+          sequence_packing: false,
+        },
+        optimizer: {
+          ...FORM_DEFAULTS.automodel.optimizer,
+          learning_rate: 1e-4,
+          min_learning_rate: 1e-5,
+          weight_decay: 0.1,
+          adam_beta1: 0.9,
+          adam_beta2: 0.95,
+          adam_eps: 1e-8,
+          warmup_steps: 10,
+          optimizer: 'AdamW',
+          lr_decay_style: 'cosine',
+        },
+        parallelism: {
+          ...FORM_DEFAULTS.automodel.parallelism,
+          num_nodes: 1,
+          num_gpus_per_node: 8,
+          tensor_parallel_size: 1,
+          pipeline_parallel_size: 1,
+          context_parallel_size: 1,
+          expert_parallel_size: 8,
+          sequence_parallel: false,
+        },
+      },
+    }),
+  },
+  {
     id: 'lora-qwen3',
     title: 'LoRA — Qwen3-0.6B',
     trainingLabel: 'LoRA',

@@ -97,6 +97,77 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
     });
   });
 
+  describe('Nemotron MoE recipes', () => {
+    const MOE_IDS = [
+      'lora-nemotron-3-super-text2sql',
+      'lora-nemotron-3-ultra-text2sql',
+      'lora-nemotron-35-lightning-text2sql',
+    ];
+
+    describe.each(MOE_IDS)('%s', (id) => {
+      const template = CUSTOMIZATION_TEMPLATES.find((t) => t.id === id)!;
+      const { automodel } = template.buildFormSpec(WORKSPACE, DATASET_REF);
+      const p = automodel.parallelism!;
+
+      it('satisfies the backend MoE parallelism constraints', () => {
+        // services/automodel/.../backends/config.py raises for MoE models when
+        // tensor_parallel_size > 1, or when expert_parallel_size is unset/<=1 on
+        // multi-GPU. A recipe violating either fails the job at launch.
+        const worldSize = p.num_nodes! * p.num_gpus_per_node!;
+        expect(p.tensor_parallel_size).toBe(1);
+        expect(p.expert_parallel_size).toBeGreaterThan(1);
+        expect(p.expert_parallel_size).toBe(worldSize);
+      });
+
+      it('excludes out_proj, which Nemotron mamba kernels bypass', () => {
+        expect(automodel.training.lora?.exclude_modules).toEqual(['*.out_proj']);
+      });
+
+      it('needs trust_remote_code but no HF token — these repos are public', () => {
+        expect(template.models.every((m) => m.trustRemoteCode)).toBe(true);
+        expect(template.models.some((m) => m.requiresHfToken)).toBe(false);
+      });
+
+      it('keeps MoE-critical fields through the create-job mapping', () => {
+        const spec = formToAutomodelCreate(template.buildFormSpec(WORKSPACE, DATASET_REF)).spec;
+        expect(spec.parallelism?.expert_parallel_size).toBe(p.expert_parallel_size);
+        expect(spec.training.lora?.exclude_modules).toEqual(['*.out_proj']);
+      });
+    });
+
+    it('mirrors the Ultra cookbook topology and hyperparameters', () => {
+      const { automodel } = CUSTOMIZATION_TEMPLATES.find(
+        (t) => t.id === 'lora-nemotron-3-ultra-text2sql'
+      )!.buildFormSpec(WORKSPACE, DATASET_REF);
+
+      expect(automodel.parallelism?.num_nodes).toBe(4);
+      expect(automodel.parallelism?.expert_parallel_size).toBe(32);
+      expect(automodel.training.lora?.rank).toBe(32);
+      expect(automodel.schedule?.max_steps).toBe(100);
+      expect(automodel.batch?.global_batch_size).toBe(128);
+      expect(automodel.batch?.micro_batch_size).toBe(4);
+      expect(automodel.optimizer?.optimizer).toBe('AdamW');
+      expect(automodel.optimizer?.learning_rate).toBe(1e-4);
+      expect(automodel.optimizer?.min_learning_rate).toBe(1e-5);
+      expect(automodel.optimizer?.weight_decay).toBe(0.1);
+      expect(automodel.optimizer?.adam_beta2).toBe(0.95);
+      expect(automodel.optimizer?.warmup_steps).toBe(10);
+    });
+
+    it('keeps Lightning on a single node, the smallest of the three', () => {
+      const { automodel } = CUSTOMIZATION_TEMPLATES.find(
+        (t) => t.id === 'lora-nemotron-35-lightning-text2sql'
+      )!.buildFormSpec(WORKSPACE, DATASET_REF);
+
+      expect(automodel.parallelism?.num_nodes).toBe(1);
+      expect(automodel.parallelism?.expert_parallel_size).toBe(8);
+      expect(automodel.training.lora?.rank).toBe(8);
+      expect(automodel.batch?.global_batch_size).toBe(8);
+      // packed_sequence_size: 0 in the cookbook.
+      expect(automodel.batch?.sequence_packing).toBe(false);
+    });
+  });
+
   it('sets a teacher model only for the distillation template', () => {
     const distillation = CUSTOMIZATION_TEMPLATES.find((t) => t.id === 'distillation-llama');
     const fields = distillation!.buildFormSpec(WORKSPACE, DATASET_REF);
