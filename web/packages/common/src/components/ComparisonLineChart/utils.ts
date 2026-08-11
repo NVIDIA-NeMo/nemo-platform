@@ -36,8 +36,15 @@ export const toPlotValue = (value: ComparisonXValue): string | number =>
 export const buildChartRows = (
   series: ComparisonSeries[],
   xAxis: ComparisonXValue[]
-): ComparisonChartRow[] =>
-  xAxis.map((xValue, index) => {
+): ComparisonChartRow[] => {
+  const ids = new Set<string>();
+  for (const { id } of series) {
+    if (id === 'x') throw new Error('Series id "x" is reserved for the x axis.');
+    if (ids.has(id)) throw new Error(`Duplicate series id: ${id}`);
+    ids.add(id);
+  }
+
+  return xAxis.map((xValue, index) => {
     const row: ComparisonChartRow = { x: toPlotValue(xValue) };
     for (const entry of series) {
       const value = entry.data[index];
@@ -45,6 +52,7 @@ export const buildChartRows = (
     }
     return row;
   });
+};
 
 export interface ResolvedAnnotation {
   x: string | number;
@@ -121,7 +129,11 @@ export const resolveAnnotation = (
 /** True when at least one series has a finite value to draw; an all-null chart reads as empty. */
 export const hasPlottableData = (series: ComparisonSeries[], xAxis: ComparisonXValue[]): boolean =>
   xAxis.length > 0 &&
-  series.some((s) => s.data.some((value) => typeof value === 'number' && Number.isFinite(value)));
+  series.some((s) =>
+    s.data
+      .slice(0, xAxis.length)
+      .some((value) => typeof value === 'number' && Number.isFinite(value))
+  );
 
 /** Compacts large magnitudes (16000 -> "16K") while keeping small values precise. */
 export const formatNumericValue = (value: number): string =>

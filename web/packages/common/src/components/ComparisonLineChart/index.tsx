@@ -98,18 +98,16 @@ export const ComparisonLineChart = ({
 
   const toggleSeries = useCallback(
     (id: string) => {
-      setHiddenIds((current) => {
-        const next = new Set(current);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-        onVisibleSeriesChange?.(series.filter((s) => !next.has(s.id)).map((s) => s.id));
-        return next;
-      });
+      const next = new Set(hiddenIds);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      setHiddenIds(next);
+      onVisibleSeriesChange?.(series.filter((s) => !next.has(s.id)).map((s) => s.id));
     },
-    [onVisibleSeriesChange, series]
+    [hiddenIds, onVisibleSeriesChange, series]
   );
 
   /** Time axes plot timestamps, so restore the `Date` before handing values to the formatter. */

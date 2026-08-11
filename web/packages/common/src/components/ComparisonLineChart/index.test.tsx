@@ -13,6 +13,7 @@ import {
 } from '@nemo/common/src/components/ComparisonLineChart/utils';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 
 const series: ComparisonSeries[] = [
   { id: 'baseline', label: 'Baseline', data: [0.4, 0.5, 0.55], dashed: true },
@@ -46,6 +47,25 @@ describe('ComparisonLineChart', () => {
     await user.click(baseline);
 
     expect(baseline).toHaveAttribute('aria-pressed', 'false');
+    expect(onVisibleSeriesChange).toHaveBeenCalledWith(['candidate']);
+  });
+
+  it('notifies once for a toggle in Strict Mode', async () => {
+    const user = userEvent.setup();
+    const onVisibleSeriesChange = vi.fn();
+    render(
+      <StrictMode>
+        <ComparisonLineChart
+          series={series}
+          xAxis={xAxis}
+          onVisibleSeriesChange={onVisibleSeriesChange}
+        />
+      </StrictMode>
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Baseline' }));
+
+    expect(onVisibleSeriesChange).toHaveBeenCalledTimes(1);
     expect(onVisibleSeriesChange).toHaveBeenCalledWith(['candidate']);
   });
 
@@ -147,9 +167,25 @@ describe('ComparisonLineChart utils', () => {
     ]);
   });
 
+  it('rejects reserved and duplicate series ids before constructing rows', () => {
+    expect(() => buildChartRows([{ id: 'x', label: 'X', data: [1] }], ['a'])).toThrow(
+      'Series id "x" is reserved for the x axis.'
+    );
+    expect(() =>
+      buildChartRows(
+        [
+          { id: 'a', label: 'First', data: [1] },
+          { id: 'a', label: 'Second', data: [2] },
+        ],
+        ['a']
+      )
+    ).toThrow('Duplicate series id: a');
+  });
+
   it('treats null-only and empty input as unplottable', () => {
     expect(hasPlottableData(series, xAxis)).toBe(true);
     expect(hasPlottableData([{ id: 'a', label: 'A', data: [null] }], ['x'])).toBe(false);
+    expect(hasPlottableData([{ id: 'a', label: 'A', data: [null, 1] }], ['x'])).toBe(false);
     expect(hasPlottableData(series, [])).toBe(false);
   });
 
