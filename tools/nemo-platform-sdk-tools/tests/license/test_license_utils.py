@@ -6,6 +6,7 @@
 import csv
 import io
 import json
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -177,6 +178,33 @@ class TestGetOverrideKeyForPackage:
 class TestOverrideAppliedForCu129Version:
     """Verify override is applied for +cu129-style version (torchao case)."""
 
+    def test_format_licenses_table_keeps_same_name_across_ecosystems(self):
+        """PyPI and Go packages with the same normalized name should remain separate rows."""
+        from nemo_platform_sdk_tools.license.format_osv_licenses import format_licenses_table
+
+        json_data = {
+            "results": [
+                {
+                    "packages": [
+                        {
+                            "package": {"name": "shared-name", "version": "1.0.0", "ecosystem": "PyPI"},
+                            "licenses": ["MIT"],
+                        },
+                        {
+                            "package": {"name": "shared-name", "version": "1.0.0", "ecosystem": "Go"},
+                            "licenses": ["Apache-2.0"],
+                        },
+                    ]
+                }
+            ]
+        }
+
+        result = format_licenses_table(json_data, overrides={}, local_packages=set())
+
+        assert result.count("shared-name") == 2
+        assert "MIT" in result
+        assert "APACHE-2.0" in result
+
     def test_format_licenses_table_applies_override_for_cu129_version(self):
         """Package with version 0.14.1+cu129 and empty licenses gets override license."""
         from nemo_platform_sdk_tools.license.format_osv_licenses import format_licenses_table
@@ -228,6 +256,49 @@ class TestFormatLicenses:
             '{"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}'
         )
 
+    def test_format_licenses_deduplicates_osv_and_override_fallback_rows(self, tmp_path):
+        """Reviewed override fallback rows should not duplicate packages already emitted by OSV."""
+        from nemo_platform_sdk_tools.license.generator import format_licenses
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "packages": [
+                                {
+                                    "package": {
+                                        "name": "aiohappyeyeballs",
+                                        "version": "2.6.1",
+                                        "ecosystem": "PyPI",
+                                    },
+                                    "licenses": ["PSF-2.0"],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        (license_dir / "requirements-main.txt").write_text(
+            "aiohappyeyeballs==2.6.1 ; python_version >= '3.12' \\\n"
+            "    --hash=sha256:0000000000000000000000000000000000000000000000000000000000000000\n",
+            encoding="utf-8",
+        )
+        overrides_file = tmp_path / "overrides.yaml"
+        overrides_file.write_text("overrides:\n  aiohappyeyeballs: PSF-2.0\n", encoding="utf-8")
+        output_file = license_dir / "licenses.jsonl"
+
+        format_licenses(osv_json, output_file, overrides_file, format_type="jsonl")
+
+        assert output_file.read_text(encoding="utf-8") == (
+            '{"name": "aiohappyeyeballs", "license": "PSF-2.0", "compatible": true}'
+        )
+
     def test_format_licenses_ignores_osv_packages_missing_from_exported_requirements(self, tmp_path):
         """OSV-only conditional packages should not affect generated license reports."""
         from nemo_platform_sdk_tools.license.generator import format_licenses
@@ -267,6 +338,59 @@ class TestFormatLicenses:
 
         assert output_file.read_text(encoding="utf-8") == (
             '{"name": "aiofiles", "license": "APACHE-2.0", "compatible": true}'
+        )
+
+    def test_format_licenses_keeps_go_packages_missing_from_python_requirements(self, tmp_path):
+        """Only PyPI packages are filtered through the uv-exported requirements file."""
+        from nemo_platform_sdk_tools.license.generator import format_licenses
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {
+                            "packages": [
+                                {
+                                    "package": {
+                                        "name": "backports-tarfile",
+                                        "version": "1.2.0",
+                                        "ecosystem": "PyPI",
+                                    },
+                                    "licenses": ["MIT"],
+                                }
+                            ]
+                        },
+                        {
+                            "packages": [
+                                {
+                                    "package": {
+                                        "name": "github.com/spf13/cobra",
+                                        "version": "1.10.1",
+                                        "ecosystem": "Go",
+                                    },
+                                    "licenses": ["Apache-2.0"],
+                                }
+                            ]
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        (license_dir / "requirements-main.txt").write_text(
+            "aiofiles==25.1.0 ; python_version >= '3.12' \\\n"
+            "    --hash=sha256:0000000000000000000000000000000000000000000000000000000000000000\n",
+            encoding="utf-8",
+        )
+        output_file = license_dir / "licenses.jsonl"
+
+        format_licenses(osv_json, output_file, format_type="jsonl")
+
+        assert output_file.read_text(encoding="utf-8") == (
+            '{"name": "github.com/spf13/cobra", "license": "APACHE-2.0", "compatible": true}'
         )
 
     def test_format_licenses_csv_uses_third_party_license_columns(self, tmp_path, monkeypatch):
@@ -361,6 +485,84 @@ class TestFormatLicenses:
         assert projects[0]["output_file"] == output_file
         assert projects[0]["osv_json"] == workspace_root / "third_party" / "osv-licenses.json"
         assert projects[0]["output_lockfile"] == workspace_root / "third_party" / "requirements-main.txt"
+        assert projects[0]["additional_lockfiles"] == [
+            workspace_root / "services/core/jobs/jobs-launcher/go.mod",
+            workspace_root / "services/guardrails/callouts/go.mod",
+        ]
+
+    def test_generate_project_licenses_merges_additional_lockfile_scans(self, tmp_path, monkeypatch):
+        """Python and Go OSV scan results are merged before report formatting."""
+        from nemo_platform_sdk_tools.license import generator
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        output_lockfile = license_dir / "requirements-main.txt"
+        osv_json = license_dir / "osv-licenses.json"
+        output_file = license_dir / "licenses.jsonl"
+        go_mod = tmp_path / "services" / "core" / "jobs" / "jobs-launcher" / "go.mod"
+        go_mod.parent.mkdir(parents=True)
+        go_mod.write_text("module example.test/jobs-launcher\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            generator,
+            "generate_lockfile_without_dev_dependencies",
+            lambda lockfile_dir, output_lockfile, extras=None, packages=None: output_lockfile,
+        )
+
+        scanned_lockfiles: list[Path] = []
+
+        def fake_run_osv_scanner(lockfile: Path, output_file: Path, cwd: Path | None = None) -> None:
+            scanned_lockfiles.append(lockfile)
+            if lockfile == output_lockfile:
+                package = {
+                    "package": {"name": "aiofiles", "version": "25.1.0", "ecosystem": "PyPI"},
+                    "licenses": ["Apache-2.0"],
+                }
+                license_summary = [{"name": "Apache-2.0", "count": 1}]
+            else:
+                package = {
+                    "package": {"name": "github.com/spf13/cobra", "version": "1.10.1", "ecosystem": "Go"},
+                    "licenses": ["MIT"],
+                }
+                license_summary = [{"name": "MIT", "count": 1}]
+            output_file.write_text(
+                json.dumps({"results": [{"packages": [package]}], "license_summary": license_summary}),
+                encoding="utf-8",
+            )
+
+        formatted_packages: list[str] = []
+
+        def fake_format_licenses(
+            osv_json_path: Path,
+            output_file: Path,
+            overrides_file: Path | None = None,
+            format_type: str = "table",
+        ) -> None:
+            data = json.loads(osv_json_path.read_text(encoding="utf-8"))
+            formatted_packages.extend(
+                pkg_entry["package"]["name"]
+                for result in data.get("results", [])
+                for pkg_entry in result.get("packages", [])
+            )
+
+        monkeypatch.setattr(generator, "run_osv_scanner", fake_run_osv_scanner)
+        monkeypatch.setattr(generator, "format_licenses", fake_format_licenses)
+
+        generator.generate_project_licenses(
+            project_name="main",
+            lockfile_dir=tmp_path,
+            output_lockfile=output_lockfile,
+            osv_json=osv_json,
+            output_file=output_file,
+            additional_lockfiles=[go_mod],
+        )
+
+        assert scanned_lockfiles == [output_lockfile, go_mod]
+        assert formatted_packages == ["aiofiles", "github.com/spf13/cobra"]
+        assert json.loads(osv_json.read_text(encoding="utf-8"))["license_summary"] == [
+            {"name": "Apache-2.0", "count": 1},
+            {"name": "MIT", "count": 1},
+        ]
 
 
 class TestPypiMetadata:

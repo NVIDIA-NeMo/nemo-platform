@@ -180,6 +180,10 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
             sessionId={sessionId}
             parentBreadcrumbs={traceParentBreadcrumbs}
             traceSummary={trajectories.find(({ trace }) => trace.id === traceId)?.trace}
+            traceSummaryStatus={
+              explorer.spansLoaded ? 'resolved' : explorer.spansError ? 'error' : 'loading'
+            }
+            traceSummaryErrorMessage={explorer.spansError?.message}
           >
             {(trace) => (
               <TraceSpanAccordions

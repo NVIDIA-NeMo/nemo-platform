@@ -253,6 +253,8 @@ class TestEvaluations:
         evaluation = client.evaluations.list(
             workspace="workspace",
             filter={
+                "agent_name": "agent_name",
+                "agent_version": "agent_version",
                 "cost_usd": {
                     "count": {
                         "eq": 0,
@@ -420,6 +422,7 @@ class TestEvaluations:
                     },
                 },
                 "metadata": {"foo": "string"},
+                "model_name": "model_name",
                 "name": "name",
                 "run_count": {
                     "eq": 0,
@@ -971,6 +974,8 @@ class TestAsyncEvaluations:
         evaluation = await async_client.evaluations.list(
             workspace="workspace",
             filter={
+                "agent_name": "agent_name",
+                "agent_version": "agent_version",
                 "cost_usd": {
                     "count": {
                         "eq": 0,
@@ -1138,6 +1143,7 @@ class TestAsyncEvaluations:
                     },
                 },
                 "metadata": {"foo": "string"},
+                "model_name": "model_name",
                 "name": "name",
                 "run_count": {
                     "eq": 0,
