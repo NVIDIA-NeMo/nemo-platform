@@ -32,10 +32,16 @@ variable "NMP_PYTHON_IMAGE" {
   default = "python:3.13.14-slim-trixie"
 }
 
+variable "DISTROLESS_BASE_3_13" {
+  default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
+}
+
 variable "NMP_API_RUNTIME_BASE" {
-  # Keep the default API runtime on the Python base because local subprocess
-  # jobs rely on shell/coreutils. Override this to test distroless explicitly.
-  default = "nmp-python-base"
+  default = "root-distroless-base-3-13"
+}
+
+variable "NMP_CORE_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
 }
 
 variable "AUTOMODEL_BASE_CONTEXT" {
@@ -603,6 +609,8 @@ target "nmp-api-docker" {
     nmp-jobs-launcher         = "target:nmp-jobs-launcher"
     nmp-studio-ui             = "target:nmp-studio-ui"
     policy-wasm-artifacts     = "target:root-policy-wasm-artifacts"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
     fastembed-cache           = FASTEMBED_CACHE_CONTEXT
   }
   args = {
@@ -627,6 +635,11 @@ target "nmp-core-docker" {
     nmp-workspace             = "target:nmp-workspace"
     nmp-jobs-launcher         = "target:nmp-jobs-launcher"
     policy-wasm-artifacts     = "target:root-policy-wasm-artifacts"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
+  }
+  args = {
+    NMP_CORE_RUNTIME_BASE = NMP_CORE_RUNTIME_BASE
   }
   cache-to   = maybe_registry_cache_to("nmp-core")
   cache-from = maybe_registry_cache_from("nmp-core")
@@ -746,6 +759,16 @@ target "root-distroless-base-3-11" {
   platforms  = get_platforms()
   args = {
     DISTROLESS_BASE = DISTROLESS_BASE
+  }
+}
+
+target "root-distroless-base-3-13" {
+  target     = "root-distroless-base-3-13"
+  context    = "."
+  dockerfile = "docker/Dockerfile.bake"
+  platforms  = get_platforms()
+  args = {
+    DISTROLESS_BASE_3_13 = DISTROLESS_BASE_3_13
   }
 }
 
