@@ -95,8 +95,8 @@ with `No module named 'nemo_agents_plugin'`.
 ```bash
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env NEMO_DEFAULT_MODEL=default/gpt-5-5 \
-  --env NEMO_FAST_MODEL=default/gpt-5-mini \
+  --env NEMO_DEFAULT_MODEL=default/openai-openai-gpt-5-6-terra \
+  --env NEMO_FAST_MODEL=default/openai-openai-gpt-5-6-luna \
   nemo-experimentalist \
   bash -lc 'uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -114,9 +114,9 @@ reads a *Model Entity* pair from the active CLI context — `default_model` and
 is what normally configures them. `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL`
 override the context, which is what the command above does; the value is an
 entity id of the form `<workspace>/<name>`, not a litellm routing string. List
-what your platform has with `nemo models list --all-pages`; note that dots become
-dashes, so gpt-5.5 is `default/gpt-5-5`. With neither variable set, the run stops
-at preflight with "No default model is configured".
+what your platform has with `nemo models list --all-pages`; this local setup uses
+`default/openai-openai-gpt-5-6-terra` and
+`default/openai-openai-gpt-5-6-luna`. With neither variable set, the run stops at preflight with "No default model is configured".
 
 Preflight only checks that a value is *set*, not that the entity exists — a typo
 passes `doctor` and fails at the first LLM call, minutes into a run.
