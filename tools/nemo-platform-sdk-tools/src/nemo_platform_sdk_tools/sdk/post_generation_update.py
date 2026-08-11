@@ -202,15 +202,15 @@ def update_pyproject_toml(sdk_info: SdkInfo) -> bool:
 
     project["urls"] = {"Homepage": "https://docs.nvidia.com/nemo/microservices/latest/about/index.html"}
 
-    # Drop support for Python versions older than 3.12.
-    version_to_remove = ["3.8", "3.9", "3.10", "3.11"]
+    # Match the supported range of the nemo-platform wheel this SDK ships in.
+    version_to_remove = ["3.8", "3.9", "3.10", "3.11", "3.14"]
     for ver in version_to_remove:
         try:
             project["classifiers"].remove(f"Programming Language :: Python :: {ver}")
         except ValueError:
             pass
 
-    project["requires-python"] = ">= 3.12"
+    project["requires-python"] = ">=3.12,<3.14"
     dependencies = project.get("dependencies")
     if dependencies is not None:
         for dep in list(dependencies):

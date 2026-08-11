@@ -20,12 +20,12 @@ Quick install from PyPI:
 ```bash
 curl -LsSf https://astral.sh/uv/0.9.30/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv tool install --python 3.13 "nemo-platform[all]"
+uv tool install "nemo-platform[all]"
 
 nemo setup
 ```
 
-`uv tool install` puts `nemo` on your PATH in its own isolated environment — there is no virtual environment to create or activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only. `--python 3.13` pins the tool to a supported interpreter and downloads one when your machine has none; without it uv uses your default interpreter, which may be outside the supported 3.12-3.13 range.
+`uv tool install` puts `nemo` on your PATH in its own isolated environment — there is no virtual environment to create or activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only. uv installs the tool on your default interpreter, so add `--python 3.13` when that default is outside the supported 3.12-3.13 range.
 
 Source checkout for development:
 
