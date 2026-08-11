@@ -194,11 +194,7 @@ def compile_dpo_config(
 
     cfg["policy"] = {
         "model_name": model_path,
-        "tokenizer": {
-            "name": model_path,
-            "chat_template": chat_template,
-            "chat_template_kwargs": None,
-        },
+        "tokenizer": _build_tokenizer_config(model_path, chat_template),
         "train_global_batch_size": batch_size,
         "train_micro_batch_size": micro_batch_size,
         "max_total_sequence_length": customizer_config.model.max_seq_length,
@@ -261,6 +257,22 @@ def compile_dpo_config(
     }
 
     return cfg
+
+
+def _build_tokenizer_config(model_path: str, chat_template: str | None) -> dict[str, Any]:
+    """Build ``policy.tokenizer``, omitting ``chat_template`` when there is none.
+
+    NeMo-RL's TokenizerConfig declares ``chat_template: NotRequired[str]`` -- absent
+    is fine, ``None`` is not. ``resolve_chat_template`` returns ``None`` when the
+    model ships no template and the user supplied none, so emitting the key
+    unconditionally fails MasterConfig validation in the driver with
+    "Input should be a valid string". ``chat_template_kwargs`` is
+    ``NotRequired[dict | None]`` and does accept ``None``.
+    """
+    tokenizer: dict[str, Any] = {"name": model_path, "chat_template_kwargs": None}
+    if chat_template is not None:
+        tokenizer["chat_template"] = chat_template
+    return tokenizer
 
 
 def _megatron_cfg_disabled(precision: str, max_grad_norm: float) -> dict[str, Any]:
