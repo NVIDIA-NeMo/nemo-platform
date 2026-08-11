@@ -911,9 +911,12 @@ class TestLLMJudgeMetric:
 
         metric.set_inference_fn(inference_fn)
 
-        results = await asyncio.gather(
-            compute_scores(metric, {"prompt": "hello"}, {"output_text": "first"}),
-            compute_scores(metric, {"prompt": "hello"}, {"output_text": "second"}),
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                compute_scores(metric, {"prompt": "hello"}, {"output_text": "first"}),
+                compute_scores(metric, {"prompt": "hello"}, {"output_text": "second"}),
+            ),
+            timeout=10,
         )
 
         assert [result.outputs[0].value for result in results] == [4, 4]
@@ -944,6 +947,114 @@ class TestLLMJudgeMetric:
             await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
 
         assert calls == 1
+        assert hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_does_not_retry_when_structured_param_is_only_accepted(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.ROOT_GUIDED_JSON)
+        error = ClientInferenceError(
+            mocker.Mock(
+                status_code=400,
+                response=mocker.Mock(text="unknown field `top_k`, expected one of `guided_json`, `nvext`"),
+            )
+        )
+        calls = 0
+
+        async def inference_fn(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            raise error
+
+        metric.set_inference_fn(inference_fn)
+
+        with pytest.raises(ClientInferenceError):
+            await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert calls == 1
+        assert hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_does_not_retry_an_unchanged_request(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.UNSUPPORTED)
+        error = ClientInferenceError(
+            mocker.Mock(status_code=400, response=mocker.Mock(text="unknown field `guided_json`"))
+        )
+        calls = 0
+
+        async def inference_fn(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            raise error
+
+        metric.set_inference_fn(inference_fn)
+
+        with pytest.raises(ClientInferenceError):
+            await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_marks_nan_when_the_fallback_retry_fails(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+            ignore_request_failure=True,
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.ROOT_GUIDED_JSON)
+        rejection = ClientInferenceError(
+            mocker.Mock(status_code=400, response=mocker.Mock(text="unknown field `guided_json`"))
+        )
+        transient = ClientInferenceError(mocker.Mock(status_code=502, response=mocker.Mock(text="bad gateway")))
+        calls = 0
+
+        async def inference_fn(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            raise rejection if calls == 1 else transient
+
+        metric.set_inference_fn(inference_fn)
+
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert calls == 2
+        assert math.isnan(result.outputs[0].value)
+
+    @pytest.mark.asyncio
+    async def test_compute_scores_tries_root_guided_json_before_prompt_fallback(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.NVEXT_GUIDED_JSON)
+        error = ClientInferenceError(mocker.Mock(status_code=400, response=mocker.Mock(text="unknown field `nvext`")))
+        captured_requests: list[dict] = []
+
+        async def inference_fn(*args, **kwargs):
+            request = kwargs.get("request", args[1])
+            captured_requests.append(deepcopy(request))
+            if len(captured_requests) == 1:
+                raise error
+            return {"choices": [{"message": {"content": '{"helpfulness": 4}'}}]}
+
+        metric.set_inference_fn(inference_fn)
+
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert result.outputs[0].value == 4
+        assert "nvext" in captured_requests[0]["extra_body"]
+        assert "guided_json" in captured_requests[1]["extra_body"]
         assert hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
 
     @pytest.mark.asyncio

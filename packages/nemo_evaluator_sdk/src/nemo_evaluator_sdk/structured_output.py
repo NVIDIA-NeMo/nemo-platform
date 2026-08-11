@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from collections.abc import Collection
 from enum import Enum
 
 from jsonschema.exceptions import SchemaError
@@ -106,13 +107,16 @@ def default_structured_output_mode(format: str) -> StructuredOutputMode:
     raise ValueError(f"Unsupported structured output format: {format}")
 
 
-def looks_like_unsupported_structured_output_error(message: str) -> bool:
-    """Whether *message* reads as a backend rejecting a structured-output parameter.
+_STRUCTURED_OUTPUT_PARAMS = ("guided_json", "nvext", "extra_body", "response_format")
 
-    Backends word this differently, so match on the shape of the complaint and
-    then require the parameter itself to be named — an unrelated 400 that merely
-    says "unknown field" must not disable structured output.
-    """
+
+def _rejected_field_text(lowered_message: str) -> str:
+    """Drop the trailing list of accepted fields so only the rejected one is matched."""
+    return lowered_message.split("expected one of", 1)[0]
+
+
+def looks_like_unsupported_structured_output_error(message: str) -> bool:
+    """Whether *message* reads as a backend rejecting a structured-output parameter."""
     lowered = message.lower()
     signatures = (
         "guided_json is unsupported",
@@ -122,9 +126,27 @@ def looks_like_unsupported_structured_output_error(message: str) -> bool:
         "extra inputs are not permitted",
         "unknown field",
     )
-    if any(sig in lowered for sig in signatures):
-        return "guided_json" in lowered or "nvext" in lowered or "extra_body" in lowered
-    return False
+    if not any(sig in lowered for sig in signatures):
+        return False
+    rejected = _rejected_field_text(lowered)
+    return any(param in rejected for param in _STRUCTURED_OUTPUT_PARAMS)
+
+
+def next_structured_output_mode(
+    current: StructuredOutputMode,
+    message: str,
+    rejected_modes: Collection[StructuredOutputMode],
+) -> StructuredOutputMode:
+    """Mode to try after *current* was rejected, ending at prompt-level JSON instruction."""
+    rejected = _rejected_field_text(message.lower())
+    if (
+        current == StructuredOutputMode.NVEXT_GUIDED_JSON
+        and StructuredOutputMode.ROOT_GUIDED_JSON not in rejected_modes
+        and "nvext" in rejected
+        and "guided_json" not in rejected
+    ):
+        return StructuredOutputMode.ROOT_GUIDED_JSON
+    return StructuredOutputMode.UNSUPPORTED
 
 
 def _extract_chat_content(response: dict) -> str | None:
