@@ -77,12 +77,6 @@ export const ModelSettingsSection: FC = () => {
               />
             )}
           </Flex>
-          {!supportsSamplingParams(role) && (
-            <Text kind="body/regular/sm" className="text-secondary">
-              GLiNER detection takes entity labels and a confidence threshold, so temperature, max
-              tokens, and top P do not apply.
-            </Text>
-          )}
         </Stack>
       ))}
     </Stack>

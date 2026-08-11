@@ -38,6 +38,5 @@ describe('ModelSettingsSection', () => {
 
     const triggers = await screen.findAllByTestId('params-dropdown-trigger');
     expect(triggers).toHaveLength(activeRolesForStrategy(STRATEGY_SUBSTITUTE).length - 1);
-    expect(screen.getByText(/GLiNER detection takes entity labels/)).toBeInTheDocument();
   });
 });
