@@ -36,8 +36,9 @@ _TRAIN_METRIC_KEYS = (
     "num_valid_samples",
     "global_valid_seqs",
     "global_valid_toks",
-    # DPO
+    # DPO — both halves of the reward pair; either alone is hard to read.
     "preference_loss",
+    "rewards_chosen_mean",
     "rewards_rejected_mean",
     # GRPO: reward and advantages — the signal that says whether RL is working
     "reward",

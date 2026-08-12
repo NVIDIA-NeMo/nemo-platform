@@ -96,14 +96,17 @@ class TrainingProgressCallback:
         accumulated into the series; see the module docstring.
         """
         self._train_metrics.append({"step": step, "epoch": epoch, "value": loss})
+        # `**additional_metrics` is splatted first, matching report_validation, so a
+        # backend metric cannot shadow the accumulated series or the step's own loss.
+        # `step`/`epoch`/`lr`/`grad_norm` are named parameters and so already safe.
         details: dict[str, object] = {
+            **additional_metrics,
             "step": step,
             "epoch": epoch,
             "train_loss": loss,
             "lr": lr,
             "grad_norm": grad_norm,
             "metrics": self._build_metrics_summary(),
-            **additional_metrics,
         }
         resolved = self._resolve_backend(backend)
         if resolved is not None:

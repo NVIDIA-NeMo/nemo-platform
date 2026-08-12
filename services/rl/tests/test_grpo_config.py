@@ -267,7 +267,7 @@ def test_tokenizer_omits_chat_template_when_none(
     # sys.modules, whose truthy `.chat_template` silently invalidates the premise.
     monkeypatch.setattr(
         "nmp.rl.tasks.training.backends.nemo_rl.grpo_config.resolve_chat_template",
-        lambda **_: None,
+        lambda *_, **__: None,
     )
     step, _ = _prepared_step(tmp_path)
     tokenizer = compile_grpo_config(step, job_ctx)["policy"]["tokenizer"]

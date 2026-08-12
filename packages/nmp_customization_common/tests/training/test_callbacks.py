@@ -135,6 +135,24 @@ def test_additional_validation_metrics_ride_along(reporter: _RecordingReporter) 
     assert reporter.reports[-1]["accuracy"] == 0.9
 
 
+def test_additional_metrics_cannot_shadow_the_series(reporter: _RecordingReporter) -> None:
+    """`metrics` is not a parameter, so only splat order stops a silent override.
+
+    `step`/`epoch`/`lr`/`grad_norm`/`backend` are named parameters -- passing one
+    is a TypeError at the call site. `metrics` and `train_loss` would just win.
+    """
+    _make_callback(reporter).report_train_step(step=1, epoch=1, loss=0.5, metrics="clobbered")
+
+    report = reporter.reports[-1]
+    assert report["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
+
+
+def test_additional_metrics_cannot_shadow_the_step_loss(reporter: _RecordingReporter) -> None:
+    _make_callback(reporter).report_train_step(step=1, epoch=1, loss=0.5, train_loss="clobbered")
+
+    assert reporter.reports[-1]["train_loss"] == 0.5
+
+
 def test_additional_metrics_do_not_collide_with_backend_stamping(
     reporter: _RecordingReporter,
 ) -> None:

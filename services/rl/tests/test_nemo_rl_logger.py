@@ -11,6 +11,7 @@ None-checks, so they are exercised rather than sanitised away.
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import math
 import sys
@@ -24,16 +25,27 @@ import pytest
 # import the module under test; when the real package IS present (the in-image smoke
 # run) this is skipped and the genuine base class is used.
 if importlib.util.find_spec("nemo_rl") is None:  # pragma: no cover - env dependent
-    _nemo_rl = types.ModuleType("nemo_rl")
-    _utils = types.ModuleType("nemo_rl.utils")
-    _logger_mod = types.ModuleType("nemo_rl.utils.logger")
 
     class LoggerInterface:  # minimal stand-in for the abstract base
         pass
 
+    def _stub(name: str) -> types.ModuleType:
+        """Build a stub module that survives a later importlib.util.find_spec.
+
+        A bare ModuleType has ``__spec__ = None``, and find_spec consults
+        sys.modules first -- so leaving it unset makes a later
+        ``find_spec("nemo_rl")`` raise ValueError rather than return None. The
+        stub outlives this module (nothing tears it down), so it must not booby
+        trap whatever runs next in the session.
+        """
+        module = types.ModuleType(name)
+        module.__spec__ = importlib.machinery.ModuleSpec(name, loader=None)
+        return module
+
+    _logger_mod = _stub("nemo_rl.utils.logger")
     setattr(_logger_mod, "LoggerInterface", LoggerInterface)
-    sys.modules.setdefault("nemo_rl", _nemo_rl)
-    sys.modules.setdefault("nemo_rl.utils", _utils)
+    sys.modules.setdefault("nemo_rl", _stub("nemo_rl"))
+    sys.modules.setdefault("nemo_rl.utils", _stub("nemo_rl.utils"))
     sys.modules.setdefault("nemo_rl.utils.logger", _logger_mod)
 
 from nmp.rl.tasks.training.backends.nemo_rl import nemo_rl_logger  # noqa: E402
@@ -174,6 +186,17 @@ def test_has_metric_value_does_not_raise_on_any_grpo_metric() -> None:
     """Every value in a real GRPO dict must be classifiable without raising."""
     for key, value in GRPO_TRAIN_METRICS.items():
         assert isinstance(has_metric_value(value), bool), key
+
+
+def test_module_stub_does_not_break_find_spec() -> None:
+    """The stub installed at import time outlives this module; it must be inert.
+
+    find_spec consults sys.modules first and raises on a `__spec__` of None, so a
+    bare ModuleType here would turn an unrelated later `find_spec("nemo_rl")`
+    into a ValueError -- the same kind of cross-suite leak this file's sibling
+    test_grpo_config had to be rewritten around.
+    """
+    assert importlib.util.find_spec("nemo_rl") is not None
 
 
 def test_has_metric_value_accepts_numpy_scalars() -> None:
