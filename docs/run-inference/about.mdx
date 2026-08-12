@@ -292,6 +292,33 @@ working as designed — use `/health/ready` instead.
 
 ---
 
+## Troubleshooting
+
+### Function tools require disabled reasoning
+
+If an OpenAI-compatible Chat Completions request using function tools fails
+with an error like this:
+
+```text
+Function tools with reasoning_effort are not supported for <model> in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.
+```
+
+set `reasoning_effort` in the affected provider's default request body. Replace
+`<provider_name>` and `<workspace>` with the provider and workspace used for
+the request:
+
+```bash
+nemo inference providers update <provider_name> \
+  --workspace <workspace> \
+  --default-extra-body '{"reasoning_effort":"none"}'
+```
+
+Provider requirements differ. Configure only the parameters required by the
+provider and model you use; `--default-extra-body` applies them to requests
+routed through that provider and can be overridden by an individual request.
+
+---
+
 ## API Reference
 
 For complete API details, refer to the [Inference Gateway API Reference](/documentation/reference/api-reference) and [SDK Reference](/documentation/reference/python-sdk).
