@@ -27,6 +27,7 @@ _OPENAI_CHAT_REASONING_EFFORT: str | None = None
 _ACCEPT_ENCODING_HEADER = "accept-encoding"
 _IDENTITY_ENCODING = "identity"
 
+
 @dataclass(frozen=True)
 class ConfiguredModelRefs:
     """Workspace-qualified Model Entity IDs for default and fast agent work."""
