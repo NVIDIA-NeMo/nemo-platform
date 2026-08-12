@@ -22,6 +22,7 @@ const renderComponent = (
   props: {
     onRowClick?: (config: GuardrailConfig) => void;
     onRequestDelete?: (config: GuardrailConfig) => void;
+    onCreate?: () => void;
   } = {}
 ) => {
   const router = createMemoryRouter([
@@ -32,6 +33,7 @@ const renderComponent = (
           workspace={workspace}
           onRowClick={props.onRowClick ?? vi.fn()}
           onRequestDelete={props.onRequestDelete}
+          onCreate={props.onCreate ?? vi.fn()}
         />
       ),
     },
@@ -99,10 +101,11 @@ describe('GuardrailsDataView', () => {
     );
     renderComponent();
     expect(
-      await screen.findByText('Manage Guardrail Configs', undefined, {
+      await screen.findByText('No guardrail configs yet', undefined, {
         timeout: XL_SELECTOR_TIMEOUT,
       })
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create guardrail config' })).toBeInTheDocument();
   });
 
   it('calls onRequestDelete when the Delete row action is selected', async () => {
@@ -127,7 +130,9 @@ describe('GuardrailsDataView', () => {
     );
     renderComponent();
     expect(
-      await screen.findByTestId('error-panel', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+      await screen.findByTestId('entity-empty-state-error', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      })
     ).toBeInTheDocument();
   });
 });
