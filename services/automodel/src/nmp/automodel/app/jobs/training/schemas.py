@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional, Union
 
 from nemo_platform_plugin.integrations import IntegrationsSpec
 from nmp.automodel.app.constants import (
@@ -204,6 +204,7 @@ class TrainingStepConfig(BaseModel):
         context_parallel_size: int = 1
         expert_parallel_size: Optional[int] = None
         sequence_parallel: bool = False
+        activation_checkpointing: Optional[Union[bool, Literal["full", "selective"]]] = None
 
     # === Main Config Fields ===
     model: ModelConfig

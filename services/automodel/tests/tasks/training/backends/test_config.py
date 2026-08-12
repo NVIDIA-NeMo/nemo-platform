@@ -414,3 +414,59 @@ def test_compile_uses_fallback_packing_factor_for_schedule(tmp_path: Path) -> No
     assert compiled["step_scheduler"]["max_steps"] == 2
     assert compiled["step_scheduler"]["val_every_steps"] == 1
     assert compiled["lr_scheduler"]["lr_warmup_steps"] == 1
+
+
+def _compile_with_parallelism(tmp_path: Path, **parallelism: Any) -> dict[str, Any]:
+    """Compile a known-good contract fixture with parallelism overrides applied."""
+    fixture = Path(__file__).parents[3] / "contract" / "input_configs" / "llama-3.2-1b" / "llama_3_2_1b_lora.json"
+    raw = json.loads(fixture.read_text())
+    raw.pop("backend", None)
+    config = TrainingStepConfig.model_validate(raw)
+    for key, value in parallelism.items():
+        setattr(config.parallelism, key, value)
+
+    prepared = PreparedDataset(
+        merged_dir=tmp_path,
+        train_file=tmp_path / "train.jsonl",
+        validation_file=tmp_path / "validation.jsonl",
+        train_samples=100,
+        validation_samples=10,
+    )
+
+    with (
+        patch(f"{CONFIG_MODULE}.prepare_dataset", return_value=prepared),
+        patch(f"{CONFIG_MODULE}.DatasetValidator"),
+        patch(f"{CONFIG_MODULE}.estimate_dataset_sequence_lengths", return_value=None),
+        patch(f"{CONFIG_MODULE}._configure_datasets"),
+        patch(f"{CONFIG_MODULE}._configure_moe_backend"),
+        patch(f"{CONFIG_MODULE}.build_wandb_config", return_value=None),
+        patch(f"{CONFIG_MODULE}.build_mlflow_config", return_value=None),
+    ):
+        return compile_automodel_config(config, tmp_path, MagicMock())
+
+
+class TestActivationCheckpointing:
+    """Emission of `distributed.activation_checkpointing` for causal-LM jobs.
+
+    Automodel's FSDP2Config defaults this to False, so a key we never emit means
+    activation checkpointing is off — which is what every non-embedding job used to get.
+    """
+
+    def test_omitted_when_unset(self, tmp_path: Path) -> None:
+        compiled = _compile_with_parallelism(tmp_path)
+        assert "activation_checkpointing" not in compiled["distributed"]
+
+    def test_emitted_when_enabled(self, tmp_path: Path) -> None:
+        compiled = _compile_with_parallelism(tmp_path, activation_checkpointing=True)
+        assert compiled["distributed"]["activation_checkpointing"] is True
+
+    @pytest.mark.parametrize("mode", ["full", "selective"])
+    def test_string_modes_pass_through(self, tmp_path: Path, mode: str) -> None:
+        # Automodel accepts bool | "full" | "selective"; the strings must not be coerced.
+        compiled = _compile_with_parallelism(tmp_path, activation_checkpointing=mode)
+        assert compiled["distributed"]["activation_checkpointing"] == mode
+
+    def test_explicit_false_is_emitted(self, tmp_path: Path) -> None:
+        # Distinct from unset: the user asked for it off, so say so rather than omit.
+        compiled = _compile_with_parallelism(tmp_path, activation_checkpointing=False)
+        assert compiled["distributed"]["activation_checkpointing"] is False

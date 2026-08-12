@@ -80,6 +80,7 @@ def _build_training_block(spec: dict[str, Any]) -> SFTTraining | DistillationTra
             context_parallel_size=parallelism.get("context_parallel_size", 1),
             expert_parallel_size=parallelism.get("expert_parallel_size"),
             sequence_parallel=parallelism.get("sequence_parallel", False),
+            activation_checkpointing=parallelism.get("activation_checkpointing"),
         ),
         "execution_profile": training.get("execution_profile"),
     }
