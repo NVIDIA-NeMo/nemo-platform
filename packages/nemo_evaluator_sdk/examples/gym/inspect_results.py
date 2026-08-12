@@ -103,8 +103,20 @@ def per_task_attempts(
 
 
 def load_bundle(bundle: Path) -> AgentEvalSummary:
-    """Load the persisted summary, including native and runner aggregates and per-task attempts."""
-    return AgentEvalSummary.model_validate(json.loads((bundle / "summary.json").read_text(encoding="utf-8")))
+    """Load the persisted summary, including native and runner aggregates and per-task attempts.
+
+    Rejects a bundle written before ``task_metric_attempts`` existed rather than reading one. The
+    field defaults to empty, so an older bundle would otherwise load cleanly and simply show no
+    per-task section — the reader would conclude the run had no per-task outcomes rather than that
+    this script cannot see them.
+    """
+    payload = json.loads((bundle / "summary.json").read_text(encoding="utf-8"))
+    if "task_metric_attempts" not in payload:
+        raise SystemExit(
+            f"{bundle / 'summary.json'} predates summary.task_metric_attempts, which this script reads "
+            "per-task outcomes from. Re-run the eval to produce a current bundle."
+        )
+    return AgentEvalSummary.model_validate(payload)
 
 
 # --------------------------------------------------------------------------------------------------

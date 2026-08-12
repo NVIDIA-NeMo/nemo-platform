@@ -34,7 +34,7 @@ from nemo_evaluator_sdk.values.results import (
     serialize_value,
     summary_aggregate_record,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 #: Metric-output value schemas retained in the ordered per-task attempt mapping.
 _TASK_METRIC_VALUE_SCHEMAS = (ContinuousScore, DiscreteScore, BooleanValue)
@@ -85,6 +85,20 @@ class AgentEvalAttemptValue(BaseModel):
             "quietly become one."
         ),
     )
+
+    @field_serializer("value")
+    def serialize_nan(self, value: float | None) -> float | str | None:
+        """Emit NaN as the string ``"NaN"``, matching :class:`MetricOutput`.
+
+        A metric may legitimately score an attempt NaN, and this is the first summary field to carry
+        a raw metric value rather than a filtered aggregate. ``json.dumps`` would write it as a bare
+        ``NaN`` token, which is valid Python but not valid JSON, so any strict reader of
+        ``summary.json`` would reject the whole bundle. Pydantic coerces the string back to a float
+        on load, so the round trip is lossless.
+        """
+        if isinstance(value, float) and math.isnan(value):
+            return "NaN"
+        return value
 
 
 class AgentEvalSummary(BaseModel):
@@ -744,9 +758,10 @@ def _task_metric_attempts(
     reuses one costs pass@k nothing.
     """
     output_keys: dict[str, set[tuple[str, str]]] = {}
-    # Declared under a schema this mapping does not retain. Tracked so an emitted numeric value cannot
-    # add back what the spec filter just excluded.
-    excluded: set[tuple[str, str]] = set()
+    # Per task, the outputs it declared under a schema this mapping does not retain. Tracked so an
+    # emitted numeric value cannot add back what that task's spec filter just excluded -- and keyed by
+    # task because tasks in one run need not declare the same output under the same schema.
+    excluded: dict[str, set[tuple[str, str]]] = {}
     if tasks is not None:
         for task in tasks:
             task_keys = output_keys.setdefault(task.id, set())
@@ -756,7 +771,7 @@ def _task_metric_attempts(
                     if issubclass(spec.value_schema, _TASK_METRIC_VALUE_SCHEMAS):
                         task_keys.add((metric_type, spec.name))
                     else:
-                        excluded.add((metric_type, spec.name))
+                        excluded.setdefault(task.id, set()).add((metric_type, spec.name))
 
     scores_by_task_metric: dict[tuple[str, str], list[AgentEvalTaskScore]] = {}
     for score in scores:
@@ -764,8 +779,9 @@ def _task_metric_attempts(
         task_keys = output_keys.setdefault(score.task_id, set())
         if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
             continue
+        task_excluded = excluded.get(score.task_id, frozenset())
         for output in score.outputs:
-            if (score.metric_type, output.name) in excluded:
+            if (score.metric_type, output.name) in task_excluded:
                 continue
             if _semantic_value(output) is not None:
                 task_keys.add((score.metric_type, output.name))
@@ -809,11 +825,15 @@ def _task_pass_at_k_scores(
     denominator is never silent. (Tasks excluded from a given ``k`` merely for having fewer than ``k``
     attempts are *not* counted there — that is the estimator working as defined, not missing data.)
 
-    "No usable attempt" includes a task that was never scored at all: a runner that returns no trial
-    for a requested task (Harbor logs a warning and carries on) leaves it declaring the metric with an
-    empty attempt list, and it lands in ``nan_count`` like any other unmeasured task. That is
-    deliberate — it is the same missing coverage whether the trial died or was never produced, and
-    excluding it would report pass@k over a denominator quietly smaller than the task set asked for.
+    "No usable attempt" includes a task that was never scored at all: it declares the metric, holds an
+    empty attempt list, and lands in ``nan_count`` like any other unmeasured task. That is the same
+    missing coverage whether the trial died or was never produced, and excluding it would report
+    pass@k over a denominator quietly smaller than the task set asked for.
+
+    Note this is reachable only through :meth:`AgentEvalSummary.from_scores` called directly with a
+    task list wider than the scores — a caller re-aggregating a subset, say. A full run cannot get
+    here: :meth:`AgentEvaluator._score_trials` refuses to score at all when a task produced no trial,
+    so a runner that drops one fails the run rather than reporting it as missing coverage.
     """
     scorelike = _scorelike_outputs(tasks)
     if not scorelike:

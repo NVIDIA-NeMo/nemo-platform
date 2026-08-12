@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -184,9 +186,11 @@ def test_failed_trials_are_attempts_but_metric_failures_are_unmeasured() -> None
 
 
 def test_a_task_that_produced_no_trial_is_unmeasured_and_counted_in_pass_at_k_nan() -> None:
-    # A runner may return no trial at all for a requested task (Harbor warns and carries on). The task
-    # still declares the metric, so it holds an empty attempt list and counts as missing coverage --
-    # excluding it would report pass@k over a denominator smaller than the task set that was asked for.
+    # from_scores can be handed a task list wider than the scores -- a caller re-aggregating a subset.
+    # The task still declares the metric, so it holds an empty attempt list and counts as missing
+    # coverage: excluding it would report pass@k over a denominator smaller than the task set asked
+    # for. A full run cannot reach this state; AgentEvaluator._score_trials refuses to score when a
+    # task produced no trial, which test_evaluator.py::test_run_rejects_tasks_without_trials pins.
     reward = _Metric("reward", MetricOutputSpec.continuous_score("score"))
     tasks = [_task("scored", reward), _task("never-ran", reward)]
     scores = [_score("scored", "attempt-0", "reward", "score", 1.0)]
@@ -221,6 +225,50 @@ def test_outputs_declared_under_an_unretained_schema_stay_out_even_when_numeric(
     assert _pairs(AgentEvalSummary.from_scores(scores, tasks=tasks).task_metric_attempts) == {
         "task-a": {"reward.score": [("attempt-0", 1.0)]}
     }
+
+
+def test_one_tasks_schema_exclusion_does_not_suppress_another_tasks_output() -> None:
+    # The spec filter is per task: tasks in one run need not declare the same output under the same
+    # schema. Task-a declaring usage.prompt_tokens as a free model must not strip it from task-b,
+    # which never declared it and whose only evidence is the numeric value it actually emitted.
+    tasks = [
+        _task("task-a", _Metric("usage", MetricOutputSpec.model("prompt_tokens", _TokenCount))),
+        _task("task-b", _Metric("reward", MetricOutputSpec.continuous_score("score"))),
+    ]
+    scores = [
+        _score("task-a", "attempt-0", "usage", "prompt_tokens", 100),
+        _score("task-b", "attempt-0", "reward", "score", 1.0),
+        _score("task-b", "attempt-0", "usage", "prompt_tokens", 250),  # undeclared on task-b
+    ]
+
+    attempts = AgentEvalSummary.from_scores(scores, tasks=tasks).task_metric_attempts
+
+    # task-a declared it under an unretained schema, so it is not a key there at all -- not even an
+    # empty one -- and the numeric value it emitted cannot add it back.
+    assert attempts["task-a"] == {}
+    # task-b never declared it, so its emitted numeric value is the only evidence and it is kept.
+    assert sorted(attempts["task-b"]) == ["reward.score", "usage.prompt_tokens"]
+    assert _pairs(attempts)["task-b"]["usage.prompt_tokens"] == [("attempt-0", 250.0)]
+
+
+def test_nan_attempt_values_survive_json_as_a_string() -> None:
+    # A metric may legitimately score NaN. json.dumps would write a bare NaN token, which is not
+    # valid JSON, so summary.json must carry the string form -- and read it back as a float.
+    tasks = [_task("task-a", _Metric("reward", MetricOutputSpec.continuous_score("score")))]
+    summary = AgentEvalSummary.from_scores(
+        [_score("task-a", "attempt-0", "reward", "score", float("nan"))], tasks=tasks
+    )
+
+    payload = summary.model_dump(mode="json")
+    assert payload["task_metric_attempts"]["task-a"]["reward.score"][0]["value"] == "NaN"
+
+    # Strict JSON: no bare NaN/Infinity tokens anywhere in the serialized bundle.
+    def _reject(constant: str) -> float:
+        raise AssertionError(f"summary.json contains a bare {constant} token")
+
+    reloaded = json.loads(json.dumps(payload), parse_constant=_reject)
+    value = AgentEvalSummary.model_validate(reloaded).task_metric_attempts["task-a"]["reward.score"][0].value
+    assert value is not None and math.isnan(value)
 
 
 def test_without_tasks_there_is_no_spec_to_filter_on() -> None:
@@ -387,6 +435,18 @@ def test_vendored_results_module_is_a_verbatim_copy_of_this_one() -> None:
     assert Path(vendored.__file__).read_text(encoding="utf-8") == expected, (
         "sdk/python/.../beta/evaluator/agent_eval/results.py is out of sync; re-run `make vendor`"
     )
+
+
+def test_gym_example_rejects_a_bundle_written_before_task_metric_attempts(tmp_path: Path) -> None:
+    # The field defaults to empty, so an older bundle would load cleanly and simply show no per-task
+    # section -- a reader would take that as "no per-task outcomes" rather than "this script cannot
+    # see them". Fail with a version message instead.
+    from packages.nemo_evaluator_sdk.examples.gym.inspect_results import load_bundle
+
+    (tmp_path / "summary.json").write_text(json.dumps({"task_count": 2}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="predates summary.task_metric_attempts"):
+        load_bundle(tmp_path)
 
 
 def test_gym_example_reads_task_outcomes_from_summary() -> None:
