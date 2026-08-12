@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
+import io
 import socket
+import tarfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from backends.docker.docker_helpers import (
+    config_files_config,
     container_attrs,
     lora_config,
     published_port_config,
@@ -118,6 +121,139 @@ async def test_create_deployment_maps_command_to_entrypoint(
     _, create_kwargs = mock_docker_client.containers.create.call_args
     assert create_kwargs["entrypoint"] == ["echo"]
     assert create_kwargs["command"] == ["hello"]
+
+
+def _delivered_files(put_archive: MagicMock) -> dict[str, bytes]:
+    """Return {path: content} for the regular files in a ``put_archive`` payload."""
+    (dest, archive), _ = put_archive.call_args
+    assert dest == "/", "paths in the tar are absolute-rooted, so the target must be /"
+    delivered: dict[str, bytes] = {}
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r") as tar:
+        for member in tar.getmembers():
+            if not member.isfile():
+                continue
+            payload = tar.extractfile(member)
+            assert payload is not None, f"regular file {member.name} has no payload"
+            delivered[f"/{member.name}"] = payload.read()
+    return delivered
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_delivers_config_files_before_start(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """``config_files`` land in the container's filesystem before it starts.
+
+    The server command reads its config at startup, so delivery after ``start``
+    would race the process. Asserting the ordering is the point: dropping the
+    delivery entirely used to be silent (AIRCORE-999), and delivering it late
+    fails the same way.
+    """
+    mock_entities.get.return_value = config_files_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = created
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert _delivered_files(created.put_archive) == {"/tmp/nemo/config.yaml": b"workflow:\n  _type: react_agent\n"}
+    method_order = [name for name, _, _ in created.mock_calls]
+    assert method_order.index("put_archive") < method_order.index("start")
+
+
+@pytest.mark.asyncio
+async def test_config_files_tar_carries_parent_dirs_and_mode(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Nested paths bring their parent directories; files keep their declared mode.
+
+    ``put_archive`` does not create missing parents, so a tar carrying only the
+    leaf fails for any path below the image's existing tree.
+    """
+    mock_entities.get.return_value = config_files_config(path="/tmp/nemo/sub/agent.yaml")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = created
+
+    await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    (_, archive), _ = created.put_archive.call_args
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r") as tar:
+        dirs = {m.name for m in tar.getmembers() if m.isdir()}
+        files = {m.name: m.mode for m in tar.getmembers() if m.isfile()}
+
+    assert dirs == {"tmp", "tmp/nemo", "tmp/nemo/sub"}
+    assert files == {"tmp/nemo/sub/agent.yaml": 0o644}
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_without_config_files_skips_put_archive(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = created
+
+    await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    created.put_archive.assert_not_called()
+    created.start.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_config_delivery_removes_container_and_reports_error(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """A delivery failure must not leave a started container or a healthy status.
+
+    Without this the container would run with no config and report STARTING,
+    which is the silent-failure shape the original bug had.
+    """
+    mock_entities.get.return_value = config_files_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    created.put_archive.side_effect = APIError("no such container")
+    mock_docker_client.containers.create.return_value = created
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    created.start.assert_not_called()
+    created.remove.assert_called_once_with(force=True)
+    assert update.status == "FAILED"
 
 
 def _port_conflict_error(port: int) -> APIError:
