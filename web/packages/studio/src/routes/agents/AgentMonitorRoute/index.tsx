@@ -5,6 +5,7 @@ import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { agentsListAgents } from '@nemo/sdk/generated/agents/api';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { Combobox, PageHeader, Stack } from '@nvidia/foundations-react-core';
+import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { InferenceLogsTable } from '@studio/routes/agents/AgentMonitorRoute/components/InferenceLogsTable';
@@ -129,7 +130,12 @@ export const AgentMonitorRoute: FC = () => {
       <Stack gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0"
-          slotHeading="Monitor"
+          slotHeading={
+            <>
+              Monitor
+              <FeatureFlagBadge flag="monitorEnabled" />
+            </>
+          }
           slotDescription={description}
           slotActions={
             <Combobox

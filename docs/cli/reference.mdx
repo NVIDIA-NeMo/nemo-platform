@@ -6950,7 +6950,7 @@ nemo intake spans groups list [OPTIONS]
 * `--by`: Comma-separated span fields to group by, e.g.
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: [possible values: span_count, -span_count]
+* `--sort <CHOICE>`: Sort groups by size or by start time. Use -started_at for the traces or sessions that began most recently, which answers 'what ran lately' in one call instead of paging through spans. A group's time is its earliest matching span, so this orders by when work started and not by when it was last active. [possible values: span_count, -span_count, started_at, -started_at]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
