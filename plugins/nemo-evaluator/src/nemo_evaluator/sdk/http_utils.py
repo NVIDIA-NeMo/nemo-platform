@@ -5,10 +5,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import quote, urljoin
 
-from nemo_evaluator.jobs.evaluate import EvaluateInputSpec
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 PlatformClient = NeMoPlatform | AsyncNeMoPlatform
@@ -61,11 +59,6 @@ def revision_selector(revision: str | None, tag: str | None) -> str | None:
 def platform_default_headers(platform: PlatformClient) -> dict[str, str]:
     """Return string-valued default platform headers for direct evaluator HTTP calls."""
     return {str(key): value for key, value in platform.default_headers.items() if isinstance(value, str)}
-
-
-def create_job_payload(spec: EvaluateInputSpec) -> dict[str, dict[str, Any]]:
-    """Serialize an evaluator job creation request body."""
-    return {"spec": spec.model_dump(mode="json")}
 
 
 def job_route_base_url(*, raw_base_url: str, workspace: str, job_name: str) -> str:
