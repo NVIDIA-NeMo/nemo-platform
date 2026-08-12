@@ -16,7 +16,6 @@ import {
   dataDesignerRoutes,
   deploymentRoutes,
   evaluationRoutes,
-  ironSwarmRoutes,
   experimentRoutes,
   filesetRoutes,
   guardrailsRoutes,
@@ -124,7 +123,6 @@ export const routes: RouteObject[] = [
               ...optimizerRoutes,
               ...safeSynthesizerRoutes,
               ...dataDesignerRoutes,
-              ...ironSwarmRoutes,
               ...anonymizerRoutes,
               ...agentRoutes,
               ...gatePluginRoutes({
