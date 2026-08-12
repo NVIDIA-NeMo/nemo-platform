@@ -22,6 +22,8 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
      cp packages/studio/env/.env.e2e packages/studio/env/.env.e2e.local
    ```
 
+   `pnpm install` also syncs the KUI `kaizen-ui` agent skill from the `@nvidia/foundations-react-core` design system package into `web/.agents/skills/` (via the root `sync-skills` script). The synced skill is gitignored; re-run `pnpm sync-skills` from `web/` to refresh it after upgrading the package.
+
 ## Running Studio Locally
 
 Run the following script from `web/`:
