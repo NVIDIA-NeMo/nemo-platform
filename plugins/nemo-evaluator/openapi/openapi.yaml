@@ -2100,6 +2100,7 @@ components:
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -2271,6 +2272,7 @@ components:
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -3676,6 +3678,92 @@ components:
       - format
       title: GenericAgent
       description: Configurable HTTP agent with optional JSON SSE response handling.
+    GymRunnerTarget:
+      properties:
+        kind:
+          type: string
+          const: gym
+          title: Kind
+          default: gym
+        agent:
+          type: string
+          title: Agent
+          description: Agent name to collect rollouts with, e.g. 'simple_agent'.
+        agent_config:
+          type: string
+          title: Agent Config
+          description: Repo-relative agent config passed to `gym env start` (--config).
+        resources_server:
+          type: string
+          title: Resources Server
+          description: Resources-server (environment) name, e.g. 'mcqa' (--resources-server).
+        model_type:
+          type: string
+          title: Model Type
+          description: Model-type config (--model-type). `inference_provider` speaks
+            OpenAI-compatible chat; `openai_model` uses the OpenAI Responses API.
+          default: inference_provider
+        bind_resources_server:
+          type: boolean
+          title: Bind Resources Server
+          description: Auto-bind the agent's `resources_server.name` via a Hydra override.
+            Set False for self-contained agents that already bind their own resources-server.
+          default: true
+        env_overrides:
+          items:
+            type: string
+          type: array
+          title: Env Overrides
+          description: Extra Hydra '+key=value' overrides for `gym env start` (applied
+            after the auto-derived resources-server binding).
+        num_repeats:
+          type: integer
+          minimum: 1.0
+          title: Num Repeats
+          description: Attempts per row; each attempt becomes one trial.
+          default: 1
+        concurrency:
+          type: integer
+          minimum: 1.0
+          title: Concurrency
+          description: Concurrent rollouts for `gym eval run`.
+          default: 4
+        startup_timeout_s:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Startup Timeout S
+          description: Max wait for `gym env start` readiness.
+          default: 240.0
+        collection_timeout_s:
+          title: Collection Timeout S
+          description: Max wait for `gym eval run` collection; None = unbounded.
+          type: number
+          exclusiveMinimum: 0.0
+        shutdown_grace_s:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Shutdown Grace S
+          description: Grace period for the Gym subprocess group to exit on SIGTERM
+            before escalating to SIGKILL.
+          default: 30.0
+        reward_key:
+          type: string
+          title: Reward Key
+          description: Key read from each rollout record.
+          default: reward
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      - agent_config
+      - resources_server
+      title: GymRunnerTarget
+      description: "Generate trials by driving a NeMo Gym environment through the\
+        \ SDK's :class:`GymAgentTaskRunner`.\n\nGym runs locally in the job container\
+        \ (the ``gym`` CLI must be installed in the same environment\nas this SDK).\
+        \ The environment dataset is recovered from the tasks at run time \u2014 the\
+        \ runner stamps\n``gym_dataset_path`` onto each task via ``discover_gym_tasks``,\
+        \ mirroring the Harbor pattern."
     HTTPValidationError:
       properties:
         detail:

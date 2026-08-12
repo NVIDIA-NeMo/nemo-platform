@@ -28,6 +28,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
     Target,
@@ -40,6 +41,7 @@ from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
@@ -301,6 +303,67 @@ def test_resolve_target_agent_carries_no_prompt_template(tmp_path: Path) -> None
 def test_resolve_target_resolves_none_to_no_target(tmp_path: Path) -> None:
     ctx = _job_context(tmp_path)
     assert AgentEvalJob._resolve_target(None, ctx) == (None, None, None)
+
+
+def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) -> None:
+    ctx = _job_context(tmp_path)
+    gym_target = GymRunnerTarget(
+        agent="simple_agent",
+        agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+        resources_server="mcqa",
+        num_repeats=2,
+        concurrency=4,
+        reward_key="score",
+    )
+    target, prompt_template, params = AgentEvalJob._resolve_target(gym_target, ctx)
+    assert isinstance(target, GymAgentTaskRunner)
+    assert target._config.agent == "simple_agent"
+    assert target._config.resources_server == "mcqa"
+    assert target._config.num_repeats == 2
+    assert target._config.reward_key == "score"
+    # A runner shapes its own request, so it contributes no prompt template or inference params.
+    assert prompt_template is None
+    assert params is None
+
+
+def test_to_runtime_task_decodes_json_metadata_values() -> None:
+    from nemo_evaluator.api.schemas import MetadataItem
+
+    extras = {"expected_answer": "B", "options": [{"A": "Karyotyping"}, {"B": "PCR"}]}
+    task = AgentEvalTaskSpec(
+        id="t1",
+        intent="answer",
+        metrics=[],
+        metadata=[
+            MetadataItem(key="gym_dataset_path", value="/path/to/dataset.jsonl"),
+            MetadataItem(key="gym_row_extras", value=json.dumps(extras)),
+        ],
+    )
+    runtime_task = _to_runtime_task(task)
+    # Plain string metadata passes through unchanged.
+    assert runtime_task.metadata["gym_dataset_path"] == "/path/to/dataset.jsonl"
+    # JSON-encoded dict is decoded back to a dict.
+    assert runtime_task.metadata["gym_row_extras"] == extras
+
+
+def test_to_runtime_task_recovers_gym_row_from_metadata() -> None:
+    from nemo_evaluator.api.schemas import MetadataItem
+
+    gym_row = {"input": [{"role": "user", "content": "Which test detects cystic fibrosis?"}]}
+    task = AgentEvalTaskSpec(
+        id="t1",
+        intent="answer",
+        metrics=[],
+        metadata=[
+            MetadataItem(key="gym_dataset_path", value="/path/to/dataset.jsonl"),
+            MetadataItem(key="gym_row", value=json.dumps(gym_row)),
+        ],
+    )
+    runtime_task = _to_runtime_task(task)
+    # gym_row is lifted out of metadata and into inputs so GymAgentTaskRunner can materialize the dataset.
+    assert runtime_task.inputs.get("gym_row") == gym_row
+    # gym_row is removed from metadata after being recovered.
+    assert "gym_row" not in runtime_task.metadata
 
 
 def test_runner_target_is_accepted(tmp_path: Path) -> None:

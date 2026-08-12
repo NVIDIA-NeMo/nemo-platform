@@ -24,6 +24,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
     Target,
@@ -92,6 +93,8 @@ def _agent_target_fields(target: Target | None) -> tuple[str | None, str | None,
         return "codex", target.model, None
     if isinstance(target, FabricRunnerTarget):
         return "fabric", target.model, None
+    if isinstance(target, GymRunnerTarget):
+        return "gym", target.agent, None
     if isinstance(target, HarborRunnerTarget):
         return "harbor", target.agent_import_path or target.agent_name, None
     return None, None, None
