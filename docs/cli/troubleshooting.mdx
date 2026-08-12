@@ -23,6 +23,26 @@ Activate the virtual environment where you installed the package:
 source /path/to/venv/bin/activate
 ```
 
+## Installation Issues
+
+### Install Fails Compiling Dependencies from Source
+
+**Symptoms:**
+- `uv tool install "nemo-platform[all]"` fails while building a dependency, often with a missing C header such as `omp.h`
+- `nemo --version` works but no dependency wheels are found for your interpreter
+
+**Cause:**
+
+NeMo Platform supports Python 3.12 and 3.13. uv selects the interpreter it prefers on your machine, and it does not enforce the upper bound of a package's supported Python range, so an install can start on Python 3.14 and then fall back to building dependencies that publish no 3.14 wheels.
+
+**Solution:**
+
+Name a supported interpreter. uv downloads it when your machine does not have one:
+
+```bash
+uv tool install --python 3.13 "nemo-platform[all]"
+```
+
 ## Connection Issues
 
 ### Unable to Connect to Server

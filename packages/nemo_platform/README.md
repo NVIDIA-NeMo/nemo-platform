@@ -31,7 +31,7 @@ uv tool install "nemo-platform[all]"
 uv tool install nemo-platform
 ```
 
-[uv](https://docs.astral.sh/uv/) installs the tool in its own isolated environment and puts the `nemo` command on your PATH, so there is no virtual environment to create or activate. uv installs the tool on your default interpreter, so add `--python 3.13` when that default is outside the supported 3.12–3.13 range. To import the SDK from your own project, or when tool installs are unavailable, `pip install "nemo-platform[all]"` into a virtual environment instead.
+[uv](https://docs.astral.sh/uv/) installs the tool in its own isolated environment and puts the `nemo` command on your PATH, so there is no virtual environment to create or activate. To import the SDK from your own project, or when tool installs are unavailable, `pip install "nemo-platform[all]"` into a virtual environment instead.
 
 Then bring up the platform:
 

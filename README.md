@@ -25,7 +25,7 @@ uv tool install "nemo-platform[all]"
 nemo setup
 ```
 
-`uv tool install` puts `nemo` on your PATH in its own isolated environment — there is no virtual environment to create or activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only. uv installs the tool on your default interpreter, so add `--python 3.13` when that default is outside the supported 3.12-3.13 range.
+`uv tool install` puts `nemo` on your PATH in its own isolated environment — there is no virtual environment to create or activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only.
 
 Source checkout for development:
 
