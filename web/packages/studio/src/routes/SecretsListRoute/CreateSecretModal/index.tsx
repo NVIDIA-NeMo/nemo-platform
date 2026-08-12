@@ -21,7 +21,7 @@ import {
   useSecretsCreateSecret,
 } from '@nemo/sdk/generated/platform/api';
 import { useQueryClient } from '@tanstack/react-query';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 interface CreateSecretModalProps extends Pick<BaseProps, 'open' | 'onClose'> {
   workspace: string;

@@ -13,13 +13,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
-import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
+import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
 import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
 import { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
 import { Stack } from '@nvidia/foundations-react-core';
-import { FC } from 'react';
-import { SubmitHandler, useForm } from 'react-hook-form';
+import type { FC } from 'react';
+import { type SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 const secretFormSchema = z.object({
@@ -75,11 +75,12 @@ export const CreateSecretModal: FC<CreateSecretModalProps> = ({
   const onSubmit: SubmitHandler<CreateSecretFormData> = async (formData) => {
     try {
       await onCreate(formData);
-      notify('Secret created successfully', 'success');
-      resetAndClose();
     } catch {
       // Reported through errorText; the modal stays open so the value isn't lost.
+      return;
     }
+    notify('Secret created successfully', 'success');
+    resetAndClose();
   };
 
   return (

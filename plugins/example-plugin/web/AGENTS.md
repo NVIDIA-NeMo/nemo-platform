@@ -112,7 +112,10 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   host: {
     workspaceId: string;
     auth: { accessToken: string; getAccessToken: () => string };
-    sdk: { platform: /* @nemo/sdk platform hooks */ };
+    sdk: {
+      platform: /* @nemo/sdk platform hooks */;
+      agents: /* @nemo/sdk agents hooks and functions */;
+    };
     navigation: { navigate: (to: string) => void; back: () => void };
     notifications: {
       notify: (
