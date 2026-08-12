@@ -4608,8 +4608,9 @@ paths:
         schema:
           $ref: '#/components/schemas/SpanFilter'
         description: Filter spans by session_id, trace_id, parent_span_id, project,
-          evaluation context fields, source, kind, status, model, tool_name, provider,
-          agent_id, agent_name, prompt_name, prompt_version, and started_at.
+          evaluation_id, test_case_id, source, kind, status, model, tool_name, provider,
+          agent_id, agent_name, and started_at. Every field takes one exact value,
+          except started_at, which takes gte and lte.
       responses:
         '200':
           description: Successful Response
@@ -4671,7 +4672,17 @@ paths:
         schema:
           allOf:
           - $ref: '#/components/schemas/SpanGroupSortField'
+          description: Sort groups by size or by start time. Use -started_at for the
+            traces or sessions that began most recently, which answers 'what ran lately'
+            in one call instead of paging through spans. A group's time is its earliest
+            matching span, so this orders by when work started and not by when it
+            was last active.
           default: -span_count
+        description: Sort groups by size or by start time. Use -started_at for the
+          traces or sessions that began most recently, which answers 'what ran lately'
+          in one call instead of paging through spans. A group's time is its earliest
+          matching span, so this orders by when work started and not by when it was
+          last active.
       - in: query
         name: filter
         style: deepObject
@@ -18002,18 +18013,6 @@ components:
           description: Filter by evaluation id.
           title: Evaluation Id
           type: string
-        dataset_id:
-          description: Filter by dataset id.
-          title: Dataset Id
-          type: string
-        dataset_name:
-          description: Filter by dataset name.
-          title: Dataset Name
-          type: string
-        dataset_version:
-          description: Filter by dataset version.
-          title: Dataset Version
-          type: string
         test_case_id:
           description: Filter by dataset test case id.
           title: Test Case Id
@@ -18050,14 +18049,6 @@ components:
           description: Filter by agent application name (e.g. 'claude-code', 'codex').
           title: Agent Name
           type: string
-        prompt_name:
-          description: Filter by prompt template name.
-          title: Prompt Name
-          type: string
-        prompt_version:
-          description: Filter by prompt template version.
-          title: Prompt Version
-          type: string
         parent_span_id:
           description: Filter by parent span id. Use to fetch direct children of a
             span.
@@ -18082,10 +18073,18 @@ components:
           minimum: 0.0
           title: Span Count
           description: Number of matching spans in this group.
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+          description: Start time of the earliest matching span in this group. Only
+            matching spans count, so a filter narrows this to when the filtered work
+            began rather than when the whole trace or session began.
       type: object
       required:
       - group
       - span_count
+      - started_at
       title: SpanGroup
     SpanGroupBy:
       type: string
@@ -18098,6 +18097,8 @@ components:
       enum:
       - span_count
       - -span_count
+      - started_at
+      - -started_at
       title: SpanGroupSortField
     SpanGroupsPage:
       properties:

@@ -7,6 +7,14 @@ postgresql:
   image:
     repository: docker.io/library/postgres
 
+clickhouse:
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
 core:
   storage:
     accessModes:
