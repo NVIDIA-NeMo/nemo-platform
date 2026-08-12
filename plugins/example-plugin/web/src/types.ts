@@ -61,6 +61,8 @@ export interface PluginTelemetry {
 
 export interface PluginHost {
   workspaceId: string;
+  /** Origin the platform API is served from; empty when same-origin. */
+  apiBaseUrl: string;
   auth: {
     accessToken: string;
     getAccessToken: () => string;
