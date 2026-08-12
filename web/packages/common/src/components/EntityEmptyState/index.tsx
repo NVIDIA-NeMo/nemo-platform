@@ -110,7 +110,9 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
         }
       />
       {(cliCommand || skillPrompt) && (
-        <SelfServiceHelp cliCommand={cliCommand} skillPrompt={skillPrompt} />
+        <div className="mt-4 w-full max-w-[40rem]">
+          <SelfServiceHelp cliCommand={cliCommand} skillPrompt={skillPrompt} />
+        </div>
       )}
     </Centered>
   );
@@ -148,16 +150,21 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   const toast = useToast();
   const [kind, setKind] = useState<HelpKind>(cliCommand ? 'cli' : 'agent');
 
-  const items: { value: HelpKind; children: string }[] = [];
-  if (cliCommand) items.push({ value: 'cli', children: 'NeMo CLI' });
-  if (skillPrompt) items.push({ value: 'agent', children: 'Ask an Agent' });
+  const items: { value: HelpKind; children: React.ReactNode }[] = [];
+  if (cliCommand)
+    items.push({ value: 'cli', children: "nemo CLI" });
+  if (skillPrompt)
+    items.push({
+      value: 'agent',
+      children: "Ask an Agent",
+    });
 
   const showCli = kind === 'cli' && !!cliCommand;
   const value = showCli ? (cliCommand as string) : (skillPrompt ?? cliCommand ?? '');
   const language: CodeSnippetLanguage = showCli ? 'bash' : 'markdown';
 
   return (
-    <div className="mt-density-lg w-full max-w-[32rem]" data-testid="entity-empty-state-help">
+    <div className="mt-density-lg" data-testid="entity-empty-state-help">
       <CodeSnippet
         value={value}
         language={language}
@@ -165,12 +172,15 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
         onCopySuccess={() => toast.success('Copied to clipboard')}
         slotActions={
           items.length > 1 ? (
-            <SegmentedControl
-              size="small"
-              value={kind}
-              onValueChange={(next) => setKind(next as HelpKind)}
-              items={items}
-            />
+            <Flex className="w-full" justify="between" align="center" wrap="wrap">
+              <SegmentedControl
+                size="tiny"
+                className="!w-fit"
+                value={kind}
+                onValueChange={(next) => setKind(next as HelpKind)}
+                items={items}
+              />
+            </Flex>
           ) : undefined
         }
       />

@@ -31,7 +31,7 @@ fourth idiom.
 
 | Variant | When | Required affordances |
 | --- | --- | --- |
-| `first-use` | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "NeMo CLI · Ask an Agent" self-service snippet |
+| `first-use` | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "nemo CLI · Ask an Agent" self-service snippet |
 | `no-results` | Items exist but current filters/search match zero | heading naming the mismatch, **"Clear filters"** action; **no** create CTA |
 | `error` | Load failed (network/server/timeout) | non-technical heading, **"Try again"** action; no create CTA |
 
@@ -118,7 +118,7 @@ as a fallback.
 - At most **2 buttons** in the footer (Kaizen empty-state rule). The CLI command
   and agent prompt live **below** the footer in a single KUI `CodeSnippet`
   (with its built-in copy button); a tiny `SegmentedControl` in the snippet's
-  `slotActions` toggles between **NeMo CLI** and **Ask an Agent**. This is not a
+  `slotActions` toggles between **nemo CLI** and **Ask an Agent**. This is not a
   footer button and does not count against the 2-action limit.
 - CLI commands must match the shipping `nemo` CLI. Verify against the relevant
   plugin skill (`nemo files`, `nemo models`, `nemo guardrail`, `nemo secrets`,
