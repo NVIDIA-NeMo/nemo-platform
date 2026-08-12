@@ -24,14 +24,17 @@ litellm.drop_params = True
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PLUGIN_ROOT = _REPO_ROOT / "plugins" / "nemo-experimentalist"
+_CI_ENV = "CI"
 _SANDBOX_NAME_ENV = "SANDBOX_VM_ID"
 _ALLOW_UNSANDBOXED_ENV = "SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED"
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
-    """Check that E2E tests have an isolation boundary before they start."""
+    """Check that marked E2E tests are isolated."""
     if "e2e" not in item.keywords:
         return
+    if os.environ.get(_CI_ENV):
+        pytest.skip("smoke-agent E2E tests are developer-invoked and do not run in CI")
     if os.environ.get(_SANDBOX_NAME_ENV) or os.environ.get(_ALLOW_UNSANDBOXED_ENV) == "1":
         return
     pytest.skip(
@@ -63,6 +66,7 @@ class SandboxRunner:
         settings = {
             "UV_PROJECT_ENVIRONMENT": "/home/agent/.venvs/nemo-platform",
             "PYTHONPATH": f"{self.remote_plugin_root}/src",
+            "OTLP_ENDPOINT": "http://host.docker.internal:5001/v1/traces",
             **(environment or {}),
         }
         for name, value in settings.items():
