@@ -1058,6 +1058,47 @@ class TestLLMJudgeMetric:
         assert hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
 
     @pytest.mark.asyncio
+    async def test_concurrent_nvext_rejections_still_try_root_guided_json(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(
+            model=_make_model().model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
+            scores=[_make_metric_score()],
+        )
+        hook = next(h for h in metric._preprocess_hooks if isinstance(h, InferenceStructuredOutput))
+        hook.set_mode(StructuredOutputMode.NVEXT_GUIDED_JSON)
+        error = ClientInferenceError(mocker.Mock(status_code=400, response=mocker.Mock(text="unknown field `nvext`")))
+        captured_requests: list[dict] = []
+        both_requests_in_flight = asyncio.Event()
+        nvext_request_count = 0
+
+        async def inference_fn(*args, **kwargs):
+            nonlocal nvext_request_count
+            request = kwargs.get("request", args[1])
+            captured_requests.append(deepcopy(request))
+            if "nvext" in json.dumps(request):
+                nvext_request_count += 1
+                if nvext_request_count == 2:
+                    both_requests_in_flight.set()
+                await both_requests_in_flight.wait()
+                raise error
+            return {"choices": [{"message": {"content": '{"helpfulness": 4}'}}]}
+
+        metric.set_inference_fn(inference_fn)
+
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                compute_scores(metric, {"prompt": "hello"}, {"output_text": "first"}),
+                compute_scores(metric, {"prompt": "hello"}, {"output_text": "second"}),
+            ),
+            timeout=10,
+        )
+
+        assert [result.outputs[0].value for result in results] == [4, 4]
+        assert nvext_request_count == 2
+        assert len(captured_requests) == 4
+        assert all("guided_json" in request["extra_body"] for request in captured_requests[2:])
+        assert hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
+
+    @pytest.mark.asyncio
     async def test_compute_scores_raises_invalid_output_when_ignore_failure_disabled(self, mocker: MockerFixture):
         metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
         metric.set_inference_fn(

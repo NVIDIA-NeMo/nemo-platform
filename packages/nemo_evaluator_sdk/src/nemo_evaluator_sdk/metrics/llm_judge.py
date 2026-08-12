@@ -339,8 +339,8 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
                 return hook
         return None
 
-    def _downgrade_structured_output(self, error: Exception) -> bool:
-        """Latch the next structured-output mode when the backend rejects the current one."""
+    def _downgrade_structured_output(self, error: Exception, rendered_mode: StructuredOutputMode | None) -> bool:
+        """Latch the next structured-output mode when the backend rejects *rendered_mode*."""
         message = str(error)
         if not looks_like_unsupported_structured_output_error(message):
             return False
@@ -349,12 +349,16 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         if hook is None:
             return False
 
-        if hook.mode != StructuredOutputMode.UNSUPPORTED:
-            next_mode = next_structured_output_mode(hook.mode, message, self._rejected_structured_output_modes)
-            self._rejected_structured_output_modes.add(hook.mode)
+        if (
+            rendered_mode is not None
+            and rendered_mode != StructuredOutputMode.UNSUPPORTED
+            and rendered_mode not in self._rejected_structured_output_modes
+        ):
+            next_mode = next_structured_output_mode(rendered_mode, message, self._rejected_structured_output_modes)
+            self._rejected_structured_output_modes.add(rendered_mode)
             _logger.warning(
                 "Judge model rejected structured output mode %s; using %s for all future requests.",
-                hook.mode.value,
+                rendered_mode.value,
                 next_mode.value,
             )
             hook.set_mode(next_mode)
@@ -370,11 +374,17 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         del request["max_tokens"]
         return request
 
-    def _retry_request(self, error: Exception, request: dict, base_request: dict) -> dict | None:
+    def _retry_request(
+        self,
+        error: Exception,
+        request: dict,
+        base_request: dict,
+        rendered_mode: StructuredOutputMode | None,
+    ) -> dict | None:
         """Request to retry the rejected call with, or None when no retry can help."""
         if "max_tokens" in request and "'max_tokens' is not supported with this model" in error.args[0]:
             return self._retry_with_max_completion_tokens(request)
-        if self._downgrade_structured_output(error):
+        if self._downgrade_structured_output(error, rendered_mode):
             retried = self._apply_preprocess_hooks(deepcopy(base_request))
             if retried != request:
                 return retried
@@ -386,11 +396,13 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         sample = input.candidate
         base_request = self._render_base_request(item, sample)
         request = self._apply_preprocess_hooks(deepcopy(base_request))
+        hook = self._structured_output_hook()
+        rendered_mode = hook.mode if hook else None
 
         try:
             response = await self.inference_fn(self._require_model(), request, 3, client=self.client)
         except inference.ClientInferenceError as error:
-            retry_request = self._retry_request(error, request, base_request)
+            retry_request = self._retry_request(error, request, base_request, rendered_mode)
             if retry_request is None:
                 return self._handle_invalid_output(
                     error,
