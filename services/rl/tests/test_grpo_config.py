@@ -73,7 +73,7 @@ def _make_grpo_step(
             sandbox_environment_path="/job/environment",
             sandbox_dataset_path="/job/dataset",
             sandboxed=True,
-            gym_runtime_image="nvcr.io/nvidia/nemo-gym-runtime:test",
+            gym_runtime_image="nvcr.io/nvidia/nmp-rl-training:test",
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
@@ -134,8 +134,11 @@ def test_compile_grpo_config_sandboxed_paths(
     assert "host_work_path" in nemo_gym
     assert nemo_gym["bootstrap_env"]["NMP_JOB_ID"] == "job-123"
     assert "/nmp-rl/job-123/work" in nemo_gym["bootstrap_env"]["NMP_WORK_PATH"]
-    # config_paths must reach Gym in sandboxed mode too, or no servers start.
-    assert nemo_gym["config_paths"] == ["configs/verifiers_agent.yaml"]
+    # config_paths must reach Gym in sandboxed mode too, or no servers start — and they must
+    # be anchored to the SANDBOX mount. The manifest stores them relative to the package root;
+    # Gym resolves relative paths against its CWD (the runtime image's WORKDIR), so a relative
+    # entry sends it looking at /opt/nemo-rl/configs/... and it dies with FileNotFoundError.
+    assert nemo_gym["config_paths"] == ["/job/environment/configs/verifiers_agent.yaml"]
     # job_id is a sandbox pod label; without it every job shares one default.
     assert nemo_gym["job_id"] == "job-123"
     # Full-weight omits lora_cfg entirely rather than emitting enabled=False.
@@ -147,6 +150,30 @@ def test_compile_grpo_config_sandboxed_paths(
     assert sandbox["dataset_pvc_claim"] == "nmp-job-storage"
     assert sandbox["environment_sub_path"] == "jobs/default/job-123/environment"
     assert sandbox["dataset_sub_path"] == "jobs/default/job-123/dataset"
+
+
+def test_compile_grpo_config_colocated_anchors_config_paths(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mode A anchors config_paths to the job-storage package, not the sandbox mount.
+
+    Same underlying hazard as the sandboxed case: the manifest stores paths relative to the
+    package root, and Gym resolves them against its CWD. Colocated Gym has a different root
+    from the sandbox, so the two modes must not share one answer.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, dataset_pvc = _prepared_step(tmp_path)
+    assert step.gym is not None
+    step.gym.sandboxed = False
+    # Unlike the sandboxed path, mode A runs prepare_dataset, which needs at least two rows
+    # to carve out a validation split.
+    train_jsonl = dataset_pvc / "training.jsonl"
+    train_jsonl.write_text(train_jsonl.read_text(encoding="utf-8") * 2, encoding="utf-8")
+
+    nemo_gym = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]
+
+    assert nemo_gym["config_paths"] == [f"{step.gym.environment_path}/configs/verifiers_agent.yaml"]
+    assert Path(nemo_gym["config_paths"][0]).is_absolute()
 
 
 def test_compile_grpo_config_sandboxed_requires_pvc_claim(

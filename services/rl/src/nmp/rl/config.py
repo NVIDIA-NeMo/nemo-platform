@@ -64,7 +64,11 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
 
     gym_runtime_image: str | None = Field(
         default=None,
-        description="Override nmp-gym-runtime image for sandboxed GRPO (registry/name:tag).",
+        description=(
+            "Image the Gym sandbox runs for sandboxed GRPO (registry/name:tag). "
+            "Defaults to the nmp-rl-training image, which already carries NeMo-Gym and the "
+            "per-environment venvs."
+        ),
     )
 
     sandbox_cluster_capable: bool = Field(

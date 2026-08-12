@@ -51,6 +51,44 @@ Platform / Gym clients pick a profile by Service DNS + API key.
 `install.sh` creates them if missing (random hex, or `CRUN_API_KEY` /
 `KATA_API_KEY` env vars). Re-runs keep existing Secrets.
 
+## Image pull credentials (sandbox pods)
+
+Sandbox pods are built by the OpenSandbox server from `batchsandbox-template-*.yaml`, 
+not by the jobs controller, so `platformConfig.jobs.executor_defaults.*.image_pull_secrets` 
+does not apply, and the chart's top-level `imagePullSecrets` covers only api/core pods.
+Both templates therefore carry it directly:
+
+```yaml
+imagePullSecrets:
+  - name: nvcrimagepullsecret
+```
+
+**The Secret must exist in the sandbox namespace** — `[kubernetes] namespace` in the server
+values (`nmp-temp1` here), not `opensandbox-system`. `imagePullSecrets` is a namespace-local
+reference.
+
+```bash
+kubectl -n nmp-temp1 get secret nvcrimagepullsecret     # must exist
+```
+
+Rename the Secret in both templates if your cluster uses a different one.
+
+**Failure mode if this is missing:** the sandbox pod goes `ErrImagePull`, the server abandons
+it on `KUBERNETES::POD_READY_TIMEOUT`, and the *training* log shows only
+`SandboxInternalException('Network connectivity error: ')` wrapping an `httpcore.ReadTimeout` —
+which points at the network, not at credentials. Check the server log for the real reason:
+
+```bash
+kubectl -n opensandbox-system logs deploy/opensandbox-server-crun --tail=300 | grep -iE "state:|reason="
+```
+
+A ServiceAccount-level patch is the quick unblock without touching this template:
+
+```bash
+kubectl -n nmp-temp1 patch serviceaccount default \
+  -p '{"imagePullSecrets":[{"name":"nvcrimagepullsecret"}]}'
+```
+
 ## Node pinning (kata)
 
 Matches live `RuntimeClass/kata-qemu` scheduling on this cluster:
