@@ -88,11 +88,8 @@ describe('AgentEvaluationDetailRoute', () => {
       renderDetail();
       // Native score shown without a section heading
       expect(await screen.findByText('exact_match')).toBeInTheDocument();
-      // Runner section heading and scale note appear
-      expect(screen.getByText('Runner metrics')).toBeInTheDocument();
-      expect(
-        screen.getByText(/Scales are runner-defined and may not be comparable/)
-      ).toBeInTheDocument();
+      // Runner section heading appears
+      expect(screen.getByText('Runner Scores')).toBeInTheDocument();
       // Runner score label shown (displayMetricName strips the leading "runner." segment)
       expect(screen.getByText('gym.pass@1')).toBeInTheDocument();
     });
@@ -126,7 +123,7 @@ describe('AgentEvaluationDetailRoute', () => {
       );
       renderDetail();
       expect(await screen.findByText('exact_match')).toBeInTheDocument();
-      expect(screen.queryByText('Runner metrics')).not.toBeInTheDocument();
+      expect(screen.queryByText('Runner Scores')).not.toBeInTheDocument();
     });
   });
 });

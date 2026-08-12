@@ -300,13 +300,8 @@ export const AgentEvaluationDetailRoute: FC = () => {
                 />
                 {runnerScores.length > 0 && (
                   <Stack gap="density-sm">
-                    <Stack gap="density-xs">
-                      <Text kind="label/semibold/sm">Runner metrics</Text>
-                      <Text kind="body/regular/xs" color="secondary">
-                        Scales are runner-defined and may not be comparable to native scores above.
-                      </Text>
-                    </Stack>
-                    <EvalAggregateScoresTable scores={runnerScores} neutralScoreColor />
+                    <Text kind="body/semibold/md">Runner Scores</Text>
+                    <EvalAggregateScoresTable scores={runnerScores} disableScoreColoring />
                   </Stack>
                 )}
               </Stack>

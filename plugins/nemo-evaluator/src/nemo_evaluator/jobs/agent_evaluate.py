@@ -17,6 +17,7 @@ is written via :func:`~nemo_evaluator.jobs.result_persistence.persist_agent_eval
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -134,7 +135,7 @@ def _decode_metadata_value(value: str) -> Any:
     """
     if value.startswith(("{", "[")):
         try:
-            return __import__("json").loads(value)
+            return json.loads(value)
         except (ValueError, TypeError):
             pass
     return value

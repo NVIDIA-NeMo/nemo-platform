@@ -23,9 +23,9 @@ export interface EvalAggregateScoreRow {
 interface EvalAggregateScoresTableProps {
   scores: EvalAggregateScoreRow[];
   emptyMessage?: string;
-  /** When true every score badge is rendered gray — use for runner-contributed metrics
-   *  whose scale is runner-defined and cannot be mapped to the native [0, 1] traffic-light. */
-  neutralScoreColor?: boolean;
+  /** When true, score badges are rendered gray instead of the traffic-light color scale.
+   *  Use for runner-contributed metrics whose scale is runner-defined and not comparable to [0, 1]. */
+  disableScoreColoring?: boolean;
 }
 
 const VIEW_PREFIX = 'view.';
@@ -50,7 +50,7 @@ const displayScoreValue = (score: EvalAggregateScoreRow): number | null =>
 export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
   scores,
   emptyMessage = 'No scores recorded for this evaluation.',
-  neutralScoreColor = false,
+  disableScoreColoring = false,
 }) => {
   const dataViewState = useStudioDataViewState();
   const hasRubric = scores.some((score) => !!score.rubric_distribution?.length);
@@ -84,7 +84,7 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
         cell: ({ row }) => (
           <Badge
             kind="solid"
-            color={neutralScoreColor ? 'gray' : scoreColor(displayScoreValue(row.original))}
+            color={disableScoreColoring ? 'gray' : scoreColor(displayScoreValue(row.original))}
           >
             {formatScore(displayScoreValue(row.original))}
           </Badge>
@@ -137,7 +137,7 @@ export const EvalAggregateScoresTable: FC<EvalAggregateScoresTableProps> = ({
           ]
         : []),
     ],
-    [hasRubric, neutralScoreColor]
+    [hasRubric, disableScoreColoring]
   );
 
   if (scores.length === 0) {
