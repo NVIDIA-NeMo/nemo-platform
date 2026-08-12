@@ -1,15 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Publish a finished agent-eval run to Intake, when the spec asked for it.
+"""Publish a finished evaluation run to Intake, when the spec asked for it.
+
+Covers both shapes: ``publish_agent_eval_result`` for an agent-eval run, and
+``publish_row_eval_result`` for a dataset-driven one, which is adapted to the same
+``AgentEvalResult`` shape first (see ``intake.row_adapter``).
 
 ``publish_to_intake`` is deliberately not a side effect of ``AgentEvaluator.run()`` (AALGO-290):
 optionality is structural, you call it or you don't. ``spec.publication.intake`` keeps that shape —
 absent means no publish, and nothing here runs — while giving the job API a way to request it, which
 is what Studio needs to get evaluation runs into Experiments.
 
-``run`` is synchronous and the publisher is async, so the call goes through the same ``run_sync``
-bridge ``result_persistence`` uses for the entity write.
+``run`` is synchronous and the publisher is async, so the call goes through the same
+``run_with_isolated_async_sdk`` bridge ``result_persistence`` uses for the entity write.
 """
 
 from __future__ import annotations
