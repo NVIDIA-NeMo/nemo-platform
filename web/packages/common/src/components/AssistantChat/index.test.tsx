@@ -195,6 +195,29 @@ describe('AssistantChat', () => {
     interactionTimeoutMs
   );
 
+  it('allows a caller to render trusted Markdown links in messages', async () => {
+    mocks.createChatCompletion.mockResolvedValueOnce(
+      createCompletion('[Trace source](#zoomer-node=summary-1)')
+    );
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        workspace="default"
+        messageContentProps={{
+          markdownLinkComponent: ({ href, children }) => <a href={href}>{children}</a>,
+        }}
+      />
+    );
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Show evidence');
+    await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+    expect(await screen.findByRole('link', { name: 'Trace source' })).toHaveAttribute(
+      'href',
+      '#zoomer-node=summary-1'
+    );
+  });
+
   it('renders base64 images returned by an image model stream', async () => {
     const imageUrl = 'data:image/png;base64,iVBORw0KGgo=';
     const stream = {
