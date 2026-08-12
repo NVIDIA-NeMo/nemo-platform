@@ -5,6 +5,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
 import * as agentsSdk from '@nemo/sdk/generated/agents/api';
 import * as platformSdk from '@nemo/sdk/generated/platform/api';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
 import { PluginErrorBoundary } from '@studio/plugins/PluginErrorBoundary';
@@ -62,6 +63,7 @@ export const PluginRenderer = (): ReactElement => {
   const host = useMemo<PluginHost>(
     () => ({
       workspaceId: workspace,
+      apiBaseUrl: PLATFORM_BASE_URL ?? '',
       auth: { accessToken, getAccessToken },
       sdk: STUDIO_SDK,
       navigation: { navigate: (to) => navigate(to), back: () => navigate(-1) },

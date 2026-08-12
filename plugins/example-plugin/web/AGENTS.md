@@ -30,7 +30,7 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 | Deps | externalize the shared set in `vite.config.ts`; bundle the rest | bundle react / react-dom / react-router / foundations |
 
 Studio injects everything a plugin needs through a **single `host` prop**
-(`host.workspaceId`, `host.auth`, `host.sdk`, `host.navigation`,
+(`host.workspaceId`, `host.apiBaseUrl`, `host.auth`, `host.sdk`, `host.navigation`,
 `host.notifications`, `host.telemetry`, `host.breadcrumbs`) — grouped so new capabilities extend the
 handle without changing `Root`'s signature. Destructure what you use. All are
 backed by Studio's own singletons: `notifications` fires into Studio's shared
@@ -57,6 +57,12 @@ a private, unpublished package, so it is **not** a dependency here: `src/types.t
 declares a minimal structural `PluginSdk` covering only the hooks this example
 calls. A real plugin either mirrors the calls it needs the same way or, if it can
 resolve the SDK's types, types `host.sdk` as Studio does.
+
+`host.sdk` covers **platform** services only. A plugin that calls *its own*
+service ships its own client, and must prefix every request with
+`host.apiBaseUrl` — Studio's dev-server `/apis` proxy is opt-in, so a bare
+`/apis/...` request hits the dev server rather than the platform whenever
+`VITE_PLATFORM_BASE_URL` is set.
 
 ## Shared UI (`@nemo/common`)
 
@@ -111,6 +117,7 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
 {
   host: {
     workspaceId: string;
+    apiBaseUrl: string;
     auth: { accessToken: string; getAccessToken: () => string };
     sdk: {
       platform: /* @nemo/sdk platform hooks */;
