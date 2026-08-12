@@ -755,6 +755,11 @@ async def test_compile_rejects_reserved_secret_env_name() -> None:
         AgentTarget(agent=_agent(), params=RunConfigOnline()),
         CodexRunnerTarget(model="gpt-5.5"),
         HarborRunnerTarget(agent_name="oracle"),
+        GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
     ],
 )
 def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixture) -> None:
@@ -781,6 +786,8 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
         assert isinstance(fake.received_target, CodexCliAgentRuntime)
     elif isinstance(target, HarborRunnerTarget):
         assert isinstance(fake.received_target, HarborAgentTaskRunner)
+    elif isinstance(target, GymRunnerTarget):
+        assert isinstance(fake.received_target, GymAgentTaskRunner)
     elif isinstance(target, ModelTarget):
         assert getattr(fake.received_target, "name", None) == target.model.name
     else:
