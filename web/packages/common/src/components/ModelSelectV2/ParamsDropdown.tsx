@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { InferenceParameters } from '@nemo/common/src/components/ModelSelectV2/InferenceParameters';
+import {
+  InferenceParameters,
+  type InferenceParametersProps,
+} from '@nemo/common/src/components/ModelSelectV2/InferenceParameters';
 import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import {
   Button,
@@ -21,6 +24,7 @@ export interface ParamsDropdownProps {
   onOpenChange: (open: boolean) => void;
   inferenceParams?: Partial<InferenceParams>;
   onInferenceParamsChange?: (params: Partial<InferenceParams>) => void;
+  fieldMetadata?: InferenceParametersProps['fieldMetadata'];
 }
 
 export const ParamsDropdown: FC<ParamsDropdownProps> = ({
@@ -29,6 +33,7 @@ export const ParamsDropdown: FC<ParamsDropdownProps> = ({
   onOpenChange,
   inferenceParams = {},
   onInferenceParamsChange,
+  fieldMetadata,
 }) => (
   <DropdownRoot open={open} onOpenChange={onOpenChange}>
     <DropdownTrigger asChild showChevron={false}>
@@ -60,6 +65,7 @@ export const ParamsDropdown: FC<ParamsDropdownProps> = ({
           value={inferenceParams}
           onChange={onInferenceParamsChange ?? (() => {})}
           disabled={disabled}
+          fieldMetadata={fieldMetadata}
         />
       </Stack>
     </DropdownContent>
