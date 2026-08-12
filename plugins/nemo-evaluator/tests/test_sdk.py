@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec
+from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
     MetricBundlePackagerPolicyError,
@@ -20,12 +22,12 @@ from nemo_evaluator.sdk._executor import (
     _build_evaluate_spec,
     _SyncEvaluatorPluginExecutor,
     bundle_metrics_for_spec,
+    create_job_payload,
 )
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator.shared.metric_bundles.bundles import (
-    MetricBundle,
     MetricBundlePackager,
     MetricBundlePayload,
     bundle_metric,
@@ -65,11 +67,20 @@ _EXACT_MATCH_EVALUATE_INPUT_SPEC = EvaluateInputSpec.model_validate(_EXACT_MATCH
 _EXACT_MATCH_EVALUATE_INPUT_SPEC_JSON = _EXACT_MATCH_EVALUATE_INPUT_SPEC.model_dump(mode="json")
 
 
-def _single_metric(spec: EvaluateInputSpec | EvaluateSpec) -> MetricBundle:
+def _single_metric(spec: EvaluateInputSpec | EvaluateSpec) -> MetricInline:
     """Return the single metric from an evaluator job spec."""
     if len(spec.metrics) != 1:
         raise AssertionError("Expected a single metric spec.")
-    return spec.metrics[0]
+    metric = spec.metrics[0]
+    # `EvaluateInputSpec.metrics` also admits `MetricRef`; every caller here builds inline metrics.
+    assert isinstance(metric, MetricInline)
+    return metric
+
+
+def _metric_type(metric: MetricRefOrInline) -> str:
+    """Metric type of an inline metric, narrowing away the `MetricRef` arm of the union."""
+    assert isinstance(metric, MetricInline)
+    return metric.metric_type
 
 
 def _local_run_result(tmp_path: Path, result: EvaluationResult) -> EvaluatorLocalRunResult:
@@ -118,7 +129,8 @@ class _SyncPlatform:
     def __init__(self) -> None:
         self.base_url = "http://test:8000"
         self.workspace = "platform-ws"
-        self.default_headers = {"Authorization": "Bearer sync-platform-token"}
+        # Deliberately untyped values: one test sets a non-str header to prove they get filtered.
+        self.default_headers: dict[str, Any] = {"Authorization": "Bearer sync-platform-token"}
         self.timeout = httpx.Timeout(42.0)
         self._client = MagicMock(spec=httpx.Client)
 
@@ -159,9 +171,7 @@ def test_http_utils_builds_evaluator_job_creation_request_parts() -> None:
         "x-trace-id": 123,
     }
 
-    assert http_utils.create_job_payload(_EXACT_MATCH_EVALUATE_INPUT_SPEC) == {
-        "spec": _EXACT_MATCH_EVALUATE_INPUT_SPEC_JSON
-    }
+    assert create_job_payload(_EXACT_MATCH_EVALUATE_INPUT_SPEC) == {"spec": _EXACT_MATCH_EVALUATE_INPUT_SPEC_JSON}
     assert http_utils.platform_default_headers(cast(NeMoPlatform, platform)) == {
         "Authorization": "Bearer sync-platform-token"
     }
@@ -284,7 +294,7 @@ def test_build_evaluate_spec_uses_selected_packager_for_all_runtime_metrics() ->
     )
 
     assert packager.metrics == [metric_a, metric_b]
-    assert [metric.metric_type for metric in spec.metrics] == ["exact-match", "exact-match"]
+    assert [_metric_type(metric) for metric in spec.metrics] == ["exact-match", "exact-match"]
 
 
 def test_build_evaluate_spec_excludes_aggregate_fields() -> None:

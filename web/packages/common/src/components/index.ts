@@ -7,6 +7,7 @@ export * from '@nemo/common/src/components/buttons/VariableButton';
 export * from '@nemo/common/src/components/Chat/ChatEmptyState';
 export * from '@nemo/common/src/components/Chat/MessageContent';
 export * from '@nemo/common/src/components/CodeEditor';
+export * from '@nemo/common/src/components/ComparisonLineChart';
 export * from '@nemo/common/src/components/FilterFields';
 export * from '@nemo/common/src/components/form/VariableTextArea';
 export * from '@nemo/common/src/components/form/ControlledVariableTextArea';
