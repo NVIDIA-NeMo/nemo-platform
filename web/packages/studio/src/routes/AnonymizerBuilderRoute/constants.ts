@@ -286,8 +286,6 @@ export const ROLE_LABELS: Record<string, string> = {
 
 export const GLINER_ROLE = 'entity_detector';
 
-export const SAMPLING_PARAM_KEYS = ['temperature', 'top_p', 'max_tokens'] as const;
-
 /** GLiNER is a token-classification NIM: it takes labels and a threshold, not sampling params. */
 export const supportsSamplingParams = (role: string): boolean => role !== GLINER_ROLE;
 

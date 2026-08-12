@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  INFERENCE_PARAMETER_FIELDS,
+  type InferenceParameterField,
+} from '@nemo/common/src/components/ModelSelectV2/InferenceParameters';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import type {
   AnonymizerConfig,
@@ -35,7 +39,6 @@ import {
   REWRITE_STRATEGY,
   RISK_TOLERANCE_DEFAULT,
   RISK_TOLERANCE_ORDER,
-  SAMPLING_PARAM_KEYS,
   SOURCE_TYPE_DATASET,
   STRATEGY_ANNOTATE,
   STRATEGY_HASH,
@@ -221,7 +224,7 @@ const buildRoleParams = (
 ): Record<string, unknown> => {
   if (!supportsSamplingParams(role)) {
     const kept = Object.entries(overrides).filter(
-      ([key]) => !SAMPLING_PARAM_KEYS.includes(key as (typeof SAMPLING_PARAM_KEYS)[number])
+      ([key]) => !INFERENCE_PARAMETER_FIELDS.includes(key as InferenceParameterField)
     );
     return { timeout: DEFAULT_MODEL_TIMEOUT_SECONDS, ...Object.fromEntries(kept) };
   }

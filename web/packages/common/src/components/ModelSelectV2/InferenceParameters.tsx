@@ -8,11 +8,13 @@ import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Stack } from '@nvidia/foundations-react-core';
 import { type FC } from 'react';
 
-const FIELDS = ['temperature', 'max_tokens', 'top_p'] as const satisfies Array<
-  keyof typeof INFERENCE_HYPERPARAMETER_FIELD_METADATA
->;
+export const INFERENCE_PARAMETER_FIELDS = [
+  'temperature',
+  'max_tokens',
+  'top_p',
+] as const satisfies Array<keyof typeof INFERENCE_HYPERPARAMETER_FIELD_METADATA>;
 
-export type InferenceParameterField = (typeof FIELDS)[number];
+export type InferenceParameterField = (typeof INFERENCE_PARAMETER_FIELDS)[number];
 
 type FieldMetadata = HyperparameterFieldMetadata<
   Record<InferenceParameterField, number>
@@ -33,7 +35,7 @@ export const InferenceParameters: FC<InferenceParametersProps> = ({
   fieldMetadata,
 }) => (
   <Stack gap="4">
-    {FIELDS.map((key) => {
+    {INFERENCE_PARAMETER_FIELDS.map((key) => {
       const param = { ...INFERENCE_HYPERPARAMETER_FIELD_METADATA[key], ...fieldMetadata?.[key] };
       return (
         <SliderWithTextInput
