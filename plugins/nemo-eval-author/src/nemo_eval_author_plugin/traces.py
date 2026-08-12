@@ -37,7 +37,6 @@ DEFAULT_ROW_LIMIT = 100
 MAX_ROW_LIMIT = 1000
 DEFAULT_TRACE_LIMIT = 50
 MAX_TRACE_LIMIT = 200
-DEFAULT_SPAN_BUDGET = 1000
 _MAX_PAGE_SIZE = 100
 # Trace ids travel in the query string, so one wide ``$in`` can overrun the URL limit
 # of the server. At 50 ids the query stays near 2 KB.
@@ -159,9 +158,12 @@ async def query_spans(
         group_by: When set, roll the matching spans up server-side into one row per
             group. Only ``"trace_id"`` and ``"session_id"`` are groupable. Use this to
             get the distinct traces of any filter, then pass those ids to
-            ``query_traces``. Groups sort by span count only, never by time.
-        sort: ``"-started_at"`` (default, newest first) or ``"started_at"``. Ignored
-            when ``group_by`` is set.
+            ``query_traces``.
+        sort: ``"-started_at"`` (default, newest first) or ``"started_at"``. Grouped
+            results also take ``"-span_count"`` and ``"span_count"``, for the busiest
+            traces rather than the newest. A group's time is its earliest matching
+            span, so ``"-started_at"`` returns the traces whose matching work began
+            most recently.
         mode: ``"summary"`` omits payloads, ``"preview"`` truncates them, ``"detailed"``
             returns them in full. Stay on ``"summary"``, which is all that choosing a
             trace needs. Payloads pulled from many traces at once are the fragments this
@@ -171,7 +173,9 @@ async def query_spans(
     Returns:
         Flat: ``{"spans": [...], "count": int, "truncated": bool}``. Grouped:
         ``{"groups": [...], "grouped_by": str, "count": int, "truncated": bool}``,
-        where a group is ``{"group": {...}, "span_count": int}``. Rows that belong to a
+        where a group is ``{"group": {...}, "span_count": int, "started_at": str}``.
+        A group's counts and time cover only the spans that matched, so use
+        ``query_traces`` for whole-trace totals. Rows that belong to a
         trace also carry ``trace_ref`` for ``read_trace``. ``truncated`` means that more
         rows matched than ``limit``, so narrow the filter or raise ``limit``.
 
@@ -182,13 +186,13 @@ async def query_spans(
     kwargs: dict[str, Any] = {"workspace": workspace, "page_size": _page_size(limit)}
     if filter is not None:
         kwargs["filter"] = cast(Any, filter)
+    kwargs["sort"] = sort or "-started_at"
     try:
         if group_by is not None:
             rows, truncated = await _drain(client.intake.spans.groups.list(by=group_by, **kwargs), limit=limit)
             groups = [_with_trace_ref(row) for row in rows]
             return {"groups": groups, "grouped_by": group_by, "count": len(groups), "truncated": truncated}
         kwargs["mode"] = mode
-        kwargs["sort"] = sort or "-started_at"
         rows, truncated = await _drain(client.intake.spans.list(**kwargs), limit=limit)
         spans = [_with_trace_ref(row) for row in rows]
         return {"spans": spans, "count": len(spans), "truncated": truncated}
@@ -261,14 +265,14 @@ async def find_agent_traces(
     workspace: str,
     since: datetime | None = None,
     limit: int = DEFAULT_TRACE_LIMIT,
-    span_budget: int = DEFAULT_SPAN_BUDGET,
 ) -> dict[str, Any]:
     """Find the most recent traces of one agent, newest first.
 
-    No single endpoint answers this. The scan walks spans newest first for the
-    distinct trace ids, because only spans carry ``agent_name`` and span groups do
-    not sort by time. It then reads the summary of exactly those ids, because counts
-    taken from the scanned window alone would be lower bounds.
+    Two calls, because no single endpoint answers this. Grouping spans by trace id
+    gives the traces an agent touched, since only spans carry ``agent_name``, and
+    sorting those groups by time gives the recent ones. Reading the summary of
+    exactly those ids then gives whole-trace counts, which a group cannot report
+    because a group counts only the spans that matched the filter.
 
     Args:
         client: Platform client.
@@ -276,7 +280,6 @@ async def find_agent_traces(
         workspace: Workspace to search.
         since: Optional lower bound on span start time.
         limit: Maximum traces to return. Clamped to ``MAX_TRACE_LIMIT``.
-        span_budget: Maximum spans to scan before stopping.
 
     Returns:
         ``{"traces": [...], "count": int, "truncated": bool}``, and a ``note`` when
@@ -293,27 +296,17 @@ async def find_agent_traces(
     if since is not None:
         span_filter["started_at"] = {"gte": since.isoformat()}
 
-    scan = await query_spans(
+    grouped = await query_spans(
         client,
         workspace=workspace,
         filter=span_filter,
+        group_by="trace_id",
         sort="-started_at",
-        mode="summary",
-        limit=span_budget,
+        limit=limit,
     )
 
-    ordered: list[str] = []
-    seen: set[str] = set()
-    truncated = scan["truncated"]
-    for row in scan["spans"]:
-        trace_id = row.get("trace_id")
-        if not trace_id or trace_id in seen:
-            continue
-        if len(ordered) >= limit:
-            truncated = True
-            break
-        seen.add(trace_id)
-        ordered.append(trace_id)
+    truncated = grouped["truncated"]
+    ordered = [row["group"]["trace_id"] for row in grouped["groups"]]
 
     summaries: dict[str, dict[str, Any]] = {}
     for start in range(0, len(ordered), _TRACE_ID_CHUNK):
@@ -331,6 +324,9 @@ async def find_agent_traces(
             summaries[row["id"]] = row
 
     traces = [_trace_entry(trace_id, summaries.get(trace_id)) for trace_id in ordered]
+    # The server ordered the groups by the agent's earliest span, but each row reports the
+    # whole trace's start. Ordering by the time the row actually shows keeps the list
+    # readable, rather than descending by a number the caller cannot see.
     traces.sort(key=lambda entry: entry["started_at"] or "", reverse=True)
 
     result: dict[str, Any] = {"traces": traces, "count": len(traces), "truncated": truncated}

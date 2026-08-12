@@ -40,6 +40,11 @@ def _span(trace_id: str | None, *, minute: int, **fields: Any) -> _Row:
     return _Row(trace_id=trace_id, started_at=_at(minute), span_id=f"s-{minute}", **fields)
 
 
+def _group(trace_id: str, *, span_count: int = 1) -> _Row:
+    """One row of ``spans.groups.list`` grouped by trace id."""
+    return _Row(group={"trace_id": trace_id}, span_count=span_count)
+
+
 def _summary(trace_id: str, *, minute: int, **fields: Any) -> _Row:
     return _Row(
         id=trace_id,
@@ -171,6 +176,15 @@ async def test_query_spans_groups_server_side() -> None:
     assert result["groups"][0]["span_count"] == 12
 
 
+async def test_grouped_queries_take_a_sort_of_their_own() -> None:
+    """Groups sort by size as well as by time, so a caller's choice must reach the server."""
+    client = _client(groups=[_group("t-1", span_count=12)])
+
+    await traces.query_spans(client, workspace="ws", group_by="trace_id", sort="-span_count")
+
+    assert client.group_calls[0]["sort"] == "-span_count"
+
+
 async def test_every_span_row_carries_the_way_back_to_its_trace() -> None:
     """A span read alone loses the trajectory around it, so the ref home travels with it."""
     client = _client(spans=[_span("t-1", minute=5, tool_name="search")])
@@ -211,14 +225,23 @@ async def test_query_traces_defaults_to_preview_for_the_rollups() -> None:
 # --- the composite -----------------------------------------------------------------
 
 
-async def test_find_agent_traces_dedupes_and_orders_newest_first() -> None:
+async def test_find_agent_traces_asks_the_server_to_group_and_sort() -> None:
+    # The whole point of the grouped call: one request returns the agent's recent
+    # traces. Draining spans to collect ids only ever found the traces that fit
+    # inside the scanned window, so the span endpoint must go untouched.
+    client = _client(groups=[_group("t-1")], summaries=[_summary("t-1", minute=10)])
+
+    await traces.find_agent_traces(client, agent="aut", workspace="ws")
+
+    assert client.group_calls[0]["by"] == "trace_id"
+    assert client.group_calls[0]["sort"] == "-started_at"
+    assert client.group_calls[0]["filter"] == {"agent_name": "aut"}
+    assert client.span_calls == []
+
+
+async def test_find_agent_traces_orders_newest_first() -> None:
     client = _client(
-        spans=[
-            _span("t-new", minute=50),
-            _span("t-old", minute=20),
-            _span("t-new", minute=40),
-            _span(None, minute=15),
-        ],
+        groups=[_group("t-new"), _group("t-old")],
         summaries=[_summary("t-new", minute=40), _summary("t-old", minute=10)],
     )
 
@@ -231,10 +254,11 @@ async def test_find_agent_traces_dedupes_and_orders_newest_first() -> None:
 
 
 async def test_find_agent_traces_uses_the_server_summary() -> None:
-    # The scan sees two spans and no error. The server knows the trace holds 40 spans
-    # and three errors. Counting the window alone would report a healthy trace.
+    # A group counts only the spans that matched the filter, so it reports one span and
+    # no errors. The server knows the trace holds 40 spans and three errors. The group
+    # alone would report a healthy trace.
     client = _client(
-        spans=[_span("t-1", minute=50), _span("t-1", minute=49)],
+        groups=[_group("t-1")],
         summaries=[_summary("t-1", minute=10, status="error", span_count=40, error_count=3, name="run")],
     )
 
@@ -252,7 +276,7 @@ async def test_find_agent_traces_uses_the_server_summary() -> None:
 async def test_find_agent_traces_keeps_a_trace_with_no_summary() -> None:
     # A trace whose root span was never ingested has no traces.list row. It must still
     # be returned, and its unknown fields must not read as zero.
-    client = _client(spans=[_span("t-1", minute=30)], summaries=[])
+    client = _client(groups=[_group("t-1")], summaries=[])
 
     result = await traces.find_agent_traces(client, agent="aut", workspace="ws")
 
@@ -265,27 +289,18 @@ async def test_find_agent_traces_keeps_a_trace_with_no_summary() -> None:
 
 async def test_find_agent_traces_chunks_trace_ids() -> None:
     client = _client(
-        spans=[_span(f"t-{index}", minute=index) for index in range(120)],
+        groups=[_group(f"t-{index}") for index in range(120)],
         summaries=[_summary(f"t-{index}", minute=index) for index in range(120)],
     )
 
-    result = await traces.find_agent_traces(client, agent="aut", workspace="ws", limit=120, span_budget=200)
+    result = await traces.find_agent_traces(client, agent="aut", workspace="ws", limit=120)
 
     assert result["count"] == 120
     assert [len(call["filter"]["id"]["$in"]) for call in client.trace_calls] == [50, 50, 20]
 
 
-async def test_find_agent_traces_truncates_on_the_span_budget() -> None:
-    client = _client(spans=[_span(f"t-{index}", minute=index) for index in range(10)])
-
-    result = await traces.find_agent_traces(client, agent="aut", workspace="ws", span_budget=4)
-
-    assert result["count"] == 4
-    assert result["truncated"] is True
-
-
 async def test_find_agent_traces_truncates_on_the_trace_limit() -> None:
-    client = _client(spans=[_span(f"t-{index}", minute=index) for index in range(10)])
+    client = _client(groups=[_group(f"t-{index}") for index in range(10)])
 
     result = await traces.find_agent_traces(client, agent="aut", workspace="ws", limit=3)
 
@@ -299,7 +314,7 @@ async def test_find_agent_traces_sends_since() -> None:
 
     await traces.find_agent_traces(client, agent="aut", workspace="ws", since=since)
 
-    assert client.span_calls[0]["filter"] == {"agent_name": "aut", "started_at": {"gte": since.isoformat()}}
+    assert client.group_calls[0]["filter"] == {"agent_name": "aut", "started_at": {"gte": since.isoformat()}}
 
 
 async def test_find_agent_traces_empty_result_is_not_an_error() -> None:
@@ -441,6 +456,7 @@ async def test_agent_trace_tools_say_what_is_missing() -> None:
 async def test_agent_trace_tools_delegate() -> None:
     client = _client(
         spans=[_span("t-1", minute=10)],
+        groups=[_group("t-1")],
         summaries=[_summary("t-1", minute=10, span_count=7)],
     )
     eval_author = _agent(client, "ws")

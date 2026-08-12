@@ -126,8 +126,9 @@ class EvalAuthor(Agent):
 
         Write your own filter. The server does the narrowing, which is exact, so
         prefer one precise filter over counting a wide result yourself. Group by
-        ``trace_id`` to turn any filter into the set of traces that match it, then
-        pass those ids to ``query_traces``.
+        ``trace_id`` to turn any filter into the set of traces that match it, newest
+        first, then pass those ids to ``query_traces``. Grouped rows also sort by
+        ``-span_count`` when you want the busiest traces instead of the newest.
 
         See ``nemo_eval_author_plugin.traces.query_spans`` for the filter vocabulary.
         """
@@ -169,8 +170,9 @@ class EvalAuthor(Agent):
         """Find the most recent production traces of one agent, newest first.
 
         Start here when you need real traces and hold no trace refs. No single
-        endpoint answers this, so it scans spans for the trace ids and then reads
-        their summaries. Open the ones worth reading with ``read_trace``.
+        endpoint answers this, so it groups spans by trace to find the recent ones
+        and then reads their summaries. Open the ones worth reading with
+        ``read_trace``.
 
         Args:
             agent: Value that the agent reports to Intake as ``agent_name``.
