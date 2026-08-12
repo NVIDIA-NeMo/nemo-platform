@@ -58,6 +58,40 @@ def build_verifiers_agent_yaml(vf_env_id: str, vf_env_args: dict[str, Any]) -> d
     }
 
 
+def build_policy_model_yaml() -> dict[str, Any]:
+    """Define the ``responses_api_models/policy_model`` server the agent references.
+
+    ``verifiers_agent.model_server`` points at ``responses_api_models/policy_model`` (matching
+    NeMo-Gym's own shipped agent configs), but nothing defines that server unless a second
+    config supplies it. Without it Gym fails the merged-config check with
+    ``ServerRefNotFoundError: ... Available responses_api_models: (none)``.
+
+    Mirrors NeMo-Gym's ``responses_api_models/vllm_model/configs/vllm_model_for_training.yaml``.
+    The three interpolations resolve against the global config NeMo-RL injects at spin-up
+    (``policy_base_url`` / ``policy_api_key`` / ``policy_model_name`` — see
+    ``build_sandbox_global_config`` in nemo_rl.environments.sandbox.nemo_gym_actor), so this
+    points Gym at the vLLM engine NeMo-RL is already running rather than starting its own.
+
+    Shipped inside the package rather than referenced from the Gym source tree: the sandbox
+    mounts the package, so a self-contained config does not depend on the runtime image's
+    directory layout.
+    """
+    return {
+        "policy_model": {
+            "responses_api_models": {
+                "vllm_model": {
+                    "entrypoint": "app.py",
+                    "base_url": "${policy_base_url}",
+                    "api_key": "${policy_api_key}",
+                    "model": "${policy_model_name}",
+                    "return_token_id_information": True,
+                    "uses_reasoning_parser": True,
+                }
+            }
+        }
+    }
+
+
 def write_adapter_wheels_package(
     *,
     out_dir: Path,
@@ -80,7 +114,11 @@ def write_adapter_wheels_package(
             agent=adapter_agent,
             image_config_root=image_root,
         ),
-        config_paths=["configs/verifiers_agent.yaml"],
+        # policy_model first: it defines the responses_api_models server that the agent's
+        # model_server field references. Gym merges all config_paths before validating refs,
+        # so order is not strictly required, but declaring the server before its consumer
+        # keeps the package readable.
+        config_paths=["configs/policy_model.yaml", "configs/verifiers_agent.yaml"],
         metadata=EnvironmentManifestMetadata(
             name=vf_env_id.replace("_", "-"),
             description=description or f"Prime Intellect {hub_id} via Gym {adapter_agent}",
@@ -105,6 +143,10 @@ def write_adapter_wheels_package(
     agent_yaml = build_verifiers_agent_yaml(vf_env_id, vf_env_args)
     (out_dir / "configs" / "verifiers_agent.yaml").write_text(
         yaml.safe_dump(agent_yaml, sort_keys=False),
+        encoding="utf-8",
+    )
+    (out_dir / "configs" / "policy_model.yaml").write_text(
+        yaml.safe_dump(build_policy_model_yaml(), sort_keys=False),
         encoding="utf-8",
     )
     (out_dir / "nemo-environment.yaml").write_text(
