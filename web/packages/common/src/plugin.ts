@@ -6,19 +6,11 @@
 
 export { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 export { AccordionSection } from '@nemo/common/src/components/AccordionSection';
-// CancelJobButton is deliberately NOT exported: it imports
-// @nemo/sdk/generated/platform/api, whose fetcher pulls axios and
-// oidc-client-ts — and those resolve Node builtins (crypto, http, url) in the
-// vendor build, which the browser cannot resolve. Adding it here breaks *every*
-// plugin's dynamic import, not just the one using it. A plugin that needs it
-// builds its own on host.sdk.platform.
+// CancelJobButton is deliberately NOT exported
 export { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
 export { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 export type { AccordionSectionProps } from '@nemo/common/src/components/AccordionSection';
-// ErrorPanel is deliberately NOT exported: it reaches axios through
-// api/common/utils, and axios resolves Node builtins (crypto, http, url) in the
-// vendor build — which the browser cannot resolve, breaking the dynamic import
-// of *every* plugin, not just one that uses it.
+// ErrorPanel is deliberately NOT exported
 export { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
 export { FileTag } from '@nemo/common/src/components/FileTag';
 export type { FileTagProps, FileTagStatus } from '@nemo/common/src/components/FileTag';
