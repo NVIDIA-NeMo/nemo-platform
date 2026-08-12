@@ -109,7 +109,11 @@ class VerifiersAgentInstanceConfig(BaseModel):
     max_tokens: int = 8192
     temperature: float = 1.0
     top_p: float = 1.0
-    domain: str = ""
+    # NeMo-Gym validates this against a closed set (math, coding, agent, knowledge,
+    # instruction_following, long_context, safety, games, translation, e2e, rlhf, other) when
+    # it parses the global config, and an empty string makes the whole server an
+    # "almost-server" that is silently not started
+    domain: str = "other"
     description: str = ""
     value: str = ""
     group_size: int = 1

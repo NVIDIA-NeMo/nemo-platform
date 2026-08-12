@@ -8,12 +8,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 from nmp.rl.schemas.environment import (
     AdapterWheelsV1Manifest,
     EnvironmentFormat,
     GymVerifiersDatasetRow,
 )
 from nmp.rl.tasks.environment.package import (
+    build_policy_model_yaml,
     build_verifiers_agent_yaml,
     write_adapter_wheels_package,
 )
@@ -121,6 +123,66 @@ def test_verifiers_agent_yaml_shape() -> None:
     doc = build_verifiers_agent_yaml("ascii-tree", {})
     assert "verifiers_agent" in doc
     assert doc["verifiers_agent"]["responses_api_agents"]["verifiers_agent"]["vf_env_id"] == "ascii-tree"
+
+
+# NeMo-Gym's global-config parse validates `domain` against this closed set. An out-of-set
+# value (notably "") demotes the server to an "almost-server" that never starts, and the Gym
+# host exits with AlmostServerError — inside the sandbox, minutes into a GRPO run.
+GYM_DOMAINS = {
+    "math",
+    "coding",
+    "agent",
+    "knowledge",
+    "instruction_following",
+    "long_context",
+    "safety",
+    "games",
+    "translation",
+    "e2e",
+    "rlhf",
+    "other",
+}
+
+
+def test_verifiers_agent_yaml_domain_is_a_valid_gym_domain() -> None:
+    inner = build_verifiers_agent_yaml("ascii-tree", {})["verifiers_agent"]["responses_api_agents"]["verifiers_agent"]
+    assert inner["domain"] in GYM_DOMAINS
+
+
+def test_package_defines_the_model_server_the_agent_references(tmp_path: Path) -> None:
+    """The agent's model_server ref must resolve inside the package itself.
+
+    verifiers_agent points at responses_api_models/policy_model. If nothing defines that
+    server, Gym rejects the merged config with ServerRefNotFoundError ("Available
+    responses_api_models: (none)") and the Gym host never starts.
+    """
+    wheels = tmp_path / "src_wheels"
+    wheels.mkdir()
+    (wheels / "fake-1.0.0-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+    out = tmp_path / "env"
+    manifest = write_adapter_wheels_package(out_dir=out, hub_id="primeintellect/ascii-tree", wheels_src=wheels)
+
+    agent = yaml.safe_load((out / "configs" / "verifiers_agent.yaml").read_text())
+    ref = agent["verifiers_agent"]["responses_api_agents"]["verifiers_agent"]["model_server"]
+
+    policy = yaml.safe_load((out / "configs" / "policy_model.yaml").read_text())
+    assert ref["name"] in policy, f"agent references {ref['name']!r}, package defines {list(policy)}"
+    assert ref["type"] in policy[ref["name"]]
+
+    # Both configs must be listed, or Gym never loads the half that is missing.
+    assert set(manifest.config_paths) == {"configs/policy_model.yaml", "configs/verifiers_agent.yaml"}
+
+
+def test_policy_model_interpolations_match_what_nemo_rl_injects() -> None:
+    """The ${...} keys must line up with build_sandbox_global_config in NeMo-RL.
+
+    That function sets policy_model_name / policy_api_key / policy_base_url on the Gym global
+    config. A rename on either side leaves OmegaConf with an unresolvable interpolation.
+    """
+    server = build_policy_model_yaml()["policy_model"]["responses_api_models"]["vllm_model"]
+    assert server["base_url"] == "${policy_base_url}"
+    assert server["api_key"] == "${policy_api_key}"
+    assert server["model"] == "${policy_model_name}"
 
 
 def test_bootstrap_adapter_wheels_validate_only(tmp_path: Path) -> None:
