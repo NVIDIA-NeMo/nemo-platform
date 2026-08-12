@@ -111,3 +111,23 @@ def test_resolve_ephemeral_work_path_uses_tmp_when_no_scratch() -> None:
     path = resolve_ephemeral_work_path("abc123")
     assert path.endswith("/nmp-rl/abc123/work")
     assert path.startswith("/scratch/") or path.startswith("/tmp/")
+
+
+def test_egress_is_operator_scoped_not_per_job() -> None:
+    """The job schema must have no path to widen sandbox egress.
+
+    allow_internet is the single lever, sourced from the compiler. NeMo-RL's public_dns_allow
+    is not mirrored, so there is no field a submission could populate.
+    """
+    from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
+        SandboxConfig,
+        SandboxNetworkPolicy,
+    )
+
+    assert "public_dns_allow" not in SandboxNetworkPolicy.model_fields
+    with pytest.raises(ValidationError):
+        SandboxNetworkPolicy(public_dns_allow=("evil.example",))
+
+    common = {"environment_pvc_claim": "c", "workspace_pvc_claim": "c"}
+    assert SandboxConfig(image="i", **common).allow_internet is False
+    assert SandboxConfig(image="i", allow_internet=True, **common).allow_internet is True
