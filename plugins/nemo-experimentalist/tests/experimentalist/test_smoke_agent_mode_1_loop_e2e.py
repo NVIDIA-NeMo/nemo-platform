@@ -21,7 +21,10 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
-_PLATFORM_URL = "http://localhost:8080"
+# Honours NMP_BASE_URL so the same tests run against a Platform that is not on this
+# host -- from inside an sbx sandbox the host is `host.docker.internal`, and
+# `localhost` would resolve to the sandbox itself.
+_PLATFORM_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 _WORKSPACE = "smoke-agent"
 _NO_PROXY = "localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
 _DEFAULT_MODEL = os.environ.get("NEMO_DEFAULT_MODEL", "default/openai-openai-gpt-5-6-terra")
@@ -135,10 +138,32 @@ class _E2EEnvironment:
     fast_model: str
 
 
+def _require_sandbox() -> None:
+    """Refuse to run outside a sandbox.
+
+    The loop drives NOOA agents whose CodeAct tools execute model-written shell -- the
+    Coder, `fill_task_template`, `author_insight_metrics`. On a developer machine that
+    runs with the developer's privileges: credentials, keys, the whole home directory,
+    unrestricted network. Copying the fixture into `tmp_path` bounds where the intended
+    work happens, not where the process can reach, and a Coder has already been observed
+    writing outside its working directory into the repository checkout.
+
+    `sbx` sets SANDBOX_VM_ID. The override exists for CI images that isolate by other
+    means, and has to be set deliberately.
+    """
+    if os.environ.get("SANDBOX_VM_ID") or os.environ.get("SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED") == "1":
+        return
+    pytest.skip(
+        "refusing to run outside a sandbox: this executes model-written shell with your "
+        "privileges. Run under `sbx`, or set SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED=1."
+    )
+
+
 def _require_e2e_environment() -> _E2EEnvironment:
     """Check that the host services required by the handover procedure are available."""
     if os.environ.get("SMOKE_AGENT_E2E") != "1":
         pytest.skip("set SMOKE_AGENT_E2E=1 to run smoke-agent E2E tests")
+    _require_sandbox()
     platform = subprocess.run(
         ["curl", "-sf", f"{_PLATFORM_URL}/health/ready"],
         capture_output=True,
