@@ -1273,7 +1273,7 @@ class TestEvaluateJobRun:
         result = _empty_evaluation_result()
         result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
-        evaluator.run_sync.return_value = result
+        evaluator.run_dataset_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
         downloaded_path = tmp_path / "persistent" / "dataset" / "default" / "helpsteer2" / "validation.jsonl"
         download_dataset = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset", create=True)
