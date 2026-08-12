@@ -197,7 +197,7 @@ overrides:
 
   # Specialized
   betterproto: MIT # Better protobuf support
-  cut-cross-entropy: APSL-2.0 # https://github.com/unslothai/cut-cross-entropy/blob/main/LICENSE, but it appears to be unsloth's fork https://pypi.org/project/cut-cross-entropy/
+  cut-cross-entropy: LicenseRef-Apple-Custom # https://github.com/unslothai/cut-cross-entropy/blob/main/LICENSE; license text and acknowledgements in LICENSES/cut-cross-entropy-25.1.1.txt
 
   # Miscellaneous
   hf-transfer: Apache-2.0 # HuggingFace transfer library https://github.com/huggingface/hf_transfer/blob/main/LICENSE

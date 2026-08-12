@@ -68,6 +68,24 @@ services/auditor/third-party/
   source code is present; Garak is installed at build time from PyPI.
 
 --------------------------------------------------------------------------------
+cut-cross-entropy 25.1.1
+  Scope: Transitive Python dependency of Unsloth components distributed in
+  Linux GPU runtime environments.
+  Home: https://github.com/unslothai/cut-cross-entropy
+  Upstream forked from: https://github.com/apple/ml-cross-entropy
+  License: LicenseRef-Apple-Custom
+    See LICENSES/cut-cross-entropy-25.1.1.txt
+  License text and acknowledgements:
+    LICENSES/cut-cross-entropy-25.1.1.txt
+
+  The PyPI wheel for cut-cross-entropy 25.1.1 includes Apple's license text but
+  does not include the upstream ACKNOWLEDGEMENTS.md file referenced by that
+  license text. NeMo Platform preserves those acknowledgements at
+  LICENSES/cut-cross-entropy-25.1.1.txt.
+  No dual-license basis was verified; the upstream acknowledgements list
+  subcomponent notices for PyTorch, Triton, and Transformers.
+
+--------------------------------------------------------------------------------
 cyrus-sasl2 / Cyrus SASL
   License: BSD-4-Clause
   Copyright (c) 1998-2003 Carnegie Mellon University. All rights reserved.
