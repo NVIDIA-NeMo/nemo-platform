@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
+import { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useIronSwarmApplyMitigation } from '@nemo/sdk/generated/iron-swarm/api';
 import {
@@ -14,7 +16,6 @@ import {
   Switch,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccordionSection } from '@studio/components/AccordionSection';
 import { SanityCheckReport } from '@studio/components/ironSwarm/SanityCheckReport';
 import {
   cleanAttackPrompt,
@@ -30,7 +31,6 @@ import {
   useSubmitSanityCheck,
 } from '@studio/components/ironSwarm/useSanityCheck';
 import { YamlDiff } from '@studio/components/ironSwarm/YamlDiff';
-import { ConfirmationModal } from '@studio/components/modals/ConfirmationModal';
 import { FC, useEffect, useState } from 'react';
 
 interface HardenPanelProps {

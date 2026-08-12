@@ -5,7 +5,7 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { ironSwarmListRuns, useIronSwarmCreateJob } from '@nemo/sdk/generated/iron-swarm/api';
 import type { IronSwarmRun } from '@nemo/sdk/generated/iron-swarm/schema';
 import { getIronSwarmRunDetailsRoute, getIronSwarmRunListRoute } from '@studio/routes/utils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 // Submit the war-game job for a manifest and open the run it creates. The service-driven job creates its
 // run record shortly after it starts (linked by job_id), so we poll the newest runs for that link and

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { CancelJobButton } from '@nemo/common/src/components/CancelJobButton';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import { useIronSwarmGetRun } from '@nemo/sdk/generated/iron-swarm/api';
@@ -19,8 +21,6 @@ import {
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { CancelJobButton } from '@studio/components/CancelJobButton';
 import { HardenPanel } from '@studio/components/ironSwarm/HardenPanel';
 import {
   pendingInterview,
@@ -40,7 +40,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIronSwarmRunListRoute } from '@studio/routes/utils';
 import { FC, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 const Pill: FC<{ label: string; tone?: 'good' | 'active' }> = ({ label, tone }) => (
   <span

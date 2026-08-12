@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -22,8 +24,6 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { useInspectAgent } from '@studio/api/ironSwarm';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { AccordionSection } from '@studio/components/AccordionSection';
 import { fetchAgentsForSelect } from '@studio/components/agents/AgentBlockingInput/agentQueries';
 import { ModelGroupFields } from '@studio/components/ironSwarm/ModelGroupFields';
 import { ProjectManifestWizard } from '@studio/components/ironSwarm/ProjectManifestWizard';
@@ -33,7 +33,7 @@ import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@studio
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
+import { FileUpload } from '@nemo/common/src/components/FileUpload';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -12,8 +14,6 @@ import {
 import type { InspectProjectResponse, WarGameModels } from '@nemo/sdk/generated/iron-swarm/schema';
 import { AccordionRoot, Banner, Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { useUploadProjectFileset } from '@studio/api/ironSwarm';
-import { AccordionSection } from '@studio/components/AccordionSection';
-import { FileUpload } from '@studio/components/FileUpload';
 import { ModelGroupFields } from '@studio/components/ironSwarm/ModelGroupFields';
 import { FC, useState } from 'react';
 import { useForm } from 'react-hook-form';

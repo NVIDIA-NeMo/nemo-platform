@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
+import { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
+import { FileUpload } from '@nemo/common/src/components/FileUpload';
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
@@ -31,9 +35,6 @@ import {
   TextInput,
 } from '@nvidia/foundations-react-core';
 import { useUploadBenignSuiteFileset, useUploadHitlogFileset } from '@studio/api/ironSwarm';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { AccordionSection } from '@studio/components/AccordionSection';
-import { FileUpload } from '@studio/components/FileUpload';
 import { BenignInterviewCard } from '@studio/components/ironSwarm/BenignInterviewCard';
 import { BenignSuiteTable } from '@studio/components/ironSwarm/BenignSuiteTable';
 import type { SuiteRow } from '@studio/components/ironSwarm/hitlTypes';
@@ -44,13 +45,12 @@ import { ReviewPanel } from '@studio/components/ironSwarm/ReviewPanel';
 import { TargetPanel } from '@studio/components/ironSwarm/TargetPanel';
 import { useGenerateBenignSuite } from '@studio/components/ironSwarm/useGenerateBenignSuite';
 import { useRunWarGame } from '@studio/components/ironSwarm/useRunWarGame';
-import { ConfirmationModal } from '@studio/components/modals/ConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { FC, useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 type AttackIntensity = 'light' | 'standard' | 'thorough';
 const INTENSITY_LABEL: Record<AttackIntensity, string> = {
