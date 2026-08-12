@@ -312,6 +312,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             sandbox_dataset_path=SANDBOX_DATASET_PATH if sandboxed else None,
             sandboxed=sandboxed,
             gym_runtime_image=config.gym_runtime_image or get_training_image(),
+            allow_internet=config.sandbox_allow_internet,
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,

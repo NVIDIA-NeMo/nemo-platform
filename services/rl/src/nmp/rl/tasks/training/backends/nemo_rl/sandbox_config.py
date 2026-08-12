@@ -37,6 +37,11 @@ class SandboxConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     image: str
+    # The only egress lever the platform sets; NeMo-RL owns which suffixes it opens. Sourced
+    # from platformConfig.rl.sandbox_allow_internet, so it is per-deployment, never per-job.
+    # NeMo-RL's public_dns_allow is deliberately not mirrored: with no field to populate, the
+    # job schema has no path to widen egress.
+    allow_internet: bool = False
     env_mount_path: str = "/job/environment"
     dataset_mount_path: str = "/job/dataset"
     work_mount_path: str = "/job/work"

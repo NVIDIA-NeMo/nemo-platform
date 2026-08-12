@@ -398,3 +398,24 @@ def test_compile_grpo_config_disables_triton_for_tp(
     # only; here we only compile YAML so TP is just a knob on lora_cfg.
     cfg = compile_grpo_config(step, job_ctx)
     assert cfg["policy"]["dtensor_cfg"]["lora_cfg"]["use_triton"] is False
+
+
+def test_sandbox_egress_comes_from_the_compiled_step_not_service_config(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """allow_internet must follow gym.allow_internet on the step config.
+
+    RlConfig is not readable from the training pod, so the compiler resolves the operator
+    setting and passes it through. Reading it here instead would silently use the default.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    step.gym.allow_internet = False
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["allow_internet"] is False
+
+    step.gym.allow_internet = True
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["allow_internet"] is True

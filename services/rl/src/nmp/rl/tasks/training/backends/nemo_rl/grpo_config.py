@@ -203,6 +203,7 @@ def _build_nemo_gym_env_config(
                 dataset_mount_path=SANDBOX_DATASET_PATH,
                 # Sandbox mount is /job/work; ephemeral host work prefers /scratch or /tmp.
                 work_mount_path=SANDBOX_WORK_PATH,
+                allow_internet=gym.allow_internet,
                 network_policy=SandboxNetworkPolicy(
                     # Defaults until the training master resolves live vLLM/broker endpoints.
                     egress_allow=assemble_master_egress_allow(),
