@@ -293,6 +293,19 @@ class NemoRLLogger(LoggerInterface):
         """
         return None
 
+    def finish(self) -> None:
+        """Alias for :meth:`close` under the name NeMo-RL's composite fans out.
+
+        ``nemo_rl.utils.logger.Logger`` has no ``close()`` at all; its only
+        teardown hook is ``finish()``, dispatched via
+        ``getattr(logger, "finish", None)``. Without this method the composite
+        silently skips us and the withheld final step is never flushed. The
+        drivers also call ``close()`` directly, because ``grpo_train``/
+        ``dpo_train`` never invoke ``finish()`` either -- only the
+        single-controller path does.
+        """
+        self.close()
+
     def close(self) -> None:
         """Flush any withheld final step, then clean up resources."""
         if self._closed:

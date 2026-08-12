@@ -139,6 +139,7 @@ def main() -> None:
 
     job_ctx = NMPJobContext.from_env()
     print(f"Job context loaded (job_id={job_ctx.job_id})")
+    customizer_logger: NemoRLLogger | None = None
     if job_ctx.jobs_url:
         customizer_logger = NemoRLLogger.for_schedule(
             job_ctx=job_ctx,
@@ -167,6 +168,14 @@ def main() -> None:
             master_config,
         )
     finally:
+        # Before the env teardown below, which can be slow and can itself raise:
+        # this flushes the final training step, and it is the only deterministic
+        # chance to do so. NeMo-RL never closes the loggers it is handed, so the
+        # fallback is NemoRLLogger.__del__ at interpreter shutdown, which does not
+        # run at all on an abnormal exit.
+        if customizer_logger is not None:
+            customizer_logger.close()
+
         for task_name, env in task_to_env.items():
             try:
                 import ray

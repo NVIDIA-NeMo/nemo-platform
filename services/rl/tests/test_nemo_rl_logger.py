@@ -289,6 +289,45 @@ def test_double_close_flushes_once(callback: _RecordingCallback) -> None:
     assert len(callback.train_steps) == 1
 
 
+def test_finish_flushes_like_close(callback: _RecordingCallback) -> None:
+    """`finish` is the name NeMo-RL's composite Logger actually dispatches.
+
+    nemo_rl.utils.logger.Logger has no close(); its teardown fan-out is
+    `getattr(logger, "finish", None)`. Without this alias the composite skips us
+    entirely and the withheld final step is never flushed.
+    """
+    logger = _make_logger(log_interval=10)
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+
+    logger.finish()
+
+    assert [r["step"] for r in callback.train_steps] == [1]
+    assert callback.closed
+
+
+def test_finish_is_reachable_through_the_composite_dispatch(callback: _RecordingCallback) -> None:
+    """Mirrors Logger.finish()'s exact lookup, so a rename here fails loudly."""
+    logger = _make_logger(log_interval=10)
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+
+    finish = getattr(logger, "finish", None)
+    assert callable(finish)
+    finish()
+
+    assert [r["step"] for r in callback.train_steps] == [1]
+
+
+def test_finish_then_close_flushes_once(callback: _RecordingCallback) -> None:
+    """Both the composite and the driver may call in; the step reports once."""
+    logger = _make_logger(log_interval=10)
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+
+    logger.finish()
+    logger.close()
+
+    assert len(callback.train_steps) == 1
+
+
 def test_close_with_nothing_pending_reports_nothing(callback: _RecordingCallback) -> None:
     _make_logger().close()
 

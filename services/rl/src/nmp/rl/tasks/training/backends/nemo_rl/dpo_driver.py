@@ -108,6 +108,7 @@ def main():
     # Log only the non-sensitive job id; the full context carries service URLs
     # and identifiers that should not be dumped to stdout.
     print(f"Job context loaded (job_id={job_ctx.job_id})")
+    customizer_logger: NemoRLLogger | None = None
     if job_ctx.jobs_url:
         customizer_logger = NemoRLLogger.for_schedule(
             job_ctx=job_ctx,
@@ -125,17 +126,24 @@ def main():
 
     logger.log_hyperparams(config.model_dump())
 
-    dpo_train(
-        policy,
-        train_dataloader,
-        val_dataloader,
-        tokenizer,
-        loss_fn,
-        master_config,
-        logger,
-        checkpointer,
-        dpo_save_state,
-    )
+    try:
+        dpo_train(
+            policy,
+            train_dataloader,
+            val_dataloader,
+            tokenizer,
+            loss_fn,
+            master_config,
+            logger,
+            checkpointer,
+            dpo_save_state,
+        )
+    finally:
+        # Flushes the final training step. NeMo-RL never closes the loggers it is
+        # handed, so without this the only fallback is NemoRLLogger.__del__ at
+        # interpreter shutdown, which does not run at all on an abnormal exit.
+        if customizer_logger is not None:
+            customizer_logger.close()
 
 
 if __name__ == "__main__":
