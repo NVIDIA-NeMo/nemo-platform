@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { usePlatformSdk } from '@iron-swarm/api/platform';
+import { CancelJobButton } from '@iron-swarm/components/CancelJobButton';
 import { HardenPanel } from '@iron-swarm/components/HardenPanel';
 import {
   pendingInterview,
@@ -21,7 +22,7 @@ import { useIronSwarmGetRun } from '@iron-swarm/generated/api';
 import { useBreadcrumbs, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmRunListRoute } from '@iron-swarm/paths';
 import { ACCENT, tint } from '@iron-swarm/theme';
-import { AccessibleTitle, CancelJobButton, JOB_POLLING_INTERVAL_MS, getJobRefetchInterval } from '@nemo/common';
+import { AccessibleTitle, JOB_POLLING_INTERVAL_MS, getJobRefetchInterval } from '@nemo/common';
 import {
   Badge,
   Banner,
