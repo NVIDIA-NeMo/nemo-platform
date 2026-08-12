@@ -38,8 +38,14 @@ export interface CustomizationTemplate {
  *   `activation_checkpointing: true`, Super noting it "avoids OOM on 80GB". The
  *   platform emits that key only for embedding models, and Automodel's own
  *   `FSDP2Config` defaults it to `False`, so these recipes train without it.
- * - Multi-token prediction (Ultra and Lightning cookbooks only):
- *   `num_nextn_predict_layers`, `mtp_use_repeated_layer`, `mtp_loss_scaling_factor`.
+ * - Multi-token prediction depth (Ultra and Lightning cookbooks only). MTP itself is
+ *   NOT lost: Automodel reads `num_nextn_predict_layers` off the checkpoint config, and
+ *   all three Nemotron repos declare `1`, so MTP auto-enables at depth 1 — and the
+ *   cookbooks' `mtp_loss_scaling_factor: 0.1` is already the default. What we cannot set
+ *   is the pair those two cookbooks override: `num_nextn_predict_layers: 2` with
+ *   `mtp_use_repeated_layer: true`. They were trained with weight-tied MTP and the HF
+ *   export records only the physical depth (1), not the iteration count (2), so we build
+ *   one standalone MTP layer where the recipe intends one layer reused twice.
  * - The Transformer Engine / grouped-matmul / DeepEP backend block. The platform
  *   detects MoE itself and emits its own `BackendConfig`, deliberately with DeepEP
  *   disabled.
@@ -153,15 +159,14 @@ export const CUSTOMIZATION_TEMPLATES: CustomizationTemplate[] = [
     // Port of usage-cookbook/Nemotron-3-Ultra/lora-text2sql/nemo-automodel,
     // nemotron_ultra_v3_text2sql_peft_h100.yaml (the validated 4-node H100 topology).
     //
-    // Divergence: the cookbook also configures multi-token prediction
-    // (num_nextn_predict_layers / mtp_use_repeated_layer / mtp_loss_scaling_factor)
-    // and a FusedLinearCrossEntropy loss. Neither is expressible in the platform's
-    // automodel job schema, so this trains without MTP.
+    // Divergences: the cookbook raises MTP to 2 weight-tied iterations and uses a
+    // FusedLinearCrossEntropy loss, neither expressible here. MTP still runs at the
+    // checkpoint's declared depth of 1 — see the note at the top of this file.
     id: 'lora-nemotron-3-ultra-text2sql',
     title: 'LoRA — Nemotron 3 Ultra (Text-to-SQL)',
     trainingLabel: 'LoRA',
     description:
-      'The 550B Text-to-SQL recipe from the Nemotron cookbook, on BIRD-SQL. Needs a 4-node, 32-GPU H100 allocation — expert parallelism spans every GPU. Trains without multi-token prediction, which the cookbook enables.',
+      'The 550B Text-to-SQL recipe from the Nemotron cookbook, on BIRD-SQL. Needs a 4-node, 32-GPU H100 allocation — expert parallelism spans every GPU. Multi-token prediction runs at the checkpoint default rather than the cookbook’s deeper weight-tied setting.',
     models: [
       {
         hfRepoId: 'nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16',
@@ -249,7 +254,8 @@ export const CUSTOMIZATION_TEMPLATES: CustomizationTemplate[] = [
     // Divergences: that cookbook trains on HellaSwag through automodel's built-in
     // dataset class, which the platform's fileset-based data path cannot use, so this
     // recipe applies the same BIRD-SQL Text-to-SQL task as its Super and Ultra
-    // siblings. It also trains without the cookbook's multi-token prediction.
+    // siblings. MTP runs at the checkpoint's declared depth of 1 rather than the
+    // cookbook's 2 weight-tied iterations — see the note at the top of this file.
     id: 'lora-nemotron-35-lightning-text2sql',
     title: 'LoRA — Nemotron 3.5 Lightning (Text-to-SQL)',
     trainingLabel: 'LoRA',
