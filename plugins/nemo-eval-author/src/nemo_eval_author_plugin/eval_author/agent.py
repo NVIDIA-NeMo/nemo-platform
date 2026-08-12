@@ -486,7 +486,6 @@ class EvalAuthor(Agent):
                     reporter.note(f"trace analysis failed for {ref}: {result}")
                 analysis_statuses[task.id] = ("failed", str(result))
                 continue
-            cache.store(self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result)
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)
