@@ -120,7 +120,7 @@ multinodeNetworking:
     # -- Number of RDMA devices (mlnxnics) to request per GPU
     rdmaDevicesPerGPU: 8
 
-# -- NetworkPolicy configuration.
+# -- NetworkPolicy configuration. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup/helm/network-policy-smoke-test.
 # @default -- This object has the following default values for optional NetworkPolicy resources.
 networkPolicies:
   # -- NetworkPolicy configuration for the Platform API pods.
