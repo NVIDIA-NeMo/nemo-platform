@@ -869,8 +869,8 @@ def _readiness_probe_command(container: Container) -> tuple[list[str], str, int]
         path = probe.http_get.path if probe.http_get.path.startswith("/") else f"/{probe.http_get.path}"
         url = f"{probe.http_get.scheme.lower()}://127.0.0.1:{port}{path}"
         args = (
-            f"--fail --silent --show-error --insecure --max-time {shlex.quote(str(timeout))} "
-            f"--output /dev/null {shlex.quote(url)}"
+            f"--fail --silent --show-error --insecure --noproxy '*' "
+            f"--max-time {shlex.quote(str(timeout))} --output /dev/null {shlex.quote(url)}"
         )
         return ["/bin/sh", "-c", _curl_probe_script(args)], f"httpGet {url}", network_exec_timeout
 
@@ -881,7 +881,7 @@ def _readiness_probe_command(container: Container) -> tuple[list[str], str, int]
     if port is None:
         return None
     url = f"http://127.0.0.1:{port}/"
-    args = f"--silent --output /dev/null --max-time {shlex.quote(str(timeout))} {shlex.quote(url)}"
+    args = f"--silent --output /dev/null --noproxy '*' --max-time {shlex.quote(str(timeout))} {shlex.quote(url)}"
     script = _curl_probe_script(args, tcp_connect=True)
     return ["/bin/sh", "-c", script], f"tcp 127.0.0.1:{port}", network_exec_timeout
 

@@ -772,6 +772,7 @@ def test_readiness_probe_command_defaults_to_tcp_on_the_first_port() -> None:
     assert description == "tcp 127.0.0.1:8000"
     assert "127.0.0.1:8000" in command[2]
     assert _CURL_ABS in command[2]
+    assert "--noproxy '*'" in command[2]
     assert '[ "$_rc" -eq 7 ] && exit 1' in command[2]
     assert "python" not in command[2]
     assert timeout == _DEFAULT_READINESS_TIMEOUT_SECONDS + _READINESS_EXEC_TIMEOUT_MARGIN_SECONDS
@@ -782,6 +783,7 @@ def test_readiness_probe_command_uses_declared_httpget() -> None:
     command, description, _timeout = _require_probe_command(container)
     assert "http://127.0.0.1:8000/ready" in command[2]
     assert "--fail" in command[2]
+    assert "--noproxy '*'" in command[2]
     assert _CURL_ABS in command[2]
     assert description == "httpGet http://127.0.0.1:8000/ready"
 

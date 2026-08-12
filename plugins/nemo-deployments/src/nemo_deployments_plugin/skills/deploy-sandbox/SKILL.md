@@ -272,7 +272,7 @@ URL=$(curl -sf "$BASE/deployments/igw-agent" | jq -r '.endpoints[0].url')
 echo "$URL"      # e.g. http://<sandbox>--<svc>.openshell.localhost:17670/
 ```
 
-If the status reaches `FAILED` or never leaves `PENDING`/`STARTING`, jump to the recovery table below. Do not proceed to invoke until `READY`. `READY` gates on the sandbox being up, the serve launcher exiting cleanly, and the serve process still being alive on the poll, but not on `nat serve` having finished binding its port, so give serve a moment after `READY`. A serve process that exits (bad config, unresolvable model) flips the deployment to `FAILED` on the next poll, with the tail of its log in the status message.
+If the status reaches `FAILED` or never leaves `PENDING`/`STARTING`, jump to the recovery table below. Do not proceed to invoke until `READY`. `READY` gates on the sandbox being up, the serve launcher exiting cleanly, the serve process still being alive on the poll, and `nat serve` answering a reachability probe on its port, so the endpoint is serving as soon as it reports `READY`. A serve process that exits (bad config, unresolvable model) flips the deployment to `FAILED` on the next poll, with the tail of its log in the status message.
 
 ## Step 6: Invoke the agent
 
