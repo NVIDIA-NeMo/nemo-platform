@@ -261,8 +261,15 @@ def test_tokenizer_omits_chat_template_when_none(
     one. Qwen3 has one, so a single-model GPU run never sees this.
     """
     monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    # Patched rather than relying on the fixture model dir having no tokenizer:
+    # resolution falls through to transformers.AutoTokenizer, and another suite in
+    # the same session installs a module-scope `transformers` MagicMock into
+    # sys.modules, whose truthy `.chat_template` silently invalidates the premise.
+    monkeypatch.setattr(
+        "nmp.rl.tasks.training.backends.nemo_rl.grpo_config.resolve_chat_template",
+        lambda **_: None,
+    )
     step, _ = _prepared_step(tmp_path)
-    # The fixture model dir has no tokenizer, so resolution falls through to None.
     tokenizer = compile_grpo_config(step, job_ctx)["policy"]["tokenizer"]
 
     assert "chat_template" not in tokenizer
