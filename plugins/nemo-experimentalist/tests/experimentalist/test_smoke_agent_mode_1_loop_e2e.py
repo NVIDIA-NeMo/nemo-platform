@@ -628,10 +628,11 @@ def _run_mode_1_case(group: str, tmp_path: Path, *, generated_only: bool) -> Non
             encoding="utf-8",
         )
 
-    _run(
-        ["uv", "run", "--no-project", str(local_fixture / "scripts" / "build_image.py")],
-        log=log,
-    )
+    if os.environ.get("SMOKE_AGENT_IMAGE_BUILT") != "1":
+        _run(
+            ["uv", "run", "--no-project", str(local_fixture / "scripts" / "build_image.py")],
+            log=log,
+        )
     trace_ids = _record_trace_ids(
         environment,
         group=group,
