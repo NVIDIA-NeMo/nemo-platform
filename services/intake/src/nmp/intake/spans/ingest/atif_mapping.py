@@ -981,7 +981,11 @@ def _datetime_from_value(value: Any) -> datetime | None:
 def _tool_result_is_error(step: AtifStep, result: AtifObservationResult | None) -> bool:
     """Recognize supported ATIF producer error markers."""
     # These markers are emitted by the Claude-Code Harbor trajectories we ingest today.
-    # ATIF itself does not define a normalized tool-result error field.
+    # ATIF itself does not define a normalized tool-result error field, so the text marker
+    # below cannot tell a failure from a success that quotes one.
+    explicit_result_status = _result_extra_bool(result, "is_error")
+    if explicit_result_status is not None:
+        return explicit_result_status
     metadata = _matched_tool_result_metadata(step, result)
     if metadata.get("is_error") is True:
         return True
@@ -1038,6 +1042,13 @@ def _result_text(result: AtifObservationResult | None) -> str | None:
 def _step_extra_bool(step: AtifStep, key: str) -> bool:
     """Read a strictly true boolean from step extras."""
     return step.extra is not None and step.extra.get(key) is True
+
+
+def _result_extra_bool(result: AtifObservationResult | None, key: str) -> bool | None:
+    """Read an explicit boolean from observation-result extras."""
+    extra = result.extra if result is not None else None
+    value = extra.get(key) if extra is not None else None
+    return value if isinstance(value, bool) else None
 
 
 def _step_extra_dict(step: AtifStep, key: str) -> dict[str, Any]:
