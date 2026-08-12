@@ -1572,6 +1572,17 @@ components:
           title: Sequence Parallel
           description: Enable sequence parallelism.
           default: false
+        activation_checkpointing:
+          anyOf:
+          - type: boolean
+          - type: string
+            enum:
+            - full
+            - selective
+          title: Activation Checkpointing
+          description: Recompute activations during the backward pass to cut peak
+            memory at the cost of speed. 'selective' checkpoints only the most memory-heavy
+            ops. Left unset, Automodel defaults to disabled.
       additionalProperties: false
       type: object
       title: AutomodelParallelismSpec
