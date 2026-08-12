@@ -16,5 +16,3 @@ dist/
 build/
 .venv/
 node_modules/
-tests/
-src/nemo_studio_assistant/nemo-studio-assistant-eval-data.json

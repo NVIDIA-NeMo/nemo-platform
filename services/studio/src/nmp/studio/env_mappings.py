@@ -75,6 +75,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
         default="false",
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_COPILOT_STUDIO_ENABLED",
+        config_path="studio.feature_flags.copilot_studio_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_CUSTOMIZER_ENABLED",
         config_path="studio.feature_flags.customizer_enabled",
         default="true",

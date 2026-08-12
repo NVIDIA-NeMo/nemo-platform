@@ -358,7 +358,6 @@ _STUDIO_LINK_ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
-    "assistant": ("assistant_studio_enabled",),
     "agents": ("agents_enabled",),
     "agent": ("agents_enabled",),
     "agent_chat": ("agents_enabled",),
@@ -419,7 +418,8 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
 }
 
 _STUDIO_LINK_DESTINATION_ANY_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
-    "dashboard": ("dashboard_enabled", "assistant_studio_enabled"),
+    "assistant": ("assistant_studio_enabled", "copilot_studio_enabled"),
+    "dashboard": ("dashboard_enabled", "assistant_studio_enabled", "copilot_studio_enabled"),
 }
 
 _STUDIO_FEATURE_FLAG_MAPPINGS = {
