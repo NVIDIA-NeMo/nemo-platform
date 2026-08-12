@@ -168,20 +168,24 @@ async def check_find_agent_traces(
         target["span_count"] == counted["count"],
         f"summary={target['span_count']} counted={counted['count']}",
     )
-    # A two-span scan window still has to report the whole trace, or the second call is
-    # not doing its job. Compare against the real count of whichever trace it picked,
-    # because the newest trace may legitimately hold one or two spans.
-    narrow = await traces.find_agent_traces(client, agent=agent, workspace=workspace, limit=1, span_budget=2)
-    if narrow["count"]:
-        scanned = narrow["traces"][0]
-        whole = await traces.query_spans(
-            client, workspace=workspace, filter={"trace_id": scanned["trace_id"]}, limit=1000
-        )
-        report.check(
-            "a two-span scan window still reports the whole trace",
-            scanned["span_count"] == whole["count"],
-            f"span_budget=2 scanned 2 spans, reported span_count={scanned['span_count']}, trace holds {whole['count']}",
-        )
+    report.section("discovery is one grouped call, sorted by the server")
+    # find_agent_traces used to page spans and collect distinct ids, which only ever
+    # found the traces inside the scanned window. It now asks Intake to group and sort.
+    # Prove the server really serves that, since a fake client cannot.
+    grouped = await traces.query_spans(
+        client, workspace=workspace, filter={"agent_name": agent}, group_by="trace_id", sort="-started_at", limit=5
+    )
+    starts = [row["started_at"] for row in grouped["groups"]]
+    report.check("groups come back newest first", starts == sorted(starts, reverse=True), f"{starts}")
+    report.check(
+        "the grouped ids are the traces find_agent_traces returned",
+        {row["group"]["trace_id"] for row in grouped["groups"]} == {e["trace_id"] for e in found["traces"]},
+    )
+    by_size = await traces.query_spans(
+        client, workspace=workspace, filter={"agent_name": agent}, group_by="trace_id", sort="-span_count", limit=5
+    )
+    sizes = [row["span_count"] for row in by_size["groups"]]
+    report.check("groups also sort by size", sizes == sorted(sizes, reverse=True), f"{sizes}")
 
     report.section("find_agent_traces: since, and the empty case")
     wide = await traces.find_agent_traces(
@@ -218,9 +222,12 @@ async def check_errors(client: AsyncNeMoPlatform, report: Report, workspace: str
         ("an unknown filter field", traces.query_spans(client, workspace=workspace, filter={"not_a_field": "x"})),
         ("an unknown workspace", traces.find_agent_traces(client, agent=agent, workspace="no-such-workspace-zzz")),
         ("a missing trace", traces.read_trace(client, "trace-does-not-exist-zzz", workspace=workspace)),
-        # Intake publishes this span filter and answers it with HTTP 500. The hint has to
-        # name the cause, because the response body does not.
-        ("a filter Intake cannot serve", traces.query_spans(client, workspace=workspace, filter={"dataset_name": "x"})),
+        # Intake used to publish this span filter and answer it with HTTP 500. Since
+        # nemo-platform#1225 it is unpublished, so it must now read as a rejected field.
+        (
+            "a filter Intake once answered with 500",
+            traces.query_spans(client, workspace=workspace, filter={"dataset_name": "x"}),
+        ),
     )
     for label, coro in cases:
         try:

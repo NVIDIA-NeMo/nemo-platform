@@ -11,7 +11,10 @@ when it builds a query, so a wrong docstring sends the agent down a dead end. Ne
 the Pydantic filter schemas nor the "Unknown filter field" error list can be trusted for
 this. A field can appear in both and still fail:
 
-* ``SpanFilter`` declares ``dataset_name``, and Intake answers HTTP 500.
+* ``SpanFilter`` once declared ``dataset_name``, and Intake answered HTTP 500. This probe
+  is what found that, and nemo-platform#1225 unpublished the five fields responsible, so
+  they should now read as rejected rather than as a server fault. The lesson stands: a
+  declared field is not a served field.
 * The 400 message lists the entity's columns, which is wider than what is filterable.
 
 So probe every field, and record the operators too. Run this after any change to the
