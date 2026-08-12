@@ -42,18 +42,6 @@ def test_configured_model_refs_requires_default(monkeypatch):
         configured_model_refs()
 
 
-def test_request_timeout_uses_default_and_validates_configuration(monkeypatch):
-    """Check that model requests use a safe default timeout and reject invalid values."""
-    monkeypatch.delenv("NEMO_AGENT_REQUEST_TIMEOUT_SECONDS", raising=False)
-    assert nooa_model_client._request_timeout_seconds() == 60.0
-
-    monkeypatch.setenv("NEMO_AGENT_REQUEST_TIMEOUT_SECONDS", "90")
-    assert nooa_model_client._request_timeout_seconds() == 90.0
-
-    monkeypatch.setenv("NEMO_AGENT_REQUEST_TIMEOUT_SECONDS", "0")
-    with pytest.raises(ValueError, match="positive number"):
-        nooa_model_client._request_timeout_seconds()
-
 
 async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
     model_entity = SimpleNamespace(
@@ -84,7 +72,6 @@ async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
         "openai/gpt-4-1",
         api_base="http://platform/model/gpt-4-1/-/v1",
         api_key="not-needed",
-        timeout=60.0,
         base_model="openai/gpt-4-1",
         extra_headers={"x-test": "value", "accept-encoding": "identity"},
         drop_params=True,
@@ -117,7 +104,6 @@ async def test_resolve_model_clients_uses_anthropic_route_shape(monkeypatch):
         "anthropic/claude-sonnet-4",
         api_base="http://platform/model/claude-sonnet-4/-",
         api_key="not-needed",
-        timeout=60.0,
         base_model="anthropic/claude-sonnet-4",
         extra_headers={"accept-encoding": "identity"},
         drop_params=True,

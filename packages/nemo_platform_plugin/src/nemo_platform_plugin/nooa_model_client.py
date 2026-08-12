@@ -24,29 +24,8 @@ from nooa.unifiedllm import CompletionClient, UnifiedLLM
 _PLACEHOLDER_API_KEY = "not-needed"
 _OPENAI_FORMAT = "OPENAI_CHAT"
 _ANTHROPIC_FORMAT = "ANTHROPIC_MESSAGES"
-_OPENAI_CHAT_REASONING_EFFORT: str | None = None
 _ACCEPT_ENCODING_HEADER = "accept-encoding"
 _IDENTITY_ENCODING = "identity"
-# LiteLLM's explicit request timeout is required in addition to NOOA's httpx
-# client timeout. Some provider routes keep a response stream technically alive
-# without delivering a completion, which otherwise lets a CodeAct turn wait for
-# its one-hour cell budget.
-_REQUEST_TIMEOUT_ENV = "NEMO_AGENT_REQUEST_TIMEOUT_SECONDS"
-_DEFAULT_REQUEST_TIMEOUT_SECONDS = 60.0
-
-
-def _request_timeout_seconds() -> float:
-    """Read the per-model request timeout, in seconds, from the environment."""
-    configured = os.environ.get(_REQUEST_TIMEOUT_ENV)
-    if configured is None:
-        return _DEFAULT_REQUEST_TIMEOUT_SECONDS
-    try:
-        timeout = float(configured)
-    except ValueError as exc:
-        raise ValueError(f"{_REQUEST_TIMEOUT_ENV} must be a positive number of seconds") from exc
-    if timeout <= 0:
-        raise ValueError(f"{_REQUEST_TIMEOUT_ENV} must be a positive number of seconds")
-    return timeout
 
 
 @dataclass(frozen=True)
@@ -113,7 +92,6 @@ def _completion_client(
 ) -> CompletionClient:
     """Build a Nooa client that routes through the Model Entity's Platform URL."""
     api_base = client.models.get_model_entity_route_openai_url(model_entity)
-    request_timeout = _request_timeout_seconds()
     extra_headers = dict(client.models.get_client_default_headers())
     # Inference Gateway's direct passthrough session preserves compressed
     # response bytes. Nooa needs decoded JSON/SSE, so make that requirement
@@ -125,10 +103,8 @@ def _completion_client(
         litellm_model = f"openai/{served_model_name}"
         return CompletionClient(
             litellm_model,
-            **({"reasoning_effort": _OPENAI_CHAT_REASONING_EFFORT} if _OPENAI_CHAT_REASONING_EFFORT else {}),
             api_base=api_base,
             api_key=_PLACEHOLDER_API_KEY,
-            timeout=request_timeout,
             # Platform rewrites the response model to the Model Entity ID. Keep
             # the provider's authoritative served name available to LiteLLM for
             # post-response capability and cost lookup.
@@ -153,7 +129,6 @@ def _completion_client(
         litellm_model,
         api_base=api_base,
         api_key=_PLACEHOLDER_API_KEY,
-        timeout=request_timeout,
         base_model=litellm_model,
         extra_headers=extra_headers,
         drop_params=True,
