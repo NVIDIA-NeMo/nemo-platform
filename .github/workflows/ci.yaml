@@ -1303,7 +1303,7 @@ jobs:
   # Test each wheel: install from the artifact and run basic CLI /
   # import checks.
   wheel-test:
-    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }}, ${{ matrix.install-method }})
+    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
     needs: [wheel-build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1314,13 +1314,6 @@ jobs:
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
         python-version: ["3.12", "3.13"]
-        # `uv tool install` is the documented front door for the CLI; `venv`
-        # covers installs into an environment the user owns. The plugin is a
-        # library with no CLI entry point, so it only gets the venv leg.
-        install-method: [venv, tool]
-        exclude:
-          - package: nemo-platform-plugin
-            install-method: tool
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1344,11 +1337,9 @@ jobs:
         shell: bash
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
-          INSTALL_METHOD: ${{ matrix.install-method }}
           NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
           NMP_AUTH_ENABLED: "false"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
-          UV_TOOL_BIN_DIR: ${{ runner.temp }}/wheelcheck/tool-bin
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -1360,25 +1351,14 @@ jobs:
           WHEEL="${wheels[0]}"
           # Supply-chain: partial-pin the wheel's direct external deps to a committed constraints
           # file. Regenerate with script/compile-wheel-constraints.sh.
-          CONSTRAINTS="${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt"
-          # --no-config: this step runs inside the checkout, so uv would otherwise apply the
-          # repo's [tool.uv] override-dependencies and resolve a dependency set no user can get.
-          if [[ "${INSTALL_METHOD}" == "tool" ]]; then
-            uv tool install --no-config --python "${PYTHON_VERSION}" \
-              --constraints "${CONSTRAINTS}" \
-              "${WHEEL}[services]"
-            BIN_DIR="${UV_TOOL_BIN_DIR}"
-          else
-            VENV="${RUNNER_TEMP}/wheelcheck/.venv"
-            uv venv "${VENV}" --python "${PYTHON_VERSION}"
-            uv pip install --no-config --python "${VENV}/bin/python" \
-              --constraint "${CONSTRAINTS}" \
-              "${WHEEL}[services]"
-            BIN_DIR="${VENV}/bin"
-          fi
+          VENV="${RUNNER_TEMP}/wheelcheck/.venv"
+          uv venv "${VENV}" --python "${PYTHON_VERSION}"
+          uv pip install --python "${VENV}/bin/python" \
+            --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt" \
+            "${WHEEL}[services]"
           cd "${RUNNER_TEMP}/wheelcheck"
           unset PYTHONPATH VIRTUAL_ENV
-          export PATH="${BIN_DIR}:${PATH}"
+          export PATH="${VENV}/bin:${PATH}"
           bash "${GITHUB_WORKSPACE}/script/test-nemo-cli.sh"
 
       - name: Install + test nemo-platform-plugin
@@ -1399,7 +1379,7 @@ jobs:
           # (see the nemo-platform CLI step above).
           cd "${RUNNER_TEMP}/wheelcheck"
           uv venv .venv --python "${PYTHON_VERSION}"
-          uv pip install --no-config --python .venv/bin/python \
+          uv pip install --python .venv/bin/python \
             --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-plugin.txt" \
             "${WHEEL}"
           unset PYTHONPATH VIRTUAL_ENV
