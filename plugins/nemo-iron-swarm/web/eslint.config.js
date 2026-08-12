@@ -87,10 +87,12 @@ export default [
             "JSXAttribute[value.type='JSXExpressionContainer'][value.expression.type='Literal'][value.expression.value=true]",
           message: "Omit the explicit '={true}'; use shorthand boolean JSX attribute instead.",
         },
-        {
-          selector: "JSXAttribute[name.name='style']",
-          message: "Avoid inline 'style'; use theme-aware token classes.",
-        },
+        // Studio bans inline `style` because it has Tailwind to fall back on.
+        // A plugin does not: Studio's Tailwind only scans web/packages/**, so
+        // any utility class here that Studio does not already emit has no CSS
+        // at all — and fails silently, as unstyled UI. Binding `style` to
+        // Studio's theme custom properties (see src/theme.ts) is the
+        // theme-aware option available to a plugin, so it is not banned.
       ],
     },
   },

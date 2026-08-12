@@ -239,7 +239,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
                   <AccordionRoot>
                     <AccordionSection value="models" title="Models (optional)">
                       <Stack gap="density-md">
-                        <Text kind="body/regular/sm" className="text-gray-500">
+                        <Text kind="body/regular/sm" className="text-subtle">
                           Defaults shown as placeholders; override any group for this target. Each
                           run can still change them.
                         </Text>

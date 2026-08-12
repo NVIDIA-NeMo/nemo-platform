@@ -21,7 +21,7 @@ export const BenignInterviewCard: FC<BenignInterviewCardProps> = ({ interview })
   return (
     <Stack gap="density-md">
       {interview.map((qa, index) => (
-        <Stack key={index} gap="density-xs" className="rounded-md border border-gray-700 p-3">
+        <Stack key={index} gap="density-xs" className="rounded-md border border-base p-3">
           <Text kind="body/semibold/sm">{qa.question || qa.gap || `Question ${index + 1}`}</Text>
           <ExpandableMessage message={qa.answer || '(no answer)'} characterLimit={220} />
         </Stack>

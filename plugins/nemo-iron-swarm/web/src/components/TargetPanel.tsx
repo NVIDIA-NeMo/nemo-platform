@@ -17,7 +17,7 @@ interface TargetPanelProps {
 
 const Row: FC<{ label: string; children: ReactNode }> = ({ label, children }) => (
   <Flex gap="density-md" className="items-baseline">
-    <Text kind="body/regular/sm" className="w-32 shrink-0 text-fg-secondary">
+    <Text kind="body/regular/sm" className="shrink-0 text-fg-secondary" style={{ width: '8rem' }}>
       {label}
     </Text>
     <Text kind="body/regular/sm" className="break-all">
@@ -100,7 +100,7 @@ export const TargetPanel: FC<TargetPanelProps> = ({
         {manifest.manifest_yaml ? (
           <AccordionRoot>
             <AccordionSection value="manifest-yaml" title="iron-swarm.yaml">
-              <pre className="max-h-96 overflow-auto px-density-xs text-sm text-fg-secondary whitespace-pre-wrap">
+              <pre className="overflow-auto px-density-xs text-sm text-fg-secondary whitespace-pre-wrap" style={{ maxHeight: '24rem' }}>
                 {manifest.manifest_yaml}
               </pre>
             </AccordionSection>

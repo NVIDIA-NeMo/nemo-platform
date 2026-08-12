@@ -110,25 +110,25 @@ export const BenignSuiteTable: FC<BenignSuiteTableProps> = ({ value, onChange, d
 
   return (
     <Stack gap="density-md">
-      <div className="max-h-[360px] overflow-auto rounded-md border border-gray-700">
+      <div className="max-h-[360px] overflow-auto rounded-md border border-base">
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr className="border-b border-gray-700">
+            <tr className="border-b border-base">
               {COLUMNS.map((c) => (
                 <th key={c.key} className={`${c.width} px-3 py-2 text-left`}>
-                  <Text kind="body/semibold/sm" className="text-gray-400">
+                  <Text kind="body/semibold/sm" className="text-subtle">
                     {c.label}
                   </Text>
                 </th>
               ))}
-              <th className="w-[88px] px-3 py-2" />
+              <th className="px-3 py-2" style={{ width: 88 }} />
             </tr>
           </thead>
           <tbody>
             {value.length === 0 && !isAdding ? (
               <tr>
                 <td colSpan={COLUMNS.length + 1} className="px-3 py-4">
-                  <Text kind="body/regular/sm" className="text-gray-500">
+                  <Text kind="body/regular/sm" className="text-subtle">
                     No benign requests yet. Add one, or generate the suite.
                   </Text>
                 </td>
@@ -137,7 +137,7 @@ export const BenignSuiteTable: FC<BenignSuiteTableProps> = ({ value, onChange, d
             {value.map((row, index) => {
               const editing = edit?.index === index;
               return (
-                <tr key={index} className="border-b border-gray-800">
+                <tr key={index} className="border-b border-base">
                   {editing
                     ? editCells(edit.draft)
                     : COLUMNS.map((c) => (
@@ -152,7 +152,7 @@ export const BenignSuiteTable: FC<BenignSuiteTableProps> = ({ value, onChange, d
               );
             })}
             {isAdding ? (
-              <tr className="border-b border-gray-800">
+              <tr className="border-b border-base">
                 {editCells(edit.draft)}
                 {rowActions(true, edit.index)}
               </tr>

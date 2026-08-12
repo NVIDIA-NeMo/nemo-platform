@@ -33,12 +33,12 @@ export const BenignSuiteEditor: FC<BenignSuiteEditorProps> = ({ value, onChange,
   return (
     <Stack gap="density-lg">
       {value.length === 0 ? (
-        <Text kind="body/regular/md" className="text-gray-500">
+        <Text kind="body/regular/md" className="text-subtle">
           No benign requests yet. Add rows manually, or generate the suite to populate it.
         </Text>
       ) : (
         value.map((row, index) => (
-          <Stack key={index} gap="density-sm" className="rounded-md border border-gray-700 p-3">
+          <Stack key={index} gap="density-sm" className="rounded-md border border-base p-3">
             <Flex gap="density-md">
               <FormField name={`tool-${index}`} slotLabel="Tool" className="flex-1">
                 <TextInput

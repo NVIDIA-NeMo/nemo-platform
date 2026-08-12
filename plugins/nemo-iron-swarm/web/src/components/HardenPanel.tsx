@@ -18,12 +18,14 @@ import {
 import { YamlDiff } from '@iron-swarm/components/YamlDiff';
 import { useIronSwarmApplyMitigation } from '@iron-swarm/generated/api';
 import { useToast } from '@iron-swarm/host';
+import { ACCENT, tint } from '@iron-swarm/theme';
 import { AccordionSection, ConfirmationModal } from '@nemo/common';
 import {
   AccordionRoot,
   Badge,
   Button,
   Card,
+  Grid,
   Flex,
   Spinner,
   Stack,
@@ -81,7 +83,8 @@ const DefenseRow: FC<{ defense: DefensePair; checked: boolean; onToggle: () => v
   const attack = defense.attack;
   return (
     <div
-      className={`border-l-2 transition-opacity ${checked ? 'border-l-green-500/70' : 'border-l-transparent opacity-55'}`}
+      className={`border-t border-base border-l-2 transition-opacity ${checked ? '' : 'opacity-55'}`}
+      style={{ borderLeftColor: checked ? tint(ACCENT.green, 70) : 'transparent' }}
     >
       <Flex align="center" gap="density-sm" className="px-3 py-2">
         <Switch checked={checked} onCheckedChange={onToggle} aria-label={`Include ${defense.id}`} />
@@ -90,7 +93,7 @@ const DefenseRow: FC<{ defense: DefensePair; checked: boolean; onToggle: () => v
           onClick={() => setOpen((o) => !o)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <span className="w-3 shrink-0 text-gray-500">{open ? '▾' : '▸'}</span>
+          <span className="w-3 shrink-0 text-subtle">{open ? '▾' : '▸'}</span>
           <Badge color={defense.kind === 'guardrail' ? 'green' : 'purple'}>
             {defense.kind === 'guardrail' ? 'Guardrail' : 'Policy'}
           </Badge>
@@ -105,37 +108,42 @@ const DefenseRow: FC<{ defense: DefensePair; checked: boolean; onToggle: () => v
         ) : null}
       </Flex>
       {open ? (
-        <div className="grid grid-cols-1 gap-2 px-3 pb-3 pt-1 lg:grid-cols-2">
-          <Stack gap="density-xxs" className="rounded border border-red-500/30 bg-red-500/5 p-3">
-            <Text kind="body/semibold/xs" className="text-red-300">
+        <Grid cols={{ base: 1, lg: 2 }} gap="density-sm" className="px-3 pb-3 pt-1">
+          <Stack
+            gap="density-xxs"
+            className="rounded border p-3"
+            style={{ borderColor: tint(ACCENT.red, 30), backgroundColor: tint(ACCENT.red, 5) }}
+          >
+            <Text kind="body/semibold/xs" style={{ color: ACCENT.red }}>
               ATTACK{attack?.probe ? ` · ${shortProbe(attack.probe)}` : ''}
             </Text>
             {attack?.goal ? <Text kind="body/regular/sm">{attack.goal}</Text> : null}
             {attack?.prompt_excerpt ? (
-              <Text kind="body/regular/xs" className="whitespace-pre-wrap text-gray-400">
+              <Text kind="body/regular/xs" className="whitespace-pre-wrap text-subtle">
                 {cleanAttackPrompt(attack.prompt_excerpt)}
               </Text>
             ) : (
-              <Text kind="body/regular/xs" className="text-gray-500">
+              <Text kind="body/regular/xs" className="text-subtle">
                 No linked attack recorded for this defense.
               </Text>
             )}
           </Stack>
           <Stack
             gap="density-xxs"
-            className="rounded border border-green-500/30 bg-green-500/5 p-3"
+            className="rounded border p-3"
+            style={{ borderColor: tint(ACCENT.green, 30), backgroundColor: tint(ACCENT.green, 5) }}
           >
-            <Text kind="body/semibold/xs" className="text-green-300">
+            <Text kind="body/semibold/xs" style={{ color: ACCENT.green }}>
               MITIGATION{defense.target_tool ? ` · ${defense.target_tool}` : ''}
             </Text>
             <Text kind="body/regular/sm">{defense.summary}</Text>
             {defense.yaml_fragment ? (
-              <pre className="max-h-56 overflow-auto rounded bg-black/30 p-2 text-xs text-gray-300">
+              <pre className="max-h-56 overflow-auto rounded bg-surface-overlay p-2 text-xs text-primary">
                 {defense.yaml_fragment}
               </pre>
             ) : null}
           </Stack>
-        </div>
+        </Grid>
       ) : null}
     </div>
   );
@@ -181,7 +189,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
     return (
       <Flex align="center" gap="density-sm" className="p-6">
         <Spinner size="small" aria-label="Loading recommendations" />
-        <Text kind="body/regular/md" className="text-gray-500">
+        <Text kind="body/regular/md" className="text-subtle">
           Loading recommendations…
         </Text>
       </Flex>
@@ -191,7 +199,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
   if (defenses.length === 0 && !mitigations?.workflow && !mitigations?.policy) {
     return (
       <Card className="p-6">
-        <Text kind="body/regular/md" className="text-gray-500">
+        <Text kind="body/regular/md" className="text-subtle">
           No mitigations were produced for this run.
         </Text>
       </Card>
@@ -285,25 +293,26 @@ export const HardenPanel: FC<HardenPanelProps> = ({
       <Card className="p-4">
         <Stack gap="density-sm">
           <Text kind="body/semibold/lg">Review &amp; apply defenses</Text>
-          <Text kind="body/regular/sm" className="text-gray-400">
+          <Text kind="body/regular/sm" className="text-subtle">
             {total} defense{total === 1 ? '' : 's'} generated across {groups.length} tool
             {groups.length === 1 ? '' : 's'} from this run&apos;s attacks. Keep the ones you want,
             sanity-check the selection, then apply to the agent.
           </Text>
           {/* Segmented coverage meter: one cell per defense, filled for the selected count. */}
           <div
-            className="flex h-1.5 w-full gap-px"
+            className="flex h-2 w-full gap-0.5"
             aria-label={`${coverage}% of defenses selected`}
           >
             {defenses.map((d, i) => (
               <div
                 key={d.id}
-                className={`flex-1 rounded-sm transition-colors ${i < selectedIds.length ? 'bg-green-500' : 'bg-gray-700'}`}
+                className="flex-1 rounded-sm bg-surface-raised transition-colors"
+                style={i < selectedIds.length ? { backgroundColor: ACCENT.green } : undefined}
               />
             ))}
           </div>
           <Flex justify="between" align="center">
-            <Text kind="body/regular/sm" className="text-gray-300">
+            <Text kind="body/regular/sm" className="text-primary">
               {selectedIds.length} of {total} selected
             </Text>
             <Flex gap="density-sm">
@@ -327,10 +336,10 @@ export const HardenPanel: FC<HardenPanelProps> = ({
         {groups.map((group, gi) => {
           const allOn = group.items.every((i) => selected.has(i.id));
           return (
-            <div key={group.tool} className={gi > 0 ? 'border-t border-gray-700' : ''}>
-              <Flex align="center" justify="between" className="bg-gray-800/40 px-3 py-2">
+            <div key={group.tool} className={gi > 0 ? 'border-t border-base' : ''}>
+              <Flex align="center" justify="between" className="bg-surface-sunken px-3 py-2">
                 <Flex align="center" gap="density-sm">
-                  <Text kind="body/semibold/sm" className="font-mono text-gray-300">
+                  <Text kind="body/semibold/sm" className="font-mono text-primary">
                     {group.tool}
                   </Text>
                   <Badge color="gray">{group.items.length}</Badge>
@@ -341,7 +350,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
                   aria-label={`Toggle all ${group.tool}`}
                 />
               </Flex>
-              <div className="divide-y divide-gray-800">
+              <div>
                 {group.items.map((defense) => (
                   <DefenseRow
                     key={defense.id}
@@ -360,14 +369,14 @@ export const HardenPanel: FC<HardenPanelProps> = ({
       <Flex
         justify="between"
         align="center"
-        className="sticky bottom-0 border-t border-gray-700 bg-[var(--nv-color-surface,#111)] py-3"
+        className="sticky bottom-0 border-t border-base bg-surface-base py-3"
       >
-        <Text kind="body/regular/sm" className="text-gray-300">
+        <Text kind="body/regular/sm" className="text-primary">
           {selectedIds.length} of {total} selected
         </Text>
         <Flex gap="density-sm" align="center">
           {!hitlogFileset ? (
-            <Text kind="body/regular/xs" className="text-gray-500">
+            <Text kind="body/regular/xs" className="text-subtle">
               No recorded attacks to replay
             </Text>
           ) : null}
@@ -408,7 +417,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
           ) : (
             <Flex align="center" gap="density-sm" className="p-4">
               <Spinner size="small" aria-label="Running sanity check" />
-              <Text kind="body/regular/md" className="text-gray-500">
+              <Text kind="body/regular/md" className="text-subtle">
                 {reportLoading
                   ? 'Replaying attacks + benign requests against your selection…'
                   : 'Starting sanity check…'}

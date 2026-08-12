@@ -96,7 +96,7 @@ export const ProjectManifestWizard: FC<ProjectManifestWizardProps> = ({
 
   return (
     <Stack gap="density-lg">
-      <Text kind="body/regular/md" className="text-gray-400">
+      <Text kind="body/regular/md" className="text-subtle">
         Upload your NAT project as a single zip (workflow plus its tool code). We inspect it to
         detect the workflow, secrets, and egress — nothing is executed.
       </Text>
@@ -114,7 +114,7 @@ export const ProjectManifestWizard: FC<ProjectManifestWizardProps> = ({
           {detecting ? 'Detecting…' : 'Detect Project'}
         </Button>
         {!nameValid && (
-          <Text kind="body/regular/sm" className="self-center text-gray-400">
+          <Text kind="body/regular/sm" className="self-center text-subtle">
             Enter a valid manifest ID above first.
           </Text>
         )}
