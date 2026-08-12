@@ -71,6 +71,17 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         ),
     )
 
+    sandbox_allow_internet: bool = Field(
+        default=False,
+        description=(
+            "Sets env.nemo_gym.sandbox.allow_internet. NeMo-RL owns which DNS suffixes that "
+            "opens; cluster-private, node-local and metadata destinations stay denied either "
+            "way. Sandboxed environments build their server venvs at spin-up and cannot reach "
+            "a package index without it, so enable this on clusters that run user-supplied "
+            "environments and have no internal mirror."
+        ),
+    )
+
     sandbox_cluster_capable: bool = Field(
         default=False,
         description=(
