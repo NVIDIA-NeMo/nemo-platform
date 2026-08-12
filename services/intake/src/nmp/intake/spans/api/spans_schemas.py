@@ -34,6 +34,8 @@ class SpanSortField(StrEnum):
 class SpanGroupSortField(StrEnum):
     SPAN_COUNT_ASC = "span_count"
     SPAN_COUNT_DESC = "-span_count"
+    STARTED_AT_ASC = "started_at"
+    STARTED_AT_DESC = "-started_at"
 
 
 class SpanGroupBy(StrEnum):
@@ -201,10 +203,16 @@ class Span(BaseModel):
 class SpanGroup(BaseModel):
     group: dict[str, str] = Field(description="Group key values, keyed by the requested group-by fields.")
     span_count: int = Field(ge=0, description="Number of matching spans in this group.")
+    started_at: datetime = Field(
+        description=(
+            "Start time of the earliest matching span in this group. Only matching spans count, so a filter "
+            "narrows this to when the filtered work began rather than when the whole trace or session began."
+        )
+    )
 
     @classmethod
     def from_domain(cls, group: IntakeSpanGroup) -> Self:
-        return cls(group=group.group, span_count=group.span_count)
+        return cls(group=group.group, span_count=group.span_count, started_at=group.started_at)
 
 
 class SpanGroupsPage(Page[SpanGroup]):

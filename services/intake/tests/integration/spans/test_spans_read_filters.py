@@ -3,9 +3,15 @@
 
 """Span read filter tests."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
+
+
+def _group_started_at(group: dict) -> datetime:
+    """Read a group start time, which ClickHouse returns without a zone."""
+    parsed = datetime.fromisoformat(group["started_at"])
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def test_spans_read_filters(client: TestClient, make_otlp_request):
@@ -170,10 +176,32 @@ def test_spans_read_filters(client: TestClient, make_otlp_request):
     group_payload = group_response.json()
     assert group_payload["grouped_by"] == ["session_id", "trace_id"]
     assert group_payload["pagination"]["total_results"] == 2
-    assert group_payload["data"] == [
+    assert [{"group": group["group"], "span_count": group["span_count"]} for group in group_payload["data"]] == [
         {"group": {"session_id": "conv-a", "trace_id": "0" * 31 + "1"}, "span_count": 2},
         {"group": {"session_id": "conv-b", "trace_id": "0" * 31 + "1"}, "span_count": 2},
     ]
+
+    # Every span here shares one trace, so a group time taken from the whole trace would
+    # read base for both. The LLM spans of conv-b start at base + 5s, which is what makes
+    # these two groups distinguishable in time.
+    base = datetime.fromtimestamp(base_ns // 1_000_000_000, tz=timezone.utc)
+    assert [_group_started_at(group) for group in group_payload["data"]] == [
+        base,
+        base + timedelta(seconds=5),
+    ]
+
+    recent_response = client.get(
+        "/apis/intake/v2/workspaces/default/spans/groups",
+        params={
+            "by": "session_id,trace_id",
+            "filter[kind]": "LLM",
+            "sort": "-started_at",
+            "page_size": 20,
+        },
+    )
+    assert recent_response.status_code == 200, recent_response.text
+    # Newest first has to reverse the default order, or the sort is not being applied.
+    assert [group["group"]["session_id"] for group in recent_response.json()["data"]] == ["conv-b", "conv-a"]
 
     unsupported_response = client.get("/apis/intake/v2/workspaces/default/spans", params={"session_id": "conv-a"})
     assert unsupported_response.status_code == 400

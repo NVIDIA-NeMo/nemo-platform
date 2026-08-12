@@ -138,7 +138,15 @@ async def list_span_groups(
     by: str = Query(description="Comma-separated span fields to group by, e.g. trace_id or session_id,trace_id."),
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=10, ge=1, le=1000, description="Page size."),
-    sort: SpanGroupSortField = Query(default=SpanGroupSortField.SPAN_COUNT_DESC),
+    sort: SpanGroupSortField = Query(
+        default=SpanGroupSortField.SPAN_COUNT_DESC,
+        description=(
+            "Sort groups by size or by start time. Use -started_at for the traces or sessions that began "
+            "most recently, which answers 'what ran lately' in one call instead of paging through spans. "
+            "A group's time is its earliest matching span, so this orders by when work started and not by "
+            "when it was last active."
+        ),
+    ),
     parsed: ParsedFilter = Depends(make_filter_dep(SpanFilter)),
 ) -> SpanGroupsPage:
     validate_list_query_params(request, additional_params={"by"})

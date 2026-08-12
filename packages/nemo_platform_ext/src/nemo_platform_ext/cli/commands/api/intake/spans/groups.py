@@ -74,7 +74,13 @@ def list_groups(
     filter_trace_id: Annotated[str | None, typer.Option("--filter.trace-id", rich_help_panel="Filter Options")] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
-    sort: Annotated[Literal["span_count", "-span_count"] | None, typer.Option("--sort")] = None,
+    sort: Annotated[
+        Literal["span_count", "-span_count", "started_at", "-started_at"] | None,
+        typer.Option(
+            "--sort",
+            help="Sort groups by size or by start time. Use -started_at for the traces or sessions that began most recently, which answers 'what ran lately' in one call instead of paging through spans. A group's time is its earliest matching span, so this orders by when work started and not by when it was last active.",
+        ),
+    ] = None,
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
