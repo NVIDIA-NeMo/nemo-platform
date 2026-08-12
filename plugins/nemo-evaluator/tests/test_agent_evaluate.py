@@ -326,7 +326,6 @@ def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) ->
     assert params is None
 
 
-
 def test_runner_target_is_accepted(tmp_path: Path) -> None:
     spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
     assert isinstance(spec.target, CodexRunnerTarget)
