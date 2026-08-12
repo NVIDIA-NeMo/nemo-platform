@@ -150,14 +150,32 @@ def _build_nemo_gym_env_config(
     }
 
     # config_paths tells Gym which server/agent YAMLs to load out of the environment
-    # package. It is read from the manifest on the job-storage copy in both modes —
-    # the sandbox mounts the same package, it just sees it at a different path.
-    config_paths = _read_manifest_config_paths(gym.environment_path)
+    # package. The manifest is always read from the job-storage copy (the training master can
+    # reach it in both modes), but it stores the paths RELATIVE to the package root, and Gym
+    # resolves relative paths against its own CWD — the runtime image's WORKDIR, which is
+    # neither the job-storage copy nor the sandbox mount. Left relative, Gym dies with
+    # FileNotFoundError on e.g. /opt/nemo-rl/configs/<agent>.yaml. So anchor them to wherever
+    # the package is actually visible to the process that loads them: the sandbox mount in
+    # mode B, the job-storage copy in mode A. Absolute entries are passed through untouched.
+    package_root = SANDBOX_ENVIRONMENT_PATH if sandboxed else (gym.environment_path or DEFAULT_ENVIRONMENT_PATH)
+    config_paths = [
+        path if Path(path).is_absolute() else str(Path(package_root) / path)
+        for path in _read_manifest_config_paths(gym.environment_path)
+    ]
     if config_paths:
         nemo_gym["config_paths"] = config_paths
 
     if sandboxed:
-        runtime_image = gym.gym_runtime_image or "nvcr.io/nvidia/nemo-gym-runtime:latest"
+        # Fail loudly rather than substituting a default here: a wrong sandbox
+        # image surfaces as an opaque client-side ReadTimeout once the sandbox pod
+        # ErrImagePulls, which is expensive to diagnose from the training log.
+        runtime_image = gym.gym_runtime_image
+        if not runtime_image:
+            raise ValueError(
+                "Sandboxed GRPO requires a Gym runtime image; gym.gym_runtime_image is unset. "
+                "Set platformConfig.rl.gym_runtime_image, or leave it unset to inherit the "
+                "nmp-rl-training image."
+            )
         pvc_claim = resolve_job_storage_pvc_claim()
         if not pvc_claim:
             raise ValueError(
