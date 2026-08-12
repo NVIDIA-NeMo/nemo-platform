@@ -19,8 +19,6 @@
     "gen:data-designer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts data-designer",
     "gen:evaluator": "tsx ./orval/generate.ts evaluator",
     "gen:evaluator-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts evaluator",
-    "gen:iron-swarm": "tsx ./orval/generate.ts iron-swarm",
-    "gen:iron-swarm-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts iron-swarm",
     "gen:deployment-management": "tsx ./orval/generate.ts deployment-management",
     "gen:entity-store": "tsx ./orval/generate.ts entity-store",
     "gen:guardrails": "tsx ./orval/generate.ts guardrails",

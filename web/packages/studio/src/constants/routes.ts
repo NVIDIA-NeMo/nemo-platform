@@ -28,8 +28,6 @@ export const ROUTE_PARAMS = {
   dataDesignerJobName: 'dataDesignerJobName',
   sessionId: 'sessionId',
   anonymizerJobName: 'anonymizerJobName',
-  ironSwarmRunName: 'ironSwarmRunName',
-  ironSwarmManifestName: 'ironSwarmManifestName',
   deploymentConfigName: 'deploymentConfigName',
   deploymentName: 'deploymentName',
   /** Side panel mode under deployments (e.g. `details`). */
@@ -114,11 +112,6 @@ export const ROUTES = {
     dataDesignerJobBuild: `/workspaces/:${P.workspace}/data-designer/new/build`,
     /** Legacy job-creation form, not linked from any UI — reachable only by typing the URL. */
     dataDesignerJobNewLegacy: `/workspaces/:${P.workspace}/data-designer/new/legacy`,
-    ironSwarmRunList: `/workspaces/:${P.workspace}/iron-swarm`,
-    ironSwarmManifestList: `/workspaces/:${P.workspace}/iron-swarm/manifests`,
-    ironSwarmManifestNew: `/workspaces/:${P.workspace}/iron-swarm/manifests/new`,
-    ironSwarmManifestDetail: `/workspaces/:${P.workspace}/iron-swarm/manifests/:${P.ironSwarmManifestName}`,
-    ironSwarmRunDetails: `/workspaces/:${P.workspace}/iron-swarm/:${P.ironSwarmRunName}`,
     anonymizer: `/workspaces/:${P.workspace}/anonymizer`,
     anonymizerNew: `/workspaces/:${P.workspace}/anonymizer/new`,
     anonymizerJob: `/workspaces/:${P.workspace}/anonymizer/:${P.anonymizerJobName}`,

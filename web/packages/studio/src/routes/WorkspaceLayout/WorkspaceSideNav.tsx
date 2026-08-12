@@ -21,7 +21,6 @@ import {
   EXPERIMENT_ENABLED,
   GUARDRAILS_ENABLED,
   INTAKE_ENABLED,
-  IRON_SWARM_ENABLED,
   JOBS_ENABLED,
   MODEL_COMPARE_ENABLED,
   OPTIMIZER_ENABLED,
@@ -46,7 +45,6 @@ import {
   getExperimentRoute,
   getGuardrailsRoute,
   getIntakeTracesRoute,
-  getIronSwarmRunListRoute,
   getModelCompareRoute,
   getOptimizerRoute,
   getWorkspaceBaseModelsRoute,
@@ -79,7 +77,6 @@ import {
   ShieldKeyhole,
   FileStack,
   Settings,
-  Swords,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router';
@@ -126,12 +123,10 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const { pathname } = useLocation();
   const plugins = usePlugins();
   const agentsInstalled = usePluginInstalled('agents');
-  const ironSwarmInstalled = usePluginInstalled('iron-swarm');
   const pluginsLoaded = usePluginsLoaded();
   const pluginsError = usePluginsError();
   const manifestResolved = pluginsLoaded && !pluginsError;
   const showAgents = agentsInstalled || !manifestResolved;
-  const showIronSwarm = ironSwarmInstalled || !manifestResolved;
 
   const baseItems = useMemo<NavInputItem[]>(() => {
     const dashboardNav =
@@ -320,28 +315,16 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           ]
         : [];
 
-    const governanceItems = [
-      ...(GUARDRAILS_ENABLED
-        ? [
-            {
-              id: 'guardrails',
-              slotIcon: <ShieldKeyhole className={iconColorClass} />,
-              slotLabel: 'Guardrails',
-              href: getGuardrailsRoute(workspace),
-            },
-          ]
-        : []),
-      ...(IRON_SWARM_ENABLED && showIronSwarm
-        ? [
-            {
-              id: 'iron-swarm',
-              slotIcon: <Swords className={iconColorClass} />,
-              slotLabel: 'Iron Swarm',
-              href: getIronSwarmRunListRoute(workspace),
-            },
-          ]
-        : []),
-    ];
+    const governanceItems = GUARDRAILS_ENABLED
+      ? [
+          {
+            id: 'guardrails',
+            slotIcon: <ShieldKeyhole className={iconColorClass} />,
+            slotLabel: 'Guardrails',
+            href: getGuardrailsRoute(workspace),
+          },
+        ]
+      : [];
 
     return [
       ...dashboardNav,
@@ -353,7 +336,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
       ...(governanceItems.length > 0 ? [{ group: 'Governance', items: governanceItems }] : []),
     ];
-  }, [workspace, showAgents, showIronSwarm]);
+  }, [workspace, showAgents]);
 
   const openIds = useMemo(() => openParentKey(baseItems, pathname), [baseItems, pathname]);
   const items = useMemo(() => withDefaultOpen(baseItems, openIds), [baseItems, openIds]);
