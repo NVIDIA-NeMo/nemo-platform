@@ -127,7 +127,7 @@ describe('SafeSynthesizerNewRoute', () => {
         SAFE_SYNTHESIZER_ENABLED: true,
         OTEL_SERVICE_NAME: 'test-service',
       }));
-      vi.doMock('@studio/util/logger', () => ({
+      vi.doMock('@nemo/common/src/utils/logger', () => ({
         logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
@@ -141,7 +141,7 @@ describe('SafeSynthesizerNewRoute', () => {
         SAFE_SYNTHESIZER_ENABLED: false,
         OTEL_SERVICE_NAME: 'test-service',
       }));
-      vi.doMock('@studio/util/logger', () => ({
+      vi.doMock('@nemo/common/src/utils/logger', () => ({
         logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
@@ -795,7 +795,7 @@ describe('SafeSynthesizerNewRoute', () => {
     it('should have form validation error handling configured', async () => {
       // Remove any lingering vi.doMock for the logger (left by Feature flag tests) so
       // the component gets the real logger and we can assert via console.error.
-      vi.doUnmock('@studio/util/logger');
+      vi.doUnmock('@nemo/common/src/utils/logger');
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
         OTEL_SERVICE_NAME: 'test-service',

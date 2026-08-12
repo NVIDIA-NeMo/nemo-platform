@@ -81,6 +81,23 @@ class TestAtif:
                     "is_copied_context": True,
                     "llm_call_count": 0,
                     "message": "string",
+                    "observation": {
+                        "results": [
+                            {
+                                "content": "string",
+                                "extra": {"foo": "bar"},
+                                "source_call_id": "source_call_id",
+                                "subagent_trajectory_ref": [
+                                    {
+                                        "extra": {"foo": "bar"},
+                                        "session_id": "session_id",
+                                        "trajectory_id": "trajectory_id",
+                                        "trajectory_path": "trajectory_path",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
                     "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
                 }
             ],
@@ -118,6 +135,23 @@ class TestAtif:
                             "is_copied_context": True,
                             "llm_call_count": 0,
                             "message": "string",
+                            "observation": {
+                                "results": [
+                                    {
+                                        "content": "string",
+                                        "extra": {"foo": "bar"},
+                                        "source_call_id": "source_call_id",
+                                        "subagent_trajectory_ref": [
+                                            {
+                                                "extra": {"foo": "bar"},
+                                                "session_id": "session_id",
+                                                "trajectory_id": "trajectory_id",
+                                                "trajectory_path": "trajectory_path",
+                                            }
+                                        ],
+                                    }
+                                ]
+                            },
                             "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
                         }
                     ],
@@ -234,6 +268,23 @@ class TestAsyncAtif:
                     "is_copied_context": True,
                     "llm_call_count": 0,
                     "message": "string",
+                    "observation": {
+                        "results": [
+                            {
+                                "content": "string",
+                                "extra": {"foo": "bar"},
+                                "source_call_id": "source_call_id",
+                                "subagent_trajectory_ref": [
+                                    {
+                                        "extra": {"foo": "bar"},
+                                        "session_id": "session_id",
+                                        "trajectory_id": "trajectory_id",
+                                        "trajectory_path": "trajectory_path",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
                     "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
                 }
             ],
@@ -271,6 +322,23 @@ class TestAsyncAtif:
                             "is_copied_context": True,
                             "llm_call_count": 0,
                             "message": "string",
+                            "observation": {
+                                "results": [
+                                    {
+                                        "content": "string",
+                                        "extra": {"foo": "bar"},
+                                        "source_call_id": "source_call_id",
+                                        "subagent_trajectory_ref": [
+                                            {
+                                                "extra": {"foo": "bar"},
+                                                "session_id": "session_id",
+                                                "trajectory_id": "trajectory_id",
+                                                "trajectory_path": "trajectory_path",
+                                            }
+                                        ],
+                                    }
+                                ]
+                            },
                             "timestamp": parse_datetime("2019-12-27T18:11:19.117Z"),
                         }
                     ],

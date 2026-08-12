@@ -65,6 +65,7 @@
     #   nmp-common
     #   nmp-customization-common
     #   nmp-inference-gateway
+    #   nmp-jobs
     #   nmp-models
     #   nmp-platform
     #   nmp-platform-runner
@@ -755,6 +756,7 @@ docker==7.2.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-platform-ext
     #   nemo-platform-sdk
     #   ngcsdk
+    #   nmp-intake
     #   nmp-jobs
 docstring-parser==0.18.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \

@@ -98,13 +98,13 @@ class DeploymentsRunnerConfig(BaseModel):
         ),
     )
     config_mount_path: str = Field(
-        default="/workspace/config.yaml",
+        default="/tmp/nemo/config.yaml",
         description=(
             "Path inside the container where the NAT workflow config is placed for nat-workflow-v1 "
-            "deployments. Fabric deployments use agent.yaml in the same directory. Must sit under "
-            "the image's writable WORKDIR (/workspace) so docker mode, which materializes the "
-            "config as the non-root container user, can write it; k8s mounts it read-only there "
-            "via a ConfigMap subPath."
+            "deployments. Fabric deployments use agent.yaml in the same directory. Must be writable "
+            "by every runtime user this image can run as: the plain-docker container user and the "
+            "openshell sandbox user (uid 999, which cannot write the image's /workspace). /tmp is "
+            "the writable intersection; k8s mounts it read-only there via a ConfigMap subPath."
         ),
     )
 

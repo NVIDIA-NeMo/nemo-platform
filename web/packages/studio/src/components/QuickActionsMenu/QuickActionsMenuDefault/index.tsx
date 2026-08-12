@@ -4,7 +4,7 @@
 import {
   QuickActionItem,
   QuickActionsMenuRoot,
-} from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
+} from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { Pencil, Trash, FolderOpen } from 'lucide-react';
 import { FC, useMemo } from 'react';
 import { useNavigate } from 'react-router';

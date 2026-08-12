@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { toError } from '@nemo/common/src/utils/logger';
 import { ensureEvalConfigFileset } from '@studio/api/evaluation/eval-config-fileset';
 import {
   applySuggestion,
@@ -37,7 +38,6 @@ import {
   suggestionIdentity,
 } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
 import { getAgentEvaluationDetailRoute } from '@studio/routes/utils';
-import { toError } from '@studio/util/logger';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 

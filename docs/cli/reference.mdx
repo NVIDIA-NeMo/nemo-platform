@@ -4047,6 +4047,11 @@ Filter jobs by workspace, project, name, status, source, created_at, and updated
 
 Get all currently configured execution profiles.
 
+Returns the capability-filtered merge from jobs config. In local standalone the
+controller may prune the shared list further after registry boot; in split
+topologies the API advertises its own merge result (not controller process
+memory).
+
 **Usage:**
 
 ```shell
@@ -6811,19 +6816,14 @@ nemo intake spans list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
 * `--filter.agent-id`
 * `--filter.agent-name`
-* `--filter.dataset-id`
-* `--filter.dataset-name`
-* `--filter.dataset-version`
 * `--filter.evaluation-id`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
 * `--filter.project`
-* `--filter.prompt-name`
-* `--filter.prompt-version`
 * `--filter.provider`
 * `--filter.session-id`
 * `--filter.source`
@@ -6962,16 +6962,11 @@ JSON-only fields:
 Filter spans by the same fields as the span list endpoint, then group matching spans by the comma-separated fields in the by query parameter.
 * `--filter.agent-id`
 * `--filter.agent-name`
-* `--filter.dataset-id`
-* `--filter.dataset-name`
-* `--filter.dataset-version`
 * `--filter.evaluation-id`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
 * `--filter.project`
-* `--filter.prompt-name`
-* `--filter.prompt-version`
 * `--filter.provider`
 * `--filter.session-id`
 * `--filter.source`

@@ -4,7 +4,16 @@
 from __future__ import annotations
 
 import pytest
-from nemo_evaluator.api.schemas import MetadataItem, MetricInline, MetricRef, Task, TaskInput, TaskInputs
+from nemo_evaluator.api.schemas import (
+    EvaluatorTaskDefinition,
+    HarborTaskDefinition,
+    MetadataItem,
+    MetricInline,
+    MetricRef,
+    Task,
+    TaskInput,
+    TaskInputs,
+)
 from nemo_evaluator.api.service.task_service import MetricRefNotFoundError, TaskService
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
@@ -13,10 +22,17 @@ from nemo_platform_plugin.entity_client import NemoEntityConflictError, NemoEnti
 
 
 class _FakeMetricService:
-    """Records inline-metric normalization so we can assert a task stores refs, not bundles."""
+    """Records both metric-service entry points.
+
+    ``stored`` covers inline-metric normalization, so a test can assert a task stores refs rather
+    than bundles. ``looked_up`` covers ref validation — recorded separately because "this task never
+    touched the metric service" is a claim about *both* calls, and asserting only on ``stored``
+    would leave a lookup-only path silently passing.
+    """
 
     def __init__(self, existing: set[tuple[str, str]] | None = None) -> None:
         self.stored: list[MetricInline] = []
+        self.looked_up: list[tuple[str, str]] = []
         self.existing = existing if existing is not None else {("default", "stored-metric")}
 
     async def store_derived_metric(self, metric: MetricInline, *, workspace: str) -> MetricRef:
@@ -24,6 +40,7 @@ class _FakeMetricService:
         return MetricRef(f"{workspace}/derived.{metric.payload.digest}")
 
     async def get_metric(self, workspace: str, name: str) -> object | None:
+        self.looked_up.append((workspace, name))
         return object() if (workspace, name) in self.existing else None
 
 
@@ -35,11 +52,37 @@ def _inline_metric() -> MetricInline:
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
 
 
+def _evaluator_spec(task: Task) -> EvaluatorTaskDefinition:
+    """Narrow ``Task.spec`` to the evaluator variant before reading a variant-specific field.
+
+    ``spec`` is a discriminated union, so a test that reads ``intent``/``metrics``/``reference`` has
+    to say which kind it expects. Asserting it rather than assuming it means a change that routed
+    the wrong variant here fails on the kind, not with an ``AttributeError`` mid-assertion.
+    """
+    assert isinstance(task.spec, EvaluatorTaskDefinition)
+    return task.spec
+
+
+def _harbor_spec(task: Task) -> HarborTaskDefinition:
+    """The Harbor half of :func:`_evaluator_spec`."""
+    assert isinstance(task.spec, HarborTaskDefinition)
+    return task.spec
+
+
+def _ref(metric: MetricRef | MetricInline) -> MetricRef:
+    """Narrow a stored task's metric to a reference — inline bundles are offloaded on create."""
+    assert isinstance(metric, MetricRef)
+    return metric
+
+
 def _task_input() -> TaskInput:
     return TaskInput(
-        intent="Answer the question.",
-        inputs=TaskInputs(instruction="What is 2+2?"),
-        metrics=[MetricRef("default/stored-metric")],
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent="Answer the question.",
+            inputs=TaskInputs(instruction="What is 2+2?"),
+            metrics=[MetricRef("default/stored-metric")],
+        ),
         metadata=[MetadataItem(key="suite", value="smoke")],
     )
 
@@ -60,8 +103,8 @@ async def test_create_then_get(service: TaskService) -> None:
     assert isinstance(created, Task)
     assert created.name == "task-1"
     assert created.id == "task-task-1"
-    assert created.intent == "Answer the question."
-    assert isinstance(created.metrics[0], MetricRef)
+    assert _evaluator_spec(created).intent == "Answer the question."
+    assert isinstance(_evaluator_spec(created).metrics[0], MetricRef)
     assert created.created_at is not None
 
     got = await service.get_task("default", "task-1")
@@ -73,9 +116,12 @@ async def test_create_normalizes_inline_metrics_to_refs(
 ) -> None:
     inline = _inline_metric()
     task_input = TaskInput(
-        intent="Answer the question.",
-        inputs=TaskInputs(instruction="What is 2+2?"),
-        metrics=[MetricRef("default/stored-metric"), inline],
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent="Answer the question.",
+            inputs=TaskInputs(instruction="What is 2+2?"),
+            metrics=[MetricRef("default/stored-metric"), inline],
+        )
     )
 
     created, _ = await service.create_task("task-1", task_input, workspace="default")
@@ -83,22 +129,55 @@ async def test_create_normalizes_inline_metrics_to_refs(
     # The inline metric was offloaded to the metric service (stored as a derived metric)...
     assert metric_service.stored == [inline]
     # ...and the persisted task holds only refs — the passthrough ref plus the derived one.
-    assert all(isinstance(m, MetricRef) for m in created.metrics)
-    assert created.metrics[0].root == "default/stored-metric"
-    assert created.metrics[1].root == f"default/derived.{inline.payload.digest}"
+    assert all(isinstance(m, MetricRef) for m in _evaluator_spec(created).metrics)
+    assert _ref(_evaluator_spec(created).metrics[0]).root == "default/stored-metric"
+    assert _ref(_evaluator_spec(created).metrics[1]).root == f"default/derived.{inline.payload.digest}"
+
+
+async def test_create_preserves_grader_only_reference(service: TaskService) -> None:
+    """Normalization narrows ``metrics`` and must leave the rest of the spec alone.
+
+    ``_normalize_spec`` rebuilds the spec with ``model_copy(update=...)``, so a field it does not
+    name rides along untouched — this pins that, since silently dropping ground truth would leave
+    metrics grading against nothing while the run still reported a score.
+    """
+    reference = {"expected": "Paris", "held_out_tests": ["test_capital.py"]}
+    task_input = TaskInput(
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent="Answer the question.",
+            inputs=TaskInputs(instruction="What is the capital of France?"),
+            reference=reference,
+            metrics=[_inline_metric()],
+        )
+    )
+
+    created, _ = await service.create_task("task-1", task_input, workspace="default")
+
+    assert _evaluator_spec(created).reference == reference, "normalizing metrics must not disturb the reference"
+    got = await service.get_task("default", "task-1")
+    assert got is not None and _evaluator_spec(got).reference == reference
 
 
 async def test_create_rejects_missing_metric_ref(service: TaskService) -> None:
-    task_input = TaskInput(intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/nope")])
+    task_input = TaskInput(
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator", intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/nope")]
+        )
+    )
     with pytest.raises(MetricRefNotFoundError, match="not found"):
         await service.create_task("task-1", task_input, workspace="default")
 
 
 async def test_create_canonicalizes_bare_metric_ref(service: TaskService) -> None:
     # A bare "stored-metric" ref resolves against the task workspace and is persisted as "default/stored-metric".
-    task_input = TaskInput(intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("stored-metric")])
+    task_input = TaskInput(
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator", intent="x", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("stored-metric")]
+        )
+    )
     created, _ = await service.create_task("task-1", task_input, workspace="default")
-    assert created.metrics[0].root == "default/stored-metric"
+    assert _ref(_evaluator_spec(created).metrics[0]).root == "default/stored-metric"
 
 
 async def test_create_rejects_duplicate(service: TaskService) -> None:
@@ -195,7 +274,12 @@ async def test_replace_leaves_no_uncovered_head_content_when_publishing_fails(
     entity_store.create = _boom
 
     changed = TaskInput(
-        intent="Rewritten.", inputs=TaskInputs(instruction="?"), metrics=[MetricRef("default/stored-metric")]
+        spec=EvaluatorTaskDefinition(
+            kind="evaluator",
+            intent="Rewritten.",
+            inputs=TaskInputs(instruction="?"),
+            metrics=[MetricRef("default/stored-metric")],
+        )
     )
     with pytest.raises(RuntimeError):
         await service.replace_task("task-1", changed, workspace="default")
@@ -203,7 +287,7 @@ async def test_replace_leaves_no_uncovered_head_content_when_publishing_fails(
     entity_store.create = real_create.__get__(entity_store)
     head = await service.get_task("default", "task-1")
     assert head is not None
-    assert head.intent == "Answer the question.", "the head must still hold the last published content"
+    assert _evaluator_spec(head).intent == "Answer the question.", "the head must still hold the last published content"
 
 
 async def test_tag_revision_returns_none_for_a_missing_task(service: TaskService) -> None:
@@ -273,7 +357,7 @@ async def test_resolve_revision_honours_a_tag_naming_an_older_revision(service: 
     await service.tag_revision("default", "task-1", "blessed", "latest")
 
     revised = _task_input()
-    revised.intent = "Answer differently."
+    revised.spec.intent = "Answer differently."
     await service.replace_task("task-1", revised, workspace="default")
 
     latest = await service.resolve_revision("default", "task-1")
@@ -289,7 +373,7 @@ async def test_resolve_revision_round_trips_a_digest_fragment(service: TaskServi
     first = (await service.list_revisions("default", "task-1")).data[0].content_hash
 
     revised = _task_input()
-    revised.intent = "Answer differently."
+    revised.spec.intent = "Answer differently."
     await service.replace_task("task-1", revised, workspace="default")
 
     assert await service.resolve_revision("default", "task-1", first) == first
@@ -300,3 +384,134 @@ async def test_resolve_revision_raises_for_a_missing_task(service: TaskService) 
     member that does not exist, now that the separate existence check is gone."""
     with pytest.raises(NemoEntityNotFoundError):
         await service.resolve_revision("default", "nope")
+
+
+# --- Harbor-kind tasks --------------------------------------------------------
+
+
+def _harbor_input(digest: str = "a" * 64) -> TaskInput:
+    return TaskInput(
+        spec=HarborTaskDefinition(
+            kind="harbor",
+            archive_ref="default/harbor-tasks#packages/org-name/abc/dist.tar.gz",
+            archive_digest=digest,
+            instruction="Fix the failing test.",
+            config={"verifier": {"type": "pytest"}},
+        ),
+        metadata=[MetadataItem(key="suite", value="swe")],
+    )
+
+
+async def test_stores_a_harbor_task(service: TaskService) -> None:
+    """Both kinds live in one record type, so a user manages every evaluation unit in one place."""
+    created, published = await service.create_task("fix-test", _harbor_input(), workspace="default")
+
+    assert published
+    assert created.spec.kind == "harbor"
+    assert created.spec.archive_ref.endswith("dist.tar.gz")
+    assert created.spec.config == {"verifier": {"type": "pytest"}}
+
+
+async def test_harbor_task_publishes_revisions_like_any_other(service: TaskService) -> None:
+    await service.create_task("fix-test", _harbor_input(), workspace="default")
+
+    same, published_again = await service.replace_task("fix-test", _harbor_input(), workspace="default")
+    assert not published_again, "identical content must not cut a revision"
+
+    changed, published = await service.replace_task("fix-test", _harbor_input(digest="b" * 64), workspace="default")
+    assert published and changed.revision == 2
+
+
+async def test_a_harbor_task_never_reaches_the_metric_service(
+    service: TaskService, metric_service: _FakeMetricService
+) -> None:
+    """Metric normalization is agent-eval-specific: a Harbor task is scored by Harbor's own reward,
+    and its spec arrives already in stored form.
+
+    Both entry points, not just the write: a Harbor spec must not be validated against stored
+    metrics either, so ``_normalize_spec`` has to short-circuit before ref resolution rather than
+    merely find nothing to offload.
+    """
+    await service.create_task("fix-test", _harbor_input(), workspace="default")
+    assert metric_service.stored == []
+    assert metric_service.looked_up == []
+
+
+async def test_kinds_with_matching_metadata_do_not_share_a_digest(service: TaskService) -> None:
+    """The revision digest covers the whole spec, so two kinds cannot collide on content."""
+    harbor, _ = await service.create_task("a", _harbor_input(), workspace="default")
+    agent, _ = await service.create_task("b", _task_input(), workspace="default")
+
+    harbor_revisions = await service.list_revisions("default", "a")
+    agent_revisions = await service.list_revisions("default", "b")
+    assert harbor_revisions is not None and agent_revisions is not None
+    assert harbor_revisions.data[0].content_hash != agent_revisions.data[0].content_hash
+
+
+async def test_harbor_config_is_stored_but_not_hashed(service: TaskService) -> None:
+    """`config` is a projection of task.toml, which lives inside the archive — a real change moves
+    `archive_digest`. Hashing the projection too would make our history sensitive to Harbor's
+    serialization: a release that reordered keys would cut a revision for byte-identical files."""
+    await service.create_task("fix-test", _harbor_input(), workspace="default")
+
+    reserialized = TaskInput(
+        spec=HarborTaskDefinition(
+            kind="harbor",
+            archive_ref="default/harbor-tasks#packages/org-name/abc/dist.tar.gz",
+            archive_digest="a" * 64,
+            instruction="Fix the failing test.",
+            config={"verifier": {"type": "pytest"}, "added_by_a_new_harbor_release": True},
+        ),
+        metadata=[MetadataItem(key="suite", value="swe")],
+    )
+    same, published = await service.replace_task("fix-test", reserialized, workspace="default")
+
+    assert not published, "a config-only change must not cut a revision"
+    assert same.revision == 1
+
+    # ...but the new config is *persisted*, so the queryable projection stays current. Re-read
+    # rather than trusting the returned object: `replace_task` builds its result from the head it
+    # already mutated in memory, so asserting on `same` would pass even if nothing were written.
+    # On this path the write is a lone `entity_client.update` whose comment justifies it by
+    # `project` alone — drop it as a redundant round trip and only a re-read notices.
+    refetched = await service.get_task("default", "fix-test")
+    assert refetched is not None
+    assert _harbor_spec(refetched).config["added_by_a_new_harbor_release"] is True
+
+
+async def test_reference_only_change_publishes_a_revision(service: TaskService) -> None:
+    """The mirror of the Harbor ``config`` case, and the reason the two differ.
+
+    ``config`` is excluded because it is a projection of content ``archive_digest`` already covers.
+    ``reference`` is nothing of the sort: it is the ground truth a metric grades against, so a task
+    whose reference changed scores differently and must be a distinct revision. Deduping it onto the
+    old digest would let a pinned taskset silently re-grade.
+    """
+
+    def _graded(expected: str) -> TaskInput:
+        return TaskInput(
+            spec=EvaluatorTaskDefinition(
+                kind="evaluator",
+                intent="Answer the question.",
+                inputs=TaskInputs(instruction="What is the capital of France?"),
+                reference={"expected": expected},
+                metrics=[MetricRef("default/stored-metric")],
+            )
+        )
+
+    await service.create_task("capital", _graded("Paris"), workspace="default")
+
+    same, published_again = await service.replace_task("capital", _graded("Paris"), workspace="default")
+    assert not published_again and same.revision == 1, "identical content must still dedup"
+
+    changed, published = await service.replace_task("capital", _graded("Lyon"), workspace="default")
+    assert published, "changing the ground truth must cut a new revision"
+    assert changed.revision == 2
+    assert _evaluator_spec(changed).reference == {"expected": "Lyon"}
+
+
+async def test_a_real_archive_change_does_cut_a_revision(service: TaskService) -> None:
+    """The flip side: `archive_digest` is the authoritative identity, so it must still move."""
+    await service.create_task("fix-test", _harbor_input(), workspace="default")
+    changed, published = await service.replace_task("fix-test", _harbor_input(digest="b" * 64), workspace="default")
+    assert published and changed.revision == 2

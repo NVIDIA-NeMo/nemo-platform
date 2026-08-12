@@ -10,13 +10,13 @@
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useChatCompletion } from '@nemo/common/src/hooks/useChatCompletion';
+import { getErrorMessage } from '@nemo/common/src/utils/error';
 import type { CreateJobRequest as DataDesignerJobRequest } from '@nemo/sdk/generated/data-designer/schema';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { DATA_DESIGNER_JOB_GENERATOR_SYSTEM_PROMPT } from '@studio/components/NewDataDesignerJobForm/constants';
 import { generateDataDesignerJobRequestTool } from '@studio/components/NewDataDesignerJobForm/tools';
 import {
   applyFormModelToJobRequest,
-  getErrorMessage,
   getWorkspaceAndModel,
   parseJsonContentToJobRequest,
   parseToolResponseToJobRequest,

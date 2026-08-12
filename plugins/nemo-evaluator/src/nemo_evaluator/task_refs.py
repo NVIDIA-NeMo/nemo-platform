@@ -18,12 +18,25 @@ from __future__ import annotations
 
 from typing import cast
 
-from nemo_evaluator.api.schemas import TasksetRef, parse_subentity_ref
+from nemo_evaluator.api.schemas import EvaluatorTaskDefinition, TasksetRef, parse_subentity_ref
 from nemo_evaluator.entities import TaskEntity, TaskRevisionEntity, TasksetEntity, TasksetRevisionEntity
 from nemo_evaluator.jobs.agent_spec import AgentEvalTaskInput
 from nemo_evaluator.revisions import RevisionNotFoundError, get_revision
 from nemo_platform_plugin.entities import EntityClientProtocol
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
+
+
+class UnsupportedTaskKindError(ValueError):
+    """A taskset member's runner kind cannot be executed by the requested target.
+
+    A taskset may group tasks of different kinds — that is the point of managing every evaluation
+    unit in one place — but a single run has one target, so expansion is where a mismatch surfaces.
+
+    Raised during ``to_spec``, which the job submit path wraps: any exception there becomes a 422
+    carrying this message (``_apply_transformer`` in ``nemo_platform_plugin.jobs.api_factory``). It
+    subclasses ``ValueError`` for local callers that catch it deliberately, not to obtain that
+    mapping — the mapping is a catch-all and would apply to any exception type.
+    """
 
 
 def _entity_to_task_input(entity: TaskEntity, revision: TaskRevisionEntity) -> AgentEvalTaskInput:
@@ -36,15 +49,32 @@ def _entity_to_task_input(entity: TaskEntity, revision: TaskRevisionEntity) -> A
 
     A stored task holds metric *references* (inline metrics were normalized to derived stored
     metrics on create); those resolve to inline bundles in the shared metric-ref pass that runs
-    after expansion. A stored task carries no grader-only ``reference`` (the entity has no such
-    field), so taskset-driven tasks run with an empty one.
+    after expansion. The grader-only ``reference`` comes from the revision too, so a taskset-driven
+    run grades against the ground truth that revision pinned — held-out data is not the privilege of
+    inline submissions.
     """
+    spec = revision.spec
+    if not isinstance(spec, EvaluatorTaskDefinition):
+        # A Harbor task's content is a *directory of files*, not fields — the runner needs the
+        # archive materialized on disk, which this pure projection cannot do. Rejecting here means a
+        # mismatched taskset fails before the run rather than silently evaluating an empty task.
+        #
+        # Deliberately does *not* suggest picking a different target: no target can run a stored
+        # task of this kind yet, so pointing at one would send the reader in circles. Storing the
+        # kind landed ahead of the execution bridge (AALGO-481).
+        raise UnsupportedTaskKindError(
+            f"Task '{entity.workspace}/{entity.name}' is a {spec.kind!r} task. Running a stored "
+            f"{spec.kind!r} task is not supported yet — no target can execute one, so this taskset "
+            "cannot be evaluated until that lands. Remove the member, or submit an "
+            "'evaluator'-kind taskset."
+        )
     return AgentEvalTaskInput(
         id=entity.name,
-        intent=revision.intent,
-        inputs=revision.inputs,
-        metrics=list(revision.metrics),
-        views=revision.views,
+        intent=spec.intent,
+        inputs=spec.inputs,
+        reference=dict(spec.reference),
+        metrics=list(spec.metrics),
+        views=spec.views,
         metadata=revision.metadata,
     )
 

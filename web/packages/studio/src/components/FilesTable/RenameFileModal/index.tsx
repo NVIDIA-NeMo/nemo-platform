@@ -5,9 +5,9 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { useDatasetFileRename } from '@studio/api/datasets/useDatasetFileRename';
 import { useSelectedDatasetId } from '@studio/hooks/useSelectedDatasetId';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
 

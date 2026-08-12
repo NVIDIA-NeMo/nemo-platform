@@ -30,10 +30,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Jobs here provision their own toolchain (astral-sh/setup-uv reads the same
-  # required-version out of pyproject.toml, actions/setup-node pins Node), so
-  # the Makefile should call those rather than a mise it never installed.
-  NMP_SKIP_MISE: 1
+  # Keep the CI uv binary aligned with the Flox development environment.
+  UV_VERSION: "0.9.14"
+  # Jobs here provision their own toolchain, so Make bypasses Flox activation.
+  TOOLCHAIN: system
 
 jobs:
   changes:
@@ -44,6 +44,7 @@ jobs:
       test: ${{ steps.changes.outputs.test }}
       deps: ${{ steps.changes.outputs.deps }}
       fabric: ${{ steps.changes.outputs.fabric }}
+      evaluator-sdk-closure: ${{ steps.changes.outputs.evaluator-sdk-closure }}
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
       web-studio: ${{ steps.changes.outputs.web-studio }}
@@ -70,20 +71,15 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - name: Install actionlint
-        shell: bash
-        run: |
-          mkdir -p "${RUNNER_TEMP}/actionlint"
-          curl -fsSL \
-            -o "${RUNNER_TEMP}/actionlint.tar.gz" \
-            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  ${RUNNER_TEMP}/actionlint.tar.gz" \
-            | sha256sum -c -
-          tar -xzf "${RUNNER_TEMP}/actionlint.tar.gz" -C "${RUNNER_TEMP}/actionlint"
+      - name: Install Flox
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
+        with:
+          disable-metrics: "true"
       - name: Lint GitHub workflows and actions
-        shell: bash
-        run: |
-          "${RUNNER_TEMP}/actionlint/actionlint"
+        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
+        with:
+          dir: ./tools/actionlint
+          command: actionlint
 
   ngc-metadata-test:
     name: Test NGC metadata sync
@@ -101,7 +97,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          version-file: pyproject.toml
+          version: ${{ env.UV_VERSION }}
           enable-cache: false
       - name: Run NGC metadata unit tests
         run: uv run --no-cache .github/scripts/tests/test_ngc_metadata.py
@@ -118,7 +114,7 @@ jobs:
       - name: Install platform uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          version: "0.9.14"
+          version: ${{ env.UV_VERSION }}
           enable-cache: false
           python-version: "3.12"
 
@@ -128,8 +124,8 @@ jobs:
       - name: Check lock with platform uv
         run: bash script/uv-lock.sh --check
 
-  uv-latest-compatibility:
-    name: Check latest uv compatibility
+  uv-compatibility:
+    name: Check configured uv compatibility
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -137,16 +133,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install latest uv
+      - name: Install configured uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: false
           python-version: "3.12"
 
       - name: Show uv version
         run: uv --version
 
-      - name: Check sync with latest uv
+      - name: Check sync with configured uv
         run: uv sync --frozen --all-packages
 
   docker-bake-graph:
@@ -287,7 +284,7 @@ jobs:
         if: steps.fastembed-cache.outputs.cache-hit != 'true'
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          version-file: pyproject.toml
+          version: ${{ env.UV_VERSION }}
           cache-dependency-glob: uv.lock
 
       - name: Populate fastembed model cache
@@ -594,41 +591,20 @@ jobs:
     env:
       HELM_FOLDER: k8s/helm
       HELM_RELEASE_NAME: nemo-platform
-      KUBECONFORM_VERSION: v0.6.7
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - name: Install Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
-      - name: Install kubeconform
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p "${RUNNER_TEMP}/kubeconform"
-          kubeconform_archive="kubeconform-linux-amd64.tar.gz"
-          curl -fsSL \
-            -o "${RUNNER_TEMP}/kubeconform.tar.gz" \
-            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/${kubeconform_archive}"
-          curl -fsSL \
-            -o "${RUNNER_TEMP}/kubeconform.CHECKSUMS" \
-            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/CHECKSUMS"
-          grep "  ${kubeconform_archive}$" "${RUNNER_TEMP}/kubeconform.CHECKSUMS" \
-            | sed "s#  ${kubeconform_archive}#  ${RUNNER_TEMP}/kubeconform.tar.gz#" \
-            | sha256sum -c -
-          tar -xzf "${RUNNER_TEMP}/kubeconform.tar.gz" -C "${RUNNER_TEMP}/kubeconform" kubeconform
-          chmod +x "${RUNNER_TEMP}/kubeconform/kubeconform"
-          echo "${RUNNER_TEMP}/kubeconform" >> "${GITHUB_PATH}"
-      - name: Add NVIDIA Helm repo
-        shell: bash
-        run: |
-          helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
-          helm repo update
+      - name: Install Flox
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
+        with:
+          disable-metrics: "true"
       - name: Lint and validate Helm chart
-        shell: bash
-        run: tools/lint/lint-helm.sh
+        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
+        with:
+          dir: ./tools/helm
+          command: tools/lint/lint-helm.sh
       - name: Upload Helm lint artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -781,35 +757,41 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+      - name: Install flox
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
+        with:
+          disable-metrics: "true"
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
           python-version: "3.12"
           cache-dependency-glob: uv.lock
-      - name: Check uv lockfile
-        run: uv lock --check
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - name: Install nodejs
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
-        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+        run: |
+          npm i -g corepack@0.31.0
+          corepack enable pnpm
       - name: Install web dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
-      - name: Install scanner dependencies
-        shell: bash
-        run: script/install_osv_scanner.sh
-      - name: Run lint
-        run: tools/lint/lint-all.sh
-        shell: bash
+      - name: Run Lint
+        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
         env:
           CI_PROJECT_DIR: ${{ github.workspace }}
+        with:
+          dir: ./tools/lint
+          command: |
+            tools/lint/lint-all.sh
       - name: Upload lint artifacts
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: lint-artifacts
+          name: Lint Artifacts
           retention-days: 7
           path: |
             third_party/
@@ -856,6 +838,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -888,6 +871,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -951,6 +935,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           # Must satisfy the workspace floor in the root pyproject.toml (`requires-python`), or
           # `uv sync` refuses the interpreter outright.
           python-version: ${{ matrix.python-version }}
@@ -1000,6 +985,50 @@ jobs:
           uv run --frozen --no-sync pytest \
             packages/nemo_evaluator_sdk/tests/agent_eval/test_fabric_surface.py -v
 
+  # Installs only nemo-evaluator-sdk (no workspace/extras/dev) and imports
+  # agent_eval.runtimes.harbor_runtime. Catches undeclared deps (workspace sync hides them)
+  # and broken lazy barrels that pull in the metric/execution stack.
+  evaluator-sdk-closure-smoke:
+    name: Evaluator SDK dependency-closure smoke (Linux, py${{ matrix.python-version }})
+    needs: [changes]
+    if: >
+      !cancelled() &&
+      (needs.changes.outputs.deps == 'true' || needs.changes.outputs.evaluator-sdk-closure == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Must satisfy uv.lock's requires-python (>=3.12,<3.14), which this job syncs against.
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install nemo-evaluator-sdk with no extras and no dev group
+        run: uv sync --frozen --package nemo-evaluator-sdk --no-dev
+      # pytest is not in the package-only sync; install the runner only (do not add SDK deps).
+      # WHY BOTH THIS JOB AND THE UNIT TEST:
+      # - Unit-test CI syncs the whole workspace: a sibling (e.g. nemo-platform-sdk) may already
+      #   provide httpx, so an undeclared SDK dep still imports — green here, broken for consumers
+      #   who only installed nemo-evaluator-sdk.
+      # - This job: `uv sync --package nemo-evaluator-sdk --no-dev` (no extras/siblings) so that
+      #   undeclared-dep case fails, then runs test_lazy_public_api (laziness assertions; one source
+      #   of truth — no duplicated heredoc probe).
+      - name: Run lazy-import closure unit test under the stripped install
+        run: |
+          uv pip install --python .venv/bin/python pytest
+          uv run --frozen --no-sync pytest \
+            packages/nemo_evaluator_sdk/tests/test_lazy_public_api.py::test_agent_eval_import_does_not_pull_the_execution_stack -v
+
   python-integration-test:
     name: Python integration tests
     needs: [policy-wasm]
@@ -1019,6 +1048,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1074,6 +1104,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1146,6 +1177,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1290,6 +1322,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1381,6 +1414,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1445,6 +1479,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1504,7 +1539,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1537,7 +1572,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1570,7 +1605,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1597,7 +1632,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1625,7 +1660,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1656,7 +1691,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1678,7 +1713,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
       - name: Install pnpm via corepack
         run: npm i -g corepack@0.31.0 && corepack enable pnpm
       - name: Install dependencies
@@ -1723,6 +1758,7 @@ jobs:
         # unsupported version.
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Run OpenShell backend unit tests
@@ -1763,10 +1799,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          # Point setup-uv at the nemo-platform checkout so it picks up the
-          # repo's `required-version` constraint from pyproject.toml. Other
-          # jobs check out into the workspace root and get this implicitly.
           working-directory: nemo-platform
+          version: ${{ env.UV_VERSION }}
           python-version: "3.12"
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1908,20 +1942,23 @@ jobs:
           path: summary.md
 
   opa-policy-test:
+    name: Test OPA Policy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - name: Install OPA 1.8.0
-        run: |
-          curl -L -o opa https://github.com/open-policy-agent/opa/releases/download/v1.8.0/opa_linux_amd64_static
-          chmod +x opa
-          ./opa version
-      - name: Run test
-        run: |
-          ./opa test services/core/auth/src/nmp/core/auth/app/policies services/core/auth/src/nmp/core/auth/app/policy_tests services/core/auth/src/nmp/core/auth/assets/static-authz.yaml -v
+      - name: Install Deps
+        uses: flox/install-flox-action@c94e7e1ab56ae14fe98bae4fd84384fd135f0c2a # v2.4.0
+        with:
+          disable-metrics: "true"
+      - name: Policy Test
+        uses: flox/activate-action@410568008895a0f2e09a34bbd9523f8ef1f2d292 # v1.1.0
+        with:
+          dir: ./tools/open-policy-agent
+          command: |
+            opa test services/core/auth/src/nmp/core/auth/app/policies services/core/auth/src/nmp/core/auth/app/policy_tests services/core/auth/src/nmp/core/auth/assets/static-authz.yaml -v
 
   require-nvskills:
     runs-on: ubuntu-latest
@@ -1981,7 +2018,7 @@ jobs:
       - changes
       - actionlint
       - uv-lock
-      - uv-latest-compatibility
+      - uv-compatibility
       - docker-bake-graph
       - build-cpu-smoke-images
       - kind-cpu-smoke
@@ -1993,6 +2030,7 @@ jobs:
       - python-unit-test-tools
       - python-unit-test
       - fabric-wheel-smoke
+      - evaluator-sdk-closure-smoke
       # Enable if you want this required
       # - python-integration-test
       - require-nvskills

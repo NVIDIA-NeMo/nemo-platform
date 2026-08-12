@@ -35,8 +35,21 @@ export interface PluginNavigation {
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
+export interface NotificationOptions {
+  durationMs?: number | false;
+}
+
 export interface PluginNotifications {
-  notify: (message: string, type?: NotificationType) => void;
+  notify: (message: string, type?: NotificationType, options?: NotificationOptions) => void;
+}
+
+export interface PluginBreadcrumb {
+  label: string;
+  href?: string;
+}
+
+export interface PluginBreadcrumbs {
+  set: (trail: PluginBreadcrumb[]) => void;
 }
 
 export interface PluginTelemetry {
@@ -56,6 +69,7 @@ export interface PluginHost {
   navigation: PluginNavigation;
   notifications: PluginNotifications;
   telemetry: PluginTelemetry;
+  breadcrumbs: PluginBreadcrumbs;
 }
 
 export interface PluginRootProps {

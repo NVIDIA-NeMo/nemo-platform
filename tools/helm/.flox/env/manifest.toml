@@ -1,0 +1,15 @@
+schema-version = "1.14.0"
+
+
+[install]
+kubernetes-helm = { pkg-path = "kubernetes-helm", version = "4.2.3", pkg-group = "kubernetes-helm" }
+helm-docs = { pkg-path = "helm-docs", version = "1.14.2", pkg-group = "helm-docs" }
+kubeconform = { pkg-path = "kubeconform", version = "0.6.7", pkg-group = "kubeconform" }
+
+[options]
+# Systems that environment is compatible with
+systems = [
+  "aarch64-darwin",
+  "aarch64-linux",
+  "x86_64-linux",
+]

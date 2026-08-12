@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { toError } from '@nemo/common/src/utils/logger';
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
 import {
   filesCreateFileset,
@@ -29,7 +30,6 @@ import {
   serializeSuggestions,
   suggestionIdentity,
 } from '@studio/routes/agents/AgentSuggestionsRoute/utils';
-import { toError } from '@studio/util/logger';
 
 export const TELEMETRY_FILESET = 'nemo-agent-telemetry';
 export const OPTIMIZER_FILESET = 'nemo-agent-optimizer';

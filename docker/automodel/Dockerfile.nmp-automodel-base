@@ -41,8 +41,10 @@ RUN cd /opt/Automodel && \
     bash docker/common/update_pyproject_pytorch.sh /opt/Automodel && \
     patch -p1 < /opt/cherry-picks/3d98f6e3.diff
 
-# Sync the Automodel extras used by text training. The cherry-pick removes the
-# unconditional OpenCV dependency; skipping VLM/media extras keeps FFmpeg wheels out.
+# Sync the Automodel extras used by text training. The cherry-pick removes OpenCV
+# from base deps, including mistral-common's image extra; skipping VLM/media extras
+# keeps FFmpeg wheels out. We'll need to re-examine when Customizer supports VLM
+# and FFmpeg 8.xx only releases every 6 months
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd /opt/Automodel && \
     UV_HTTP_TIMEOUT=120 uv sync --locked \

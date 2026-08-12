@@ -4608,8 +4608,9 @@ paths:
         schema:
           $ref: '#/components/schemas/SpanFilter'
         description: Filter spans by session_id, trace_id, parent_span_id, project,
-          evaluation context fields, source, kind, status, model, tool_name, provider,
-          agent_id, agent_name, prompt_name, prompt_version, and started_at.
+          evaluation_id, test_case_id, source, kind, status, model, tool_name, provider,
+          agent_id, agent_name, and started_at. Every field takes one exact value,
+          except started_at, which takes gte and lte.
       responses:
         '200':
           description: Successful Response
@@ -8645,6 +8646,8 @@ components:
           title: Llm Call Count
           type: integer
           minimum: 0.0
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
         source:
           type: string
           const: agent
@@ -8665,8 +8668,6 @@ components:
           items:
             $ref: '#/components/schemas/AtifToolCall'
           type: array
-        observation:
-          $ref: '#/components/schemas/AtifObservation'
         metrics:
           $ref: '#/components/schemas/AtifMetrics'
       additionalProperties: false
@@ -8704,6 +8705,8 @@ components:
           title: Llm Call Count
           type: integer
           minimum: 0.0
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
         source:
           type: string
           const: system
@@ -8743,6 +8746,8 @@ components:
           title: Llm Call Count
           type: integer
           minimum: 0.0
+        observation:
+          $ref: '#/components/schemas/AtifObservation'
         source:
           type: string
           const: user
@@ -10855,6 +10860,21 @@ components:
           additionalProperties:
             type: string
           type: object
+        agent_name:
+          description: Filter evaluations that observed this agent name in any ingested
+            session.
+          title: Agent Name
+          type: string
+        agent_version:
+          description: Filter evaluations that observed this agent version in any
+            ingested session.
+          title: Agent Version
+          type: string
+        model_name:
+          description: Filter evaluations that observed this model name in any ingested
+            session.
+          title: Model Name
+          type: string
         run_count:
           allOf:
           - $ref: '#/components/schemas/NumberFilter'
@@ -17983,18 +18003,6 @@ components:
           description: Filter by evaluation id.
           title: Evaluation Id
           type: string
-        dataset_id:
-          description: Filter by dataset id.
-          title: Dataset Id
-          type: string
-        dataset_name:
-          description: Filter by dataset name.
-          title: Dataset Name
-          type: string
-        dataset_version:
-          description: Filter by dataset version.
-          title: Dataset Version
-          type: string
         test_case_id:
           description: Filter by dataset test case id.
           title: Test Case Id
@@ -18030,14 +18038,6 @@ components:
         agent_name:
           description: Filter by agent application name (e.g. 'claude-code', 'codex').
           title: Agent Name
-          type: string
-        prompt_name:
-          description: Filter by prompt template name.
-          title: Prompt Name
-          type: string
-        prompt_version:
-          description: Filter by prompt template version.
-          title: Prompt Version
           type: string
         parent_span_id:
           description: Filter by parent span id. Use to fetch direct children of a

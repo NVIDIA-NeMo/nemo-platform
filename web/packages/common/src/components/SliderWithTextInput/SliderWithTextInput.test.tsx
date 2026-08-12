@@ -249,18 +249,43 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const slider = screen.getByRole('spinbutton');
+      const slider = screen.getByRole('slider');
 
       // Test value above max
-      fireEvent.change(slider, { target: { value: '150' } });
+      fireEvent.input(slider, { target: { value: '150' } });
       expect(mockOnChange).toHaveBeenCalledWith(90);
 
       // Test value below min
-      fireEvent.change(slider, { target: { value: '5' } });
+      fireEvent.input(slider, { target: { value: '5' } });
       expect(mockOnChange).toHaveBeenCalledWith(10);
     });
 
-    it('should clamp values to min/max bounds when text input changes', () => {
+    it('should not clamp text input values while the user is still typing', () => {
+      const mockOnChange = vi.fn();
+      const field = createMockField(50, mockOnChange);
+      render(
+        <SliderWithTextInput
+          field={field}
+          defaultValue={25}
+          min={10}
+          max={90}
+          step={1}
+          disabled={false}
+        />
+      );
+
+      const textInput = screen.getByRole('spinbutton');
+
+      // '5' is below min but is a valid prefix of '55', so it must survive.
+      fireEvent.change(textInput, { target: { value: '5' } });
+      expect(mockOnChange).not.toHaveBeenCalled();
+      expect(textInput).toHaveValue(5);
+
+      fireEvent.change(textInput, { target: { value: '55' } });
+      expect(mockOnChange).toHaveBeenCalledWith(55);
+    });
+
+    it('should clamp out-of-range text input values on blur', () => {
       const mockOnChange = vi.fn();
       const field = createMockField(50, mockOnChange);
       render(
@@ -278,11 +303,51 @@ describe('SliderWithTextInput', () => {
 
       // Test value above max
       fireEvent.change(textInput, { target: { value: '150' } });
+      fireEvent.blur(textInput);
       expect(mockOnChange).toHaveBeenCalledWith(90);
 
       // Test value below min
       fireEvent.change(textInput, { target: { value: '5' } });
+      fireEvent.blur(textInput);
       expect(mockOnChange).toHaveBeenCalledWith(10);
+    });
+
+    it('should allow typing a value whose prefix is below min', () => {
+      const mockOnChange = vi.fn();
+      const field = createMockField(1, mockOnChange);
+      const { rerender } = render(
+        <SliderWithTextInput
+          field={field}
+          defaultValue={1}
+          min={0.1}
+          max={2}
+          step={0.1}
+          disabled={false}
+        />
+      );
+
+      const textInput = screen.getByRole('spinbutton');
+
+      // Typing '0' must not be rewritten to the 0.1 minimum.
+      fireEvent.change(textInput, { target: { value: '0' } });
+      expect(mockOnChange).not.toHaveBeenCalled();
+      expect(textInput).toHaveValue(0);
+
+      fireEvent.change(textInput, { target: { value: '0.7' } });
+      expect(mockOnChange).toHaveBeenCalledWith(0.7);
+
+      rerender(
+        <SliderWithTextInput
+          field={createMockField(0.7, mockOnChange)}
+          defaultValue={1}
+          min={0.1}
+          max={2}
+          step={0.1}
+          disabled={false}
+        />
+      );
+      fireEvent.blur(textInput);
+      expect(textInput).toHaveValue(0.7);
     });
   });
 

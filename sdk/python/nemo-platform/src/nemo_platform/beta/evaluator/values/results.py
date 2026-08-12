@@ -9,10 +9,12 @@ import json
 import math
 from collections.abc import Mapping
 from difflib import get_close_matches
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
-import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 from nemo_platform.beta.evaluator.values.protocol import MetricDiagnostic, MetricOutput, MetricResult
 
@@ -792,6 +794,12 @@ class EvaluationResult(BaseModel):
         Returns:
             Table built from ``to_records(view=view)``.
         """
+        # Imported here rather than at module scope: pyarrow (plus its numpy tail) costs ~31 MB
+        # RSS and 223 modules, this is its only runtime use in the module, and the module is on
+        # the agent_eval import path, which never calls this method. The return annotation is a
+        # string already (`from __future__ import annotations`), so it needs no import.
+        import pyarrow as pa
+
         return pa.Table.from_pylist(self.to_records(view=view))
 
     def to_pandas(self, view: ResultView = "rows"):

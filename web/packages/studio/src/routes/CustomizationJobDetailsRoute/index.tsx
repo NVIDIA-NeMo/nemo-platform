@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useModelsGetModel } from '@nemo/sdk/generated/platform/api';
 import {
   PageHeader,
@@ -10,7 +11,6 @@ import {
   TabsRoot,
   TabsTrigger,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { CustomizationDetailsPanel } from '@studio/components/CustomizationDetailsPanel';
 import { CustomizationFilesetDetailsPanel } from '@studio/components/CustomizationFilesetDetailsPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
