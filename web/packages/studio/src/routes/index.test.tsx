@@ -189,8 +189,8 @@ describe('Routes', () => {
       ).toBe(true);
     });
 
-    it('should include the dashboard route if copilot studio is enabled', async () => {
-      vi.stubEnv('VITE_FF_COPILOT_STUDIO_ENABLED', 'true');
+    it('should include the dashboard route if assistant studio is enabled', async () => {
+      vi.stubEnv('VITE_FF_ASSISTANT_STUDIO_ENABLED', 'true');
       vi.stubEnv('VITE_FF_DASHBOARD_ENABLED', 'false');
       const { routes } = await import('./index');
       expect(findIfRouteExists(routes, ROUTES.workspace.dashboard)).toBe(true);

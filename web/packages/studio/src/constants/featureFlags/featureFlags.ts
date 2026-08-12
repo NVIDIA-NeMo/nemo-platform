@@ -57,6 +57,7 @@ export const flagDefinitions = {
   agentsEnabled: previewFlag('VITE_FF_AGENTS_ENABLED', true),
   anonymizerEnabled: booleanFlag('VITE_FF_ANONYMIZER_ENABLED', false),
   baseModelsEnabled: previewFlag('VITE_FF_BASE_MODELS_ENABLED', true),
+  assistantStudioEnabled: previewFlag('VITE_FF_ASSISTANT_STUDIO_ENABLED', false),
   copilotStudioEnabled: previewFlag('VITE_FF_COPILOT_STUDIO_ENABLED', false),
   customizerEnabled: previewFlag('VITE_FF_CUSTOMIZER_ENABLED', true),
   dashboardEnabled: previewFlag('VITE_FF_DASHBOARD_ENABLED', false),

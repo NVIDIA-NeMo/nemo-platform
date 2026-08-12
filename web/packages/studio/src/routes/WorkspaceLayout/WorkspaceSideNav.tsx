@@ -11,7 +11,7 @@ import { isGroup } from '@studio/components/Layouts/NavigationDrawer/utils';
 import {
   ANONYMIZER_ENABLED,
   BASE_MODELS_ENABLED,
-  COPILOT_STUDIO_ENABLED,
+  ASSISTANT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -130,7 +130,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
 
   const baseItems = useMemo<NavInputItem[]>(() => {
     const dashboardNav =
-      DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED
+      DASHBOARD_ENABLED || ASSISTANT_STUDIO_ENABLED
         ? [
             {
               id: 'dashboard',

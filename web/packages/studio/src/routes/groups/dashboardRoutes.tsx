@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
-import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
+import { ASSISTANT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateCopilotStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
+import { gateAssistantStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -18,23 +18,23 @@ const WorkspaceDashboardRoute = lazy(() =>
     default: module.WorkspaceDashboardRoute,
   }))
 );
-const CopilotChatRoute = lazy(() =>
-  import('@studio/routes/agents/CopilotChatRoute').then((m) => ({
-    default: m.CopilotChatRoute,
+const AssistantChatRoute = lazy(() =>
+  import('@studio/routes/agents/AssistantChatRoute').then((m) => ({
+    default: m.AssistantChatRoute,
   }))
 );
 
 export const dashboardRoutes: RouteObject[] = gateDashboardRoutes([
   {
     path: ROUTES.workspace.dashboard,
-    element: COPILOT_STUDIO_ENABLED ? <DashboardLandingRoute /> : <WorkspaceDashboardRoute />,
+    element: ASSISTANT_STUDIO_ENABLED ? <DashboardLandingRoute /> : <WorkspaceDashboardRoute />,
     errorElement: <ErrorPanel title="Workspace" />,
   },
-  ...gateCopilotStudioRoutes([
+  ...gateAssistantStudioRoutes([
     {
-      path: ROUTES.workspace.copilotChat,
-      element: <CopilotChatRoute />,
-      errorElement: <ErrorPanel title="NeMo Copilot" />,
+      path: ROUTES.workspace.assistantChat,
+      element: <AssistantChatRoute />,
+      errorElement: <ErrorPanel title="NeMo Assistant" />,
     },
   ]),
 ]);
