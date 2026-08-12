@@ -56,18 +56,18 @@ export const InterviewPanel: FC<InterviewPanelProps> = ({ prompt, loading, onSub
     <form onSubmit={handleSubmit} className="flex h-full flex-col">
       <Stack gap="density-xs" className="mb-4 shrink-0">
         <Text kind="body/semibold/lg">Answer the synth interview</Text>
-        <Text kind="body/regular/md" className="text-gray-400">
+        <Text kind="body/regular/md" className="text-subtle">
           Your answers shape the benign test suite the war-game replays against the agent.{' '}
           {prompt.questions.length} question{prompt.questions.length === 1 ? '' : 's'}.
         </Text>
       </Stack>
 
-      <Stack gap="density-lg" className="min-h-0 flex-1 overflow-auto pr-1">
+      <Stack gap="density-lg" className="min-h-0 flex-1 overflow-auto pr-density-xs">
         {prompt.questions.map((q, index) => (
           <Card key={q.gap} className="p-4">
             <Stack gap="density-md">
               <Text kind="body/semibold/md">
-                <span className="text-gray-500">{index + 1}. </span>
+                <span className="text-subtle">{index + 1}. </span>
                 {q.question}
               </Text>
               {q.options && q.options.length > 0 ? (

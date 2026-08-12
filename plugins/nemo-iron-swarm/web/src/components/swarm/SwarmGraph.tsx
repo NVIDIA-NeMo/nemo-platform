@@ -267,7 +267,7 @@ export const SwarmGraph: FC<SwarmGraphProps> = ({ swarm, selectedId, onSelect })
           );
         })}
       </svg>
-      <div className="absolute right-2 top-2 flex flex-col gap-1">
+      <div className="absolute right-1 top-1 flex flex-col gap-1">
         <Button kind="secondary" size="small" aria-label="Zoom in" onClick={() => zoomBy(1.2)}>
           <Plus className="h-4 w-4" />
         </Button>

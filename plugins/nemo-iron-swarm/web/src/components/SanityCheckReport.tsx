@@ -6,6 +6,7 @@ import type {
   ValidationBenignRow,
   ValidationReport,
 } from '@iron-swarm/components/useSanityCheck';
+import { FEEDBACK } from '@iron-swarm/theme';
 import { Badge, Card, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { FC } from 'react';
 
@@ -31,10 +32,10 @@ const benignBadge = (status?: string) =>
 const Stat: FC<{ label: string; value: string; good: boolean }> = ({ label, value, good }) => (
   <Card className="flex-1 p-4">
     <Stack gap="density-xs">
-      <Text kind="body/regular/sm" className="text-gray-400">
+      <Text kind="body/regular/sm" className="text-subtle">
         {label}
       </Text>
-      <Text kind="title/lg" className={good ? 'text-green-400' : 'text-yellow-400'}>
+      <Text kind="title/lg" style={{ color: good ? FEEDBACK.success : FEEDBACK.warning }}>
         {value}
       </Text>
     </Stack>
@@ -46,12 +47,12 @@ const AttackRow: FC<{ row: ValidationAttackRow }> = ({ row }) => (
     <Stack gap="density-xxs" className="min-w-0">
       <Text kind="body/semibold/sm">{row.probe ?? row.attack_id ?? 'attack'}</Text>
       {row.goal ? (
-        <Text kind="body/regular/sm" className="truncate text-gray-400">
+        <Text kind="body/regular/sm" className="truncate text-subtle">
           {row.goal}
         </Text>
       ) : null}
       {row.prompt_excerpt ? (
-        <Text kind="body/regular/xs" className="truncate text-gray-500">
+        <Text kind="body/regular/xs" className="truncate text-subtle">
           {row.prompt_excerpt}
         </Text>
       ) : null}
@@ -65,7 +66,7 @@ const BenignRow: FC<{ row: ValidationBenignRow }> = ({ row }) => (
     <Stack gap="density-xxs" className="min-w-0">
       <Text kind="body/semibold/sm">{row.tool ?? row.label ?? `request ${row.index ?? ''}`}</Text>
       {row.payload_excerpt ? (
-        <Text kind="body/regular/xs" className="truncate text-gray-500">
+        <Text kind="body/regular/xs" className="truncate text-subtle">
           {row.payload_excerpt}
         </Text>
       ) : null}
@@ -107,7 +108,7 @@ export const SanityCheckReport: FC<SanityCheckReportProps> = ({ report }) => {
       {attacks.length > 0 ? (
         <Stack gap="density-xs">
           <Text kind="body/semibold/md">Attacks ({attacks.length})</Text>
-          <Card className="p-3 [&>*+*]:border-t [&>*+*]:border-gray-700">
+          <Card className="p-3 [&>*+*]:border-t [&>*+*]:border-base">
             {attacks.map((row, i) => (
               <AttackRow key={row.attack_id ?? i} row={row} />
             ))}
@@ -118,7 +119,7 @@ export const SanityCheckReport: FC<SanityCheckReportProps> = ({ report }) => {
       {benign.length > 0 ? (
         <Stack gap="density-xs">
           <Text kind="body/semibold/md">Benign requests ({benign.length})</Text>
-          <Card className="p-3 [&>*+*]:border-t [&>*+*]:border-gray-700">
+          <Card className="p-3 [&>*+*]:border-t [&>*+*]:border-base">
             {benign.map((row, i) => (
               <BenignRow key={row.index ?? i} row={row} />
             ))}

@@ -80,7 +80,7 @@ const GroupSection: FC<PropsWithChildren<{ label: string; help: string; divider?
   <Stack gap="density-sm" className={divider ? 'border-t border-base pt-4' : undefined}>
     <div>
       <Text kind="body/semibold/sm">{label}</Text>
-      <Text kind="body/regular/sm" className="text-gray-500">
+      <Text kind="body/regular/sm" className="text-subtle">
         {help}
       </Text>
     </div>
@@ -248,7 +248,7 @@ const CredentialedGroupFields: FC<CredentialedGroupProps> = ({
           Test connection
         </Button>
         {testResult && (
-          <Text kind="body/regular/sm" className="text-gray-500">
+          <Text kind="body/regular/sm" className="text-subtle">
             {testResult}
           </Text>
         )}

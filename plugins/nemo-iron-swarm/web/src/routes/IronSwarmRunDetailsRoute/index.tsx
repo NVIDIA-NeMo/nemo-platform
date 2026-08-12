@@ -20,6 +20,7 @@ import { useMitigations } from '@iron-swarm/components/useMitigations';
 import { useIronSwarmGetRun } from '@iron-swarm/generated/api';
 import { useBreadcrumbs, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmRunListRoute } from '@iron-swarm/paths';
+import { ACCENT, tint } from '@iron-swarm/theme';
 import { AccessibleTitle, CancelJobButton, JOB_POLLING_INTERVAL_MS, getJobRefetchInterval } from '@nemo/common';
 import {
   Badge,
@@ -38,19 +39,27 @@ import {
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 
-const Pill: FC<{ label: string; tone?: 'good' | 'active' }> = ({ label, tone }) => (
-  <span
-    className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${
-      tone === 'good'
-        ? 'border-green-500/40 text-green-400'
-        : tone === 'active'
-          ? 'border-cyan-500/40 text-cyan-400'
-          : 'border-gray-600 text-gray-400'
-    }`}
-  >
-    {label}
-  </span>
-);
+// Fixed panel sizes, as styles rather than `h-[560px]`: Studio's Tailwind only
+// scans web/packages/**, so an arbitrary-value class in a plugin has no CSS.
+const PANEL_HEIGHT = 560;
+const HARDEN_MIN_HEIGHT = 420;
+
+const PILL_COLOR: Record<'good' | 'active', string> = {
+  good: ACCENT.green,
+  active: ACCENT.teal,
+};
+
+const Pill: FC<{ label: string; tone?: 'good' | 'active' }> = ({ label, tone }) => {
+  const color = tone ? PILL_COLOR[tone] : undefined;
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${color ? '' : 'border-base text-subtle'}`}
+      style={color ? { color, borderColor: tint(color, 40) } : undefined}
+    >
+      {label}
+    </span>
+  );
+};
 
 export const IronSwarmRunDetailsRoute: FC = () => {
   const workspace = useWorkspace();
@@ -128,24 +137,29 @@ export const IronSwarmRunDetailsRoute: FC = () => {
 
   const swarmView = (
     <Grid cols={{ base: 1, xl: 2 }} gap="density-xl">
-      <Card className="h-[560px] p-2">
+      <Card className="p-2" style={{ height: PANEL_HEIGHT }}>
         <SwarmGraph swarm={swarm} selectedId={selectedId} onSelect={setSelectedId} />
       </Card>
-      <Stack gap="density-xl" className="h-[560px] min-h-0">
+      <Stack gap="density-xl" className="min-h-0" style={{ height: PANEL_HEIGHT }}>
         {/* Agent view sits a little smaller than the live feed (5:6). */}
-        <Card className="min-h-0 flex-[5] overflow-auto p-4">
+        <Card className="min-h-0 overflow-auto p-4" style={{ flex: 5 }}>
           <NodeDetail node={selectedNode} swarm={swarm} />
         </Card>
-        {/* KUI Card wraps children in a grid `.nv-card-content` that grows to fit; force it to a bounded
-            flex column so the feed scrolls internally instead of stretching the page. */}
-        <Card className="min-h-0 flex-[6] p-4 [&_.nv-card-content]:flex [&_.nv-card-content]:min-h-0 [&_.nv-card-content]:flex-col">
+        {/* Deliberately not a KUI Card: Card wraps children in a grid `.nv-card-content` that grows to
+            fit, and bounding it needs a descendant selector. Studio's Tailwind never emits an
+            arbitrary-variant class for a plugin, so this panel is a plain bounded flex column instead —
+            which is what lets the feed scroll internally rather than stretching the page. */}
+        <div
+          className="flex min-h-0 flex-col rounded-md border border-base bg-surface-raised p-4"
+          style={{ flex: 6 }}
+        >
           <Text kind="body/semibold/md" className="mb-2 shrink-0">
             Live Agent Feed
           </Text>
           <div className="min-h-0 flex-1">
             <MessageFeed events={events} />
           </div>
-        </Card>
+        </div>
       </Stack>
     </Grid>
   );
@@ -225,7 +239,7 @@ export const IronSwarmRunDetailsRoute: FC = () => {
 
             {hitlPending ? (
               <TabsContent value="interview" className="p-0 pt-4">
-                <Card className="min-h-[420px] p-6">
+                <Card className="p-6" style={{ minHeight: HARDEN_MIN_HEIGHT }}>
                   {interview ? (
                     <InterviewPanel
                       prompt={interview}

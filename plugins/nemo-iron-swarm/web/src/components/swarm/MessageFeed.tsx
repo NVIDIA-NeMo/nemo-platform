@@ -7,6 +7,7 @@ import {
   type SwarmEvent,
 } from '@iron-swarm/components/eventTypes';
 import { NODES, nodeForAgent, type NodeGroup } from '@iron-swarm/components/swarm/swarmModel';
+import { ACCENT } from '@iron-swarm/theme';
 import { Flex, Text } from '@nvidia/foundations-react-core';
 import { FC, useLayoutEffect, useMemo, useRef } from 'react';
 
@@ -15,25 +16,25 @@ interface MessageFeedProps {
 }
 
 const CATEGORY_COLOR: Record<EventCategory, string> = {
-  lifecycle: 'text-gray-500',
-  round: 'text-blue-400',
-  phase: 'text-cyan-400',
-  deploy: 'text-purple-400',
-  attack: 'text-red-400',
-  defense: 'text-green-400',
-  agent: 'text-amber-400',
-  synth: 'text-teal-400',
+  lifecycle: ACCENT.gray,
+  round: ACCENT.blue,
+  phase: ACCENT.teal,
+  deploy: ACCENT.purple,
+  attack: ACCENT.red,
+  defense: ACCENT.green,
+  agent: ACCENT.yellow,
+  synth: ACCENT.teal,
 };
 
 // Per-swarm text color so an agent's feed lines match its node color in the graph.
-const GROUP_COLOR_CLASS: Record<NodeGroup, string> = {
-  analyzer: 'text-purple-400',
-  attacker: 'text-red-400',
-  defender: 'text-green-400',
-  victim: 'text-blue-400',
-  validator: 'text-amber-400',
-  update: 'text-sky-400',
-  summary: 'text-gray-300',
+const GROUP_COLOR: Record<NodeGroup, string> = {
+  analyzer: ACCENT.purple,
+  attacker: ACCENT.red,
+  defender: ACCENT.green,
+  victim: ACCENT.blue,
+  validator: ACCENT.yellow,
+  update: ACCENT.teal,
+  summary: ACCENT.gray,
 };
 const GROUP_BY_NODE: Record<string, NodeGroup> = Object.fromEntries(
   NODES.map((n) => [n.id, n.group])
@@ -47,7 +48,7 @@ const humanize = (event: string): string =>
 // Color an event's line by its agent's swarm (so it matches the graph), falling back to the event category.
 const lineColor = (evt: SwarmEvent): string => {
   const id = nodeForAgent(evt.payload);
-  if (id && GROUP_BY_NODE[id]) return GROUP_COLOR_CLASS[GROUP_BY_NODE[id]];
+  if (id && GROUP_BY_NODE[id]) return GROUP_COLOR[GROUP_BY_NODE[id]];
   return CATEGORY_COLOR[categoryOf(evt.event) ?? 'lifecycle'];
 };
 
@@ -148,7 +149,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({ events }) => {
 
   if (events.length === 0) {
     return (
-      <Text kind="body/regular/md" className="text-gray-500">
+      <Text kind="body/regular/md" className="text-subtle">
         Waiting for live events…
       </Text>
     );
@@ -158,13 +159,14 @@ export const MessageFeed: FC<MessageFeedProps> = ({ events }) => {
     <div className="flex h-full flex-col">
       {running.length > 0 ? (
         <Flex align="center" gap="density-xs" className="mb-2 shrink-0 flex-wrap">
-          <Text kind="body/regular/sm" className="text-gray-500">
+          <Text kind="body/regular/sm" className="text-subtle">
             Now running:
           </Text>
           {running.map(([id, name]) => (
             <span
               key={id}
-              className={`rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium ${GROUP_BY_NODE[id] ? GROUP_COLOR_CLASS[GROUP_BY_NODE[id]] : 'text-gray-300'}`}
+              className="rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium"
+              style={{ color: GROUP_COLOR[GROUP_BY_NODE[id]] ?? ACCENT.gray }}
             >
               {name}
             </span>
@@ -174,7 +176,7 @@ export const MessageFeed: FC<MessageFeedProps> = ({ events }) => {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 divide-y divide-gray-800/60 overflow-auto pr-1"
+        className="min-h-0 flex-1 overflow-auto pr-density-xs"
       >
         {events.map((evt) => {
           const nodeId = nodeForAgent(evt.payload);
@@ -182,12 +184,16 @@ export const MessageFeed: FC<MessageFeedProps> = ({ events }) => {
           return (
             <div
               key={evt.id}
-              className={`flex items-baseline gap-2.5 px-1 py-1.5 ${isRunning ? 'bg-gray-800/40' : ''}`}
+              className={`flex items-baseline gap-2.5 border-t border-base px-1 py-1.5 ${isRunning ? 'bg-surface-sunken' : ''}`}
             >
-              <span className="shrink-0 pt-0.5 text-[11px] tabular-nums text-gray-600">
+              <span className="shrink-0 pt-1 text-xs tabular-nums text-subtle">
                 {formatTime(evt.ts)}
               </span>
-              <span className={`shrink-0 text-[10px] leading-5 ${lineColor(evt)}`} aria-hidden>
+              <span
+                className="shrink-0 text-xs leading-normal"
+                style={{ color: lineColor(evt) }}
+                aria-hidden
+              >
                 ●
               </span>
               <Text

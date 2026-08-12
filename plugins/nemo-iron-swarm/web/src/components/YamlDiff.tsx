@@ -38,13 +38,13 @@ const DIFF_STYLES = {
 export const YamlDiff: FC<YamlDiffProps> = ({ before, after }) => {
   if (before === after) {
     return (
-      <Text kind="body/regular/sm" className="text-gray-500">
+      <Text kind="body/regular/sm" className="text-subtle">
         No changes.
       </Text>
     );
   }
   return (
-    <div className="max-h-[480px] overflow-auto rounded-md border border-gray-800">
+    <div className="max-h-[480px] overflow-auto rounded-md border border-base">
       <ReactDiffViewer
         oldValue={before}
         newValue={after}

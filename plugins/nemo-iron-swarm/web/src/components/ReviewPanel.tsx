@@ -21,13 +21,13 @@ export const ReviewPanel: FC<ReviewPanelProps> = ({ suite, loading, onSubmit }) 
     <div className="flex h-full flex-col">
       <Stack gap="density-xs" className="mb-4 shrink-0">
         <Text kind="body/semibold/lg">Review the benign suite</Text>
-        <Text kind="body/regular/md" className="text-gray-400">
+        <Text kind="body/regular/md" className="text-subtle">
           Edit or drop the generated requests. The approved suite is replayed against the agent to
           confirm it still works after hardening.
         </Text>
       </Stack>
 
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-auto pr-density-xs">
         <BenignSuiteEditor value={rows} onChange={setRows} disabled={loading} />
       </div>
 

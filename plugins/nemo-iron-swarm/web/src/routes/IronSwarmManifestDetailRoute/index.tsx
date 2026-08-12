@@ -23,6 +23,7 @@ import {
 import type { IronSwarmRun, WarGameModels } from '@iron-swarm/generated/schema';
 import { useBreadcrumbs, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
+import { FEEDBACK } from '@iron-swarm/theme';
 import { AccessibleTitle, AccordionSection, ConfirmationModal, FileUpload, FormModal } from '@nemo/common';
 import {
   AccordionRoot,
@@ -422,7 +423,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
           <Panel>
             <Stack gap="density-lg" padding="density-lg">
               <Text kind="body/semibold/md">Generating benign suite</Text>
-              <Text kind="body/regular/sm" className="text-gray-500">
+              <Text kind="body/regular/sm" className="text-subtle">
                 {gen.interview
                   ? 'Answer the interview to shape the benign test suite.'
                   : gen.review
@@ -475,12 +476,12 @@ export const IronSwarmManifestDetailRoute: FC = () => {
                 Download
               </Button>
             </Flex>
-            <Text kind="body/regular/sm" className="text-gray-500">
+            <Text kind="body/regular/sm" className="text-subtle">
               The benign requests replayed after hardening to confirm the agent still works. Edit a
               row inline or generate the suite — changes save automatically.
             </Text>
             {isLoading && !manifest ? (
-              <Text kind="body/regular/md" className="text-gray-500">
+              <Text kind="body/regular/md" className="text-subtle">
                 Loading…
               </Text>
             ) : (
@@ -510,7 +511,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
               title={`Interview Q&A (${manifest.benign_interview.length})`}
             >
               <Stack gap="density-md">
-                <Text kind="body/regular/sm" className="text-gray-500">
+                <Text kind="body/regular/sm" className="text-subtle">
                   Your answers from the last benign-suite generation — the context that shaped this
                   suite.
                 </Text>
@@ -579,7 +580,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
         onClose={() => setRunDialogOpen(false)}
       >
         <Stack gap="density-md">
-          <Text kind="body/regular/sm" className="text-gray-500">
+          <Text kind="body/regular/sm" className="text-subtle">
             Config applies to this run only. Use “Save as default” to make it the manifest baseline.
           </Text>
 
@@ -595,7 +596,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
           </FormField>
 
           <Stack gap="density-sm">
-            <Text kind="body/semibold/sm" className="uppercase tracking-wide text-gray-400">
+            <Text kind="body/semibold/sm" className="uppercase tracking-wide text-subtle">
               Defenders
             </Text>
             <Flex align="center" gap="density-sm">
@@ -747,7 +748,8 @@ export const IronSwarmManifestDetailRoute: FC = () => {
               {replaySource === 'last' ? (
                 <Text
                   kind="body/regular/sm"
-                  className={lastHitlogFileset ? 'text-gray-500' : 'text-orange-500'}
+                  className={lastHitlogFileset ? 'text-subtle' : undefined}
+                  style={lastHitlogFileset ? undefined : { color: FEEDBACK.warning }}
                 >
                   {lastHitlogFileset
                     ? "Replays this manifest's most recent recorded hits."

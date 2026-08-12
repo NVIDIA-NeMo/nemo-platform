@@ -102,7 +102,7 @@ export const IronSwarmRunsDataView: FC = () => {
     accessor('agent', {
       header: 'Agent',
       cell: ({ row }) => (
-        <Text className="max-w-[240px] truncate" kind="body/regular/md">
+        <Text className="truncate" style={{ maxWidth: 240 }} kind="body/regular/md">
           {row.original.agent || '-'}
         </Text>
       ),
