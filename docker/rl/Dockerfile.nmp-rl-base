@@ -85,8 +85,13 @@ ARG PYTHON_VERSION
 # UV_PYTHON pins the interpreter for every uv call, at build and at runtime (node-built venvs too).
 # Required, not cosmetic: RL ships a `.python-version` that otherwise wins, so bumping PYTHON_VERSION
 # alone leaves every venv on RL's patch release and the requested one unused on disk.
+# Raise uv's HTTP retry budget and cap concurrent downloads for large GitHub-hosted wheels like vLLM,
+# which can hit transient HTTP/2 refused-stream failures under BuildKit.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_PYTHON=${PYTHON_VERSION} \
+    UV_HTTP_TIMEOUT=120 \
+    UV_HTTP_RETRIES=8 \
+    UV_CONCURRENT_DOWNLOADS=4 \
     PATH="/usr/local/bin:/root/.local/bin:${PATH}"
 RUN umask 022 && \
     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \

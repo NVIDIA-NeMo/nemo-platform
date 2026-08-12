@@ -14,8 +14,12 @@ RUN set -eux; \
     esac; \
     opa_asset="opa_linux_${opa_arch}_static"; \
     opa_url="https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/${opa_asset}"; \
-    curl -fsSL -o "/tmp/${opa_asset}" "${opa_url}"; \
-    curl -fsSL -o "/tmp/${opa_asset}.sha256" "${opa_url}.sha256"; \
+    curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+        --connect-timeout 10 --max-time 60 --retry-max-time 180 \
+        -o "/tmp/${opa_asset}" "${opa_url}"; \
+    curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+        --connect-timeout 10 --max-time 20 --retry-max-time 90 \
+        -o "/tmp/${opa_asset}.sha256" "${opa_url}.sha256"; \
     (cd /tmp && sha256sum -c "${opa_asset}.sha256"); \
     chmod +x "/tmp/${opa_asset}"; \
     mv "/tmp/${opa_asset}" /usr/local/bin/opa; \
