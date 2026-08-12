@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
 import { Badge, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { ExpandableMessage } from '@studio/components/ExpandableMessage';
 import {
   GROUP_COLOR,
   NODES,

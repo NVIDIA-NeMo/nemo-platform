@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { IronSwarmRunsDataView } from '@studio/components/dataViews/IronSwarmRunsDataView';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {
@@ -14,7 +14,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIronSwarmManifestListRoute } from '@studio/routes/utils';
 import { CircleAlert } from 'lucide-react';
 import { FC } from 'react';
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet } from 'react-router';
 
 export const IronSwarmRunListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

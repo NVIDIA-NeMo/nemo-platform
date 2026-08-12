@@ -3,6 +3,8 @@
 
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge, type StatusConfigEntry } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -19,13 +21,11 @@ import {
 } from '@nemo/sdk/generated/iron-swarm/api';
 import type { IronSwarmRun, RunFilter } from '@nemo/sdk/generated/iron-swarm/schema';
 import { Text } from '@nvidia/foundations-react-core';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
-import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getIronSwarmRunDetailsRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { ComponentProps, FC, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 type IronSwarmRunWithId = IronSwarmRun & { id: string };
 

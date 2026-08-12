@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccordionSection } from '@nemo/common/src/components/AccordionSection';
 import type { IronSwarmManifest } from '@nemo/sdk/generated/iron-swarm/schema';
 import { AccordionRoot, Button, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { AccordionSection } from '@studio/components/AccordionSection';
 import type { FC, ReactNode } from 'react';
 
 interface TargetPanelProps {
