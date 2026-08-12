@@ -119,9 +119,9 @@ def looks_like_unsupported_structured_output_error(message: str) -> bool:
     """Whether *message* reads as a backend rejecting a structured-output parameter."""
     lowered = message.lower()
     signatures = (
-        "guided_json is unsupported",
-        "unexpected keyword argument 'guided_json'",
-        "unexpected keyword argument 'nvext'",
+        "is unsupported",
+        "is not supported",
+        "unexpected keyword argument",
         "extra_forbidden",
         "extra inputs are not permitted",
         "unknown field",

@@ -223,6 +223,13 @@ async def test_detect_structured_output_mode_unsupported_signature_then_unsuppor
         ("unknown field `temperature`", False),
         ("unknown field `top_k`, expected one of `guided_json`, `nvext`, `use_raw_prompt`", False),
         ("unknown field `response_format`", True),
+        ("response_format is not supported", True),
+        ("Error code: 400 - response_format is not supported by this model", True),
+        ("create() got an unexpected keyword argument 'response_format'", True),
+        ("create() got an unexpected keyword argument 'extra_body'", True),
+        ("guided_json is not supported", True),
+        ("create() got an unexpected keyword argument 'temperature'", False),
+        ("model nvidia/does-not-exist is not supported", False),
     ],
 )
 def test_looks_like_unsupported_structured_output_error(message: str, expected: bool):
