@@ -20,6 +20,7 @@ from nemo_evaluator.sdk._agent_eval_executor import (
     _SyncAgentEvalExecutor,
     build_spec,
 )
+from nemo_evaluator.sdk.agent_eval_job_resources import _Clock, _raise_for_timeout
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackagerPolicyError
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
@@ -554,3 +555,43 @@ class TestHandleRequestsAreBounded:
         assert platform._client.get.call_count == 3
         for call in platform._client.get.call_args_list:
             assert call.kwargs["timeout"] == platform.timeout
+
+
+class TestWaitAccountsForTheTwoCeilingsSeparately:
+    """The pending ceiling is charged pending time only, not total elapsed time.
+
+    Billing both ceilings from one wall-clock reading lets a job that has demonstrably started trip
+    the pending ceiling and be reported as never having started.
+    """
+
+    @staticmethod
+    def _drive(timeline: list[tuple[str, float]], *, job: float = 1e9, pending: float = 600.0) -> _Clock:
+        """Replay a status timeline against a controlled clock, raising as the poll loop would."""
+        now = 0.0
+
+        def fake_now() -> float:
+            return now
+
+        clock = _Clock(fake_now)
+        for status, gap in timeline:
+            now += gap
+            clock.charge(status)
+            _raise_for_timeout("job", status, clock, job, pending)
+        return clock
+
+    def test_job_that_ran_past_the_pending_ceiling_then_went_pending_is_not_called_never_started(self) -> None:
+        clock = self._drive([("active", 700.0), ("pending", 10.0)])
+
+        assert (clock.running_seconds, clock.pending_seconds) == (700.0, 10.0)
+
+    def test_job_stuck_before_starting_still_trips_the_pending_ceiling(self) -> None:
+        with pytest.raises(TimeoutError, match="did not start within 600.0s"):
+            self._drive([("created", 300.0), ("pending", 301.0)])
+
+    def test_long_running_job_trips_the_job_ceiling(self) -> None:
+        with pytest.raises(TimeoutError, match="did not finish within 900.0s"):
+            self._drive([("active", 901.0)], job=900.0)
+
+    def test_job_ceiling_counts_pending_and_running_time_together(self) -> None:
+        with pytest.raises(TimeoutError, match="did not finish"):
+            self._drive([("pending", 400.0), ("active", 400.0), ("active", 200.0)], job=900.0)

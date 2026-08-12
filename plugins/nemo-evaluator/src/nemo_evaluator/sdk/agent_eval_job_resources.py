@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
@@ -44,8 +44,11 @@ _SUMMARY_DOWNLOAD = "results/summary/download"
 
 _TERMINAL_SUCCESS = "completed"
 _TERMINAL_FAILURE = frozenset({"error", "cancelled", "failed"})
-#: Statuses meaning the job exists but has not started doing work.
-_PENDING = frozenset({"created", "pending", "queued", "scheduled"})
+#: Statuses meaning the job exists but has not started doing work. These are the pre-start members
+#: of :class:`~nemo_platform_plugin.jobs.schemas.PlatformJobStatus`; every other non-terminal status
+#: there (``active``, ``paused``, ``pausing``, ``resuming``, ``cancelling``) means work has begun,
+#: so it is charged against the job ceiling instead.
+_PENDING = frozenset({"created", "pending"})
 
 
 def _status_of(payload: Mapping[str, Any]) -> str:
@@ -118,7 +121,7 @@ class AgentEvalJobResource:
         pending_timeout_seconds: float = DEFAULT_PENDING_TIMEOUT_SECONDS,
     ) -> None:
         """Poll until the job reaches a terminal status, raising if it did not succeed."""
-        started = time.monotonic()
+        clock = _Clock(time.monotonic)
         while True:
             response = self._http_client.get(
                 self._address.url("status"), headers=self._address.headers, timeout=self._address.timeout
@@ -129,8 +132,8 @@ class AgentEvalJobResource:
             if _is_terminal(status):
                 _raise_for_status(self.name, status, payload)
                 return
-            elapsed = time.monotonic() - started
-            _raise_for_timeout(self.name, status, elapsed, job_timeout_seconds, pending_timeout_seconds)
+            clock.charge(status)
+            _raise_for_timeout(self.name, status, clock, job_timeout_seconds, pending_timeout_seconds)
             time.sleep(poll_interval_seconds)
 
     def get_result(self) -> AgentEvalResult:
@@ -191,16 +194,15 @@ class AsyncAgentEvalJobResource:
         pending_timeout_seconds: float = DEFAULT_PENDING_TIMEOUT_SECONDS,
     ) -> None:
         """Poll until the job reaches a terminal status, raising if it did not succeed."""
-        loop = asyncio.get_running_loop()
-        started = loop.time()
+        clock = _Clock(asyncio.get_running_loop().time)
         while True:
             payload = (await self._get(self._address.url("status"))).json()
             status = _status_of(payload)
             if _is_terminal(status):
                 _raise_for_status(self.name, status, payload)
                 return
-            elapsed = loop.time() - started
-            _raise_for_timeout(self.name, status, elapsed, job_timeout_seconds, pending_timeout_seconds)
+            clock.charge(status)
+            _raise_for_timeout(self.name, status, clock, job_timeout_seconds, pending_timeout_seconds)
             await asyncio.sleep(poll_interval_seconds)
 
     async def get_result(self) -> AgentEvalResult:
@@ -217,19 +219,46 @@ class AsyncAgentEvalJobResource:
         return AgentEvalSummary.model_validate((await self._get(self._address.url(_SUMMARY_DOWNLOAD))).json())
 
 
+class _Clock:
+    """Splits a poll loop's elapsed time into time spent waiting to start and time spent running.
+
+    Two separate totals rather than one wall-clock reading, because the two ceilings answer
+    different questions. Charging every tick against a single total lets a job that ran for longer
+    than ``pending_timeout_seconds`` and then went back to a pending status trip the pending ceiling
+    and be reported as never having started, which is false. Mirrors how the dataset handles in
+    :mod:`nemo_evaluator.sdk.job_resources` account for the same two ceilings.
+    """
+
+    def __init__(self, now: Callable[[], float]) -> None:
+        """Start both totals at zero, reading time from ``now``."""
+        self._now = now
+        self._last = now()
+        self.pending_seconds = 0.0
+        self.running_seconds = 0.0
+
+    def charge(self, status: str) -> None:
+        """Bill the time since the last call to whichever total ``status`` belongs to."""
+        now = self._now()
+        elapsed, self._last = now - self._last, now
+        if status in _PENDING:
+            self.pending_seconds += elapsed
+        else:
+            self.running_seconds += elapsed
+
+
 def _raise_for_timeout(
     job_name: str,
     status: str,
-    elapsed: float,
+    clock: _Clock,
     job_timeout_seconds: float,
     pending_timeout_seconds: float,
 ) -> None:
     """Raise when the job has outrun either ceiling.
 
     A job stuck before it starts is a different failure from one running too long, so the pending
-    ceiling is checked separately and names itself.
+    ceiling is checked separately, against pending time only, and names itself.
     """
-    if status in _PENDING and elapsed >= pending_timeout_seconds:
+    if status in _PENDING and clock.pending_seconds >= pending_timeout_seconds:
         raise TimeoutError(f"agent-eval job {job_name!r} did not start within {pending_timeout_seconds}s")
-    if elapsed >= job_timeout_seconds:
+    if clock.pending_seconds + clock.running_seconds >= job_timeout_seconds:
         raise TimeoutError(f"agent-eval job {job_name!r} did not finish within {job_timeout_seconds}s")
