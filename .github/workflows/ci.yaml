@@ -1361,15 +1361,17 @@ jobs:
           # Supply-chain: partial-pin the wheel's direct external deps to a committed constraints
           # file. Regenerate with script/compile-wheel-constraints.sh.
           CONSTRAINTS="${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt"
+          # --no-config: this step runs inside the checkout, so uv would otherwise apply the
+          # repo's [tool.uv] override-dependencies and resolve a dependency set no user can get.
           if [[ "${INSTALL_METHOD}" == "tool" ]]; then
-            uv tool install --python "${PYTHON_VERSION}" \
+            uv tool install --no-config --python "${PYTHON_VERSION}" \
               --constraints "${CONSTRAINTS}" \
               "${WHEEL}[services]"
             BIN_DIR="${UV_TOOL_BIN_DIR}"
           else
             VENV="${RUNNER_TEMP}/wheelcheck/.venv"
             uv venv "${VENV}" --python "${PYTHON_VERSION}"
-            uv pip install --python "${VENV}/bin/python" \
+            uv pip install --no-config --python "${VENV}/bin/python" \
               --constraint "${CONSTRAINTS}" \
               "${WHEEL}[services]"
             BIN_DIR="${VENV}/bin"
@@ -1397,7 +1399,7 @@ jobs:
           # (see the nemo-platform CLI step above).
           cd "${RUNNER_TEMP}/wheelcheck"
           uv venv .venv --python "${PYTHON_VERSION}"
-          uv pip install --python .venv/bin/python \
+          uv pip install --no-config --python .venv/bin/python \
             --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-plugin.txt" \
             "${WHEEL}"
           unset PYTHONPATH VIRTUAL_ENV
