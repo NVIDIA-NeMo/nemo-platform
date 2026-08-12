@@ -316,6 +316,9 @@ nemo inference providers update <provider_name> \
 Provider requirements differ. Configure only the parameters required by the
 provider and model you use; `--default-extra-body` applies them to requests
 routed through that provider and can be overridden by an individual request.
+For function-tool requests to Chat Completions, any per-request
+`reasoning_effort` override must remain `"none"`; another value causes the
+error described above.
 
 ---
 
