@@ -85,16 +85,17 @@ def _e2e_environment(tmp_path_factory: pytest.TempPathFactory) -> _E2EEnvironmen
         default_model=default_model,
         fast_model=fast_model,
     )
-    log = tmp_path_factory.mktemp("smoke-agent-e2e") / "host.log"
-    _run(
-        [
-            "uv",
-            "run",
-            "--no-project",
-            str(_FIXTURE / "scripts" / "build_image.py"),
-        ],
-        log=log,
-    )
+    if os.environ.get("SMOKE_AGENT_IMAGE_BUILT") != "1":
+        log = tmp_path_factory.mktemp("smoke-agent-e2e") / "host.log"
+        _run(
+            [
+                "uv",
+                "run",
+                "--no-project",
+                str(_FIXTURE / "scripts" / "build_image.py"),
+            ],
+            log=log,
+        )
     return environment
 
 
