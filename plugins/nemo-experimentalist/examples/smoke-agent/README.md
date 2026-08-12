@@ -116,7 +116,8 @@ override the context, which is what the command above does; the value is an
 entity id of the form `<workspace>/<name>`, not a litellm routing string. List
 what your platform has with `nemo models list --all-pages`; this local setup uses
 `default/openai-openai-gpt-5-6-terra` and
-`default/openai-openai-gpt-5-6-luna`. With neither variable set, the run stops at preflight with "No default model is configured".
+`default/openai-openai-gpt-5-6-luna`. With neither variable set, the run stops at
+preflight with "No default model is configured".
 
 Preflight only checks that a value is *set*, not that the entity exists — a typo
 passes `doctor` and fails at the first LLM call, minutes into a run.
@@ -130,6 +131,27 @@ candidates onto native `ExperimentGroup`/`Experiment` entities fails and logs
 full of it means the platform was unreachable, not that anything went wrong.
 
 Copy the experiment directory back out with `sbx cp` to check the result.
+
+### Run the complete test matrix
+
+For a local, host-based test run, use the runner below. It runs every static
+check first, builds the shared image once, then runs each Mode 1 and Mode 2 E2E
+case once with four workers. It updates `report.md` after every completed case;
+the report names the log and artifacts, and compares the winner's objective and
+regression metrics with the baseline when an experiment was created.
+
+```bash
+uv run --frozen --package nemo-experimentalist-plugin \
+  python plugins/nemo-experimentalist/examples/smoke-agent/scripts/run_e2e_tests.py \
+  --workers 4
+```
+
+Use `--mode mode-2` or `--mode mode-1` to run one E2E mode with the structural
+checks, for example while comparing model tiers.
+
+The runner does not retry failed cases. A non-zero exit means at least one case
+failed; read the live report to see whether it was a fixture, platform, model,
+Harbor, or assertion failure before deciding what to rerun.
 
 ## Scenarios
 
