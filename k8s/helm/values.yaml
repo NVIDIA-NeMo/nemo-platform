@@ -172,7 +172,7 @@ networkPolicies:
         nmp.nvidia.com/managed_by: jobs-controller
     # -- Allow managed job pods to reach the in-namespace Platform API pods.
     platformApi:
-      # -- Enable egress to the platform API pods.
+      # -- Enable the default egress exception to the platform API pods. Disable only when managed job pods should not call the in-namespace API, or when API access is supplied through cluster-specific extraEgress rules.
       enabled: true
       # -- Optional NetworkPolicy port for the platform API. Empty uses api.service.port.
       port: ""

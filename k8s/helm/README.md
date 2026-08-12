@@ -439,7 +439,7 @@ For the complete default values, see [values.yaml](values.yaml).
 | networkPolicies.jobs.externalEgress.ports | list | `[]` | Optional list of ports for external egress. Empty allows all ports to the configured ipBlocks. |
 | networkPolicies.jobs.extraEgress | list | `[]` | Extra NetworkPolicy egress rules appended to the managed job policy, for cluster-specific dependencies or additional allowed CIDRs. |
 | networkPolicies.jobs.platformApi | object | `{"enabled":true,"port":""}` | Allow managed job pods to reach the in-namespace Platform API pods. |
-| networkPolicies.jobs.platformApi.enabled | bool | `true` | Enable egress to the platform API pods. |
+| networkPolicies.jobs.platformApi.enabled | bool | `true` | Enable the default egress exception to the platform API pods. Disable only when managed job pods should not call the in-namespace API, or when API access is supplied through cluster-specific extraEgress rules. |
 | networkPolicies.jobs.platformApi.port | string | `""` | Optional NetworkPolicy port for the platform API. Empty uses api.service.port. |
 | networkPolicies.jobs.podSelector | object | `{"matchLabels":{"app":"nemo-job","nmp.nvidia.com/managed_by":"jobs-controller"}}` | Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller. |
 | ngcAPIKey | string | `"YOUR-NGC-API-KEY"` | Your NVIDIA GPU Cloud (NGC) API key authenticates API calls to NGC services, such as model downloads. The existing secret overrides this key if you provide one to the `existingSecret` key. |
