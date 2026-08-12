@@ -157,11 +157,23 @@ _EXPERIMENT_CONFIGURATIONS = tuple(
     _ExperimentCase(group, generated_only) for group in _REPAIR_GROUPS for generated_only in (False, True)
 )
 _EXPERIMENT_CASES = tuple(
-    pytest.param(case, id=f"{case.group}-{'generated-only' if case.generated_only else 'augmented'}")
+    pytest.param(
+        case,
+        id=f"{case.group}-{'generated-only' if case.generated_only else 'augmented'}",
+        marks=pytest.mark.xdist_group(
+            f"mode-1-{case.group}-{'generated-only' if case.generated_only else 'augmented'}"
+        ),
+    )
     for case in _EXPERIMENT_CONFIGURATIONS
 )
 _GENERATED_ONLY_CASES = tuple(
-    pytest.param(case, id=f"{case.group}-generated-only") for case in _EXPERIMENT_CONFIGURATIONS if case.generated_only
+    pytest.param(
+        case,
+        id=f"{case.group}-generated-only",
+        marks=pytest.mark.xdist_group(f"mode-1-{case.group}-generated-only"),
+    )
+    for case in _EXPERIMENT_CONFIGURATIONS
+    if case.generated_only
 )
 
 
