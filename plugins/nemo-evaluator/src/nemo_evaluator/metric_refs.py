@@ -16,21 +16,25 @@ from __future__ import annotations
 # entity/DTO modules can reference them without importing this module's entities-dependent resolution
 # logic (which would create an import cycle). Imported here for use below and re-exported for the
 # existing ``nemo_evaluator.metric_refs`` import sites.
-from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline, parse_entity_ref
+from nemo_evaluator.api.schemas import MetricRef, MetricRefOrInline
 from nemo_evaluator.entities import MetricBundleEntity
 from nemo_evaluator.metric_storage import load_bundle
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.entity_client import NemoEntityGetterProtocol, NemoEntityNotFoundError
+from nemo_platform_plugin.refs import parse_entity_ref
 
 
 def parse_metric_ref(root: str, default_workspace: str) -> tuple[str, str]:
     """Split a validated metric reference into ``(workspace, name)``.
 
-    Thin alias over the shared :func:`~nemo_evaluator.api.schemas.parse_entity_ref` (all
-    ``workspace/name`` refs split identically); kept for the existing ``metric_refs`` call sites.
+    Thin alias over the platform's :func:`~nemo_platform_plugin.refs.parse_entity_ref` (all
+    ``workspace/name`` refs split identically); kept for the existing ``metric_refs`` call sites,
+    which want a tuple. A metric ref carries no ``#fragment`` — metrics are not revisioned — so the
+    plain entity parser is the right one here.
     """
-    return parse_entity_ref(root, default_workspace)
+    parsed = parse_entity_ref(root, default_workspace)
+    return parsed.workspace, parsed.name
 
 
 async def resolve_metric_ref(

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { parametersToString } from '@nemo/common/src/components/ModelDetailsTooltip/utils';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -29,7 +30,6 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import { CopyButton } from '@studio/components/CopyButton';
-import { ExpandableMessage } from '@studio/components/ExpandableMessage';
 import { getWorkspaceCustomizationJobDetailsRoute } from '@studio/routes/utils';
 import { formatFinetuningType } from '@studio/util/customizations';
 import { MessagesSquare, Eye, EyeOff, Layers, AlignLeft, AppWindow } from 'lucide-react';

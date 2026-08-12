@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { useEvaluatorDeleteEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
@@ -17,7 +18,6 @@ import {
 } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationJobName } from '@studio/selectors/evaluationJob';
-import { logger } from '@studio/util/logger';
 import { ArrowRight, EllipsisVertical, Trash } from 'lucide-react';
 import { FC, useState } from 'react';
 

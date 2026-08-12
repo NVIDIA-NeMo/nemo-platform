@@ -7,6 +7,7 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -26,10 +27,9 @@ import {
 import { Button } from '@nvidia/foundations-react-core';
 import { agentNameForJob, evalConfigName } from '@studio/api/evaluation/agent-evaluations';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
-import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getAgentEvaluationDetailRoute, getFilesetDetailRoute } from '@studio/routes/utils';
+import { getAgentEvaluationDetailRoute, getFilesetRoute } from '@studio/routes/utils';
 import { getTextWithCount } from '@studio/util/strings';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Trash } from 'lucide-react';
@@ -133,7 +133,7 @@ export const AgentEvaluationsDataView = () => {
         const configName = evalConfigName(row.original);
         return configName ? (
           <Link
-            to={getFilesetDetailRoute(workspace, configName)}
+            to={getFilesetRoute(workspace, configName)}
             className="text-primary underline"
             onClick={(e) => e.stopPropagation()}
           >

@@ -8,6 +8,7 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getEntitiesListWorkspaceMembersQueryKey,
   useEntitiesAddWorkspaceMember,
@@ -22,7 +23,6 @@ import {
   WORKSPACE_ROLE_DESCRIPTIONS,
   type WorkspaceMemberRole,
 } from '@studio/routes/WorkspaceMembersRoute/workspaceMemberRoles';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { FC, useEffect, useMemo } from 'react';
 import { Controller, SubmitHandler, useForm } from 'react-hook-form';
 import { z } from 'zod';

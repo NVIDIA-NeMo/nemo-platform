@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
@@ -14,16 +16,15 @@ import type {
   GuardrailsListGuardrailConfigsParams,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ShieldCheck, Trash } from 'lucide-react';
+import { Copy, ShieldCheck, Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface GuardrailsDataViewProps {
   workspace: string;
   onRowClick: (config: GuardrailConfig) => void;
+  onRequestDuplicate?: (config: GuardrailConfig) => void;
   onRequestDelete?: (config: GuardrailConfig) => void;
   emptyStateActions?: React.ReactNode;
 }
@@ -31,6 +32,7 @@ export interface GuardrailsDataViewProps {
 export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
   workspace,
   onRowClick,
+  onRequestDuplicate,
   onRequestDelete,
   emptyStateActions,
 }) => {
@@ -118,6 +120,11 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           enableResizing: false,
           rowActions: (config: GuardrailConfig) => [
             {
+              slotLeft: <Copy />,
+              children: 'Duplicate',
+              onSelect: () => onRequestDuplicate?.(config),
+            },
+            {
               slotLeft: <Trash />,
               children: 'Delete',
               danger: true,
@@ -126,7 +133,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           ],
         }),
       ],
-      [onRequestDelete]
+      [onRequestDuplicate, onRequestDelete]
     );
 
   return (

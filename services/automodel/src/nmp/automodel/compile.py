@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.automodel.adapter import automodel_spec_to_compiler_output
 from nmp.automodel.api.v2.jobs.schemas import CustomizationJobOutput
 from nmp.automodel.app.jobs.compiler import platform_job_config_compiler as _compile_canonical
@@ -13,10 +15,10 @@ from nmp.automodel.app.jobs.compiler import platform_job_config_compiler as _com
 async def platform_job_config_compiler(
     job_spec: CustomizationJobOutput | object,
     workspace: str,
-    sdk: object,
+    sdk: AsyncNeMoPlatform,
     job_name: str | None = None,
     profile: str | None = None,
-) -> object:
+) -> PlatformJobSpec:
     """Compile Automodel job spec (plugin or legacy shape) to PlatformJobSpec."""
     if not isinstance(job_spec, CustomizationJobOutput):
         job_spec = automodel_spec_to_compiler_output(job_spec)

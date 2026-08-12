@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.config import NemoPlatformConfig, Runtime
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
@@ -28,15 +29,17 @@ def require_container_runtime(backend_label: str, *, num_nodes: int = 1) -> None
 
     - **Kubernetes** — the platform schedules GPU pods, including multi-node
       ``gpu_distributed`` jobs via Volcano.
-    - **Docker** — the platform's local Docker GPU executor (single host).
+    - **Docker** — the platform's local Docker GPU executor (single host),
+      detected via :func:`~nemo_platform_plugin.capabilities.probe_docker`
+      rather than treating ``Runtime.DOCKER`` / ``Runtime.NONE`` as the
+      capability signal (AIRCORE-971).
 
-    Single-node jobs accept either runtime. **Multi-node jobs** (``num_nodes >
-    1``) compile to a ``gpu_distributed`` executor that only the Volcano
-    (Kubernetes) backend can place — Docker has no multi-node/``gpu_distributed``
-    backend — so they require ``platform.runtime: kubernetes``. Failing here
-    surfaces the misconfiguration at compile time instead of as an opaque
-    "no backend found" scheduling error (or, for ``runtime: none``, before the
-    Jobs API rejects the spec).
+    Single-node jobs accept Kubernetes topology or a reachable Docker daemon.
+    **Multi-node jobs** (``num_nodes > 1``) compile to a ``gpu_distributed``
+    executor that only the Volcano (Kubernetes) backend can place — Docker has
+    no multi-node/``gpu_distributed`` backend — so they require
+    ``platform.runtime: kubernetes``. Failing here surfaces the misconfiguration at
+    compile time instead of as an opaque "no backend found" scheduling error.
     """
     platform_config = NemoPlatformConfig.get()
     runtime = platform_config.runtime
@@ -52,19 +55,16 @@ def require_container_runtime(backend_label: str, *, num_nodes: int = 1) -> None
     if runtime == Runtime.KUBERNETES:
         return
 
-    if runtime == Runtime.DOCKER:
-        from nemo_platform_plugin.config import validate_docker_available
-
-        if not validate_docker_available():
-            raise PlatformJobCompilationError(
-                f"{backend_label} training requires a reachable Docker daemon (platform.runtime: docker).",
-            )
+    # Capability probe — independent of Runtime.DOCKER vs soft-downgraded NONE.
+    # Use the process cache so compile agrees with the jobs registry boot probe.
+    # Mid-process "start Docker then retry compile" requires a platform restart.
+    result = probe_docker()
+    if result.available:
         return
 
+    detail = result.detail or "Docker daemon is unavailable"
     raise PlatformJobCompilationError(
-        f"{backend_label} training requires a container runtime: set platform.runtime to "
-        "'kubernetes' (schedules GPU pods) or 'docker' (local GPU executor). "
-        f"Current runtime: {runtime.value}.",
+        f"{backend_label} training requires a reachable Docker daemon (or platform.runtime: kubernetes). {detail}",
     )
 
 

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
+import { logger } from '@nemo/common/src/utils/logger';
 import { FileSystemDirectory, FileSystemNode } from '@studio/components/FilesTable/utils';
 import { parseCSVTable } from '@studio/components/SafeSynthesizerFilesetPreview/util';
-import { logger } from '@studio/util/logger';
 import { getTextWithCount, parseCSV } from '@studio/util/strings';
 
 /**

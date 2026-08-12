@@ -11,12 +11,15 @@ from typing import ClassVar, List
 from nmp.common.service import RouterConfig, Service
 from nmp.intake.api.v2.experiments import endpoints as experiments
 from nmp.intake.config import IntakeConfig, should_provision_local_clickhouse
+from nmp.intake.experiments.denormalizer import EvaluationDenormalizer
 from nmp.intake.local_clickhouse import (
     DockerUnavailableError,
     LocalClickHouseProvisioningError,
     reconcile_local_clickhouse,
     stop_local_clickhouse,
 )
+from nmp.intake.repository.clickhouse.evaluation_rollup import ClickHouseEvaluationRollupRepository
+from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor
 from nmp.intake.spans.api import annotations, evaluator_results, sessions, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
@@ -34,6 +37,8 @@ class IntakeService(Service[IntakeConfig]):
         super().__init__(name="intake", module_name="nmp.intake")
         # The client is owned by the service lifecycle; it is absent before startup and after shutdown.
         self.clickhouse_client: ClickHouseSpanClient | None = None
+        # Background worker that denormalizes agent/model name fields onto Evaluation entities.
+        self.denormalizer: EvaluationDenormalizer | None = None
         self._local_clickhouse_data_dir: Path | None = None
         self._owns_local_clickhouse = False
         self._ready = False
@@ -109,12 +114,28 @@ class IntakeService(Service[IntakeConfig]):
                 )
 
         self.clickhouse_client = ClickHouseSpanClient(settings)
+        # Start the background denormalizer. It needs a service-principal entity client (no request
+        # context) to write onto Evaluation entities; skip it if the entity client can't be built.
+        entity_client = self.dependency_provider.get_entity_client(as_service=self.name)
+        if entity_client is not None:
+            self.denormalizer = EvaluationDenormalizer(
+                rollup_repository=ClickHouseEvaluationRollupRepository(ClickHouseExecutor(self.clickhouse_client)),
+                entity_client=entity_client,
+                interval_seconds=cfg.denormalization_interval_seconds,
+            )
+            self.denormalizer.start()
+        else:
+            logger.warning("Entity client unavailable; evaluation denormalizer not started")
         self._ready = True
 
     async def on_shutdown(self) -> None:
         """Close the client and stop the managed local ClickHouse container."""
 
         self._ready = False
+        # Stop the denormalizer first: its final flush still needs the ClickHouse client below.
+        if self.denormalizer is not None:
+            await self.denormalizer.stop()
+            self.denormalizer = None
         try:
             if self.clickhouse_client is not None:
                 await self.clickhouse_client.close()

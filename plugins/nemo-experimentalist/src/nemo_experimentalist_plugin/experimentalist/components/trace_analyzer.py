@@ -194,8 +194,8 @@ class TraceAnalyzer(Agent):
         runtime: DependencyRuntime | None,
         insight: Insight | None = None,
         selection_reason: str = "",
-        objective_metrics: list[dict[str, str]] | None = None,
-        regression_metrics: list[dict[str, str]] | None = None,
+        objective_metrics: list[dict[str, Any]] | None = None,
+        regression_metrics: list[dict[str, Any]] | None = None,
     ) -> StepAnalysis:
         """Trace the agent's path and find where it went wrong.
 
@@ -259,8 +259,8 @@ class TraceAnalyzer(Agent):
         trace: TraceExplorer,
         analysis: StepAnalysis,
         insight: Insight | None = None,
-        objective_metrics: list[dict[str, str]] | None = None,
-        regression_metrics: list[dict[str, str]] | None = None,
+        objective_metrics: list[dict[str, Any]] | None = None,
+        regression_metrics: list[dict[str, Any]] | None = None,
     ) -> Diagnostic:
         """Determine the primary root cause and produce a Diagnostic.
 
@@ -302,8 +302,8 @@ class TraceAnalyzer(Agent):
         rationale: Rationale | None = None,
         insight: Insight | None = None,
         selection_reason: str = "",
-        objective_metrics: list[dict[str, str]] | None = None,
-        regression_metrics: list[dict[str, str]] | None = None,
+        objective_metrics: list[dict[str, Any]] | None = None,
+        regression_metrics: list[dict[str, Any]] | None = None,
         client: AsyncNeMoPlatform | None = None,
         workspace: str | None = None,
     ) -> Diagnostic:

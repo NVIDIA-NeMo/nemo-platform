@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { PLUGINS_MANIFEST_ENDPOINT } from '@studio/plugins/consts';
 import { isTrustedBundleUrl } from '@studio/plugins/security';
@@ -10,7 +11,6 @@ import type {
   PluginModule,
   PluginQueryData,
 } from '@studio/plugins/types';
-import { logger } from '@studio/util/logger';
 
 export function isValidPluginManifest(obj: unknown): obj is PluginManifest {
   if (typeof obj !== 'object' || obj === null) return false;

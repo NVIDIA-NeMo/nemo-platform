@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {
-  VerticalNavCollapsibleSection,
   VerticalNavItem,
   VerticalNavListItem,
   VerticalNavSubList,
@@ -16,7 +15,6 @@ export interface NavSubItem {
   slotIcon?: ReactNode;
   href?: string;
   active?: boolean;
-  disabled?: boolean;
   attributes?: {
     VerticalNavItem?: Omit<ComponentPropsWithoutRef<typeof VerticalNavItem>, 'children'>;
     VerticalNavSubListItem?: ComponentPropsWithoutRef<typeof VerticalNavSubListItem>;
@@ -29,15 +27,12 @@ export interface NavItem {
   slotIcon?: ReactNode;
   href?: string;
   active?: boolean;
-  disabled?: boolean;
+  /** Whether a parent's sub-list starts expanded. Defaults to open. */
   defaultOpen?: boolean;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
   subItems?: NavSubItem[];
   attributes?: {
     VerticalNavItem?: Omit<ComponentPropsWithoutRef<typeof VerticalNavItem>, 'children'>;
     VerticalNavListItem?: ComponentPropsWithoutRef<typeof VerticalNavListItem>;
-    VerticalNavCollapsibleSection?: ComponentPropsWithoutRef<typeof VerticalNavCollapsibleSection>;
     VerticalNavSubList?: ComponentPropsWithoutRef<typeof VerticalNavSubList>;
   };
 }
@@ -46,7 +41,6 @@ export type NavInputItem = NavItem | { group?: string; items: NavItem[] };
 
 export interface Props {
   items: NavInputItem[];
-  bottomItems?: NavInputItem[];
   collapsed?: boolean;
 }
 

@@ -21,9 +21,14 @@ if _dd_bundled_tiktoken_cache.is_dir():
     os.environ.setdefault("TIKTOKEN_CACHE_DIR", str(_dd_bundled_tiktoken_cache))
 
 
+#: Advertised as ``maximum`` on ``PreviewRequest.num_records``; deployments may raise the
+#: runtime bound past it, so the schema states the default rather than the effective limit.
+DEFAULT_MAX_PREVIEW_NUM_RECORDS = 10
+
+
 class PreviewNumRecords(BaseModel):
-    max: int = Field(default=10, ge=1)
-    default: int = Field(default=10, ge=1)
+    max: int = Field(default=DEFAULT_MAX_PREVIEW_NUM_RECORDS, ge=1)
+    default: int = Field(default=DEFAULT_MAX_PREVIEW_NUM_RECORDS, ge=1)
 
     @model_validator(mode="after")
     def check_compatibility(self) -> Self:

@@ -95,7 +95,37 @@ class Terminator(Agent, roles.Terminator):
         Returns:
             A :class:`TerminationDecision`.
         """
+        reached = self.assess_objective_reached(candidates)
+        if reached.stop:
+            return reached
         return await self.assess_convergence(candidates=candidates, prior_analysis=prior_analysis)
+
+    @hidden
+    def assess_objective_reached(self, candidates: list[Candidate]) -> TerminationDecision:
+        """Stop when a live candidate already satisfies every targeted objective.
+
+        Convergence asks whether progress has stalled; this asks whether any is left to
+        make. It is not part of that judgement, so selecting no terminator does not
+        disable it -- a target is a threshold the caller stated, not an opinion about
+        stagnation. To keep going, set no target.
+
+        Only what finalization would consider counts: a live candidate, or the
+        generation-0 baseline even if survivor selection killed it — the same
+        re-admission the selector makes when deciding whether anything beat doing
+        nothing. Otherwise the run could end in favour of a winner that never reaches
+        the target, or fail to end when shipping nothing already satisfies it.
+        """
+        targets = [target for target in self._objective_metrics if target.target is not None]
+        if not targets:
+            return TerminationDecision(stop=False)
+        for candidate in candidates:
+            if candidate.killed_generation is not None and candidate.generation != 0:
+                continue
+            metrics = candidate.rewards["validation"].metrics or {}
+            if all(target.is_satisfied_by(metrics.get(target.name)) for target in targets):
+                summary = ", ".join(f"{target.name}={metrics.get(target.name)}" for target in targets)
+                return TerminationDecision(stop=True, reason=f"objective reached by {candidate.label} ({summary})")
+        return TerminationDecision(stop=False)
 
     @hidden
     async def assess_convergence(

@@ -219,7 +219,7 @@ async def main() -> None:
     result = await evaluate()
 
     answer = result.trials[0].output.output_text if result.trials[0].output else None
-    aggregate = next(score for score in result.summary.scores.scores if score.name == "keyword_match.score")
+    aggregate = result.summary.score("keyword_match.score")
 
     print(f"response: {answer}")
     print(f"{aggregate.name}: {aggregate.mean}")

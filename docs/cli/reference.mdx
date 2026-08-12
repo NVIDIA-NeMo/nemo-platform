@@ -4047,6 +4047,11 @@ Filter jobs by workspace, project, name, status, source, created_at, and updated
 
 Get all currently configured execution profiles.
 
+Returns the capability-filtered merge from jobs config. In local standalone the
+controller may prune the shared list further after registry boot; in split
+topologies the API advertises its own merge result (not controller process
+memory).
+
 **Usage:**
 
 ```shell

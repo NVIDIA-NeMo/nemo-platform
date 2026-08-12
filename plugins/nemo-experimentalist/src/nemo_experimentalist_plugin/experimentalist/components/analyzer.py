@@ -295,8 +295,8 @@ class AgentAnalyzer(Agent, roles.Analyzer):
         agent_id: str,
         dataset: Dataset,
         evaluation: EvaluationResult,
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> list[TrialSelection]:
         """Pick which trials to analyze in depth and explain each choice.
 
@@ -374,8 +374,8 @@ class AgentAnalyzer(Agent, roles.Analyzer):
         agent_id: str,
         diagnoses: list[Diagnostic],
         trials: Sequence[TrialResult],
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> FailureClassification:
         """Classify diagnoses into systematic vs. one-off and agent vs. mechanical failures.
 
@@ -411,8 +411,8 @@ class AgentAnalyzer(Agent, roles.Analyzer):
         evaluation: EvaluationResult,
         diagnoses: list[Diagnostic],
         peer_evaluations: dict[str, EvaluationResult] | None = None,
-        objective_metrics: list[dict[str, str]] | None = None,
-        regression_metrics: list[dict[str, str]] | None = None,
+        objective_metrics: list[dict[str, Any]] | None = None,
+        regression_metrics: list[dict[str, Any]] | None = None,
     ) -> PeerComparison:
         """Compare this agent to peers and return divergent trials and complementary patterns.
 
@@ -536,7 +536,7 @@ class AgentAnalyzer(Agent, roles.Analyzer):
 
     @staticmethod
     def _metric_directions(
-        objective_metrics: list[dict[str, str]], regression_metrics: list[dict[str, str]]
+        objective_metrics: list[dict[str, Any]], regression_metrics: list[dict[str, Any]]
     ) -> dict[str, str]:
         """Return metric directions, defaulting dimensions outside the contract to maximize."""
         return {metric["name"]: metric["direction"] for metric in [*objective_metrics, *regression_metrics]}
@@ -595,8 +595,8 @@ class AgentAnalyzer(Agent, roles.Analyzer):
         top_divergent: list[dict[str, Any]],
         complementary_raw: dict[str, dict[str, dict[str, list[str]]]],
         diagnoses: list[Diagnostic],
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> PeerComparison:
         """Write the DivergentTrial and ComplementaryPattern narratives from pre-computed data.
 

@@ -333,8 +333,8 @@ class Proposer(Agent, roles.Proposer):
         cards_index: str,
         phase: Literal["exploration", "exploitation"],
         max_candidates: int,
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> list[Improvement]:
         """Pick up to `max_candidates` targeted improvements grounded in root causes.
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
@@ -34,7 +35,6 @@ import {
   joinBundleByTask,
   parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
 import { EvalAggregateScoresTable } from '@studio/components/evaluation/EvalAggregateScoresTable';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
@@ -44,7 +44,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
   getAgentEvaluationsListRoute,
   getAgentsListRoute,
-  getFilesetDetailRoute,
+  getFilesetRoute,
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -223,7 +223,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
                   label="Eval Config"
                   value={
                     <Link
-                      to={getFilesetDetailRoute(workspace, evalConfigName(job) ?? '')}
+                      to={getFilesetRoute(workspace, evalConfigName(job) ?? '')}
                       className="text-primary underline"
                     >
                       {evalConfigName(job)}
@@ -246,7 +246,7 @@ export const AgentEvaluationDetailRoute: FC = () => {
                   label="Artifacts"
                   value={
                     <Link
-                      to={getFilesetDetailRoute(workspace, artifactsFileset)}
+                      to={getFilesetRoute(workspace, artifactsFileset)}
                       className="text-primary underline"
                     >
                       View files

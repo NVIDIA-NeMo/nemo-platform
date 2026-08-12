@@ -16,4 +16,5 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 0
 fi
 
-exec pnpm gen:check
+pnpm_path="$(command -v pnpm)"
+exec node "${pnpm_path}" gen:check

@@ -27,8 +27,8 @@ import httpx
 import typer
 import yaml as _yaml
 from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.capabilities import probe_docker
 from nemo_platform_plugin.client.adapter import client_from_platform
-from nemo_platform_plugin.config import validate_docker_available
 from nemo_platform_plugin.secrets.client import SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest, PlatformSecretUpdateRequest
 from nmp.common.config import nmp_user_data_dir
@@ -43,6 +43,7 @@ from nemo_platform_ext.cli.commands.skills.base import Scope, Skill
 from nemo_platform_ext.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
+from nemo_platform_ext.cli.docker_preflight import DOCKER_PREFLIGHT_MESSAGE, require_docker_for_default_local
 from nemo_platform_ext.cli.telemetry import emit
 from nemo_platform_ext.cli.telemetry.events import OnboardingStepEvent, TaskStatusEnum
 from nemo_platform_ext.client.tls import client_verify_from_env
@@ -1057,7 +1058,7 @@ def _should_hint_docker_unavailable(*, exit_code: int | None, log_path: Path | N
     """
     if _services_log_suggests_docker_failure(log_path):
         return True
-    if exit_code is not None and not validate_docker_available():
+    if exit_code is not None and not probe_docker(use_cache=False).available:
         return True
     return False
 
@@ -1158,6 +1159,9 @@ def _maybe_start_services(
         console.print("    [cyan]PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install 'nemo-platform\\[all]'[/cyan]")
         raise typer.Exit(1)
 
+    # Fail before stop/spawn when default local needs Docker (NVBug 6537617).
+    require_docker_for_default_local(console=console)
+
     if already_running:
         console.print("  Restarting platform services...")
         _kill_existing_services(base_url)
@@ -1186,10 +1190,7 @@ def _maybe_start_services(
             console.print(f"{CROSS} Platform did not become ready within {timeout}s")
         console.print(f"  Check {log} for details.")
         if _should_hint_docker_unavailable(exit_code=exit_code, log_path=log):
-            console.print(
-                "  Docker does not appear to be available. "
-                "Install and start Docker, or configure non-Docker executors, then retry."
-            )
+            console.print(f"  {DOCKER_PREFLIGHT_MESSAGE}")
         raise typer.Exit(1)
 
     console.print(f"{CHECK} Platform running at {base_url} (pid {proc.pid})\n")

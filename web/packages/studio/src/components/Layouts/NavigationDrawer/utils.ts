@@ -7,6 +7,15 @@ export const isGroup = (item: NavInputItem): item is { group?: string; items: Na
   return Array.isArray((item as { items?: NavItem[] }).items);
 };
 
+/**
+ * An item with no href is never active on its own — an expanded parent yields the highlight to
+ * whichever child matched. `ExpandableNavItem` covers the collapsed case.
+ */
+export const resolveActive = (
+  item: { active?: boolean; href?: string },
+  isActive: (href: string) => boolean
+): boolean => item.active ?? (item.href !== undefined ? isActive(item.href) : false);
+
 /** Normalize input into groups. Ungrouped items become their own single-item group. */
 export const toGroups = (items: NavInputItem[]): NavGroup[] => {
   const groups: NavGroup[] = [];
@@ -19,3 +28,13 @@ export const toGroups = (items: NavInputItem[]): NavGroup[] => {
   }
   return groups;
 };
+
+/**
+ * Flatten parents and children for the collapsed rail, which has no room for accordions. The rail
+ * is nothing but links, so anything without an href drops out.
+ */
+export const flattenForRail = (items: NavItem[]): NavItem[] =>
+  items.flatMap((item) => [
+    ...(item.href !== undefined ? [{ ...item, subItems: undefined }] : []),
+    ...(item.subItems ?? []).filter((sub) => sub.href !== undefined),
+  ]);

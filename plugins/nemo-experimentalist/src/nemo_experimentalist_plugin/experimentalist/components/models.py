@@ -325,6 +325,26 @@ class MetricTarget(BaseModel):
     direction: Literal["maximize", "minimize"] = Field(
         description="Whether higher or lower values are better for this target."
     )
+    target: float | None = Field(
+        default=None,
+        description=(
+            "Value at which this objective counts as satisfied, in the metric's own "
+            "units. When every targeted objective is met the run stops, so a solved "
+            "problem stops paying for rounds. Unset means no such stop: metrics are not "
+            "required to be normalized, so there is no value that means 'as good as "
+            "possible' for an arbitrary one."
+        ),
+    )
+
+    def is_satisfied_by(self, value: float | None) -> bool:
+        """Whether *value* meets this target. False when either side is absent.
+
+        A missing measurement is not evidence of success, and a target that was never
+        configured must not end a run.
+        """
+        if value is None or self.target is None:
+            return False
+        return value >= self.target if self.direction == "maximize" else value <= self.target
 
 
 def pareto_objectives(metrics: dict[str, float], objective_function: list[MetricTarget]) -> dict[str, float]:

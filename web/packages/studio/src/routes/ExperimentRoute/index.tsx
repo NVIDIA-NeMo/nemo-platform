@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { WithFilterOperators } from '@nemo/common/src/api/filterOperators';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import {
   dateTimeFilter,
   type DatetimeFilterValue,
@@ -29,7 +30,6 @@ import {
   StatusMessage,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { ExperimentCreateModal } from '@studio/components/ExperimentCreateModal';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { Loading } from '@studio/components/Layouts/Loading';

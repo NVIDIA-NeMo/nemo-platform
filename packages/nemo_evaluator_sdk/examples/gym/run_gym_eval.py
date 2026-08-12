@@ -16,15 +16,16 @@ back to tasks by an explicit map rather than by position (see the README).
 
 Prerequisites (see README.md):
 
-* A **NeMo Gym checkout** whose venv has the target env's deps installed — each env ships its own
-  ``requirements.txt`` (mcqa needs ``tiktoken``; Gym itself needs ``ray`` and ``uv >= 0.9.30``).
-* A **gitignored ``<gym_root>/env.yaml``** holding the model credentials the collector calls
-  (``policy_base_url`` / ``policy_api_key`` / ``policy_model_name``). This SDK never handles secrets —
-  the ``gym`` subprocess reads them from that file.
+* **NeMo Gym installed in this environment** (``pip install nemo-gym``), plus the target env's own
+  deps — each env ships its own ``requirements.txt`` (mcqa needs ``tiktoken``). Environments ship in
+  the wheel, so no checkout is needed for the bundled example data.
+* A **gitignored ``env.yaml``** holding the model credentials the collector calls
+  (``policy_base_url`` / ``policy_api_key`` / ``policy_model_name``) in the directory you run from.
+  This SDK never handles secrets — the ``gym`` subprocess reads them from that file.
 
-Run from the repository root::
+Run from the directory holding ``env.yaml``::
 
-    uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval --gym-root /path/to/Gym
+    uv run python -m packages.nemo_evaluator_sdk.examples.gym.run_gym_eval
 
 Pass ``--output-dir`` to write the bundle somewhere stable, then read it with ``inspect_results.py``.
 """
@@ -48,13 +49,11 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "--gym-root", required=True, type=Path, help="NeMo Gym checkout; its venv + env.yaml provide deps/creds."
-    )
-    parser.add_argument(
         "--dataset",
         type=Path,
         default=None,
-        help="Dataset jsonl (default: <gym-root>/resources_servers/<resources-server>/data/example.jsonl).",
+        help="Dataset jsonl (default: the installed package's "
+        "resources_servers/<resources-server>/data/example.jsonl).",
     )
     parser.add_argument("--resources-server", default="mcqa", help="Gym resources-server (environment) name.")
     parser.add_argument("--agent", default="simple_agent", help="Agent to collect rollouts with.")
@@ -79,15 +78,46 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _packaged_dataset(resources_server: str) -> Path:
+    """The environment's bundled ``example.jsonl`` as installed by the ``nemo-gym`` wheel.
+
+    Gym ships ``resources_servers`` beside ``nemo_gym`` in site-packages, configs and example data
+    included, so this resolves without a checkout. It only works when Gym is installed in *this*
+    interpreter — with Gym in a separate venv there is nothing to import, and the caller passes
+    ``--dataset`` instead.
+    """
+    try:
+        from importlib import resources
+    except ImportError as exc:  # pragma: no cover - importlib.resources is stdlib
+        raise SystemExit(f"cannot resolve a packaged dataset: {exc}") from exc
+    try:
+        dataset = Path(str(resources.files(f"resources_servers.{resources_server}") / "data" / "example.jsonl"))
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            f"resources_servers.{resources_server} is not importable here, so its bundled dataset cannot be "
+            "located. Install Gym in this environment, or pass --dataset with the path to the jsonl you "
+            "want to run."
+        ) from exc
+    # An importable environment does not guarantee bundled data: only git-tracked files ship in the
+    # wheel, so an environment whose splits are downloaded at runtime has no example.jsonl. Checking
+    # here keeps the guidance identical to the import failure, rather than letting
+    # `discover_gym_tasks` raise a bare FileNotFoundError on a path the caller never chose.
+    if not dataset.is_file():
+        raise SystemExit(
+            f"{resources_server} ships no bundled dataset at {dataset}. Pass --dataset with the path to "
+            "the jsonl you want to run."
+        )
+    return dataset
+
+
 async def _main(args: argparse.Namespace) -> int:
     output_dir = args.output_dir or Path(tempfile.mkdtemp(prefix="gym-eval-"))
-    dataset = args.dataset or (args.gym_root / "resources_servers" / args.resources_server / "data" / "example.jsonl")
+    dataset = args.dataset or _packaged_dataset(args.resources_server)
     tasks = discover_gym_tasks(dataset)
     print(f"discovered {len(tasks)} tasks from {dataset}")
 
     runner = GymAgentTaskRunner(
         config=GymRuntimeConfig(
-            gym_root=args.gym_root,
             agent=args.agent,
             agent_config=args.agent_config,
             resources_server=args.resources_server,

@@ -432,7 +432,7 @@ async def test_create_job_gpu_fail_fast_when_docker_no_gpus(test_client: AsyncCl
     mock_platform_config.runtime = Runtime.DOCKER
     mock_platform_config.docker.get_reserved_gpu_ids.return_value = []
 
-    with patch("nmp.common.jobs.docker.get_platform_config", return_value=mock_platform_config):
+    with patch("nemo_platform_plugin.jobs.docker.get_platform_config", return_value=mock_platform_config):
         response = await test_client.post("/apis/jobs/v2/workspaces/default/jobs", json=req.model_dump())
 
     assert response.status_code == 422

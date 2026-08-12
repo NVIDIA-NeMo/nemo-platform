@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { logger } from '@nemo/common/src/utils/logger';
 import { useSafeSynthesizerCreateJob } from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Banner, Button, Divider, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { SAFE_SYNTHESIZER_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -18,7 +19,6 @@ import {
   getSafeSynthesizerFormDefaults,
 } from '@studio/routes/SafeSynthesizerNewRoute/schema';
 import { getSafeSynthesizerJobRoute, getSafeSynthesizerRoute } from '@studio/routes/utils';
-import { logger } from '@studio/util/logger';
 import { FC, useState } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';

@@ -1,0 +1,140 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.14.0",
+    "install": {
+      "open-policy-agent": {
+        "pkg-path": "open-policy-agent",
+        "pkg-group": "open-policy-agent",
+        "version": "1.8.0"
+      }
+    },
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "open-policy-agent",
+      "broken": false,
+      "derivation": "/nix/store/x6pblvx2vksr0j7x1fn64za35ydpna5m-open-policy-agent-1.8.0.drv",
+      "description": "General-purpose policy engine",
+      "install_id": "open-policy-agent",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
+      "name": "open-policy-agent-1.8.0",
+      "pname": "open-policy-agent",
+      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
+      "rev_count": 866707,
+      "rev_date": "2025-09-24T05:06:22Z",
+      "scrape_date": "2025-09-26T03:42:58.943863Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "1.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/28vvl32vygjxdalfprxjqvnwpbsp2j7i-open-policy-agent-1.8.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "open-policy-agent",
+      "priority": 5
+    },
+    {
+      "attr_path": "open-policy-agent",
+      "broken": false,
+      "derivation": "/nix/store/07baqszwy9ldr487q9z6svwcsn7d73px-open-policy-agent-1.8.0.drv",
+      "description": "General-purpose policy engine",
+      "install_id": "open-policy-agent",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
+      "name": "open-policy-agent-1.8.0",
+      "pname": "open-policy-agent",
+      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
+      "rev_count": 866707,
+      "rev_date": "2025-09-24T05:06:22Z",
+      "scrape_date": "2025-09-26T04:12:13.305775Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "1.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/i98fklmmf7xcqlmm1hdzkcw4wvyf92my-open-policy-agent-1.8.0"
+      },
+      "system": "aarch64-linux",
+      "group": "open-policy-agent",
+      "priority": 5
+    },
+    {
+      "attr_path": "open-policy-agent",
+      "broken": false,
+      "derivation": "/nix/store/x7smjn0d496p62ckf6jcvp0i4qb9gzqv-open-policy-agent-1.8.0.drv",
+      "description": "General-purpose policy engine",
+      "install_id": "open-policy-agent",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
+      "name": "open-policy-agent-1.8.0",
+      "pname": "open-policy-agent",
+      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
+      "rev_count": 866707,
+      "rev_date": "2025-09-24T05:06:22Z",
+      "scrape_date": "2025-09-26T04:39:57.100020Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "1.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mby5spqsadnhrbdc20h01b5fbf7938vl-open-policy-agent-1.8.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "open-policy-agent",
+      "priority": 5
+    },
+    {
+      "attr_path": "open-policy-agent",
+      "broken": false,
+      "derivation": "/nix/store/rz93a0lg0j3b7p0lygizpnibnln7i2av-open-policy-agent-1.8.0.drv",
+      "description": "General-purpose policy engine",
+      "install_id": "open-policy-agent",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
+      "name": "open-policy-agent-1.8.0",
+      "pname": "open-policy-agent",
+      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
+      "rev_count": 866707,
+      "rev_date": "2025-09-24T05:06:22Z",
+      "scrape_date": "2025-09-26T05:11:19.422384Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "1.8.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/v3nqh59l69bpq739pa2amj427h1isc5d-open-policy-agent-1.8.0"
+      },
+      "system": "x86_64-linux",
+      "group": "open-policy-agent",
+      "priority": 5
+    }
+  ]
+}

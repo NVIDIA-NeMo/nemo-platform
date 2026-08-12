@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { filesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { useDatasetFilesUpload } from '@studio/api/datasets/useDatasetFilesUpload';
 import { useDownloadFileAsArrayBuffer } from '@studio/components/filesets/hooks/useDownloadFileAsArrayBuffer';
 import { FileSystemFile } from '@studio/components/FilesTable/utils';
-import { logger } from '@studio/util/logger';
 import { useCallback, useState } from 'react';
 
 export interface UseBulkDuplicateOptions {

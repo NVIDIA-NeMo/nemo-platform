@@ -87,3 +87,13 @@ def test_platform_egress_accepts_proto_value_sets() -> None:
 def test_platform_egress_rejects_invalid_protocol() -> None:
     with pytest.raises(ValidationError):
         OpenShellExecutorConfig.model_validate({"platform_egress": {"protocol": "ftp"}})
+
+
+def test_serve_path_defaults_to_venv_bin_prepended_to_system_path() -> None:
+    config = OpenShellExecutorConfig()
+    assert config.serve_path == "/workspace/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def test_serve_path_is_overridable() -> None:
+    config = OpenShellExecutorConfig.model_validate({"serve_path": "/opt/bin:/usr/bin"})
+    assert config.serve_path == "/opt/bin:/usr/bin"

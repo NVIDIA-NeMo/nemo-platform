@@ -90,6 +90,7 @@ def trial_to_atif_ingest(
     agent_version: str = DEFAULT_AGENT_VERSION,
     model_name: str | None = None,
     final_metrics: AtifFinalMetricsParam | None = None,
+    ended_at: datetime | None = None,
 ) -> AtifCreateParams:
     """Build the ATIF ingest params for a single Trial.
 
@@ -115,6 +116,16 @@ def trial_to_atif_ingest(
         "message": output_text or "",
         "timestamp": started_at,
     }
+    if ended_at is not None:
+        # Give the single-step trajectory a real duration so the root span's latency (end - start) is
+        # the trial's runtime instead of 0. Intake reads the window start/end from this NAT invocation
+        # block (epoch-second timestamps); ``started_at`` stays the start, so re-ingest is still idempotent.
+        step["extra"] = {
+            "invocation": {
+                "start_timestamp": started_at.timestamp(),
+                "end_timestamp": ended_at.timestamp(),
+            }
+        }
 
     body: AtifCreateParams = {
         "schema_version": ATIF_SCHEMA_VERSION,

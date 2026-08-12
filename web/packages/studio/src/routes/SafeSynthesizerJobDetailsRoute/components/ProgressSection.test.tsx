@@ -8,17 +8,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// Mock the toast hook
-const mockToastSuccess = vi.fn();
-vi.mock('@nemo/common/src/providers/toast/useToast', () => ({
-  useToast: () => ({
-    success: mockToastSuccess,
-    error: vi.fn(),
-    info: vi.fn(),
-    warning: vi.fn(),
-  }),
-}));
-
 vi.mock('lucide-react', async () => {
   return (await import('@nemo/testing/mocks/lucide')).mockLucideReact(await import('react'));
 });

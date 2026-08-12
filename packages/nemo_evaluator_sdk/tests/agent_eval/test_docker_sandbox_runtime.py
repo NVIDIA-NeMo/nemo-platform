@@ -196,8 +196,12 @@ def test_missing_optional_dependency_raises_clear_error(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
-    with pytest.raises(RuntimeError, match=r"nemo-evaluator-sdk\[agent-runtimes\]"):
+    with pytest.raises(RuntimeError, match=r"nemo-evaluator-sdk\[agent-runtimes\]") as exc_info:
         docker_sandbox._load_agents_sdk()
+
+    message = str(exc_info.value)
+    assert "pip install 'openai-agents[docker]'" in message
+    assert "openai-agents[docker]>=" not in message
 
 
 def test_manifest_uses_instruction_and_never_leaks_intent() -> None:

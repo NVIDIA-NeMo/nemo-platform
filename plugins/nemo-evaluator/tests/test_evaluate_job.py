@@ -1202,16 +1202,23 @@ class TestEvaluateJobRun:
             create=True,
         )
         download_dataset_sync = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset_sync", create=True)
+        cloned_sdk = mocker.Mock(name="cloned_async_sdk")
+        async_sdk = mocker.Mock(name="async_sdk")
+        async_sdk.copy.return_value = cloned_sdk
+        http_client = mocker.AsyncMock(name="http_client")
+        http_client.__aenter__.return_value = http_client
+        http_client.__aexit__.return_value = None
+        mocker.patch("nemo_evaluator.jobs.utils.DefaultAsyncHttpxClient", return_value=http_client)
         ctx = _make_job_context(tmp_path)
-        async_sdk = mocker.Mock()
         dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
         config = {**_exact_match_spec(), "dataset": dataset}
 
         run_result = EvaluateJob().run(config, ctx=ctx, async_sdk=async_sdk)
 
         _assert_saved_result_artifact(run_result, ctx, result_payload)
+        async_sdk.copy.assert_called_once_with(http_client=http_client)
         download_dataset.assert_awaited_once_with(
-            sdk=async_sdk,
+            sdk=cloned_sdk,
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
@@ -1258,6 +1265,42 @@ class TestEvaluateJobRun:
         assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
         assert call_kwargs["target"] is None
         assert call_kwargs["prompt_template"] is None
+
+    def test_prefers_sync_sdk_for_fileset_ref_when_both_sdks_injected(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        """Avoid binding async_sdk's httpx client before result-entity persistence."""
+        result = _empty_evaluation_result()
+        result_payload = result.model_dump(mode="json")
+        evaluator = mocker.Mock()
+        evaluator.run_sync.return_value = result
+        mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
+        downloaded_path = tmp_path / "persistent" / "dataset" / "default" / "helpsteer2" / "validation.jsonl"
+        download_dataset = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset", create=True)
+        download_dataset_sync = mocker.patch(
+            "nemo_evaluator.jobs.evaluate.download_dataset_sync",
+            return_value=downloaded_path,
+            create=True,
+        )
+        persist = mocker.patch("nemo_evaluator.jobs.evaluate.persist_evaluate_result")
+        ctx = _make_job_context(tmp_path)
+        sync_sdk = mocker.Mock()
+        async_sdk = mocker.Mock()
+        dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
+        config = {**_exact_match_spec(), "dataset": dataset}
+
+        run_result = EvaluateJob().run(config, ctx=ctx, sdk=sync_sdk, async_sdk=async_sdk)
+
+        _assert_saved_result_artifact(run_result, ctx, result_payload)
+        download_dataset.assert_not_called()
+        download_dataset_sync.assert_called_once_with(
+            sdk=sync_sdk,
+            dataset=dataset,
+            destination=str(ctx.storage.persistent / "dataset"),
+        )
+        persist.assert_called_once()
+        assert persist.call_args.kwargs["async_sdk"] is async_sdk
+        assert persist.call_args.kwargs["dataset_ref"] == dataset.root
 
 
 class TestEvaluateTask:
