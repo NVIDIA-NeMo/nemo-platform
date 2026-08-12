@@ -8,6 +8,10 @@ Provides progress reporting to the Jobs service using the NeMo Platform SDK.
 training runner; backends subclass it (or instantiate it directly) supplying
 their own ``service_name`` so the task SDK resolves the right credentials.
 
+Every update REPLACES the task's ``status_details``. The accumulated metric
+series is the one cumulative field in that blob, so ``update_task`` carries it
+across updates that don't supply their own -- see :meth:`_preserve_metrics`.
+
 For training-specific metrics (loss, validation, checkpoints) see the
 ``TrainingProgressCallback`` which composes this reporter.
 """
@@ -53,6 +57,33 @@ class JobsServiceProgressReporter:
         # downstream progress consumers expect a bounded percentage.
         return min(100, int((step / self._max_steps) * 100))
 
+    def _preserve_metrics(self, status_details: dict[str, Any] | None) -> dict[str, Any]:
+        """Re-attach the stored metric series to an update that doesn't carry one.
+
+        ``status_details`` is REPLACED by the Jobs service, not merged, so any
+        update omitting ``metrics`` blanks the accumulated loss curve.
+        ``TrainingProgressCallback`` resends the series on every report it makes,
+        but the surrounding runner cannot: it reports ``processing_checkpoint``,
+        completion and failure from a *different process* than the training
+        driver that accumulated the series, so it holds nothing to resend. Every
+        job would otherwise end by erasing its own curve -- including, and most
+        expensively, on the failure path.
+
+        Only ``metrics`` is carried over. The rest of the blob is deliberately a
+        current-state snapshot (``phase``, ``step``, ``lr``, ...); merging that
+        would leave a completed task advertising a mid-training step.
+
+        Costs a GET only on updates that omit ``metrics``, which is the handful
+        the runner makes per job -- never the per-step training reports.
+        """
+        details = dict(status_details or {})
+        if "metrics" in details:
+            return details
+        stored = self.fetch_current_metrics()
+        if any(stored.values()):
+            details["metrics"] = stored
+        return details
+
     def update_task(
         self,
         status: str = "active",
@@ -65,6 +96,8 @@ class JobsServiceProgressReporter:
         if not self._is_main_rank:
             return
 
+        details = self._preserve_metrics(status_details)
+
         try:
             jobs = client_from_platform(self._sdk, JobsClient)
             jobs.update_job_step_task(
@@ -74,7 +107,7 @@ class JobsServiceProgressReporter:
                 step=self._job_ctx.step,
                 body=PlatformJobTaskUpdate(
                     status=PlatformJobStatus(status),
-                    status_details=status_details or {},
+                    status_details=details,
                     error_details=error_details or {},
                 ),
             )
@@ -99,7 +132,10 @@ class JobsServiceProgressReporter:
                 "val_loss": metrics.get("val_loss", []),
             }
         except Exception as e:
-            logger.info(f"No prior metrics to seed (expected on first run): {e}")
+            # Expected on a first run, where the task has no stored details yet.
+            # Serves both resume seeding and update_task's metric preservation,
+            # so the message stays neutral about which caller hit it.
+            logger.info(f"No stored metrics available: {e}")
             return {"train_loss": [], "val_loss": []}
 
     def report_running(self, phase: str, **details: Any) -> None:
