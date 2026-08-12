@@ -3113,6 +3113,11 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/RowPublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result artifacts. Omit to publish nowhere.
         metrics:
           items:
             anyOf:
@@ -3444,6 +3449,11 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/RowPublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result artifacts. Omit to publish nowhere.
         metrics:
           items:
             $ref: '#/components/schemas/MetricInline'
@@ -4796,8 +4806,7 @@ components:
       additionalProperties: false
       type: object
       title: PublicationSpec
-      description: Where a completed run publishes its results, beyond its own result
-        bundle.
+      description: Where a completed agent-evaluation run publishes its results.
     ReasoningParams:
       properties:
         end_token:
@@ -4913,6 +4922,65 @@ components:
       required:
       - data
       title: RevisionsPage
+    RowIntakePublicationSpec:
+      properties:
+        evaluation_id:
+          type: string
+          minLength: 1
+          title: Evaluation Id
+          description: Name of the existing Evaluation to publish under. Must already
+            exist; the job does not create it.
+        agent_name:
+          title: Agent Name
+          description: Agent name recorded on each published trajectory. Derived from
+            the target when it names one; required otherwise.
+          type: string
+          minLength: 1
+        agent_version:
+          type: string
+          minLength: 1
+          title: Agent Version
+          description: Agent version recorded on each published trajectory. Neither
+            a Model nor an Agent carries a version, so this defaults to 'unknown'
+            unless the submitter supplies one.
+          default: unknown
+        required:
+          type: boolean
+          title: Required
+          description: Fail the job when publication fails. Defaults to True so a
+            run that asked to publish does not report success with nothing in Experiments.
+            The result bundle is saved before publication runs, so a failed job still
+            leaves the results intact to re-publish. Set False to keep the job successful
+            and report the failure in its output instead.
+          default: true
+        test_case_id_field:
+          title: Test Case Id Field
+          description: "Dataset column identifying each row, recorded as the published\
+            \ test case id. Defaults to a hash of the row's content, which keeps a\
+            \ row's id stable across dataset reorderings and revisions so the same\
+            \ test case can be compared run over run; editing a row makes it a new\
+            \ test case. Name a column here when the dataset has a real identifier\
+            \ \u2014 it reads better and survives content edits. Values must be unique\
+            \ per row; the run is rejected if they are not."
+          type: string
+          minLength: 1
+      additionalProperties: false
+      type: object
+      required:
+      - evaluation_id
+      title: RowIntakePublicationSpec
+      description: Intake publication for a dataset-driven evaluation, where a trial
+        is a dataset row.
+    RowPublicationSpec:
+      properties:
+        intake:
+          allOf:
+          - $ref: '#/components/schemas/RowIntakePublicationSpec'
+          description: Publish scored rows to Intake. Omit to publish nowhere.
+      additionalProperties: false
+      type: object
+      title: RowPublicationSpec
+      description: Where a completed dataset-driven evaluation publishes its results.
     RubricScoreStat:
       properties:
         label:
