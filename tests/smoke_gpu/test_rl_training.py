@@ -159,6 +159,23 @@ def test_nmp_rl_training_importable():
     from nmp.rl.tasks.training import __main__ as training_main  # noqa: F401
 
 
+@pytest.mark.smoke_nmp_rl_training
+def test_sandboxed_gym_driver_imports():
+    """The driver must be able to import the mode-B sandbox modules.
+
+    Sandboxed GRPO calls spinup_nemo_gym_actor() in the DRIVER process, which imports
+    nemo_rl.environments.sandbox.{nemo_gym_actor,host.models}. Both reach
+    nemo_gym.sandbox.broker at module scope, so the base venv needs nemo_gym even though
+    the Gym actor itself runs in its own venv. The `uv sync --all-groups` in the base
+    image is exact and prunes the nemo_gym extra, so this is only satisfied by the
+    explicit `uv pip install` of the Gym workspace member — without it, mode B fails at
+    Gym spin-up with `ModuleNotFoundError: No module named 'nemo_gym'`, minutes into a
+    run and only on a sandbox-capable cluster.
+    """
+    from nemo_rl.environments.sandbox.host.models import NemoGymSandboxedConfig  # noqa: F401
+    from nemo_rl.environments.sandbox.nemo_gym_actor import SandboxedGymActorConfig  # noqa: F401
+
+
 # --- per-worker venvs: where training actually runs ---------------------------------------------
 
 
