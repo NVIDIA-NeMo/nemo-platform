@@ -35,10 +35,12 @@ emit_constraints() {
   local wheel="$1" spec="$2" label="$3" out="$4" venv meta
   venv="$(mktemp -d)"
   meta="$(mktemp -d)"
-  uv venv "${venv}" --python 3.11 --quiet
+  uv venv "${venv}" --python 3.12 --quiet
   # Resolve+install once with the cap so we snapshot consistent, py3.14-safe versions.
+  # --no-config: run from the checkout this would otherwise apply the repo's
+  # [tool.uv] override-dependencies and snapshot versions no user can resolve.
   printf '%s\n' "${LITELLM_CAP%% *}" >"${meta}/cap.txt"
-  uv pip install --python "${venv}/bin/python" --constraint "${meta}/cap.txt" "${spec}" >/dev/null
+  uv pip install --no-config --python "${venv}/bin/python" --constraint "${meta}/cap.txt" "${spec}" >/dev/null
   # Direct external deps = the wheel's own Requires-Dist, minus self-referential extras.
   python3 - "$wheel" >"${meta}/names.txt" <<'PY'
 import sys, zipfile, re
@@ -61,7 +63,7 @@ PY
     printf '# Regenerate with: script/compile-wheel-constraints.sh <dir-with-built-wheels>\n#\n'
     while read -r name; do
       [[ -n "${name}" ]] || continue
-      ver="$("${venv}/bin/python" -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || true)
+      ver="$("${venv}/bin/python" -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || true)"
       [[ -n "${ver}" ]] && printf '%s==%s\n' "${name}" "${ver}"
     done <"${meta}/names.txt" | sort
     printf '%s\n' "${LITELLM_CAP}"
