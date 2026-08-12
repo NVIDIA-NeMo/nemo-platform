@@ -115,7 +115,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     runner = RecordingRunner()
     backend_calls: list[BackendFactoryCall] = []
     agent_calls: list[AgentFactoryCall] = []
-    litellm_calls: list[bool] = []
 
     def make_backend(
         *,
@@ -139,7 +138,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", make_backend)
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", build_agent)
     monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
-    monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: litellm_calls.append(True))
 
     train_dataset = DatasetRef(uri=str(paths.train))
     validation_dataset = DatasetRef(uri=str(paths.validation))
@@ -159,7 +157,6 @@ async def test_run_experimentalist_builds_and_runs_complete_local_contract(
     assert paths.experiment.is_dir()
     assert backend_calls == [BackendFactoryCall(client=client, experiments_output=str(paths.experiment.resolve()))]
     assert [(c.working_dir, c.config) for c in agent_calls] == [(paths.experiment.resolve(), optimizer_config)]
-    assert litellm_calls == [True]
     assert not client.closed
 
     (call,) = runner.calls
@@ -188,7 +185,6 @@ async def test_run_experimentalist_forwards_platform_insight_id_verbatim(
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: object())
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: object())
     monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
-    monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: None)
 
     await experimentalist_run.run_experimentalist(
         insight="insight-remote-123",
@@ -217,7 +213,6 @@ async def test_run_experimentalist_forwards_agent_spec_uri(
     monkeypatch.setattr(experimentalist_run, "make_experimentalist_backend", lambda **_: object())
     monkeypatch.setattr(experimentalist_run, "build_experimentalist_agent", lambda **_: object())
     monkeypatch.setattr(experimentalist_run, "ExperimentRunner", runner)
-    monkeypatch.setattr(experimentalist_run, "_enable_litellm_drop_params", lambda: None)
 
     spec_uri = "/path/to/AGENT-SPEC.md"
     await experimentalist_run.run_experimentalist(

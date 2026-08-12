@@ -3,10 +3,9 @@
 
 """Reusable optimizer Experimentalist run orchestration."""
 
-import importlib
 import logging
 from pathlib import Path
-from typing import Protocol, TextIO, cast
+from typing import TextIO
 
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.agent import build_experimentalist_agent
@@ -25,10 +24,6 @@ from nemo_platform_plugin.nooa_model_client import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class _LiteLLMModule(Protocol):
-    drop_params: bool
 
 
 def build_run_reporter(
@@ -90,8 +85,6 @@ async def run_experimentalist(
     # Logging is configured at the entry-point boundary (the root ``nemo`` CLI
     # callback runs ``configure_logging`` before dispatching this subcommand),
     # so this library function leaves root logging untouched.
-    _enable_litellm_drop_params()
-
     experiment_dir.mkdir(parents=True, exist_ok=True)
     experiment_dir = experiment_dir.resolve()
     # Leave ``agent`` unresolved: it may be a git ``url@ref`` (not a filesystem path).
@@ -151,12 +144,3 @@ async def run_experimentalist(
         report_path=(experiment_dir / "eval-and-optimize" / "OPTIMIZATION.md") if winner is not None else None,
     )
     return result.summary
-
-
-def _enable_litellm_drop_params() -> None:
-    """Let LiteLLM omit unsupported model parameters when it is installed."""
-    try:
-        litellm = cast(_LiteLLMModule, importlib.import_module("litellm"))
-    except ModuleNotFoundError:
-        return
-    litellm.drop_params = True

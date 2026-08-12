@@ -399,11 +399,6 @@ def _render_summary(completed: int, unit: str, baseline: Candidate | None, winne
     if winner is not None:
         if winner.rewards["validation"].metrics:
             details.append(f"validation_reward={winner.rewards['validation'].metrics}")
-        if baseline is not None and baseline.rewards["insight"].metrics and winner.rewards["insight"].metrics:
-            details.append(
-                f"insight_suite=(baseline={baseline.rewards['insight'].metrics}, "
-                f"winner={winner.rewards['insight'].metrics})"
-            )
     suffix = f", {', '.join(details)}" if details else ""
     winner_str = winner.label if winner is not None else "none"
     return f"Optimization complete: {completed} {unit}(s) completed, winner={winner_str}{suffix}"

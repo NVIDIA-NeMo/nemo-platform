@@ -108,3 +108,23 @@ def test_the_same_optimization_text_twice_is_dropped_to_one() -> None:
     )
 
     assert len(kept) == 1
+
+
+def test_a_type_used_in_an_earlier_round_may_be_used_again() -> None:
+    """#1163: novelty is a preference in the prompt, never an allowlist in the validator.
+
+    `available_types` is `all_types - tried_types`, so enforcing it would forbid a type
+    the moment it worked. A real multi-round run died on exactly that: rounds 1 and 2
+    took the agent from 0.333 to 1.000 with `edit_concrete_method`, round 3 proposed
+    refining it, and the only proposal was rejected as unusable -- which raises and ends
+    a run mid-flight, precisely when the loop is succeeding.
+    """
+    all_types = {"add_method", "edit_concrete_method"}
+
+    usable = Proposer._usable_improvements(
+        [_improvement("id-agent-0", optimization_type="edit_concrete_method")],
+        known_ancestors={"id-agent-0"},
+        allowed_types=all_types,  # the full vocabulary, not the untried remainder
+    )
+
+    assert [improvement.optimization_type for improvement in usable] == ["edit_concrete_method"]

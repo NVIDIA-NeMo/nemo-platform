@@ -229,10 +229,13 @@ class Proposer(Agent, roles.Proposer):
             objective_metrics=[t.model_dump() for t in self._objective_metrics],
             regression_metrics=[t.model_dump() for t in self._regression_metrics],
         )
+        # allowed_types is every type, not just the untried ones (#1163). available_types
+        # still reaches the prompt, so novelty stays a *preference*: a type that worked in
+        # an earlier round can be used again when it is the right tool.
         usable = self._usable_improvements(
             improvements,
             known_ancestors={c.id for c in proposal_survivors},
-            allowed_types=set(available_types) or all_types,
+            allowed_types=all_types,
         )
         kept = self._validate_improvements(improvements=usable, max_candidates=max_candidates)
         return [improvement.as_proposal() for improvement in kept]

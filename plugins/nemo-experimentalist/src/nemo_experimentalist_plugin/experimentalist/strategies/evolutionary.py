@@ -112,23 +112,6 @@ class AnalysisSkill(Skill):
     | agent-1 | 0.48 | 0.58 | 0.41 | ... | agent-0 | -0.10 |
     | agent-0 | 0.45 | 0.55 | 0.40 | ... | --- | baseline |
 
-    Insight Suite Reward:
-    | Agent | <insight-dim1> | <insight-dim2> | ... | vs. Baseline |
-    | ----- | -------------- | -------------- | --- | ------------ |
-    | agent-3 | 0.80 | 0.67 | ... | +0.40 |
-    | agent-1 | 0.60 | 0.50 | ... | +0.20 |
-    | agent-0 | 0.40 | 0.33 | ... | baseline |
-
-    [Columns are the actual reward dimension keys from metadata. Order by any dimension that
-    helps comparison — no dimension is privileged. Read Insight Suite Reward from
-    `candidate.rewards["insight"].metrics`. Omit that table when the `insight` channel is
-    absent or empty for every agent. Keep Insight Suite Reward separate from train and validation rewards:
-    it reports performance on scenarios authored for the motivating Insight and is not a
-    ranking or Pareto-selection input. Insight Suite metrics may steer round analysis,
-    goal-tree updates, and the proposer only as adaptive/development feedback. Label any
-    resulting claim accordingly; never present this adaptive evidence as independent
-    validation evidence.]
-
     ## Trajectory Rewards
 
     Trajectory rewards measure intermediate step quality (goal-tree subgoal rollup).
@@ -506,9 +489,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
 
         ```python
         rewards = {c.label: self.workspace.get_metadata(c.label).rewards["train"].metrics or {} for c in agent_ids}
-        insight_rewards = {
-            c.label: self.workspace.get_metadata(c.label).rewards["insight"].metrics or {} for c in agent_ids
-        }
         all_candidates = [
             self.workspace.get_metadata(agent_id).slim() for agent_id in self.workspace.list_agents()
         ]
@@ -561,7 +541,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         ```python
         agent_ids = self.workspace.list_agents()
         candidate = self.workspace.get_metadata(agent_id).slim()
-        insight_reward = candidate.rewards["insight"].metrics or {}
         analysis  = self.workspace.read_analysis_file(n)
         ```
 
