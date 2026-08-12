@@ -25,7 +25,7 @@ uv tool install "nemo-platform[all]"
 nemo setup
 ```
 
-`uv tool install` puts `nemo` on your PATH in its own isolated environment — there is no virtual environment to create or activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only.
+`uv tool install` gives you a global `nemo` command in its own isolated environment, with nothing to activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only. To import the SDK from your own code, `pip install "nemo-platform[all]"` into a virtual environment instead.
 
 Source checkout for development:
 

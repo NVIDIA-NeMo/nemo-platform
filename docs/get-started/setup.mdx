@@ -21,21 +21,23 @@ Choose the install path that matches what you want to do.
 
 ### Install from PyPI
 
-Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest local install. The `all` extra includes the SDK, CLI, platform services, and default first-party plugins:
+Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest local install. The `all` extra includes the SDK, CLI, platform services, and default first-party plugins; drop it for the SDK and CLI alone.
+
+<Tabs>
+
+<Tab title="uv tool (recommended)">
+
+One command, `nemo` available everywhere, nothing to activate.
 
 ```bash
 uv tool install "nemo-platform[all]"
 ```
 
-[uv](https://docs.astral.sh/uv/) installs the tool in its own isolated environment and puts the `nemo` command on your PATH, so there is no virtual environment to create or activate.
+</Tab>
 
-For SDK and CLI usage only, install the base package. Local services are unavailable until you add the `all` extra:
+<Tab title="Virtual environment">
 
-```bash
-uv tool install nemo-platform
-```
-
-To import the SDK from your own project, or when tool installs are unavailable, install into a virtual environment instead:
+Use when you also import the SDK from your own code. `nemo` works only while the environment is active.
 
 ```bash
 python -m venv .venv
@@ -43,7 +45,11 @@ source .venv/bin/activate
 pip install "nemo-platform[all]"
 ```
 
-After installing `nemo-platform[all]` from PyPI, continue with `nemo setup`.
+</Tab>
+
+</Tabs>
+
+Continue with `nemo setup`.
 
 ### Install from source
 

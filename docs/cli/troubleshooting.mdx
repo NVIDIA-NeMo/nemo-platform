@@ -14,7 +14,7 @@ This page covers common issues and how to resolve them.
 
 **Cause:**
 
-If you installed `nemo-platform` with `pip` or `uv pip`, it was installed in a virtual environment. The `nemo` command is only available when that environment is activated.
+With `pip` or `uv pip`, the command lives in a virtual environment and works only while that environment is active. With `uv tool install`, it lives in the uv tool executable directory, which uv adds to your `PATH` only when your shell configuration includes it.
 
 **Solution:**
 
@@ -23,21 +23,25 @@ Activate the virtual environment where you installed the package:
 source /path/to/venv/bin/activate
 ```
 
+After a tool install, add the uv tool directory to your `PATH`, then restart your shell:
+```bash
+uv tool update-shell
+```
+
 ## Installation Issues
 
-### Install Fails Compiling Dependencies from Source
+### Install Fails Building a Dependency
 
 **Symptoms:**
-- `uv tool install "nemo-platform[all]"` fails while building a dependency, often with a missing C header such as `omp.h`
-- `nemo --version` works but no dependency wheels are found for your interpreter
+- `uv tool install "nemo-platform[all]"` fails while building a dependency, often on a missing C header such as `omp.h`
 
 **Cause:**
 
-NeMo Platform supports Python 3.12 and 3.13. uv selects the interpreter it prefers on your machine, and it does not enforce the upper bound of a package's supported Python range, so an install can start on Python 3.14 and then fall back to building dependencies that publish no 3.14 wheels.
+NeMo Platform supports Python 3.12 and 3.13. A tool environment is built with the interpreter uv discovers, and [uv ignores the `requires-python` metadata](https://docs.astral.sh/uv/concepts/tools/#python-versions) when making that choice, so an install can land on Python 3.14 and then try to build dependencies that publish no 3.14 wheels.
 
 **Solution:**
 
-Name a supported interpreter. uv downloads it when your machine does not have one:
+Name a supported interpreter. uv downloads one when your machine has none:
 
 ```bash
 uv tool install --python 3.13 "nemo-platform[all]"
