@@ -692,4 +692,4 @@ def test_row_agent_target_derives_its_name() -> None:
         prompt_template="{{item.question}}",
         publication=RowPublicationSpec(intake=RowIntakePublicationSpec(evaluation_id="eval-1")),
     )
-    assert spec.publication is not None
+    assert target_agent_identity(spec.target) == ("my-agent", None)
