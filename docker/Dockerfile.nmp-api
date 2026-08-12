@@ -114,6 +114,8 @@ COPY --chown=1000:1000 --from=nmp-studio-ui /artifacts /static/studio
 COPY --chown=1000:1000 --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
 COPY --chown=1000:1000 --from=builder /tmp/fastembed_cache /tmp/fastembed_cache
+COPY docker/scripts/cve-cleanup.sh /bin/
+RUN sh /bin/cve-cleanup.sh
 ARG NMP_PLATFORM_VERSION=dev
 ARG NMP_CODE_REVISION=
 ENV NMP_PLATFORM_VERSION=${NMP_PLATFORM_VERSION}
