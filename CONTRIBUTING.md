@@ -49,11 +49,11 @@ Additionally, it leverages [ruff](https://github.com/astral-sh/ruff) for linting
 Install `uv`:
 
 ```bash
-curl -LsSf https://astral.sh/uv/0.9.14/install.sh | sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-> **NeMo Platform requires uv version `>=0.9.14`.** Flox and CI use the exact
-> repository toolchain version; `pyproject.toml` intentionally remains a range.
+> **NeMo Platform requires the uv version reported by `make toolchain-versions`.**
+> Flox and CI use that exact version; `pyproject.toml` intentionally remains a range.
 
 #### Studio Environment Setup
 
@@ -81,8 +81,8 @@ If you only need Python dependencies, use `make bootstrap-python`.
 
 #### System Toolchain Alternative
 
-Flox is recommended, but contributors may use an existing toolchain. Install uv
-`>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run:
+Flox is recommended, but contributors may use an existing toolchain. Install the
+versions printed by `make toolchain-versions` and a C compiler, then run:
 
 ```bash
 make TOOLCHAIN=system bootstrap

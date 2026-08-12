@@ -245,11 +245,11 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 
 ### Bootstrap prerequisites
 
-- **Toolchain:** Install Flox before running `make bootstrap`; Make activates it as needed. For a preinstalled host toolchain, use `TOOLCHAIN=system` only when uv is at least `0.9.14`, Node.js is `22.23.2`, and pnpm is `10.34.5`.
-- **uv version:** Root `pyproject.toml` requires and supports `uv>=0.9.14` for source checkout bootstrap. `uv.lock` updates use uv `0.9.14`, matching the platform containers and CI lock check.
+- **Toolchain:** Install Flox before running `make bootstrap`; Make activates it as needed. For a preinstalled host toolchain, install the versions printed by `make toolchain-versions` and use `TOOLCHAIN=system`.
+- **uv version:** Root `pyproject.toml` specifies the supported minimum for source checkout bootstrap. `make toolchain-versions` reports the exact version used for `uv.lock` updates, Flox, platform containers, and CI.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
-- **Studio (optional):** `make bootstrap-studio` uses the Node.js/pnpm versions pinned in the Flox environment, so a VM shipping an older Node does not need upgrading. API services still run without Studio assets. For a preinstalled host toolchain, use `TOOLCHAIN=system` with Node.js `22.23.2` and pnpm `10.34.5`.
+- **Studio (optional):** `make bootstrap-studio` uses the Node.js/pnpm versions pinned in the Flox environment, so a VM shipping an older Node does not need upgrading. API services still run without Studio assets. For a preinstalled host toolchain, install the versions printed by `make toolchain-versions` and use `TOOLCHAIN=system`.
 - **Docker:** Not needed for dependency bootstrap. It is required before running `nemo setup` or local services.
 
 ### Running the platform

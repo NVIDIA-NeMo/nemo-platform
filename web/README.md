@@ -10,7 +10,7 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
    flox activate      # from the repository root
    ```
 
-   Or install Node.js `22.23.2` and pnpm `10.34.5` yourself, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
+   Or install the Node.js and pnpm versions printed by `make toolchain-versions`, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
 
 2. Copy `.env` files from `web/`. `make bootstrap-studio` already installs the
    workspace dependencies. In an activated Flox environment, Corepack provides
