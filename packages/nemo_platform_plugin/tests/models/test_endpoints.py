@@ -14,6 +14,7 @@ from nemo_platform_plugin.models.types import (
     Adapter,
     ContainerExecutorConfig,
     CreateAdapterRequest,
+    CreateModelAdapterRequest,
     CreateModelDeploymentConfigRequest,
     CreateModelDeploymentRequest,
     CreateModelEntityRequest,
@@ -30,6 +31,7 @@ from nemo_platform_plugin.models.types import (
     ModelProviderStatus,
     Prompt,
     UpdateAdapterRequest,
+    UpdateModelDeploymentConfigRequest,
     UpdateModelDeploymentRequest,
     UpdateModelDeploymentStatusRequest,
     UpdateModelEntityRequest,
@@ -120,9 +122,7 @@ def test_create_model_adapter_nested_path() -> None:
     prepared = endpoints.create_model_adapter(
         workspace="w",
         model_name="base",
-        body=__import__(
-            "nemo_platform_plugin.models.types", fromlist=["CreateModelAdapterRequest"]
-        ).CreateModelAdapterRequest(name="a", fileset="w/fs", finetuning_type=FinetuningType.LORA),
+        body=CreateModelAdapterRequest(name="a", fileset="w/fs", finetuning_type=FinetuningType.LORA),
     )
     assert prepared.method == "POST"
     assert prepared.path_template == _PREFIX + "/models/{model_name}/adapters"
@@ -286,9 +286,7 @@ def test_deployment_config_crud_paths() -> None:
     update = endpoints.update_deployment_config(
         workspace="w",
         name="cfg",
-        body=__import__(
-            "nemo_platform_plugin.models.types", fromlist=["UpdateModelDeploymentConfigRequest"]
-        ).UpdateModelDeploymentConfigRequest(
+        body=UpdateModelDeploymentConfigRequest(
             engine=Engine.VLLM,
             model_spec=ModelDeploymentConfigModelSpec(model_name="llama"),
             executor_config=ContainerExecutorConfig(gpu=1),
