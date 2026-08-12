@@ -140,16 +140,11 @@ def main() -> None:
     job_ctx = NMPJobContext.from_env()
     print(f"Job context loaded (job_id={job_ctx.job_id})")
     if job_ctx.jobs_url:
-        max_steps = config.grpo.max_num_steps
-        num_epochs = config.grpo.max_num_epochs
-        val_period = config.grpo.val_period or 1
-        log_interval = max(val_period // 10, 1)
-        customizer_logger = NemoRLLogger(
-            steps_per_epoch=max(max_steps // max(num_epochs, 1), 1),
+        customizer_logger = NemoRLLogger.for_schedule(
             job_ctx=job_ctx,
-            log_interval=log_interval,
-            max_steps=max_steps,
-            num_epochs=num_epochs,
+            max_steps=config.grpo.max_num_steps,
+            num_epochs=config.grpo.max_num_epochs,
+            val_period=config.grpo.val_period,
         )
         if hasattr(logger_inst, "loggers"):
             logger_inst.loggers.append(customizer_logger)

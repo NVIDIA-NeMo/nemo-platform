@@ -5,14 +5,25 @@
 
 Composes a :class:`nmp.customization_common.training.progress.JobsServiceProgressReporter`
 and provides training-specific methods. Metric accumulation: ``train_loss`` and
-``val_loss`` are accumulated as time-series lists and included in every
+``val_loss`` are accumulated as time-series lists and included in EVERY
 ``status_details`` update under a ``metrics`` key, enabling loss-curve
 reconstruction from job status.
 
+Every update matters because ``report_running`` REPLACES the task's
+``status_details`` blob rather than merging into it. A report that omits
+``metrics`` therefore erases the accumulated series from stored status until the
+next train step resends it -- and if the job dies inside that window, the curve
+is gone. Checkpoint and epoch-end reports fire mid-training, so they carry the
+payload too.
+
+Only these two series accumulate. Anything passed as ``**additional_metrics``
+rides along as a current-step scalar: the full series set is resent on every
+update, so the payload grows with series count times step count.
+
 Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
-``backend`` field on each report (``"unsloth"``); automodel leaves it ``None`` so
-no ``backend`` key is added (preserving its status-detail shape). Callers may also
-pass ``backend`` per call (e.g. unsloth's HF trainer callback).
+``backend`` field on each report (``"unsloth"``); automodel and NeMo-RL leave it
+``None`` so no ``backend`` key is added (preserving their status-detail shape).
+Callers may also pass ``backend`` per call (e.g. unsloth's HF trainer callback).
 """
 
 import logging
@@ -56,7 +67,12 @@ class TrainingProgressCallback:
     def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
         """Report that training has started with schedule information."""
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
-        details: dict[str, object] = {"step": 0, "max_steps": max_steps, "num_epochs": num_epochs}
+        details: dict[str, object] = {
+            "step": 0,
+            "max_steps": max_steps,
+            "num_epochs": num_epochs,
+            "metrics": self._build_metrics_summary(),
+        }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
@@ -71,8 +87,14 @@ class TrainingProgressCallback:
         grad_norm: float | None = None,
         *,
         backend: str | None = None,
+        **additional_metrics: object,
     ) -> None:
-        """Report training step with metrics."""
+        """Report training step with metrics.
+
+        ``additional_metrics`` are backend-specific current-step scalars (DPO's
+        ``preference_loss``, GRPO's ``reward``/``kl_penalty``, ...). They are not
+        accumulated into the series; see the module docstring.
+        """
         self._train_metrics.append({"step": step, "epoch": epoch, "value": loss})
         details: dict[str, object] = {
             "step": step,
@@ -81,21 +103,38 @@ class TrainingProgressCallback:
             "lr": lr,
             "grad_norm": grad_norm,
             "metrics": self._build_metrics_summary(),
+            **additional_metrics,
         }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
         self._reporter.report_running(phase="training", **details)
 
-    def report_validation(self, step: int, epoch: int, val_loss: float, *, backend: str | None = None) -> None:
-        """Report validation results."""
-        self._val_metrics.append({"step": step, "epoch": epoch, "value": val_loss})
+    def report_validation(
+        self,
+        step: int,
+        epoch: int,
+        val_loss: float | None = None,
+        *,
+        backend: str | None = None,
+        **additional_metrics: object,
+    ) -> None:
+        """Report validation results.
+
+        ``val_loss`` is optional because not every algorithm produces one: GRPO
+        validates on ``accuracy``/``avg_length`` and reports no loss at all. The
+        key is omitted rather than sent as null, which would chart as a real zero.
+        """
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            "val_loss": val_loss,
-            "metrics": self._build_metrics_summary(),
+            **additional_metrics,
         }
+        if val_loss is not None:
+            self._val_metrics.append({"step": step, "epoch": epoch, "value": val_loss})
+            details["val_loss"] = val_loss
+        details["metrics"] = self._build_metrics_summary()
+
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
@@ -110,7 +149,12 @@ class TrainingProgressCallback:
         backend: str | None = None,
     ) -> None:
         """Report that a checkpoint was saved."""
-        details: dict[str, object] = {"step": step, "epoch": epoch, "checkpoint_path": checkpoint_path}
+        details: dict[str, object] = {
+            "step": step,
+            "epoch": epoch,
+            "checkpoint_path": checkpoint_path,
+            "metrics": self._build_metrics_summary(),
+        }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
@@ -118,7 +162,11 @@ class TrainingProgressCallback:
 
     def report_epoch_end(self, step: int, epoch: int, *, backend: str | None = None) -> None:
         """Report that an epoch has completed."""
-        details: dict[str, object] = {"step": step, "epoch": epoch}
+        details: dict[str, object] = {
+            "step": step,
+            "epoch": epoch,
+            "metrics": self._build_metrics_summary(),
+        }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved

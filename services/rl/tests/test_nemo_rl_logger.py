@@ -40,6 +40,8 @@ from nmp.rl.tasks.training.backends.nemo_rl import nemo_rl_logger  # noqa: E402
 from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (  # noqa: E402
     NemoRLLogger,
     has_metric_value,
+    resolve_log_interval,
+    resolve_steps_per_epoch,
 )
 
 
@@ -232,6 +234,109 @@ def test_log_interval_throttles_train_reports(callback: _RecordingCallback) -> N
 
     # log_metrics increments step by 1, so steps 5 and 10 report.
     assert [r["step"] for r in callback.train_steps] == [5, 10]
+
+
+# --------------------------------------------------------------------------- #
+# Final-step flush
+# --------------------------------------------------------------------------- #
+
+
+def test_close_flushes_the_withheld_final_step(callback: _RecordingCallback) -> None:
+    """When max_steps is not a multiple of log_interval the last step is throttled out.
+
+    Without a flush the run's last recorded loss is stale — for 23 steps at an
+    interval of 10 it would be step 20's, and steps 21-23 would never be seen.
+    """
+    logger = _make_logger(log_interval=10)
+    for step in range(23):
+        logger.log_metrics(GRPO_TRAIN_METRICS, step=step, prefix="train")
+
+    assert [r["step"] for r in callback.train_steps] == [10, 20]
+
+    logger.close()
+
+    assert [r["step"] for r in callback.train_steps] == [10, 20, 23]
+
+
+def test_close_does_not_duplicate_an_already_reported_step(callback: _RecordingCallback) -> None:
+    logger = _make_logger(log_interval=10)
+    for step in range(20):
+        logger.log_metrics(GRPO_TRAIN_METRICS, step=step, prefix="train")
+
+    logger.close()
+
+    assert [r["step"] for r in callback.train_steps] == [10, 20]
+
+
+def test_flushed_step_carries_the_full_metric_payload(callback: _RecordingCallback) -> None:
+    logger = _make_logger(log_interval=10)
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+    logger.close()
+
+    flushed = callback.train_steps[-1]
+    assert flushed["step"] == 1
+    assert flushed["reward"] == 0.62
+    assert flushed["loss"] == 0.31
+
+
+def test_double_close_flushes_once(callback: _RecordingCallback) -> None:
+    logger = _make_logger(log_interval=10)
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+
+    logger.close()
+    logger.close()
+
+    assert len(callback.train_steps) == 1
+
+
+def test_close_with_nothing_pending_reports_nothing(callback: _RecordingCallback) -> None:
+    _make_logger().close()
+
+    assert callback.train_steps == []
+
+
+# --------------------------------------------------------------------------- #
+# Schedule resolution — one formula for both drivers
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "val_period,expected",
+    [
+        (100, 10),
+        (10, 1),
+        (5, 1),  # floors to 0 -> clamped
+        (1, 1),
+        (0, 1),
+        (None, 1),  # GRPO's val_period is Optional
+    ],
+)
+def test_resolve_log_interval(val_period: int | None, expected: int) -> None:
+    assert resolve_log_interval(val_period) == expected
+
+
+@pytest.mark.parametrize(
+    "max_steps,num_epochs,explicit,expected",
+    [
+        (100, 4, None, 25),
+        (100, None, None, 100),
+        (100, 0, None, 100),  # guard against a zero divisor
+        (3, 10, None, 1),  # floors to 0 -> clamped
+        (100, 4, 40, 40),  # explicit wins (DPO carries steps_per_epoch)
+        (100, 4, 0, 25),  # ...unless it is unusable
+    ],
+)
+def test_resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explicit: int | None, expected: int) -> None:
+    assert resolve_steps_per_epoch(max_steps, num_epochs, explicit) == expected
+
+
+def test_for_schedule_builds_a_consistent_logger(callback: _RecordingCallback) -> None:
+    """Both drivers now share this path; DPO used to derive a different interval."""
+    logger = NemoRLLogger.for_schedule(max_steps=100, num_epochs=4, val_period=100)
+
+    assert logger._log_interval == 10
+    assert logger._steps_per_epoch == 25
+    assert logger._max_steps == 100
 
 
 # --------------------------------------------------------------------------- #

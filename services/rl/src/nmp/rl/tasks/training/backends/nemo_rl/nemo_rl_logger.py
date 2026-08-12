@@ -15,11 +15,14 @@ from typing import Any, Mapping, Optional
 
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.progress import JobsServiceProgressReporter
-from nmp.rl.app.constants import SERVICE_NAME
 from nmp.rl.tasks.training.backends.nemo_rl.callbacks import TrainingProgressCallback
+from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
+
+# How many progress reports to aim for across one validation period. NeMo-RL has no
+# notion of a reporting cadence, so it is derived from val_period.
+_REPORTS_PER_VAL_PERIOD = 10
 
 # Metric keys forwarded to Jobs Service, in addition to loss/lr/grad_norm.
 #
@@ -75,6 +78,18 @@ def has_metric_value(metric: Any) -> bool:
     return not math.isnan(float(metric))
 
 
+def resolve_log_interval(val_period: int | None) -> int:
+    """Steps between progress reports, targeting ~10 reports per validation period."""
+    return max((val_period or 0) // _REPORTS_PER_VAL_PERIOD, 1)
+
+
+def resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explicit: int | None = None) -> int:
+    """Steps per epoch, preferring an explicit value from the algorithm config."""
+    if explicit is not None and explicit >= 1:
+        return explicit
+    return max(max_steps // max(num_epochs or 1, 1), 1)
+
+
 class NemoRLLogger(LoggerInterface):
     """
     NemoRLLogger is a logger implementation that reports training updates to Jobs Service.
@@ -121,7 +136,7 @@ class NemoRLLogger(LoggerInterface):
         self._steps_per_epoch = steps_per_epoch
 
         # Create the callback for progress reporting
-        self._reporter = JobsServiceProgressReporter(self._job_ctx, SERVICE_NAME)
+        self._reporter = JobsServiceProgressReporter(self._job_ctx)
         self._callback = TrainingProgressCallback(self._reporter)
 
         # Track best metrics for monitoring
@@ -129,10 +144,44 @@ class NemoRLLogger(LoggerInterface):
         self._best_epoch: int | None = None
         self._closed = False
 
+        # Last train step built but withheld by the log_interval throttle. Flushed on
+        # close() so the final step is reported even when max_steps is not a multiple
+        # of log_interval -- otherwise the run's last recorded loss is stale.
+        self._pending_train_report: dict[str, Any] | None = None
+
         _logger.info(
             f"Initialized NemoRLLogger with jobs_url={self._job_ctx.jobs_url}, "
             f"log_interval={log_interval}, max_steps={max_steps}, num_epochs={num_epochs}, "
             f"steps_per_epoch={steps_per_epoch}"
+        )
+
+    @classmethod
+    def for_schedule(
+        cls,
+        *,
+        max_steps: int,
+        num_epochs: int | None,
+        val_period: int | None,
+        steps_per_epoch: int | None = None,
+        job_ctx: NMPJobContext | None = None,
+    ) -> "NemoRLLogger":
+        """Build a logger from a NeMo-RL training schedule.
+
+        The DPO and GRPO drivers previously derived ``log_interval`` and
+        ``steps_per_epoch`` with different formulas for the same intent -- at
+        ``val_period=100`` one produced 11 and the other 10 -- so the arithmetic
+        lives here instead of being restated per algorithm.
+
+        Args:
+            steps_per_epoch: Authoritative value when the algorithm config carries
+                one (DPO does); otherwise derived from max_steps and num_epochs.
+        """
+        return cls(
+            steps_per_epoch=resolve_steps_per_epoch(max_steps, num_epochs, steps_per_epoch),
+            job_ctx=job_ctx,
+            log_interval=resolve_log_interval(val_period),
+            max_steps=max_steps,
+            num_epochs=num_epochs,
         )
 
     def log_metrics(
@@ -163,21 +212,21 @@ class NemoRLLogger(LoggerInterface):
         # once mid-step with the rollout metrics alone (no loss), then again with the
         # full merged dict. Requiring loss keeps the second, complete one.
         if prefix == "train" and has_metric_value(metrics.get("loss")):
-            # Only report at log_interval to reduce output
+            report = {
+                "step": step,
+                "epoch": epoch,
+                "loss": metrics["loss"],
+                "lr": metrics.get("lr"),
+                "grad_norm": metrics.get("grad_norm"),
+                **self._select_metrics(metrics, _TRAIN_METRIC_KEYS),
+            }
+            # Throttled to log_interval to reduce output. A withheld step is held as
+            # pending rather than dropped, so close() can flush the last one.
             if step % self._log_interval == 0:
-                # Extract core metrics
-                loss = metrics["loss"]
-                lr = metrics.get("lr")
-                grad_norm = metrics.get("grad_norm")
-
-                self._callback.report_train_step(
-                    step=step,
-                    epoch=epoch,
-                    loss=loss,
-                    lr=lr,
-                    grad_norm=grad_norm,
-                    **self._select_metrics(metrics, _TRAIN_METRIC_KEYS),
-                )
+                self._callback.report_train_step(**report)
+                self._pending_train_report = None
+            else:
+                self._pending_train_report = report
 
         # Handle validation metrics.
         #
@@ -245,12 +294,27 @@ class NemoRLLogger(LoggerInterface):
         return None
 
     def close(self) -> None:
-        """Clean up resources."""
+        """Flush any withheld final step, then clean up resources."""
         if self._closed:
             return
         self._closed = True
+        self._flush_pending_train_report()
         _logger.info("NemoRLLogger closing")
         self._callback.close()
+
+    def _flush_pending_train_report(self) -> None:
+        """Report the last step if the log_interval throttle withheld it.
+
+        Reachable from ``__del__``, so failures must not propagate; the reporter
+        already swallows and logs transport errors, and this guards the rest.
+        """
+        if self._pending_train_report is None:
+            return
+        report, self._pending_train_report = self._pending_train_report, None
+        try:
+            self._callback.report_train_step(**report)
+        except Exception as exc:  # pragma: no cover - defensive, shutdown path
+            _logger.warning(f"Failed to flush final train step: {exc}")
 
     def __del__(self):
         """Cleanup when the logger is destroyed."""
