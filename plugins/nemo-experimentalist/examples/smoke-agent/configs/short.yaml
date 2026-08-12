@@ -87,3 +87,9 @@ evaluator:
   n_attempts: 1
   n_concurrent_trials: 3
   quiet: true
+
+# Insight mode materializes and deeply examines these representative failures
+# before the optimization loop begins. Five matches the five distinct failure
+# shapes recorded for every smoke-agent group.
+eval_author:
+  max_traces: 5
