@@ -201,10 +201,16 @@ class NemoRLLogger(LoggerInterface):
             step_metric: Optional step metric name (ignored in this implementation)
             step_finished: Whether the step is finished (part of NeMo-RL's LoggerInterface; ignored here)
         """
-        step = step + 1  # Increment step since we start counting from 1
-
-        # Calculate epoch from step (epochs start from 1)
-        epoch = ((step - 1) // self._steps_per_epoch) + 1
+        # `step` arrives 1-indexed and is used as-is. Both callers pass
+        # `total_steps + 1`, where total_steps is 0-based and incremented *after*
+        # logging (nemo_rl/algorithms/grpo.py, .../dpo.py), so it is already the
+        # 1-indexed step number. Incrementing again put the last step of an
+        # N-step run at N+1 and shifted the whole series one to the right of the
+        # axis Studio draws it against.
+        #
+        # Step 0 does arrive, from the validate-at-start path only; it belongs to
+        # epoch 1, hence the clamp rather than a bare `step - 1`.
+        epoch = (max(step - 1, 0) // self._steps_per_epoch) + 1
 
         # Handle training loss.
         #

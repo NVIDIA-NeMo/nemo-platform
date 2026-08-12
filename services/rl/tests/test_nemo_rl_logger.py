@@ -84,6 +84,17 @@ def _make_logger(**kwargs: Any) -> NemoRLLogger:
     return NemoRLLogger(**params)
 
 
+def _driver_steps(max_steps: int) -> range:
+    """The step sequence an N-step run actually produces.
+
+    grpo.py and dpo.py both log `total_steps + 1` with total_steps 0-based and
+    incremented after the log, so an N-step run emits 1..N -- not 0..N-1. Tests
+    that use range(N) directly would validate the throttle against a convention
+    no caller uses.
+    """
+    return range(1, max_steps + 1)
+
+
 class _Histogram:
     """Stand-in for nemo_rl's wandb Histogram — non-numeric, and NaN-hostile."""
 
@@ -229,10 +240,9 @@ def test_dpo_train_metrics_still_forwarded(callback: _RecordingCallback) -> None
 
 def test_log_interval_throttles_train_reports(callback: _RecordingCallback) -> None:
     logger = _make_logger(log_interval=5)
-    for step in range(10):
+    for step in _driver_steps(10):
         logger.log_metrics(GRPO_TRAIN_METRICS, step=step, prefix="train")
 
-    # log_metrics increments step by 1, so steps 5 and 10 report.
     assert [r["step"] for r in callback.train_steps] == [5, 10]
 
 
@@ -248,7 +258,7 @@ def test_close_flushes_the_withheld_final_step(callback: _RecordingCallback) -> 
     interval of 10 it would be step 20's, and steps 21-23 would never be seen.
     """
     logger = _make_logger(log_interval=10)
-    for step in range(23):
+    for step in _driver_steps(23):
         logger.log_metrics(GRPO_TRAIN_METRICS, step=step, prefix="train")
 
     assert [r["step"] for r in callback.train_steps] == [10, 20]
@@ -260,7 +270,7 @@ def test_close_flushes_the_withheld_final_step(callback: _RecordingCallback) -> 
 
 def test_close_does_not_duplicate_an_already_reported_step(callback: _RecordingCallback) -> None:
     logger = _make_logger(log_interval=10)
-    for step in range(20):
+    for step in _driver_steps(20):
         logger.log_metrics(GRPO_TRAIN_METRICS, step=step, prefix="train")
 
     logger.close()
@@ -270,7 +280,7 @@ def test_close_does_not_duplicate_an_already_reported_step(callback: _RecordingC
 
 def test_flushed_step_carries_the_full_metric_payload(callback: _RecordingCallback) -> None:
     logger = _make_logger(log_interval=10)
-    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=1, prefix="train")
     logger.close()
 
     flushed = callback.train_steps[-1]
@@ -281,7 +291,7 @@ def test_flushed_step_carries_the_full_metric_payload(callback: _RecordingCallba
 
 def test_double_close_flushes_once(callback: _RecordingCallback) -> None:
     logger = _make_logger(log_interval=10)
-    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=1, prefix="train")
 
     logger.close()
     logger.close()
@@ -297,7 +307,7 @@ def test_finish_flushes_like_close(callback: _RecordingCallback) -> None:
     entirely and the withheld final step is never flushed.
     """
     logger = _make_logger(log_interval=10)
-    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=1, prefix="train")
 
     logger.finish()
 
@@ -308,7 +318,7 @@ def test_finish_flushes_like_close(callback: _RecordingCallback) -> None:
 def test_finish_is_reachable_through_the_composite_dispatch(callback: _RecordingCallback) -> None:
     """Mirrors Logger.finish()'s exact lookup, so a rename here fails loudly."""
     logger = _make_logger(log_interval=10)
-    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=1, prefix="train")
 
     finish = getattr(logger, "finish", None)
     assert callable(finish)
@@ -320,7 +330,7 @@ def test_finish_is_reachable_through_the_composite_dispatch(callback: _Recording
 def test_finish_then_close_flushes_once(callback: _RecordingCallback) -> None:
     """Both the composite and the driver may call in; the step reports once."""
     logger = _make_logger(log_interval=10)
-    logger.log_metrics(GRPO_TRAIN_METRICS, step=0, prefix="train")
+    logger.log_metrics(GRPO_TRAIN_METRICS, step=1, prefix="train")
 
     logger.finish()
     logger.close()
@@ -379,6 +389,49 @@ def test_for_schedule_builds_a_consistent_logger(callback: _RecordingCallback) -
 
 
 # --------------------------------------------------------------------------- #
+# Step and epoch arithmetic
+# --------------------------------------------------------------------------- #
+
+
+def test_step_is_reported_as_the_caller_numbered_it(callback: _RecordingCallback) -> None:
+    """The caller's step is already 1-indexed; re-incrementing shifted the curve."""
+    logger = _make_logger(max_steps=23)
+    for step in _driver_steps(23):
+        logger.log_metrics(GRPO_TRAIN_METRICS, step=step, prefix="train")
+
+    reported = [r["step"] for r in callback.train_steps]
+    assert reported[0] == 1, "an N-step run starts at 1"
+    assert reported[-1] == 23, "...and ends at N, not N+1"
+
+
+@pytest.mark.parametrize(
+    "step,expected_epoch",
+    [
+        (0, 1),  # validate-at-start, before any training
+        (1, 1),
+        (10, 1),  # last step of epoch 1 at steps_per_epoch=10
+        (11, 2),  # first of epoch 2
+        (20, 2),
+        (21, 3),
+    ],
+)
+def test_epoch_boundaries(callback: _RecordingCallback, step: int, expected_epoch: int) -> None:
+    """Epoch flips on the step after a full epoch, not the last step of one."""
+    _make_logger().log_metrics({"loss": 0.5}, step=step, prefix="train")
+
+    assert callback.train_steps[0]["epoch"] == expected_epoch
+
+
+def test_validate_at_start_reports_step_zero(callback: _RecordingCallback) -> None:
+    """Both algorithms run an optional validation pass at step 0 before training."""
+    _make_logger().log_metrics(GRPO_VALIDATION_METRICS, step=0, prefix="validation")
+
+    reported = callback.validations[0]
+    assert reported["step"] == 0
+    assert reported["epoch"] == 1
+
+
+# --------------------------------------------------------------------------- #
 # Validation — the branch GRPO never reached
 # --------------------------------------------------------------------------- #
 
@@ -388,7 +441,7 @@ def test_grpo_validation_is_reported_without_a_loss(callback: _RecordingCallback
 
     Gating this branch on `loss` silently dropped every GRPO validation report.
     """
-    _make_logger().log_metrics(GRPO_VALIDATION_METRICS, step=9, prefix="validation")
+    _make_logger().log_metrics(GRPO_VALIDATION_METRICS, step=10, prefix="validation")
 
     assert len(callback.validations) == 1
     reported = callback.validations[0]
@@ -400,7 +453,7 @@ def test_grpo_validation_is_reported_without_a_loss(callback: _RecordingCallback
 
 
 def test_dpo_validation_still_reports_loss(callback: _RecordingCallback) -> None:
-    _make_logger().log_metrics({"loss": 0.25, "num_valid_samples": 8}, step=9, prefix="validation")
+    _make_logger().log_metrics({"loss": 0.25, "num_valid_samples": 8}, step=10, prefix="validation")
 
     reported = callback.validations[0]
     assert reported["val_loss"] == 0.25
@@ -417,9 +470,9 @@ def test_validation_with_nothing_usable_is_not_reported(callback: _RecordingCall
 
 def test_best_validation_loss_tracks_minimum(callback: _RecordingCallback) -> None:
     logger = _make_logger()
-    logger.log_metrics({"loss": 0.5}, step=9, prefix="validation")
-    logger.log_metrics({"loss": 0.2}, step=19, prefix="validation")
-    logger.log_metrics({"loss": 0.7}, step=29, prefix="validation")
+    logger.log_metrics({"loss": 0.5}, step=10, prefix="validation")
+    logger.log_metrics({"loss": 0.2}, step=20, prefix="validation")
+    logger.log_metrics({"loss": 0.7}, step=30, prefix="validation")
 
     assert logger._best_metric_value == 0.2
     assert logger._best_epoch == 2
@@ -428,7 +481,7 @@ def test_best_validation_loss_tracks_minimum(callback: _RecordingCallback) -> No
 def test_grpo_validation_leaves_best_loss_untouched(callback: _RecordingCallback) -> None:
     """No loss means no best-loss update — and no crash comparing None."""
     logger = _make_logger()
-    logger.log_metrics(GRPO_VALIDATION_METRICS, step=9, prefix="validation")
+    logger.log_metrics(GRPO_VALIDATION_METRICS, step=10, prefix="validation")
 
     assert math.isinf(logger._best_metric_value)
     assert logger._best_epoch is None
