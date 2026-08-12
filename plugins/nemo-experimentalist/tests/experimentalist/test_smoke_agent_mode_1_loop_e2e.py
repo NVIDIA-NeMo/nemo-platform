@@ -19,12 +19,11 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SandboxRunner
+
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
-# Honours NMP_BASE_URL so the same tests run against a Platform that is not on this
-# host -- from inside an sbx sandbox the host is `host.docker.internal`, and
-# `localhost` would resolve to the sandbox itself.
-_PLATFORM_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
+_HOST_PLATFORM_URL = "http://localhost:8080"
 _WORKSPACE = "smoke-agent"
 _NO_PROXY = "localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
 _DEFAULT_MODEL = os.environ.get("NEMO_DEFAULT_MODEL", "default/openai-openai-gpt-5-6-terra")
@@ -138,65 +137,52 @@ class _E2EEnvironment:
     fast_model: str
 
 
-def _require_sandbox() -> None:
-    """Refuse to run outside a sandbox.
+@dataclass(frozen=True)
+class _ExperimentCase:
+    """One Mode 1 loop configuration."""
 
-    The loop drives NOOA agents whose CodeAct tools execute model-written shell -- the
-    Coder, `fill_task_template`, `author_insight_metrics`. On a developer machine that
-    runs with the developer's privileges: credentials, keys, the whole home directory,
-    unrestricted network. Copying the fixture into `tmp_path` bounds where the intended
-    work happens, not where the process can reach, and a Coder has already been observed
-    writing outside its working directory into the repository checkout.
+    group: str
+    generated_only: bool
 
-    `sbx` sets SANDBOX_VM_ID. The override exists for CI images that isolate by other
-    means, and has to be set deliberately.
-    """
-    if os.environ.get("SANDBOX_VM_ID") or os.environ.get("SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED") == "1":
-        return
-    pytest.skip(
-        "refusing to run outside a sandbox: this executes model-written shell with your "
-        "privileges. Run under `sbx`, or set SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED=1."
-    )
+
+@dataclass(frozen=True)
+class _Experiment:
+    """One downloaded Mode 1 experiment."""
+
+    case: _ExperimentCase
+    path: Path
+
+
+_EXPERIMENT_CONFIGURATIONS = tuple(
+    _ExperimentCase(group, generated_only) for group in _REPAIR_GROUPS for generated_only in (False, True)
+)
+_EXPERIMENT_CASES = tuple(
+    pytest.param(case, id=f"{case.group}-{'generated-only' if case.generated_only else 'augmented'}")
+    for case in _EXPERIMENT_CONFIGURATIONS
+)
+_GENERATED_ONLY_CASES = tuple(
+    pytest.param(case, id=f"{case.group}-generated-only") for case in _EXPERIMENT_CONFIGURATIONS if case.generated_only
+)
 
 
 def _require_e2e_environment() -> _E2EEnvironment:
     """Check that the host services required by the handover procedure are available."""
     if os.environ.get("SMOKE_AGENT_E2E") != "1":
         pytest.skip("set SMOKE_AGENT_E2E=1 to run smoke-agent E2E tests")
-    _require_sandbox()
     platform = subprocess.run(
-        ["curl", "-sf", f"{_PLATFORM_URL}/health/ready"],
+        ["curl", "-sf", f"{_HOST_PLATFORM_URL}/health/ready"],
         capture_output=True,
         text=True,
         check=False,
     )
     if platform.returncode != 0:
-        pytest.skip(f"start the Platform on {_PLATFORM_URL} before running the smoke-agent E2E tests")
+        pytest.skip(f"start the Platform on {_HOST_PLATFORM_URL} before running the smoke-agent E2E tests")
     return _E2EEnvironment(default_model=_DEFAULT_MODEL, fast_model=_FAST_MODEL)
 
 
-def _run(command: list[str], *, log: Path, environment: dict[str, str] | None = None) -> str:
-    """Run one command and save its combined output for failure diagnosis."""
-    with log.open("a", encoding="utf-8") as output:
-        output.write("$ " + " ".join(command) + "\n")
-        result = subprocess.run(
-            command,
-            cwd=_REPO_ROOT,
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        output.write(result.stdout or "")
-    if result.returncode:
-        pytest.fail(f"E2E command failed; log: {log}\n{log.read_text(encoding='utf-8')}")
-    return result.stdout or ""
-
-
 def _process_environment(environment: _E2EEnvironment) -> dict[str, str]:
-    """Build the host environment shared by recording and optimization commands."""
-    return os.environ | {
+    """Build the minimum environment shared by recording and optimization commands."""
+    return {
         "NEMO_DEFAULT_MODEL": environment.default_model,
         "NEMO_FAST_MODEL": environment.fast_model,
         "NO_PROXY": _NO_PROXY,
@@ -206,15 +192,16 @@ def _process_environment(environment: _E2EEnvironment) -> dict[str, str]:
 
 def _record_trace_ids(
     environment: _E2EEnvironment,
+    runtime: SandboxRunner,
     *,
     group: str,
-    local_fixture: Path,
+    remote_fixture: str,
     workspace: str,
-    artifact_parent: Path,
+    remote_artifact_parent: str,
     log: Path,
 ) -> list[str]:
     """Record the group's train traces and return the published failing trace ids."""
-    output = _run(
+    output = runtime.run(
         [
             "uv",
             "run",
@@ -224,9 +211,9 @@ def _record_trace_ids(
             "--package",
             "nemo-experimentalist-plugin",
             "--with",
-            str(_REPO_ROOT / "plugins" / "nemo-agents"),
+            "./plugins/nemo-agents",
             "python",
-            str(local_fixture / "scripts" / "record_traces.py"),
+            f"{remote_fixture}/scripts/record_traces.py",
             "--group",
             group,
             "--split",
@@ -234,16 +221,17 @@ def _record_trace_ids(
             "--workspace",
             workspace,
             "--agent",
-            str(local_fixture / "agent"),
+            f"{remote_fixture}/agent",
             "--dataset-root",
-            str(local_fixture / "dataset"),
+            f"{remote_fixture}/dataset",
             "--output",
-            str(artifact_parent / "recordings"),
+            f"{remote_artifact_parent}/recordings",
             "--base-url",
-            _PLATFORM_URL,
+            runtime.platform_url,
         ],
         log=log,
         environment=_process_environment(environment),
+        capture_output=True,
     )
     published = dict(re.findall(r"^(\S+)\s+([0-9a-f]{32})$", output, flags=re.MULTILINE))
     expected = _INSIGHT_EVIDENCE_TASKS[group]
@@ -288,15 +276,16 @@ def _write_mock_insight(
 
 def _run_experimentalist(
     environment: _E2EEnvironment,
+    runtime: SandboxRunner,
     *,
-    local_fixture: Path,
-    experiment: Path,
-    insight: Path,
+    remote_fixture: str,
+    remote_experiment: str,
+    remote_insight: str,
     insight_id: str,
     workspace: str,
     log: Path,
 ) -> None:
-    """Run the insight-driven loop on the host with one mocked Insight."""
+    """Run the insight-driven loop in the selected boundary with one mocked Insight."""
     command = [
         "uv",
         "run",
@@ -306,41 +295,27 @@ def _run_experimentalist(
         "--package",
         "nemo-experimentalist-plugin",
         "--with",
-        str(_REPO_ROOT / "plugins" / "nemo-agents"),
+        "./plugins/nemo-agents",
         "nemo",
         "agents",
         "experimentalist",
         "run",
         "--profile",
-        str(local_fixture / "optimizer.yaml"),
+        f"{remote_fixture}/optimizer.yaml",
         "--insight",
-        str(insight),
+        remote_insight,
         "--insight-id",
         insight_id,
         "--workspace",
         workspace,
         "--base-url",
-        _PLATFORM_URL,
+        runtime.platform_url,
         "--config",
-        str(local_fixture / "configs" / "short.yaml"),
+        f"{remote_fixture}/configs/short.yaml",
         "--experiment-dir",
-        str(experiment),
+        remote_experiment,
     ]
-    process_environment = _process_environment(environment)
-    with log.open("a", encoding="utf-8") as output:
-        output.write("$ " + " ".join(command) + "\n")
-        output.flush()
-        process = subprocess.Popen(
-            command,
-            cwd=_REPO_ROOT,
-            env=process_environment,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        result = process.wait()
-    if result:
-        pytest.fail(f"E2E command failed; log: {log}\n{log.read_text(encoding='utf-8')}")
+    runtime.run(command, log=log, environment=_process_environment(environment))
 
 
 def _winner_label(experiment: Path) -> str:
@@ -614,56 +589,54 @@ def _assert_analysis_named_problem(experiment: Path, group: str) -> None:
     assert len(hits) >= _MIN_ROOT_CAUSE_HITS, f"{group} analysis did not name its problem; matched only {hits}"
 
 
-def _run_mode_1_case(group: str, tmp_path: Path, *, generated_only: bool) -> None:
-    """Run one Mode 1 group with either augmented or generated-only selection data."""
+def _run_mode_1_case(
+    group: str,
+    tmp_path: Path,
+    runtime: SandboxRunner,
+    *,
+    generated_only: bool,
+) -> Path:
+    """Run and download one Mode 1 group with either augmented or generated-only data."""
     environment = _require_e2e_environment()
     mode = "generated-only" if generated_only else "augmented"
     artifact_parent = tmp_path / f"{group}-{mode}"
-    local_fixture = artifact_parent / "workspace" / "smoke-agent"
     experiment = artifact_parent / "experiment"
     log = artifact_parent / "run.log"
     workspace = f"smoke-agent-e2e-{group}-{uuid.uuid4().hex[:8]}"
     artifact_parent.mkdir(parents=True)
-    shutil.copytree(_FIXTURE, local_fixture)
-
-    profile = local_fixture / "optimizer.yaml"
-    profile.write_text(
-        profile.read_text(encoding="utf-8")
-        .replace("g1-aggregation", group)
-        .replace("workspace: default", f"workspace: {workspace}"),
-        encoding="utf-8",
-    )
+    remote_fixture, remote_experiment = runtime.prepare_fixture(artifact_parent, log=log)
+    remote_artifact_parent = str(Path(remote_experiment).parent)
+    profile = f"{remote_fixture}/optimizer.yaml"
+    runtime.replace_text(profile, "g1-aggregation", group, log=log)
+    runtime.replace_text(profile, "workspace: default", f"workspace: {workspace}", log=log)
     if generated_only:
-        empty_splits = local_fixture / "generated-only"
-        (empty_splits / "train").mkdir(parents=True)
-        (empty_splits / "validation").mkdir()
-        profile.write_text(
-            profile.read_text(encoding="utf-8")
-            .replace(f"./dataset/groups/{group}/train", "./generated-only/train")
-            .replace(f"./dataset/groups/{group}/validation", "./generated-only/validation"),
-            encoding="utf-8",
+        runtime.make_directories(
+            f"{remote_fixture}/generated-only/train",
+            f"{remote_fixture}/generated-only/validation",
+            log=log,
         )
+        runtime.replace_text(profile, f"./dataset/groups/{group}/train", "./generated-only/train", log=log)
+        runtime.replace_text(profile, f"./dataset/groups/{group}/validation", "./generated-only/validation", log=log)
     if group == "g5-edge-cases":
-        config = local_fixture / "configs" / "short.yaml"
-        config.write_text(
-            config.read_text(encoding="utf-8").replace(
-                "disable_trajectory_scoring: true",
-                "disable_trajectory_scoring: false",
-            ),
-            encoding="utf-8",
+        runtime.replace_text(
+            f"{remote_fixture}/configs/short.yaml",
+            "disable_trajectory_scoring: true",
+            "disable_trajectory_scoring: false",
+            log=log,
         )
 
     if os.environ.get("SMOKE_AGENT_IMAGE_BUILT") != "1":
-        _run(
-            ["uv", "run", "--no-project", str(local_fixture / "scripts" / "build_image.py")],
+        runtime.run(
+            ["uv", "run", "--no-project", f"{remote_fixture}/scripts/build_image.py"],
             log=log,
         )
     trace_ids = _record_trace_ids(
         environment,
+        runtime,
         group=group,
-        local_fixture=local_fixture,
+        remote_fixture=remote_fixture,
         workspace=workspace,
-        artifact_parent=artifact_parent,
+        remote_artifact_parent=remote_artifact_parent,
         log=log,
     )
     insight = artifact_parent / "insights" / f"{group}.yaml"
@@ -673,37 +646,77 @@ def _run_mode_1_case(group: str, tmp_path: Path, *, generated_only: bool) -> Non
         trace_ids=trace_ids,
         path=insight,
     )
+    remote_insights = f"{remote_artifact_parent}/insights"
+    runtime.make_directories(remote_insights, log=log)
+    runtime.copy_in(insight, remote_insights, log=log)
     _run_experimentalist(
         environment,
-        local_fixture=local_fixture,
-        experiment=experiment,
-        insight=insight,
+        runtime,
+        remote_fixture=remote_fixture,
+        remote_experiment=remote_experiment,
+        remote_insight=f"{remote_insights}/{insight.name}",
         insight_id=insight_id,
         workspace=workspace,
         log=log,
     )
+    runtime.fetch(remote_experiment, artifact_parent, log=log)
     assert experiment.is_dir(), f"Experimentalist did not create the experiment directory at {experiment}"
+    return experiment
 
-    if generated_only:
-        _assert_loop_only_evaluated_generated_tasks(experiment)
-    _assert_analysis_named_problem(experiment, group)
-    _check_insight_suite(experiment)
-    _assert_winner_improves_objectives_without_regression(experiment)
-    if generated_only:
-        _assert_committed_validation_passes(experiment, group)
+
+@pytest.fixture(scope="session")
+def experiment(
+    request: pytest.FixtureRequest,
+    sandbox_runner: SandboxRunner,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> _Experiment:
+    """Run and download one Mode 1 case."""
+    case = request.param
+    assert isinstance(case, _ExperimentCase)
+    path = _run_mode_1_case(
+        case.group,
+        tmp_path_factory.mktemp(f"mode-1-{case.group}"),
+        sandbox_runner,
+        generated_only=case.generated_only,
+    )
+    return _Experiment(case, path)
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(2400)
-@pytest.mark.parametrize("group", _REPAIR_GROUPS)
-def test_insight_driven_loop_augments_the_committed_datasets(group: str, tmp_path: Path) -> None:
-    """Check that Mode 1 repairs a group when generated tasks augment its split."""
-    _run_mode_1_case(group, tmp_path, generated_only=False)
+@pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
+def test_insight_driven_loop_materializes_a_usable_suite(experiment: _Experiment) -> None:
+    """Check that each downloaded Mode 1 experiment has usable generated tasks and objectives."""
+    _check_insight_suite(experiment.path)
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(2400)
-@pytest.mark.parametrize("group", _REPAIR_GROUPS)
-def test_insight_driven_loop_uses_only_generated_tasks(group: str, tmp_path: Path) -> None:
-    """Check that Mode 1 repairs a group using generated tasks and held-out replay."""
-    _run_mode_1_case(group, tmp_path, generated_only=True)
+@pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
+def test_insight_driven_loop_improves_objectives(experiment: _Experiment) -> None:
+    """Check that each downloaded Mode 1 winner improves objectives without regression."""
+    _assert_winner_improves_objectives_without_regression(experiment.path)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(2400)
+@pytest.mark.parametrize("experiment", _GENERATED_ONLY_CASES, indirect=True)
+def test_generated_only_mode_1_uses_only_generated_tasks(experiment: _Experiment) -> None:
+    """Check that generated-only Mode 1 experiments never evaluate committed tasks in the loop."""
+    _assert_loop_only_evaluated_generated_tasks(experiment.path)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(2400)
+@pytest.mark.parametrize("experiment", _GENERATED_ONLY_CASES, indirect=True)
+def test_generated_only_mode_1_repairs_committed_holdout(experiment: _Experiment) -> None:
+    """Check that generated-only Mode 1 winners repair their untouched committed validation tasks."""
+    _assert_committed_validation_passes(experiment.path, experiment.case.group)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(2400)
+@pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
+def test_mode_1_analysis_names_the_problem(experiment: _Experiment) -> None:
+    """Check that each downloaded Mode 1 experiment contains the expected diagnosis."""
+    _assert_analysis_named_problem(experiment.path, experiment.case.group)

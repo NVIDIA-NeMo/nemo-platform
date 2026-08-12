@@ -9,7 +9,6 @@ import importlib.util
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,12 +18,10 @@ from typing import Any
 
 import pytest
 
+from conftest import SandboxRunner
+
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
-# Honours NMP_BASE_URL so the same tests run against a Platform that is not on this
-# host -- from inside an sbx sandbox the host is `host.docker.internal`, and
-# `localhost` would resolve to the sandbox itself.
-_PLATFORM_URL = os.environ.get("NMP_BASE_URL", "http://localhost:8080")
 _NO_PROXY = "localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
 _DEFAULT_MODEL = os.environ.get("NEMO_DEFAULT_MODEL", "default/openai-openai-gpt-5-6-terra")
 _FAST_MODEL = os.environ.get("NEMO_FAST_MODEL", "default/openai-openai-gpt-5-6-luna")
@@ -48,63 +45,47 @@ class _E2EEnvironment:
     fast_model: str
 
 
-def _require_sandbox() -> None:
-    """Refuse to run outside a sandbox.
+@dataclass(frozen=True)
+class _ExperimentCase:
+    """One Mode 2 loop configuration."""
 
-    The loop drives NOOA agents whose CodeAct tools execute model-written shell -- the
-    Coder, `fill_task_template`, `author_insight_metrics`. On a developer machine that
-    runs with the developer's privileges: credentials, keys, the whole home directory,
-    unrestricted network. Copying the fixture into `tmp_path` bounds where the intended
-    work happens, not where the process can reach, and a Coder has already been observed
-    writing outside its working directory into the repository checkout.
+    group: str
+    profile: str = "optimizer.yaml"
 
-    `sbx` sets SANDBOX_VM_ID. The override exists for CI images that isolate by other
-    means, and has to be set deliberately.
-    """
-    if os.environ.get("SANDBOX_VM_ID") or os.environ.get("SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED") == "1":
-        return
-    pytest.skip(
-        "refusing to run outside a sandbox: this executes model-written shell with your "
-        "privileges. Run under `sbx`, or set SMOKE_AGENT_E2E_ALLOW_UNSANDBOXED=1."
-    )
+
+@dataclass(frozen=True)
+class _Experiment:
+    """One downloaded Mode 2 experiment."""
+
+    case: _ExperimentCase
+    path: Path
+
+
+_REPAIR_CASES = tuple(
+    pytest.param(_ExperimentCase(group), id=group)
+    for group in ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases")
+)
+_G4_CASE = pytest.param(_ExperimentCase("g4-dispatch-order", "optimizer-generalization.yaml"), id="g4-dispatch-order")
 
 
 def _require_e2e_environment() -> tuple[str, str]:
     """Check that the host services required by the handover procedure are available."""
     if os.environ.get("SMOKE_AGENT_E2E") != "1":
         pytest.skip("set SMOKE_AGENT_E2E=1 to run smoke-agent E2E tests")
-    _require_sandbox()
     platform = subprocess.run(
-        ["curl", "-sf", f"{_PLATFORM_URL}/health/ready"],
+        ["curl", "-sf", "http://localhost:8080/health/ready"],
         capture_output=True,
         text=True,
         check=False,
     )
     if platform.returncode != 0:
-        pytest.skip(f"start the Platform on {_PLATFORM_URL} before running the smoke-agent E2E tests")
+        pytest.skip("start the Platform on http://localhost:8080 before running the smoke-agent E2E tests")
     return _DEFAULT_MODEL, _FAST_MODEL
 
 
-def _run(command: list[str], *, log: Path, environment: dict[str, str] | None = None) -> None:
-    """Run one command and save its combined output for failure diagnosis."""
-    with log.open("a", encoding="utf-8") as output:
-        output.write("$ " + " ".join(command) + "\n")
-        result = subprocess.run(
-            command,
-            cwd=_REPO_ROOT,
-            env=environment,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-    if result.returncode:
-        pytest.fail(f"E2E command failed; log: {log}\n{log.read_text(encoding='utf-8')}")
-
-
 @pytest.fixture(scope="session")
-def _e2e_environment(tmp_path_factory: pytest.TempPathFactory) -> _E2EEnvironment:
-    """Prepare the shared host environment used by every E2E group."""
+def _e2e_environment(tmp_path_factory: pytest.TempPathFactory, sandbox_runner: SandboxRunner) -> _E2EEnvironment:
+    """Prepare the shared sandbox environment used by every E2E group."""
     default_model, fast_model = _require_e2e_environment()
     environment = _E2EEnvironment(
         default_model=default_model,
@@ -112,12 +93,12 @@ def _e2e_environment(tmp_path_factory: pytest.TempPathFactory) -> _E2EEnvironmen
     )
     if os.environ.get("SMOKE_AGENT_IMAGE_BUILT") != "1":
         log = tmp_path_factory.mktemp("smoke-agent-e2e") / "host.log"
-        _run(
+        sandbox_runner.run(
             [
                 "uv",
                 "run",
                 "--no-project",
-                str(_FIXTURE / "scripts" / "build_image.py"),
+                sandbox_runner.source_path(_FIXTURE / "scripts" / "build_image.py"),
             ],
             log=log,
         )
@@ -126,60 +107,43 @@ def _e2e_environment(tmp_path_factory: pytest.TempPathFactory) -> _E2EEnvironmen
 
 def _run_e2e_command(
     environment: _E2EEnvironment,
+    runtime: SandboxRunner,
     command: list[str],
     *,
     log: Path,
 ) -> None:
-    """Run one Experimentalist command on the host."""
-    process_environment = os.environ | {
+    """Run one Experimentalist command inside the selected isolation boundary."""
+    process_environment = {
         "NEMO_DEFAULT_MODEL": environment.default_model,
         "NEMO_FAST_MODEL": environment.fast_model,
         "NO_PROXY": _NO_PROXY,
         "no_proxy": _NO_PROXY,
     }
-    with log.open("a", encoding="utf-8") as output:
-        output.write("$ " + " ".join(command) + "\n")
-        output.flush()
-        process = subprocess.Popen(
-            command,
-            cwd=_REPO_ROOT,
-            env=process_environment,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        result = process.wait()
-    if result:
-        pytest.fail(f"E2E command failed; log: {log}\n{log.read_text(encoding='utf-8')}")
+    runtime.run(command, log=log, environment=process_environment)
 
 
 def _run_group(
     group: str,
     *,
     environment: _E2EEnvironment,
+    runtime: SandboxRunner,
     artifact_parent: Path,
     profile_name: str = "optimizer.yaml",
 ) -> tuple[Path, Path]:
-    """Run one group from a separate host-side copy of the smoke fixture."""
+    """Run one group from a separate sandbox-side copy of the smoke fixture."""
     artifact_parent.mkdir(parents=True, exist_ok=True)
-    local_fixture = artifact_parent / "workspace" / "smoke-agent"
-    experiment = artifact_parent / "experiment"
-    shutil.copytree(_FIXTURE, local_fixture)
     log = artifact_parent / "run.log"
-    profile = local_fixture / profile_name
-    config = local_fixture / "configs" / "short.yaml"
+    local_fixture, remote_experiment = runtime.prepare_fixture(artifact_parent, log=log)
+    experiment = artifact_parent / "experiment"
+    profile = f"{local_fixture}/{profile_name}"
+    config = f"{local_fixture}/configs/short.yaml"
     if group != "g1-aggregation":
-        profile.write_text(profile.read_text(encoding="utf-8").replace("g1-aggregation", group), encoding="utf-8")
+        runtime.replace_text(profile, "g1-aggregation", group, log=log)
     if group == "g5-edge-cases":
-        config.write_text(
-            config.read_text(encoding="utf-8").replace(
-                "disable_trajectory_scoring: true",
-                "disable_trajectory_scoring: false",
-            ),
-            encoding="utf-8",
-        )
+        runtime.replace_text(config, "disable_trajectory_scoring: true", "disable_trajectory_scoring: false", log=log)
     _run_e2e_command(
         environment,
+        runtime,
         [
             "uv",
             "run",
@@ -189,23 +153,24 @@ def _run_group(
             "--package",
             "nemo-experimentalist-plugin",
             "--with",
-            str(_REPO_ROOT / "plugins" / "nemo-agents"),
+            "./plugins/nemo-agents",
             "nemo",
             "agents",
             "experimentalist",
             "run",
             "--profile",
-            str(profile),
+            profile,
             "--no-insight",
             "--base-url",
-            _PLATFORM_URL,
+            runtime.platform_url,
             "--config",
-            str(config),
+            config,
             "--experiment-dir",
-            str(experiment),
+            remote_experiment,
         ],
         log=log,
     )
+    runtime.fetch(remote_experiment, artifact_parent, log=log)
     assert experiment.is_dir(), f"Experimentalist did not create the experiment directory at {experiment}"
     return experiment, log
 
@@ -338,28 +303,46 @@ def _assert_g4_rejected_narrow_fix(experiment: Path) -> None:
     assert not broken_controls, f"g4 baseline controls are failing: {sorted(broken_controls)}"
 
 
+@pytest.fixture(scope="session")
+def experiment(
+    request: pytest.FixtureRequest,
+    _e2e_environment: _E2EEnvironment,
+    sandbox_runner: SandboxRunner,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> _Experiment:
+    """Run and download one Mode 2 case."""
+    case = request.param
+    assert isinstance(case, _ExperimentCase)
+    artifact_parent = tmp_path_factory.mktemp(f"mode-2-{case.group}")
+    path, _ = _run_group(
+        case.group,
+        environment=_e2e_environment,
+        runtime=sandbox_runner,
+        artifact_parent=artifact_parent,
+        profile_name=case.profile,
+    )
+    return _Experiment(case, path)
+
+
 @pytest.mark.e2e
 @pytest.mark.timeout(2400)
-@pytest.mark.parametrize("group", ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases"))
-def test_repair_groups_improve_validation(
-    group: str,
-    _e2e_environment: _E2EEnvironment,
-    tmp_path: Path,
-) -> None:
-    """Check that every repair group improves validation from its own agent copy."""
-    experiment, _ = _run_group(group, environment=_e2e_environment, artifact_parent=tmp_path / group)
-    _assert_repair_group(experiment, group)
-    _assert_analysis_named_problem(experiment, group)
+@pytest.mark.parametrize("experiment", _REPAIR_CASES, indirect=True)
+def test_repair_groups_improve_validation(experiment: _Experiment) -> None:
+    """Check that every repair group improves validation from its downloaded experiment."""
+    _assert_repair_group(experiment.path, experiment.case.group)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(2400)
+@pytest.mark.parametrize("experiment", _REPAIR_CASES, indirect=True)
+def test_repair_group_analysis_names_the_problem(experiment: _Experiment) -> None:
+    """Check that every downloaded repair experiment contains the expected diagnosis."""
+    _assert_analysis_named_problem(experiment.path, experiment.case.group)
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(1800)
-def test_g4_rejects_a_non_generalizing_fix(_e2e_environment: _E2EEnvironment, tmp_path: Path) -> None:
+@pytest.mark.parametrize("experiment", (_G4_CASE,), indirect=True)
+def test_g4_rejects_a_non_generalizing_fix(experiment: _Experiment) -> None:
     """Check that g4 retains the baseline after validation rejects a narrow fix."""
-    experiment, _ = _run_group(
-        "g4-dispatch-order",
-        environment=_e2e_environment,
-        artifact_parent=tmp_path / "g4-dispatch-order",
-        profile_name="optimizer-generalization.yaml",
-    )
-    _assert_g4_rejected_narrow_fix(experiment)
+    _assert_g4_rejected_narrow_fix(experiment.path)
