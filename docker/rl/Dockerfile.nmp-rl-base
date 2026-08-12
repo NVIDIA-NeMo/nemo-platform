@@ -262,6 +262,19 @@ uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenac
 # and Go stdlib floors even when NeMo-RL's lock has an older wheel.
 uv pip install --python /opt/nemo_rl_venv/bin/python "wandb==0.28.2"
 
+# NeMo-Gym in the BASE venv, for the DRIVER - not a duplicate of the nemo_gym extra above.
+# Sandboxed (mode B) GRPO imports nemo_rl.environments.sandbox in the driver process:
+# host/models.py needs BROKER_TOKEN_ENV / BROKER_URL_ENV and backends/base.py needs
+# EpisodeResources, both from nemo_gym.sandbox.broker. The `--all-groups` sync above is EXACT, so
+# it prunes the nemo_gym extra back out of the base venv and the driver dies with
+# `ModuleNotFoundError: No module named 'nemo_gym'` at Gym spin-up. Worker venvs are unaffected -
+# they get nemo_gym from the extra.
+# --no-deps is safe and deliberate: the driver's import closure is
+# nemo_gym.sandbox.broker -> broker/wire.py -> providers/base.py, whose only third-party import is
+# pydantic (already present). Resolving Gym's full dependency set here could move RL's pinned stack.
+uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps \
+    -e /opt/nemo-rl/3rdparty/Gym-workspace/Gym
+
 # CVE GHSA-mqqc-3gqh-h2x8: drop ray's bundled old aiohttp from the uv cache.
 find "${UV_CACHE_DIR}" -type d -path "*ray/_private/runtime_env/agent/thirdparty_files/aiohttp*" -exec rm -rf {} + || true
 
