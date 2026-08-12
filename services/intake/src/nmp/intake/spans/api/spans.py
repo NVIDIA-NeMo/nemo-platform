@@ -34,21 +34,24 @@ from nmp.intake.spans.service import SpanNotFoundError
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Spans"
+# Which SpanFilter fields resolve to a span attribute rather than a column.
+#
+# Adding a name here is a deliberate act, because it must also exist in the span
+# attribute catalog. The repository calls spec_for_field on every attribute filter, and
+# an uncatalogued name raises ValueError there, which reaches the caller as HTTP 500
+# rather than a rejected request. test_spans_filter_contract.py holds that line: it
+# asserts every name below has a catalog entry, and that no SpanFilter field is
+# published without a way to serve it.
 ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     {
-        "project",
-        "evaluation_id",
-        "dataset_id",
-        "dataset_name",
-        "dataset_version",
-        "test_case_id",
-        "model",
-        "tool_name",
-        "provider",
         "agent_id",
         "agent_name",
-        "prompt_name",
-        "prompt_version",
+        "evaluation_id",
+        "model",
+        "project",
+        "provider",
+        "test_case_id",
+        "tool_name",
     }
 )
 
@@ -61,9 +64,9 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=SpanFilter,
         filter_description=(
-            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, "
-            "source, kind, status, model, tool_name, provider, agent_id, agent_name, "
-            "prompt_name, prompt_version, and started_at."
+            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, "
+            "source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. "
+            "Every field takes one exact value, except started_at, which takes gte and lte."
         ),
     ),
 )
