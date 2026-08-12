@@ -10,6 +10,7 @@
 
 import logging
 import math
+import numbers
 from typing import Any, Mapping, Optional
 
 from nemo_rl.utils.logger import LoggerInterface
@@ -20,12 +21,58 @@ from nmp.rl.tasks.training.backends.nemo_rl.callbacks import TrainingProgressCal
 
 _logger = logging.getLogger(__name__)
 
+# Metric keys forwarded to Jobs Service, in addition to loss/lr/grad_norm.
+#
+# A union across algorithms: selection is by presence, so a DPO run simply has no
+# GRPO keys and vice versa. GRPO's `train` dict is the merge of the policy-loss
+# metrics, the reward/advantage block and NeMo-Gym's rollout metrics
+# (nemo_rl/algorithms/grpo.py builds it, nemo_rl/experience/rollouts.py supplies
+# the rollout half), so all three families are represented here.
+_TRAIN_METRIC_KEYS = (
+    # Shared
+    "num_valid_samples",
+    "global_valid_seqs",
+    "global_valid_toks",
+    # DPO
+    "preference_loss",
+    "rewards_rejected_mean",
+    # GRPO: reward and advantages — the signal that says whether RL is working
+    "reward",
+    "total_reward/mean",
+    "advantages/mean",
+    "advantages/min",
+    "advantages/max",
+    # GRPO: policy-optimization health
+    "kl_penalty",
+    "approx_entropy",
+    "token_mult_prob_error",
+    # GRPO: rollout shape
+    "truncation_rate",
+    "natural_termination_rate",
+    "turns_per_sample/mean",
+    "mean_gen_tokens_per_sample",
+)
+
+# GRPO reports `accuracy`/`avg_length` here and no loss at all; DPO reports loss.
+_VALIDATION_METRIC_KEYS = _TRAIN_METRIC_KEYS + ("accuracy", "avg_length")
+
 
 def has_metric_value(metric: Any) -> bool:
-    """Check if a metric has a valid value."""
-    if metric is not None and not math.isnan(metric):
-        return True
-    return False
+    """Whether ``metric`` is a finite-enough scalar to forward to Jobs Service.
+
+    The type check is load-bearing, not defensive. NeMo-RL's metric dicts carry
+    non-scalars alongside the numbers: ``calculate_single_metric`` emits a
+    ``<key>/histogram`` holding a ``Histogram`` object, NeMo-Gym adds a
+    per-agent ``full_result`` ``Table``, and ``generation_logger_metrics`` is a
+    nested dict. ``math.isnan`` raises ``TypeError`` on all of those, so a bare
+    None-check would turn a widened key list into a crash mid-training.
+
+    ``bool`` is rejected despite being an ``int`` subclass: no metric here is a
+    flag, and silently charting one as 0/1 is worse than dropping it.
+    """
+    if isinstance(metric, bool) or not isinstance(metric, numbers.Real):
+        return False
+    return not math.isnan(float(metric))
 
 
 class NemoRLLogger(LoggerInterface):
@@ -110,7 +157,11 @@ class NemoRLLogger(LoggerInterface):
         # Calculate epoch from step (epochs start from 1)
         epoch = ((step - 1) // self._steps_per_epoch) + 1
 
-        # Handle training loss
+        # Handle training loss.
+        #
+        # The loss gate also de-duplicates: GRPO logs under `train` twice per step —
+        # once mid-step with the rollout metrics alone (no loss), then again with the
+        # full merged dict. Requiring loss keeps the second, complete one.
         if prefix == "train" and has_metric_value(metrics.get("loss")):
             # Only report at log_interval to reduce output
             if step % self._log_interval == 0:
@@ -119,44 +170,26 @@ class NemoRLLogger(LoggerInterface):
                 lr = metrics.get("lr")
                 grad_norm = metrics.get("grad_norm")
 
-                # Extract additional training metrics (whitelisted only)
-                additional_metrics = {}
-                for key in [
-                    "num_valid_samples",
-                    "preference_loss",
-                    "rewards_rejected_mean",
-                    "global_valid_seqs",
-                    "global_valid_toks",
-                ]:
-                    if has_metric_value(metrics.get(key)):
-                        additional_metrics[key] = metrics[key]
-
                 self._callback.report_train_step(
                     step=step,
                     epoch=epoch,
                     loss=loss,
                     lr=lr,
                     grad_norm=grad_norm,
-                    **additional_metrics,
+                    **self._select_metrics(metrics, _TRAIN_METRIC_KEYS),
                 )
 
-        # Handle validation metrics
+        # Handle validation metrics.
+        #
+        # `val_loss` is optional because GRPO has none: its validation dict is
+        # {accuracy, avg_length}. Gating on loss here dropped every GRPO validation
+        # report silently, so instead report whenever anything usable came through.
         elif prefix and prefix.startswith("validation"):
-            if has_metric_value(metrics.get("loss")):
-                val_loss = metrics["loss"]
+            raw_val_loss = metrics.get("loss")
+            val_loss = raw_val_loss if has_metric_value(raw_val_loss) else None
+            additional_metrics = self._select_metrics(metrics, _VALIDATION_METRIC_KEYS)
 
-                # Extract additional validation metrics (whitelisted only)
-                additional_metrics = {}
-                for key in [
-                    "num_valid_samples",
-                    "preference_loss",
-                    "rewards_rejected_mean",
-                    "global_valid_seqs",
-                    "global_valid_toks",
-                ]:
-                    if has_metric_value(metrics.get(key)):
-                        additional_metrics[key] = metrics[key]
-
+            if val_loss is not None or additional_metrics:
                 self._callback.report_validation(
                     step=step,
                     epoch=epoch,
@@ -164,11 +197,16 @@ class NemoRLLogger(LoggerInterface):
                     **additional_metrics,
                 )
                 # Track best validation loss
-                if val_loss < self._best_metric_value:
+                if val_loss is not None and val_loss < self._best_metric_value:
                     self._best_metric_value = val_loss
                     self._best_epoch = epoch
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
+
+    @staticmethod
+    def _select_metrics(metrics: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+        """Pick the whitelisted keys that carry a forwardable scalar."""
+        return {key: metrics[key] for key in keys if has_metric_value(metrics.get(key))}
 
     def log_hyperparams(self, params: Mapping[str, Any]) -> None:
         """Log hyperparameters and report training start.
