@@ -232,7 +232,7 @@ def run_case(case: Case, run_root: Path) -> CaseResult:
     log = case_dir / "pytest.log"
     environment = os.environ.copy()
     if case.e2e:
-        environment |= {"SMOKE_AGENT_E2E": "1", "SMOKE_AGENT_IMAGE_BUILT": "1"}
+        environment |= {"SMOKE_AGENT_IMAGE_BUILT": "1"}
     command = [
         "uv",
         "run",

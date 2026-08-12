@@ -167,8 +167,6 @@ _GENERATED_ONLY_CASES = tuple(
 
 def _require_e2e_environment() -> _E2EEnvironment:
     """Check that the host services required by the handover procedure are available."""
-    if os.environ.get("SMOKE_AGENT_E2E") != "1":
-        pytest.skip("set SMOKE_AGENT_E2E=1 to run smoke-agent E2E tests")
     platform = subprocess.run(
         ["curl", "-sf", f"{_HOST_PLATFORM_URL}/health/ready"],
         capture_output=True,
