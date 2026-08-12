@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  AXIS_COLOR,
-  AXIS_TEXT_COLOR,
-} from '@nemo/common/src/components/ComparisonLineChart/consts';
+  chartMargin,
+  xAxisLabelProps,
+  yAxisLabelProps,
+} from '@nemo/common/src/components/ComparisonLineChart/chartFrame';
+import { AXIS_COLOR } from '@nemo/common/src/components/ComparisonLineChart/consts';
 import { Text } from '@nvidia/foundations-react-core';
 import type { FC } from 'react';
 import { CartesianGrid, LineChart, ResponsiveContainer, XAxis, YAxis } from 'recharts';
@@ -20,7 +22,6 @@ interface Props {
 /** Two rows are enough to give the axes a domain to draw against. */
 const PLACEHOLDER_ROWS = [{ x: 0 }, { x: 1 }];
 const PLACEHOLDER_DOMAIN: [number, number] = [0, 1];
-const AXIS_LABEL_STYLE = { fontSize: 12, fill: AXIS_TEXT_COLOR } as const;
 
 /**
  * The chart frame — axes, labels, and grid — with the empty message centered in the plot area.
@@ -36,10 +37,7 @@ export const ComparisonLineChartEmpty: FC<Props> = ({
 }) => (
   <div className="relative w-full">
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart
-        data={PLACEHOLDER_ROWS}
-        margin={{ top: 8, right: 16, bottom: xAxisLabel ? 24 : 0, left: yAxisLabel ? 8 : 0 }}
-      >
+      <LineChart data={PLACEHOLDER_ROWS} margin={chartMargin(xAxisLabel, yAxisLabel)}>
         {showGrid && (
           <CartesianGrid
             strokeDasharray="3 3"
@@ -54,31 +52,13 @@ export const ComparisonLineChartEmpty: FC<Props> = ({
           domain={PLACEHOLDER_DOMAIN}
           tick={false}
           stroke={AXIS_COLOR}
-          label={
-            xAxisLabel
-              ? {
-                  value: xAxisLabel,
-                  position: 'insideBottom',
-                  offset: -16,
-                  style: AXIS_LABEL_STYLE,
-                }
-              : undefined
-          }
+          label={xAxisLabelProps(xAxisLabel)}
         />
         <YAxis
           domain={PLACEHOLDER_DOMAIN}
           tick={false}
           stroke={AXIS_COLOR}
-          label={
-            yAxisLabel
-              ? {
-                  value: yAxisLabel,
-                  angle: -90,
-                  position: 'insideLeft',
-                  style: { ...AXIS_LABEL_STYLE, textAnchor: 'middle' },
-                }
-              : undefined
-          }
+          label={yAxisLabelProps(yAxisLabel)}
         />
       </LineChart>
     </ResponsiveContainer>
