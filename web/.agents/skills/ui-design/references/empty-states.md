@@ -1,10 +1,12 @@
 # Studio Empty States
 
-Studio renders every empty state through **one** primitive: `EntityEmptyState`
+Studio renders every _empty_ state through **one** primitive: `EntityEmptyState`
 in `@nemo/common`, driven by a central **entity registry**. Do not hand-roll
-`StatusMessage`, copy `TableEmptyState`, or invent per-callsite empty/error
-markup. Adding a new empty state means adding a registry entry and pointing a
-callsite at it — nothing more.
+`StatusMessage`, copy `TableEmptyState`, or invent per-callsite empty markup.
+Adding a new empty state means adding a registry entry and pointing a
+callsite at it — nothing more. **Error states are separate**: keep routing the
+error branch through the existing `ErrorPanel` (with `getErrorMessage(error)`),
+which surfaces the actual failure — `EntityEmptyState` does not handle errors.
 
 > Governing design rules: `kaizen-ui` skill →
 > `references/patterns/empty-states.md`, `references/patterns/error-states.md`,
@@ -24,20 +26,20 @@ Canonical locations:
 - Registry: `packages/common/src/components/EntityEmptyState/registry.ts`
   (`ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor>`)
 
-## The three variants
+## The two variants
 
-Every empty state is exactly one of three governed variants. Never invent a
-fourth idiom.
+Every empty state is exactly one of two governed variants. Never invent a
+third idiom.
 
-| Variant | When | Required affordances |
-| --- | --- | --- |
-| `first-use` | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "nemo CLI · Ask an Agent" self-service snippet |
-| `no-results` | Items exist but current filters/search match zero | heading naming the mismatch, **"Clear filters"** action; **no** create CTA |
-| `error` | Load failed (network/server/timeout) | non-technical heading, **"Try again"** action; no create CTA |
+| Variant      | When                                                         | Required affordances                                                                                  |
+| ------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `first-use`  | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "nemo CLI · Ask an Agent" self-service snippet |
+| `no-results` | Items exist but current filters/search match zero            | heading naming the mismatch, **"Clear filters"** action; **no** create CTA                            |
 
 **Compute the variant from signals — do not pick it manually.** Inside a
 DataView the signals already exist: `hasFiltersApplied` / `hasSearchApplied`
-(→ `no-results`) and the error branch (→ `error`); otherwise `first-use`.
+(→ `no-results`); otherwise `first-use`. The error branch is handled separately
+by `ErrorPanel`, not by a variant.
 
 ## Adding a new empty state
 
@@ -87,7 +89,9 @@ renderEmptyState={({ hasFiltersApplied, hasSearchApplied }) => (
     variant={hasFiltersApplied || hasSearchApplied ? 'no-results' : 'first-use'}
   />
 )}
-renderErrorState={() => <EntityEmptyState entity="filesets" variant="error" />}
+renderErrorState={() => (
+  <ErrorPanel errorMessage={getErrorMessage(error ?? new Error('Failed to load'))} />
+)}
 ```
 
 Prefer the DataView/ScrollTable **defaults**: if the shared default already
@@ -106,10 +110,10 @@ do not replace the animation.
 
 ### 3. Delete the old markup
 
-When migrating a callsite: remove any hand-rolled `StatusMessage`, local
-first-use/no-results `if` branching, and raw error empty-state markup. Route
-the error branch through the `error` variant. Do not leave the old path behind
-as a fallback.
+When migrating a callsite: remove any hand-rolled `StatusMessage` and local
+first-use/no-results `if` branching. Route the error branch through `ErrorPanel`
+with `getErrorMessage(error)`. Do not leave the old empty-state path behind as a
+fallback.
 
 ## Copy & CLI accuracy
 
@@ -128,11 +132,12 @@ as a fallback.
 ## Verify
 
 - `pnpm --filter @nemo/common test` — the `EntityEmptyState` unit tests cover
-  the three variants and the CLI/prompt copy affordances. Add a case if you
-  introduced a new descriptor shape or affordance, not for a plain new entry.
+  the `first-use` and `no-results` variants and the CLI/prompt copy affordances.
+  Add a case if you introduced a new descriptor shape or affordance, not for a
+  plain new entry.
 - `pnpm --filter nemo-studio-ui test` for migrated studio callsites.
-- Storybook: check `first-use`, `no-results`, and `error` render for a
-  representative entity.
+- Storybook: check `first-use` and `no-results` render for a representative
+  entity.
 
 ## Do / Don't
 

@@ -130,9 +130,7 @@ describe('GuardrailsDataView', () => {
     );
     renderComponent();
     expect(
-      await screen.findByTestId('entity-empty-state-error', undefined, {
-        timeout: XL_SELECTOR_TIMEOUT,
-      })
+      await screen.findByTestId('error-panel', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
   });
 });

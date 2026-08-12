@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useGuardrailsListGuardrailConfigs } from '@nemo/sdk/generated/platform/api';
@@ -44,7 +46,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
     sortState ? `${sortState.desc ? '-' : ''}${sortState.id}` : 'created_at'
   ) as GuardrailsListGuardrailConfigsParams['sort'];
 
-  const { data, isFetching, error, refetch } = useGuardrailsListGuardrailConfigs(
+  const { data, isFetching, error } = useGuardrailsListGuardrailConfigs(
     workspace,
     {
       page: dataViewState.pagination.state.pageIndex + 1,
@@ -157,7 +159,11 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
             />
           ),
           renderErrorState: () => (
-            <EntityEmptyState entity="guardrails" variant="error" onRetry={() => void refetch()} />
+            <ErrorPanel
+              errorMessage={getErrorMessage(
+                error ?? new Error('Failed to fetch guardrail configs')
+              )}
+            />
           ),
         },
       }}

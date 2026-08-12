@@ -9,6 +9,6 @@ When implementing any Studio UI change, consult the matching reference before
 writing code and follow it. These references are authoritative over ad-hoc
 markup — reuse the shared pattern rather than hand-rolling a new one.
 
-| If you are building / changing... | Read |
-| --- | --- |
+| If you are building / changing...                     | Read                         |
+| ----------------------------------------------------- | ---------------------------- |
 | An empty state (no items, no results, failed to load) | `references/empty-states.md` |

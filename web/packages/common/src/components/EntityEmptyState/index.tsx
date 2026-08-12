@@ -14,12 +14,11 @@ import {
   SegmentedControl,
   StatusMessage,
 } from '@nvidia/foundations-react-core';
-import { TriangleAlert } from 'lucide-react';
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
-/** The three governed empty-state variants. */
-export type EntityEmptyStateVariant = 'first-use' | 'no-results' | 'error';
+/** The governed empty-state variants. Errors are handled separately by `ErrorPanel`. */
+export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 
 export interface EntityEmptyStateProps {
   entity: EntityKey;
@@ -32,8 +31,6 @@ export interface EntityEmptyStateProps {
   onCreate?: () => void;
   /** Clears the active filters/search. `no-results` only. */
   onClearFilters?: () => void;
-  /** Re-runs the failed request. `error` only. */
-  onRetry?: () => void;
   className?: string;
 }
 
@@ -48,7 +45,6 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
   variant,
   onCreate,
   onClearFilters,
-  onRetry,
   className,
 }) => {
   const descriptor = ENTITY_EMPTY_STATES[entity];
@@ -64,25 +60,6 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
             onClearFilters ? (
               <Button kind="tertiary" onClick={onClearFilters}>
                 Clear filters
-              </Button>
-            ) : null
-          }
-        />
-      </Centered>
-    );
-  }
-
-  if (variant === 'error') {
-    return (
-      <Centered className={className} testId="entity-empty-state-error">
-        <StatusMessage
-          slotMedia={<TriangleAlert className="size-12 text-feedback-danger" />}
-          slotHeading="Something went wrong"
-          slotSubheading="We couldn't load this list. Please try again."
-          slotFooter={
-            onRetry ? (
-              <Button color="brand" onClick={onRetry}>
-                Try again
               </Button>
             ) : null
           }
@@ -151,12 +128,11 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   const [kind, setKind] = useState<HelpKind>(cliCommand ? 'cli' : 'agent');
 
   const items: { value: HelpKind; children: React.ReactNode }[] = [];
-  if (cliCommand)
-    items.push({ value: 'cli', children: "nemo CLI" });
+  if (cliCommand) items.push({ value: 'cli', children: 'nemo CLI' });
   if (skillPrompt)
     items.push({
       value: 'agent',
-      children: "Ask an Agent",
+      children: 'Ask an Agent',
     });
 
   const showCli = kind === 'cli' && !!cliCommand;

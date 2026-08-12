@@ -49,9 +49,7 @@ describe('EntityEmptyState', () => {
       const onCreate = vi.fn();
       wrap(<Guardrails onCreate={onCreate} />);
 
-      await userEvent.click(
-        screen.getByRole('button', { name: descriptor.createAction?.label })
-      );
+      await userEvent.click(screen.getByRole('button', { name: descriptor.createAction?.label }));
       expect(onCreate).toHaveBeenCalledTimes(1);
     });
 
@@ -76,17 +74,6 @@ describe('EntityEmptyState', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
       expect(onClearFilters).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('error', () => {
-    it('shows the retry action', async () => {
-      const onRetry = vi.fn();
-      wrap(<Guardrails variant="error" onRetry={onRetry} />);
-
-      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-      expect(onRetry).toHaveBeenCalledTimes(1);
     });
   });
 });
