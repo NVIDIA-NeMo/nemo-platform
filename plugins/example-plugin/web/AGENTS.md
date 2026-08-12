@@ -45,8 +45,9 @@ clears it, or the trail follows you to the next page. See `src/SharedUiPage.tsx`
 Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the
 `host.auth.getAccessToken()` Bearer token in your `queryFn`.
 
-Studio's **SDK** arrives on `host.sdk`, not via an import. `host.sdk.platform` is
-the platform service's generated hooks; call them at the top level like any hook
+Studio's **SDK** arrives on `host.sdk`, not via an import. `host.sdk.platform` and
+`host.sdk.agents` are those services' generated hooks and functions; call the hooks
+at the top level like any hook
 (e.g. `host.sdk.platform.useEntitiesListWorkspaces({ page: 1, page_size: 100 })`,
 see `src/Root.tsx`). They run on Studio's one configured axios instance (base URL +
 OIDC interceptor) and the shared QueryClient — a plugin never bundles or
@@ -78,6 +79,13 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   export is already a tsc error, so `pnpm typecheck` covers that half.
 - **`plugin.ts` is the API.** Need something Studio has but the barrel doesn't
   export? Add it there — additions are cheap, removals are breaking.
+- **Nothing in the barrel may call the API.** The vendor build resolves
+  `@nemo/sdk` to source rather than externalizing it, and defines only
+  `process.env.NODE_ENV` — so a bundled fetcher would read an undefined
+  `import.meta.env` for its base URL and OIDC keys. Type-only SDK imports are
+  fine (they erase). A shared component that needs data takes it as a prop or
+  callback and the caller supplies it from `host.sdk`; `CreateSecretModal`'s
+  `onCreate` and `fetchAllPages`' page fetcher are the pattern.
 - **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is
   unpublished, so there is nothing to install. `src/env.d.ts` declares the `*.css`
   side-effect imports those sources carry.
@@ -87,10 +95,10 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   router — two DataViews on one route will fight over them.
 - **Toasts need `onNotify`.** `ToastProvider` is *not* shared: Studio mounts it
   by deep import, so this bundle carries its own `ToastContext` with nothing in
-  it. `ConfirmationModal`, `DeleteConfirmationModal` and `LogViewer` therefore
-  take an `onNotify` prop — pass `host.notifications.notify` and the message
-  lands in Studio's toaster. Omit it and the message is dropped with a
-  `logger.warn`; nothing throws, so the miss is silent in the UI.
+  it. `ConfirmationModal`, `DeleteConfirmationModal`, `CreateSecretModal` and
+  `LogViewer` therefore take an `onNotify` prop — pass `host.notifications.notify`
+  and the message lands in Studio's toaster. Omit it and the message is dropped
+  with a `logger.warn`; nothing throws, so the miss is silent in the UI.
 
   ```tsx
   <DeleteConfirmationModal onNotify={host.notifications.notify} ... />
@@ -104,7 +112,10 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   host: {
     workspaceId: string;
     auth: { accessToken: string; getAccessToken: () => string };
-    sdk: { platform: /* @nemo/sdk platform hooks */ };
+    sdk: {
+      platform: /* @nemo/sdk platform hooks */;
+      agents: /* @nemo/sdk agents hooks and functions */;
+    };
     navigation: { navigate: (to: string) => void; back: () => void };
     notifications: {
       notify: (
