@@ -38,12 +38,6 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
     });
   });
 
-  it('marks gated (Llama) templates as requiring an HF token and open ones as not', () => {
-    const byId = Object.fromEntries(CUSTOMIZATION_TEMPLATES.map((t) => [t.id, t]));
-    expect(byId['sft-llama'].models.every((m) => m.requiresHfToken)).toBe(true);
-    expect(byId['lora-qwen3'].models.some((m) => m.requiresHfToken)).toBe(false);
-  });
-
   describe('lora-nemotron-3-super-text2sql', () => {
     const template = CUSTOMIZATION_TEMPLATES.find(
       (t) => t.id === 'lora-nemotron-3-super-text2sql'
@@ -114,9 +108,22 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
         // tensor_parallel_size > 1, or when expert_parallel_size is unset/<=1 on
         // multi-GPU. A recipe violating either fails the job at launch.
         const worldSize = p.num_nodes! * p.num_gpus_per_node!;
+        const derivedDp =
+          worldSize /
+          (p.tensor_parallel_size! * p.pipeline_parallel_size! * p.context_parallel_size!);
         expect(p.tensor_parallel_size).toBe(1);
         expect(p.expert_parallel_size).toBeGreaterThan(1);
-        expect(p.expert_parallel_size).toBe(worldSize);
+        // The rule is divisibility, not equality — ep need not span the whole world.
+        expect((derivedDp * p.context_parallel_size!) % p.expert_parallel_size!).toBe(0);
+      });
+
+      it('keeps global batch divisible by micro batch x data parallel size', () => {
+        // Same validator: gb % (mb * derived_dp) must be 0, else the job is rejected.
+        const { automodel: a } = template.buildFormSpec(WORKSPACE, DATASET_REF);
+        const derivedDp =
+          (p.num_nodes! * p.num_gpus_per_node!) /
+          (p.tensor_parallel_size! * p.pipeline_parallel_size! * p.context_parallel_size!);
+        expect(a.batch!.global_batch_size! % (a.batch!.micro_batch_size! * derivedDp)).toBe(0);
       });
 
       it('excludes out_proj, which Nemotron mamba kernels bypass', () => {
@@ -168,49 +175,21 @@ describe('CUSTOMIZATION_TEMPLATES', () => {
     });
   });
 
-  it('sets a teacher model only for the distillation template', () => {
-    const distillation = CUSTOMIZATION_TEMPLATES.find((t) => t.id === 'distillation-llama');
-    const fields = distillation!.buildFormSpec(WORKSPACE, DATASET_REF);
-    expect(fields.automodel.training.training_type).toBe('distillation');
-    expect(fields.automodel.training.teacher_model).toBe(`${WORKSPACE}/llama-3-2-3b-teacher`);
+  it('ships only Nemotron recipes, all LoRA on the automodel backend', () => {
+    expect(CUSTOMIZATION_TEMPLATES).toHaveLength(3);
+    for (const template of CUSTOMIZATION_TEMPLATES) {
+      expect(template.trainingLabel).toBe('LoRA');
+      const fields = template.buildFormSpec(WORKSPACE, DATASET_REF);
+      expect(fields.backend).toBe('automodel');
+      expect(fields.automodel.training.finetuning_type).toBe('lora');
+      expect(fields.automodel.training.training_type).toBe('sft');
+      // No distillation recipes remain, so no template should carry a teacher.
+      expect(fields.automodel.training.teacher_model).toBeUndefined();
+    }
   });
 });
 
 describe('template dataset converters', () => {
-  const squadDataset = CUSTOMIZATION_TEMPLATES.find((t) => t.id === 'lora-qwen3')!.dataset;
-  const specterDataset = CUSTOMIZATION_TEMPLATES.find(
-    (t) => t.id === 'embedding-nemotron'
-  )!.dataset;
-
-  it('converts a SQuAD row into prompt/completion', () => {
-    const row = {
-      context: 'The sky is blue.',
-      question: 'What color?',
-      answers: { text: ['blue'] },
-    };
-    expect(squadDataset.convertRow(row)).toEqual({
-      prompt: 'Context: The sky is blue. Question: What color? Answer:',
-      completion: 'blue',
-    });
-  });
-
-  it('drops SQuAD rows without an answer', () => {
-    expect(
-      squadDataset.convertRow({ context: 'x', question: 'y', answers: { text: [] } })
-    ).toBeNull();
-  });
-
-  it('converts a SPECTER triplet into query/pos_doc/neg_doc', () => {
-    expect(specterDataset.convertRow({ set: ['q', 'pos', 'neg'] })).toEqual({
-      query: 'q',
-      pos_doc: 'pos',
-      neg_doc: ['neg'],
-    });
-  });
-
-  it('drops SPECTER rows missing a triplet member', () => {
-    expect(specterDataset.convertRow({ set: ['q', 'pos'] })).toBeNull();
-  });
 
   describe('BIRD-SQL converter', () => {
     const birdDataset = CUSTOMIZATION_TEMPLATES.find(

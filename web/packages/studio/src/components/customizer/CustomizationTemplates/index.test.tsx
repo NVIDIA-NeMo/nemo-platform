@@ -17,18 +17,12 @@ import type { Mock } from 'vitest';
 const HF_ROWS_URL = 'https://datasets-server.huggingface.co/rows';
 
 /**
- * Carries the fields every template converter reads (SQuAD, SPECTER, BIRD-SQL) in one
- * row, so these tests stay valid whichever template happens to be rendered first.
+ * A BIRD-SQL row — the shape every shipped template's converter reads, so these tests
+ * hold whichever template renders first. Extend this if a template adds a new source.
  */
 const HF_ROW = {
-  // SQuAD
-  context: 'ctx',
-  question: 'q',
-  answers: { text: ['a'] },
-  // SPECTER
-  set: ['query', 'pos', 'neg'],
-  // BIRD-SQL
   schema: 'CREATE TABLE t (id INT);',
+  question: 'q',
   evidence: 'hint',
   SQL: 'SELECT 1',
 };
@@ -62,7 +56,9 @@ describe('CustomizationTemplates', () => {
     const gatedCount = CUSTOMIZATION_TEMPLATES.filter((t) =>
       t.models.some((m) => m.requiresHfToken)
     ).length;
-    expect(screen.getAllByText('HF token')).toHaveLength(gatedCount);
+    // queryAll, not getAll: no shipped template is gated today, and getAllByText throws
+    // on zero matches rather than returning an empty list.
+    expect(screen.queryAllByText('HF token')).toHaveLength(gatedCount);
   });
 
   it('provisions the model + dataset and navigates to the pre-filled form on "Use Template"', async () => {
