@@ -9,7 +9,6 @@ and client lifetime behavior without making Nooa a required dependency of the
 public plugin contract.
 """
 
-import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
