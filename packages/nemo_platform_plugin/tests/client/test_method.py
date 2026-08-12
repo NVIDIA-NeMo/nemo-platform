@@ -11,9 +11,10 @@ autodoc, and anything walking ``dir()``.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import pydoc
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import AsyncMock, MagicMock, create_autospec
 
 import pytest
 from nemo_platform_plugin.client.method import EndpointMethod
@@ -31,14 +32,27 @@ def _descriptor(name: str) -> EndpointMethod:
 # ---------------------------------------------------------------------------
 
 
-def test_class_level_access_returns_the_descriptor() -> None:
-    """``__get__`` with no instance hands back the descriptor, per the protocol.
+def test_class_level_access_returns_a_typed_callable_stub() -> None:
+    """``__get__`` with no instance hands back a callable stub matched to the class.
 
-    It used to assert ``obj is not None``, so every one of these raised.
+    The stub exists so ``unittest.mock`` / ``inspect`` can classify each endpoint
+    (sync vs coroutine) and autospec it as callable. The raw descriptor is still
+    reachable via ``inspect.getattr_static``, which never invokes ``__get__``.
     """
-    assert isinstance(ModelsClient.create_model, EndpointMethod)
-    assert isinstance(AsyncModelsClient.create_model, EndpointMethod)
-    assert ModelsClient.create_model is inspect.getattr_static(ModelsClient, "create_model")
+    assert callable(ModelsClient.create_model)
+    assert callable(AsyncModelsClient.create_model)
+    assert not inspect.iscoroutinefunction(ModelsClient.create_model)
+    assert inspect.iscoroutinefunction(AsyncModelsClient.create_model)
+    # The descriptor itself is reachable without triggering __get__.
+    assert isinstance(inspect.getattr_static(ModelsClient, "create_model"), EndpointMethod)
+
+
+def test_class_level_stub_refuses_to_run_unbound() -> None:
+    """The stub is for introspection only; calling it without an instance errors."""
+    with pytest.raises(TypeError):
+        ModelsClient.create_model(workspace="w", body=None)
+    with pytest.raises(TypeError):
+        asyncio.run(AsyncModelsClient.create_model(workspace="w", body=None))
 
 
 def test_mock_spec_against_a_client_class_builds() -> None:
@@ -50,6 +64,9 @@ def test_mock_spec_against_a_client_class_builds() -> None:
     mock = MagicMock(spec=AsyncModelsClient)
 
     assert callable(mock.create_model)
+    # The async client's endpoints spec as awaitables, not sync MagicMocks --
+    # this is the whole point of the typed async client.
+    assert isinstance(mock.create_model, AsyncMock)
     with pytest.raises(AttributeError):
         mock.create_modle  # noqa: B018  a typo must not be silently mockable
 
@@ -67,16 +84,19 @@ def test_pydoc_lists_endpoints_with_their_docstrings() -> None:
     assert "Delete a deployment" in rendered
 
 
-def test_create_autospec_does_not_raise() -> None:
-    """autospec also walks the class.
+def test_create_autospec_yields_awaitable_endpoint_stubs() -> None:
+    """autospec walks the class and gets callable, correctly-async stubs.
 
-    The resulting endpoint stubs are *not* callable, because the descriptor is not.
-    That is a real limitation of this design and is pinned here so it is a
-    deliberate trade-off rather than a surprise: use ``spec=`` for client mocks.
+    Sync clients autospec to callable MagicMocks; async clients to AsyncMocks, so
+    ``await auto.create_model(...)`` works and signature validation is enforced.
     """
-    auto = create_autospec(AsyncModelsClient)
+    auto_sync = create_autospec(ModelsClient)
+    assert callable(auto_sync.create_model)
+    assert not isinstance(auto_sync.create_model, AsyncMock)
 
-    assert not callable(auto.create_model)
+    auto_async = create_autospec(AsyncModelsClient)
+    assert callable(auto_async.create_model)
+    assert isinstance(auto_async.create_model, AsyncMock)
 
 
 # ---------------------------------------------------------------------------
@@ -93,18 +113,9 @@ def test_descriptor_carries_endpoint_identity() -> None:
     assert descriptor.__wrapped__ is descriptor.endpoint
 
 
-def test_signature_is_reachable_by_unwrapping_at_class_level() -> None:
-    """``inspect.signature`` rejects the descriptor; ``unwrap`` gets past it.
-
-    Pinned because the obvious reading of ``__wrapped__`` is that ``signature()``
-    follows it. It does not: it refuses a non-callable before ever looking.
-    """
-    # Both calls are typed as taking a callable; passing the descriptor is the
-    # behaviour under test, hence the suppressions rather than a cast.
-    with pytest.raises(TypeError):
-        inspect.signature(AsyncModelsClient.create_model)  # ty: ignore[invalid-argument-type]
-
-    signature = inspect.signature(inspect.unwrap(AsyncModelsClient.create_model))  # ty: ignore[invalid-argument-type]
+def test_signature_is_reachable_at_class_level() -> None:
+    """The class-level stub is a real function, so ``signature()`` works directly."""
+    signature = inspect.signature(AsyncModelsClient.create_model)
 
     assert set(signature.parameters) == {"workspace", "body", "exist_ok"}
     assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in signature.parameters.values())

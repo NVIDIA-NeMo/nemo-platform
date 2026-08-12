@@ -82,6 +82,25 @@ class DeploymentLike(Protocol):
     def model_provider_id(self) -> str | None: ...
 
 
+def _split_provider_id(deployment: DeploymentLike) -> tuple[str, str]:
+    """Split a deployment's ``model_provider_id`` into ``(workspace, name)``.
+
+    ``model_provider_id`` is a ``workspace/name`` pair. Raise a clear ValueError
+    when it is absent or missing the ``workspace/`` prefix, rather than letting an
+    opaque unpack error surface.
+    """
+    provider_id = deployment.model_provider_id
+    if not provider_id:
+        raise ValueError(f"Deployment '{deployment.name}' has no associated model_provider_id")
+    if "/" not in provider_id:
+        raise ValueError(
+            f"Deployment '{deployment.name}' has malformed model_provider_id "
+            f"'{provider_id}'; expected 'workspace/name'"
+        )
+    workspace, name = provider_id.split("/", 1)
+    return workspace, name
+
+
 def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: datetime | None) -> int | None:
     """Seconds from deployment creation to the entry timestamp, or None if not comparable."""
     if created_at is None or entry_timestamp is None:
@@ -236,9 +255,7 @@ class ModelsClient(_ModelsMethods, _ModelsUrlMixin, NemoClient):
 
     def get_provider_route_openai_url_for_deployment(self, deployment: DeploymentLike) -> str:
         """Fetch a deployment's ModelProvider and return its OpenAI route URL."""
-        if not deployment.model_provider_id:
-            raise ValueError(f"Deployment '{deployment.name}' has no associated model_provider_id")
-        workspace, name = deployment.model_provider_id.split("/", 1)
+        workspace, name = _split_provider_id(deployment)
         provider = self.get_provider(name=name, workspace=workspace).data()
         return self.get_provider_route_openai_url(provider)
 
@@ -333,9 +350,7 @@ class AsyncModelsClient(_ModelsMethods, _ModelsUrlMixin, AsyncNemoClient):
 
     async def get_provider_route_openai_url_for_deployment(self, deployment: DeploymentLike) -> str:
         """Fetch a deployment's ModelProvider and return its OpenAI route URL."""
-        if not deployment.model_provider_id:
-            raise ValueError(f"Deployment '{deployment.name}' has no associated model_provider_id")
-        workspace, name = deployment.model_provider_id.split("/", 1)
+        workspace, name = _split_provider_id(deployment)
         provider = (await self.get_provider(name=name, workspace=workspace)).data()
         return self.get_provider_route_openai_url(provider)
 

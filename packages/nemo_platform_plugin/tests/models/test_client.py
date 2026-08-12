@@ -254,6 +254,14 @@ def test_provider_route_for_deployment_without_provider_id_raises() -> None:
         client.get_provider_route_openai_url_for_deployment(deployment)
 
 
+def test_provider_route_for_deployment_malformed_id_raises() -> None:
+    """A provider id without a ``workspace/`` prefix raises a clear error, not an unpack crash."""
+    client = ModelsClient(base_url=BASE, workspace="default")
+    deployment = ModelDeployment.model_validate(_deployment_json(model_provider_id="no-slash-here"))
+    with pytest.raises(ValueError, match="malformed model_provider_id"):
+        client.get_provider_route_openai_url_for_deployment(deployment)
+
+
 # ---------------------------------------------------------------------------
 # Deployment polling
 # ---------------------------------------------------------------------------
