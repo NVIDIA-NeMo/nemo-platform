@@ -94,8 +94,7 @@ def _split_provider_id(deployment: DeploymentLike) -> tuple[str, str]:
         raise ValueError(f"Deployment '{deployment.name}' has no associated model_provider_id")
     if "/" not in provider_id:
         raise ValueError(
-            f"Deployment '{deployment.name}' has malformed model_provider_id "
-            f"'{provider_id}'; expected 'workspace/name'"
+            f"Deployment '{deployment.name}' has malformed model_provider_id '{provider_id}'; expected 'workspace/name'"
         )
     workspace, name = provider_id.split("/", 1)
     return workspace, name

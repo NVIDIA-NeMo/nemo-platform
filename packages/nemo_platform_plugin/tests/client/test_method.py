@@ -48,11 +48,17 @@ def test_class_level_access_returns_a_typed_callable_stub() -> None:
 
 
 def test_class_level_stub_refuses_to_run_unbound() -> None:
-    """The stub is for introspection only; calling it without an instance errors."""
+    """The stub is for introspection only; calling it without an instance errors.
+
+    ty types class-level access as the ``EndpointMethod`` descriptor (the
+    ``__get__(obj=None)`` overload cannot distinguish the sync vs async owning
+    class, so it cannot describe the callable stub returned at runtime). These
+    calls exercise that runtime stub deliberately, hence the suppressions.
+    """
     with pytest.raises(TypeError):
-        ModelsClient.create_model(workspace="w", body=None)
+        ModelsClient.create_model(workspace="w", body=None)  # ty: ignore[call-non-callable]
     with pytest.raises(TypeError):
-        asyncio.run(AsyncModelsClient.create_model(workspace="w", body=None))
+        asyncio.run(AsyncModelsClient.create_model(workspace="w", body=None))  # ty: ignore[call-non-callable]
 
 
 def test_mock_spec_against_a_client_class_builds() -> None:
@@ -114,8 +120,12 @@ def test_descriptor_carries_endpoint_identity() -> None:
 
 
 def test_signature_is_reachable_at_class_level() -> None:
-    """The class-level stub is a real function, so ``signature()`` works directly."""
-    signature = inspect.signature(AsyncModelsClient.create_model)
+    """The class-level stub is a real function, so ``signature()`` works directly.
+
+    Typed as the descriptor at class level (see the stub note above), so the
+    ``signature()`` argument is suppressed; at runtime it is a real function.
+    """
+    signature = inspect.signature(AsyncModelsClient.create_model)  # ty: ignore[invalid-argument-type]
 
     assert set(signature.parameters) == {"workspace", "body", "exist_ok"}
     assert all(p.kind is inspect.Parameter.KEYWORD_ONLY for p in signature.parameters.values())
