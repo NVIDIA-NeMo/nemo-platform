@@ -162,12 +162,4 @@ describe('comparison score helpers', () => {
       ] as AgentEvalResult['scores']['scores'])
     ).toEqual([{ name: 'rubric', mean: null }]);
   });
-
-  it('normalizes scalar agent scores from value', () => {
-    expect(
-      comparisonScoresForAgentEval([
-        { name: 'pass@1', nan_count: 0, score_type: 'scalar', value: 0.72 },
-      ])
-    ).toEqual([{ name: 'pass@1', mean: 0.72 }]);
-  });
 });

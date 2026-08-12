@@ -77,7 +77,7 @@ const STUDIO_UI_DESTINATIONS: readonly StudioUiDestination[] = [
     title: 'Open Agent Monitor',
     description: 'Studio has a monitor UI for agent telemetry, logs, and token usage.',
     getHref: getAgentMonitorRoute,
-    requiredFeatureFlags: ['agentsEnabled'],
+    requiredFeatureFlags: ['agentsEnabled', 'monitorEnabled'],
     patterns: [
       /\bmonitor (an? )?agent\b/i,
       /\bagent (monitor|telemetry|logs|traces|usage)\b/i,
