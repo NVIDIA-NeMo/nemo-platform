@@ -141,7 +141,7 @@ named sandbox. Run the Mode 1 and Mode 2 suites directly with pytest:
 SANDBOX_VM_ID=nemo-experimentalist uv run --frozen pytest \
   plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_1_loop_e2e.py \
   plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_2_loop_e2e.py \
-  -m e2e -n 4
+  -m e2e -n 4 --dist loadgroup
 ```
 
 Pytest writes logs and downloaded experiment artifacts under its temporary test

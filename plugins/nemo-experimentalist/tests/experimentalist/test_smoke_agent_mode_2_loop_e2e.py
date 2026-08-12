@@ -62,10 +62,14 @@ class _Experiment:
 
 
 _REPAIR_CASES = tuple(
-    pytest.param(_ExperimentCase(group), id=group)
+    pytest.param(_ExperimentCase(group), id=group, marks=pytest.mark.xdist_group(f"mode-2-{group}"))
     for group in ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases")
 )
-_G4_CASE = pytest.param(_ExperimentCase("g4-dispatch-order", "optimizer-generalization.yaml"), id="g4-dispatch-order")
+_G4_CASE = pytest.param(
+    _ExperimentCase("g4-dispatch-order", "optimizer-generalization.yaml"),
+    id="g4-dispatch-order",
+    marks=pytest.mark.xdist_group("mode-2-g4-dispatch-order"),
+)
 
 
 def _require_e2e_environment() -> tuple[str, str]:
