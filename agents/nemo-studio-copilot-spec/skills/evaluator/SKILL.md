@@ -2,7 +2,7 @@
 name: evaluator
 description: NeMo Platform evaluator playbook covering metrics, synchronous metric runs, and asynchronous metric jobs through the platform SDK.
 ---
-Evaluator tasks
+# Evaluator tasks
 
 - Typical flow for simple metric jobs:
   1) Use the active request workspace; create a new workspace only when the task explicitly requires it

@@ -8,7 +8,7 @@ This skill defines the execution requirements that every nemo-studio-copilot run
 `tests/agentic-use/` must satisfy so the canonical gate
 (`tests/agentic-use/passrate_token_policy_gate.py`) can score the run on
 verifier pass-rate and token totals. See
-[`tests/agentic-use/README.md`](../../../../../../tests/agentic-use/README.md)
+[`tests/agentic-use/README.md`](../../../../tests/agentic-use/README.md)
 for the full Run -> Gate -> Optimize loop these tasks plug into.
 
 - Treat `instruction.md` as the task contract: finish all numbered requirements.
