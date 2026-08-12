@@ -10,6 +10,8 @@ interface PluginErrorBoundaryProps {
   // Changing this resets the boundary.
   pluginName: string;
   children: ReactNode;
+  /** Optional embedded-surface fallback. The default is the full plugin error panel. */
+  fallback?: ReactNode;
 }
 
 interface PluginErrorBoundaryState {
@@ -46,6 +48,7 @@ export class PluginErrorBoundary extends Component<
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
+    if (this.props.fallback !== undefined) return this.props.fallback;
 
     return (
       <Stack className="h-full" padding="4" gap="3">

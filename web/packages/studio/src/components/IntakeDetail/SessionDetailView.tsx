@@ -15,6 +15,7 @@ import {
 import { useSessionTrajectories } from '@studio/components/IntakeDetail/useSessionTrajectories';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NotFound } from '@studio/components/Layouts/NotFound';
+import { usePluginTraceViews } from '@studio/plugins/PluginTraceViewContext';
 import {
   type BreadcrumbsItemProps,
   useBreadcrumbs,
@@ -50,6 +51,7 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
   const traceId = searchParams.get(QUERY_PARAMETERS.traceId) || undefined;
   const linkedSpanId = searchParams.get(QUERY_PARAMETERS.spanId) || undefined;
   const [viewMode, setViewMode] = useState<TraceViewMode>('tree');
+  const pluginViews = usePluginTraceViews();
   const defaultGetSessionHref = useCallback(
     (targetSessionId: string) => getIntakeSessionRoute(workspace, targetSessionId),
     [workspace]
@@ -100,6 +102,15 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
       { replace: true }
     );
   }, [linkedSpanId, setSearchParams, traceId]);
+
+  useEffect(() => {
+    if (
+      viewMode.startsWith('plugin:') &&
+      (!traceId || !pluginViews.some((view) => view.mode === viewMode))
+    ) {
+      setViewMode('tree');
+    }
+  }, [pluginViews, traceId, viewMode]);
 
   const handleSelectSession = useCallback(() => {
     setSearchParams((previous) => {
@@ -196,6 +207,7 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
                 sessionErrored={session.status === 'error'}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
+                pluginViews={pluginViews}
               />
             )}
           </TraceDetailView>

@@ -28,6 +28,9 @@ import {
   type TraceViewMode,
   TraceViewToolbar,
 } from '@studio/components/IntakeDetail/TraceViewToolbar';
+import type { ResolvedPluginTraceView } from '@studio/plugins/PluginTraceViewContext';
+import { PluginTraceViewRenderer } from '@studio/plugins/PluginTraceViews';
+import type { PluginTrace } from '@studio/plugins/types';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import {
   buildSpanHierarchyRows,
@@ -52,6 +55,7 @@ interface TraceSpanAccordionsProps {
   sessionErrored: boolean;
   viewMode: TraceViewMode;
   onViewModeChange: (viewMode: TraceViewMode) => void;
+  pluginViews: ResolvedPluginTraceView[];
 }
 
 export interface SessionExplorerData {
@@ -73,6 +77,7 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   sessionErrored,
   viewMode,
   onViewModeChange,
+  pluginViews,
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const linkedSpanId = searchParams.get(QUERY_PARAMETERS.spanId) || null;
@@ -93,6 +98,11 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
   const spans =
     trajectories.find(({ trace: sessionTrace }) => sessionTrace.id === trace.id)?.spans ??
     EMPTY_SPANS;
+  const pluginTrace = useMemo<PluginTrace>(
+    () => ({ id: trace.id, sessionId: trace.session_id }),
+    [trace.id, trace.session_id]
+  );
+  const selectedPluginView = pluginViews.find((view) => view.mode === viewMode);
 
   const spanRows = useMemo(() => buildSpanHierarchyRows(spans), [spans]);
   const resolvedSessionDurationMs = useMemo(
@@ -293,6 +303,8 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
         onViewModeChange={handleViewModeChange}
         onCollapseAll={spanRows.length > 0 ? collapseAll : undefined}
         onExpandAll={spanRows.length > 0 ? expandAll : undefined}
+        pluginViews={pluginViews}
+        trace={pluginTrace}
       />
 
       {showSpanLimitMessage && (
@@ -302,7 +314,9 @@ export const TraceSpanAccordions: FC<TraceSpanAccordionsProps> = ({
         </Text>
       )}
 
-      {viewMode === 'tree' ? (
+      {selectedPluginView ? (
+        <PluginTraceViewRenderer view={selectedPluginView} trace={pluginTrace} />
+      ) : viewMode === 'tree' ? (
         <SpanTreeView
           trajectories={trajectories}
           activeTraceId={trace.id}

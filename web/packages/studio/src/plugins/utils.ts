@@ -10,7 +10,10 @@ import type {
   PluginManifest,
   PluginModule,
   PluginQueryData,
+  PluginTraceViewDefinition,
 } from '@studio/plugins/types';
+
+const PLUGIN_EXTENSION_ID = /^[a-z][a-z0-9-]*$/;
 
 export function isValidPluginManifest(obj: unknown): obj is PluginManifest {
   if (typeof obj !== 'object' || obj === null) return false;
@@ -21,7 +24,30 @@ export function isValidPluginManifest(obj: unknown): obj is PluginManifest {
 export function isPluginModule(mod: unknown): mod is PluginModule {
   if (typeof mod !== 'object' || mod === null) return false;
   const m = mod as Record<string, unknown>;
-  return typeof m.Root === 'function' && typeof m.navItems === 'function';
+  if (typeof m.Root !== 'function' || typeof m.navItems !== 'function') return false;
+  if (m.traceViews === undefined) return true;
+  if (!Array.isArray(m.traceViews)) return false;
+
+  const ids = new Set<string>();
+  return m.traceViews.every((view) => {
+    if (!isPluginTraceViewDefinition(view) || ids.has(view.id)) return false;
+    ids.add(view.id);
+    return true;
+  });
+}
+
+export function isPluginTraceViewDefinition(value: unknown): value is PluginTraceViewDefinition {
+  if (typeof value !== 'object' || value === null) return false;
+  const view = value as Record<string, unknown>;
+  return (
+    typeof view.id === 'string' &&
+    PLUGIN_EXTENSION_ID.test(view.id) &&
+    typeof view.label === 'string' &&
+    view.label.trim().length > 0 &&
+    (view.description === undefined || typeof view.description === 'string') &&
+    typeof view.View === 'function' &&
+    (view.Activity === undefined || typeof view.Activity === 'function')
+  );
 }
 
 export async function loadPlugin(
@@ -45,7 +71,12 @@ export async function loadPlugin(
       logger.warn(`[plugins] Plugin "${manifest.name}" missing required exports (Root, navItems)`);
       return null;
     }
-    return { name: manifest.name, Root: module.Root, navItems: module.navItems };
+    return {
+      name: manifest.name,
+      Root: module.Root,
+      navItems: module.navItems,
+      traceViews: module.traceViews,
+    };
   } catch (err) {
     logger.warn(`[plugins] Failed to load plugin "${manifest.name}":`, err);
     return null;

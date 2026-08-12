@@ -140,6 +140,26 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
 `src/index.ts` must export `Root` (a `ComponentType<PluginRootProps>`) and
 `navItems(workspaceId) => PluginNavGroup[]`. See `src/Root.tsx` and `src/Nav.tsx`.
 
+A plugin may also export `traceViews` to add native modes beside Studio's Tree
+and List trace views. Each definition provides a kebab-case `id`, a `label`, a
+`View` component, and an optional compact `Activity` component. Studio renders
+both components inside its existing providers and passes `{ host, trace }`,
+where `trace` contains the selected trace's `id` and `sessionId`. Keep all
+feature-specific API calls, polling, generation state, and presentation inside
+the plugin bundle; Studio owns only discovery, mode selection, host injection,
+and crash containment.
+
+```ts
+export const traceViews = [
+  {
+    id: 'semantic-map',
+    label: 'Semantic map',
+    View: SemanticMap,
+    Activity: SemanticMapProgress,
+  },
+];
+```
+
 ## Externals & versions
 
 The `external` list in `vite.config.ts` **must match the keys of** Studio's

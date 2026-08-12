@@ -80,6 +80,31 @@ export interface PluginRootProps {
   host: PluginHost;
 }
 
+/** Stable trace identity exposed to plugin-contributed trace views. */
+export interface PluginTrace {
+  id: string;
+  sessionId: string;
+}
+
+export interface PluginTraceViewProps {
+  host: PluginHost;
+  trace: PluginTrace;
+}
+
+/** A native view that a plugin contributes to Studio's trace viewer. */
+export interface PluginTraceViewDefinition {
+  /** Kebab-case identifier unique within the plugin. */
+  id: string;
+  label: string;
+  description?: string;
+  /** Main view rendered when the user selects this trace mode. */
+  View: ComponentType<PluginTraceViewProps>;
+  /** Optional compact status rendered in the trace toolbar for background work. */
+  Activity?: ComponentType<PluginTraceViewProps>;
+}
+
+export type PluginTraceViewMode = `plugin:${string}:${string}`;
+
 /** API manifest returned by `GET /apis/plugins`. */
 export interface PluginManifest {
   name: string;
@@ -122,12 +147,15 @@ export interface LoadedPlugin {
   Root: ComponentType<PluginRootProps>;
   /** Return nav items scoped to the given workspace. */
   navItems: (workspaceId: string) => PluginNavGroup[];
+  /** Optional native views contributed to Studio's trace viewer. */
+  traceViews?: readonly PluginTraceViewDefinition[];
 }
 
 /** The exports a loaded plugin bundle module must expose. */
 export interface PluginModule {
   Root: LoadedPlugin['Root'];
   navItems: LoadedPlugin['navItems'];
+  traceViews?: LoadedPlugin['traceViews'];
 }
 
 /** Result of fetching the manifest and loading each plugin's bundle. */
