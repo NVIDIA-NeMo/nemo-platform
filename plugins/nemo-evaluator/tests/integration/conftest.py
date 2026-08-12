@@ -239,6 +239,13 @@ def _materialize_docker_config(work_root: Path, *, base_url: str) -> Path:
     silently run on subprocess. ``platform.runtime: docker`` + a ``cpu/default`` docker executor
     keeps the agent-eval step on the docker backend. The jobs-launcher binary is optional (the
     backend falls back to the container's own entrypoint when it's absent), so it isn't built here.
+
+    ``enable_subprocess_executor: False`` is what makes that true, and is load-bearing — do not drop
+    it as redundant with the ``executors`` list. Jobs auto-appends a ``subprocess/default`` profile
+    for any non-Kubernetes runtime unless this is set (see
+    ``get_default_executor_profiles_for_runtime``). The Harbor compiler deliberately selects any
+    advertised subprocess profile, so leaving this unset would make the fixture subprocess-capable
+    instead of Docker-only.
     """
     docker_executor_config = {
         "launcher_tool_path": str(REPO_ROOT / "services/core/jobs/jobs-launcher/jobs-launcher"),
@@ -251,6 +258,7 @@ def _materialize_docker_config(work_root: Path, *, base_url: str) -> Path:
         "platform": {"runtime": "docker", "base_url": base_url},
         "auth": {"enabled": False, "allow_unsigned_jwt": True},
         "jobs": {
+            "enable_subprocess_executor": False,
             "executors": [
                 {"provider": "cpu", "profile": "default", "backend": "docker", "config": docker_executor_config},
             ],

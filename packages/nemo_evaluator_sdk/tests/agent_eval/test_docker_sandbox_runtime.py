@@ -196,8 +196,12 @@ def test_missing_optional_dependency_raises_clear_error(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
-    with pytest.raises(RuntimeError, match=r"nemo-evaluator-sdk\[agent-runtimes\]"):
+    with pytest.raises(RuntimeError, match=r"nemo-evaluator-sdk\[agent-runtimes\]") as exc_info:
         docker_sandbox._load_agents_sdk()
+
+    message = str(exc_info.value)
+    assert "pip install 'openai-agents[docker]'" in message
+    assert "openai-agents[docker]>=" not in message
 
 
 def test_manifest_uses_instruction_and_never_leaks_intent() -> None:
@@ -272,7 +276,7 @@ async def test_completed_run_writes_artifacts_and_evidence(monkeypatch: pytest.M
 
     trials = await runtime.run_tasks(
         [_task()],
-        config=AgentEvalRunConfig(output_dir=tmp_path, run_id="run-1", parallelism=1),
+        config=AgentEvalRunConfig(work_dir=tmp_path, run_id="run-1", parallelism=1),
     )
 
     evidence_dir = tmp_path / "agent-runtime" / "run-1" / "000000-task-1"
@@ -304,7 +308,7 @@ async def test_runtime_creates_and_deletes_one_sandbox_per_task(
 
     await runtime.run_tasks(
         [_task(task_id="task-1"), _task(task_id="task-2")],
-        config=AgentEvalRunConfig(output_dir=tmp_path, run_id="run-1", parallelism=2),
+        config=AgentEvalRunConfig(work_dir=tmp_path, run_id="run-1", parallelism=2),
     )
 
     assert len(client.created) == 2
@@ -322,7 +326,7 @@ async def test_direct_runtime_call_uses_one_generated_run_id(
 
     await runtime.run_tasks(
         [_task(task_id="task-1"), _task(task_id="task-2")],
-        config=AgentEvalRunConfig(output_dir=tmp_path, parallelism=2),
+        config=AgentEvalRunConfig(work_dir=tmp_path, parallelism=2),
     )
 
     run_dirs = list((tmp_path / "agent-runtime").iterdir())
@@ -343,7 +347,7 @@ async def test_parallelism_limits_concurrent_task_runs(
 
     await runtime.run_tasks(
         [_task(task_id=f"task-{index}") for index in range(4)],
-        config=AgentEvalRunConfig(output_dir=tmp_path, run_id="run-1", parallelism=2),
+        config=AgentEvalRunConfig(work_dir=tmp_path, run_id="run-1", parallelism=2),
     )
 
     assert runner.max_active == 2
@@ -360,7 +364,7 @@ async def test_runtime_exception_returns_failed_trial(
 
     trials = await runtime.run_tasks(
         [_task()],
-        config=AgentEvalRunConfig(output_dir=tmp_path, run_id="run-1", parallelism=1),
+        config=AgentEvalRunConfig(work_dir=tmp_path, run_id="run-1", parallelism=1),
     )
 
     error_path = tmp_path / "agent-runtime" / "run-1" / "000000-task-1" / "error.json"

@@ -312,6 +312,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/auditor/v2/workspaces/{workspace}/jobs/audit/{job}/results/artifacts/download:
+    get:
+      tags:
+      - Auditor Jobs
+      summary: Download Audit Artifacts
+      description: Stream an aggregate tar.gz of all garak report artifacts for an
+        audit job.
+      operationId: download_audit_artifacts_apis_auditor_v2_workspaces__workspace__jobs_audit__job__results_artifacts_download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      responses:
+        '200':
+          description: Aggregate gzip archive of all garak report artifacts.
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: No report artifacts found for the job.
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/auditor/v2/workspaces/{workspace}/jobs/audit/{job}/results/{name}:
     get:
       tags:
@@ -820,7 +857,7 @@ components:
         run:
           $ref: '#/components/schemas/AuditRunData'
         plugins:
-          $ref: '#/components/schemas/AuditPluginsDataInput'
+          $ref: '#/components/schemas/AuditPluginsData'
         reporting:
           $ref: '#/components/schemas/AuditReportData'
       type: object
@@ -853,7 +890,7 @@ components:
         run:
           $ref: '#/components/schemas/AuditRunData'
         plugins:
-          $ref: '#/components/schemas/AuditPluginsDataOutput'
+          $ref: '#/components/schemas/AuditPluginsData'
         reporting:
           $ref: '#/components/schemas/AuditReportData'
         id:
@@ -1088,7 +1125,7 @@ components:
       type: object
       title: AuditModuleConfig
       description: Per-module plugin configuration mapping.
-    AuditPluginsDataInput:
+    AuditPluginsData:
       properties:
         model_type:
           title: Model Type
@@ -1154,74 +1191,7 @@ components:
           type: object
           title: Probes
       type: object
-      title: AuditPluginsDataInput
-    AuditPluginsDataOutput:
-      properties:
-        model_type:
-          title: Model Type
-          type: string
-        model_name:
-          title: Model Name
-          type: string
-        probe_spec:
-          type: string
-          title: Probe Spec
-          default: all
-        detector_spec:
-          type: string
-          title: Detector Spec
-          default: auto
-        extended_detectors:
-          type: boolean
-          title: Extended Detectors
-          default: false
-        buff_spec:
-          title: Buff Spec
-          type: string
-        buffs_include_original_prompt:
-          type: boolean
-          title: Buffs Include Original Prompt
-          default: false
-        buff_max:
-          title: Buff Max
-          type: string
-        detectors:
-          additionalProperties:
-            anyOf:
-            - $ref: '#/components/schemas/AuditModuleConfig'
-            - $ref: '#/components/schemas/AuditClassConfig'
-          type: object
-          title: Detectors
-        generators:
-          additionalProperties:
-            anyOf:
-            - $ref: '#/components/schemas/AuditModuleConfig'
-            - $ref: '#/components/schemas/AuditClassConfig'
-          type: object
-          title: Generators
-        buffs:
-          additionalProperties:
-            anyOf:
-            - $ref: '#/components/schemas/AuditModuleConfig'
-            - $ref: '#/components/schemas/AuditClassConfig'
-          type: object
-          title: Buffs
-        harnesses:
-          additionalProperties:
-            anyOf:
-            - $ref: '#/components/schemas/AuditModuleConfig'
-            - $ref: '#/components/schemas/AuditClassConfig'
-          type: object
-          title: Harnesses
-        probes:
-          additionalProperties:
-            anyOf:
-            - $ref: '#/components/schemas/AuditModuleConfig'
-            - $ref: '#/components/schemas/AuditClassConfig'
-          type: object
-          title: Probes
-      type: object
-      title: AuditPluginsDataOutput
+      title: AuditPluginsData
     AuditReportData:
       properties:
         report_prefix:
@@ -1493,7 +1463,7 @@ components:
         run:
           $ref: '#/components/schemas/AuditRunData'
         plugins:
-          $ref: '#/components/schemas/AuditPluginsDataInput'
+          $ref: '#/components/schemas/AuditPluginsData'
         reporting:
           $ref: '#/components/schemas/AuditReportData'
       type: object
@@ -1895,7 +1865,7 @@ components:
         run:
           $ref: '#/components/schemas/AuditRunData'
         plugins:
-          $ref: '#/components/schemas/AuditPluginsDataInput'
+          $ref: '#/components/schemas/AuditPluginsData'
         reporting:
           $ref: '#/components/schemas/AuditReportData'
       type: object

@@ -106,8 +106,8 @@ async def my_agent(task: AgentEvalTask) -> str:
 ## 4. Run the evaluation
 
 `AgentEvaluator.run()` sends the tasks to the runner, collects the trials, scores them, and returns
-an `AgentEvalResult`. Setting `output_dir` also writes a run bundle to disk. (`run()` is async, so it
-lives inside an `async` function — see the full script below.)
+an `AgentEvalResult`. It writes nothing on its own — call `result.persist()` to store a run bundle to
+disk. (`run()` is async, so it lives inside an `async` function — see the full script below.)
 
 ```python
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
@@ -117,8 +117,9 @@ from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 result = await AgentEvaluator().run(
     tasks=make_tasks(),
     target=CallableAgentTaskRunner(my_agent),
-    config=AgentEvalRunConfig(output_dir="./agent-eval-run", parallelism=2),
+    config=AgentEvalRunConfig(work_dir="./agent-eval-run", parallelism=2),
 )
+result.persist()
 
 for aggregate in result.summary.scores.scores:
     print(f"{aggregate.name}: {aggregate.mean}")
@@ -135,7 +136,8 @@ for aggregate in result.summary.scores.scores:
   state, logs), and its status (`completed` / `partial` / `failed`).
 - `result.run_id` — a stable identifier for this run.
 
-Because you set `output_dir`, the same data was also written to `./agent-eval-run/` as a run bundle:
+Because you called `persist()`, the same data was also written to `./agent-eval-run/` as a run bundle
+(it defaults to `work_dir`):
 
 | File | Contents |
 |---|---|
@@ -144,7 +146,7 @@ Because you set `output_dir`, the same data was also written to `./agent-eval-ru
 | `trials.jsonl` | one row per trial — the agent's output, its evidence, and status |
 | `tasks.jsonl` | the tasks that were evaluated |
 | `run.json` | the run manifest — the run id and a map of the artifact files |
-| `benchmark.json` | benchmark-grouping metadata for the run |
+| `metadata.json` | run provenance — labels, target identity, timings, SDK version |
 | `report.html` | a browsable dashboard of the run — open it in a browser |
 
 The in-memory result and the on-disk bundle hold the same information: use the result object for
@@ -209,8 +211,9 @@ async def main() -> None:
     result = await AgentEvaluator().run(
         tasks=make_tasks(),
         target=CallableAgentTaskRunner(my_agent),
-        config=AgentEvalRunConfig(output_dir="./agent-eval-run", parallelism=2),
+        config=AgentEvalRunConfig(work_dir="./agent-eval-run", parallelism=2),
     )
+    result.persist()
     for aggregate in result.summary.scores.scores:
         print(f"{aggregate.name}: {aggregate.mean}")
 

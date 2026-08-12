@@ -13,6 +13,7 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -33,14 +34,13 @@ import {
 } from '@studio/components/dataViews/ExperimentDataView/useExperimentEvaluations';
 import { useSortErrorRecovery } from '@studio/components/dataViews/ExperimentDataView/useSortErrorRecovery';
 import { deriveEvaluatorNames } from '@studio/components/dataViews/ExperimentDataView/util';
-import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { Columns3, FolderMinus, FolderPlus, Pin } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export type { EvaluationRow };
 
@@ -52,6 +52,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
   created_at: 'created_at',
   cost_usd: 'cost_usd.mean',
   latency_ms: 'latency_ms.mean',
+  total_latency_ms: 'latency_ms.sum',
   tokens: 'tokens.mean',
   test_case_count: 'test_case_count',
 };
@@ -64,6 +65,7 @@ const STATIC_SORT_FIELD_MAP: Readonly<Record<string, string>> = {
 const sortFieldToColumnId = (field: string): string | undefined => {
   if (field === 'name' || field === 'created_at' || field === 'test_case_count') return field;
   if (field.startsWith('cost_usd.')) return 'cost_usd';
+  if (field === 'latency_ms.sum') return 'total_latency_ms';
   if (field.startsWith('latency_ms.')) return 'latency_ms';
   if (field.startsWith('tokens.')) return 'tokens';
   const evaluatorMatch = field.match(/^evaluators\.(.+)\.[^.]+$/);
@@ -95,7 +97,12 @@ const seedSortFromDefault = (
 const getEvaluationFilterField = (id: string): string | undefined => {
   if (id === 'cost_usd') return 'cost_usd.mean';
   if (id === 'latency_ms') return 'latency_ms.mean';
+  if (id === 'total_latency_ms') return 'latency_ms.sum';
   if (id === 'tokens') return 'tokens.mean';
+  // The list columns hold the plural name facets; the API filter params are singular contains-matches.
+  if (id === 'agent_names') return 'agent_name';
+  if (id === 'agent_versions') return 'agent_version';
+  if (id === 'model_names') return 'model_name';
   const evaluatorMatch = id.match(/^evaluator-(.+)$/);
   if (evaluatorMatch) return `evaluators.${evaluatorMatch[1]}.mean`;
   return undefined;
@@ -319,12 +326,18 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
         id: 'agent_names',
         header: 'Agent Names',
         enableSorting: false,
+        meta: {
+          filter: { type: 'text', label: 'Agent Name', placeholder: 'Filter by Agent Name' },
+        },
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       accessor((original) => original.agent_versions?.join(', '), {
         id: 'agent_versions',
         header: 'Agent Versions',
         enableSorting: false,
+        meta: {
+          filter: { type: 'text', label: 'Agent Version', placeholder: 'Filter by Agent Version' },
+        },
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       accessor('dataset_name', {
@@ -351,6 +364,9 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
         id: 'model_names',
         header: 'Models',
         enableSorting: false,
+        meta: {
+          filter: { type: 'text', label: 'Model', placeholder: 'Filter by Model' },
+        },
         cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
       }),
       ...metadataKeys.map((key) =>
@@ -433,6 +449,13 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
             </MeanValueTooltipCell>
           );
         },
+      }),
+      accessor((original) => original.latency_ms?.sum, {
+        id: 'total_latency_ms',
+        header: 'Total latency',
+        enableSorting: true,
+        meta: { title: false, filter: numberRangeFilter('Total latency') },
+        cell: ({ row }) => <Text>{formatDurationMs(row.original.latency_ms?.sum)}</Text>,
       }),
       accessor((original) => original.tokens?.mean, {
         id: 'tokens',

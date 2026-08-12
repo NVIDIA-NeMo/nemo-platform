@@ -163,7 +163,7 @@ def discover_files(base_path: Path, pattern: str | None) -> list[Path]:
         pattern: Optional explicit file name or glob pattern.
 
     Returns:
-        List of discovered files.
+        List of discovered files, sorted by path.
 
     Raises:
         DatasetLoadError: If files cannot be found or selected paths are invalid.
@@ -172,7 +172,7 @@ def discover_files(base_path: Path, pattern: str | None) -> list[Path]:
         raise DatasetLoadError(f"Dataset directory not found: {base_path}")
 
     if pattern is None:
-        files = [f for f in base_path.rglob("*") if f.is_file()]
+        files = sorted(f for f in base_path.rglob("*") if f.is_file())
         if not files:
             raise DatasetLoadError(f"No files found in {base_path}")
         return files
@@ -184,7 +184,7 @@ def discover_files(base_path: Path, pattern: str | None) -> list[Path]:
         return [file_path]
 
     if is_glob_pattern(pattern):
-        files = list(base_path.glob(pattern))
+        files = sorted(base_path.glob(pattern))
         if not files:
             raise DatasetLoadError(f"No files found matching pattern '{pattern}' in {base_path}")
         return [f for f in files if f.is_file()]

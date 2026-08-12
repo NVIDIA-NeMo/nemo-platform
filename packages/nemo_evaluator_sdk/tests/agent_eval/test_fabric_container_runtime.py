@@ -135,7 +135,7 @@ def _runtime(provider: _FakeProvider, **kwargs: object) -> FabricContainerRuntim
 
 
 async def _run(runtime: FabricContainerRuntime, tasks: list[AgentEvalTask], tmp_path: Path) -> Sequence[AgentEvalTrial]:
-    return await runtime.run_tasks(tasks, AgentEvalRunConfig(output_dir=tmp_path))
+    return await runtime.run_tasks(tasks, AgentEvalRunConfig(work_dir=tmp_path))
 
 
 def _task() -> AgentEvalTask:
@@ -480,7 +480,7 @@ async def test_native_skill_preserves_preconfigured_skill_paths(
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path / "src"))
     provider = _FakeProvider()
     runtime = FabricContainerRuntime(config, provider=provider, skills=[skill])  # type: ignore[arg-type]
-    await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
+    await runtime.run_tasks([_task()], AgentEvalRunConfig(work_dir=tmp_path))
 
     paths = _seeded_skill_paths(provider)
     assert paths[:2] == ["/pre/existing-a", "/pre/existing-b"]
@@ -497,7 +497,7 @@ async def test_native_skill_on_runtime_discovered_adapter(tmp_path: Path, monkey
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path / "src"))
     provider = _FakeProvider()
     runtime = FabricContainerRuntime(custom, provider=provider, skills=[skill])  # type: ignore[arg-type]
-    (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
+    (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(work_dir=tmp_path))
 
     assert "/in/skills/code-review" in _seeded_skill_paths(provider)
     assert trial.metadata["skill"]["mode"] == "native"
@@ -520,7 +520,7 @@ async def test_codex_skill_seeds_workspace_and_is_excluded_from_evidence(
     skill = AgentSkill.from_directory(_skill_bundle(tmp_path / "src"))
     provider = _CodexWorkspaceProvider()
     runtime = FabricContainerRuntime(_CODEX_CONFIG, provider=provider, skills=[skill])  # type: ignore[arg-type]
-    (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
+    (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(work_dir=tmp_path))
 
     # Codex discovers agentskills from .agents/skills/ in its working dir, so the bundle is seeded there in
     # the workspace (not /in), for the harness to self-discover during the run.
@@ -545,7 +545,7 @@ async def test_skill_on_unsupported_adapter_fails_fast(tmp_path: Path, monkeypat
     runtime = FabricContainerRuntime(unsupported, provider=_FakeProvider(), skills=[skill])  # type: ignore[arg-type]
 
     with pytest.raises(RuntimeError, match="no known skill-injection strategy"):
-        await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
+        await runtime.run_tasks([_task()], AgentEvalRunConfig(work_dir=tmp_path))
 
 
 async def test_no_skill_leaves_metadata_none_and_skips_planner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -605,7 +605,7 @@ async def test_multiple_codex_skills_all_removed_from_evidence(tmp_path: Path, m
     ]
     provider = _CodexWorkspaceProvider()
     runtime = FabricContainerRuntime(_CODEX_CONFIG, provider=provider, skills=skills)  # type: ignore[arg-type]
-    (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(output_dir=tmp_path))
+    (trial,) = await runtime.run_tasks([_task()], AgentEvalRunConfig(work_dir=tmp_path))
 
     # Both bundles seeded under the codex discovery dir, no skills path, all scrubbed from evidence.
     assert provider.seeded["/out/workspace/.agents/skills/docx/SKILL.md"].startswith("---")
@@ -663,7 +663,7 @@ async def test_same_skill_from_both_injection_and_task_files_fails_task(
             "files": {".agents/skills/code-review/SKILL.md": "# override"},
         },
     )
-    (trial,) = await runtime.run_tasks([task], AgentEvalRunConfig(output_dir=tmp_path))
+    (trial,) = await runtime.run_tasks([task], AgentEvalRunConfig(work_dir=tmp_path))
 
     assert trial.status == AgentEvalTrialStatus.FAILED
     error = json.loads(Path(trial.evidence.require("error").ref).read_text())  # type: ignore[arg-type]
@@ -692,7 +692,7 @@ async def test_task_seeded_skill_coexists_with_a_different_injected_skill(
             "files": {".agents/skills/style-guide/SKILL.md": "---\nname: style-guide\n---\n"},
         },
     )
-    (trial,) = await runtime.run_tasks([task], AgentEvalRunConfig(output_dir=tmp_path))
+    (trial,) = await runtime.run_tasks([task], AgentEvalRunConfig(work_dir=tmp_path))
 
     assert trial.status == AgentEvalTrialStatus.COMPLETED
     assert "/out/workspace/.agents/skills/code-review/SKILL.md" in provider.seeded

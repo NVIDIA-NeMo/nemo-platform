@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import {
   Button,
@@ -11,7 +12,6 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import {
   INFERENCE_PROVIDER_ENABLED,
@@ -30,7 +30,7 @@ import { MEMBERS_ROUTE_HEADER_DESCRIPTION } from '@studio/routes/WorkspaceMember
 import { DeleteWorkspaceModal } from '@studio/routes/WorkspaceSettingsRoute/DeleteWorkspaceModal';
 import { EditDescriptionModal } from '@studio/routes/WorkspaceSettingsRoute/EditDescriptionModal';
 import { FC, ReactNode, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface SettingsSectionProps {
   label: ReactNode;

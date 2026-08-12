@@ -34,7 +34,7 @@ overrides:
   tiktoken: MIT # OpenAI tokenizer
   tokenizers: Apache-2.0 # HuggingFace tokenizers
   trl: Apache-2.0
-
+  cffi: MIT
   # PyTorch Ecosystem
   torch: BSD-3-Clause # https://github.com/pytorch/pytorch
   torchaudio: BSD-3-Clause # https://github.com/pytorch/audio
@@ -191,6 +191,9 @@ overrides:
   sqlfluff: MIT # SQL linter
   wrapt: BSD-3-Clause # Module for decorators and wrappers
   python-on-whales: MIT # Docker SDK for Python
+
+  # Go
+  stdlib: BSD-3-Clause # Go standard library - https://go.dev/LICENSE
 
   # Specialized
   betterproto: MIT # Better protobuf support

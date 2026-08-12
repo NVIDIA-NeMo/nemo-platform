@@ -12,7 +12,7 @@ import { IntakeSessionDetailRoute } from '@studio/routes/IntakeSessionDetailRout
 import { renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 const LocationProbe = () => {
   const location = useLocation();
@@ -385,6 +385,126 @@ describe('IntakeSessionDetailRoute', () => {
     expect(await screen.findByLabelText('Loading linked span')).toBeInTheDocument();
     resolveOutsidePageSpan();
     expect((await screen.findAllByText('Outside page span')).length).toBeGreaterThan(0);
+  });
+
+  it('renders received spans while trace details are still arriving', async () => {
+    const traceId = 'trace-still-arriving';
+    const receivedSpan = {
+      ...mockSpanById('span-llm-001')!,
+      span_id: 'span-received-before-trace',
+      parent_span_id: 'span-root-not-received',
+      trace_id: traceId,
+      name: 'Generate response from received activity',
+    };
+
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({
+          ...mockTracesPage,
+          data: [],
+          pagination: {
+            ...mockTracesPage.pagination,
+            current_page_size: 0,
+            total_results: 0,
+          },
+        })
+      ),
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces/:traceId', ({ params }) =>
+        params['traceId'] === traceId
+          ? new HttpResponse(null, { status: 404 })
+          : new HttpResponse(null, { status: 500 })
+      ),
+      http.get('*/apis/intake/v2/workspaces/:workspace/spans', () =>
+        HttpResponse.json({
+          ...mockSpansPage,
+          data: [receivedSpan],
+          pagination: {
+            ...mockSpansPage.pagination,
+            current_page_size: 1,
+            total_results: 1,
+          },
+        })
+      )
+    );
+
+    renderSessionDetail('session-agent-run-001', `?traceId=${traceId}`);
+
+    expect(
+      await screen.findByText(
+        'Trace details are still arriving. The activity received so far is shown below.'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Trace Not Found')).not.toBeInTheDocument();
+    expect(
+      (await screen.findAllByText('Generate response from received activity')).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('shows not found when neither trace details nor matching spans exist', async () => {
+    const traceId = 'trace-never-received';
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({
+          ...mockTracesPage,
+          data: [],
+          pagination: {
+            ...mockTracesPage.pagination,
+            current_page_size: 0,
+            total_results: 0,
+          },
+        })
+      ),
+      http.get(
+        '*/apis/intake/v2/workspaces/:workspace/traces/:traceId',
+        () => new HttpResponse(null, { status: 404 })
+      ),
+      http.get('*/apis/intake/v2/workspaces/:workspace/spans', () =>
+        HttpResponse.json({
+          ...mockSpansPage,
+          data: [],
+          pagination: {
+            ...mockSpansPage.pagination,
+            current_page_size: 0,
+            total_results: 0,
+          },
+        })
+      )
+    );
+
+    renderSessionDetail('session-agent-run-001', `?traceId=${traceId}`);
+
+    expect(await screen.findByText('Trace Not Found')).toBeInTheDocument();
+    expect(screen.queryByText(/Trace details are still arriving/)).not.toBeInTheDocument();
+  });
+
+  it('shows an error when trace details are missing and session spans fail to load', async () => {
+    const traceId = 'trace-with-failed-activity-request';
+    server.use(
+      http.get('*/apis/intake/v2/workspaces/:workspace/traces', () =>
+        HttpResponse.json({
+          ...mockTracesPage,
+          data: [],
+          pagination: {
+            ...mockTracesPage.pagination,
+            current_page_size: 0,
+            total_results: 0,
+          },
+        })
+      ),
+      http.get(
+        '*/apis/intake/v2/workspaces/:workspace/traces/:traceId',
+        () => new HttpResponse(null, { status: 404 })
+      ),
+      http.get(
+        '*/apis/intake/v2/workspaces/:workspace/spans',
+        () => new HttpResponse(null, { status: 500 })
+      )
+    );
+
+    renderSessionDetail('session-agent-run-001', `?traceId=${traceId}`);
+
+    expect(await screen.findByText('Error loading trace activity')).toBeInTheDocument();
+    expect(screen.queryByText('Trace Not Found')).not.toBeInTheDocument();
   });
 
   it('rejects a trace deep link that belongs to another session', async () => {

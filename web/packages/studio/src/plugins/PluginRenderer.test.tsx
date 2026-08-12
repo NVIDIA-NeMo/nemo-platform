@@ -4,9 +4,14 @@
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
 import { PluginRenderer } from '@studio/plugins/PluginRenderer';
 import type { LoadedPlugin, PluginRootProps } from '@studio/plugins/types';
-import { render, screen } from '@testing-library/react';
+import { BreadcrumbsProvider } from '@studio/providers/breadcrumbs/BreadcrumbsProvider';
+import {
+  useBreadcrumbs,
+  type BreadcrumbsItemProps,
+} from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { act, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 
 const authState = vi.hoisted(() => ({ accessToken: 'test-token' }));
 
@@ -52,11 +57,13 @@ vi.mock('@studio/hooks/useWorkspaceFromPath', () => ({
 
 function renderPlugin(pluginName = 'test-plugin') {
   return render(
-    <MemoryRouter initialEntries={[`/workspaces/ws1/plugin/${pluginName}/`]}>
-      <Routes>
-        <Route path="/workspaces/:workspace/plugin/:pluginName/*" element={<PluginRenderer />} />
-      </Routes>
-    </MemoryRouter>
+    <BreadcrumbsProvider>
+      <MemoryRouter initialEntries={[`/workspaces/ws1/plugin/${pluginName}/`]}>
+        <Routes>
+          <Route path="/workspaces/:workspace/plugin/:pluginName/*" element={<PluginRenderer />} />
+        </Routes>
+      </MemoryRouter>
+    </BreadcrumbsProvider>
   );
 }
 
@@ -73,11 +80,16 @@ describe('PluginRenderer', () => {
     vi.mocked(usePlugins).mockReturnValue([]);
 
     render(
-      <MemoryRouter initialEntries={['/workspaces/ws1/plugin/test-plugin/page1']}>
-        <Routes>
-          <Route path="/workspaces/:workspace/plugin/:pluginName/*" element={<PluginRenderer />} />
-        </Routes>
-      </MemoryRouter>
+      <BreadcrumbsProvider>
+        <MemoryRouter initialEntries={['/workspaces/ws1/plugin/test-plugin/page1']}>
+          <Routes>
+            <Route
+              path="/workspaces/:workspace/plugin/:pluginName/*"
+              element={<PluginRenderer />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </BreadcrumbsProvider>
     );
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
@@ -106,11 +118,16 @@ describe('PluginRenderer', () => {
 
     authState.accessToken = 'renewed-token';
     rerender(
-      <MemoryRouter initialEntries={['/workspaces/ws1/plugin/test-plugin/']}>
-        <Routes>
-          <Route path="/workspaces/:workspace/plugin/:pluginName/*" element={<PluginRenderer />} />
-        </Routes>
-      </MemoryRouter>
+      <BreadcrumbsProvider>
+        <MemoryRouter initialEntries={['/workspaces/ws1/plugin/test-plugin/']}>
+          <Routes>
+            <Route
+              path="/workspaces/:workspace/plugin/:pluginName/*"
+              element={<PluginRenderer />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </BreadcrumbsProvider>
     );
 
     expect(mountSpy).toHaveBeenCalledTimes(1);
@@ -141,5 +158,80 @@ describe('PluginRenderer', () => {
     expect(screen.queryByTestId('plugin-root')).not.toBeInTheDocument();
 
     consoleError.mockRestore();
+  });
+
+  it('writes a plugin breadcrumb trail into Studio and clears it on unmount', () => {
+    const seen: BreadcrumbsItemProps[][] = [];
+    function BreadcrumbSpy() {
+      seen.push(useBreadcrumbs().breadcrumbs);
+      return null;
+    }
+    vi.mocked(usePlugins).mockReturnValue([makePlugin('test-plugin')]);
+
+    // The provider and spy outlive the plugin subtree, so the cleared trail is
+    // still observable after the plugin itself unmounts.
+    const tree = (mounted: boolean) => (
+      <BreadcrumbsProvider>
+        <BreadcrumbSpy />
+        {mounted ? (
+          <MemoryRouter initialEntries={['/workspaces/ws1/plugin/test-plugin/']}>
+            <Routes>
+              <Route
+                path="/workspaces/:workspace/plugin/:pluginName/*"
+                element={<PluginRenderer />}
+              />
+            </Routes>
+          </MemoryRouter>
+        ) : null}
+      </BreadcrumbsProvider>
+    );
+    const { rerender } = render(tree(true));
+
+    act(() =>
+      capturedProps?.host.breadcrumbs.set([
+        { label: 'Runs', href: '/workspaces/ws1/plugin/test-plugin/runs' },
+        { label: 'Run 7' },
+      ])
+    );
+    expect(seen.at(-1)).toEqual([
+      { slotLabel: 'Runs', href: '/workspaces/ws1/plugin/test-plugin/runs' },
+      { slotLabel: 'Run 7', href: undefined },
+    ]);
+
+    rerender(tree(false));
+    // Studio clears the trail itself; a plugin that forgets cannot leave one behind.
+    expect(seen.at(-1)).toEqual([]);
+  });
+
+  it('clears the trail when the router swaps one plugin for another', () => {
+    const seen: BreadcrumbsItemProps[][] = [];
+    function BreadcrumbSpy() {
+      seen.push(useBreadcrumbs().breadcrumbs);
+      return null;
+    }
+    vi.mocked(usePlugins).mockReturnValue([makePlugin('plugin-a'), makePlugin('plugin-b')]);
+
+    render(
+      <BreadcrumbsProvider>
+        <BreadcrumbSpy />
+        <MemoryRouter initialEntries={['/workspaces/ws1/plugin/plugin-a/']}>
+          <Routes>
+            <Route
+              path="/workspaces/:workspace/plugin/:pluginName/*"
+              element={<PluginRenderer />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </BreadcrumbsProvider>
+    );
+
+    act(() => capturedProps?.host.breadcrumbs.set([{ label: 'From plugin A' }]));
+    expect(seen.at(-1)).toEqual([{ slotLabel: 'From plugin A', href: undefined }]);
+
+    // Navigate for real: MemoryRouter only reads initialEntries once, and the
+    // point is that PluginRenderer stays mounted while :pluginName changes, so
+    // only the effect's deps can force the reset.
+    act(() => capturedProps?.host.navigation.navigate('/workspaces/ws1/plugin/plugin-b/'));
+    expect(seen.at(-1)).toEqual([]);
   });
 });

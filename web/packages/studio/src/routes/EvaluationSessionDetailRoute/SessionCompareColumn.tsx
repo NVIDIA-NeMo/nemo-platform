@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { useListAnnotations } from '@nemo/sdk/generated/platform/api';
@@ -10,7 +11,6 @@ import {
   type FeedbackAnnotationInputValue,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { SpanListView } from '@studio/components/IntakeDetail/TraceSpanListView';
 import { type NoteRequest } from '@studio/components/IntakeDetail/traceSpanShared';
 import { useSessionTrajectories } from '@studio/components/IntakeDetail/useSessionTrajectories';

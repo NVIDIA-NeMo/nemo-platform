@@ -204,3 +204,23 @@ class Experiment(EntityBase):
             "Pin state is workspace-shared: every user with workspace access sees the same pinned set."
         ),
     )
+
+    # System-managed denormalized name fields. These mirror the distinct name sets that the ClickHouse
+    # rollup already derives from this evaluation's sessions; a background refresher writes them here
+    # (see nmp.intake.experiments.denormalizer) so the workspace-wide Evaluations list can filter by
+    # agent/model name against the entity store ($contains) instead of scanning the session table. Not
+    # accepted on the create/update body (the request schemas omit them); default empty until refreshed.
+    # Unlike computed rollups, these are raw observed strings with no formula, so they never need a
+    # backfill/recompute when aggregation logic changes — only when a new name is ingested.
+    agent_names: list[str] = Field(
+        default_factory=list,
+        description="System-managed: distinct agent names observed across this evaluation's ingested sessions.",
+    )
+    agent_versions: list[str] = Field(
+        default_factory=list,
+        description="System-managed: distinct agent versions observed across this evaluation's ingested sessions.",
+    )
+    model_names: list[str] = Field(
+        default_factory=list,
+        description="System-managed: distinct model names observed across this evaluation's ingested sessions.",
+    )

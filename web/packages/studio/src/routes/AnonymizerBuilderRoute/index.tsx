@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { AnonymizerBuilderForm } from '@studio/routes/AnonymizerBuilderRoute/components/AnonymizerBuilderForm';

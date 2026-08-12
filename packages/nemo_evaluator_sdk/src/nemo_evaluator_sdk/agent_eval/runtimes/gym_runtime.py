@@ -31,12 +31,28 @@ means a caller can run a **subset** of tasks without Gym rolling out the rest.
 without triggering Gym's split-driven data-prep): ``gym env start`` brings up the
 resources-server + agent + model servers, then ``gym eval run --no-serve --input
 <materialized dataset>`` collects rollouts against them. The runtime shells out
-to the ``gym`` executable in the caller-provided ``gym_root`` checkout — Gym
-resolves its environments from that repo and reads credentials from its
-(gitignored) ``env.yaml`` — so this SDK never imports ``nemo_gym`` and never
-handles secrets. Subprocess output is streamed to log files under the run's work
-dir *and* mirrored to this module's logger at ``DEBUG``, so callers choose
-terminal visibility through ordinary ``logging`` configuration.
+to the ``gym`` CLI on PATH, so this SDK never imports ``nemo_gym``. Subprocess
+output is streamed to log files under the run's work dir *and* mirrored to this
+module's logger at ``DEBUG``, so callers choose terminal visibility through
+ordinary ``logging`` configuration.
+
+**Where Gym finds things.** NeMo Gym must be installed and its ``gym`` on PATH,
+along with the target environment's own dependencies. Generally that means a
+*separate* environment: Gym imports Ray at module load, and nemo-platform
+excludes Ray by constraint over an unfixed CVE, so the two cannot share one. In a
+job image the image owns PATH and this is unremarkable. There is deliberately no
+config field naming a checkout, a venv, or a search root — these runner configs
+become serialized job specs, and a local filesystem path means nothing on the
+other side of that boundary. Environments themselves ship in the ``nemo-gym``
+wheel (``resources_servers`` and friends install beside ``nemo_gym``, configs and
+example data included), so no checkout is needed to reach them.
+
+The subprocesses inherit this process's working directory, which is where Gym
+looks for the gitignored ``env.yaml`` holding the collector's credentials before
+falling back to its install root — so credentials never pass through this SDK.
+Run from the directory holding that file; a Gym checkout there also has its
+components take precedence, which is how you reach an environment the wheel does
+not carry.
 
 **Boundaries**: the caller is responsible for a
 Gym runtime whose deps are installed (each Gym env ships its own
@@ -51,8 +67,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
+import shutil
 import signal
 import tempfile
 from collections import deque
@@ -61,15 +79,22 @@ from pathlib import Path
 from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.values.results import AggregateRangeScore, AggregateScalarScore, AggregateScore
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
 #: Reward key read from each Gym rollout record.
 DEFAULT_REWARD_KEY = "reward"
+#: Gym's CLI, expected on PATH. Not configurable: these runner configs become serialized job specs,
+#: and a path into somebody's venv is meaningless on the other side of that boundary. Note this name
+#: is only ever *resolved*, never executed: :func:`_gym_executable` turns it into an absolute path
+#: once, and that path is what the subprocesses run — so a child whose PATH differs from ours cannot
+#: end up executing a different Gym.
+_GYM_CLI = "gym"
 #: Gym's index fields on each rollout record. ``_ng_task_index`` is the only join back to the input
 #: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and
 #: copies only a fixed allowlist of row keys onto the result, so no field we invent comes back. Gym
@@ -80,6 +105,34 @@ NG_ROLLOUT_INDEX = "_ng_rollout_index"
 _RUNTIME_KEYS = frozenset({NG_TASK_INDEX, NG_ROLLOUT_INDEX})
 #: Lines of subprocess output retained in memory for inclusion in a failure message.
 _LOG_TAIL_LINES = 40
+
+
+#: Substrings that mark a Hydra override key as carrying a credential. Matched case-insensitively
+#: against the key half of ``+key=value``.
+_SECRET_KEY_MARKERS = ("api_key", "apikey", "token", "secret", "password", "passwd", "credential")
+#: Stand-in written in place of a redacted override value.
+_REDACTED = "<redacted>"
+
+
+def _redact_env_overrides(overrides: Sequence[str]) -> list[str]:
+    """Redact credential-looking values from Hydra overrides before they are recorded as provenance.
+
+    ``env_overrides`` is a free-form escape hatch forwarded verbatim to ``gym env start``, so nothing
+    stops a caller passing ``+model.api_key=sk-...``. ``RunnerInfo.config`` is persisted into the run
+    bundle, so a value that looks like a credential must not be written there.
+
+    The *key* is always kept — knowing that a run overrode ``model.api_key`` is useful provenance;
+    knowing the value is a leak. Overrides that don't parse as ``key=value`` are kept verbatim: they
+    carry no value to leak.
+    """
+    redacted: list[str] = []
+    for override in overrides:
+        key, sep, _ = override.partition("=")
+        if sep and any(marker in key.casefold() for marker in _SECRET_KEY_MARKERS):
+            redacted.append(f"{key}={_REDACTED}")
+        else:
+            redacted.append(override)
+    return redacted
 
 
 def _canonical_row_hash(row: Mapping[str, Any]) -> str:
@@ -175,13 +228,6 @@ class GymRuntimeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gym_root: Path = Field(
-        description="NeMo Gym checkout directory; the CLI resolves envs/agents/models from here and "
-        "reads credentials from its gitignored env.yaml.",
-    )
-    gym_bin: Path | None = Field(
-        default=None, description="Path to the `gym` executable; defaults to <gym_root>/.venv/bin/gym."
-    )
     agent: str = Field(description="Agent name to collect rollouts with, e.g. 'simple_agent'.")
     agent_config: str = Field(description="Repo-relative agent config passed to `gym env start` (--config).")
     resources_server: str = Field(description="Resources-server (environment) name, e.g. 'mcqa' (--resources-server).")
@@ -223,8 +269,24 @@ class GymRuntimeConfig(BaseModel):
     )
     reward_key: str = Field(default=DEFAULT_REWARD_KEY, description="Key read from each rollout record.")
 
-    def gym_executable(self) -> Path:
-        return self.gym_bin if self.gym_bin is not None else self.gym_root / ".venv" / "bin" / "gym"
+
+def _gym_executable() -> str:
+    """Locate the ``gym`` CLI on PATH, or fail saying what to do about it.
+
+    Gym is expected to be installed in the same environment as this SDK — there is deliberately no
+    config field pointing at a checkout or another venv, because these runner configs become
+    serialized job specs and a local filesystem path cannot cross that boundary. Resolving here
+    rather than at spawn time turns a missing Gym into one legible error instead of an ``ENOENT``
+    out of ``create_subprocess_exec`` after the run has already started.
+    """
+    resolved = shutil.which(_GYM_CLI)
+    if resolved is None:
+        raise RuntimeError(
+            f"The {_GYM_CLI!r} CLI was not found on PATH. NeMo Gym must be installed in the same Python "
+            "environment as this SDK: `pip install nemo-gym`, plus the target environment's own "
+            "dependencies (each resources-server ships a requirements.txt)."
+        )
+    return resolved
 
 
 class GymRewardMetric:
@@ -331,6 +393,40 @@ class GymAgentTaskRunner:
 
     def __init__(self, *, config: GymRuntimeConfig) -> None:
         self._config = config
+        self._run_aggregations: dict[str, Any] | None = None
+
+    def run_aggregate_scores(self) -> Sequence[AggregateScore]:
+        """Gym's ``agent_metrics`` mapped onto typed aggregate scores, namespaced ``runner.gym.<metric>``.
+
+        Satisfies :class:`RunAggregationsProvider`. ``reward`` is skipped: the SDK already scores it
+        natively as ``gym_reward.reward``, and two differently-derived numbers under one name invites
+        exactly the confusion the namespace is there to prevent.
+        """
+        return _aggregate_scores_from_gym(self._run_aggregations)
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the Gym settings that shape its results.
+
+        Credentials normally live in the Gym checkout's gitignored ``env.yaml`` and never reach this
+        object — but ``env_overrides`` is a free-form escape hatch, so its values are redacted by key
+        (see :func:`_redact_env_overrides`) rather than trusted.
+        """
+        cfg = self._config
+        return RunnerInfo(
+            name="gym",
+            kind="runner",
+            config={
+                "resources_server": cfg.resources_server,
+                "agent": cfg.agent,
+                "agent_config": cfg.agent_config,
+                "model_type": cfg.model_type,
+                "num_repeats": cfg.num_repeats,
+                "concurrency": cfg.concurrency,
+                "bind_resources_server": cfg.bind_resources_server,
+                "env_overrides": _redact_env_overrides(cfg.env_overrides),
+                "reward_key": cfg.reward_key,
+            },
+        )
 
     async def run_tasks(
         self,
@@ -338,6 +434,7 @@ class GymAgentTaskRunner:
         config: AgentEvalRunConfig | None = None,
     ) -> list[AgentEvalTrial]:
         cfg = self._config
+        self._run_aggregations = None  # reset per run so a reused runner never leaks a prior run's numbers
         # Provenance for the log line only — the file Gym actually reads is the normalized one we
         # materialize below from the tasks themselves.
         source_dataset = _source_datasets(tasks)
@@ -347,8 +444,8 @@ class GymAgentTaskRunner:
         # phases — parallelism bounds concurrent scoring (SDK-side, cheap), while Gym's `--concurrency`
         # bounds concurrent rollouts against the model endpoint during collection (tuned to that endpoint's
         # limits via GymRuntimeConfig.concurrency).
-        if config is not None and config.output_dir is not None:
-            work_dir = Path(config.output_dir) / "gym_run"
+        if config is not None and config.work_dir is not None:
+            work_dir = Path(config.work_dir) / "gym_run"
         else:
             work_dir = Path(tempfile.mkdtemp(prefix="gym_run_"))
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -369,6 +466,7 @@ class GymAgentTaskRunner:
         )
 
         await self._run_two_step(input_path, rollouts_path, work_dir)
+        self._run_aggregations = _read_run_aggregations(rollouts_path)
         trials = _trials_from_rollouts(rollouts_path, tasks, index_to_task_id, reward_key=cfg.reward_key)
         _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
@@ -376,7 +474,7 @@ class GymAgentTaskRunner:
     async def _run_two_step(self, input_path: Path, output_path: Path, work_dir: Path) -> None:
         """Start the Gym servers, collect against them with ``--no-serve``, then tear them down."""
         cfg = self._config
-        gym = str(cfg.gym_executable())
+        gym = _gym_executable()
         env_log = work_dir / "gym_env.log"
 
         # Gym launches each server from its own subdir with its own .venv. Ray (>=2.56) otherwise
@@ -411,7 +509,6 @@ class GymAgentTaskRunner:
         # to land on a particular stream.
         env_proc = await asyncio.create_subprocess_exec(
             *env_cmd,
-            cwd=str(cfg.gym_root),
             env=subprocess_env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -460,7 +557,6 @@ class GymAgentTaskRunner:
         stderr_log = work_dir / "gym_eval.stderr.log"
         eval_proc = await asyncio.create_subprocess_exec(
             *eval_cmd,
-            cwd=str(cfg.gym_root),
             env=subprocess_env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -675,6 +771,144 @@ def _require_full_coverage(tasks: Sequence[AgentEvalTask], *, covered_task_ids: 
 def _failures_path_for(rollouts_path: Path) -> Path:
     """Sidecar Gym writes failed rollouts to (mirrors Gym's own ``_failures_path_for``)."""
     return rollouts_path.with_name(rollouts_path.stem + "_failures.jsonl")
+
+
+def _aggregate_metrics_path_for(rollouts_path: Path) -> Path:
+    """Sidecar Gym writes run-level aggregate metrics to (``<stem>_aggregate_metrics.json``)."""
+    return rollouts_path.with_name(rollouts_path.stem + "_aggregate_metrics.json")
+
+
+def _read_run_aggregations(rollouts_path: Path) -> dict[str, Any] | None:
+    """Parse Gym's ``rollouts_aggregate_metrics.json``, or ``None`` when absent/unparseable.
+
+    Gym's file is a list with one entry per agent (``agent_ref`` / ``agent_metrics`` / ``key_metrics`` /
+    ``group_level_metrics``), so it is returned keyed by agent name. Carried through as-is — Gym's schema
+    isn't contractual, so the SDK does not type it.
+    """
+    path = _aggregate_metrics_path_for(rollouts_path)
+    if not path.exists():
+        return None
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        # UnicodeDecodeError is a ValueError, not an OSError: a sidecar truncated mid-codepoint would
+        # otherwise raise straight out of run_tasks and discard a collection that already succeeded.
+        logger.warning("Could not parse Gym aggregate metrics at %s; skipping run aggregations.", path)
+        return None
+    if not isinstance(parsed, list):
+        logger.warning("Unexpected Gym aggregate-metrics shape at %s (%s); skipping.", path, type(parsed).__name__)
+        return None
+    # Gym's schema is not contractual, and this runs after a collection that already succeeded — an
+    # entry in an unexpected shape must not raise out of run_tasks and discard every trial with it.
+    aggregations: dict[str, Any] = {}
+    for entry in parsed:
+        agent_ref = entry.get("agent_ref") if isinstance(entry, Mapping) else None
+        name = agent_ref.get("name") if isinstance(agent_ref, Mapping) else None
+        if not isinstance(name, str):
+            logger.warning(
+                "Skipping a Gym aggregate-metrics entry in %s with no usable agent_ref.name (got %r).", path, agent_ref
+            )
+            continue
+        aggregations[name] = {key: value for key, value in entry.items() if key != "agent_ref"}
+    return aggregations or None
+
+
+#: Gym flattens a distribution into ``<stat>/<metric>`` keys. Its RewardProfiler emits this exact set
+#: together for every numeric column (``describe_dataframe``), minus ``histogram``, which
+#: ``prepare_for_serialization`` strips before the file is written. All five must be present before we
+#: treat a group of keys as one distribution: a resources-server is free to define a metric literally
+#: named ``mean`` (36 of Gym's ~97 servers override ``compute_metrics``), and re-assembling on a partial
+#: match would rename someone's standalone metric into a statistic of a distribution that never existed.
+_GYM_STAT_FAMILY = ("mean", "max", "min", "median", "std")
+
+#: Metric Gym reports that the SDK already computes natively from the same rollouts (``gym_reward.reward``).
+_GYM_REDUNDANT_METRICS = frozenset({"reward"})
+
+
+def _aggregate_scores_from_gym(aggregations: Mapping[str, Any] | None) -> list[AggregateScore]:
+    """Map Gym's run-level ``agent_metrics`` onto typed aggregate scores named ``runner.gym.<metric>``.
+
+    Reads ``agent_metrics``, not ``key_metrics``: ``key_metrics`` is a *subset* of it chosen by the
+    resources-server, and the default selection (``get_key_metrics``) keeps only the ``mean/*`` entries —
+    so the max/min/median/std that make a distribution never appear there, and every metric would arrive
+    as a lone ``mean/<name>`` scalar.
+
+    Keys forming a full stat family are re-assembled into one :class:`AggregateRangeScore`; every other
+    numeric key becomes an :class:`AggregateScalarScore`. Non-numeric values are skipped — they are
+    labels or notes, not measurements.
+
+    Names are namespaced by runner (not by agent): each run is instrumented with a single agent, so the
+    agent adds no disambiguation, and a reader needs to know which *backend* produced a number.
+    """
+    if not aggregations:
+        return []
+    multi_agent = len(aggregations) > 1
+    scores: list[AggregateScore] = []
+    for agent_name, payload in sorted(aggregations.items()):
+        agent_metrics = payload.get("agent_metrics") if isinstance(payload, Mapping) else None
+        if not isinstance(agent_metrics, Mapping):
+            continue
+        # One agent per run is the norm, so `runner.gym.<metric>` reads cleanly; qualify by agent only
+        # when a run really did produce several, where the unqualified names would collide.
+        prefix = f"runner.gym.{agent_name}." if multi_agent else "runner.gym."
+        scores.extend(_scores_from_agent_metrics(agent_metrics, prefix=prefix))
+    return scores
+
+
+def _scores_from_agent_metrics(agent_metrics: Mapping[str, Any], *, prefix: str) -> list[AggregateScore]:
+    families: dict[str, dict[str, float]] = {}
+    scalars: dict[str, float] = {}
+    for key, value in agent_metrics.items():
+        number = _as_float(value)
+        if number is None:
+            continue
+        stat, _, metric = key.partition("/")
+        if metric and stat in _GYM_STAT_FAMILY:
+            families.setdefault(metric, {})[stat] = number
+        else:
+            scalars[key] = number
+
+    scores: list[AggregateScore] = []
+    for metric, stats in sorted(families.items()):
+        # Redundancy is a property of the metric, not of how complete its family is. Checking after the
+        # fallback below would let a partial `reward` family survive as `mean/reward` scalars, since the
+        # scalar filter matches the bare name -- reintroducing the duplicate of `gym_reward.reward` that
+        # skipping reward exists to prevent.
+        if metric in _GYM_REDUNDANT_METRICS:
+            continue
+        if set(stats) < set(_GYM_STAT_FAMILY):
+            # Not a distribution we can vouch for; keep each key as the standalone number it may well be.
+            scalars.update({f"{stat}/{metric}": value for stat, value in stats.items()})
+            continue
+        scores.append(
+            AggregateRangeScore(
+                name=f"{prefix}{metric}",
+                # Gym reports the statistics but not the sample size behind them, and inventing one
+                # would misreport coverage. `None` says "unknown"; 0 would assert nothing was evaluated.
+                count=None,
+                nan_count=0,
+                mean=stats["mean"],
+                min=stats["min"],
+                max=stats["max"],
+                median=stats["median"],
+                # Gym computes this with pandas (ddof=1), so it is the sample standard deviation.
+                sample_std_dev=stats["std"],
+                sample_variance=stats["std"] ** 2,
+            )
+        )
+    scores.extend(
+        AggregateScalarScore(name=f"{prefix}{key}", count=None, nan_count=0, value=value)
+        for key, value in sorted(scalars.items())
+        if key not in _GYM_REDUNDANT_METRICS
+    )
+    return scores
+
+
+def _as_float(value: Any) -> float | None:
+    """``float`` for a numeric Gym metric value; None for anything else (bools included: not measurements)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) else None
 
 
 def _ensure_fresh_output(rollouts_path: Path) -> None:

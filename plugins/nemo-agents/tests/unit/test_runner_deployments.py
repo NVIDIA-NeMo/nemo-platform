@@ -143,13 +143,29 @@ def test_rewrite_fabric_config_base_urls_rebases_igw_host() -> None:
                 }
             },
         },
+        "telemetry": {
+            "atif": {
+                "storage": [
+                    {
+                        "type": "http",
+                        "endpoint": "http://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                    },
+                    {"type": "http", "endpoint": "https://telemetry.example.com/atif"},
+                ]
+            }
+        },
     }
     result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
     expected = "http://nmp-api:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     assert result["models"]["default"]["base_url"] == expected
     assert result["harnesses"]["main"]["model"]["base_url"] == expected
     assert result["harnesses"]["legacy"]["model"]["settings"]["base_url"] == expected
+    assert result["telemetry"]["atif"]["storage"][0]["endpoint"] == (
+        "http://nmp-api:8080/apis/intake/v2/workspaces/default/ingest/atif"
+    )
+    assert result["telemetry"]["atif"]["storage"][1]["endpoint"] == "https://telemetry.example.com/atif"
     assert "localhost" in config["models"]["default"]["base_url"]
+    assert "localhost" in config["telemetry"]["atif"]["storage"][0]["endpoint"]
 
 
 def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
@@ -166,6 +182,30 @@ def test_rewrite_fabric_config_base_urls_leaves_third_party_base_url() -> None:
     assert result["models"]["default"]["base_url"] == "https://api.openai.com/v1"
 
 
+def test_rewrite_fabric_config_base_urls_preserves_https_atif_endpoint() -> None:
+    config = {
+        "telemetry": {
+            "atif": {
+                "storage": [
+                    {
+                        "type": "http",
+                        "endpoint": "https://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                        "header_env": {"Authorization": "ATIF_AUTHORIZATION"},
+                    }
+                ]
+            }
+        }
+    }
+
+    result = rewrite_fabric_config_base_urls(config, "http://nmp-api:8080")
+
+    assert result["telemetry"]["atif"]["storage"][0] == {
+        "type": "http",
+        "endpoint": "https://nmp-api:8080/apis/intake/v2/workspaces/default/ingest/atif",
+        "header_env": {"Authorization": "ATIF_AUTHORIZATION"},
+    }
+
+
 def test_executor_for_mode_prefers_mode_specific() -> None:
     cfg = DeploymentsRunnerConfig(
         default_executor="default-exec",
@@ -177,10 +217,7 @@ def test_executor_for_mode_prefers_mode_specific() -> None:
 
 
 def test_config_mount_path_default_is_under_writable_workspace() -> None:
-    # Docker mode materializes the config as the non-root container user, so the
-    # default must live under the image's writable WORKDIR (/workspace); a
-    # root-level path like /config is not writable and crash-loops the container.
-    assert DeploymentsRunnerConfig().config_mount_path.startswith("/workspace/")
+    assert DeploymentsRunnerConfig().config_mount_path == "/tmp/nemo/config.yaml"
 
 
 def test_build_deployment_config_always_single_container() -> None:
@@ -191,21 +228,20 @@ def test_build_deployment_config_always_single_container() -> None:
         port=8000,
         agent_config={"llms": {"nim": {"_type": "nim"}}},
         platform_base_url="http://host.docker.internal:8080",
-        config_mount_path="/workspace/config.yaml",
+        config_mount_path="/tmp/nemo/config.yaml",
         mode="docker",
     )
     assert cfg.restart_policy == "Always"
     assert len(cfg.containers) == 1
     container = cfg.containers[0]
     assert container.image == "nat-runtime:latest"
-    # Docker materializes config from NAT_CONFIG_YAML because config_files are not mounted.
-    assert container.command == ["sh", "-c"]
-    assert any(e.name == "NAT_CONFIG_YAML" for e in container.env)
+    assert container.command == ["nat", "start", "fastapi"]
+    assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
     assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
     assert container.readiness_probe is not None
     assert cfg.init_containers == []
     assert len(cfg.config_files) == 1
-    assert cfg.config_files[0].path == "/workspace/config.yaml"
+    assert cfg.config_files[0].path == "/tmp/nemo/config.yaml"
     loaded = yaml.safe_load(cfg.config_files[0].content)
     assert loaded["llms"]["nim"]["_type"] == "nim"
 
@@ -276,22 +312,6 @@ _FABRIC_AGENT_CONFIG = {
 }
 
 
-def test_build_deployment_config_docker_shell_escapes_config_path() -> None:
-    cfg = build_deployment_config(
-        name="spaced-dep",
-        workspace="default",
-        image="nat-runtime:latest",
-        port=8000,
-        agent_config={"llms": {"nim": {"_type": "nim"}}},
-        platform_base_url="http://host.docker.internal:8080",
-        config_mount_path="/workspace/my config/config.yaml",
-        mode="docker",
-    )
-    script = cfg.containers[0].args[0]
-    assert "'/workspace/my config/config.yaml'" in script
-    assert 'printf "%s" "$NAT_CONFIG_YAML"' in script
-
-
 def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
     cfg = build_deployment_config(
         name="fabric-dep",
@@ -300,23 +320,27 @@ def test_build_deployment_config_fabric_docker_uses_fabric_server() -> None:
         port=8000,
         agent_config=_FABRIC_AGENT_CONFIG,
         platform_base_url="http://host.docker.internal:8080",
-        config_mount_path="/workspace/config.yaml",
+        config_mount_path="/tmp/nemo/config.yaml",
         mode="docker",
     )
     container = cfg.containers[0]
-    assert container.command == ["sh", "-c"]
-    assert any(e.name == "AGENT_CONFIG_YAML" for e in container.env)
+    assert container.command == ["python"]
+    assert container.args[0] == "-m"
+    assert container.args[1] == "nemo_agents_plugin.fabric.server"
+    assert "--agent-config" in container.args
+    assert "/tmp/nemo/agent.yaml" in container.args
+    assert "--host" in container.args and "0.0.0.0" in container.args
+    assert not any(e.name == "AGENT_CONFIG_YAML" for e in container.env)
     assert not any(e.name == "NAT_CONFIG_YAML" for e in container.env)
-    assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/workspace/agent.yaml" for e in container.env)
+    assert any(e.name == "AGENT_CONFIG_PATH" and e.value == "/tmp/nemo/agent.yaml" for e in container.env)
     assert next(e.value for e in container.env if e.name == "NMP_BASE_URL") == "http://host.docker.internal:8080"
     assert next(e.value for e in container.env if e.name == PLATFORM_IGW_API_KEY_ENV) == (
         PLATFORM_IGW_API_KEY_PLACEHOLDER
     )
-    assert "nemo_agents_plugin.fabric.server" in container.args[0]
+    assert cfg.config_files[0].path == "/tmp/nemo/agent.yaml"
     assert container.readiness_probe is not None
     assert container.readiness_probe.http_get is not None
     assert container.readiness_probe.http_get.path == "/health"
-    assert cfg.config_files[0].path == "/workspace/agent.yaml"
 
 
 def test_build_deployment_config_fabric_k8s_uses_fabric_entrypoint() -> None:
@@ -374,11 +398,11 @@ def test_build_deployment_config_fabric_direct_endpoint_has_no_placeholder() -> 
     assert not any(e.name in {PLATFORM_IGW_API_KEY_ENV, "OPENAI_API_KEY"} for e in cfg.containers[0].env)
 
 
-def test_build_deployment_config_fabric_docker_materializes_multiple_config_files() -> None:
+def test_build_deployment_config_fabric_docker_mounts_multiple_config_files() -> None:
     staged_files = [
-        ConfigFile(path="/workspace/agent.yaml", content="name: fabric-agent\n"),
-        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
-        ConfigFile(path="/workspace/prompts/system.md", content="You are helpful.\n"),
+        ConfigFile(path="/tmp/nemo/agent.yaml", content="name: fabric-agent\n"),
+        ConfigFile(path="/tmp/nemo/skills/review/SKILL.md", content="# Review\n"),
+        ConfigFile(path="/tmp/nemo/prompts/system.md", content="You are helpful.\n"),
     ]
     cfg = build_deployment_config(
         name="fabric-dep",
@@ -387,21 +411,18 @@ def test_build_deployment_config_fabric_docker_materializes_multiple_config_file
         port=8000,
         agent_config=_FABRIC_AGENT_CONFIG,
         platform_base_url="http://host.docker.internal:8080",
-        config_mount_path="/workspace/config.yaml",
+        config_mount_path="/tmp/nemo/config.yaml",
         mode="docker",
         config_files=staged_files,
     )
     container = cfg.containers[0]
-    assert container.command == ["sh", "-c"]
-    assert not any(e.name == "AGENT_CONFIG_YAML" for e in container.env)
-    assert any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in container.env)
-    assert "python -c" in container.args[0]
-    assert "nemo_agents_plugin.fabric.server" in container.args[0]
+    assert container.command == ["python"]
+    assert not any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in container.env)
     assert len(cfg.config_files) == 3
     assert {item.path for item in cfg.config_files} == {
-        "/workspace/agent.yaml",
-        "/workspace/skills/review/SKILL.md",
-        "/workspace/prompts/system.md",
+        "/tmp/nemo/agent.yaml",
+        "/tmp/nemo/skills/review/SKILL.md",
+        "/tmp/nemo/prompts/system.md",
     }
 
 
@@ -706,7 +727,8 @@ async def test_create_deployment_fabric_docker_rewrites_model_base_url() -> None
         "http://host.docker.internal:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1"
     )
     assert created_config.labels["nemo.agents/runtime"] == "fabric"
-    assert "nemo_agents_plugin.fabric.server" in created_config.containers[0].args[0]
+    assert created_config.containers[0].command == ["python"]
+    assert "nemo_agents_plugin.fabric.server" in created_config.containers[0].args
 
 
 @pytest.mark.asyncio
@@ -927,8 +949,8 @@ async def test_create_deployment_fabric_docker_stages_fileset_artifacts() -> Non
         "harnesses": {"main": {"kind": "codex", "settings": {}}},
     }
     staged_files = [
-        ConfigFile(path="/workspace/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
-        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+        ConfigFile(path="/tmp/nemo/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
+        ConfigFile(path="/tmp/nemo/skills/review/SKILL.md", content="# Review\n"),
     ]
     sdk = MagicMock()
 
@@ -957,7 +979,7 @@ async def test_create_deployment_fabric_docker_stages_fileset_artifacts() -> Non
     mock_stage.assert_awaited_once()
     created_config = entities.create.await_args_list[0].args[0]
     assert len(created_config.config_files) == 2
-    assert any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in created_config.containers[0].env)
+    assert not any(e.name == "STAGED_CONFIG_FILES_B64_JSON" for e in created_config.containers[0].env)
 
 
 @pytest.mark.asyncio
@@ -977,8 +999,8 @@ async def test_create_deployment_fabric_k8s_stages_fileset_artifacts() -> None:
         "harnesses": {"main": {"kind": "codex", "settings": {}}},
     }
     staged_files = [
-        ConfigFile(path="/workspace/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
-        ConfigFile(path="/workspace/skills/review/SKILL.md", content="# Review\n"),
+        ConfigFile(path="/tmp/nemo/agent.yaml", content=yaml.safe_dump(config, sort_keys=False)),
+        ConfigFile(path="/tmp/nemo/skills/review/SKILL.md", content="# Review\n"),
     ]
     sdk = MagicMock()
 

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { DEFAULT_LARGE_PAGE_SIZE } from '@nemo/common/src/constants/api';
 import { useDataDesignerCreateJob } from '@nemo/sdk/generated/data-designer/api';
 import { useModelsListProviders } from '@nemo/sdk/generated/platform/api';
 import { Flex, Stack } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { findTemplate } from '@studio/components/CreateFilesetStart/templates';
 import { usePreview } from '@studio/components/NewDataDesignerJobForm/usePreview';
 import { getCloneJobRequestFromState } from '@studio/components/NewDataDesignerJobForm/utils';
@@ -47,7 +47,7 @@ import {
 import { type FC, useCallback, useMemo, useState } from 'react';
 import { FormProvider } from 'react-hook-form';
 import { useAuth } from 'react-oidc-context';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
 /**
  * Edges are derived from entered values: Jinja2 `{{ column_name }}` references (and
@@ -134,7 +134,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
       ? buildDataDesignerConfig(columns, models, servedModelNames)
       : undefined;
   }, [builder, servedModelNames]);
-  const { previewLogs, isPreviewing, runPreview } = usePreview({
+  const { previewLogs, isPreviewing, runPreview, stopPreview } = usePreview({
     workspace,
     accessToken: user?.access_token ?? undefined,
     getCurrentConfig,
@@ -196,6 +196,7 @@ export const DataDesignerJobBuildRoute: FC = () => {
             onViewModeChange={setViewMode}
             onPreview={handlePreview}
             isPreviewing={isPreviewing}
+            onStopPreview={stopPreview}
             onSubmit={handleSubmit}
             isSubmitting={createJob.isPending}
           />

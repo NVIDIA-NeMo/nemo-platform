@@ -100,7 +100,7 @@ async def run_profbench_mode(
     target: AgentEvalTarget | None = None
     trials: list[AgentEvalTrial] | None = None
     params: RunConfigOnlineModel | None = None
-    benchmark_meta = dict(benchmark.metadata)
+    benchmark_labels = {key: str(value) for key, value in benchmark.metadata.items()}
     if mode is ProfBenchMode.LIVE_CANDIDATE:
         target, params, score_source, effective_codex_runtime = _live_candidate_target(
             agent=agent,
@@ -110,24 +110,25 @@ async def run_profbench_mode(
         )
         if effective_codex_runtime is not None:
             print(f"Codex runtime: {effective_codex_runtime}")
-        benchmark_meta["score_source"] = score_source
+        benchmark_labels["score_source"] = score_source
     else:
         trials = benchmark.trials
         if mode is ProfBenchMode.LIVE_JUDGE:
-            benchmark_meta["score_source"] = "live_judge"
+            benchmark_labels["score_source"] = "live_judge"
 
     result = await AgentEvaluator().run(
         tasks=benchmark.tasks,
         trials=trials,
         target=target,
         config=AgentEvalRunConfig(
-            output_dir=output_dir,
+            work_dir=output_dir,
             run_id=f"{run_instance_id}-{mode.value}",
             params=params,
-            benchmark=benchmark_meta,
-            write_dashboard=False,
+            labels=benchmark_labels,
         ),
     )
+    # This example renders its own dashboards below, so persistence skips the built-in one.
+    result.persist(write_dashboard=False)
     sdk_dashboard_path, dashboard_path = write_example_dashboards(result, output_dir)
 
     overall = _profbench_overall(result)

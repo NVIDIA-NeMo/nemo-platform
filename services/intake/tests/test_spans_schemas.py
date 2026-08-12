@@ -103,12 +103,18 @@ def test_span_summary_omits_payloads_and_raw_attributes():
 
 
 def test_span_group_response_maps_group_values():
+    started_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     response = SpanGroup.from_domain(
-        IntakeSpanGroup(group={"session_id": "session-a", "trace_id": "trace-a"}, span_count=3)
+        IntakeSpanGroup(
+            group={"session_id": "session-a", "trace_id": "trace-a"},
+            span_count=3,
+            started_at=started_at,
+        )
     )
 
     assert response.group == {"session_id": "session-a", "trace_id": "trace-a"}
     assert response.span_count == 3
+    assert response.started_at == started_at
 
 
 def test_trace_response_maps_core_trace_fields():

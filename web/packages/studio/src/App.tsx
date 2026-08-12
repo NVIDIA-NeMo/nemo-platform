@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { configureLogger } from '@nemo/common/src/utils/logger';
 import {
   ThemeProvider as KaizenThemeProvider,
   Theme,
@@ -13,17 +14,18 @@ import {
   AUTH_SCOPE_PREFIX,
   AUTH_SCOPES,
   BASE_URL,
+  OTEL_SERVICE_NAME,
 } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { routes } from '@studio/routes';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { UI_THEME } from '@studio/util/localStorage';
-import { logVersion } from '@studio/util/logger';
+import { logVersion } from '@studio/util/logVersion';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { WebStorageStateStore } from 'oidc-client-ts';
 import { StrictMode } from 'react';
 import { AuthProvider } from 'react-oidc-context';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router';
 
 /**
  * Expand OAuth scopes by prepending scope_prefix to custom scopes.
@@ -55,6 +57,7 @@ if (import.meta.hot) {
 }
 
 const router = createBrowserRouter(routes, { basename: BASE_URL ?? '/' });
+configureLogger(OTEL_SERVICE_NAME);
 logVersion();
 
 const effectiveScope = expandScopes(AUTH_SCOPES || 'openid profile email', AUTH_SCOPE_PREFIX);

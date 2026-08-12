@@ -4,7 +4,6 @@
 import { DownloadEvaluationLogsButton } from '@nemo/common/src/components/buttons/DownloadEvaluationLogsButton';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import { PanelFooterAccordion } from '@nemo/common/src/components/PanelFooterAccordion';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
@@ -15,6 +14,7 @@ import {
   getDifferenceInMilliseconds,
   utcToLocalDate,
 } from '@nemo/common/src/utils/date';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   getEvaluatorGetEvaluateJobQueryKey,
   useEvaluatorCancelEvaluateJob,
@@ -22,13 +22,12 @@ import {
 import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';
-import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { logger } from '@studio/util/logger';
+import { getFilesetRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChartBar, LayoutList, CircleX } from 'lucide-react';
+import { ChartBar, CircleX } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 
 interface DetailsPanelProps {
   evaluationJob?: EvaluateJob;
@@ -109,6 +108,10 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
     | undefined;
 
   const model = evaluationJob.spec.target?.name;
+  const targetIsAgent = evaluationJob.spec.target?.format !== undefined;
+  const datasetRef =
+    typeof evaluationJob.spec.dataset === 'string' ? evaluationJob.spec.dataset : undefined;
+  const datasetFileset = datasetRef?.split('#')[0];
 
   return (
     <>
@@ -131,26 +134,6 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
               </Button>
             )}
           </Flex>
-        }
-        attributes={{
-          PanelFooter: {
-            className:
-              'overflow-hidden -ml-density-2xl -mr-density-2xl -mb-density-2xl rounded-b-density-xl',
-          },
-        }}
-        slotFooter={
-          <PanelFooterAccordion
-            slotTrigger={
-              <Flex align="center" gap="2">
-                <LayoutList />
-                Status Logs
-              </Flex>
-            }
-            slotContent={
-              jobName ? <StatusLogsContent workspace={workspace} jobName={jobName} /> : null
-            }
-            value="status-logs"
-          />
         }
       >
         <Stack gap="4">
@@ -211,7 +194,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
           )}
           <KVPair label="Job ID" value={evalJobId || 'Detail not available'} />
           <KVPair
-            label="Model"
+            label={targetIsAgent ? 'Agent' : 'Model'}
             value={
               model ? (
                 <Text kind="body/semibold/sm">{model}</Text>
@@ -220,6 +203,19 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
               )
             }
           />
+          {datasetFileset && (
+            <KVPair
+              label="Dataset"
+              value={
+                <Link
+                  to={getFilesetRoute(workspace, datasetFileset)}
+                  className="text-primary underline"
+                >
+                  {datasetRef}
+                </Link>
+              }
+            />
+          )}
           <KVPair
             label="Created"
             value={created_at ? formatAbsoluteTimestamp(created_at) : 'Detail not available'}

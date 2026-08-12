@@ -13,7 +13,7 @@ rediscovered.
 | Dockerfile | Image | Role |
 |---|---|---|
 | `Dockerfile.nmp-rl-base` | `nmp-rl-base` | Heavy base. Clones NeMo-RL (with submodules), warms the uv cache for the extras we need (`vllm`, `fsdp`, `modelopt`, `nemo_gym`), then **prefetches the per-worker Ray venvs**. All one-time CUDA compiles (mamba-ssm, causal-conv1d, deep_ep, deep_gemm) happen here. |
-| `Dockerfile.nmp-rl-training` | `nmp-rl-training` | Thin layer on the base. Adds the pure-Python platform glue editably; entrypoint runs `python -m nmp.rl.tasks.training` (Ray bootstrap → DPO/GRPO). Also the Gym environment runtime. A `smoke-test` stage runs CPU-only import checks during the build. |
+| `Dockerfile.nmp-rl-training` | `nmp-rl-training` | Thin layer on the base. Adds the pure-Python platform glue editably; entrypoint runs `python -m nmp.rl.tasks.training` (Ray bootstrap → DPO). Also the Gym environment runtime. A `smoke-test` stage runs CPU-only import checks during the build. |
 
 `docker-bake.hcl` wires them: `nmp-rl-training`'s base context defaults to building
 `nmp-rl-base` as a dependency, unless `USE_PREBUILT_BASES` / `RL_BASE_CONTEXT` point
@@ -110,12 +110,12 @@ resolve the same interpreter as their parent.
 - **Per node, not per worker.** Eight GPU workers on one node share one venv on that node's
   disk; `venvs.py` uses a `STARTED_ENV_BUILDER` lock so it is built once, not eight times.
 - **Different workers can have different GPU requirements.** DPO's worker launches with the
-  `fsdp` venv (no `deep_ep`); GRPO's generation worker with the `vllm` venv (`deep_ep`,
-  Hopper-only) — in the same image.
+  `fsdp` venv (no `deep_ep`); GRPO's (will be added in future) generation worker with the 
+  `vllm` venv (`deep_ep`, Hopper-only) — in the same image.
 - `NEMO_RL_PY_EXECUTABLES_SYSTEM=1` collapses every actor into the base venv. We do **not**
   set it.
 
-### Which extras DPO and GRPO actually use
+### Which extras DPO and GRPO (will be added in future releases) actually use
 
 | Algorithm | Actor | Extra / venv | Notable contents |
 |---|---|---|---|
@@ -162,10 +162,9 @@ those two. The Automodel and Megatron-Bridge **source trees still ship** regardl
 are RL git submodules referenced by `uv.lock`.
 
 **Re-enabling either** is a config change plus two lines in `Dockerfile.nmp-rl-base` — add
-the extra to the warmup sync and add the worker FQN to the prefetch filters. A ready-made
-`transformer-engine-wheel` target (cp313 / cu130, pinned to RL's TE ref) already exists in
-`docker-bake.hcl` / `docker/base/Dockerfile.python-wheels` for that day; nothing builds it
-today.
+the extra to the warmup sync and add the worker FQN to the prefetch filters. Transformer-Engine
+is built from source when that happens: `uv.lock` pins it as a git source, so `uv sync --frozen`
+compiles it and caches the wheel, and every later venv reuses that.
 
 ### NeMo-Gym environments: a second, separate venv layer
 
@@ -277,12 +276,13 @@ Mamba or hybrid model on A100 would fail at first kernel launch with the current
 `9.0 10.0` build. Add `8.0` to the arch list to cover that case — unlike `deep_ep`,
 these two do compile for `sm_80`.
 
-**GRPO targets Hopper / Blackwell (for now).** GRPO generation uses vLLM, whose MoE
-path pulls `deep_ep` (and `deep_gemm` for fp8) — source-compiled CUDA extensions that
-use Hopper-class features (TMA async copy, warp specialization, NVSHMEM GPU-initiated
-RDMA) and only build/run on **SM 9.0 (Hopper) / 10.0 (Blackwell)**. They do not
-compile for SM 8.0/8.6/8.9. (Upstream NeMo-RL pins `TORCH_CUDA_ARCH_LIST="9.0 10.0"`;
-upstream Automodel builds DeepEP for `"9.0 10.0 12.0"` — the same Hopper floor.)
+**GRPO targets Hopper / Blackwell (for now).** GRPO (will be added in future releases)
+generation uses vLLM, whose MoE path pulls `deep_ep` (and `deep_gemm` for fp8),
+source-compiled CUDA extensions that use Hopper-class features (TMA async copy,
+warp specialization, NVSHMEM GPU-initiated RDMA) and only build/run on
+**SM 9.0 (Hopper) / 10.0 (Blackwell)**. They do not compile for SM 8.0/8.6/8.9.
+Upstream NeMo-RL pins `TORCH_CUDA_ARCH_LIST="9.0 10.0"`;
+upstream Automodel builds DeepEP for `"9.0 10.0 12.0"` — the same Hopper floor.
 
 **Megatron backend: unused today** Transformer-Engine — the heavy
 fused-kernel library the Megatron backend depends on — is currently pinned to
@@ -349,18 +349,11 @@ the uv cache + venv prefetch rather than via wheel images:
   stages pinned to RL's exact commits, kept in lockstep with `uv.lock`.
 - **Transformer-Engine** is the longest compile, but it is not built at all now — it
   only exists in the unused `automodel` / `mcore` extras (see the note above).
-
-## CVE handling
-
-- **Version floors** for the ecosystem (aiohttp, cryptography, urllib3, protobuf, av,
-  …) come from NeMo-RL's `constraint-dependencies` / `override-dependencies` in its
-  `pyproject.toml`. We inherit them by building from RL's lock — nothing to do here.
-- **FFmpeg-bundling wheels** (`av`, `opencv-python-headless`, `decord2`) statically
-  embed FFmpeg codec libraries that carry CVEs regardless of the Python package
-  version, so a version bump alone doesn't fix them. The base deletes the PyPI copies
-  and reinstalls clean `cp313` wheels built against a patched FFmpeg (from
-  `docker/base/Dockerfile.python-wheels`).
-- **Ray's bundled aiohttp** is removed from the uv cache to fully address its CVE.
+  `.python-version` pinning an exact patch release, which uv honours over whatever
+  `uv python install` provisioned. Bumping `PYTHON_VERSION` alone therefore fixed nothing:
+  every venv came up on RL's version while ours sat unused on disk, so the image shipped
+  two interpreters and ran the vulnerable one — silently. `UV_PYTHON` overrides the file
+  and persists into the runtime image, so node-built venvs agree too.
 
 ## Layering for fast CI rebuilds
 
@@ -384,9 +377,11 @@ whenever the *dependency graph* hasn't changed:
 
 ### Prefetching the per-worker venvs (build once, not per job)
 
-The warmup `uv sync --extra …` calls populate the **uv cache**, which is a build-time
-cache mount and never enters the image. The venvs training actually runs in are the
-per-worker ones under `/opt/ray_venvs`, so the base runs
+The warmup `uv sync --extra …` calls populate the **uv cache at `/opt/uv_cache`, which
+ships inside the image** — it has to, because the prefetched venvs symlink into it (see
+"Link mode" below). Do not confuse it with the `--mount=type=cache` the training image
+uses for its editable install, which is build-only and never enters the image. The venvs
+training actually runs in are the per-worker ones under `/opt/ray_venvs`, so the base runs
 `nemo_rl/utils/prefetch_venvs.py` after the source copy to bake them in — the same
 approach NeMo-RL's own release stage uses.
 
@@ -439,8 +434,44 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 - **`/opt/uv_cache` must never be deleted** — pruning it breaks every venv that points into
   it. The prune step in the publish stage deliberately leaves it alone.
 
-A useful side effect: environments installed at runtime (user Gym FileSets, actors that
-were not prefetched) resolve against a warm cache instead of downloading from scratch.
+**It does not warm runtime installs in the training image.** `Dockerfile.nmp-rl-training`
+repoints `UV_CACHE_DIR` at a writable per-user path, because `/opt/uv_cache` holds the code
+the trainer executes and must stay read-only (user-authored Gym environment code runs in
+this container). uv reads only `UV_CACHE_DIR` — there is no read-through to a second cache —
+and NeMo-Gym resolves its own cache by shelling out to `uv cache dir`
+(`nemo_rl/environments/nemo_gym.py`), which honours that same variable. So anything built on
+the node at runtime (Gym environment venvs, non-prefetched actors) starts from an **empty**
+cache and re-downloads.
+
+That is the main argument for prefetching: a venv that is not baked in is not just
+un-materialized, it is rebuilt against a cold cache.
+
+#### `vllm/` is a private copy per vLLM venv
+
+NeMo-RL **patches vLLM in place at worker startup** (`nemo_rl/models/generation/vllm/patches.py`
+rewrites `v1/executor/ray_executor.py`, `model_executor/models/llama_eagle3.py` and
+`tool_parsers/hermes_tool_parser.py`, taking a `<file>.patch_lock` beside each). Symlinking breaks
+that in two independent ways, both observed on the shipped image:
+
+1. **Permission** — the prefetched venvs are root-owned and the runtime is UID 1000, so creating
+   `ray_executor.py.patch_lock` fails with `EACCES` and the `VllmAsyncGenerationWorker` actor dies
+   in its creation task.
+2. **Sharing** — every vLLM-tier venv symlinks that file to *one* physical copy in `/opt/uv_cache`.
+   The patch writes a **per-venv `py_executable`** into it, so two venvs cannot share it. No amount
+   of `chown` fixes this; the file must not be shared at all.
+
+So the publish stage replaces `site-packages/vllm/` with a real, private, UID-1000-owned copy in
+each vLLM-tier venv.
+
+The two need separate fixes: **ownership** solves (1), **private copies** solve (2). Running as root
+would silence the `EACCES` but leaves the sharing intact — the first venv to patch wins and the next
+one launches under another venv's interpreter.
+
+Note this is *not* what upstream NeMo-RL does. Its published image symlinks too (74,567 symlinks vs
+925 real files in one vLLM venv, both vLLM venvs sharing one `ray_executor.py`), and it runs as
+**root** — so (1) never surfaces there and (2) stays latent, because vLLM 0.25 defaults
+`VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1` and the V2 executor never reads the patched call site. Running
+non-root is required here, so we can inherit neither the root workaround nor that assumption.
 
 ## Image size
 

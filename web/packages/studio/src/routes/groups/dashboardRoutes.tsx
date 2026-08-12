@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { gateCopilotStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
 import { lazy } from 'react';
-import type { RouteObject } from 'react-router-dom';
+import type { RouteObject } from 'react-router';
 
 const DashboardLandingRoute = lazy(() =>
   import('@studio/routes/DashboardLandingRoute').then((module) => ({
@@ -18,9 +18,9 @@ const WorkspaceDashboardRoute = lazy(() =>
     default: module.WorkspaceDashboardRoute,
   }))
 );
-const ClaudeCodeChatRoute = lazy(() =>
-  import('@studio/routes/agents/ClaudeCodeChatRoute').then((m) => ({
-    default: m.ClaudeCodeChatRoute,
+const CopilotChatRoute = lazy(() =>
+  import('@studio/routes/agents/CopilotChatRoute').then((m) => ({
+    default: m.CopilotChatRoute,
   }))
 );
 
@@ -33,7 +33,7 @@ export const dashboardRoutes: RouteObject[] = gateDashboardRoutes([
   ...gateCopilotStudioRoutes([
     {
       path: ROUTES.workspace.copilotChat,
-      element: <ClaudeCodeChatRoute />,
+      element: <CopilotChatRoute />,
       errorElement: <ErrorPanel title="NeMo Copilot" />,
     },
   ]),

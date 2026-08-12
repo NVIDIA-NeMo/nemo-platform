@@ -30,6 +30,8 @@ from nemo_platform.cli.core.errors import (
 )
 from typer.testing import CliRunner
 
+DOCUMENTED_REMOTE_ERROR_EXIT_CODE = 3
+
 
 @pytest.mark.parametrize(
     "body,message,expected",
@@ -78,7 +80,7 @@ def test_handle_api_status_errors(capsys, error_class, status_code, expected_pre
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert expected_prefix in captured.err
     assert f"({status_code})" in captured.err
@@ -92,7 +94,7 @@ def test_handle_api_connection_error(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "Connection error:" in captured.err
     assert "base-url" in captured.err
@@ -105,9 +107,9 @@ def test_handle_api_timeout_error(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
-    assert "Connection error:" in captured.err
+    assert "Timeout error:" in captured.err
     assert "timed out" in captured.err
 
 
@@ -119,7 +121,7 @@ def test_handle_api_status_error(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "API error:" in captured.err
     assert "(418)" in captured.err
@@ -133,7 +135,7 @@ def test_handle_api_status_error_prints_request_context(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "API error:" in captured.err
     assert "Request: POST http://test/apis/models/v2/workspaces/default/models" in captured.err
@@ -147,7 +149,7 @@ def test_handle_generic_api_error(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "API error:" in captured.err
 
@@ -281,7 +283,7 @@ def test_decorator_catches_and_handles_errors(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         failing_function()
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "Not found:" in captured.err
 
@@ -295,7 +297,7 @@ def test_not_found_prints_server_message(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "Not found:" in captured.err
     assert "Workspace 'default' not found" in captured.err
@@ -309,7 +311,7 @@ def test_not_found_prints_request_context_and_404_hint(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "Request: GET http://test/apis/agents/v2/workspaces/default/agents" in captured.err
     assert "Target: agents API route /apis/agents/v2/workspaces/default/agents" in captured.err
@@ -327,7 +329,7 @@ def test_not_found_hint_fallback_when_no_ctx(capsys):
     with pytest.raises(typer.Exit) as exc_info:
         handle_exception(error)
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
     captured = capsys.readouterr()
     assert "Not found:" in captured.err
     assert "Check the resource name/ID" in captured.err

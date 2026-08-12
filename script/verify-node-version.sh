@@ -5,23 +5,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WEB_DIR="$REPO_ROOT/web"
 
-# --- pnpm availability ---
-
-if ! command -v pnpm >/dev/null 2>&1; then
-  if command -v corepack >/dev/null 2>&1; then
-    corepack enable pnpm
-  else
-    echo "pnpm is required for Studio bootstrap."
-    echo "Install pnpm and put it first on PATH."
-    exit 1
-  fi
-fi
-
-# --- Node.js availability ---
+# --- Toolchain availability ---
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js is required for Studio bootstrap."
-  echo "Install a matching local Node.js and put it first on PATH."
+  echo "node is not on PATH." >&2
+  exit 1
+fi
+
+if [[ -n "${PNPM_VERSION:-}" ]]; then
+  if ! command -v corepack >/dev/null 2>&1; then
+    echo "corepack is not on PATH." >&2
+    exit 1
+  fi
+  pnpm() {
+    corepack "pnpm@${PNPM_VERSION}" "$@"
+  }
+elif ! command -v pnpm >/dev/null 2>&1; then
+  echo "pnpm is not on PATH." >&2
+  echo "Install it, or rerun without TOOLCHAIN=system to use Flox." >&2
   exit 1
 fi
 

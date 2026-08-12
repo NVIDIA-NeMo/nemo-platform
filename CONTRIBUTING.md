@@ -19,6 +19,27 @@ cd nemo-platform
 
 Install the local prerequisites first, then run the bootstrap targets from the repository root.
 
+#### Full Developer Environment with Flox
+
+For a complete contributor environment, including Python tooling and TypeScript
+dependencies, install [Flox](https://flox.dev/docs/install-flox/install) and
+run bootstrap from the repository root:
+
+```bash
+# macOS with Homebrew; see the Flox installation guide for other platforms.
+brew install flox
+
+make bootstrap
+```
+
+`make bootstrap` activates Flox as needed, installs the pinned Python and Node.js
+toolchains, synchronizes Python dependencies, installs pnpm workspace
+dependencies, and builds Studio assets. Run `flox activate` afterward when you
+want to use `uv`, `node`, or `pnpm` directly. Flox supplies Node.js and Corepack
+installs the repository-pinned pnpm into the environment cache. Interactive
+activation installs the repository's pre-commit hook when needed; leave the
+environment with `flox deactivate` when you are done.
+
 #### Python Environment Setup
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management of the Python environment.
@@ -31,10 +52,8 @@ Install `uv`:
 curl -LsSf https://astral.sh/uv/0.9.14/install.sh | sh
 ```
 
-> **NeMo Platform uses uv version `>=0.9.14`.**
->
-> When updating this version, make sure to update the version in
-> `pyproject.toml` and CI jobs.
+> **NeMo Platform requires uv version `>=0.9.14`.** Flox and CI use the exact
+> repository toolchain version; `pyproject.toml` intentionally remains a range.
 
 #### Studio Environment Setup
 
@@ -44,11 +63,10 @@ For complete Studio setup instructions, see the [Getting Started section in the 
 
 ##### Prerequisites
 
-1. **Node.js matching the Studio workspace engine**: Install a Node version that satisfies the `engines.node` range in `web/package.json`.
-2. **pnpm**: Install via corepack (included with Node.js 16.13+)
+1. **Flox**: Activate the repository environment, which provides the pinned Node.js and pnpm versions:
 
 ```bash
-corepack enable pnpm
+flox activate
 ```
 
 #### Initialize the Repository
@@ -60,6 +78,18 @@ make bootstrap
 ```
 
 If you only need Python dependencies, use `make bootstrap-python`.
+
+#### System Toolchain Alternative
+
+Flox is recommended, but contributors may use an existing toolchain. Install uv
+`>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run:
+
+```bash
+make TOOLCHAIN=system bootstrap
+```
+
+Docker is not needed for dependency bootstrap, but it is required by `nemo setup`
+and local services.
 
 ##### Building the Studio UI for Local Development
 
@@ -83,7 +113,8 @@ pnpm dev
 
 This provides hot module replacement (HMR) at the local URL printed by Vite.
 
-When you're ready to test with the FastAPI service, rebuild with `pnpm build:fastapi`.
+When you're ready to test with the FastAPI service, rebuild with
+`pnpm build:fastapi`.
 
 ##### Running the Platform with Studio
 
@@ -102,8 +133,8 @@ uv run nemo setup
 Then start the platform from the repository root:
 
 ```bash
-# From an activated virtual environment
-source .venv/bin/activate
+# From an activated Flox environment
+flox activate
 nemo services run
 
 # Or run everything with quickstart config (builds OPA policy first)
@@ -119,46 +150,9 @@ NMP_CONFIG_FILE_PATH=packages/nmp_platform/config/local.yaml \
 
 Visit `http://localhost:8080/studio/` to access the Studio UI.
 
-#### Using direnv for Automatic Virtual Environment Activation (Optional)
-
-[direnv](https://direnv.net/) can automatically activate your virtual environment
-when you enter the project directory, eliminating the need to manually source
-the venv or use `uv run` for every command.
-
-```bash
-eval "$(direnv hook bash)"  # for bash
-eval "$(direnv hook zsh)"   # for zsh
-```
-
-Create an `.envrc` file in the repository root (note: the `install_direnv.sh`
-script creates this file automatically if it doesn't exist):
-
-```bash
-# See https://github.com/direnv/direnv/wiki/Python
-# This has to be before our PATH_adds as well
-export VIRTUAL_ENV=.venv
-layout python3
-# this should make it so you don't have to source the venv directly
-PATH_add $VIRTUAL_ENV/bin
-# ensure local bin is ahead of the venv, mostly for UV. we want to use the
-PATH_add ./script
-```
-
-Allow direnv to load the configuration:
-
-```bash
-direnv allow
-```
-
-Now when you `cd` into the repository, the virtual environment will
-automatically activate. You can run commands like `pytest` or `ruff` directly
-without needing to prefix them with `uv run`.
-
-Initialize pre-commit:
-
-```bash
-pre-commit install
-```
+After the first interactive `flox activate`, pre-commit is installed
+automatically. System-toolchain contributors can install it explicitly with
+`uv run pre-commit install`.
 
 ## Development
 
@@ -241,25 +235,25 @@ Personal rules are ideal for:
 
 `third_party/licenses.jsonl` is protected by code owners responsible for verifying any new dependencies are approved by the open source review board (OSRB) and appropriate tracking bugs are filed.
 
-A snapshot of Python dependencies, versions, and their detected licenses is maintained in `third_party/licenses.jsonl`. The CI linting stage validates that the checked-in license file matches with the detected dependencies. This file can be automatically regenerated by:
+A snapshot of Python and Go dependencies, versions, and their detected licenses is maintained in `third_party/licenses.jsonl`. The CI linting stage validates that the checked-in license file matches with the detected dependencies. This file can be automatically regenerated by:
 
 ```bash
 make update-licenses
 ```
 
-This command uses [osv-scanner](https://github.com/google/osv-scanner) to scan dependencies and generate the license report. The Makefile will automatically download osv-scanner if it's not already installed.
+This command uses [osv-scanner](https://github.com/google/osv-scanner) to scan dependencies and generate the license report. It scans the uv-exported Python dependency snapshot plus the Go modules under `services/core/jobs/jobs-launcher` and `services/guardrails/callouts`. The Makefile will automatically download osv-scanner if it's not already installed.
 
 Alternatively, you can use the SDK/license maintenance CLI directly:
 
 ```bash
-# Generate license reports for main and garak
-nemo-platform-sdk-tools license generate
+# Generate license reports for Python and Go dependencies
+uv run nemo-platform-sdk-tools license generate
 
 # Find packages with missing licenses
-nemo-platform-sdk-tools license find-missing
+uv run nemo-platform-sdk-tools license find-missing
 ```
 
-The license generation process creates intermediate JSON files (`third_party/osv-licenses.json`, `third_party/osv-licenses-garak.json`) which are marked as generated files in `.gitattributes`.
+The license generation process creates intermediate JSON files (`third_party/osv-licenses*.json`) which are marked as generated files in `.gitattributes`. The main `third_party/osv-licenses.json` file is the merged artifact used by downstream reports.
 
 License overrides for packages where osv-scanner cannot determine the correct license are maintained in `tools/nemo-platform-sdk-tools/src/nemo_platform_sdk_tools/license/overrides.yaml`. This YAML file supports comments to document the source of license information.
 

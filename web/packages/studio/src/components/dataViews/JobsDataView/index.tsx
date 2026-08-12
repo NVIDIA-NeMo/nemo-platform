@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
+import { CancelJobButton } from '@nemo/common/src/components/CancelJobButton';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -16,15 +19,12 @@ import type {
   PlatformJobsListFilter,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, StatusMessage } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
-import { CancelJobButton } from '@studio/components/CancelJobButton';
 import {
   HIDDEN_JOB_SOURCES,
   JOB_SOURCE,
   SOURCE_OPTIONS,
 } from '@studio/components/dataViews/JobsDataView/constants';
 import { getJobDetailRoute } from '@studio/components/dataViews/JobsDataView/utils';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_JOBS } from '@studio/constants/links';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
@@ -33,7 +33,7 @@ import { iconColorClass } from '@studio/routes/constants';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ChartBar, Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
 import { ComponentProps, type ReactNode, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const SOURCE_DISPLAY: Record<string, { label: string; icon: ReactNode }> = {
   [JOB_SOURCE.CUSTOMIZATION]: {
@@ -195,7 +195,12 @@ export const JobsDataView = () => {
       enableSorting: false,
       cell: ({ row }) => (
         <Flex justify="end">
-          <CancelJobButton jobName={row.original.name} jobStatus={row.original.status} compact />
+          <CancelJobButton
+            workspace={workspace}
+            jobName={row.original.name}
+            jobStatus={row.original.status}
+            compact
+          />
         </Flex>
       ),
     }),

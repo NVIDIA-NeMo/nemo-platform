@@ -25,6 +25,7 @@ from nemo_evaluator_sdk.values.evidence import (
     CandidateEvidence,
     EvidenceDescriptor,
 )
+from nemo_evaluator_sdk.values.results import AggregateScore
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
@@ -100,6 +101,61 @@ class AgentTaskRunner(Protocol):
         tasks: Sequence[AgentEvalTask],
         config: AgentEvalRunConfig | None = None,
     ) -> Sequence[AgentEvalTrial]: ...
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the settings that shape its results, for run provenance.
+
+        Required: every run has a producer, and the result records it on
+        ``AgentEvalResult.metadata.target`` so a run can be understood after the fact. Return a stable
+        short ``name`` (``"gym"``, ``"harbor"``) rather than a class name. ``config`` must not contain
+        secrets — it is persisted with the run bundle.
+        """
+        ...
+
+
+class RunnerInfo(BaseModel):
+    """Identity of whatever produced a run's trials, recorded for provenance."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="Identifier of the runner/target, e.g. 'gym', 'harbor', or a model name.")
+    kind: str = Field(
+        default="runner",
+        description="What produced the trials: 'runner', 'model', 'agent', or 'imported' for stored trials.",
+    )
+    version: str | None = Field(default=None, description="Version of the backing tool, when known.")
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Runner-specific settings that affect results, recorded so a run can be understood "
+        "after the fact. Must not contain secrets.",
+    )
+
+
+def callable_identity(target: object) -> str:
+    """Module-qualified identity of a callable, for :attr:`RunnerInfo.config`.
+
+    A bare ``__qualname__`` is ambiguous across modules — two runs using different callables that
+    share a name would record identical provenance — so qualify it with the defining module.
+    """
+    module = getattr(target, "__module__", None)
+    name = getattr(target, "__qualname__", None) or type(target).__name__
+    return f"{module}.{name}" if module else name
+
+
+@runtime_checkable
+class RunAggregationsProvider(Protocol):
+    """Optional companion to :class:`AgentTaskRunner`: a runner that computed its own run-level
+    aggregations (a backend's pass@k, reward profile, environment-specific metrics) exposes them here,
+    mapped onto the SDK's typed aggregate scores. The evaluator calls this after ``run_tasks``;
+    implementers stash their numbers during the run and convert them here.
+
+    Returned scores are merged into ``summary.scores``, so a backend's own figures sit alongside the
+    SDK's and are addressable by name the same way. Implementers must namespace names under
+    ``runner.<runner_name>.`` so an imported figure is never mistaken for one the SDK computed. Runners
+    with no run-level aggregations simply don't implement this protocol.
+    """
+
+    def run_aggregate_scores(self) -> Sequence[AggregateScore]: ...
 
 
 @runtime_checkable

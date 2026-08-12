@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
 import { Button, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { writeStoredActiveSessionId } from '@studio/routes/agents/ClaudeCodeChatRoute/activeSessionStorage';
-import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
-import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { writeStoredActiveSessionId } from '@studio/routes/agents/CopilotChatRoute/activeSessionStorage';
+import { CopilotLayout } from '@studio/routes/agents/CopilotChatRoute/CopilotLayout';
+import type { CopilotChatRouteState } from '@studio/routes/agents/CopilotChatRoute/types';
 import { getCopilotChatRoute } from '@studio/routes/utils';
 import { Send, Terminal } from 'lucide-react';
 import {
@@ -19,7 +19,7 @@ import {
   useCallback,
   useState,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 const LandingComposer = ({
   input,
@@ -105,14 +105,14 @@ export const DashboardLandingRoute: FC = () => {
   const handleSubmit = useCallback(
     (prompt: string) => {
       writeStoredActiveSessionId(workspace, null);
-      const state: ClaudeCodeChatRouteState = { initialPrompt: prompt };
+      const state: CopilotChatRouteState = { initialPrompt: prompt };
       navigate(getCopilotChatRoute(workspace), { state });
     },
     [navigate, workspace]
   );
 
   return (
-    <ClaudeCodeLayout hideArtifacts>
+    <CopilotLayout hideArtifacts>
       <AccessibleTitle title="Dashboard">
         <GradientBackground className="h-full w-full">
           <main className="relative flex h-full w-full items-center justify-center px-4 py-10 text-primary">
@@ -128,6 +128,6 @@ export const DashboardLandingRoute: FC = () => {
           </main>
         </GradientBackground>
       </AccessibleTitle>
-    </ClaudeCodeLayout>
+    </CopilotLayout>
   );
 };

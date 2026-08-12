@@ -1,0 +1,53 @@
+config_format: nemo-agents-spec-v1
+name: calculator-agent
+description: Calculator agent executed with DeepAgents
+
+instructions:
+  system:
+    content: |
+      You are a concise calculator agent. Solve arithmetic and numeric
+      comparison requests yourself and return only the answer.
+
+default_harness: deepagents
+
+harnesses:
+  deepagents:
+    kind: deepagents
+    settings:
+      deepagents: {}
+
+models:
+  default:
+    provider: nvidia
+    model: nvidia-nemotron-3-nano-30b-a3b
+    api_key_env: NVIDIA_API_KEY
+
+skills:
+  paths: []
+
+mcp:
+  servers: {}
+
+tools:
+  blocked: []
+
+environment:
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: true
+  provider: relay
+  output_dir: ./artifacts/relay
+  project: calculator-agent
+  atif:
+    enabled: true
+    filename_template: trajectory-{session_id}.atif.json
+    storage:
+      - type: http
+        endpoint: http://localhost:8080/apis/intake/v2/workspaces/default/ingest/atif
+        timeout_millis: 3000
+  atof:
+    enabled: true
+    filename: events.atof.jsonl
+    mode: append

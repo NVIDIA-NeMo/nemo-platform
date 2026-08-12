@@ -5,18 +5,46 @@
 
 from __future__ import annotations
 
+import json
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
+from nemo_evaluator_sdk.agent_eval.scores import (
+    AgentEvalDiagnosticSeverity,
+    AgentEvalScoreStatus,
+    AgentEvalTaskScore,
+    is_trial_failure,
+)
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask, SemanticReducer, ViewSignal
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, RunnerInfo
+from nemo_evaluator_sdk.metrics.aggregation import compute_percentiles
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateRangeScore, AggregateScore
+from nemo_evaluator_sdk.values.protocol import BooleanValue, ContinuousScore
+from nemo_evaluator_sdk.values.results import (
+    AggregatedMetricResult,
+    AggregateRangeScore,
+    AggregateScore,
+    ResultView,
+    flatten_dict,
+    format_table,
+    serialize_value,
+    summary_aggregate_record,
+)
 from pydantic import BaseModel, ConfigDict, Field
+
+#: Metric-output value schemas eligible for pass@k (a per-attempt "did it pass?" signal). Labels,
+#: discrete/count outputs, and free models (e.g. token measurements) are excluded.
+_PASS_AT_K_VALUE_SCHEMAS = (ContinuousScore, BooleanValue)
+
+#: Score value at or above which an attempt counts as a pass for pass@k. Full credit — pass@k answers
+#: "did the agent solve the task", so partial credit is not a pass. Deliberately not configurable:
+#: it's a reporting-time interpretation, and making it tunable would yield pass@k numbers that look
+#: comparable across runs but aren't.
+_PASS_VALUE = 1.0
 
 
 class AgentEvalMetricOutputCoverage(BaseModel):
@@ -51,16 +79,34 @@ class AgentEvalSummary(BaseModel):
     trial_count: int = Field(default=0, description="Number of distinct trials scored.")
     score_count: int = Field(default=0, description="Total number of metric scores.")
 
+    @property
+    def scores_by_name(self) -> Mapping[str, AggregateScore]:
+        """Aggregates keyed by name — see :attr:`AggregatedMetricResult.scores_by_name`."""
+        return self.scores.scores_by_name
+
+    def score(self, name: str) -> AggregateScore:
+        """Return the aggregate named ``name`` — see :meth:`AggregatedMetricResult.score`.
+
+        Exists so callers needn't know the aggregates sit one level down, behind a field whose name
+        differs from the summary's own accessor by a single character.
+        """
+        return self.scores.score(name)
+
     @staticmethod
     def from_scores(
         scores: Sequence[AgentEvalTaskScore],
         *,
         tasks: Sequence[AgentEvalTask] | None = None,
+        extra_scores: Sequence[AggregateScore] = (),
     ) -> AgentEvalSummary:
-        """Build aggregated scores and coverage for a set of metric scores."""
+        """Build aggregated scores and coverage for a set of metric scores.
+
+        ``extra_scores`` are already-aggregated scores contributed by the runner (namespaced
+        ``runner.<name>.``), merged in so a backend's own figures are addressable the same way as ours.
+        """
         task_list = list(tasks) if tasks is not None else None
         return AgentEvalSummary(
-            scores=_aggregate_scores(scores, task_list),
+            scores=_aggregate_scores(scores, task_list, extra_scores),
             metric_coverage=_metric_coverage(scores, task_list),
             task_count=len(task_list) if task_list is not None else len({score.task_id for score in scores}),
             trial_count=len({score.trial_id for score in scores}),
@@ -68,8 +114,54 @@ class AgentEvalSummary(BaseModel):
         )
 
 
+class RunMetadata(BaseModel):
+    """Provenance for a run: what was evaluated, by what, and when.
+
+    Answers "what produced this result?" — previously improvised by callers inside an untyped
+    ``benchmark`` dict. ``labels`` remains free-form for caller-specific tags, but the fields that
+    every run has are typed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Caller-supplied tags for this run (e.g. benchmark, mode, backend). Free-form by design.",
+    )
+    target: RunnerInfo | None = Field(
+        default=None,
+        description="Identity of the runner/model/agent that produced the trials; None for imported trials.",
+    )
+    started_at: datetime | None = Field(default=None, description="UTC timestamp when the run began.")
+    finished_at: datetime | None = Field(default=None, description="UTC timestamp when scoring completed.")
+    duration_sec: float | None = Field(default=None, description="Wall-clock seconds from start to finish.")
+    sdk_version: str | None = Field(default=None, description="nemo-evaluator-sdk version that produced the run.")
+
+
+class BundleLocation(BaseModel):
+    """Where a run was written, returned by :meth:`AgentEvalResult.persist`.
+
+    Kept off :class:`AgentEvalResult` because it is not a property of the evaluation — it is the
+    outcome of choosing to store it. Holding one means the bundle exists, so there is no optional to
+    re-check; a run that was never persisted simply has no ``BundleLocation``.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    output_dir: Path = Field(description="Directory the run bundle was written to.")
+    dashboard_path: Path | None = Field(
+        default=None,
+        description="Path to the rendered HTML dashboard, or None when dashboard writing was disabled.",
+    )
+
+
 class AgentEvalResult(BaseModel):
-    """Root result for a completed agent evaluation: tasks, trials, scores, summary, and bundle metadata."""
+    """Root result for a completed agent evaluation: tasks, trials, scores, and summary.
+
+    Describes the evaluation and nothing else — storing it is a separate decision, made by calling
+    :meth:`persist`. Because the result carries no paths, it never holds a location that was unknown
+    when it was constructed, and nothing has to mutate it after the fact.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -78,23 +170,299 @@ class AgentEvalResult(BaseModel):
     trials: list[AgentEvalTrial] = Field(description="Trials produced or imported for the run.")
     scores: list[AgentEvalTaskScore] = Field(description="Metric scores computed for the trials.")
     summary: AgentEvalSummary = Field(description="Derived rollups and coverage computed for the run.")
-    benchmark: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Benchmark metadata recorded for the run.",
+    metadata: RunMetadata = Field(
+        default_factory=RunMetadata,
+        description="Run provenance: labels, target identity, timings, SDK version.",
     )
-    output_dir: Path | None = Field(default=None, description="Directory the run bundle was written to, if any.")
-    dashboard_path: Path | None = Field(default=None, description="Path to the rendered dashboard, if written.")
+    work_dir: Path | None = Field(
+        default=None,
+        description="Directory the run worked in, where its runtimes wrote trial evidence. Known "
+        "before the run starts (it comes from the run config), so unlike a bundle location it is "
+        "never attached after the fact. None for a purely in-memory run.",
+    )
+
+    def persist(self, output_dir: str | Path | None = None, *, write_dashboard: bool = True) -> BundleLocation:
+        """Write this run to a bundle and return where it landed.
+
+        Deliberately a call rather than something ``AgentEvaluator.run`` does for you: computing an
+        evaluation and storing one are separate decisions (the same reasoning as ``publish_to_intake``).
+
+        Defaults to :attr:`work_dir`, which is the directory the trials' evidence already lives under —
+        so the bundle is self-contained and survives being moved. Passing a different ``output_dir``
+        leaves those evidence references pointing back at the original directory. That is supported (a
+        re-scored run may reference an earlier run's deliverables) but the resulting bundle only
+        resolves while the original directory is still there.
+
+        Set ``write_dashboard=False`` to skip rendering ``report.html``.
+        """
+        # Imported here rather than at module scope: persistence imports this module for the types it
+        # writes, so a top-level import would be circular.
+        from nemo_evaluator_sdk.agent_eval.persistence import persist_run
+
+        target = output_dir if output_dir is not None else self.work_dir
+        if target is None:
+            raise ValueError(
+                "this run has no work_dir to persist into (it ran in memory); pass an explicit "
+                "output_dir, or set work_dir on the AgentEvalRunConfig so evidence and bundle share "
+                "a directory"
+            )
+        return persist_run(self, target, write_html_dashboard=write_dashboard)
+
+    def to_records(self, view: ResultView = "rows") -> list[dict[str, Any]]:
+        """Convert this run into flat dictionaries for export or inspection.
+
+        ``view="rows"`` yields one record per metric score — the agent-eval analogue of the dataset
+        path's row. The fan-out is preserved rather than collapsed: ``task_id`` and ``trial_id`` are
+        columns, so a consumer can still group by task, which is what pass@k depends on.
+
+        ``view="aggregate"`` matches the dataset path exactly — percentiles flattened, histograms
+        kept as JSON strings so the view stays tabular.
+
+        Args:
+            view: Output projection, either ``"rows"`` or ``"aggregate"``.
+
+        Returns:
+            Flat record dictionaries for downstream table/dataframe conversion.
+
+        Raises:
+            ValueError: If ``view`` is unsupported.
+        """
+        if view == "rows":
+            return [_score_record(score) for score in self.scores]
+
+        if view == "aggregate":
+            records: list[dict[str, Any]] = []
+            for score in self.summary.scores.scores:
+                record: dict[str, Any] = {}
+                for key, value in score.model_dump(mode="json").items():
+                    if key == "percentiles" and isinstance(value, dict):
+                        flatten_dict("percentiles", value, record)
+                    elif key == "histogram" and value is not None:
+                        # Histograms stay as JSON strings so aggregate views remain tabular instead
+                        # of expanding variable-width nested columns.
+                        record[key] = json.dumps(value, sort_keys=True)
+                    else:
+                        record[key] = value
+                records.append(record)
+            return records
+
+        raise ValueError(f"Unsupported view {view!r}. Expected 'rows' or 'aggregate'.")
+
+    def to_table(self, view: ResultView = "rows"):
+        """Convert records into a ``pyarrow.Table``.
+
+        Args:
+            view: Output projection, either ``"rows"`` or ``"aggregate"``.
+
+        Columns are unioned across every record before the table is built. ``pa.Table.from_pylist``
+        takes its schema from the first record alone, and in a row view ``error`` and
+        ``diagnostics.*`` appear only on failed scores — so a run whose first score succeeded would
+        otherwise export a table with the failure columns silently missing. ``to_pandas`` already
+        unions keys, and the two should not disagree about what a run contains.
+
+        Args:
+            view: Output projection, either ``"rows"`` or ``"aggregate"``.
+
+        Returns:
+            Table built from ``to_records(view=view)``.
+        """
+        import pyarrow as pa
+
+        records = self.to_records(view=view)
+        # dict-of-None preserves first-appearance order, matching how format_table derives columns.
+        columns = {key: None for record in records for key in record}
+        return pa.Table.from_pylist([{key: record.get(key) for key in columns} for record in records])
+
+    def to_pandas(self, view: ResultView = "rows"):
+        """Convert records into a pandas ``DataFrame``.
+
+        Args:
+            view: Output projection, either ``"rows"`` or ``"aggregate"``.
+
+        Returns:
+            DataFrame built from ``to_records(view=view)``.
+        """
+        import pandas as pd
+
+        return pd.DataFrame.from_records(self.to_records(view=view))
+
+    def format_summary(self, max_rows: int = 10, *, max_error_rows: int | None = None) -> str:
+        """Render a human-readable summary with aggregates and a score preview.
+
+        Args:
+            max_rows: Maximum number of score records included in the preview.
+            max_error_rows: Maximum number of failed scores included in the error-details section.
+                Defaults to ``max_rows``.
+
+        Returns:
+            Multi-line summary string suitable for terminal/notebook display.
+        """
+        if max_error_rows is None:
+            max_error_rows = max_rows
+        aggregate_records = [summary_aggregate_record(score) for score in self.summary.scores.scores]
+        preview = [_score_preview_record(score) for score in self.scores[:max_rows]]
+        parts = [
+            _agent_eval_summary_header(self),
+            "",
+            "Aggregate scores",
+            format_table(aggregate_records),
+        ]
+        if preview:
+            parts.extend(
+                [
+                    "",
+                    f"Score preview (first {len(preview)} of {len(self.scores)})",
+                    format_table(preview),
+                ]
+            )
+        parts.extend(_format_score_errors(self.scores, max_error_rows=max_error_rows))
+        return "\n".join(parts)
+
+    def print_summary(self, max_rows: int = 10, *, max_error_rows: int | None = None) -> None:
+        """Print ``format_summary`` output.
+
+        Args:
+            max_rows: Maximum number of score records included in the preview.
+            max_error_rows: Maximum number of failed scores included in the error-details section.
+                Defaults to ``max_rows``.
+        """
+        print(self.format_summary(max_rows=max_rows, max_error_rows=max_error_rows))
+
+    def __str__(self) -> str:
+        """Return the default compact summary representation.
+
+        Returns:
+            Summary string with up to five preview scores.
+        """
+        return self.format_summary(max_rows=5)
+
+
+def _score_error_text(score: AgentEvalTaskScore) -> str | None:
+    """Join the error-severity diagnostic messages for a score, or None when it has none."""
+    messages = [
+        diagnostic.message
+        for diagnostic in score.diagnostics
+        if diagnostic.severity is AgentEvalDiagnosticSeverity.ERROR
+    ]
+    return "; ".join(messages) if messages else None
+
+
+def _score_diagnostics_columns(score: AgentEvalTaskScore) -> dict[str, str]:
+    """JSON-encoded diagnostic columns, keyed ``diagnostics.<metric_type>``.
+
+    Encoded as compact JSON for the same reason the dataset path does it: diagnostics have a
+    metric-defined shape, and exports stay flat only if that shape is a string.
+    """
+    if not score.diagnostics:
+        return {}
+    return {
+        f"diagnostics.{score.metric_type}": json.dumps(
+            [serialize_value(diagnostic) for diagnostic in score.diagnostics], sort_keys=True
+        )
+    }
+
+
+def _score_preview_record(score: AgentEvalTaskScore) -> dict[str, Any]:
+    """Identity and status columns shared by the row export and the summary preview."""
+    record: dict[str, Any] = {
+        "task_id": score.task_id,
+        "trial_id": score.trial_id,
+        "metric_type": score.metric_type,
+        "status": score.status.value,
+    }
+    for output in score.outputs:
+        record[f"output.{output.name}"] = serialize_value(output.value)
+    return record
+
+
+def _score_record(score: AgentEvalTaskScore) -> dict[str, Any]:
+    """Full export record for one score: identity, preview columns, error text, and diagnostics.
+
+    Carries ``id``, ``run_id``, and ``metadata`` that the summary preview leaves out. An export is
+    the thing a caller joins, concatenates, and keeps: ``id`` is what a row is addressable by,
+    ``run_id`` keeps a frame self-describing once several runs are stacked into one, and
+    ``metadata`` is caller-supplied — dropping it silently discards data the SDK never owned. The
+    preview stays narrow because it is read on a terminal, the same split the dataset path makes
+    between ``to_records`` and ``summary_row_base_record``.
+    """
+    record: dict[str, Any] = {"id": score.id, "run_id": score.run_id}
+    record.update(_score_preview_record(score))
+    if error_text := _score_error_text(score):
+        record["error"] = error_text
+    record.update(_score_diagnostics_columns(score))
+    # Flattened rather than JSON-encoded: metadata is free-form but usually shallow and scalar, so
+    # dotted columns keep it queryable. Diagnostics get the JSON treatment instead because their
+    # shape is metric-defined and variable-width.
+    flatten_dict("metadata", serialize_value(score.metadata), record)
+    return record
+
+
+def _agent_eval_summary_header(result: AgentEvalResult) -> str:
+    """Build the header line, mirroring the shape :func:`summary_header` produces for row results.
+
+    The counts differ because the units do — a run has tasks, trials, and scores where the dataset
+    path has rows — but the ``Name(field=value, ...)`` shape is the same, and a status the run never
+    produced is left out, matching what that header does with its zero counts.
+
+    Statuses are counted by tallying the scores present, so an absent status simply never becomes a
+    key; there is no zero to filter out.
+    """
+    status_counts: dict[str, int] = {}
+    for score in result.scores:
+        status_counts[score.status.value] = status_counts.get(score.status.value, 0) + 1
+    fields = [
+        f"tasks={len(result.tasks)}",
+        f"trials={len(result.trials)}",
+        f"scores={len(result.scores)}",
+        f"aggregate_scores={len(result.summary.scores.scores)}",
+    ]
+    fields.extend(f"{status}={count}" for status, count in sorted(status_counts.items()))
+    return f"AgentEvalResult({', '.join(fields)})"
+
+
+def _format_score_errors(
+    scores: Sequence[AgentEvalTaskScore],
+    *,
+    max_error_rows: int | None,
+) -> list[str]:
+    """Render the failed-score detail section, separating a failed trial from a failed metric.
+
+    Both arrive as ``FAILED``, but they mean different things to a reader: a failed trial is an
+    attempt the agent is answerable for, a failed metric is a measurement that never happened. The
+    dataset path has no equivalent distinction to make, so this section is agent-eval's own rather
+    than a reuse of :func:`format_error_details`.
+    """
+    failed = [score for score in scores if score.status is AgentEvalScoreStatus.FAILED]
+    if not failed:
+        return []
+
+    # max(0, ...) guards a negative limit, which slicing would otherwise read as an offset from the
+    # end: failed[:-2] shows all but the last two rather than none. An over-large limit needs no
+    # guard, since a slice past the end is simply the whole list. Mirrors format_error_details.
+    shown_limit = len(failed) if max_error_rows is None else max(0, max_error_rows)
+    shown = failed[:shown_limit]
+    parts = ["", f"Error details ({len(shown)} of {len(failed)} failed scores)"]
+    for score in shown:
+        kind = "failed trial" if is_trial_failure(score) else "failed metric"
+        parts.extend(["", f"[{score.task_id} / {score.trial_id} / {score.metric_type}] {kind}"])
+        parts.append(_score_error_text(score) or "(no error-severity diagnostic recorded)")
+    if len(shown) < len(failed):
+        parts.extend(["", f"... {len(failed) - len(shown)} more failed scores omitted"])
+    return parts
 
 
 def _aggregate_scores(
     scores: Sequence[AgentEvalTaskScore],
     tasks: Sequence[AgentEvalTask] | None,
+    extra_scores: Sequence[AggregateScore] = (),
 ) -> AggregatedMetricResult:
-    """Aggregate per-metric-output and per-semantic-view values into range scores.
+    """Aggregate per-metric-output, per-semantic-view, and task-level pass@k values into range scores.
 
-    Each metric output becomes a score named ``<metric_type>.<output>`` and each
-    semantic view a score named ``view.<name>``. Failed and missing scores are
-    surfaced as ``nan_count`` so coverage is visible alongside the statistics.
+    Each metric output becomes a score named ``<metric_type>.<output>``, each semantic view
+    ``view.<name>``, and each score-like output additionally yields ``<metric_type>.<output>.pass@k``
+    task-level rollups. Failed and missing scores are surfaced as ``nan_count`` so coverage is visible
+    alongside the statistics. ``extra_scores`` (runner-contributed, ``runner.``-namespaced) are appended
+    as-is.
     """
     aggregated: list[AggregateScore] = []
 
@@ -119,7 +487,108 @@ def _aggregate_scores(
     for view_name, (values, total) in sorted(_semantic_view_values(scores, tasks).items()):
         aggregated.append(_aggregate_range_score(f"view.{view_name}", values, total))
 
+    aggregated.extend(_task_pass_at_k_scores(scores, tasks))
+    aggregated.extend(extra_scores)
+
     return AggregatedMetricResult(scores=aggregated)
+
+
+def _pass_at_k(n: int, c: int, k: int) -> float:
+    """Unbiased pass@k estimator (Chen et al., 2021): ``1 - C(n-c, k) / C(n, k)``.
+
+    The probability that at least one of ``k`` samples drawn without replacement from ``n`` attempts
+    (``c`` of them passing) is a pass. Caller guarantees ``1 <= k <= n``.
+    """
+    if n - c < k:
+        return 1.0
+    product = 1.0
+    for i in range(n - c + 1, n + 1):
+        product *= 1.0 - k / i
+    return 1.0 - product
+
+
+def _scorelike_outputs(tasks: Sequence[AgentEvalTask] | None) -> set[tuple[str, str]]:
+    """``(metric_type, output_name)`` pairs whose declared value is a score (continuous or boolean).
+
+    pass@k is only meaningful for a per-attempt pass/fail signal, so labels, discrete/count outputs,
+    and free models (e.g. token measurements) are excluded. Needs task metric specs; with no tasks
+    the set is empty and pass@k is skipped.
+    """
+    scorelike: set[tuple[str, str]] = set()
+    if tasks is None:
+        return scorelike
+    for task in tasks:
+        for metric in task.metrics:
+            metric_type = metric_type_name(metric)
+            for spec in metric.output_spec():
+                if issubclass(spec.value_schema, _PASS_AT_K_VALUE_SCHEMAS):
+                    scorelike.add((metric_type, spec.name))
+    return scorelike
+
+
+def _task_pass_at_k_scores(
+    scores: Sequence[AgentEvalTaskScore],
+    tasks: Sequence[AgentEvalTask] | None,
+) -> list[AggregateScore]:
+    """Task-level pass@k over the R trials per task, aggregated across tasks (uniform for any runner).
+
+    For each score-like metric output, group trials by task, count attempts ``n`` and passes ``c``
+    (value ``>= _PASS_VALUE``), then emit ``<metric>.<output>.pass@k`` for ``k`` in ``1..max(n)`` as
+    the across-task mean of the unbiased per-task estimator (over tasks with at least ``k`` attempts).
+    ``pass@1`` equals the macro per-task pass rate, i.e. the task-level mean.
+
+    **A failed trial is a failed attempt.** It counts toward ``n`` and never toward ``c``: an agent that
+    solved a task once and crashed once did not go one-for-one. A failed *metric* is different — it
+    leaves the attempt unmeasured rather than unsuccessful, so it stays out of ``n`` entirely rather
+    than being charged to the agent (see :func:`is_trial_failure`). Tasks left with no usable attempt at
+    all drop out of the estimate and are reported as ``nan_count``, uniform across ``k``, so a shrinking
+    denominator is never silent. (Tasks excluded from a given ``k`` merely for having fewer than ``k``
+    attempts are *not* counted there — that is the estimator working as defined, not missing data.)
+    """
+    scorelike = _scorelike_outputs(tasks)
+    if not scorelike:
+        return []
+    aggregated: list[AggregateScore] = []
+    for metric_type, output_name in sorted(scorelike):
+        attempts_and_passes: dict[str, list[int]] = {}  # task_id -> [n_attempts, n_passes]
+        tasks_seen: set[str] = set()
+        for score in scores:
+            if score.metric_type != metric_type:
+                continue
+            tasks_seen.add(score.task_id)
+            if is_trial_failure(score):
+                # The agent produced nothing to score. That is an attempt that did not pass, not an
+                # attempt that did not happen -- dropping it would report pass@1 = 1.0 for a run whose
+                # other rollout died, and make pass@2 vanish along with the attempt that justified it.
+                attempts_and_passes.setdefault(score.task_id, [0, 0])[0] += 1
+                continue
+            if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
+                # The metric raised, so whether this attempt passed is unknown. Charging it to the agent
+                # would let a judge timeout read as a task the agent failed; it lands in nan_count.
+                continue
+            output = _score_output(score, output_name)
+            value = _semantic_value(output) if output is not None else None
+            if value is None:
+                continue
+            counts = attempts_and_passes.setdefault(score.task_id, [0, 0])
+            counts[0] += 1
+            if value >= _PASS_VALUE:
+                counts[1] += 1
+        if not attempts_and_passes:
+            continue
+        # Tasks that were scored for this metric but yielded no usable attempt whatsoever. Constant
+        # across k, so pass@1 and pass@8 agree on how much of the task set went unmeasured.
+        unmeasured = len(tasks_seen - set(attempts_and_passes))
+        max_n = max(n for n, _ in attempts_and_passes.values())
+        for k in range(1, max_n + 1):
+            per_task = [_pass_at_k(n, c, k) for n, c in attempts_and_passes.values() if n >= k]
+            if per_task:
+                aggregated.append(
+                    _aggregate_range_score(
+                        f"{metric_type}.{output_name}.pass@{k}", per_task, len(per_task) + unmeasured
+                    )
+                )
+    return aggregated
 
 
 def _aggregate_range_score(name: str, values: list[float], total: int) -> AggregateRangeScore:
@@ -130,7 +599,13 @@ def _aggregate_range_score(name: str, values: list[float], total: int) -> Aggreg
         return AggregateRangeScore(name=name, count=0, nan_count=nan_count)
     total_sum = sum(finite)
     mean = total_sum / count
-    variance = sum((value - mean) ** 2 for value in finite) / count
+    # Report both conventions explicitly rather than picking one: the population figures describe the
+    # values actually evaluated, the sample figures estimate the process they were drawn from (which is
+    # what repeated trials over one task are sampling). Sample stats are undefined for a single value.
+    sum_sq_dev = sum((value - mean) ** 2 for value in finite)
+    variance = sum_sq_dev / count
+    sample_variance = sum_sq_dev / (count - 1) if count > 1 else None
+    percentiles = compute_percentiles(sorted(finite))
     return AggregateRangeScore(
         name=name,
         count=count,
@@ -141,6 +616,14 @@ def _aggregate_range_score(name: str, values: list[float], total: int) -> Aggreg
         max=max(finite),
         variance=variance,
         std_dev=math.sqrt(variance),
+        sample_variance=sample_variance,
+        sample_std_dev=math.sqrt(sample_variance) if sample_variance is not None else None,
+        # Reuse the deterministic-metric percentile helper so agent-eval and metric aggregation report
+        # the same distribution the same way.
+        percentiles=percentiles,
+        # Surfaced alongside the other basic stats so `median` means the same thing whether a score
+        # was computed here or imported from a backend that reports one without a full distribution.
+        median=percentiles.p50,
     )
 
 

@@ -7,10 +7,14 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any, Literal, Self
+from collections.abc import Mapping
+from difflib import get_close_matches
+from typing import TYPE_CHECKING, Any, Literal, Self
 
-import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 from nemo_evaluator_sdk.values.protocol import MetricDiagnostic, MetricOutput, MetricResult
 
@@ -22,8 +26,11 @@ AggregateFieldName = Literal[
     "mean",
     "min",
     "max",
+    "median",
     "std_dev",
     "variance",
+    "sample_std_dev",
+    "sample_variance",
     # Range-specific fields
     "score_type",
     "percentiles",
@@ -180,6 +187,15 @@ class ScoreStats(BaseModel):
         default=None,
         description="""The population standard deviation, (note: not the sample standard deviation).""",
     )
+    sample_variance: float | None = Field(
+        default=None,
+        description="The sample (Bessel-corrected, n-1) variance. None when fewer than two values.",
+    )
+    sample_stddev: float | None = Field(
+        default=None,
+        description="The sample (Bessel-corrected, n-1) standard deviation, estimating the spread of the "
+        "process the values were drawn from. None when fewer than two values (undefined, not zero).",
+    )
     stderr: float | None = Field(default=None, description="The standard error.")
     nan_count: int | None = Field(
         default=None,
@@ -189,7 +205,9 @@ class ScoreStats(BaseModel):
         default=None, description="The distribution of the rubric grading criteria for the score."
     )
 
-    @field_serializer("sum", "sum_squared", "min", "max", "mean", "variance", "stddev", "stderr")
+    @field_serializer(
+        "sum", "sum_squared", "min", "max", "mean", "variance", "stddev", "sample_variance", "sample_stddev", "stderr"
+    )
     def serialize_nan(self, v: float | None) -> float | str | None:
         """Serialize NaN stats as string values for JSON compatibility.
 
@@ -279,14 +297,43 @@ class AggregateScoreBase(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     name: str = Field(description="Name of the score.")
-    count: int = Field(description="Number of samples evaluated (excluding NaN).")
+    count: int | None = Field(
+        default=None,
+        description="Number of samples evaluated (excluding NaN). Omitted when the sample size is unknown "
+        "— e.g. a figure imported from a backend that reports statistics without the n behind them. "
+        "Distinct from 0, which asserts that nothing was evaluated. (``None`` on the model; the result "
+        "routes serialize with exclude_none, so the field is absent from the response rather than null.)",
+    )
     nan_count: int = Field(description="Number of samples that produced NaN scores.")
     sum: float | None = Field(default=None, description="Sum of all score values.")
     mean: float | None = Field(default=None, description="Mean score value.")
     min: float | None = Field(default=None, description="Minimum score value.")
     max: float | None = Field(default=None, description="Maximum score value.")
-    std_dev: float | None = Field(default=None, description="Standard deviation of the scores.")
-    variance: float | None = Field(default=None, description="Variance of the scores.")
+    median: float | None = Field(
+        default=None,
+        description="Median score value. Equal to percentiles.p50 when a percentile distribution is "
+        "also present; carried separately because a backend may report a median without one.",
+    )
+    std_dev: float | None = Field(
+        default=None,
+        description="Population standard deviation of the scores (divides by n). Describes the spread of "
+        "the values actually evaluated. See sample_std_dev to estimate the spread of the wider process.",
+    )
+    variance: float | None = Field(
+        default=None,
+        description="Population variance of the scores (divides by n). See sample_variance.",
+    )
+    sample_std_dev: float | None = Field(
+        default=None,
+        description="Sample standard deviation of the scores (Bessel-corrected, divides by n-1). Estimates "
+        "the spread of the process the values were drawn from — the right choice when repeated trials "
+        "sample a stochastic system. Omitted when fewer than two values (undefined, not zero).",
+    )
+    sample_variance: float | None = Field(
+        default=None,
+        description="Sample variance of the scores (Bessel-corrected, divides by n-1). Omitted when fewer "
+        "than two values.",
+    )
 
 
 class AggregateRangeScore(AggregateScoreBase):
@@ -339,7 +386,47 @@ class AggregateRubricScore(AggregateScoreBase):
         return data
 
 
-AggregateScore = AggregateRangeScore | AggregateRubricScore
+class AggregateScalarScore(AggregateScoreBase):
+    """A single pre-computed value with no underlying distribution available.
+
+    For figures a backend reports as one number (e.g. an environment's own ``pass@1`` or Elo) rather
+    than a set of per-sample values the SDK could aggregate itself. ``value`` carries the number;
+    ``mean``/``min``/``max`` are optional and normally unset, since there is no sample to describe —
+    a producer may still supply them, but readers key off ``score_type`` and read ``value``. Distinct from
+    :class:`AggregateRangeScore` so a reader can tell "this is the whole story" from "this summarizes
+    ``count`` samples", instead of seeing a range score with a suspicious ``count`` of 1.
+    """
+
+    score_type: Literal["scalar"] = Field(default="scalar", description="Type of score.")
+    value: float = Field(description="The reported value.")
+
+    _include_fields: frozenset[str] | None = None
+
+    def with_fields(self, fields: frozenset[AggregateFieldName]) -> Self:
+        """Return a copy configured to serialize only the specified fields."""
+        copy = self.model_copy()
+        object.__setattr__(copy, "_include_fields", {*fields, "name", "count"})
+        return copy
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler):
+        data = handler(self)
+        if self._include_fields is not None:
+            # Always include required fields (name, count, value), plus requested fields
+            fields_to_include = self._include_fields | {"name", "count", "value"}
+            return {k: v for k, v in data.items() if k in fields_to_include}
+        return data
+
+
+AggregateScore = AggregateRangeScore | AggregateRubricScore | AggregateScalarScore
+
+
+#: How many names a lookup-miss message lists when nothing resembles what was asked for. A judgement
+#: call rather than a measured optimum -- enough to show the naming convention, few enough to stay
+#: readable, since a run with several metrics times pass@k can carry dozens. Only this fallback is
+#: truncated; a near-miss is surfaced by similarity, so finding the name you meant never depends on
+#: where it happens to fall alphabetically.
+_MISS_NAME_LIMIT = 10
 
 
 class AggregatedMetricResult(BaseModel):
@@ -347,6 +434,70 @@ class AggregatedMetricResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     scores: list[AggregateScore] = Field(description="The list of aggregated scores.")
+
+    @property
+    def scores_by_name(self) -> Mapping[str, AggregateScore]:
+        """Aggregates keyed by :attr:`AggregateScoreBase.name`, for ``in``, ``.get()``, and iteration.
+
+        Reach for this when a score's absence is a legitimate outcome ("did this metric run?"); use
+        :meth:`score` when it isn't. Names are expected unique, but runner-contributed extras are
+        appended as-is, so a collision is possible: the first wins, matching the ``next(...)`` scans
+        this replaces.
+        """
+        by_name: dict[str, AggregateScore] = {}
+        for score in self.scores:
+            by_name.setdefault(score.name, score)
+        return by_name
+
+    def score(self, name: str) -> AggregateScore:
+        """Return the aggregate named ``name``, raising :class:`KeyError` if there isn't one.
+
+        Raises rather than returning ``None`` because an unknown name is nearly always a typo or a
+        metric that didn't run. Both are bugs worth surfacing at the lookup, where the name is in
+        hand, instead of as an ``AttributeError`` on ``.mean`` further downstream. When absence is a
+        real possibility, use ``scores_by_name.get(...)``.
+        """
+        # A direct scan rather than a lookup into `scores_by_name`: building the whole mapping to
+        # return one element allocates a dict per call, and the score list is short enough that the
+        # scan wins outright.
+        for score in self.scores:
+            if score.name == name:
+                return score
+        raise KeyError(self._unknown_score_message(name))
+
+    def _unknown_score_message(self, name: str) -> str:
+        """Explain a lookup miss, leading with near-misses when the name looks like a typo.
+
+        "Close" is :func:`difflib.get_close_matches`: SequenceMatcher (Ratcliff/Obershelp) similarity
+        of at least 0.6, best three first. That is a subsequence-overlap ratio, not an edit distance.
+
+        Listing every name alphabetically would be simpler, and is the better answer if the list is
+        left whole. Truncating one is what breaks it -- the name a caller meant is not reliably in
+        the first :data:`_MISS_NAME_LIMIT`, since a typo'd ``view.solved`` sits behind a page of
+        ``gym_reward.*`` in a run carrying pass@1..8 for two metrics.
+        """
+        # Deduplicated: names are expected unique, but runner-contributed extras are appended as-is,
+        # and a repeat would otherwise be suggested twice, listed twice, and counted twice in the
+        # "N other aggregates" tally -- making a collision look like two distinct near-misses.
+        available = sorted({score.name for score in self.scores})
+        if not available:
+            return f"no aggregate score named {name!r}: this result has no aggregates at all"
+        close = get_close_matches(name, available, n=3)
+        if close:
+            suggestions = ", ".join(repr(match) for match in close)
+            message = f"no aggregate score named {name!r}; did you mean {suggestions}?"
+            # Say how many others there are, so a wrong guess isn't a dead end: without this the
+            # caller can't tell whether the suggestions are the whole set or three of forty.
+            others = len(available) - len(close)
+            if others == 0:
+                return message
+            noun = "aggregate" if others == 1 else "aggregates"
+            return f"{message} ({others} other {noun} in this result)"
+        shown = ", ".join(repr(score_name) for score_name in available[:_MISS_NAME_LIMIT])
+        remainder = len(available) - _MISS_NAME_LIMIT
+        if remainder > 0:
+            shown = f"{shown}, ... ({remainder} more)"
+        return f"no aggregate score named {name!r}; available: {shown}"
 
 
 class RowScore(BaseModel):
@@ -643,6 +794,12 @@ class EvaluationResult(BaseModel):
         Returns:
             Table built from ``to_records(view=view)``.
         """
+        # Imported here rather than at module scope: pyarrow (plus its numpy tail) costs ~31 MB
+        # RSS and 223 modules, this is its only runtime use in the module, and the module is on
+        # the agent_eval import path, which never calls this method. The return annotation is a
+        # string already (`from __future__ import annotations`), so it needs no import.
+        import pyarrow as pa
+
         return pa.Table.from_pylist(self.to_records(view=view))
 
     def to_pandas(self, view: ResultView = "rows"):

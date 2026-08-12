@@ -16,6 +16,10 @@ import { renderRoute, screen, waitFor } from '@studio/tests/util/render';
 import { fireEvent } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 
+vi.hoisted(() => {
+  vi.stubEnv('VITE_FF_CUSTOMIZER_ENABLED', 'false');
+});
+
 vi.mock('use-debounce', () => ({
   useDebounce: (value: unknown) => [value, { cancel: () => {}, flush: () => {} }],
 }));

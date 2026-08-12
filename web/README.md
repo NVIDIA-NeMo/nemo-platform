@@ -4,19 +4,29 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 
 ## Getting Started
 
-1. Install the latest [Node.js 22](https://nodejs.org/en/download) (LTS).
-2. Install pnpm, install workspace deps, and copy `.env` files:
+1. For first setup, install Flox from the repository root and run `make bootstrap-studio`; it provides the pinned Node.js and pnpm versions without requiring global installation. For interactive web work, activate Flox:
 
    ```bash
-   npm install -g pnpm
+   flox activate      # from the repository root
+   ```
+
+   Or install Node.js `22.23.2` and pnpm `10.34.5` yourself, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
+
+2. Copy `.env` files from `web/`. `make bootstrap-studio` already installs the
+   workspace dependencies. In an activated Flox environment, Corepack provides
+   the repository-pinned pnpm:
+
+   ```bash
    pnpm install
    cp packages/studio/env/.env.dev.local.sample packages/studio/env/.env.dev.local && \
      cp packages/studio/env/.env.e2e packages/studio/env/.env.e2e.local
    ```
 
+   `pnpm install` also syncs the KUI `kaizen-ui` agent skill from the `@nvidia/foundations-react-core` design system package into `web/.agents/skills/` (via the root `sync-skills` script). The synced skill is gitignored; re-run `pnpm sync-skills` from `web/` to refresh it after upgrading the package.
+
 ## Running Studio Locally
 
-Run the following script from the root of the repo:
+Run the following script from `web/`:
 
 ```bash
 pnpm dev
@@ -40,7 +50,7 @@ pnpm add <pkg> --filter <workspace>
 
 ### eslint / prettier
 
-We use `eslint` and `prettier` for linting and formatting. `pnpm install` will download those for you, and you can run them with the `pnpm` scripts found in `package.json`.
+We use `eslint` and `prettier` for linting and formatting. `pnpm install` will download those for you, and you can run the `pnpm` scripts found in `package.json` directly.
 
 It's highly recommend you set up your IDE to run these tools on save, so you don't have to worry about manually formatting/linting, and failing CI because your code isn't formatted/linted.
 

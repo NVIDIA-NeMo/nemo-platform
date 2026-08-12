@@ -10,8 +10,8 @@
  * its affiliates is strictly prohibited.
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { InferenceProvidersDataView } from '@studio/components/dataViews/InferenceProvidersDataView';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -19,7 +19,7 @@ import { CreateInferenceProviderSidePanel } from '@studio/routes/InferenceProvid
 import type { InferenceProviderPresetId } from '@studio/routes/InferenceProvidersListRoute/CreateInferenceProviderSidePanel/inferenceProviderPresets';
 import { getWorkspaceInferenceProvidersRoute } from '@studio/routes/utils';
 import { FC, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 
 export const InferenceProvidersListRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

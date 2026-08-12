@@ -3,6 +3,7 @@
 
 import type { DataDesignerConfig } from '@nemo/sdk/generated/data-designer/schema';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { readLineDelimitedStream } from '@studio/util/lineStream';
 
 /** Request body for the data designer preview stream endpoint */
 export interface PreviewRequestBody {
@@ -81,21 +82,8 @@ export async function streamPreview(
   const body = response.body;
   if (!body) throw new Error('No response body');
 
-  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += value;
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      const msg = parsePreviewLine(line.trim());
-      if (msg) onLine(msg);
-    }
-  }
-
-  const last = parsePreviewLine(buffer.trim());
-  if (last) onLine(last);
+  await readLineDelimitedStream(body, (line) => {
+    const msg = parsePreviewLine(line.trim());
+    if (msg) onLine(msg);
+  });
 }

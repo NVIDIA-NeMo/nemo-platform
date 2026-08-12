@@ -9,6 +9,7 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run, read_trials
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
@@ -70,7 +71,6 @@ def test_persist_run_writes_bundle_relative_refs_that_survive_a_move(tmp_path: P
         trials=[_trial_with_workspace(str(workspace))],  # absolute ref under the bundle
         scores=[],
         summary=AgentEvalSummary.from_scores([], tasks=[]),
-        benchmark={},
     )
     persist_run(result, bundle)
 
@@ -113,7 +113,6 @@ def test_persist_and_read_keep_external_evidence_refs_absolute(tmp_path: Path) -
         trials=[_trial_with_workspace(external_ref)],
         scores=[],
         summary=AgentEvalSummary.from_scores([], tasks=[]),
-        benchmark={},
     )
     persist_run(result, bundle)
 
@@ -122,3 +121,46 @@ def test_persist_and_read_keep_external_evidence_refs_absolute(tmp_path: Path) -
 
     (trial,) = read_trials(bundle)
     assert trial.evidence.require("workspace").ref == external_ref  # retained as-is
+
+
+def test_persist_defaults_to_the_work_dir_so_evidence_lands_inside_the_bundle(tmp_path: Path) -> None:
+    # Defaulting to work_dir is what keeps a bundle self-contained: the evidence the trials point at
+    # is already underneath it, so persist can rewrite the refs bundle-relative.
+    workspace = tmp_path / "evidence" / "000000-taskA" / "workspace"
+    workspace.mkdir(parents=True)
+    result = AgentEvalResult(
+        run_id="r",
+        tasks=[],
+        trials=[_trial_with_workspace(str(workspace))],
+        scores=[],
+        summary=AgentEvalSummary.from_scores([], tasks=[]),
+        work_dir=tmp_path,
+    )
+
+    location = result.persist(write_dashboard=False)
+
+    assert location.output_dir == tmp_path
+    stored = json.loads((tmp_path / "trials.jsonl").read_text(encoding="utf-8"))["evidence"]["descriptors"]
+    assert stored["workspace"]["ref"] == "evidence/000000-taskA/workspace"  # relative => self-contained
+
+
+def test_persist_without_a_work_dir_or_an_explicit_target_is_an_error() -> None:
+    # An in-memory run has nowhere to go; failing loudly beats inventing a directory.
+    result = AgentEvalResult(
+        run_id="r", tasks=[], trials=[], scores=[], summary=AgentEvalSummary.from_scores([], tasks=[])
+    )
+
+    with pytest.raises(ValueError, match="no work_dir"):
+        result.persist()
+
+
+def test_persist_accepts_an_explicit_target_for_an_in_memory_run(tmp_path: Path) -> None:
+    # The counterpart to the error above: an in-memory run has no default, but naming one works.
+    result = AgentEvalResult(
+        run_id="r", tasks=[], trials=[], scores=[], summary=AgentEvalSummary.from_scores([], tasks=[])
+    )
+
+    location = result.persist(tmp_path, write_dashboard=False)
+
+    assert location.output_dir == tmp_path
+    assert json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))["run_id"] == "r"

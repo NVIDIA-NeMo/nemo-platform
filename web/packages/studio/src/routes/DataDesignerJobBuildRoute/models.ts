@@ -10,6 +10,7 @@ import { groupModelsByWorkspace, hasModelProvider } from '@nemo/common/src/utils
 import type {
   ChatCompletionInferenceParams,
   EmbeddingInferenceParams,
+  ChatCompletionInferenceParamsExtraBody,
   EmbeddingInferenceParamsExtraBody,
   ModelConfig,
 } from '@nemo/sdk/generated/data-designer/schema';
@@ -21,6 +22,10 @@ import type {
   ModelProvider,
 } from '@nemo/sdk/generated/platform/schema';
 import type { TemplateModelSpec } from '@studio/components/CreateFilesetStart/types';
+import {
+  DEFAULT_MAX_PARALLEL_REQUESTS,
+  DEFAULT_TEXT_INFERENCE_PARAMS,
+} from '@studio/constants/constants';
 
 /** Mirrors the SDK ModelConfig shape; `alias` is what LLM columns reference via `model_alias`. */
 export interface BuilderModel {
@@ -153,6 +158,11 @@ export const resolveTemplateModel = (
  * Resolves a template's model specs into {@link BuilderModel}s, numbering ids from
  * `startId`. `model`/`provider` may be empty when the spec omits a preferred model — the
  * build route auto-fills them from the workspace once the platform model list loads.
+ *
+ * Text specs are seeded with {@link DEFAULT_TEXT_INFERENCE_PARAMS} so generation runs with a
+ * truncated sampling tail rather than the serving side's untruncated defaults; a spec that
+ * names a value keeps its own. Embedding specs get only the concurrency cap — temperature
+ * and top_p are meaningless there and would be rejected.
  */
 export const buildModelsFromTemplate = (
   specs: readonly TemplateModelSpec[] = [],
@@ -163,7 +173,10 @@ export const buildModelsFromTemplate = (
     alias: spec.alias,
     model: spec.model ?? '',
     provider: '',
-    inferenceParams: { ...spec.inferenceParams },
+    inferenceParams:
+      spec.inferenceParams?.generation_type === 'embedding'
+        ? { max_parallel_requests: DEFAULT_MAX_PARALLEL_REQUESTS, ...spec.inferenceParams }
+        : { ...DEFAULT_TEXT_INFERENCE_PARAMS, ...spec.inferenceParams },
   }));
 
 export const builderModelFromSelection = (
@@ -228,16 +241,25 @@ const toInferenceParameters = (
       inference.extra_body = extra_body as EmbeddingInferenceParamsExtraBody;
     }
     if (typeof dimensions === 'number') inference.dimensions = dimensions;
+    if (typeof params.max_parallel_requests === 'number') {
+      inference.max_parallel_requests = params.max_parallel_requests;
+    }
     return inference;
   }
 
-  const { temperature, top_p, max_tokens } = params;
+  const { temperature, top_p, max_tokens, max_parallel_requests } = params;
   const inference: ChatCompletionInferenceParams = {
     generation_type: 'chat-completion',
     max_tokens: max_tokens ?? MAX_COMPLETION_TOKENS_DEFAULT,
   };
   if (temperature !== undefined) inference.temperature = temperature;
   if (top_p !== undefined) inference.top_p = top_p;
+  if (typeof max_parallel_requests === 'number') {
+    inference.max_parallel_requests = max_parallel_requests;
+  }
+  if (params.extra_body && typeof params.extra_body === 'object') {
+    inference.extra_body = params.extra_body as ChatCompletionInferenceParamsExtraBody;
+  }
   return inference;
 };
 
@@ -273,6 +295,9 @@ const inferenceParamsFromConfig = (
     if (params.encoding_format) inference.encoding_format = params.encoding_format;
     if (params.extra_body) inference.extra_body = params.extra_body;
     if (typeof params.dimensions === 'number') inference.dimensions = params.dimensions;
+    if (typeof params.max_parallel_requests === 'number') {
+      inference.max_parallel_requests = params.max_parallel_requests;
+    }
     return inference;
   }
 
@@ -281,6 +306,10 @@ const inferenceParamsFromConfig = (
   if (typeof chat.temperature === 'number') inference.temperature = chat.temperature;
   if (typeof chat.top_p === 'number') inference.top_p = chat.top_p;
   if (typeof chat.max_tokens === 'number') inference.max_tokens = chat.max_tokens;
+  if (typeof chat.max_parallel_requests === 'number') {
+    inference.max_parallel_requests = chat.max_parallel_requests;
+  }
+  if (chat.extra_body) inference.extra_body = chat.extra_body;
   return inference;
 };
 

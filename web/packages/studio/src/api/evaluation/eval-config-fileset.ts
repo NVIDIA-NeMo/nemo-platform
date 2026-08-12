@@ -16,7 +16,7 @@ const isNotFoundError = (err: unknown): boolean => {
   return e?.response?.status === 404 || e?.status === 404;
 };
 
-const isConflictError = (err: unknown): boolean => {
+export const isConflictError = (err: unknown): boolean => {
   const e = err as { response?: { status?: number }; status?: number };
   return e?.response?.status === 409 || e?.status === 409;
 };
@@ -25,6 +25,9 @@ const isCanceledError = (err: unknown): boolean => {
   const e = err as { name?: string; code?: string };
   return e?.name === 'AbortError' || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED';
 };
+
+/** Fileset name for an agent's eval bundle. */
+export const evalFilesetForAgent = (agentName: string): string => `${agentName}-eval`;
 
 export const SAMPLE_EVAL_CONFIG_PATH = 'react-eval.yml';
 export const SAMPLE_EVAL_DATA_PATH = 'react-eval-data.json';
@@ -130,6 +133,8 @@ export const ensureEvalConfigFileset = async (
       if (isCanceledError(createErr)) throw createErr;
       // Ignore only 409 (parallel apply already created it); surface everything else.
       if (!isConflictError(createErr)) throw createErr;
+      const reListing = await filesListFilesetFiles(workspace, fileset, undefined, signal);
+      existingPaths = new Set((reListing?.data ?? []).map((f) => f.path));
     }
   }
   // Idempotent: never overwrite files already present in the fileset.

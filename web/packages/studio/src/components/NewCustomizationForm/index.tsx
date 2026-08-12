@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
 import {
@@ -17,8 +19,6 @@ import {
   Panel,
   Stack,
 } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { CustomizationFilesetSelect } from '@studio/components/customizer/CustomizationFilesetSelect';
 import { BackendSelectionSection } from '@studio/components/NewCustomizationForm/BackendSelectionSection';
 import { ComputeResourcesSection } from '@studio/components/NewCustomizationForm/ComputeResourcesSection';
@@ -36,7 +36,7 @@ import {
 } from '@studio/util/forms/customization';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
 import { type FieldErrors, FormProvider, type Resolver, useForm, useWatch } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface NewCustomizationFormProps {
   workspace: string;

@@ -41,9 +41,7 @@ export const DataPrivacyPanel: FC<DataPrivacyPanelProps> = ({
   icon,
 }) => {
   const dpsScore = reportSummary?.data_privacy_score ?? 0;
-  const dpsValue = (dpsScore / 10) * 100; // Convert to percentage for dial
-  const dpsDisplay = dpsScore ? dpsScore.toFixed(1) : '';
-  const dpsGrade = dpsDisplay ? getDataPrivacyGradeLabel(dpsScore) : GRADE_VALUES.UNAVAILABLE; // Use the actual score (0-10), not percentage
+  const dpsGrade = dpsScore ? getDataPrivacyGradeLabel(dpsScore) : GRADE_VALUES.UNAVAILABLE;
 
   return (
     <Panel slotHeading={title} slotIcon={icon} elevation="high" density="standard">
@@ -52,9 +50,7 @@ export const DataPrivacyPanel: FC<DataPrivacyPanelProps> = ({
           <Stack>
             <TitledDial
               title="Data Privacy Score (DPS)"
-              value={dpsValue}
-              displayValue={dpsDisplay}
-              color="var(--color-blue-500)"
+              score={reportSummary?.data_privacy_score}
               description="The Data Privacy Score is determined by the privacy mechanisms you've enabled in the synthetic configuration. The use of these mechanisms helps to ensure that your synthetic data is safe from adversarial attacks."
               grade={dpsGrade}
             />
@@ -103,7 +99,6 @@ export const DataPrivacyPanel: FC<DataPrivacyPanelProps> = ({
                     reportSummary?.attribute_inference_protection_score?.toFixed(1) ?? '—',
                 },
               ]}
-              color="var(--color-blue-500)"
             />
 
             <TableRoot className="bg-transparent w-full" layout="fixed" align="left">

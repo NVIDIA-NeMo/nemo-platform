@@ -7,7 +7,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AxiosError } from 'axios';
 import { act } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 
 // Mock data
 const mockWorkspace = 'test-project';
@@ -18,7 +18,7 @@ const mockNavigate = vi.fn();
 const mockUseBreadcrumbs = vi.fn();
 const mockMutate = vi.fn();
 
-vi.mock('react-router-dom', async (importOriginal) => {
+vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...(actual as object),
@@ -127,7 +127,7 @@ describe('SafeSynthesizerNewRoute', () => {
         SAFE_SYNTHESIZER_ENABLED: true,
         OTEL_SERVICE_NAME: 'test-service',
       }));
-      vi.doMock('@studio/util/logger', () => ({
+      vi.doMock('@nemo/common/src/utils/logger', () => ({
         logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
@@ -141,7 +141,7 @@ describe('SafeSynthesizerNewRoute', () => {
         SAFE_SYNTHESIZER_ENABLED: false,
         OTEL_SERVICE_NAME: 'test-service',
       }));
-      vi.doMock('@studio/util/logger', () => ({
+      vi.doMock('@nemo/common/src/utils/logger', () => ({
         logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
       }));
 
@@ -795,7 +795,7 @@ describe('SafeSynthesizerNewRoute', () => {
     it('should have form validation error handling configured', async () => {
       // Remove any lingering vi.doMock for the logger (left by Feature flag tests) so
       // the component gets the real logger and we can assert via console.error.
-      vi.doUnmock('@studio/util/logger');
+      vi.doUnmock('@nemo/common/src/utils/logger');
       vi.doMock('@studio/constants/environment', () => ({
         SAFE_SYNTHESIZER_ENABLED: true,
         OTEL_SERVICE_NAME: 'test-service',

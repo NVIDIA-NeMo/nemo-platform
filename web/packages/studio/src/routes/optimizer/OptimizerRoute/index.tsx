@@ -1,18 +1,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { Flex, PageHeader, Stack, Tag, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { type InsightListItem, useOptimizerListInsights } from '@studio/api/optimizer';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -21,7 +21,7 @@ import { getOptimizerInsightRoute, getOptimizerRoute } from '@studio/routes/util
 import { keepPreviousData } from '@tanstack/react-query';
 import { Lightbulb } from 'lucide-react';
 import { type ComponentProps, type FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const OptimizerRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

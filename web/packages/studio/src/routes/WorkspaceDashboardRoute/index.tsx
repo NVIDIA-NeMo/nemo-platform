@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
 import ModelEvaluationIcon from '@nemo/common/src/svgs/model_evaluation.svg?react';
 import ModelPromptTuningIcon from '@nemo/common/src/svgs/model_prompt_tuning.svg?react';
 import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { Grid, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import {
   CUSTOMIZER_ENABLED,
   EVALUATOR_ENABLED,
@@ -26,7 +26,7 @@ import { DashboardCard } from '@studio/routes/WorkspaceDashboardRoute/DashboardC
 import { ResourcesSection } from '@studio/routes/WorkspaceDashboardRoute/ResourcesSection';
 import { Boxes } from 'lucide-react';
 import type { FC } from 'react';
-import { generatePath } from 'react-router-dom';
+import { generatePath } from 'react-router';
 
 export const WorkspaceDashboardRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

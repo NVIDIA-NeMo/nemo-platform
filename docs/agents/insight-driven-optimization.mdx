@@ -1,7 +1,8 @@
 ---
 title: "Insight-Driven Optimization"
-description: ""
+description: "Turn agent telemetry into evidence-backed Insights, experiments, evaluation suites, and validated changes."
 ---
+
 <a id="agents-insight-driven-optimization"></a>
 
 Insight-driven optimization automates the agent improvement loop. It turns
@@ -19,13 +20,13 @@ The system introduces one first-class entity and a family of agents that
 operate on it:
 
 - The **Insight** is a named, persistent description of a recurring problem in
-  the agent under test (AUT), backed by the traces that evidence it. The
+  the agent under test (AUT), backed by the traces that provide evidence. The
   Insight is the unit of action across the whole loop. An experiment or an
   evaluation-suite change can always be traced back to the Insight that
   motivated it.
 - The **Analyst** turns raw traces into actionable Insights.
 - The **Experimenter** turns a single Insight into an empirically validated
-  pull request.
+  pull request (PR).
 - The **Eval Author** builds and extends evaluation suites in response to
   real-world usage.
 
@@ -40,18 +41,17 @@ want to automate portions of the agent improvement loop.
 
 - A NeMo Platform deployment (local or remote) with Intake enabled, so the
   Analyst has traces to read.
-- The optimization plugins installed in the same Python environment as the
-  NeMo CLI. From a source checkout, `uv sync` installs all three through the
-  default `enabled-plugins` group. The Experimenter and Eval Author
-  plugins require Python earlier than 3.14.
+- The optimization plugins installed in the same Python environment as the NeMo command-line
+  interface (CLI). From a source checkout, `uv sync` installs all three through the default
+  `enabled-plugins` group. The Experimenter and Eval Author plugins require Python earlier than 3.14.
 - Access to the code base for the agent under test. The Experimenter needs
   a change surface (source, prompts, tool definitions, model selection, or
-  runtime config) and a way to run or evaluate the agent reproducibly.
+  runtime configuration) and a way to run or evaluate the agent reproducibly.
 - Traces in Intake for the agent under test. The Analyst diagnoses only what
   it can observe, so an agent with no telemetry cannot be analyzed.
-- Model access for the optimization agents themselves. The Analyst and the
-  Experimenter each drive their own LLMs, which is separate from the model
-  access your AUT needs at runtime. You can run any LLM you want here.
+- A supported inference provider and default/fast model pair configured by
+  `nemo setup` for the optimization agents. This access is separate from the
+  model access that your agent under test needs at runtime.
 - Train and validation datasets in a Harbor-compatible layout, plus a task
   template and an output directory for artifacts. This is what the Eval Author
   works from and what the Experimenter uses to validate changes.
@@ -59,8 +59,8 @@ want to automate portions of the agent improvement loop.
 To install only one side of the loop, use the convenience groups:
 
 ```bash
-uv sync --group insights          # Analyst only
-uv sync --group experimentalist   # Experimenter and Eval Author
+uv sync --only-group insights         # Analyst only
+uv sync --only-group experimentalist  # Experimenter and Eval Author
 ```
 
 ### Dependencies
@@ -83,9 +83,9 @@ dependencies:
 - All Insights service endpoints are workspace-scoped under
   `/apis/insights/v2/workspaces/{workspace}/` and depend on platform auth. The
   service checks workspace access before reading or writing.
-- The plugins register themselves with the platform through entry points
-  (CLI, service, controller, job, SDK, skills). For a fully local platform,
-  restart `nemo services run` after installing so the platform discovers them.
+- The plugins register themselves with the platform through CLI, service, controller, job, software
+  development kit (SDK), and skill entry points. For a fully local platform, restart
+  `nemo services run` after installation so the platform discovers them.
 
 ### The Shared Profile
 
@@ -140,34 +140,34 @@ Use the optimization agents when you want to:
 - **Keep evaluation suites relevant.** Grow datasets and metrics in response
   to the failures your agent actually exhibits.
 
-Production traffic is the best fuel. New agents can start with staged replays
-or generated cases and improve coverage as real traffic lands.
+Production traffic provides useful evidence. New agents can start with staged replays
+or generated cases and improve coverage as production traffic arrives.
 
 ### Core Concepts and Data Model
 
-**The Insight.**
+#### The Insight
 
-The first-class entity of the loop. An Insight is a
-persistent, named description of a recurring problem, stored in the platform
-entity store with these fields:
+An Insight is the first-class entity of the loop. It is a persistent, named description of a
+recurring problem that is stored in the platform entity store with these fields:
 
 | Field | Type | Meaning |
 |-------|------|---------|
 | `title` | string | A short, human-readable sentence naming the core issue common to the linked traces. |
 | `description` | string | A paragraph describing the problem statement and the situations in which the failure pattern is observed. |
 | `agent` | string | The registered agent name the Insight is about. |
-| `status` | enum | `open` (default), `resolved`, or `deleted`. An Insight starts open; you resolve it when fixed, or delete it if it isn't a real problem. |
-| `trace_refs` | list[string] | Intake trace IDs the Analyst cited as evidence. Drives the evidence view in the UI and lets the loop find similar traces. |
+| `status` | enum | `open` (default), `resolved`, or `deleted`. An Insight starts open; you resolve it when fixed, or delete it if it is not a real problem. |
+| `trace_refs` | list[string] | Intake trace identifiers (IDs) the Analyst cited as evidence. Drives the evidence view in the user interface (UI) and lets the loop find similar traces. |
 
 The store assigns `id`, `created_at`, and `updated_at`. The Analyst aims for at
 least three representative traces as evidence before filing a new Insight, and
 when it finds more evidence for an existing Insight it *appends* trace refs
 rather than restating the problem.
 
-**Insight persistence: platform versus local file.**
+#### Insight Persistence: Platform Versus Local File
 
 When no profile is
-discovered, the Analyst reads and writes Insights through the Insights API.
+discovered, the Analyst reads and writes Insights through the Insights application programming
+interface (API).
 When a profile governs the run, the Analyst reads and writes the shared local
 file at `<profile-dir>/.nemo-optimizer/insights.yaml` instead, which is the
 same default the Experimenter reads. Pass `--insights-file-output <path>`
@@ -177,16 +177,16 @@ deployments that host Intake data but do not have the Insights plugin
 installed. Each run merges into the file (de-duplicating trace refs) rather
 than overwriting it.
 
-**Telemetry hierarchy.**
+#### Telemetry Hierarchy
 
 The loop inherits Intake's model: a span is one timed
 operation (LLM call, tool call, and so on), a trace is one end-to-end run, and
 a session groups related traces. Insight evidence is cited at the trace level.
 
-**Experiment entities.**
+#### Experiment Entities
 
 An optimization run is tracked as an `ExperimentRun`
-(agent, insight, config snapshot, status, rounds completed, winner, summary).
+(agent, insight, configuration snapshot, status, rounds completed, winner, summary).
 
 ## The Agents
 
@@ -195,16 +195,16 @@ An optimization run is tracked as an `ExperimentRun`
 The Analyst reads telemetry from Intake and emits Insights. It runs as a
 single reasoning agent with a set of read-only tools over Intake:
 
-- `fetch_spans` — survey spans, either grouped (for example by `session_id`,
+- `fetch_spans`: Survey spans, either grouped (for example by `session_id`,
   to fan out across many runs) or flat (to drill into one session). Filters
   include agent, status, span kind, model, provider, tool name, dataset, and
   time range.
-- `get_span` — fetch a single span by ID.
-- `fetch_scores` — read evaluator results (verifier and judge outputs)
+- `get_span`: Fetch a single span by ID.
+- `fetch_scores`: Read evaluator results (verifier and judge outputs)
   attached to a span.
-- `fetch_annotations` and `get_annotation` — read feedback, labels, notes, and
+- `fetch_annotations` and `get_annotation`: Read feedback, labels, notes, and
   metadata. Negative feedback is the strongest starting signal.
-- `list_insights` — read existing Insights so findings are de-duplicated
+- `list_insights`: Read existing Insights so findings are de-duplicated
   against what is already filed.
 
 Its method is to survey sessions broadly, gather evidence (starting from
@@ -219,21 +219,21 @@ intended behavior.
 The Experimenter turns an Insight into an empirically validated candidate.
 Internally it is an evolutionary optimization loop that runs in rounds:
 
-1. **Baseline** — build the baseline agent (`agent-0`) and evaluate it on the
+1. **Baseline**: Build the baseline agent (`agent-0`) and evaluate it on the
    validation split; build an initial goal tree (a weighted capability rubric
    used for trajectory scoring).
-2. **Analyze** — read the target Insight and perform root cause analysis.
-3. **Propose** — generate a small number of candidate improvements targeting
+2. **Analyze**: Read the target Insight and perform root cause analysis.
+3. **Propose**: Generate a small number of candidate improvements targeting
    those root causes, each tagged with an optimization type.
-4. **Implement** — a coding agent applies each proposed change to a copy of
-   the agent and runs an integration smoke test with a bounded repair loop.
-5. **Validate** — score new candidates on the held-out validation split,
+4. **Implement**: A coding agent applies each proposed change to a copy of
+   the agent and runs a basic integration test with a bounded repair loop.
+5. **Validate**: Score new candidates on the held-out validation split,
    optionally adding a qualitative trajectory score against the goal tree.
-6. **Select and continue** — keep a diverse Pareto front of survivors and
+6. **Select and continue**: Keep a diverse Pareto front of survivors and
    iterate until a budget or convergence condition is met, then pick the
    winner.
 
-**Insight mode.**
+#### Insight Mode
 
 The Experimenter starts from a single Insight. By
 default it reads the local `.nemo-optimizer/insights.yaml` beside the profile;
@@ -243,12 +243,12 @@ title, or zero-based index. The agent referenced by the Insight is used unless
 `--agent` overrides it. The Eval Author step builds an Insight-specific
 evaluation suite before optimization begins, which requires a task template.
 
-**Dataset mode.**
+#### Dataset Mode
 
 Pass `--no-insight` to bypass both an explicit Insight and
 the profile-local default and optimize directly against a dataset.
 
-**Train and validation isolation.**
+#### Train and Validation Isolation
 
 The validation split is *hidden* during
 candidate generation. At run start the validation data is moved into a
@@ -257,7 +257,7 @@ blocks reads of that path. Candidates therefore cannot be tuned against the
 data they are later scored on. Validation data is temporarily restored only
 when validation scoring runs.
 
-**Evaluation and rewards.**
+#### Evaluation and Rewards
 
 Candidates are scored with the Harbor evaluator.
 Each trial yields metrics from the verifier, and the aggregate reward is the
@@ -266,74 +266,84 @@ to `[0.0, 1.0]`, where 1.0 is perfect. Live and production datasets often carry
 no verifiable reward, so validation on those relies on curated metrics and
 trajectory scoring rather than a ground-truth verifier.
 
-**Output.**
+#### Output
 
-Everything lands under `<experiment-dir>/eval-and-optimize/`: the
+Output is written under `<experiment-dir>/eval-and-optimize/`: the
 run record, per-candidate agent code and metadata, per-round analysis and goal
-trees, and evaluator results. When configured with a git source, the
-Experimenter can archive candidate branches and open a draft PR or MR for
-the winning candidate against the baseline ref.
+trees, and evaluator results. When configured with a Git source, the
+Experimenter can archive candidate branches and open a draft PR or merge request (MR) for
+the winning candidate against the baseline reference.
 
 ### Eval Author
 
-The Eval Author builds and maintains the evaluation suites the loop depends
-on. Given an Insight and its evidence traces, it creates an Insight-specific
-evaluation suite that can be used to validate optimized candidates aimed at
-resolving that Insight. It runs as a library-only plugin that the
-Experimenter invokes in Insight mode; it is configured through the
-`eval_author` section of the experiment config.
+The Eval Author builds and maintains the evaluation suites that the loop uses.
+Given an Insight and its evidence traces, it creates an Insight-specific
+evaluation suite for validating candidates that address the Insight. The
+Experimenter invokes the Eval Author workflow in Insight mode and reads the
+`eval_author` section of the experiment configuration.
+
+The plugin also exposes the canonical `nemo agents eval-author` command
+namespace with `discover`, `audit`, `propose`, `run`, and `doctor` verbs. These
+standalone verbs are currently scaffolding and exit with a nonzero status until
+their implementations are available.
 
 ## Get Started
 
 ### Set Up
 
-Point the CLI at a platform and set model access for the optimization agents.
-The examples use a local platform; replace the base URL for a remote
+Point the CLI at a platform and configure model access for the optimization
+agents. The examples use a local platform; replace the base URL for a remote
 deployment.
 
 ```bash
-export NMP_BASE_URL=http://localhost:8080
+export NMP_BASE_URL=http://127.0.0.1:8080
 export WORKSPACE=default
-export AGENT=<your-agent-name>         # Must have traces in Intake
+export NMP_STUDIO_URL="$NMP_BASE_URL/studio"
+export NMP_ACCESS_TOKEN="$(nemo auth token)"
+export AGENT=your-agent-name           # This agent must have traces in Intake.
 
-# The Analyst's model reads a gateway virtual key:
-export INFERENCE_API_KEY=sk-...
-
-# The Experimenter and Eval Author drive their own endpoint:
-export NEMO_EXPERIMENTALIST_API_BASE=https://inference-api.nvidia.com/v1
-export NEMO_EXPERIMENTALIST_API_KEY=sk-...
-export NEMO_EXPERIMENTALIST_MODELS_SMART=openai/openai/openai/gpt-5.6-sol
-export NEMO_EXPERIMENTALIST_MODELS_MID=openai/openai/openai/gpt-5.6-terra
-export NEMO_EXPERIMENTALIST_MODELS_FAST=openai/openai/openai/gpt-5.6-luna
+nemo setup
 ```
+
+During setup, register a supported provider and select the default and fast
+Platform Model Entities. The default model handles quality-critical work and
+the fast model handles latency-sensitive work; press Enter at the fast-model
+prompt to reuse the default. The Analyst, Eval Author, and Experimentalist all
+use this pair. Provider credentials are stored in Platform Secrets rather than
+plugin-specific environment variables.
+
+Set `NMP_STUDIO_URL` explicitly if Studio uses a different origin or path.
+For an authenticated remote deployment, log in against that base URL before
+requesting the token. For local development with authentication disabled, omit
+the `NMP_ACCESS_TOKEN` command and the `Authorization` header in the API example.
 
 Confirm the plugins are installed and discoverable:
 
 ```bash
-nemo insights --help
-nemo experimentalist --help
+nemo agents analyst --help
+nemo agents experimentalist --help
+nemo agents eval-author --help
 ```
 
 From an agent directory with an `optimizer.yaml` profile, check that the
 effective inputs and credentials resolve:
 
 ```bash
-nemo insights doctor
-nemo experimentalist doctor
+nemo agents analyst doctor
+nemo agents experimentalist doctor
 ```
 
-**Write traces to Intake.**
+### Send Traces to Intake
 
-The Analyst depends on Intake as its
-observability store, so your agent must have traces in Intake before it can
-generate Insights.
+The Analyst depends on Intake as its observability store. Your agent must have traces in Intake
+before it can generate Insights.
 
 ### Generate Insights
 
 Run the Analyst against the target agent's traces:
 
 ```bash
-nemo insights analyze \
+nemo agents analyst run \
   --agent "$AGENT" \
   --workspace "$WORKSPACE" \
   --base-url "$NMP_BASE_URL"
@@ -341,37 +351,49 @@ nemo insights analyze \
 
 Useful flags:
 
-- `--agent-spec AGENT-SPEC.md` — append a spec so the Analyst can flag
+- `--agent-spec AGENT-SPEC.md`: Append a spec so the Analyst can flag
   divergence from intended behavior.
-- `--insights-file-output tmp/insights.yaml` — read and write Insights from a
+- `--insights-file-output tmp/insights.yaml`: Read and write Insights from a
   specific local YAML file. Trace reads still hit `--base-url`.
-- `--verbose` or `-v` — stream the Analyst's tool calls and reasoning to
-  stderr.
+- `--verbose` or `-v`: Stream the Analyst's tool calls and reasoning to
+  standard error.
 
-**Confirm it worked.**
+### Confirm It Worked
 
-List the Insights the Analyst filed through the API:
+The persistence target depends on whether the Analyst discovered an
+`optimizer.yaml` profile.
+
+For a profile-based run, confirm that the local Insights file exists and
+contains the generated records:
 
 ```bash
-curl "$NMP_BASE_URL/apis/insights/v2/workspaces/$WORKSPACE/insights?agent=$AGENT&page=1&page_size=20"
+test -s .nemo-optimizer/insights.yaml
+sed -n '1,120p' .nemo-optimizer/insights.yaml
 ```
 
-Or view them in Studio at
-`http://localhost:8080/studio/workspaces/default/optimizer`.
+If no profile was discovered and you did not pass `--insights-file-output`,
+list the Insights stored through the API:
 
-**What good looks like:**
+```bash
+curl --fail-with-body \
+  -H "Authorization: Bearer $NMP_ACCESS_TOKEN" \
+  "$NMP_BASE_URL/apis/insights/v2/workspaces/$WORKSPACE/insights?agent=$AGENT&page=1&page_size=20"
+```
 
-at least one Insight appears for the agent, each with
-a clear `title`, an actionable `description`, and `trace_refs` pointing at real
-Intake traces.
+API-stored Insights also appear in Studio at
+`$NMP_STUDIO_URL/workspaces/$WORKSPACE/optimizer`. Profile-based Insights do
+not appear there because they are stored in the local YAML file.
+
+A successful result contains at least one Insight for the agent. Each Insight
+has a clear `title`, an actionable `description`, and `trace_refs` that point
+to Intake traces.
 
 ### Run an Experiment
 
-**Convert evaluations to Harbor.**
+#### Convert Evaluations to Harbor
 
-The Experimenter validates its work by
-running evaluations against your agent so that it only keeps empirically
-validated optimizations. The only supported evaluation backend today is
+The Experimenter validates its work by running evaluations against your agent. It only keeps
+empirically validated optimizations. The only supported evaluation backend today is
 [Harbor](https://www.harborframework.com/).
 
 Before you can run the Experimenter, express your agent's evaluation as
@@ -382,13 +404,13 @@ this:
 
 ```text
 <task-id>/
-  task.toml          # resources, timeouts, and env passthrough (e.g. INFERENCE_API_KEY)
-  instruction.md     # the prompt given to the agent, incl. where to write output
+  task.toml          # resources, timeouts, and environment variable passthrough
+  instruction.md     # the prompt given to the agent, including where to write output
   environment/
     Dockerfile       # a container that can run your agent (and the verifier)
   tests/
-    test.sh          # verifier entry point -> writes /logs/verifier/reward.json
-    score.py         # your scorer(s) — e.g. LLM-as-judge
+    test.sh          # verifier entry point that writes /logs/verifier/reward.json
+    score.py         # one or more scorers, such as an LLM-based judge
 ```
 
 The Experimenter relies on a classic train/test split for validation, so
@@ -401,7 +423,7 @@ Two things to know about the Harbor integration:
   `WrappedAgent(BaseAgent)`. Its `setup()` uploads your agent directory to
   `/app` and runs `uv sync` on it. Its `run()` executes the agent with the task
   instruction as `--prompt`.
-- *How eval scores reach Intake.* The Analyst and the Experimenter both
+- *How evaluation scores reach Intake.* The Analyst and the Experimenter both
   read scores from Intake, but neither Harbor nor the verifier pushes scores
   there; the verifier's reward is written to local disk by default. The
   Experimenter uploads scores to Intake after the Harbor run completes, and
@@ -409,40 +431,40 @@ Two things to know about the Harbor integration:
   the trace in Intake. Pushing results to Intake requires a platform client,
   so pass `--base-url` and `--workspace`.
 
-**Kick off the Experimenter.**
+#### Start the Experimenter
 
 Hand it a single Insight:
 
 ```bash
-nemo experimentalist run \
-  --insight <insight-id-or-local-file> \
-  --agent <path-to-aut> \
+nemo agents experimentalist run \
+  --insight insight-id \
+  --agent ./path-to-agent \
   --train-dataset ./harbor_eval/dataset/train \
   --validation-dataset ./harbor_eval/dataset/validation \
   --task-template ./task-template \
-  --config <path-to-experiment-config.yaml> \
+  --config ./experiment-config.yaml \
   --experiment-dir tmp/experiment \
-  --workspace default \
-  --base-url http://localhost:8080
+  --workspace "$WORKSPACE" \
+  --base-url "$NMP_BASE_URL"
 ```
 
 From an agent directory with an `optimizer.yaml` profile, most of those flags
 come from the profile:
 
 ```bash
-nemo experimentalist run
+nemo agents experimentalist run
 ```
 
-The Experimenter's own models are configured through environment variables
-(see [Models](#models)). Train and validation datasets are required, and for
-the Harbor evaluator they must be local paths. The loop runs a baseline eval,
+The Experimenter's own models come from the default/fast pair selected by
+`nemo setup` (refer to [Models](#models)). Train and validation datasets are required, and they must be local
+paths for the Harbor evaluator. The loop runs a baseline evaluation,
 performs root cause analysis, implements changes, then validates and picks a
 winner.
 
-**Review the results.**
+#### Review the Results
 
 View the experiment in Studio at
-`http://localhost:8080/studio/workspaces/default/experiment`. There you can see
+`$NMP_STUDIO_URL/workspaces/$WORKSPACE/experiment`. There you can see
 the originating Insight and compare evaluation runs across all the candidates.
 
 The Experimenter also writes intermediate artifacts along the way. Those
@@ -450,18 +472,18 @@ land under `<experiment-dir>/eval-and-optimize/`, which defaults to
 `<profile-dir>/.nemo-optimizer/experiments/<timestamp>` when a profile governs
 the run, and `./tmp` otherwise:
 
-- `OPTIMIZATION.md` — the report with per-agent breakdowns and round-by-round
+- `OPTIMIZATION.md`: The report with per-agent breakdowns and round-by-round
   root causes.
-- `agents/agent-0` — the baseline, with `agents/agent-N` as the candidates.
+- `agents/agent-0`: The baseline, with `agents/agent-N` as the candidates.
   Each holds full agent source.
-- `results/` — the per-agent evaluation outputs.
+- `results/`: The per-agent evaluation outputs.
 
 ## Additional Workflows
 
 ### Opt an Agent into Periodic Analysis
 
-Instead of running `analyze` by hand, opt an agent in and let the platform run
-the Analyst on a schedule:
+Instead of running `nemo agents analyst run` manually, opt an agent in and let
+the platform run the Analyst on a schedule:
 
 ```bash
 nemo insights analysis enable  --agent "$AGENT" --workspace "$WORKSPACE"
@@ -470,15 +492,20 @@ nemo insights analysis disable --agent "$AGENT" --workspace "$WORKSPACE"
 ```
 
 A framework controller (`insights-analysis`) reconciles on a fixed 60-second
-loop, finds every agent opted in across workspaces, and submits one analyze job
+loop, finds every agent opted in across workspaces, and submits one Analyst job
 per agent that is *due* and has enough new telemetry. Runs are incremental:
 each successful run records a cursor (`last_successful_run_at`), and subsequent
 runs only consider traces newer than that cursor.
 
+`enable` captures the effective default/fast pair in the server-side analysis
+config. Re-run it after changing the pair with `nemo setup`; enabled records
+created before model-pair persistence must also be re-enabled.
+
 ### Configure the Analysis Schedule
 
-The global schedule lives in the Insights plugin config (or environment).
-Defaults shown:
+The global schedule lives in the Insights plugin configuration or environment. The `timezone`
+setting uses an Internet Assigned Numbers Authority (IANA) time zone name and defaults to
+Coordinated Universal Time (UTC).
 
 ```yaml
 insights:
@@ -487,117 +514,134 @@ insights:
     frequency: daily         # daily (default) or weekly
     run_at_hour: 0           # local hour-of-day, 0-23
     run_on_weekday: monday   # only used when frequency: weekly
-    timezone: UTC            # IANA name; e.g. America/Denver
+    timezone: UTC            # IANA name, such as America/Denver
     job_profile: default     # jobs execution profile for scheduled runs
 ```
 
-`run_at_hour` is interpreted in `timezone` (an IANA name) and converted to the
+`run_at_hour` is interpreted in `timezone` and converted to the
 server clock at evaluation time, so runs fire at the intended local hour even
 across daylight-saving transitions. The controller still reconciles every 60
-seconds and submits a run once the scheduled daily or weekly window is reached.
+seconds and submits a run after the scheduled daily or weekly window is reached.
 
 ## Command Reference
 
-The Analyst lives under `nemo insights` and the Experimenter lives under
-`nemo experimentalist`. They are separate command namespaces that share the
-`optimizer.yaml` profile, and each validates its own part of it.
+The Analyst lives under `nemo agents analyst`, and the Experimenter lives under
+`nemo agents experimentalist`. The Eval Author command surface lives under
+`nemo agents eval-author`. These command namespaces share the `optimizer.yaml`
+profile, and each validates its own configuration. Scheduled analysis remains
+under `nemo insights analysis`.
 
-### `nemo insights analyze`
+### `nemo agents analyst run`
 
-Run the Analyst once against an agent's traces.
+Run the Analyst for one analysis of an agent's traces.
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--agent` | yes, unless a profile supplies it | profile `agent` | Agent under test the Analyst should focus on. |
-| `--agent-spec` | no | profile `agent_spec`, else `AGENT-SPEC.md` or `README.md` beside the profile | Path to a markdown spec for the AUT. |
+| `--agent-spec` | no | profile `agent_spec`, else `AGENT-SPEC.md` or `README.md` beside the profile | Path to a Markdown spec for the AUT. |
 | `--workspace` | no | profile `workspace`, else `default` | Workspace to operate in. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance the Analyst's tools call. |
-| `--profile` | no | discovered by walking up from cwd | Path to `optimizer.yaml`. |
-| `--insights-file-output` | no | `<profile-dir>/.nemo-optimizer/insights.yaml` when a profile is found, else the Insights API | Read and write Insights from a local YAML file. |
-| `--verbose` / `-v` | no | off | Stream tool calls and reasoning to stderr. |
+| `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
+| `--insights-file-output` | no | off — Insights go to the platform only | Additionally mirror the Insights the platform stored into a local YAML file, platform ids included. Each run merges into the file. |
+| `--verbose` / `-v` | no | off | Stream tool calls and reasoning to standard error. |
 
 ### `nemo insights analysis enable | disable | status`
 
 Manage per-agent opt-in for periodic analysis. `enable` and `disable` require
 `--agent`; `status` takes an optional `--agent` (omit it to list all configs in
-the workspace). All three accept `--workspace` and `--base-url`.
+the workspace). `enable` stores the active default/fast model pair for future
+scheduled jobs. All three accept `--workspace` and `--base-url`.
 
-### `nemo insights doctor`
+### `nemo agents analyst doctor`
 
 Check whether the current profile is ready for analysis. Exits non-zero when a
 required check fails.
 
-### `nemo experimentalist run`
+### `nemo agents experimentalist run`
 
 Run the local Experimenter loop.
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--insight` | no | local `.nemo-optimizer/insights.yaml` | The Insight to optimize against: a local Insight file or a platform Insight ID. |
-| `--insight-id` | no | — | Select an exact ID, exact title, or zero-based index from a local multi-Insight file. |
+| `--insight-id` | no | Not applicable | Select an exact ID, exact title, or zero-based index from a local multi-Insight file. |
 | `--no-insight` | no | off | Run against a dataset directly rather than guided by an Insight. |
 | `--agent` | no | profile `agent_source` | Baseline agent override: a local directory or a git URL with optional ref (`...repo.git@main`). A git source records provenance and enables opening a draft PR for the winner. |
-| `--agent-spec` | no | profile `agent_spec` | URI of a markdown file describing the AUT. |
+| `--agent-spec` | no | profile `agent_spec` | Location of a Markdown file describing the AUT. |
 | `--train-dataset` | yes, unless the profile supplies it | profile `datasets.train` | Train dataset. Local path for the Harbor evaluator. |
 | `--validation-dataset` | yes, unless the profile supplies it | profile `datasets.validation` | Validation dataset. Local path for the Harbor evaluator. |
 | `--task-template` | required with an Insight | profile `task_template` | Evaluator-specific task-template URI, used to build the Insight-specific evaluation suite. |
 | `--experiment-dir` / `-o` | no | `<profile-dir>/.nemo-optimizer/experiments/<timestamp>`, else `./tmp` | Local experiment directory; writes `eval-and-optimize/` here. |
 | `--framework-skills` | no | profile `framework_skills` | Directory of framework skills to load into the optimization agents. Repeatable. |
-| `--mode` | no | `local` | `local` or `remote`. Only `local` is implemented today. |
-| `--profile` | no | discovered by walking up from cwd | Path to `optimizer.yaml`. |
+| `--profile` | no | discovered by walking up from the current working directory | Path to `optimizer.yaml`. |
 | `--workspace` | no | profile `workspace` | Workspace for traces and run/candidate metadata. |
 | `--base-url` | no | `NMP_BASE_URL`, else `http://localhost:8080` | Running platform instance. |
-| `--config` | no | profile `experiment_config` | YAML or JSON configuration for the run. |
+| `--config` | no | profile `experiment_config` | YAML or JavaScript Object Notation (JSON) configuration for the run. |
 
-### `nemo experimentalist doctor`
+### `nemo agents experimentalist doctor`
 
-Diagnose the Experimenter setup: profile, credentials, Insight resolution,
+Diagnose the Experimenter setup: profile, configured models, Insight resolution,
 datasets, and the experiment plan.
+
+### `nemo agents eval-author`
+
+Discover the current Eval Author command surface with `--help`. The
+`discover`, `audit`, `propose`, `run`, and `doctor` verbs are placeholders and
+exit with a nonzero status until their implementations are available.
 
 ### Models
 
-The optimization agents drive their own LLMs, configured by environment
-variable:
+The optimization agents use the active Platform CLI context:
 
 | Variable | Used by | Default and notes |
 |----------|---------|-------------------|
-| `INFERENCE_API_KEY` | Analyst | Required. API key for the Analyst model, reached through the NVIDIA Inference Gateway. |
-| `NEMO_EXPERIMENTALIST_API_BASE` | Experimenter, Eval Author | OpenAI-compatible model API base URL. `run` and `doctor` fall back to the NVIDIA Inference Gateway when it is unset, so it is only required against another endpoint. Also settable as `api_base` under the `experimentalist:` config section; the environment wins. |
-| `NEMO_EXPERIMENTALIST_API_KEY` | Experimenter, Eval Author | Required. Model API key. On the gateway, `INFERENCE_API_KEY` fills this. |
-| `NEMO_EXPERIMENTALIST_MODELS_SMART` | Experimenter, Eval Author | Required. High-capability model for analysis, proposing, coding, and curation. No default: a model name is only meaningful against a specific endpoint. |
-| `NEMO_EXPERIMENTALIST_MODELS_MID` | Experimenter, Eval Author | Required. Mid-tier model, used by the Coder's `apply_change` among others. No default. |
-| `NEMO_EXPERIMENTALIST_MODELS_FAST` | Experimenter, Eval Author | Required. Low-latency model for lightweight steps such as termination checks and summarization. No default. |
+| stored `default_model` | Analyst, Experimenter, Eval Author | Required workspace-qualified Model Entity selected by `nemo setup`. Used for quality-critical analysis, authoring, proposing, and coding. |
+| stored `fast_model` | Analyst, Experimenter, Eval Author | Selected by `nemo setup`; defaults to the default model. Used for high-volume scoring, summarization, and control steps. |
+| `NEMO_DEFAULT_MODEL` | Analyst, Experimenter, Eval Author | Optional non-interactive override for `default_model`, in `workspace/model-name` form. |
+| `NEMO_FAST_MODEL` | Analyst, Experimenter, Eval Author | Optional non-interactive override for `fast_model`, in `workspace/model-name` form. Falls back to the effective default model. |
+
+Each Model Entity owns its backend format and provider route. OpenAI-compatible
+and Anthropic entities are adapted to Nooa's unified completion client through the
+Platform route; the agents never inspect provider model-name conventions or
+read provider credentials directly.
+
+For OpenAI Chat Completions entities, the shared client disables reasoning while
+function tools are active and disables LiteLLM's automatic Responses bridge.
+This keeps frontier models on the Model Entity's declared Chat Completions
+contract without a model-name allowlist; LiteLLM drops the reasoning parameter
+for models that do not support it. Anthropic entities use their native Messages
+route.
 
 ## Troubleshooting
 
-**`analyze` returns no Insights or aborts on the trace floor.**
+### Analyst Returns No Insights or Aborts on the Trace Floor
 
-The agent has
-too few (or no) traces in Intake for the target workspace. Confirm telemetry is
+The agent has too few or no traces in Intake for the target workspace. Confirm that telemetry is
 flowing and that you are filtering by the right `agent` name.
 
-**Periodic analysis never fires.**
+### Periodic Analysis Does Not Start
 
 Check that the agent is enabled
 (`nemo insights analysis status`), that `insights.analyst.enabled` is true,
 that the scheduled window has passed in the configured `timezone`, and that at
-least 10 new sessions have landed since the last run.
+least 10 new sessions have landed since the last run. If status shows no model
+selection, re-run `nemo insights analysis enable` after `nemo setup`.
 
-**Insights are not in the platform.**
+### Insights Are Not in the Platform
 
 A discovered `optimizer.yaml` profile
 routes Insights to `.nemo-optimizer/insights.yaml` instead of the Insights API,
 as does an explicit `--insights-file-output`. Check that file, or run without a
 profile to write through the API.
 
-**The experiment cannot score, or rewards are zero.**
+### The Experiment Cannot Score or Rewards Are Zero
 
 Confirm datasets are
 local Harbor-compatible paths. Live and production datasets may lack verifiable
 rewards by design; rely on curated metrics and trajectory scoring in that case.
 
-**No PR was opened for the winner.**
+### No Pull Request Was Opened for the Winner
 
 Publishing requires a git agent source
-(`--agent <git-url>@<ref>`) and publishing enabled in the run config. A
+(`--agent <git-url>@<ref>`) and publishing enabled in the run configuration. A
 local-directory source cannot open a PR.

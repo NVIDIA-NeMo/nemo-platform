@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import {
@@ -14,24 +16,29 @@ import {
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
-import { ChatPlaygroundContent } from '@studio/components/sidePanels/AgentPanels/AgentPanel/ChatPlaygroundContent';
-import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
-import { useAgentPanel } from '@studio/components/sidePanels/AgentPanels/AgentPanel/useAgentPanel';
+import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
+import { MONITOR_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
+import { ChatPlaygroundContent } from '@studio/routes/agents/AgentDetailRoute/ChatPlaygroundContent';
+import { DeploymentLogsView } from '@studio/routes/agents/AgentDetailRoute/DeploymentLogsView';
 import { DeploymentsTab } from '@studio/routes/agents/AgentDetailRoute/DeploymentsTab';
 import { DetailsTab } from '@studio/routes/agents/AgentDetailRoute/DetailsTab';
 import { EvaluationsTab } from '@studio/routes/agents/AgentDetailRoute/EvaluationsTab';
-import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
+import { useAgentDetails } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
+import { deriveWalkthroughStep } from '@studio/routes/agents/AgentDetailRoute/walkthrough';
+import { WalkthroughCoachmarks } from '@studio/routes/agents/AgentDetailRoute/WalkthroughCoachmarks';
+import {
+  clearAgentWalkthroughPending,
+  isAgentWalkthroughPending,
+} from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import { getAgentMonitorRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
-import { type FC, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { type FC, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 
 const TAB_SEARCH_PARAM = 'tab';
 const DETAIL_TABS = ['deployments', 'logs', 'chat', 'evaluations', 'details'] as const;
@@ -55,6 +62,10 @@ export const AgentDetailRoute: FC = () => {
     null
   );
   const chatAreaRef = useRef<HTMLDivElement>(null);
+  const deployButtonRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [walkthroughActive, setWalkthroughActive] = useState(false);
+  const [walkthroughDismissed, setWalkthroughDismissed] = useState(false);
   const tabFromUrl = searchParams.get(TAB_SEARCH_PARAM);
   const selectedTab: AgentDetailTab = isAgentDetailTab(tabFromUrl) ? tabFromUrl : DEFAULT_TAB;
 
@@ -67,7 +78,7 @@ export const AgentDetailRoute: FC = () => {
     healthyDeployments,
     isDeploying,
     isDeploymentsLoading,
-  } = useAgentPanel({ workspace, agentName, selectedDeploymentName });
+  } = useAgentDetails({ workspace, agentName, selectedDeploymentName });
 
   useBreadcrumbs({
     items: [
@@ -75,6 +86,25 @@ export const AgentDetailRoute: FC = () => {
       { slotLabel: agentName ?? 'Agent details' },
     ],
   });
+
+  useEffect(() => {
+    setWalkthroughDismissed(false);
+    setWalkthroughActive(!!agentName && isAgentWalkthroughPending(agentName));
+  }, [agentName]);
+
+  const walkthroughStep = deriveWalkthroughStep({
+    active: walkthroughActive,
+    dismissed: walkthroughDismissed,
+    createDeploymentOpen,
+    selectedTab,
+    hasDeployment: agentDeployments.length > 0,
+    hasHealthyDeployment: healthyDeployments.length > 0,
+  });
+
+  const endWalkthrough = () => {
+    setWalkthroughDismissed(true);
+    if (agentName) clearAgentWalkthroughPending(agentName);
+  };
 
   const setSelectedTab = (tab: AgentDetailTab) => {
     setSearchParams({ [TAB_SEARCH_PARAM]: tab }, { replace: true });
@@ -134,10 +164,12 @@ export const AgentDetailRoute: FC = () => {
           }
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
-              <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
-                <Activity className="size-4" aria-hidden />
-                Open traces
-              </Button>
+              {MONITOR_ENABLED && (
+                <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
+                  <Activity className="size-4" aria-hidden />
+                  Open traces
+                </Button>
+              )}
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}
@@ -146,14 +178,16 @@ export const AgentDetailRoute: FC = () => {
                 <ClipboardCheck className="size-4" aria-hidden />
                 Run evaluation
               </Button>
-              <Button
-                color="brand"
-                onClick={() => setCreateDeploymentOpen(true)}
-                disabled={!agentName || isDeploying}
-              >
-                <Rocket className="size-4" aria-hidden />
-                {isDeploying ? 'Deploying...' : 'Deploy'}
-              </Button>
+              <div ref={deployButtonRef}>
+                <Button
+                  color="brand"
+                  onClick={() => setCreateDeploymentOpen(true)}
+                  disabled={!agentName || isDeploying}
+                >
+                  <Rocket className="size-4" aria-hidden />
+                  {isDeploying ? 'Deploying...' : 'Deploy'}
+                </Button>
+              </div>
             </Flex>
           }
         ></PageHeader>
@@ -165,7 +199,7 @@ export const AgentDetailRoute: FC = () => {
             if (isAgentDetailTab(value)) setSelectedTab(value);
           }}
         >
-          <TabsList className="shrink-0">
+          <TabsList className="shrink-0" ref={tabsRef}>
             <TabsTrigger value="deployments">Deployments</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
@@ -238,6 +272,13 @@ export const AgentDetailRoute: FC = () => {
           onClose={() => setCreateDeploymentOpen(false)}
         />
       )}
+      <WalkthroughCoachmarks
+        walkthroughStep={walkthroughStep}
+        deployButtonRef={deployButtonRef}
+        tabsRef={tabsRef}
+        chatAreaRef={chatAreaRef}
+        onDismiss={endWalkthrough}
+      />
       {deleteDeploymentTarget && (
         <DeleteConfirmationModal
           open

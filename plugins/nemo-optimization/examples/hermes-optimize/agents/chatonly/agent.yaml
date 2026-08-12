@@ -1,0 +1,45 @@
+# Platform agent for --agent optimize (nemo-agents-spec-v1).
+# Defaults match optimize-chatonly.yaml (inference-api). For a local IGW, edit
+# model + base_url before `nemo agents create` — see README.md.
+config_format: nemo-agents-spec-v1
+name: hermes-optimize-chatonly
+description: Hermes chat-only agent for optimize --agent demos.
+
+instructions:
+  system:
+    content: >
+      Answer the user's question in one short sentence. Prefer factual,
+      concise replies.
+
+default_harness: hermes
+
+harnesses:
+  hermes:
+    kind: hermes
+    model:
+      provider: openai
+      # inference-api.nvidia.com model ids are often prefixed (e.g. nvidia/meta/...).
+      model: nvidia/meta/llama-3.1-8b-instruct
+      base_url: https://inference-api.nvidia.com/v1
+      api_key_env: NVIDIA_API_KEY
+      temperature: 0.0
+    settings:
+      max_tokens: 256
+      reasoning_config:
+        effort: none
+
+models:
+  judge:
+    provider: openai
+    model: nvidia/meta/llama-3.1-8b-instruct
+    base_url: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    temperature: 0.0
+
+environment:
+  provider: local
+  workspace: ./workspace
+  artifacts: ./artifacts
+
+telemetry:
+  enabled: false

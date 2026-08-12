@@ -13,7 +13,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14,<0.10.0`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). For source development, you also need Git, GNU Make, and — if you want the web UI — Node.js `>=22.23.2 <23` with `pnpm>=10.34.5`.
+**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). Source development needs Git, GNU Make, a C compiler, and either Flox (recommended) or the pinned system Node.js/pnpm toolchain. Docker is required when starting local services.
 
 Quick install from PyPI:
 
@@ -33,13 +33,16 @@ Source checkout for development:
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
 cd nemo-platform
 
+# Install Flox first: https://flox.dev/docs/install-flox/install
 make bootstrap
-source .venv/bin/activate
+flox activate
 
 nemo setup
 ```
 
-`nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
+`make bootstrap` uses the Flox-pinned uv, Node.js, and pnpm toolchain; it does not require a prior `flox activate`. Activate Flox after bootstrap to continue development in the managed environment. Without Flox, install uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run `make TOOLCHAIN=system bootstrap` followed by `source .venv/bin/activate`. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
+
+`nemo setup` starts local services, registers your LLM provider, discovers available models, selects default and fast agent models, installs agent skills, and deploys a sample agent (see more below).
 
 Review [Telemetry and Privacy](docs/telemetry-and-privacy.mdx) for the omnibus disclosure covering anonymous telemetry, bundled library telemetry, third-party endpoint notes, and opt-out controls.
 
@@ -51,7 +54,9 @@ Verify:
 nemo services status
 ```
 
-To permanently reset the database state: `rm -rf ~/.local/share/nemo`.
+To permanently reset local state, follow the explicitly confirmed, guarded
+sequence in [SETUP.md](SETUP.md#question-3--wipe-local-platform-data). It removes
+the managed ClickHouse container before deleting any bind-mounted data.
 
 <details>
 <summary>Useful CLI commands once setup completes</summary>
@@ -81,7 +86,7 @@ nemo services run
 <details>
 <summary>Studio (web UI) bootstrap troubleshooting</summary>
 
-If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.23.x with `pnpm env use --global 22.23.2`, then run `make bootstrap-studio` from the repo root.
+If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Ensure Flox is installed, or provide system Node.js `22.23.2` and pnpm `10.34.5` with `TOOLCHAIN=system`, then run `make bootstrap-studio` from the repository root.
 
 </details>
 
@@ -91,6 +96,7 @@ If `make bootstrap` reports that Studio asset bootstrap did not complete, the AP
 ```bash
 export NVIDIA_API_KEY=nvapi...
 export NEMO_DEFAULT_MODEL=nvidia-nemotron-3-super-120b-a12b
+export NEMO_FAST_MODEL="$NEMO_DEFAULT_MODEL"
 nemo setup --auto --start-services --install-skills --deploy-agent
 ```
 
@@ -178,7 +184,7 @@ The demo agent uses `${NEMO_DEFAULT_MODEL}` for both execution and the judge LLM
 
 Full documentation: [NeMo Platform docs](https://docs.nvidia.com/nemo-platform)
 
-- [Telemetry and privacy](https://docs.nvidia.com/nemo-platform/documentation/telemetry-and-privacy): anonymous telemetry, data collection, and opt-out controls.
+- [Telemetry and privacy](https://docs.nvidia.com/nemo-platform/documentation/reference/telemetry-and-privacy): anonymous telemetry, data collection, and opt-out controls.
 - [Setup](https://docs.nvidia.com/nemo-platform/documentation/get-started): installation, providers, SDK.
 - [CLI reference](https://docs.nvidia.com/nemo-platform/documentation/reference/cli-reference): all commands.
 - [API reference](https://docs.nvidia.com/nemo-platform/documentation/reference/api-reference): REST endpoints.

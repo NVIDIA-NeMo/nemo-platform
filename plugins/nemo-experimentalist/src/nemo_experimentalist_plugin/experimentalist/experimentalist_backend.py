@@ -32,6 +32,7 @@ from nemo_experimentalist_plugin.entities import (
     ResourceRef,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.atif import build_ingest_payload, read_session_id
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
     AgentSource,
     PRPublisher,
@@ -79,6 +80,32 @@ async def _upload_trace_otlp(
             content=payload,
             options={"headers": {"Content-Type": "application/x-protobuf"}},
         )
+
+
+async def _upload_trace_atif(
+    client: AsyncNeMoPlatform,
+    workspace: str,
+    ref: ResourceRef,
+    *,
+    experiment_id: str,
+    task_id: str,
+    extra_attrs: dict[str, str] | None = None,
+) -> None:
+    """Upload an ATIF trajectory to Intake as JSON.
+
+    Trial identity travels as the trajectory's own ``session_id``, which Intake
+    adopts as the trace id — so unlike the OTLP path there is no separate
+    ``trial_id`` to stamp. Intake performs the ATIF-to-spans mapping server-side.
+    """
+
+    payload = build_ingest_payload(
+        ref,
+        experiment_id=experiment_id,
+        task_id=task_id,
+        agent_attrs=extra_attrs or {},
+    )
+    url = f"/apis/intake/v2/workspaces/{workspace}/ingest/atif"
+    await client.post(url, cast_to=object, body=payload)
 
 
 _BASELINE_AGENT_LABEL = "agent-0"
@@ -480,8 +507,8 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             if sib.label == _BASELINE_AGENT_LABEL:
                 continue
             marker = " (winner)" if sib.label == candidate.label else ""
-            reward = sib.reward("validation").metrics or sib.reward("train").metrics or {}
-            lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — reward={reward}")
+            metrics = sib.reward("validation").metrics or sib.reward("train").metrics or {}
+            lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — metrics={metrics}")
         return summary + "\n" + "\n".join(lines) + "\n"
 
     # -- Agent reads ---------------------------------------------------------
@@ -615,6 +642,10 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         }
         for trial in result.trials:
             if trial.trace is None:
+                logger.warning(
+                    f"[INTAKE] Trial {trial.id} ({trial.task_id}) has no trace; skipping persistence. "
+                    "The evaluator found no trace artifact in the configured format."
+                )
                 continue
             try:
                 await self._persist_trial(
@@ -658,22 +689,33 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     )
                 trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
         else:
+            trace_format = str(trial.trace.metadata.get("trace_format", "otlp"))
             try:
-                trace_id = read_trace_id(trial.trace)
+                trace_id = read_session_id(trial.trace) if trace_format == "atif" else read_trace_id(trial.trace)
             except (ValueError, json.JSONDecodeError, FileNotFoundError) as exc:
                 # Empty, invalid, or missing trace file (e.g., cancelled trial) — skip upload
                 logger.debug(f"[INTAKE] No valid trace found for trial {trial.id}: {exc}; skipping upload")
                 return
             original_uri = uri
-            await _upload_trace_otlp(
-                self.client,
-                workspace,
-                trial.trace,
-                experiment_id=experiment_id,
-                trial_id=trial.id,
-                task_id=trial.task_id,
-                extra_attrs=agent_attrs,
-            )
+            if trace_format == "atif":
+                await _upload_trace_atif(
+                    self.client,
+                    workspace,
+                    trial.trace,
+                    experiment_id=experiment_id,
+                    task_id=trial.task_id,
+                    extra_attrs=agent_attrs,
+                )
+            else:
+                await _upload_trace_otlp(
+                    self.client,
+                    workspace,
+                    trial.trace,
+                    experiment_id=experiment_id,
+                    trial_id=trial.id,
+                    task_id=trial.task_id,
+                    extra_attrs=agent_attrs,
+                )
             trial.trace = ResourceRef(
                 uri=f"intake://traces/{trace_id}",
                 description=trial.trace.description,

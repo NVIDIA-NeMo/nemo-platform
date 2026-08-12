@@ -97,18 +97,11 @@ const normalizeModelConfigs = (
   generationModel?: GenerationModel
 ): ModelConfig[] => {
   if (generationModel?.model) {
-    return configs.map((config) => {
-      if (config.model && config.model !== generationModel.model) {
-        warnings.push(
-          `Alias "${config.alias}" now uses "${generationModel.model}" — the model you selected — instead of the drafted "${config.model}".`
-        );
-      }
-      return {
-        ...config,
-        model: generationModel.model,
-        provider: generationModel.provider || config.provider,
-      };
-    });
+    return configs.map((config) => ({
+      ...config,
+      model: generationModel.model,
+      provider: generationModel.provider || config.provider,
+    }));
   }
 
   if (modelGroups.length === 0) return configs;

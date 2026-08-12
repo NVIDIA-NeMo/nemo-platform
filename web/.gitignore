@@ -9,6 +9,7 @@ node_modules
 optimization_results/
 optimizations/
 filestorage/
+.agents/skills/kaizen-ui/
 
 # SDK output is generated on `pnpm install` (see packages/sdk/generateAll.ts).
 packages/sdk/generated/

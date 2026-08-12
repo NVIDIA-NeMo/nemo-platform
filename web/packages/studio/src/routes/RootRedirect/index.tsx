@@ -7,7 +7,7 @@ import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { useLocalStorage } from '@studio/util/hooks/useLocalStorage';
 import { WORKSPACE_DROPDOWN_RECENT_KEY } from '@studio/util/localStorage';
 import type { FC } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router';
 
 export const RootRedirect: FC = () => {
   const [recentWorkspaces] = useLocalStorage<string[]>(WORKSPACE_DROPDOWN_RECENT_KEY);

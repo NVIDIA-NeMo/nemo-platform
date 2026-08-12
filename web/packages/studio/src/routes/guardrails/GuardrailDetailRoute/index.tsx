@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useGuardrailsGetGuardrailConfig } from '@nemo/sdk/generated/platform/api';
 import { Flex, PageHeader, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { GuardrailDetailActions } from '@studio/routes/guardrails/GuardrailDetailRoute/GuardrailDetailActions';
 import { GuardrailFormProvider } from '@studio/routes/guardrails/GuardrailForm/GuardrailFormProvider';
 import { GuardrailHeaderActions } from '@studio/routes/guardrails/GuardrailForm/GuardrailHeaderActions';
 import {
@@ -19,7 +20,7 @@ import {
 } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import { type FC, Suspense } from 'react';
-import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
+import { Link, Outlet, matchPath, useLocation } from 'react-router';
 
 export const GuardrailDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -75,7 +76,10 @@ export const GuardrailDetailRoute: FC = () => {
                 <span className="min-w-0 truncate" title={config.name}>
                   {config.name}
                 </span>
-                <GuardrailHeaderActions />
+                <Flex gap="density-sm" align="center">
+                  <GuardrailHeaderActions />
+                  <GuardrailDetailActions config={config} />
+                </Flex>
               </Flex>
             }
           />

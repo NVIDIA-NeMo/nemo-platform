@@ -7,19 +7,77 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal, TypeAlias
+from typing import Annotated, TypeAlias
 
+from nemo_evaluator.api.fields import (
+    LATEST_TAG as LATEST_TAG,
+)
+from nemo_evaluator.api.fields import (
+    REF_FRAGMENT_CHARSET as REF_FRAGMENT_CHARSET,
+)
+from nemo_evaluator.api.fields import (
+    REF_FRAGMENT_SEPARATOR as REF_FRAGMENT_SEPARATOR,
+)
+from nemo_evaluator.api.fields import (
+    CloudpickleMetricPayload as CloudpickleMetricPayload,
+)
+from nemo_evaluator.api.fields import (
+    InlineMetricPayload as InlineMetricPayload,
+)
+from nemo_evaluator.api.fields import (
+    MetadataItem as MetadataItem,
+)
+from nemo_evaluator.api.fields import (
+    MetricInline as MetricInline,
+)
+from nemo_evaluator.api.fields import (
+    MetricPayload as MetricPayload,
+)
+from nemo_evaluator.api.fields import (
+    MetricRef as MetricRef,
+)
+from nemo_evaluator.api.fields import (
+    MetricRefOrInline as MetricRefOrInline,
+)
+from nemo_evaluator.api.fields import (
+    PinnedTaskRefList as PinnedTaskRefList,
+)
+from nemo_evaluator.api.fields import (
+    TaskInputs as TaskInputs,
+)
+from nemo_evaluator.api.fields import (
+    TaskMetadataList as TaskMetadataList,
+)
+from nemo_evaluator.api.fields import (
+    TaskRef as TaskRef,
+)
+from nemo_evaluator.api.fields import (
+    TaskRefList as TaskRefList,
+)
+from nemo_evaluator.api.fields import (
+    TasksetRef as TasksetRef,
+)
+from nemo_evaluator.api.fields import (
+    parse_subentity_ref as parse_subentity_ref,
+)
+from nemo_evaluator.api.task_definitions.evaluator import EvaluatorTaskDefinition as EvaluatorTaskDefinition
+from nemo_evaluator.api.task_definitions.harbor import HarborTaskDefinition as HarborTaskDefinition
 from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
-    MetricMetadata,
 )
-from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 from nemo_platform_plugin.api.filter import ComparisonOperation, FilterOperation, LogicalOperation
 from nemo_platform_plugin.api.parsed_filter import ENTITY_BASE_FIELDS
+from nemo_platform_plugin.refs import (
+    FILESET_REF_PATTERN as FILESET_REF_PATTERN,
+)
 from nemo_platform_plugin.schema import DatetimeFilter, Filter
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, RootModel, field_validator
+from pydantic import BaseModel, ConfigDict, Field
+
+#: A stored task's content, discriminated by which runner executes it. Widen with more members as
+#: runners land — the same way ``AgentRunnerTarget`` does on the target side.
+TaskDefinition: TypeAlias = Annotated[EvaluatorTaskDefinition | HarborTaskDefinition, Field(discriminator="kind")]
 
 
 class DataFilter(Filter):
@@ -48,149 +106,6 @@ class DataFilter(Filter):
             return op
 
         return _walk(operation)
-
-
-class CloudpickleMetricPayload(BaseModel):
-    """Wire schema for a cloudpickle-serialized metric payload.
-
-    Mirrors the runtime ``CloudpickleMetricPayload`` so the API contract is
-    explicit in the OpenAPI spec. The runtime bundle model serializes payloads
-    polymorphically (typed as an abstract base), which renders as an opaque
-    object in the spec; this concrete DTO documents the actual fields.
-    """
-
-    model_config = ConfigDict(extra="forbid", ser_json_bytes="base64", val_json_bytes="base64")
-
-    kind: Literal["cloudpickle"] = Field(description="Payload format discriminator.")
-    python_version: str = Field(description="Python version the metric was pickled with (must match at execution).")
-    cloudpickle_version: str = Field(description="cloudpickle version used to serialize the metric.")
-    pickle_protocol: int = Field(description="Pickle protocol used.")
-    blob: bytes = Field(description="Base64-encoded cloudpickled metric object.")
-    digest: str | None = Field(
-        default=None,
-        description="SHA-256 digest of the payload bytes. Informational; recomputed server-side.",
-    )
-
-
-class InlineMetricPayload(BaseModel):
-    """Wire schema for an inline (config-serialized) metric payload.
-
-    Mirrors the runtime ``InlineMetricPayload``. The metric is stored as its own
-    JSON configuration and reconstructed from the metric type union at execution,
-    so no code is shipped or executed on load. Used for platform-recognized
-    built-in metric types.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["inline"] = Field(description="Payload format discriminator.")
-    metric: dict[str, Any] = Field(
-        description="JSON-serialized built-in metric configuration, discriminated by its own `type`."
-    )
-    digest: str | None = Field(
-        default=None,
-        description="SHA-256 digest of the canonical metric JSON. Informational; recomputed server-side.",
-    )
-
-    @field_validator("metric")
-    @classmethod
-    def _metric_must_declare_type(cls, value: dict[str, Any]) -> dict[str, Any]:
-        """Reject payloads without a metric ``type`` discriminator at the API boundary.
-
-        The metric body stays an open object (the concrete shape is validated when
-        the bundle is hydrated against the metric type union), but a non-empty
-        ``type`` is required so malformed payloads fail fast rather than at execution.
-        """
-        metric_type = value.get("type")
-        if not isinstance(metric_type, str) or not metric_type:
-            raise ValueError("inline metric payload must include a non-empty 'type'")
-        return value
-
-
-# Discriminated on ``kind`` so additional payload formats can join the union
-# without changing the field type.
-MetricPayload = Annotated[CloudpickleMetricPayload | InlineMetricPayload, Field(discriminator="kind")]
-
-
-class MetricInline(BaseModel):
-    """An executable metric submitted to the platform.
-
-    Carries the bundled metric — type, metadata, output contracts, secret
-    references, and a format-specific payload — used both as the create-request
-    body and as an inline metric in an evaluation job.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    bundle_kind: Literal["metric-bundle"] = "metric-bundle"
-    bundle_format_version: Literal["v1"] = "v1"
-    metric_type: str = Field(min_length=1, description="Runtime metric type name.")
-    metadata: MetricMetadata = Field(default_factory=MetricMetadata, description="User-facing metric metadata.")
-    outputs: list[BundledMetricOutputSpec] = Field(min_length=1, description="The metric's output contracts.")
-    secrets: dict[str, SecretRef] = Field(
-        default_factory=dict, description="Secret references required to execute the metric."
-    )
-    payload: MetricPayload = Field(description="Format-specific serialized metric.")
-
-
-# An entity reference is ``name`` or ``workspace/name``, each segment using the platform name charset.
-# Shared by every ``workspace/name`` reference type (metrics, tasks). Enforced on the field so
-# empty/malformed refs are rejected at validation rather than during parsing.
-_ENTITY_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
-
-
-def parse_entity_ref(root: str, default_workspace: str) -> tuple[str, str]:
-    """Split a validated ``workspace/name`` (or bare ``name``) reference into ``(workspace, name)``.
-
-    The ``workspace/name`` vs bare-``name`` shape is guaranteed by the field's ``_ENTITY_REF_PATTERN``,
-    so this only needs to split. Shared by every reference type (metrics, tasks); lives here — next to
-    the pattern, with no entity dependency — so ref-owning modules can reuse it without cycling.
-    """
-    workspace, separator, name = root.partition("/")
-    if separator:
-        return workspace, name
-    return default_workspace, root
-
-
-class MetricRef(RootModel[str]):
-    """Reference to a persisted metric (format: ``workspace/name`` or ``name``)."""
-
-    root: str = Field(
-        pattern=_ENTITY_REF_PATTERN,
-        description="Reference to a stored metric (format: workspace/metric-name, or metric-name in the job workspace).",
-    )
-
-
-#: A wire metric is either an inline bundle DTO or a reference to a stored metric. Lives here (next to
-#: ``MetricInline``) rather than in ``metric_refs`` so entity/DTO modules can use it without importing
-#: the ref-resolution logic (which depends on ``entities`` and would cycle); ``metric_refs`` re-exports.
-MetricRefOrInline: TypeAlias = MetricInline | MetricRef
-
-
-class TaskRef(RootModel[str]):
-    """Reference to a persisted task (format: ``workspace/name`` or ``name``).
-
-    Same shape and charset as :class:`MetricRef` — a taskset points at its member tasks by reference
-    (there are no inline tasks), so a stored taskset only ever holds refs.
-    """
-
-    root: str = Field(
-        pattern=_ENTITY_REF_PATTERN,
-        description="Reference to a stored task (format: workspace/task-name, or task-name in the taskset workspace).",
-    )
-
-
-class TasksetRef(RootModel[str]):
-    """Reference to a persisted taskset (format: ``workspace/name`` or ``name``).
-
-    Same shape and charset as :class:`TaskRef`. Lets an evaluation reference a stored taskset in place
-    of an inline task list; the taskset's member tasks are loaded and expanded during spec resolution.
-    """
-
-    root: str = Field(
-        pattern=_ENTITY_REF_PATTERN,
-        description="Reference to a stored taskset (format: workspace/taskset-name, or taskset-name in the job workspace).",
-    )
 
 
 class Metric(BaseModel):
@@ -287,44 +202,6 @@ class EvaluateResult(_ResultBase):
     metric_types: list[str] = Field(description="Runtime metric type names applied in the run.")
 
 
-class TaskInputs(BaseModel):
-    """A task's recognized input fields.
-
-    ``extra="forbid"``: only the field below is accepted. ``instruction`` is the agent's prompt; the
-    runtime falls back to the task ``intent`` when it is unset.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    instruction: str | None = Field(
-        default=None, description="The agent's instruction (its prompt). Falls back to the task `intent` when unset."
-    )
-
-
-class MetadataItem(BaseModel):
-    """A single key/value annotation on a task."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    key: str = Field(description="Annotation key.")
-    value: str = Field(description="Annotation value.")
-
-
-def _reject_duplicate_metadata_keys(items: list[MetadataItem]) -> list[MetadataItem]:
-    """Metadata is a key→value map expressed as a list; duplicate keys would silently collapse (e.g.
-    when folded into a mapping for the runtime), so reject them at validation rather than lose data."""
-    seen: set[str] = set()
-    for item in items:
-        if item.key in seen:
-            raise ValueError(f"duplicate metadata key: {item.key!r}")
-        seen.add(item.key)
-    return items
-
-
-#: A task's metadata: key/value annotations with unique keys (duplicates rejected at validation).
-TaskMetadataList: TypeAlias = Annotated[list[MetadataItem], AfterValidator(_reject_duplicate_metadata_keys)]
-
-
 class Task(BaseModel):
     """API representation of a stored agent-eval task.
 
@@ -337,17 +214,18 @@ class Task(BaseModel):
     name: str = Field(description="Task name — the stable task id, unique within its workspace.")
     workspace: str = Field(description="Workspace the task belongs to.")
     project: str | None = Field(default=None, description="The project associated with this task.")
-    intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
-    metrics: list[MetricRef] = Field(
-        default_factory=list,
-        description="References to the metrics that score this task; inline metrics submitted on create "
-        "are normalized to (derived) stored metrics, so a stored task holds refs only.",
-    )
-    views: dict[str, SemanticView] = Field(
-        default_factory=dict, description="Optional reporting views mapping metric outputs into named semantic scores."
-    )
+    spec: TaskDefinition = Field(description="The task's content, discriminated by which runner executes it.")
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+    revision: int = Field(
+        description="Ordinal of the published revision this content corresponds to. Every stored task "
+        "has at least one revision — creating a task publishes revision 1 — so this is never 0."
+    )
+    tags: dict[str, int] = Field(
+        default_factory=dict,
+        description="Tag → revision-ordinal pointers. Reading the record's current content returns "
+        "every tag, including 'latest'. Reading a *specific* revision returns only the tags pointing "
+        "at that revision, which may be none — so do not assume 'latest' is present.",
+    )
     created_at: datetime = Field(description="Timestamp the task was created.")
     updated_at: datetime = Field(description="Timestamp the task was last updated.")
 
@@ -361,15 +239,31 @@ class TaskInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
-    metrics: list[MetricRefOrInline] = Field(
-        default_factory=list, description="Metrics that score this task — inline bundles and/or stored-metric refs."
-    )
-    views: dict[str, SemanticView] = Field(
-        default_factory=dict, description="Optional reporting views mapping metric outputs into named semantic scores."
-    )
+    spec: TaskDefinition = Field(description="The task's content, discriminated by which runner executes it.")
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags to point at the revision this request publishes. 'latest' is always applied "
+        "server-side and need not be listed.",
+    )
+
+
+class Revision(BaseModel):
+    """A published revision of a task or taskset.
+
+    Deliberately thin: it identifies a revision and says when it was cut, without repeating the
+    content. Listing a record's history is a "what can I pin to?" question, and answering it with
+    full content on every entry would make the response large for no benefit — fetch the record at
+    a specific revision to get its content.
+    """
+
+    revision: int = Field(description="Monotonic 1-based ordinal within the record.")
+    content_hash: str = Field(
+        description="Full 64-char hex SHA-256 of the revision's content. This is what a pinned "
+        "reference carries: 'workspace/name#<content_hash>'."
+    )
+    tags: list[str] = Field(default_factory=list, description="Tags currently pointing at this revision, if any.")
+    created_at: datetime = Field(description="Timestamp the revision was published.")
 
 
 class TaskSort(StrEnum):
@@ -392,21 +286,6 @@ class TaskFilter(Filter):
     updated_at: DatetimeFilter | None = Field(None, description="Filter by update date.")
 
 
-def _reject_duplicate_task_refs(refs: list[TaskRef]) -> list[TaskRef]:
-    """A taskset's members are an unordered set expressed as a list; a repeated ref is ambiguous
-    (it can't mean anything more than membership), so reject duplicates at validation."""
-    seen: set[str] = set()
-    for ref in refs:
-        if ref.root in seen:
-            raise ValueError(f"duplicate task reference: {ref.root!r}")
-        seen.add(ref.root)
-    return refs
-
-
-#: A list of task references with set semantics (order not significant, duplicates rejected).
-TaskRefList: TypeAlias = Annotated[list[TaskRef], AfterValidator(_reject_duplicate_task_refs)]
-
-
 class Taskset(BaseModel):
     """API representation of a stored taskset — a flexible grouping of tasks with metadata.
 
@@ -423,6 +302,16 @@ class Taskset(BaseModel):
         default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+    revision: int = Field(
+        description="Ordinal of the published revision this content corresponds to. Every stored "
+        "taskset has at least one revision, so this is never 0."
+    )
+    tags: dict[str, int] = Field(
+        default_factory=dict,
+        description="Tag → revision-ordinal pointers. Reading the record's current content returns "
+        "every tag, including 'latest'. Reading a *specific* revision returns only the tags pointing "
+        "at that revision, which may be none — so do not assume 'latest' is present.",
+    )
     created_at: datetime = Field(description="Timestamp the taskset was created.")
     updated_at: datetime = Field(description="Timestamp the taskset was last updated.")
 
@@ -438,9 +327,19 @@ class TasksetInput(BaseModel):
 
     description: str | None = Field(default=None, description="Human-readable description of the grouping.")
     tasks: TaskRefList = Field(
-        default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
+        default_factory=list,
+        description="References to the member tasks (set semantics; duplicates rejected). Each may be "
+        "bare, tag-pinned ('task-a#latest'), or digest-pinned; all are resolved to an exact digest "
+        "when stored, so the grouping cannot change underneath you when a member republishes. "
+        "Because membership is a set, the stored order is canonical rather than the submitted order: "
+        "reordering the same members is not a content change and publishes no revision.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags to point at the revision this request publishes. 'latest' is always applied "
+        "server-side and need not be listed.",
+    )
 
 
 class TasksetSort(StrEnum):

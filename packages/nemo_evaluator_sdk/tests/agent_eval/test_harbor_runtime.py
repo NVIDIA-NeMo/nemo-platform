@@ -88,7 +88,7 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
     # run_job is awaited exactly once, then the job dir is adapted and scored end-to-end.
     calls = []
     runner = HarborAgentTaskRunner(job_dir=job_dir, run_job=lambda: _record(calls))
-    result = await AgentEvaluator().run(tasks=tasks, target=runner, config=AgentEvalRunConfig(write_dashboard=False))
+    result = await AgentEvaluator().run(tasks=tasks, target=runner, config=AgentEvalRunConfig())
     assert calls == ["ran"]
 
     rewards_by_task = {score.task_id: score.outputs[0].value for score in result.scores if score.outputs}

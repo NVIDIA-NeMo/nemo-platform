@@ -10,12 +10,12 @@
  * its affiliates is strictly prohibited.
  */
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { resourceRefSchema, type ResourceRef } from '@nemo/common/src/types';
 import { ModelDeployment } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DeploymentsDataView } from '@studio/components/dataViews/DeploymentsDataView';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_DEPLOYMENTS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -32,7 +32,7 @@ import {
   getWorkspaceDeploymentsRoute,
 } from '@studio/routes/utils';
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 
 function getResourceRefSearchParam(params: URLSearchParams, name: string): ResourceRef | undefined {
   const value = params.get(name);
@@ -49,7 +49,8 @@ export const DeploymentsListRoute: FC = () => {
     deploymentPanelView?: string;
   }>();
 
-  const deploymentNameFromPath = deploymentNameParam ? decodeURIComponent(deploymentNameParam) : '';
+  // `useParams()` already returns decoded values; route helpers handle encoding.
+  const deploymentNameFromPath = deploymentNameParam ?? '';
 
   const [isCreateDeploymentOpen, setIsCreateDeploymentOpen] = useState(false);
   const [deploymentToDelete, setDeploymentToDelete] = useState<ModelDeployment | null>(null);

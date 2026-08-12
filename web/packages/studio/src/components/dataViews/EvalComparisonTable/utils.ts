@@ -39,10 +39,16 @@ export const comparisonsForEvalConfig = (
     ];
   });
 
-/** Normalizes optional agent-evaluation means to the comparison table's explicit null value. */
+const aggregateScoreValue = (score: AgentEvalAggregateScore): number | null => {
+  const value = score.mean;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+};
+
+/** Normalizes optional agent-evaluation values to the comparison table's explicit null value. */
 export const comparisonScoresForAgentEval = (
   scores: readonly AgentEvalAggregateScore[]
-): EvalComparisonScore[] => scores.map(({ name, mean }) => ({ name, mean: mean ?? null }));
+): EvalComparisonScore[] =>
+  scores.map((score) => ({ name: score.name, mean: aggregateScoreValue(score) }));
 
 /** Selects the aggregate mean for every metric in the model-evaluation result artifact.
  * Model results use a record keyed by metric name, whereas agent results are already an

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DatasetsTable } from '@studio/components/DatasetsTable';
 import { NewDatasetButton } from '@studio/components/NewDatasetButton';
 import { NewModelFilesetButton } from '@studio/components/NewModelFilesetButton';
@@ -20,7 +20,7 @@ import {
   getWorkspaceFilesetsRoute,
 } from '@studio/routes/utils';
 import { FC, useCallback } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router';
 
 export const FilesetListRoute: FC = () => {
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ export const FilesetListRoute: FC = () => {
       ) {
         return getFilesetDetailRoute(workspace, dataset.name);
       }
-      return getFilesetDetailsRoute(workspace, getEntityReference(dataset, { encode: true }));
+      return getFilesetDetailsRoute(workspace, getEntityReference(dataset));
     },
     [workspace]
   );

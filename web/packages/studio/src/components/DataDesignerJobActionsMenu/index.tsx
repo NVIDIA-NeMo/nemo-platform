@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  type QuickActionItem,
+  QuickActionsMenuRoot,
+} from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { CJobCancellableStatuses } from '@nemo/common/src/constants/query';
 import {
   getDataDesignerListCreateJobsQueryKey,
@@ -9,15 +13,11 @@ import {
 import type { CreateJob as DataDesignerJob } from '@nemo/sdk/generated/data-designer/schema';
 import { DeleteJobModal } from '@studio/components/dataViews/DataDesignerJobsDataView/DeleteJobModal';
 import { buildClonedJobRequest } from '@studio/components/NewDataDesignerJobForm/utils';
-import {
-  type QuickActionItem,
-  QuickActionsMenuRoot,
-} from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getDataDesignerJobBuildRoute, getDataDesignerJobDetailsRoute } from '@studio/routes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { type FC, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DataDesignerJobActionsMenuProps {
   job: DataDesignerJob;

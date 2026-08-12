@@ -15,6 +15,14 @@ from typer.testing import CliRunner
 SETUP_MOD = "nemo_platform_ext.cli.commands.setup"
 
 
+def test_setup_help_documents_resume_flag() -> None:
+    result = CliRunner().invoke(app, ["setup", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--resume" in result.output
+    assert "Retry an interrupted setup using the normal idempotent setup path." in result.output
+
+
 def test_remote_choice_retries_and_persists_connection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

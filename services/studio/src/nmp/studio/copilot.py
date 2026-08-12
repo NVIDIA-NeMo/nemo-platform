@@ -3,13 +3,14 @@
 
 """Local copilot bridge for Studio."""
 
+import ast
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
-import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Mapping
 from dataclasses import dataclass
@@ -19,9 +20,11 @@ from typing import Any
 from urllib.parse import quote, urlencode, urlparse
 
 import httpx
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError, EntityStoreError
 from nmp.common.entities.constants import NAME_PATTERN
+from nmp.common.service.dependencies import get_entity_client
 from nmp.studio import studio_links
 from nmp.studio.copilot_artifacts import (
     ChatArtifactsResponse,
@@ -51,6 +54,7 @@ from nmp.studio.copilot_mcp_tools import (
     permission_prompt_tool,
 )
 from nmp.studio.copilot_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
+from nmp.studio.entities import CopilotConversation, CopilotMessage
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
 
@@ -113,7 +117,7 @@ class AgentInputDecision(BaseModel):
 
 
 class HistorySessionResponse(BaseModel):
-    """Summary of a Claude session stored on disk."""
+    """Summary of a persisted Copilot or legacy Claude session."""
 
     session_id: str
     mtime: float
@@ -127,7 +131,7 @@ class HistorySessionResponse(BaseModel):
 
 
 class SessionHistoryResponse(BaseModel):
-    """Claude session history normalized for Studio chat replay."""
+    """Copilot session history normalized for Studio chat replay."""
 
     session_id: str
     items: list[dict[str, Any]]
@@ -138,35 +142,34 @@ _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
 _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 _pending_agent_inputs: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
-_session_conversations: dict[str, list[dict[str, str]]] = {}
-_session_mtimes: dict[str, float] = {}
+# Cache of Entity-Store-confirmed workspace names, keyed by session then by
+# (caller fingerprint, requested workspace), so the membership lookup runs once per
+# session/caller/workspace rather than on every message. Session ids are not bound to
+# a caller, so the caller's credential participates in the key: a cached authorization
+# decision must never be reused for a different caller.
+_session_workspace_cache: dict[str, dict[tuple[str, str], str]] = {}
 _AGENT_INPUT_RESPONSE_RESERVED_KEYS = frozenset({"message", "status"})
 
 
-def _evict_oldest_sessions(*, protected_session_ids: set[str] | None = None) -> None:
-    """Evict least-recently-updated inactive sessions from in-memory history."""
-    protected = (protected_session_ids or set()) | set(_session_streams)
-    while len(_session_conversations) > MAX_RETAINED_SESSIONS:
-        candidates = set(_session_conversations) - protected
-        if not candidates:
-            break
-        oldest_session_id = min(
-            candidates,
-            key=lambda session_id: (_session_mtimes.get(session_id, 0), session_id),
-        )
-        _session_conversations.pop(oldest_session_id, None)
-        _session_mtimes.pop(oldest_session_id, None)
-        _initialized_sessions.discard(oldest_session_id)
-
-    for session_id in set(_session_mtimes) - set(_session_conversations):
-        _session_mtimes.pop(session_id, None)
-
-
-def _retain_recent_turns(conversation: list[dict[str, str]]) -> None:
-    """Keep only the most recent complete user/assistant turns."""
+def _recent_conversation_messages(conversation: list[CopilotMessage]) -> list[CopilotMessage]:
+    """Bound model context without truncating the persisted chat history."""
     max_messages = MAX_RETAINED_TURNS_PER_SESSION * 2
-    if len(conversation) > max_messages:
-        del conversation[:-max_messages]
+    return conversation[-max_messages:]
+
+
+def _append_conversation_turn(
+    conversation: CopilotConversation,
+    user_message: str,
+    assistant_message: str,
+    model: str,
+) -> None:
+    conversation.messages.extend(
+        [
+            CopilotMessage(role="user", content=user_message),
+            CopilotMessage(role="assistant", content=assistant_message),
+        ]
+    )
+    record_copilot_model(conversation.chat_artifacts, model)
 
 
 @dataclass
@@ -219,6 +222,40 @@ def _validate_session_id(session_id: str) -> str:
         return str(uuid.UUID(session_id))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="session_id must be a UUID") from exc
+
+
+def _conversation_name(session_id: str) -> str:
+    """Return the Entity Store name for a Studio session UUID."""
+    return f"copilot-{session_id}"
+
+
+def _request_principal_id(request: Request) -> str:
+    """Return the end-user principal, including service-on-behalf-of requests."""
+    return (
+        request.headers.get("x-nmp-principal-on-behalf-of") or request.headers.get("x-nmp-principal-id") or "local-user"
+    )
+
+
+async def _get_owned_conversation(
+    entity_store: EntityClient,
+    *,
+    session_id: str,
+    workspace: str,
+    owner_id: str,
+) -> CopilotConversation:
+    """Load a conversation and enforce per-user ownership within a workspace."""
+    try:
+        conversation = await entity_store.get(
+            CopilotConversation,
+            _conversation_name(session_id),
+            workspace=workspace,
+        )
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no such session history") from exc
+    if conversation.owner_id != owner_id:
+        # Do not reveal whether another user's conversation exists.
+        raise HTTPException(status_code=404, detail="no such session history")
+    return conversation
 
 
 def _trimmed_string(value: Any) -> str | None:
@@ -684,36 +721,59 @@ def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
 
 
 @router.post("/sessions", response_model=NewSessionResponse)
-def create_session() -> NewSessionResponse:
-    """Create a new local copilot session."""
+async def create_session(
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> NewSessionResponse:
+    """Create a durable, user-owned Copilot session."""
+    workspace = _validated_workspace_or_default(workspace)
     session_id = str(uuid.uuid4())
-    _session_conversations[session_id] = []
-    _session_mtimes[session_id] = time.time()
-    _evict_oldest_sessions(protected_session_ids={session_id})
+    await entity_store.create(
+        CopilotConversation(
+            name=_conversation_name(session_id),
+            workspace=workspace,
+            session_id=session_id,
+            owner_id=_request_principal_id(request),
+        )
+    )
     return NewSessionResponse(session_id=session_id)
 
 
 @router.get("/history/sessions", response_model=list[HistorySessionResponse])
-def list_history_sessions() -> list[HistorySessionResponse]:
-    """List active retained NeMo Copilot sessions."""
-    _evict_oldest_sessions()
+async def list_history_sessions(
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> list[HistorySessionResponse]:
+    """List the current user's durable NeMo Copilot sessions."""
+    workspace = _validated_workspace_or_default(workspace)
+    owner_id = _request_principal_id(request)
+    result = await entity_store.list(
+        CopilotConversation,
+        workspace=workspace,
+        filter_obj={"owner_id": owner_id},
+        sort="-updated_at",
+        page_size=MAX_RETAINED_SESSIONS,
+    )
     sessions: list[HistorySessionResponse] = []
-    for session_id, messages in _session_conversations.items():
-        user_messages = [item["content"] for item in messages if item.get("role") == "user"]
+    for conversation in result.data:
+        user_messages = [message.content for message in conversation.messages if message.role == "user"]
         if not user_messages:
             continue
         first_prompt = user_messages[0]
+        modified_at = conversation.updated_at or conversation.created_at
         sessions.append(
             HistorySessionResponse(
-                session_id=session_id,
-                mtime=_session_mtimes.get(session_id, 0),
+                session_id=conversation.session_id,
+                mtime=modified_at.timestamp() if modified_at else 0,
                 title=first_prompt.splitlines()[0][:80],
                 first_prompt=first_prompt,
                 message_count=len(user_messages),
                 token_count=0,
                 tool_call_count=0,
                 tool_calls=[],
-                chat_artifacts=ChatArtifactsResponse(),
+                chat_artifacts=conversation.chat_artifacts,
             )
         )
     sessions.sort(key=lambda session: session.mtime, reverse=True)
@@ -795,27 +855,41 @@ def _history_user_interaction_texts(
 
 
 @router.get("/history/sessions/{session_id}", response_model=SessionHistoryResponse)
-def get_session_history(session_id: str) -> SessionHistoryResponse:
+async def get_session_history(
+    session_id: str,
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> SessionHistoryResponse:
     """Load a NeMo Copilot session or legacy Claude history for replay."""
     sid = _validate_session_id(session_id)
-    conversation = _session_conversations.get(sid)
+    workspace = _validated_workspace_or_default(workspace)
+    try:
+        conversation = await entity_store.get(
+            CopilotConversation,
+            _conversation_name(sid),
+            workspace=workspace,
+        )
+    except EntityNotFoundError:
+        conversation = None
     if conversation is not None:
+        if conversation.owner_id != _request_principal_id(request):
+            raise HTTPException(status_code=404, detail="no such session history")
         items: list[dict[str, Any]] = []
-        for message in conversation:
-            if message.get("role") == "user":
-                items.append({"kind": "user", "text": message["content"]})
-            elif message.get("role") == "assistant":
+        for message in conversation.messages:
+            if message.role == "user":
+                items.append({"kind": "user", "text": message.content})
+            elif message.role == "assistant":
                 items.append(
                     {
                         "kind": "assistant",
-                        "parts": [{"type": "text", "text": message["content"]}],
+                        "parts": [{"type": "text", "text": message.content}],
                     }
                 )
-        _initialized_sessions.add(sid)
         return SessionHistoryResponse(
             session_id=sid,
             items=items,
-            chat_artifacts=ChatArtifactsResponse(),
+            chat_artifacts=conversation.chat_artifacts,
         )
 
     path = _project_history_dir() / f"{sid}.jsonl"
@@ -868,6 +942,39 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
 
     _initialized_sessions.add(sid)
     return SessionHistoryResponse(session_id=sid, items=items, chat_artifacts=summary.chat_artifacts)
+
+
+@router.delete("/history/sessions/{session_id}", status_code=204)
+async def delete_session_history(
+    session_id: str,
+    request: Request,
+    workspace: str = "default",
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> Response:
+    """Delete the current user's persisted Copilot conversation."""
+    sid = _validate_session_id(session_id)
+    workspace = _validated_workspace_or_default(workspace)
+    if sid in _session_streams:
+        raise HTTPException(status_code=409, detail="cannot delete a session while it is running")
+    conversation = await _get_owned_conversation(
+        entity_store,
+        session_id=sid,
+        workspace=workspace,
+        owner_id=_request_principal_id(request),
+    )
+    try:
+        await entity_store.delete(
+            CopilotConversation,
+            conversation.name,
+            workspace=workspace,
+            expected_db_version=conversation.db_version,
+        )
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no such session history") from exc
+    except EntityConflictError as exc:
+        raise HTTPException(status_code=409, detail="session changed; refresh history and try again") from exc
+    _session_workspace_cache.pop(sid, None)
+    return Response(status_code=204)
 
 
 @router.get("/skills", response_model=list[ClaudeSkillResponse])
@@ -1245,6 +1352,78 @@ def _validated_workspace_or_default(value: str | None) -> str:
     return workspace
 
 
+# Bounds for the workspace-membership lookup below. The entities list is scoped to
+# the caller's own memberships (forwarded auth), so the page count is normally tiny.
+_WORKSPACE_LOOKUP_PAGE_SIZE = 100
+_WORKSPACE_LOOKUP_MAX_PAGES = 50
+
+
+def _caller_fingerprint(headers: Mapping[str, str]) -> str:
+    """Return a stable, non-reversible fingerprint of the caller's forwarded credentials.
+
+    Used only to scope cached authorization decisions to the caller they were made
+    for. The raw credential is never retained -- just the digest.
+    """
+    material = json.dumps({name.lower(): value for name, value in sorted(headers.items())}, sort_keys=True)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+async def _authorized_workspace(workspace: str, headers: Mapping[str, str], session_id: str) -> str:
+    """Confirm the caller may target ``workspace`` and return the platform's own
+    spelling of the name.
+
+    The value is looked up in the Entity Store (scoped to the caller's auth) and the
+    returned name is taken from the *response*, not from client input, so the value
+    that later becomes part of the agent request URL cannot be attacker-controlled.
+    The list request itself carries no user-provided value in its URL.
+
+    The confirmed name is cached per (session, caller, requested workspace) so the
+    lookup runs once per session/caller/workspace instead of on every message; only
+    successful resolutions are cached. The caller fingerprint is part of the key so
+    one caller's authorization decision is never reused for another.
+    """
+    # ``default`` is our own fallback constant, always addressable; skip the lookup.
+    if workspace == "default":
+        return "default"
+
+    cache_key = (_caller_fingerprint(headers), workspace)
+    cached = _session_workspace_cache.get(session_id, {}).get(cache_key)
+    if cached is not None:
+        return cached
+
+    base_url = _studio_copilot_base_url()
+    list_url = f"{base_url}/apis/entities/v2/workspaces"
+    timeout = httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=10.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for page in range(1, _WORKSPACE_LOOKUP_MAX_PAGES + 1):
+                response = await client.get(
+                    list_url,
+                    headers=dict(headers),
+                    params={"page": page, "page_size": _WORKSPACE_LOOKUP_PAGE_SIZE},
+                )
+                response.raise_for_status()
+                body = response.json()
+                data = body.get("data") if isinstance(body, dict) else None
+                if not isinstance(data, list) or not data:
+                    break
+                for entry in data:
+                    name = entry.get("name") if isinstance(entry, dict) else None
+                    if isinstance(name, str) and name == workspace:
+                        # ``name`` is sourced from the platform response, not the request.
+                        _session_workspace_cache.setdefault(session_id, {})[cache_key] = name
+                        return name
+                pagination = body.get("pagination") if isinstance(body, dict) else None
+                total_pages = pagination.get("total_pages") if isinstance(pagination, dict) else None
+                if isinstance(total_pages, int) and page >= total_pages:
+                    break
+    except httpx.HTTPError as exc:
+        logger.warning("Workspace authorization lookup failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not verify the requested workspace") from exc
+
+    raise HTTPException(status_code=404, detail="workspace not found or not accessible")
+
+
 def _workspace_path_segment(workspace: str) -> str:
     if WORKSPACE_NAME_RE.fullmatch(workspace) is None:
         raise ValueError("Invalid workspace name")
@@ -1252,8 +1431,8 @@ def _workspace_path_segment(workspace: str) -> str:
 
 
 def _studio_copilot_url(workspace: str) -> str:
-    # MessageRequest validates workspace against the platform's restricted entity-name
-    # pattern before it can become part of this internal request path.
+    # ``workspace`` is expected to already be an Entity-Store-confirmed name (see
+    # _authorized_workspace); it is percent-encoded as a single path segment here.
     return (
         f"{_studio_copilot_base_url()}/apis/agents/v2/workspaces/{_workspace_path_segment(workspace)}"
         f"/agents/{quote(_studio_copilot_name(), safe='')}/-/v1/chat/completions"
@@ -1301,9 +1480,136 @@ def _copilot_request_payload(
 ) -> dict[str, Any]:
     return {
         "messages": messages,
-        "stream": False,
+        # Stream so the agent runs its streaming path and emits NAT
+        # ``intermediate_data:`` tool steps we relay to the chat as tool-use parts.
+        "stream": True,
         "studio_session_id": studio_session_id,
     }
+
+
+_TOOL_STEP_PREFIX = "Tool: "
+
+
+def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
+    """Best-effort extract the tool input dict from a NAT step markdown payload.
+
+    Payloads look like ``**Input:**\\n```json\\n{'resource': 'secrets'}...``; the
+    dict is a Python repr (single quotes), so parse the first balanced ``{...}``
+    with ``ast.literal_eval`` and fall back to an empty dict.
+    """
+    if not isinstance(payload, str):
+        return {}
+    start = payload.find("{")
+    if start == -1:
+        return {}
+    depth = 0
+    for index in range(start, len(payload)):
+        if payload[index] == "{":
+            depth += 1
+        elif payload[index] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = ast.literal_eval(payload[start : index + 1])
+                except (ValueError, SyntaxError):
+                    return {}
+                return value if isinstance(value, dict) else {}
+    return {}
+
+
+# Framework-injected tool arguments that must never be surfaced in the browser
+# tool-use event (they are internal plumbing, not user-facing input).
+_TOOL_INPUT_INTERNAL_KEYS = frozenset({"studio_session_id"})
+
+
+_REASONING_STEP_PREFIX = "Reasoning: "
+
+
+def _parse_reasoning_step_output(payload: Any) -> str:
+    """Pull the chain of thought out of a NAT step payload.
+
+    NAT renders steps as markdown with an ``**Input:**`` block and, once the step
+    completes, an ``**Output:**`` block holding the reasoning.
+    """
+    if not isinstance(payload, str):
+        return ""
+    marker = "**Output:**"
+    index = payload.find(marker)
+    if index == -1:
+        return ""
+    return payload[index + len(marker) :].strip()
+
+
+def _reasoning_stream_event(reasoning: str) -> tuple[str, str]:
+    return (
+        "agent",
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"nemo-copilot-reasoning-{uuid.uuid4()}",
+                    "model": _studio_copilot_name(),
+                    "content": [{"type": "reasoning", "text": reasoning}],
+                },
+            }
+        ),
+    )
+
+
+def _parse_tool_step_input(payload: Any) -> dict[str, Any]:
+    """Best-effort extract the tool input dict from a NAT step markdown payload.
+
+    Payloads look like ``**Input:**\\n```json\\n{'resource': 'secrets'}...``; the
+    dict is a Python repr (single quotes), so parse the first balanced ``{...}``
+    with ``ast.literal_eval`` and fall back to an empty dict.
+    """
+    if not isinstance(payload, str):
+        return {}
+    start = payload.find("{")
+    if start == -1:
+        return {}
+    depth = 0
+    for index in range(start, len(payload)):
+        if payload[index] == "{":
+            depth += 1
+        elif payload[index] == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    value = ast.literal_eval(payload[start : index + 1])
+                except (ValueError, SyntaxError):
+                    return {}
+                return value if isinstance(value, dict) else {}
+    return {}
+
+
+# Framework-injected tool arguments that must never be surfaced in the browser
+# tool-use event (they are internal plumbing, not user-facing input).
+_TOOL_INPUT_INTERNAL_KEYS = frozenset({"studio_session_id"})
+
+
+def _tool_use_stream_event(tool_name: str, tool_input: dict[str, Any]) -> tuple[str, str]:
+    safe_input = {key: value for key, value in tool_input.items() if key not in _TOOL_INPUT_INTERNAL_KEYS}
+    return (
+        "agent",
+        json.dumps(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"nemo-copilot-tool-{uuid.uuid4()}",
+                    "model": _studio_copilot_name(),
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": f"tool-{uuid.uuid4()}",
+                            "name": tool_name,
+                            "input": safe_input,
+                        }
+                    ],
+                },
+            }
+        ),
+    )
 
 
 async def _invoke_copilot(
@@ -1318,17 +1624,92 @@ async def _invoke_copilot(
         write=60.0,
         pool=10.0,
     )
+    queue = _session_streams.get(studio_session_id)
+    content_parts: list[str] = []
+    model = _studio_copilot_name()
+    seen_tool_ids: set[str] = set()
+    seen_reasoning_ids: set[str] = set()
     async with httpx.AsyncClient(timeout=timeout) as client:
-        # The origin and agent name are server-configured. The only request-derived URL
-        # component is a NAME_PATTERN-validated, percent-encoded workspace path segment.
-        # codeql[py/partial-ssrf]
-        response = await client.post(
+        # The origin and agent name are server-configured; the workspace path segment is
+        # an Entity-Store-confirmed name resolved by _authorized_workspace before this call.
+        async with client.stream(
+            "POST",
             agent_url,
             headers=dict(headers),
             json=_copilot_request_payload(messages, studio_session_id),
-        )
-        response.raise_for_status()
-        return _copilot_response(response.json())
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.startswith("data:"):
+                    data = line[len("data:") :].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(chunk, dict):
+                        continue
+                    if chunk.get("model"):
+                        model = chunk["model"]
+                    for choice in chunk.get("choices", []):
+                        piece = (choice.get("delta") or {}).get("content")
+                        if isinstance(piece, str) and piece:
+                            content_parts.append(piece)
+                elif line.startswith("intermediate_data:") and queue is not None:
+                    data = line[len("intermediate_data:") :].strip()
+                    try:
+                        step = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    name = step.get("name") if isinstance(step, dict) else None
+                    if not isinstance(name, str):
+                        continue
+                    if name.startswith(_REASONING_STEP_PREFIX):
+                        # Published as a start/end pair sharing one id, so this cannot use
+                        # the tool dedup below: the start would claim the id and the end,
+                        # which carries the trace, would be dropped. Only the end has an
+                        # Output block, so record the id only once one is parsed -- that
+                        # skips a repeated end without ever marking the start as seen.
+                        reasoning = _parse_reasoning_step_output(step.get("payload"))
+                        if not reasoning:
+                            continue
+                        step_id = step.get("id")
+                        if isinstance(step_id, str):
+                            if step_id in seen_reasoning_ids:
+                                continue
+                            seen_reasoning_ids.add(step_id)
+                        await queue.put(_reasoning_stream_event(reasoning))
+                        continue
+                    if not name.startswith(_TOOL_STEP_PREFIX):
+                        continue
+                    step_id = step.get("id")
+                    if isinstance(step_id, str):
+                        if step_id in seen_tool_ids:
+                            continue
+                        seen_tool_ids.add(step_id)
+                    await queue.put(
+                        _tool_use_stream_event(
+                            name[len(_TOOL_STEP_PREFIX) :].strip(),
+                            _parse_tool_step_input(step.get("payload")),
+                        )
+                    )
+    return "".join(content_parts), model
+
+
+def _render_session_event(event_type: str, payload: Any) -> str | None:
+    """Render a queued session event as an SSE frame, or None if it is not relayable."""
+    if event_type == "permission_request":
+        return _sse(payload, event="permission_request")
+    if event_type == "input_request":
+        return _sse(payload, event="input_request")
+    if event_type == "permission_expired":
+        return _sse(payload, event="permission_expired")
+    if event_type == "input_expired":
+        return _sse(payload, event="input_expired")
+    if event_type == "agent":
+        return _sse(payload)
+    return None
 
 
 async def _stream_copilot(
@@ -1337,6 +1718,8 @@ async def _stream_copilot(
     agent_url: str,
     headers: Mapping[str, str],
     studio_system_prompt: str,
+    conversation: CopilotConversation,
+    entity_store: EntityClient,
 ) -> AsyncIterator[str]:
     """Invoke the deployed NeMo Copilot while preserving Studio's blocking UI event protocol."""
     if session_id in _session_streams:
@@ -1348,7 +1731,6 @@ async def _stream_copilot(
 
     queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
     _session_streams[session_id] = queue
-    conversation = _session_conversations.setdefault(session_id, [])
     contextual_message = "\n\n".join(
         [
             "<nemo_studio_context>",
@@ -1358,7 +1740,10 @@ async def _stream_copilot(
             message,
         ]
     )
-    request_messages = [*conversation, {"role": "user", "content": contextual_message}]
+    request_messages = [
+        *(persisted_message.model_dump() for persisted_message in _recent_conversation_messages(conversation.messages)),
+        {"role": "user", "content": contextual_message},
+    ]
     invocation = asyncio.create_task(
         _invoke_copilot(
             agent_url,
@@ -1380,29 +1765,42 @@ async def _stream_copilot(
                 yield ":\n\n"
                 continue
             if queued_event in done:
-                event_type, payload = queued_event.result()
-                if event_type == "permission_request":
-                    yield _sse(payload, event="permission_request")
-                elif event_type == "input_request":
-                    yield _sse(payload, event="input_request")
-                elif event_type == "permission_expired":
-                    yield _sse(payload, event="permission_expired")
-                elif event_type == "input_expired":
-                    yield _sse(payload, event="input_expired")
-                elif event_type == "agent":
-                    yield _sse(payload)
+                rendered = _render_session_event(*queued_event.result())
+                if rendered is not None:
+                    yield rendered
                 queued_event = asyncio.create_task(queue.get())
 
+        # The invocation finished, but tool-use / prompt events may have been
+        # queued in the same event-loop turn as completion. Flush them before the
+        # final assistant message so they are not dropped when the loop exits.
+        pending: list[tuple[str, Any]] = []
+        if queued_event.done() and not queued_event.cancelled():
+            pending.append(queued_event.result())
+        else:
+            queued_event.cancel()
+        while True:
+            try:
+                pending.append(queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        for event_type, payload in pending:
+            rendered = _render_session_event(event_type, payload)
+            if rendered is not None:
+                yield rendered
+
         assistant_text, model = await invocation
-        conversation.extend(
-            [
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": assistant_text},
-            ]
-        )
-        _retain_recent_turns(conversation)
-        _session_mtimes[session_id] = time.time()
-        _initialized_sessions.add(session_id)
+        _append_conversation_turn(conversation, message, assistant_text, model)
+        try:
+            await entity_store.update(conversation)
+        except EntityConflictError:
+            logger.info("Reloading conflicted NeMo Copilot session %s before retrying", session_id)
+            latest_conversation = await entity_store.get(
+                CopilotConversation,
+                conversation.name,
+                workspace=conversation.workspace,
+            )
+            _append_conversation_turn(latest_conversation, message, assistant_text, model)
+            await entity_store.update(latest_conversation)
         yield _sse(
             json.dumps(
                 {
@@ -1425,27 +1823,48 @@ async def _stream_copilot(
             json.dumps({"message": _copilot_error_detail(exc)}),
             event="error",
         )
+    except EntityStoreError:
+        logger.exception("Failed to persist NeMo Copilot session %s", session_id)
+        yield _sse(
+            json.dumps({"message": "NeMo Copilot could not save this conversation."}),
+            event="error",
+        )
     finally:
         _session_streams.pop(session_id, None)
         if not invocation.done():
             invocation.cancel()
         if not queued_event.done():
             queued_event.cancel()
-        _evict_oldest_sessions()
 
 
 @router.post("/sessions/{session_id}/messages")
-async def send_message(session_id: str, body: MessageRequest, request: Request) -> StreamingResponse:
+async def send_message(
+    session_id: str,
+    body: MessageRequest,
+    request: Request,
+    entity_store: EntityClient = Depends(get_entity_client),
+) -> StreamingResponse:
     """Send a message to the deployed NeMo Copilot and stream Studio events."""
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(body.workspace)
-    agent_url = _studio_copilot_url(workspace)
+    # Headers are forwarded only over HTTPS, and the scheme comes from the
+    # server-configured base URL, so deriving them before the workspace is
+    # confirmed is equivalent -- and the authorization lookup needs them.
+    agent_headers = _copilot_request_headers(request, _studio_copilot_url(workspace))
+    canonical_workspace = await _authorized_workspace(workspace, agent_headers, sid)
+    conversation = await _get_owned_conversation(
+        entity_store,
+        session_id=sid,
+        workspace=canonical_workspace,
+        owner_id=_request_principal_id(request),
+    )
+    agent_url = _studio_copilot_url(canonical_workspace)
     studio_base_url = _studio_base_url_from_request(body, request)
     studio_pathname = _studio_pathname_from_request(body, request)
     enabled_destinations = studio_links.enabled_destinations_from_request(request)
     system_prompt = _build_copilot_system_prompt(
         sid,
-        workspace,
+        canonical_workspace,
         studio_base_url,
         studio_pathname,
         enabled_destinations,
@@ -1455,8 +1874,10 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
             sid,
             body.message,
             agent_url,
-            _copilot_request_headers(request, agent_url),
+            agent_headers,
             system_prompt,
+            conversation,
+            entity_store,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-store"},

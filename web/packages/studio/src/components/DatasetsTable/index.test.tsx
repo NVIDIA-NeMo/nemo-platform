@@ -15,7 +15,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ComponentProps } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 vi.mock('use-debounce', () => ({
   useDebounce: (value: unknown) => [value, () => {}],
@@ -52,7 +52,7 @@ vi.mock('@studio/components/BulkDeleteModal', () => ({
   ),
 }));
 
-vi.mock('@studio/components/DeleteConfirmationModal', () => ({
+vi.mock('@nemo/common/src/components/DeleteConfirmationModal', () => ({
   DeleteConfirmationModal: vi.fn(
     ({
       open,

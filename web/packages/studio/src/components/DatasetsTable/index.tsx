@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
@@ -11,7 +12,6 @@ import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/co
 import { makeDatasetsTableColumns } from '@studio/components/DatasetsTable/columns';
 import { type DatasetsTableProps } from '@studio/components/DatasetsTable/types';
 import { useDatasetsTable } from '@studio/components/DatasetsTable/useDatasetsTable';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NewDatasetButton } from '@studio/components/NewDatasetButton';
@@ -22,7 +22,7 @@ import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetB
 import { getNewFilesetRoute } from '@studio/routes/utils';
 import { X, Database, Trash } from 'lucide-react';
 import { type FC } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 export type { DatasetsTableProps } from '@studio/components/DatasetsTable/types';
 

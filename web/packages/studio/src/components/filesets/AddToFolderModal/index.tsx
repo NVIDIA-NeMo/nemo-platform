@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import {
   Button,
@@ -28,11 +29,10 @@ import { FileSystemNode } from '@studio/components/FilesTable/utils';
 import { useDatasetNavigator } from '@studio/hooks/useDatasetNavigator';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
-import { logger } from '@studio/util/logger';
 import { FolderOpen, Info } from 'lucide-react';
 import { type FC, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { z } from 'zod';
 
 const PARENT_FOLDER_VALUE = '..';
@@ -186,11 +186,9 @@ export const AddToFolderModal: FC<AddToFolderModalProps> = ({
     const parentFolder = getParentFolder(currentFolder);
     const datasetFullName = `${workspace}/${datasetName}`;
     navigate(
-      getFilesetDetailsRoute(
-        routeWorkspace,
-        encodeURIComponent(datasetFullName),
-        parentFolder ? encodeURIComponent(parentFolder) : undefined
-      )
+      // Pass raw values: generatePath encodes path params and URLSearchParams
+      // encodes the folder query param.
+      getFilesetDetailsRoute(routeWorkspace, datasetFullName, parentFolder ?? undefined)
     );
   };
 

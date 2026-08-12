@@ -396,9 +396,13 @@ entities_workspace_object_path(base_path, method) if {
 	lower(method) in ["get", "put", "delete"]
 }
 
-# Workspace-scoped sub-resources (members, projects, entities/...) are user-facing CRUD, not
-# internal-only nested APIs. Without this, 6+ segment paths only hit nested_entities_internal_only
-# (403 for non-service users). Cross-workspace queries use workspace "-"; exclude that.
+# All workspace sub-resources bypass the blanket nested-Entities hard deny and go through the
+# endpoint permission system instead. The effective access level is determined by static-authz.yaml:
+# members and projects grant user roles access; entities.* does not, so entity CRUD is still denied
+# for non-service callers, but via a permission check rather than an OPA hard deny. This makes it
+# easy to open access later by updating role definitions without touching the OPA policy.
+# Cross-workspace queries use workspace "-"; exclude those so they retain the blanket internal-only
+# restriction.
 entities_workspace_object_path(base_path, method) if {
 	parts := [p | p := split(base_path, "/")[_]; p != ""]
 	count(parts) >= 6

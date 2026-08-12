@@ -13,6 +13,10 @@ not-for:
   - nemo-explore (use to gather the design before writing the spec)
   - nemo-build-agent (use to scaffold and deploy once the spec is signed off)
   - nemo-skill-selection (use for dispatch when intent is unclear)
+preconditions:
+  - nemo_setup_complete
+  - workspace_exists
+  - agent_design_complete
 compatibility: nemo-platform >= 0.1.0; writes one markdown file under agents/; uploads it to a NeMo Filesets fileset (the canonical copy) — local file is a write-through cache; safe under any sandbox; idempotent if user confirms overwrite.
 maturity: active
 license: Apache-2.0
@@ -23,7 +27,7 @@ allowed-tools: [Read, Write, Edit, Bash]
 # NeMo Platform agent spec
 
 Turn the answers from `nemo-explore` into a durable artifact. The spec is
-the contract `nemo-build-agent` reads before producing the Platform-owned
+the contract `nemo-build-agent` reads before producing the Platform-managed
 `agent.yaml` or preserving an existing NAT compatibility workflow, and
 the `AGENT-SPEC.md` that downstream optimization agents read as
 their primary context. Without it, downstream skills have to re-ask

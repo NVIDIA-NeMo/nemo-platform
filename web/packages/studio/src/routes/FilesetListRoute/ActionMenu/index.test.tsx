@@ -32,7 +32,7 @@ vi.mock('@studio/components/DatasetCreateModal', () => ({
   }),
 }));
 
-vi.mock('@studio/components/DeleteConfirmationModal', () => ({
+vi.mock('@nemo/common/src/components/DeleteConfirmationModal', () => ({
   DeleteConfirmationModal: vi.fn(({ open, onClose, onDelete, title }) => {
     if (!open) return null;
     return (

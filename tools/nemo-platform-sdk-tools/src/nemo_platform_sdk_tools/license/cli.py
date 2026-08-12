@@ -78,7 +78,7 @@ def generate(
     Generate license report for the main project.
 
     This command:
-    1. Runs osv-scanner on uv.lock files
+    1. Runs osv-scanner on the uv-exported Python dependency snapshot and configured Go modules
     2. Generates JSON output with license information
     3. Formats the output in your chosen format
     4. Runs scans in parallel for faster execution

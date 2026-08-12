@@ -43,7 +43,6 @@ const VENDOR_EXTERNALS = [
   'react-dom',
   'react-dom/client',
   'react-router',
-  'react-router-dom',
   // The design system is shared so plugins render KUI components against the
   // same theme context Studio's KaizenThemeProvider populates (native look +
   // dark mode) instead of bundling their own foundations copy.
@@ -52,6 +51,8 @@ const VENDOR_EXTERNALS = [
   // query cache across Studio and every plugin.
   '@tanstack/react-query',
 ] as const;
+
+const DEV_VENDOR_DIR = 'node_modules/.vendor';
 
 // Each import specifier in the map resolves to a single vendor bundle.
 // 'react/jsx-runtime' shares react.js and 'react-dom/client' shares
@@ -62,9 +63,9 @@ const VENDOR_IMPORT_MAP: Record<string, string> = {
   'react-dom': 'react-dom.js',
   'react-dom/client': 'react-dom.js',
   'react-router': 'react-router.js',
-  'react-router-dom': 'react-router-dom.js',
   '@nvidia/foundations-react-core': 'foundations.js',
   '@tanstack/react-query': 'react-query.js',
+  '@nemo/common': 'common.js',
 };
 
 // Virtual modules have no filesystem location. Rolldown's resolver falls
@@ -78,6 +79,50 @@ const virtualShimPlugin = (shims: Record<string, string>): RolldownPlugin => ({
   },
   load(id) {
     return shims[id] ?? null;
+  },
+});
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+
+// The raw rolldown vendor build doesn't read tsconfig paths, so map by hand.
+const WORKSPACE_ALIASES: Record<string, string> = {
+  '@nemo/common': path.resolve(configDir, '../common'),
+  '@nemo/sdk': path.resolve(configDir, '../sdk'),
+};
+
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
+
+const resolveSourceFile = (base: string): string | null => {
+  if (fs.existsSync(base) && fs.statSync(base).isFile()) return base;
+  for (const ext of SOURCE_EXTENSIONS) {
+    if (fs.existsSync(base + ext)) return base + ext;
+  }
+  for (const ext of SOURCE_EXTENSIONS) {
+    const indexFile = path.join(base, `index${ext}`);
+    if (fs.existsSync(indexFile)) return indexFile;
+  }
+  return null;
+};
+
+const workspaceSourcePlugin = (): RolldownPlugin => ({
+  name: 'workspace-source',
+  resolveId(id, importer) {
+    // Studio already bundles these same stylesheets through its own graph.
+    if (id.endsWith('.css')) return { id: 'virtual:empty-css', external: false };
+    const alias = Object.keys(WORKSPACE_ALIASES).find(
+      (name) => id === name || id.startsWith(`${name}/`)
+    );
+    if (alias) {
+      const rest = id.slice(alias.length).replace(/^\//, '');
+      return resolveSourceFile(path.join(WORKSPACE_ALIASES[alias], rest));
+    }
+    if (importer && (id.startsWith('./') || id.startsWith('../'))) {
+      return resolveSourceFile(path.resolve(path.dirname(importer), id));
+    }
+    return null;
+  },
+  load(id) {
+    return id === 'virtual:empty-css' ? '' : null;
   },
 });
 
@@ -159,11 +204,11 @@ async function buildVendorBundles(
       ...cjsNamedReexports('_reactDomClient', reactDomClientKeys),
     ].join('\n'),
     'virtual:react-router': "export * from 'react-router';",
-    'virtual:react-router-dom': "export * from 'react-router-dom';",
     // Foundations is ESM with static named exports, so a plain re-export works
     // (no CJS named-reexport introspection needed as with react/react-dom).
     'virtual:foundations': "export * from '@nvidia/foundations-react-core';",
     'virtual:react-query': "export * from '@tanstack/react-query';",
+    'virtual:common': "export * from '@nemo/common/src/plugin';",
   };
 
   const entries: Array<{
@@ -171,6 +216,7 @@ async function buildVendorBundles(
     outfile: string;
     external: string[];
     banner?: string;
+    plugins?: RolldownPlugin[];
   }> = [
     { entry: 'virtual:react', outfile: 'react.js', external: [] },
     {
@@ -180,11 +226,6 @@ async function buildVendorBundles(
       banner: buildRequireShim(['react']),
     },
     { entry: 'virtual:react-router', outfile: 'react-router.js', external: ['react'] },
-    {
-      entry: 'virtual:react-router-dom',
-      outfile: 'react-router-dom.js',
-      external: ['react', 'react-dom', 'react-router'],
-    },
     {
       entry: 'virtual:foundations',
       outfile: 'foundations.js',
@@ -199,12 +240,19 @@ async function buildVendorBundles(
       external: ['react'],
       banner: buildRequireShim(['react']),
     },
+    {
+      entry: 'virtual:common',
+      outfile: 'common.js',
+      external: [...VENDOR_EXTERNALS],
+      banner: buildRequireShim(VENDOR_EXTERNALS),
+      plugins: [workspaceSourcePlugin()],
+    },
   ];
 
   fs.rmSync(outdir, { recursive: true, force: true });
   fs.mkdirSync(outdir, { recursive: true });
   await Promise.all(
-    entries.map(({ entry, outfile, external, banner }) =>
+    entries.map(({ entry, outfile, external, banner, plugins = [] }) =>
       rolldownBuild({
         input: entry,
         cwd: projectRoot,
@@ -215,7 +263,7 @@ async function buildVendorBundles(
           define: { 'process.env.NODE_ENV': dev ? '"development"' : '"production"' },
         },
         external,
-        plugins: [virtualShimPlugin(shims)],
+        plugins: [virtualShimPlugin(shims), ...plugins],
         output: {
           file: path.resolve(outdir, outfile),
           format: 'esm',
@@ -242,6 +290,7 @@ function vendorPlugin(): Plugin {
   let outdir = '';
   let projectRoot = '';
   let isServe = false;
+  let isPreview = false;
   let pending: Promise<void> | null = null;
 
   // buildVendorBundles wipes outdir and rebuilds on every vite process start,
@@ -257,10 +306,13 @@ function vendorPlugin(): Plugin {
   // the document base URL, which on SPA-fallback deep links can be anywhere
   // inside the app, so relative './vendor/…' paths would break. Absolute
   // paths prefixed with Vite's `base` resolve identically from any route.
+  const vendorUrl = (bundle: string) =>
+    isServe ? `${base}${DEV_VENDOR_DIR}/${bundle}` : `${base}vendor/${bundle}`;
+
   const importMapJson = () =>
     JSON.stringify({
       imports: Object.fromEntries(
-        Object.entries(VENDOR_IMPORT_MAP).map(([k, v]) => [k, `${base}vendor/${v}`])
+        Object.entries(VENDOR_IMPORT_MAP).map(([k, v]) => [k, vendorUrl(v)])
       ),
     });
 
@@ -270,11 +322,21 @@ function vendorPlugin(): Plugin {
     // beats optimizeDeps. In build mode rolldownOptions.external handles
     // the same specifiers; resolveId is a no-op there.
     enforce: 'pre',
-    configResolved(config) {
+    // `command` is 'serve' under `vite preview` too, and isPreview is only on
+    // ConfigEnv — preview serves an existing dist, so it must not rebuild.
+    config(_, env) {
+      isPreview = env.isPreview === true;
+    },
+    async configResolved(config) {
       base = config.base;
-      isServe = config.command === 'serve';
+      isServe = config.command === 'serve' && !isPreview;
       projectRoot = config.root;
-      outdir = path.resolve(projectRoot, 'public', 'vendor');
+      outdir = isServe
+        ? path.resolve(projectRoot, DEV_VENDOR_DIR)
+        : path.resolve(projectRoot, 'public', 'vendor');
+      if (!isPreview) {
+        await ensureBuilt();
+      }
     },
     buildStart() {
       return ensureBuilt();
@@ -284,14 +346,13 @@ function vendorPlugin(): Plugin {
     },
     // Without this, Vite pre-bundles bare 'react' into .vite/deps and
     // rewrites Studio's imports to that URL, giving Studio its own React
-    // while plugins use the vendor copy. Redirecting to the vendor URL
-    // in dev matches the prod externalization so a single React instance
-    // is shared at runtime.
+    // while plugins use the vendor copy. Resolving to the same file the
+    // dev import map points at keeps one shared instance at runtime.
     resolveId(id) {
       if (!isServe) return null;
       const mapped = VENDOR_IMPORT_MAP[id];
       if (mapped) {
-        return { id: `${base}vendor/${mapped}`, external: true };
+        return path.resolve(outdir, mapped);
       }
       return null;
     },
@@ -312,7 +373,6 @@ const isCI = Boolean(process.env.CI);
 const isProd = process.env.NODE_ENV === 'production';
 const isTest = Boolean(process.env.VITEST);
 
-const configDir = path.dirname(fileURLToPath(import.meta.url));
 const commonPackageDir = path.resolve(configDir, '../common');
 const licenseFileNames = [
   'LICENSE',
@@ -462,6 +522,7 @@ export default defineConfig(({ mode }) => {
     // them to /vendor/* instead without Vite racing to pre-bundle first.
     optimizeDeps: {
       exclude: [...VENDOR_EXTERNALS],
+      include: ['@nvidia/foundations-react-core > react-compiler-runtime'],
     },
     build: {
       rolldownOptions: {

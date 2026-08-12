@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { Stack } from '@nvidia/foundations-react-core';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { ROUTES } from '@studio/constants/routes';
 import { INTAKE_FILTER_ACTION_TARGET_ID } from '@studio/routes/IntakeLayout';
 import { gateIntakeRoutes } from '@studio/routes/utils';
-import { FC, lazy } from 'react';
-import { Navigate, RouteObject } from 'react-router-dom';
+import { type FC, lazy } from 'react';
+import { Navigate, type RouteObject } from 'react-router';
 
 const IntakeLayout = lazy(() =>
   import('@studio/routes/IntakeLayout').then((module) => ({ default: module.IntakeLayout }))

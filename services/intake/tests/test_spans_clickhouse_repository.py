@@ -10,11 +10,13 @@ from nmp.intake.repository.clickhouse.executor import ClickHouseExecutor, ClickH
 from nmp.intake.repository.clickhouse.span import (
     SPAN_COLUMNS,
     SPAN_GROUP_COLUMN_FIELDS,
+    SPAN_GROUP_SORT_FIELDS,
     ClickHouseSpanRepository,
+    _group_order_by,
     _order_by,
 )
 from nmp.intake.repository.clickhouse.tables import ClickHouseTable
-from nmp.intake.spans.api.spans_schemas import SpanGroupBy
+from nmp.intake.spans.api.spans_schemas import SpanGroupBy, SpanGroupSortField
 from nmp.intake.spans.domain import SpanListFilter, SpanStatus
 from nmp.intake.spans.storage import make_pagination
 
@@ -44,6 +46,9 @@ class _Client(ClickHouseExecutor):
         else:
             result = _QueryResult([])
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
+
+
+_GROUP_STARTED_AT = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 
 
 def _repository(client: _Client) -> ClickHouseSpanRepository:
@@ -173,10 +178,10 @@ async def test_list_span_groups_groups_by_columns():
             _QueryResult([(2,)]),
             _QueryResult(
                 [
-                    ("session-a", "trace-a", 3),
-                    ("session-b", "trace-b", 1),
+                    ("session-a", "trace-a", 3, _GROUP_STARTED_AT),
+                    ("session-b", "trace-b", 1, _GROUP_STARTED_AT),
                 ],
-                ["session_id", "trace_id", "span_count"],
+                ["session_id", "trace_id", "span_count", "started_at"],
             ),
         ]
     )
@@ -193,9 +198,60 @@ async def test_list_span_groups_groups_by_columns():
     assert result.pagination.total_results == 2
     assert result.data[0].group == {"session_id": "session-a", "trace_id": "trace-a"}
     assert result.data[0].span_count == 3
+    assert result.data[0].started_at == _GROUP_STARTED_AT
     assert "FROM spans FINAL" in client.queries[0]
     assert "GROUP BY session_id, trace_id" in client.queries[0]
     assert "ORDER BY span_count DESC, session_id ASC, trace_id ASC" in client.queries[1]
+
+
+@pytest.mark.asyncio
+async def test_list_span_groups_sorts_by_time_so_recent_work_is_one_call():
+    """Newest first over groups is what makes 'what did this agent run lately' cheap.
+
+    Without it a caller has to page spans newest first and collect distinct ids, which
+    only ever gives the traces that fit inside the scanned window.
+    """
+    client = _Client(
+        query_results=[
+            _QueryResult([(2,)]),
+            _QueryResult(
+                [
+                    ("trace-new", 1, _GROUP_STARTED_AT),
+                    ("trace-old", 9, datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                ],
+                ["trace_id", "span_count", "started_at"],
+            ),
+        ]
+    )
+    repository = _repository(client)
+
+    result = await repository.list_span_groups(
+        filters=SpanListFilter(workspace="workspace-a"),
+        group_by=["trace_id"],
+        page=1,
+        page_size=10,
+        sort="-started_at",
+    )
+
+    assert "min(start_time) AS started_at" in client.queries[0]
+    assert "ORDER BY started_at DESC, trace_id ASC" in client.queries[1]
+    # The newest group leads even though it is the smallest.
+    assert [group.group["trace_id"] for group in result.data] == ["trace-new", "trace-old"]
+
+
+def test_group_order_by_whitelists_supported_group_sort_keys():
+    assert _group_order_by("started_at", ["trace_id"]) == "started_at ASC, trace_id ASC"
+    assert _group_order_by("-started_at", ["trace_id"]) == "started_at DESC, trace_id ASC"
+    assert _group_order_by("-span_count", ["trace_id"]) == "span_count DESC, trace_id ASC"
+
+
+def test_group_order_by_rejects_unsupported_group_sort_keys():
+    with pytest.raises(ValueError, match="Unsupported span group sort field"):
+        _group_order_by("started_at DESC; DROP TABLE spans", ["trace_id"])
+
+
+def test_group_sort_enum_matches_repository_sort_fields():
+    assert {field.value.removeprefix("-") for field in SpanGroupSortField} == SPAN_GROUP_SORT_FIELDS
 
 
 @pytest.mark.asyncio

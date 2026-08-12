@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { FilesetSearchableSelect } from '@nemo/common/src/components/FilesetSearchableSelect';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
@@ -15,7 +16,6 @@ import {
   SEED_SAMPLING_STRATEGY_KEY,
 } from '@studio/routes/DataDesignerJobBuildRoute/columns';
 import type { JobBuilderFormValues } from '@studio/routes/DataDesignerJobBuildRoute/useJobBuilder';
-import { FilesetSearchableSelect } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/FilesetSearchableSelect';
 import { getContentColumns, getFileExtension } from '@studio/util/files';
 import { type FC, useEffect, useMemo, useRef } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';

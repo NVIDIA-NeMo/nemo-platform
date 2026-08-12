@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  Stack,
+  Divider,
   Text,
   VerticalNavList,
   VerticalNavListItem,
@@ -11,20 +11,27 @@ import {
 import { CollapsedNavItem } from '@studio/components/Layouts/NavigationDrawer/components/CollapsedNavItem';
 import { NavItem } from '@studio/components/Layouts/NavigationDrawer/components/NavItem';
 import { Props } from '@studio/components/Layouts/NavigationDrawer/types';
-import { toGroups } from '@studio/components/Layouts/NavigationDrawer/utils';
+import { flattenForRail, toGroups } from '@studio/components/Layouts/NavigationDrawer/utils';
 import { Fragment, useCallback, useMemo, useState, type FC } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
-export const NavigationDrawer: FC<Props> = ({ items, bottomItems, collapsed = false }) => {
+export const NavigationDrawer: FC<Props> = ({ items, collapsed = false }) => {
   const { pathname } = useLocation();
   const [accordionState, setAccordionState] = useState<Record<string, boolean>>({});
 
-  const groups = useMemo(() => toGroups(items), [items]);
-  const bottomGroups = useMemo(() => (bottomItems ? toGroups(bottomItems) : []), [bottomItems]);
+  // A chevron's pin lasts until the next navigation, then `defaultOpen` decides again. Resetting
+  // during render rather than in an effect keeps the stale pin from painting for a frame.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (lastPathname !== pathname) {
+    setLastPathname(pathname);
+    setAccordionState({});
+  }
 
-  // Active item = the nav href that's the longest prefix of the current
+  const groups = useMemo(() => toGroups(items), [items]);
+
+  // Active item = the nav href that is the longest prefix of the current path.
   const matchedHref = useMemo(() => {
-    const hrefs = [...groups, ...bottomGroups]
+    const hrefs = groups
       .flatMap((g) => g.items)
       .flatMap((i) => [i.href, ...(i.subItems ?? []).map((s) => s.href)])
       .filter((h): h is string => typeof h === 'string');
@@ -33,7 +40,7 @@ export const NavigationDrawer: FC<Props> = ({ items, bottomItems, collapsed = fa
       (best, h) => (best === null || h.length > best.length ? h : best),
       null
     );
-  }, [groups, bottomGroups, pathname]);
+  }, [groups, pathname]);
 
   const isActive = useCallback((href: string) => href === matchedHref, [matchedHref]);
 
@@ -41,56 +48,57 @@ export const NavigationDrawer: FC<Props> = ({ items, bottomItems, collapsed = fa
     setAccordionState((prev) => ({ ...prev, [itemId]: open }));
   };
 
-  const renderGroups = (groupList: ReturnType<typeof toGroups>) =>
-    groupList.map((group, groupIndex) => (
-      <Fragment key={groupIndex}>
-        {!collapsed && group.groupLabel && (
-          <VerticalNavListItem className={groupIndex > 0 ? 'pt-4 px-4' : 'px-4'}>
-            <Text kind="body/semibold/sm" className="text-subtle">
-              {group.groupLabel}
-            </Text>
-          </VerticalNavListItem>
-        )}
-        {group.items.map((item) =>
-          collapsed ? (
-            <CollapsedNavItem key={item.id} item={item} isActive={isActive} />
-          ) : (
-            <NavItem
-              key={item.id}
-              item={item}
-              isActive={isActive}
-              accordionOpen={accordionState[item.id]}
-              onAccordionChange={handleAccordionChange}
-            />
-          )
-        )}
-      </Fragment>
-    ));
-
-  const hasBottomItems = bottomGroups.length > 0;
-
-  if (!hasBottomItems) {
-    return (
-      <VerticalNavRoot
-        className={`overflow-hidden transition-[width] duration-200 ${collapsed ? 'w-12' : 'w-60'}`}
-      >
-        <VerticalNavList className="pt-2 w-max min-w-full">{renderGroups(groups)}</VerticalNavList>
-      </VerticalNavRoot>
+  // The rail has no room for a heading, so a group announces itself as a rule between icon
+  // sections instead — named, since collapsing drops the only other clue about the grouping.
+  const renderGroupLabel = (groupLabel: string, groupIndex: number) =>
+    collapsed ? (
+      groupIndex > 0 && (
+        <VerticalNavListItem className="px-2 py-2">
+          <Divider aria-label={groupLabel} />
+        </VerticalNavListItem>
+      )
+    ) : (
+      <VerticalNavListItem className={groupIndex > 0 ? 'py-1 px-3 mt-4' : 'px-3'}>
+        <Text kind="body/semibold/sm" className="text-subtle">
+          {groupLabel}
+        </Text>
+      </VerticalNavListItem>
     );
-  }
+
+  const renderGroups = (groupList: ReturnType<typeof toGroups>) =>
+    groupList
+      .map((group) => ({
+        groupLabel: group.groupLabel,
+        items: collapsed ? flattenForRail(group.items) : group.items,
+      }))
+      // Resolve items before the heading, so a group the rail empties out takes its heading too.
+      .filter((group) => group.items.length > 0)
+      .map((group, groupIndex) => (
+        <Fragment key={groupIndex}>
+          {group.groupLabel !== undefined && renderGroupLabel(group.groupLabel, groupIndex)}
+          {collapsed
+            ? group.items.map((item) => (
+                <CollapsedNavItem key={item.id} item={item} isActive={isActive} />
+              ))
+            : group.items.map((item) => (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  isActive={isActive}
+                  accordionOpen={accordionState[item.id]}
+                  onAccordionChange={handleAccordionChange}
+                />
+              ))}
+        </Fragment>
+      ));
 
   return (
-    <Stack
-      className={`h-[calc(100vh-var(--nv-app-bar-height))] transition-[width] duration-200 overflow-hidden ${collapsed ? 'w-12' : 'w-60'}`}
+    <VerticalNavRoot
+      className={`overflow-y-auto overflow-x-hidden transition-[width] duration-200 ${collapsed ? 'w-12' : 'w-60'}`}
     >
-      <VerticalNavRoot className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
-        <VerticalNavList className="pt-2 w-max min-w-full">{renderGroups(groups)}</VerticalNavList>
-      </VerticalNavRoot>
-      <VerticalNavRoot className="shrink-0 h-auto! w-full">
-        <VerticalNavList className="h-auto! w-max min-w-full pb-2">
-          {renderGroups(bottomGroups)}
-        </VerticalNavList>
-      </VerticalNavRoot>
-    </Stack>
+      <VerticalNavList className={`${collapsed ? 'py-3' : 'p-3'}`}>
+        {renderGroups(groups)}
+      </VerticalNavList>
+    </VerticalNavRoot>
   );
 };

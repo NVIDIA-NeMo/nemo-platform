@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
@@ -9,13 +10,12 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeLists/IntakeTelemetryDataView';
 import { makeIntakeTraceColumns } from '@studio/components/IntakeLists/intakeTraceColumns';
 import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import { Columns3, TriangleAlert } from 'lucide-react';
 import { type FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export interface InsightTracesTableProps {
   workspace: string;

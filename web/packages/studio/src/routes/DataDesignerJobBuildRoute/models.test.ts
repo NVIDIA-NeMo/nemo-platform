@@ -3,6 +3,7 @@
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelProvider } from '@nemo/sdk/generated/platform/schema';
+import { DEFAULT_MAX_PARALLEL_REQUESTS } from '@studio/constants/constants';
 import {
   type BuilderModel,
   buildModelConfigs,
@@ -146,18 +147,39 @@ describe('buildModelsFromTemplate', () => {
   it('seeds models with sequential ids, leaving model/provider empty for auto-fill', () => {
     const models = buildModelsFromTemplate([{ alias: 'default' }], 2);
     expect(models).toEqual([
-      { id: 'model-2', alias: 'default', model: '', provider: '', inferenceParams: {} },
+      {
+        id: 'model-2',
+        alias: 'default',
+        model: '',
+        provider: '',
+        inferenceParams: {
+          temperature: 0.7,
+          top_p: 0.9,
+          max_parallel_requests: DEFAULT_MAX_PARALLEL_REQUESTS,
+        },
+      },
     ]);
   });
 
-  it('carries a preferred model and inference params through', () => {
+  it('carries a preferred model through and lets a spec override a sampling default', () => {
     const models = buildModelsFromTemplate([
       { alias: 'judge', model: 'nvidia/gpt-oss', inferenceParams: { temperature: 0 } },
     ]);
     expect(models[0]).toMatchObject({
       alias: 'judge',
       model: 'nvidia/gpt-oss',
-      inferenceParams: { temperature: 0 },
+      // Explicit temperature wins; top_p still gets the default that truncates the tail.
+      inferenceParams: { temperature: 0, top_p: 0.9 },
+    });
+  });
+
+  it('gives embedding specs a concurrency cap but no chat sampling params', () => {
+    const models = buildModelsFromTemplate([
+      { alias: 'embedder', inferenceParams: { generation_type: 'embedding' } },
+    ]);
+    expect(models[0].inferenceParams).toEqual({
+      generation_type: 'embedding',
+      max_parallel_requests: DEFAULT_MAX_PARALLEL_REQUESTS,
     });
   });
 
@@ -280,6 +302,34 @@ describe('buildModelConfigs', () => {
         },
       },
     ]);
+  });
+
+  it('forwards max_parallel_requests so the job caps its own fan-out', () => {
+    const [config] = buildModelConfigs([model({ inferenceParams: { max_parallel_requests: 4 } })])!;
+    expect(config.inference_parameters).toMatchObject({
+      generation_type: 'chat-completion',
+      max_parallel_requests: 4,
+    });
+  });
+
+  it('forwards extra_body so backend flags like a thinking-mode switch survive', () => {
+    const extra_body = { chat_template_kwargs: { thinking: false } };
+    const configs = buildModelConfigs([model({ inferenceParams: { extra_body } })])!;
+    expect(configs[0].inference_parameters).toMatchObject({ extra_body });
+    // And survives a clone round-trip.
+    expect(buildModelsFromConfig(configs)[0].inferenceParams).toMatchObject({ extra_body });
+  });
+
+  it('omits max_parallel_requests when no cap was set', () => {
+    const [config] = buildModelConfigs([model({ inferenceParams: {} })])!;
+    expect(config.inference_parameters).not.toHaveProperty('max_parallel_requests');
+  });
+
+  it('round-trips max_parallel_requests back into the builder when cloning', () => {
+    const configs = buildModelConfigs([model({ inferenceParams: { max_parallel_requests: 8 } })])!;
+    expect(buildModelsFromConfig(configs)[0].inferenceParams).toMatchObject({
+      max_parallel_requests: 8,
+    });
   });
 
   it('resolves the model URN to the provider-facing served model name when given', () => {

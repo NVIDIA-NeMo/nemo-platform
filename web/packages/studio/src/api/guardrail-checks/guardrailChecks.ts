@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isVersionConflictError } from '@nemo/common/src/api/common/utils';
 import {
   entitiesCreateEntity,
   entitiesDeleteEntityByName,
@@ -14,7 +15,7 @@ import type {
   EntitiesListEntitiesParams,
   GuardrailCheckRequest,
   GuardrailCheckResponse,
-  RailsConfigOutput,
+  RailsConfig,
 } from '@nemo/sdk/generated/platform/schema';
 import {
   GUARDRAIL_CHECKS_ENTITY_TYPE,
@@ -172,10 +173,7 @@ export async function deleteGuardrailCheck(
  * NeMo Guardrails configs mark the primary generation model with `type: 'main'`;
  * we fall back to the first model that declares a `model` reference.
  */
-export function resolveConfigModel(
-  config: RailsConfigOutput | undefined,
-  configLabel: string
-): string {
+export function resolveConfigModel(config: RailsConfig | undefined, configLabel: string): string {
   const models = config?.models ?? [];
   const main = models.find((m) => m.type === 'main' && m.model);
   const chosen = main ?? models.find((m) => m.model);
@@ -229,7 +227,7 @@ export async function runGuardrailCheck(
   const configEntity = await entitiesGetEntityById(check.parent);
   // A guardrail_config entity nests the rails config under `data.data`
   // (`data` also carries the config's description).
-  const configData = (configEntity.data as { data?: RailsConfigOutput }).data;
+  const configData = (configEntity.data as { data?: RailsConfig }).data;
   const model = resolveConfigModel(configData, configEntity.name);
 
   const request: GuardrailCheckRequest = {
@@ -243,13 +241,32 @@ export async function runGuardrailCheck(
   const response = await executeGuardrailCheck(workspace, request);
   const run = responseToRunRecord(response, new Date().toISOString(), configEntity.db_version);
 
-  const entity = await updateGuardrailCheck(workspace, check.name, {
-    data: { ...check.data, runs: [...check.data.runs, run] },
-    expected_db_version: check.db_version,
-    parent: check.parent,
-  });
+  const entity = await persistRun(workspace, check, run);
 
   return { entity, run };
+}
+
+// A 409 only means `data.runs` came from a stale snapshot, so re-read and re-append rather
+// than discard a run that already cost an LLM round trip.
+async function persistRun(
+  workspace: string,
+  check: GuardrailCheckEntity,
+  run: RunRecord
+): Promise<GuardrailCheckEntity> {
+  const write = (base: GuardrailCheckEntity) =>
+    updateGuardrailCheck(workspace, base.name, {
+      data: { ...base.data, runs: [...base.data.runs, run] },
+      expected_db_version: base.db_version,
+      parent: base.parent,
+    });
+
+  try {
+    return await write(check);
+  } catch (error) {
+    if (!isVersionConflictError(error) || !check.parent) throw error;
+    const latest = await getGuardrailCheck(workspace, check.name, check.parent);
+    return write(latest);
+  }
 }
 
 /** Batch execution — backs the "Re-run N Tests" action. Failures are captured per check. */

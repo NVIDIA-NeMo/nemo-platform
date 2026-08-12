@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { PageHeader, Stack, Tabs } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { FeatureFlagBadge } from '@studio/components/FeatureFlagBadge';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
@@ -10,7 +10,7 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { getIntakeSpansRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { FC, Suspense } from 'react';
-import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
+import { Link, Outlet, matchPath, useLocation } from 'react-router';
 
 export const INTAKE_FILTER_ACTION_TARGET_ID = 'intake-filter-action-target';
 

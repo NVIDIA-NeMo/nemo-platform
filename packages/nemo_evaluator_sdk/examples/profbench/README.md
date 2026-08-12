@@ -131,13 +131,14 @@ async def main() -> None:
         tasks=benchmark.tasks,
         target=DockerSandboxAgentRuntime(model="gpt-4.1-mini", timeout_s=180),
         config=AgentEvalRunConfig(
-            output_dir=output_dir,
+            work_dir=output_dir,
             run_id="profbench-code-sandbox-smoke",
             parallelism=1,
-            benchmark={**benchmark.metadata, "score_source": "docker_sandbox_and_live_judge"},
-            write_dashboard=False,
+            labels={**{k: str(v) for k, v in benchmark.metadata.items()}, "score_source": "docker_sandbox_and_live_judge"},
         ),
     )
+    # This example renders its own dashboards below, so persistence skips the built-in one.
+    result.persist(write_dashboard=False)
     sdk_dashboard_path, dashboard_path = write_example_dashboards(result, output_dir)
     print(f"SDK dashboard: {sdk_dashboard_path}")
     print(f"Dashboard: {dashboard_path}")
@@ -258,9 +259,9 @@ result = await AgentEvaluator().run(
     tasks=benchmark.tasks,
     target=evaluated_model,
     config=AgentEvalRunConfig(
-        output_dir=output_dir,
+        work_dir=output_dir,
         params=params,
-        benchmark={**benchmark.metadata, "score_source": "fresh_candidate_and_live_judge"},
+        labels={**{k: str(v) for k, v in benchmark.metadata.items()}, "score_source": "fresh_candidate_and_live_judge"},
         ...
     ),
 )
@@ -511,6 +512,6 @@ What happens in the full live-candidate path:
 4. `load_profbench()` loads tasks with `include_cached_fulfilments=False`, so cached labels are removed and the metric must call the judge.
 5. `AgentEvaluator.run(tasks=..., target=evaluated_model, ...)` generates fresh candidate trials: for each task it calls `_generate_sample()` against the evaluated model and converts the returned sample into an `AgentEvalTrial`.
 6. The evaluator then scores those generated trials with `ProfBenchRubricMetric`. For each rubric criterion it calls `ProfBenchModelJudge`, which calls `_generate_sample()` against the judge model, parses the judge output into a yes/no decision, writes `evidence/judge-*.json`, and returns `MetricResult` outputs.
-7. `AgentEvaluator` builds the summary, persists the run bundle (`benchmark.json`, `tasks.jsonl`, `trials.jsonl`, `scores.jsonl`, `summary.json`, `run.json`), and `write_example_dashboards()` writes `sdk-report.html` and the ProfBench-specific `report.html`.
+7. `AgentEvaluator` builds the summary, persists the run bundle (`metadata.json`, `tasks.jsonl`, `trials.jsonl`, `scores.jsonl`, `summary.json`, `run.json`), and `write_example_dashboards()` writes `sdk-report.html` and the ProfBench-specific `report.html`.
 
 The evaluated model produces the candidate answer and the judge model evaluates each rubric criterion. They can point to the same model configuration, but the code treats them as separate roles.

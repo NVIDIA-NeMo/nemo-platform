@@ -6,6 +6,13 @@
 // They are intentionally duplicated here so the example plugin has no
 // build-time dependency on Studio's internal packages.
 
+// Minimal mirror of the workspace fields this example renders.
+export interface Workspace {
+  name: string;
+  status?: string;
+  created_at?: string;
+}
+
 // Minimal mirror of Studio's PluginSdk — only the hooks this example calls, so it
 // stays free of the private @nemo/sdk package.
 export interface PluginSdk {
@@ -14,7 +21,7 @@ export interface PluginSdk {
       params?: { page?: number; page_size?: number },
       options?: { query?: { enabled?: boolean; staleTime?: number } }
     ) => {
-      data?: { data?: Array<{ name: string }> };
+      data?: { data?: Workspace[] };
       isPending: boolean;
       isError: boolean;
     };
@@ -28,8 +35,21 @@ export interface PluginNavigation {
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
+export interface NotificationOptions {
+  durationMs?: number | false;
+}
+
 export interface PluginNotifications {
-  notify: (message: string, type?: NotificationType) => void;
+  notify: (message: string, type?: NotificationType, options?: NotificationOptions) => void;
+}
+
+export interface PluginBreadcrumb {
+  label: string;
+  href?: string;
+}
+
+export interface PluginBreadcrumbs {
+  set: (trail: PluginBreadcrumb[]) => void;
 }
 
 export interface PluginTelemetry {
@@ -49,6 +69,7 @@ export interface PluginHost {
   navigation: PluginNavigation;
   notifications: PluginNotifications;
   telemetry: PluginTelemetry;
+  breadcrumbs: PluginBreadcrumbs;
 }
 
 export interface PluginRootProps {

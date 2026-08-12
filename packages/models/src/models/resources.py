@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import TypeVar
 
-from nemo_platform import NotFoundError
+from nemo_platform import APIConnectionError, APIStatusError, NotFoundError
 from nemo_platform.resources.models import AsyncModelsResource as BaseAsyncModelsResource
 from nemo_platform.resources.models import ModelsResource as BaseModelsResource
 from nemo_platform.types.inference import ModelDeployment, ModelProvider
@@ -17,6 +17,7 @@ from nemo_platform.types.inference.gateway.openai.v1 import OpenAIModelResp
 from nemo_platform.types.models import ModelEntity
 
 _T = TypeVar("_T")
+_TRANSIENT_GATEWAY_STATUS_CODES = {429, 502, 503, 504}
 
 
 def _seconds_since_creation(entry_timestamp: datetime | str | None, created_at: datetime | None) -> int | None:
@@ -71,6 +72,12 @@ def _poll_until_ready(
             last_error = exc.reason
         except NotFoundError as exc:
             last_error = exc
+        except APIConnectionError as exc:
+            last_error = exc
+        except APIStatusError as exc:
+            if exc.status_code not in _TRANSIENT_GATEWAY_STATUS_CODES:
+                raise
+            last_error = exc
 
         sleep_seconds = _poll_sleep_seconds(
             start_time=start_time,
@@ -100,6 +107,12 @@ async def _async_poll_until_ready(
         except _PollPending as exc:
             last_error = exc.reason
         except NotFoundError as exc:
+            last_error = exc
+        except APIConnectionError as exc:
+            last_error = exc
+        except APIStatusError as exc:
+            if exc.status_code not in _TRANSIENT_GATEWAY_STATUS_CODES:
+                raise
             last_error = exc
 
         sleep_seconds = _poll_sleep_seconds(

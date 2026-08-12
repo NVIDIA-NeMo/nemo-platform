@@ -4,7 +4,7 @@
 import { suppressConsoleError } from '@nemo/testing/utils/suppress-console';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 import { useTableFilters, createDefaultFilterState, BaseFilterState } from './index';
 

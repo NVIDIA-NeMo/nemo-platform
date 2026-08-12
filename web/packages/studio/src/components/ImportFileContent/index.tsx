@@ -11,7 +11,7 @@ import { getWorkspaceFilesetsRoute } from '@studio/routes/utils';
 import { Database } from 'lucide-react';
 import { FC, ReactNode } from 'react';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface Props {
   prefer?: 'upload' | 'dataset';

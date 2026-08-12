@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { creatorToIcon } from '@nemo/common/src/constants/modelMetadata';
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
@@ -19,7 +20,6 @@ import {
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { FilesetActionMenu } from '@studio/components/FilesetActionMenu';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
@@ -33,7 +33,7 @@ import { getModelSource, isRootReadme } from '@studio/routes/FilesetDetailRoute/
 import { getWorkspaceFilesetsRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export const FilesetDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
 import { PluginProvider } from '@studio/plugins/PluginProvider';
@@ -35,8 +35,7 @@ import { RootLayout } from '@studio/routes/RootLayout';
 import { RootRedirect } from '@studio/routes/RootRedirect';
 import { gatePluginRoutes } from '@studio/routes/utils';
 import { lazy, Suspense } from 'react';
-import { Outlet } from 'react-router';
-import type { RouteObject } from 'react-router-dom';
+import { Outlet, type RouteObject } from 'react-router';
 
 const NoMatchRoute = lazy(() =>
   import('@studio/routes/NoMatchRoute').then((module) => ({ default: module.NoMatchRoute }))

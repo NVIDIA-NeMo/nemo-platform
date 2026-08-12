@@ -55,6 +55,7 @@ from nemo_platform.beta.evaluator.agent_eval.trials import (
     AgentEvalTrial,
     AgentEvalTrialStatus,
     AgentOutput,
+    RunnerInfo,
     standard_evidence_descriptors,
 )
 from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
@@ -192,6 +193,18 @@ class HarborRewardMetric:
         return MetricResult(outputs=[MetricOutput(name=self._output_name, value=value)])
 
 
+def _effective_harbor_agent(config: HarborRuntimeConfig | None) -> str | None:
+    """The agent a run will actually use, mirroring ``run_job``'s resolution order.
+
+    ``agent_import_path`` wins when set; otherwise the built-in ``agent_name``, which itself falls back
+    to Harbor's ``oracle`` default. Recording the resolved value keeps two runs with different custom
+    agents distinguishable in provenance.
+    """
+    if config is None:
+        return None
+    return config.agent_import_path or config.agent_name or "oracle"
+
+
 class HarborAgentTaskRunner:
     """An :class:`AgentTaskRunner` that runs a Harbor job, then adapts its results.
 
@@ -235,6 +248,32 @@ class HarborAgentTaskRunner:
         self._job_dir = Path(job_dir) if job_dir is not None else None
         self._run_job = run_job
         self._reward_key = config.reward_key if config is not None else reward_key
+
+    def runner_info(self) -> RunnerInfo:
+        """Identify this runner and the Harbor settings that shape its results.
+
+        Records the *effective* agent, mirroring how ``run_job`` resolves it: ``agent_import_path``
+        overrides ``agent_name`` (which itself defaults to ``oracle``). Reporting the configured
+        ``agent_name`` alone would give two runs using different custom agents identical provenance.
+        """
+        config = self._config
+        return RunnerInfo(
+            name="harbor",
+            kind="runner",
+            config={
+                "agent_name": config.agent_name if config is not None else None,
+                "agent_import_path": config.agent_import_path if config is not None else None,
+                "agent_model_name": config.agent_model_name if config is not None else None,
+                "effective_agent": _effective_harbor_agent(config),
+                "n_attempts": config.n_attempts if config is not None else None,
+                # Native mode resolves the concrete job directory inside run_tasks (the name defaults
+                # to a timestamp), so record the configured location rather than a not-yet-known path.
+                "job_dir": str(self._job_dir) if self._job_dir is not None else None,
+                "jobs_dir": str(config.jobs_dir) if config is not None else None,
+                "job_name": config.job_name if config is not None else None,
+                "reward_key": self._reward_key,
+            },
+        )
 
     async def run_tasks(
         self,
@@ -1299,7 +1338,7 @@ async def run_harbor_eval(
     return await AgentEvaluator().run(
         tasks=tasks,
         target=runner,
-        config=run_config or AgentEvalRunConfig(write_dashboard=False),
+        config=run_config or AgentEvalRunConfig(),
     )
 
 

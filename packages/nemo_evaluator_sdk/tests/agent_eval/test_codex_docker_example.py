@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
@@ -24,6 +24,9 @@ _spec.loader.exec_module(codex_docker)
 class _FakeCodexRuntime:
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
+
+    def runner_info(self) -> RunnerInfo:
+        return RunnerInfo(name="fake_codex", kind="runner")
 
     async def run_tasks(
         self,
@@ -63,7 +66,7 @@ def test_default_output_dir_is_under_repo_temp(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.asyncio
 async def test_codex_docker_example_scores_workspace_artifact(tmp_path: Path) -> None:
-    result = await codex_docker.evaluate(
+    result, location = await codex_docker.evaluate(
         output_dir=tmp_path / "run",
         runtime=_FakeCodexRuntime(tmp_path / "workspace"),
         write_dashboard=False,
@@ -77,6 +80,8 @@ async def test_codex_docker_example_scores_workspace_artifact(tmp_path: Path) ->
         "workspace_artifact.output_matches": True,
     }
     assert (tmp_path / "run" / "run.json").is_file()
+    assert location.output_dir == tmp_path / "run"
+    assert location.dashboard_path is None  # write_dashboard=False
 
 
 @pytest.mark.asyncio

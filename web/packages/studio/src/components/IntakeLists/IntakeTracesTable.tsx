@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { EditColumnsMenu } from '@nemo/common/src/components/DataView/internal';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -9,7 +10,6 @@ import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
 import { Button } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import {
   isDefaultStartedAtFilter,
   makeDefaultStartedAtFilter,
@@ -23,7 +23,7 @@ import { getIntakeSessionTraceRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
 import { type FC, type ReactNode, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 export interface IntakeTracesTableProps {
   workspace?: string;

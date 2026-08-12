@@ -1,6 +1,6 @@
 ---
 name: nemo-agent-config
-description: Author and validate Platform-owned NeMo Agents agent.yaml files using the nemo-agents-spec-v1 format. Use when the user wants to create, edit, validate, or adapt an agent.yaml file, choose a supported harness, add instructions, skills, MCP servers, tools, environment, or telemetry.
+description: Author and validate Platform-managed NeMo Agents agent.yaml files using the nemo-agents-spec-v1 format. Use when the user wants to create, edit, validate, or adapt an agent.yaml file, choose a supported harness, add instructions, skills, MCP servers, tools, environment, or telemetry.
 triggers:
   - write agent.yaml
   - create agent.yaml
@@ -21,6 +21,9 @@ not-for:
   - nemo-spec (use to write AGENT-SPEC.md before implementation)
   - nemo-model-selection (use when the user only wants model recommendation)
   - generic YAML editing unrelated to NeMo Platform agents
+preconditions:
+  - nemo_setup_complete
+  - agents_plugin_available
 compatibility: nemo-platform >= 0.1.0; writes or edits agents/<name>-spec/agent.yaml; validates through nemo agents create; supports nemo-agents-spec-v1 configs; safe under sandbox.
 maturity: active
 license: Apache-2.0
@@ -30,12 +33,12 @@ allowed-tools: [Read, Write, Edit, Bash]
 
 # NeMo Platform agent config
 
-Create or edit the Platform-owned `agent.yaml` for a NeMo Agent. This skill
+Create or edit the Platform-managed `agent.yaml` for a NeMo Agent. This skill
 owns the machine-readable config shape for `nemo-agents-spec-v1`; `nemo-build-agent`
 owns the full build/deploy/eval workflow.
 
 Use product-facing Platform language. Do not ask users to write raw Fabric SDK
-configuration. Fabric is an implementation dependency behind the Platform-owned
+configuration. Fabric is an implementation dependency behind the Platform-managed
 agent config.
 
 ## Storage model
@@ -106,7 +109,7 @@ default-image deployment for an agent with relative `skills.paths`.
 
 ## Migrating from legacy NAT workflow YAML
 
-If the user has an existing NAT workflow YAML and wants the new Platform-owned
+If the user has an existing NAT workflow YAML and wants the new Platform-managed
 `agent.yaml` format, treat the migration as best-effort authoring. Do not
 overwrite the original NAT YAML unless the user explicitly asks.
 

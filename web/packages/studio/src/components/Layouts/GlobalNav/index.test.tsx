@@ -6,7 +6,7 @@ import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { SIDE_NAV_OPEN_KEY } from '@studio/util/localStorage';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, generatePath, MemoryRouter, RouterProvider } from 'react-router-dom';
+import { createMemoryRouter, generatePath, MemoryRouter, RouterProvider } from 'react-router';
 
 vi.mock('@studio/components/Breadcrumbs', () => ({
   Breadcrumbs: () => <div data-testid="breadcrumbs" />,
@@ -20,8 +20,8 @@ vi.mock('@studio/routes/PageLayout/ThemeSwitch', () => ({
   ThemeSwitch: () => <div data-testid="theme-switch" />,
 }));
 
-vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeTopBarChat', () => ({
-  ClaudeCodeTopBarChat: () => <div data-testid="copilot-top-bar-chat" />,
+vi.mock('@studio/routes/agents/CopilotChatRoute/CopilotTopBarChat', () => ({
+  CopilotTopBarChat: () => <div data-testid="copilot-top-bar-chat" />,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {

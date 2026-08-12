@@ -6,11 +6,11 @@ import type { Verdict } from '@studio/api/guardrail-checks/types';
 import { ArrowRight, Clock, ShieldCheck } from 'lucide-react';
 import type { FC } from 'react';
 
-/** Solid status badge for a check's latest-run verdict (purple guarded / green allowed). */
+/** Solid status badge for a check's latest-run verdict (yellow guarded / green allowed). */
 export const ResultIndicator: FC<{ status: Verdict | undefined }> = ({ status }) => {
   if (status === 'blocked') {
     return (
-      <Badge color="purple" kind="solid">
+      <Badge color="yellow" kind="solid">
         <ShieldCheck size={14} />
         Guarded
       </Badge>

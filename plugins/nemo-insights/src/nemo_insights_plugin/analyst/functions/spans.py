@@ -5,13 +5,12 @@
 
 Spans are the LLM calls, tool invocations, and agent steps inside a trace.
 These tools are thin pass-throughs over ``client.intake.spans`` — the analyst
-supplies the raw Intake filter and composes the results in ``run_code``.
+supplies the raw Intake filter and composes the results in Nooa CodeAct.
 """
 
 from typing import Any
 
 from nemo_insights_plugin.analyst.deps import AnalystDeps
-from pydantic_ai import RunContext
 
 # Sentinel the analyst can pass as ``filter["agent_name"]`` to query spans across
 # all agents instead of the run's default agent under test.
@@ -36,7 +35,7 @@ def _effective_span_filter(
 
 
 async def fetch_spans(
-    ctx: RunContext[AnalystDeps],
+    deps: AnalystDeps,
     filter: dict[str, Any] | None = None,
     group_by: str | None = None,
     sort: str | None = None,
@@ -66,12 +65,15 @@ async def fetch_spans(
 
     Args:
         filter: Raw Intake span filter pushed to the server. Supported keys:
-            ``agent_name`` (e.g. "codex"), ``status`` ("ok"/"error"),
+            ``agent_name`` (e.g. "codex"), ``status`` ("success"/"error"/"cancelled"/"unknown"),
             ``kind`` ("LLM"/"TOOL"/"AGENT"/"CHAIN"/"EVALUATOR"/...),
             ``session_id``, ``trace_id``, ``parent_span_id`` (direct children
             of a span), ``model``, ``provider``, ``tool_name``, ``source``,
-            ``evaluation_run_id``, ``dataset_name``, ``test_case_id``, and
+            ``project``, ``agent_id``, ``evaluation_id``, ``test_case_id``, and
             ``started_at`` (a range, e.g. ``{"gte": "2026-06-01T00:00:00"}``).
+            Those are the only keys Intake serves. Every one takes a single
+            exact value; ``started_at`` is the only key that takes a range, and
+            no key accepts ``$in``.
             ``agent_name`` defaults to the run's agent under test when omitted
             from ``filter``; pass an explicit value to query another agent, or
             ``"__all__"`` to disable agent scoping. (There is no span-id
@@ -87,7 +89,6 @@ async def fetch_spans(
         limit: Max rows to pull (clamped to the run's ceiling). Defaults to 100
             in grouped mode and 50 in flat mode.
     """
-    deps = ctx.deps
     assert deps.backend is not None
     effective_filter = _effective_span_filter(filter, deps.agent)
     if group_by is not None:
@@ -111,18 +112,17 @@ async def fetch_spans(
     )
 
 
-async def get_span(ctx: RunContext[AnalystDeps], span_id: str) -> dict[str, Any]:
+async def get_span(deps: AnalystDeps, span_id: str) -> dict[str, Any]:
     """Fetch a single span by id (e.g. a span id cited by an annotation).
 
     Args:
         span_id: Intake span id.
     """
-    deps = ctx.deps
     assert deps.backend is not None
     return await deps.backend.get_span(workspace=deps.workspace, span_id=span_id)
 
 
-async def fetch_scores(ctx: RunContext[AnalystDeps], span_id: str) -> dict[str, Any]:
+async def fetch_scores(deps: AnalystDeps, span_id: str) -> dict[str, Any]:
     """Fetch evaluator results (scores) attached to a span.
 
     Evaluator results are the verifier/judge outputs for a span — each has a
@@ -134,6 +134,5 @@ async def fetch_scores(ctx: RunContext[AnalystDeps], span_id: str) -> dict[str, 
     Args:
         span_id: Intake span id to read evaluator results for.
     """
-    deps = ctx.deps
     assert deps.backend is not None
     return await deps.backend.list_scores(workspace=deps.workspace, span_id=span_id)

@@ -12,7 +12,12 @@ from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
 from nemo_platform.cli.core.code_generator import handle_code_generation
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform.cli.core.formatters import (
+    Column,
+    check_output_columns_with_format,
+    format_output,
+    validate_stream_output_format,
+)
 from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform.cli.core.stdin_utils import read_data_input_with_flags, read_payload, validate_required_fields
@@ -21,6 +26,7 @@ from nemo_platform.cli.core.types import (
     ListOutputFormatOption,
     NoTruncateOption,
     OutputColumnsOption,
+    StreamOutputOption,
 )
 
 app = create_typer_app(name="prompts", help="Manage prompts")
@@ -192,11 +198,13 @@ def list_prompts(
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
+    stream: StreamOutputOption = False,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
     """List prompts for a specific workspace."""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
+    validate_stream_output_format(output_format, stream)
 
     check_output_columns_with_format(columns, output_format)
 
@@ -241,6 +249,7 @@ def list_prompts(
         output_columns=columns,
         no_truncate=state.get_no_truncate(no_truncate),
         timestamp_format=state.get_timestamp_format(),
+        stream=stream,
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)

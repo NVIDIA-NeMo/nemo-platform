@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import {
   getEntitiesListWorkspacesQueryKey,
@@ -8,11 +9,10 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import { WorkspacesPage } from '@nemo/sdk/generated/platform/schema';
 import { queryClient } from '@studio/api/queryClient';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useRecentWorkspaces } from '@studio/components/WorkspaceDropdown/useRecentWorkspaces';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
 import { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface DeleteWorkspaceModalProps {
   workspace: string;

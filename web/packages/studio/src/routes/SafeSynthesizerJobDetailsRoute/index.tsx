@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
@@ -8,7 +9,6 @@ import {
   useSafeSynthesizerGetJobSuspense as useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense,
 } from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Grid, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { SafeSynthesizerNavigation } from '@studio/components/SafeSynthesizerNavigation';
 import { SAFE_SYNTHESIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';

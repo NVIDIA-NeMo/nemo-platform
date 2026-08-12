@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, cast
@@ -16,7 +15,6 @@ import nemo_evaluator.cli as evaluator_cli
 import pytest
 from nemo_evaluator.cli import EvaluatorPluginCLI
 from nemo_evaluator.filesets import FilesetRef
-from nemo_evaluator.jobs.compiler import compile_evaluate_job
 from nemo_evaluator.jobs.evaluate import (
     AGGREGATE_SCORES_RESULT_NAME,
     ARTIFACTS_RESULT_NAME,
@@ -27,6 +25,7 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateJob,
     EvaluateSpec,
 )
+from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle
 from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
@@ -44,7 +43,6 @@ from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.values import (
     Agent,
     AggregatedMetricResult,
@@ -69,9 +67,7 @@ from pydantic import BaseModel, ConfigDict
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
 
-ExampleSpecBuilder = Callable[[], dict[str, Any]]
 EXAMPLE_SPEC_PATHS = (
-    Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"),
     Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"),
     Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"),
 )
@@ -96,152 +92,6 @@ def _bundle_payload(metric) -> dict[str, Any]:
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
-
-
-def _generated_exact_match_metric_spec() -> dict[str, Any]:
-    return {
-        "metrics": [
-            _bundle_payload(ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")),
-        ],
-        "dataset": [
-            {"expected": "blue", "model_output": "Blue"},
-            {"expected": "Jupiter", "model_output": "Saturn"},
-        ],
-        "params": {"parallelism": 2},
-    }
-
-
-def _generated_exact_match_benchmark_spec() -> dict[str, Any]:
-    return {
-        "metrics": [
-            _bundle_payload(ExactMatchMetric(reference="{{item.reference}}")),
-            _bundle_payload(
-                StringCheckMetric(
-                    operation="contains",
-                    left_template="{{sample.output_text}}",
-                    right_template="{{item.required_phrase}}",
-                )
-            ),
-        ],
-        "dataset": [
-            {
-                "prompt": "Return exactly this word with no punctuation: Paris",
-                "reference": "Paris",
-                "required_phrase": "Paris",
-            },
-            {
-                "note": (
-                    "Intentional failure case: prompt asks for 'Oslo' but reference/required_phrase are "
-                    "'London' so both metrics should report a miss."
-                ),
-                "prompt": "Return exactly this word with no punctuation: Oslo",
-                "reference": "London",
-                "required_phrase": "London",
-            },
-        ],
-        "params": {
-            "parallelism": 4,
-            "limit_samples": 2,
-            "ignore_request_failure": False,
-            "request_timeout": 60,
-            "max_retries": 3,
-        },
-        "target": {
-            "url": "https://integrate.api.nvidia.com/v1/chat/completions",
-            "name": "nvidia/nemotron-3-super-120b-a12b",
-            "api_key_secret": "NVIDIA_API_KEY",
-            "format": "nim",
-        },
-        "prompt_template": {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "{{item.prompt}}",
-                }
-            ]
-        },
-    }
-
-
-def _generated_llm_as_judge_spec() -> dict[str, Any]:
-    return {
-        "metrics": [
-            _bundle_payload(
-                LLMJudgeMetric(
-                    model=Model(
-                        url="https://integrate.api.nvidia.com/v1/chat/completions",
-                        name="nvidia/nemotron-3-super-120b-a12b",
-                        api_key_secret=SecretRef(root="NVIDIA_API_KEY"),
-                        format="nim",
-                    ),
-                    scores=[
-                        RangeScore(
-                            name="helpfulness",
-                            description="How well does the response help the user?",
-                            minimum=0,
-                            maximum=4,
-                            parser=JSONScoreParser(json_path="helpfulness"),
-                        )
-                    ],
-                    prompt_template={
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are an evaluator. Rate the response's helpfulness from 0-4. "
-                                    "Return only a JSON object with this shape: "
-                                    '{"helpfulness": <integer>}.'
-                                ),
-                            },
-                            {
-                                "role": "user",
-                                "content": (
-                                    "User prompt: {{item.input}}\n\n"
-                                    "Assistant response: "
-                                    "{{sample.output_text | default(item.output)}}\n\n"
-                                    "Rate this response."
-                                ),
-                            },
-                        ]
-                    },
-                )
-            )
-        ],
-        "dataset": [
-            {"input": "What is the capital of France?"},
-            {"input": "How do I make scrambled eggs?"},
-        ],
-        "params": {
-            "parallelism": 2,
-            "limit_samples": 2,
-            "request_timeout": 120,
-            "max_retries": 3,
-        },
-        "target": {
-            "url": "https://integrate.api.nvidia.com/v1/chat/completions",
-            "name": "nvidia/nemotron-3-super-120b-a12b",
-            "api_key_secret": "NVIDIA_API_KEY",
-            "format": "nim",
-        },
-        "prompt_template": {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "{{item.input}}",
-                }
-            ]
-        },
-    }
-
-
-def _example_spec_builders() -> dict[Path, ExampleSpecBuilder]:
-    return {
-        Path(
-            "skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"
-        ): _generated_exact_match_benchmark_spec,
-        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"): _generated_exact_match_metric_spec,
-        Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"): _generated_llm_as_judge_spec,
-    }
 
 
 def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
@@ -414,7 +264,7 @@ def _llm_judge_ref_metric() -> LLMJudgeMetric:
     "spec_path",
     EXAMPLE_SPEC_PATHS,
 )
-def test_checked_in_example_spec_uses_metric_bundle_shape(spec_path: Path) -> None:
+def test_checked_in_example_spec_uses_inline_metric_bundle_shape(spec_path: Path) -> None:
     payload = json.loads((_repo_root() / spec_path).read_text(encoding="utf-8"))
 
     spec = EvaluateInputSpec.model_validate(payload)
@@ -423,21 +273,40 @@ def test_checked_in_example_spec_uses_metric_bundle_shape(spec_path: Path) -> No
     assert len(spec.metrics) >= 1
     for metric_payload in payload["metrics"]:
         bundle = MetricBundle.model_validate(metric_payload)
-        # Static cloudpickle fixtures are Python-minor-version specific, so
-        # this test validates the checked-in bundle envelope without hydrating.
-        assert bundle.payload.kind == "cloudpickle"
+        assert bundle.payload.kind == "inline"
+        assert {
+            "python_version",
+            "cloudpickle_version",
+            "pickle_protocol",
+            "blob",
+        }.isdisjoint(metric_payload["payload"])
         assert bundle.metric_type == metric_payload["metric_type"]
+        assert unbundle_metric(bundle).type == bundle.metric_type
 
 
 @pytest.mark.parametrize(
     "spec_path",
     EXAMPLE_SPEC_PATHS,
 )
-def test_generated_example_spec_compiles_with_runtime_cloudpickle(spec_path: Path) -> None:
-    payload = _example_spec_builders()[spec_path]()
+async def test_checked_in_example_spec_transforms_and_compiles(spec_path: Path) -> None:
+    payload = json.loads((_repo_root() / spec_path).read_text(encoding="utf-8"))
 
-    spec = EvaluateSpec.model_validate(payload)
-    compiled = compile_evaluate_job(spec)
+    input_spec = EvaluateInputSpec.model_validate(payload)
+    spec = await EvaluateJob.to_spec(
+        input_spec,
+        workspace="default",
+        entity_client=None,
+        async_sdk=None,
+        is_local=False,
+    )
+    assert isinstance(spec, EvaluateSpec)
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=None,
+        job_name=None,
+        async_sdk=None,
+    )
 
     assert "metric" not in payload
     assert len(spec.metrics) >= 1
@@ -498,7 +367,7 @@ def test_cli_explain_uses_registered_evaluator_job_key() -> None:
     assert payload["spec_schema"]["title"] == "EvaluateSpec"
 
 
-def test_cli_info_reports_registered_evaluator_job_key() -> None:
+def test_cli_info_reports_registered_evaluator_job_keys() -> None:
     app = EvaluatorPluginCLI().get_cli()
     add_job_commands(app, {"evaluator.evaluate": EvaluateJob})
 
@@ -506,7 +375,7 @@ def test_cli_info_reports_registered_evaluator_job_key() -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["jobs"] == ["evaluator.evaluate"]
+    assert payload["jobs"] == ["evaluator.evaluate", "evaluator.agent-evaluate"]
 
 
 def test_cli_metric_types_reports_sdk_metric_union_types() -> None:
@@ -745,7 +614,7 @@ async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_co
         is_local=False,
     )
     assert isinstance(canonical, EvaluateSpec)
-    canonical_metric = unbundle_metric(canonical.metrics[0])
+    canonical_metric = unbundle_metric(to_runtime_bundle(canonical.metrics[0]))
     assert isinstance(canonical_metric, LLMJudgeMetric)
     assert isinstance(canonical_metric.model, Model)
     assert canonical_metric.model.name == "judge"
@@ -799,7 +668,7 @@ async def test_evaluate_job_to_spec_preserves_metric_without_model_refs() -> Non
     )
 
     assert isinstance(canonical, EvaluateSpec)
-    metric = unbundle_metric(canonical.metrics[0])
+    metric = unbundle_metric(to_runtime_bundle(canonical.metrics[0]))
     assert isinstance(metric, LLMJudgeMetric)
     assert metric.prompt_template is None
 
@@ -1333,16 +1202,23 @@ class TestEvaluateJobRun:
             create=True,
         )
         download_dataset_sync = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset_sync", create=True)
+        cloned_sdk = mocker.Mock(name="cloned_async_sdk")
+        async_sdk = mocker.Mock(name="async_sdk")
+        async_sdk.copy.return_value = cloned_sdk
+        http_client = mocker.AsyncMock(name="http_client")
+        http_client.__aenter__.return_value = http_client
+        http_client.__aexit__.return_value = None
+        mocker.patch("nemo_evaluator.jobs.utils.DefaultAsyncHttpxClient", return_value=http_client)
         ctx = _make_job_context(tmp_path)
-        async_sdk = mocker.Mock()
         dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
         config = {**_exact_match_spec(), "dataset": dataset}
 
         run_result = EvaluateJob().run(config, ctx=ctx, async_sdk=async_sdk)
 
         _assert_saved_result_artifact(run_result, ctx, result_payload)
+        async_sdk.copy.assert_called_once_with(http_client=http_client)
         download_dataset.assert_awaited_once_with(
-            sdk=async_sdk,
+            sdk=cloned_sdk,
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
@@ -1389,6 +1265,42 @@ class TestEvaluateJobRun:
         assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
         assert call_kwargs["target"] is None
         assert call_kwargs["prompt_template"] is None
+
+    def test_prefers_sync_sdk_for_fileset_ref_when_both_sdks_injected(
+        self, tmp_path: Path, mocker: MockerFixture
+    ) -> None:
+        """Avoid binding async_sdk's httpx client before result-entity persistence."""
+        result = _empty_evaluation_result()
+        result_payload = result.model_dump(mode="json")
+        evaluator = mocker.Mock()
+        evaluator.run_sync.return_value = result
+        mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
+        downloaded_path = tmp_path / "persistent" / "dataset" / "default" / "helpsteer2" / "validation.jsonl"
+        download_dataset = mocker.patch("nemo_evaluator.jobs.evaluate.download_dataset", create=True)
+        download_dataset_sync = mocker.patch(
+            "nemo_evaluator.jobs.evaluate.download_dataset_sync",
+            return_value=downloaded_path,
+            create=True,
+        )
+        persist = mocker.patch("nemo_evaluator.jobs.evaluate.persist_evaluate_result")
+        ctx = _make_job_context(tmp_path)
+        sync_sdk = mocker.Mock()
+        async_sdk = mocker.Mock()
+        dataset = FilesetRef(root="default/helpsteer2#validation.jsonl")
+        config = {**_exact_match_spec(), "dataset": dataset}
+
+        run_result = EvaluateJob().run(config, ctx=ctx, sdk=sync_sdk, async_sdk=async_sdk)
+
+        _assert_saved_result_artifact(run_result, ctx, result_payload)
+        download_dataset.assert_not_called()
+        download_dataset_sync.assert_called_once_with(
+            sdk=sync_sdk,
+            dataset=dataset,
+            destination=str(ctx.storage.persistent / "dataset"),
+        )
+        persist.assert_called_once()
+        assert persist.call_args.kwargs["async_sdk"] is async_sdk
+        assert persist.call_args.kwargs["dataset_ref"] == dataset.root
 
 
 class TestEvaluateTask:

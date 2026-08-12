@@ -19,9 +19,14 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from nemo_evaluator.api.schemas import MetricRef, TaskInputs, TaskMetadataList, TaskRefList
+from nemo_evaluator.api.schemas import (
+    PinnedTaskRefList,
+    TaskDefinition,
+    TaskMetadataList,
+    TaskRefList,
+)
+from nemo_evaluator.content_hash import DIGEST_LENGTH, DIGEST_PATTERN
 from nemo_evaluator.shared.metric_bundles.bundles import BundledMetricOutputSpec
-from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
 from nemo_platform_plugin.entities import EntityBase
@@ -33,6 +38,50 @@ from pydantic import BaseModel, Field
 MAX_NAME_LENGTH = 255
 MAX_DESCRIPTION_LENGTH = 1000
 NAME_PATTERN = r"^[\w\-\.]+$"
+
+#: Fields on a publishable record that are revision *bookkeeping*, not content. Excluded when
+#: digesting a head record so that hashing the head yields the same digest as hashing the
+#: corresponding revision. Two things depend on that equality: a publish recognizing "the head
+#: already matches the current revision", and a read re-hashing a revision to check it against the
+#: digest stored beside it.
+REVISION_POINTER_FIELDS = frozenset({"latest_revision", "tags"})
+
+#: The mirror of :data:`REVISION_POINTER_FIELDS` on a revision record. A revision's digest covers
+#: neither itself nor the ordinal that was assigned because of it.
+REVISION_SELF_FIELDS = frozenset({"content_hash", "revision"})
+
+#: Spec fields excluded from the revision digest.
+#:
+#: The rule for what belongs *in* the digest: any field that affects the output of a task's
+#: execution or the mechanism used to grade it. A field may only be excluded if it is a derived
+#: view of content the digest already covers by another route.
+#:
+#: ``HarborTaskDefinition.config`` qualifies. It is a projection of ``task.toml``, which lives
+#: inside the archive, and Harbor reads the real ``task.toml`` out of the materialized archive at
+#: run time — this copy is never an execution input, only a queryable convenience. ``archive_digest``
+#: is authoritative over every file in that directory including ``task.toml``, so a config change
+#: that actually alters execution or grading already moves the digest. Hashing the projection too
+#: would add no coverage and would make revision history sensitive to Harbor's serialization: a
+#: release that reordered keys or emitted a new defaulted field would cut a revision for
+#: byte-identical files.
+#:
+#: That makes ``archive_digest`` load-bearing. If a Harbor field ever becomes an execution input in
+#: its own right — read from the stored record rather than from the archive — it must be digested.
+_DERIVED_SPEC_FIELDS = {"config"}
+
+#: What a *head* record excludes when digesting: its revision pointers, plus derived spec fields.
+#: Nested form, because the derived fields live inside ``spec``.
+REVISION_POINTER_EXCLUDE: dict[str, object] = {
+    **dict.fromkeys(REVISION_POINTER_FIELDS, True),
+    "spec": set(_DERIVED_SPEC_FIELDS),
+}
+
+#: The mirror for a *revision* record. Both must exclude the same derived fields, or the head and
+#: its revision would digest differently and publish-time dedup would never fire.
+REVISION_SELF_EXCLUDE: dict[str, object] = {
+    **dict.fromkeys(REVISION_SELF_FIELDS, True),
+    "spec": set(_DERIVED_SPEC_FIELDS),
+}
 
 
 class MetricBundleEntity(EntityBase):
@@ -164,32 +213,54 @@ class EvaluateResultEntity(_EvalResultCommon, EntityBase):
     )
 
 
-class TaskEntity(EntityBase):
-    """Persisted, queryable agent-eval task, addressed by workspace/name.
+class _RevisionedCommon(BaseModel):
+    """Mutable revision bookkeeping carried by a record that can be published.
 
-    Maps to the SDK :class:`~nemo_evaluator_sdk.agent_eval.tasks.AgentEvalTask`: the task's stable
-    ``id`` is the record ``name``, and ``metrics`` are stored in their wire form (inline bundles
-    and/or references to stored metrics) so a task can reference curated metrics or carry its own;
-    references resolve to inline runtime metrics when the task is run.
+    Both fields are pointers into the record's immutable revision children, and both are excluded
+    from the content digest — they describe *which* content is current, not what the content is.
+    Including them would make the digest change whenever a tag moved.
+    """
+
+    latest_revision: int = Field(
+        default=0,
+        description="Ordinal of the most recently published revision; 0 before the first publish. "
+        "The next publish allocates ``latest_revision + 1`` under the record's optimistic lock, so a "
+        "concurrent publisher that raced loses with a conflict and retries.",
+        ge=0,
+    )
+    tags: dict[str, int] = Field(
+        default_factory=dict,
+        description="Mutable tag → revision-ordinal pointers. ``latest`` is reserved and re-applied "
+        "on every publish; other tags are user-supplied and may be moved after the fact. Tags are "
+        "resolution *inputs* only — anything persisted (e.g. a published taskset's membership) "
+        "stores the resolved content digest, never the tag, so a moved tag cannot re-point it. "
+        "Ordinals rather than digests because a revision's identity within its parent is its "
+        "ordinal, which makes tag resolution a direct child lookup with no query.",
+    )
+
+
+class TaskEntity(_RevisionedCommon, EntityBase):
+    """Persisted, queryable task, addressed by workspace/name.
+
+    A task is an evaluation unit; ``spec`` says what it is and which runner executes it. Both kinds
+    live in one record type so a user manages every evaluation unit in one place, and so a taskset
+    can group them without caring how each one runs — the same way ``AgentRunnerTarget`` already
+    treats codex/fabric/harbor as members of one union on the target side.
+
+    Content is nested under ``spec`` rather than flattened with nullable per-kind fields, so each
+    variant's required fields stay genuinely required and the revision digest covers the spec as one
+    unit. An agent-eval task's ``metrics`` are stored as references (inline metrics submitted on
+    create are normalized to derived stored metrics); a Harbor task's files live in a fileset, and
+    the spec holds a reference to them.
     """
 
     __entity_type__: ClassVar[str] = "task"
 
-    intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
-    metrics: list[MetricRef] = Field(
-        default_factory=list,
-        description="References to the metrics that score this task. Inline metrics submitted with the "
-        "task are normalized to (derived) stored metrics, so a persisted task only ever holds refs.",
-    )
-    views: dict[str, SemanticView] = Field(
-        default_factory=dict,
-        description="Optional reporting views mapping this task's metric outputs into named semantic scores.",
-    )
+    spec: TaskDefinition = Field(description="The task's content, discriminated by which runner executes it.")
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
 
 
-class TasksetEntity(EntityBase):
+class TasksetEntity(_RevisionedCommon, EntityBase):
     """Persisted, queryable taskset, addressed by workspace/name.
 
     A taskset is a flexible grouping of stored tasks: it holds references to its members
@@ -207,5 +278,97 @@ class TasksetEntity(EntityBase):
     tasks: TaskRefList = Field(
         default_factory=list,
         description="References to the member tasks (set semantics; duplicates rejected).",
+    )
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
+
+
+# --- Revisions ---------------------------------------------------------------
+#
+# A revision is an immutable snapshot of a task's or taskset's content, addressed by a digest of
+# that content (see ``nemo_evaluator.content_hash``). Revisions exist so a reference can be *pinned*
+# — ``workspace/task-name#<digest>`` resolves to exactly the content that was published, and a
+# consumer re-derives the digest on read to confirm it.
+#
+# Persistence shape. A revision is a **child entity** of the record it snapshots, so entity-store
+# parent-scoped uniqueness — unique within ``(workspace, entity_type, parent, name)`` — makes an
+# ordinal collide rather than silently duplicate. Allocation of the next ordinal rides on the
+# parent's ``db_version`` optimistic lock: bump ``latest_revision`` on the parent, and a concurrent
+# publisher that raced loses with a conflict and retries.
+#
+# Naming. Revisions are named ``rev.<n>``, NOT by their digest. Entity names are capped at 63 chars
+# and must start with a lowercase letter (``entity_naming.NAME_PATTERN``); a full 64-char hex digest
+# violates both. Truncating it to fit — as derived metric names do — would shrink the collision
+# bound for no benefit here, since a ref carries the digest in its ``#`` fragment (governed by the
+# ref pattern, not the entity-name rules) and the digest lives on the record as an ordinary field
+# with no length pressure. Resolving a pinned ref is a filtered lookup on ``content_hash`` scoped to
+# the parent. As a bonus, ``rev.7`` is legible in a log line in a way a hex string is not.
+#
+# Head vs history. The parent record keeps its content fields as the *head* — the current version —
+# and revisions accumulate alongside. This keeps the change additive: existing stored records stay
+# valid, ``get_task`` and the ``Task`` DTO are unchanged, and nothing needs migrating. The cost is a
+# denormalized copy: head and its corresponding revision can drift if a write fails between the two
+# (there is no cross-entity transaction). Publishing reconciles — it hashes the head and creates the
+# revision only if no revision carries that digest — so a torn write self-heals on the next publish
+# rather than persisting a lie.
+
+
+class _RevisionCommon(BaseModel):
+    """Fields shared by every revision record: its digest and its ordinal.
+
+    A mixin rather than an ``EntityBase`` so each concrete revision type declares its own
+    ``__entity_type__``, matching the ``_EvalResultCommon`` split above.
+
+    Both fields are excluded from the content digest — a revision's digest cannot cover the ordinal
+    that was assigned *because of* that digest, nor cover itself. See
+    ``content_hash.content_hash(..., exclude=...)``.
+    """
+
+    content_hash: str = Field(
+        description="Full 64-char lowercase hex SHA-256 of this revision's content. Never truncated: "
+        "a shortened digest collapses the birthday bound, and there is no length pressure here "
+        "because this is a field, not an entity name.",
+        min_length=DIGEST_LENGTH,
+        max_length=DIGEST_LENGTH,
+        pattern=DIGEST_PATTERN,
+    )
+    revision: int = Field(
+        description="Monotonic 1-based ordinal within the parent record. Matches the ``rev.<n>`` "
+        "entity name; carried as a field too so it can be sorted and filtered on directly.",
+        ge=1,
+    )
+
+
+class TaskRevisionEntity(_RevisionCommon, EntityBase):
+    """An immutable published snapshot of a :class:`TaskEntity`'s content.
+
+    Child of the task it snapshots. Content fields mirror ``TaskEntity`` exactly — a revision is
+    that content frozen, not a different shape.
+    """
+
+    __entity_type__: ClassVar[str] = "task_revision"
+
+    spec: TaskDefinition = Field(description="The task's content as of this revision.")
+    metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the task.")
+
+
+class TasksetRevisionEntity(_RevisionCommon, EntityBase):
+    """An immutable published snapshot of a :class:`TasksetEntity`'s content.
+
+    Child of the taskset it snapshots. Its ``tasks`` are **fully pinned** — every member ref carries
+    a ``#<digest>`` fragment resolved at publish time. A stored revision must never retain a tag
+    fragment (``#latest``, ``#some-tag``): tags move, and a moved tag would silently re-point a
+    published taskset's membership, which is the failure this whole design exists to prevent.
+    """
+
+    __entity_type__: ClassVar[str] = "taskset_revision"
+
+    description: str | None = Field(
+        default=None,
+        description="Human-readable description of the grouping.",
+        max_length=MAX_DESCRIPTION_LENGTH,
+    )
+    tasks: PinnedTaskRefList = Field(
+        default_factory=list,
+        description="Digest-pinned references to the member tasks, resolved at publish time.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")

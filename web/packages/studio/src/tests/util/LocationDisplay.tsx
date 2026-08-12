@@ -3,7 +3,7 @@
 
 import { LOCATION_DISPLAY_TEST_ID } from '@studio/tests/util/constants';
 import { FC } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 /**
  * Useful for asserting a redirect happened in a test, for example:

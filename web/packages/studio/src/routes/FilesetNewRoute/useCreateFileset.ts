@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage as getApiErrorMessage } from '@nemo/common/src/api/common/utils';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
@@ -15,7 +16,6 @@ import {
   FilesetPurpose,
   CreateFilesetRequest,
 } from '@nemo/sdk/generated/platform/schema';
-import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { DATASET_TYPE_SAMPLE } from '@studio/routes/FilesetNewRoute/constants';
 import {
@@ -32,7 +32,7 @@ import { storageConfigFromUrl } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
 import { MutableRefObject, useCallback } from 'react';
 import { UseFormGetValues } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 
 interface UseCreateFilesetParams {
   workspace: string;
@@ -215,14 +215,7 @@ export function useCreateFileset({
         navigate(getFilesetDetailRoute(workspace, fileset.name));
         return;
       }
-      navigate(
-        getFilesetDetailsRoute(
-          workspace,
-          getEntityReference(fileset, { encode: true }),
-          undefined,
-          true
-        )
-      );
+      navigate(getFilesetDetailsRoute(workspace, getEntityReference(fileset), undefined, true));
     },
     [
       activeTab,

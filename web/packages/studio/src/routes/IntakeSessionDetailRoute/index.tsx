@@ -9,7 +9,7 @@ import { NotFound } from '@studio/components/Layouts/NotFound';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { FC } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 interface SessionDetailContentProps {
   sessionId: string;

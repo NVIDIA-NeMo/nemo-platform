@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { useModelEntity } from '@nemo/common/src/api/models/useModelEntity';
 import { useModelSearch } from '@nemo/common/src/api/models/useModelSearch';
 import { VariableButton } from '@nemo/common/src/components/buttons/VariableButton';
@@ -12,6 +13,7 @@ import { ControlledDatasetFileSelect } from '@nemo/common/src/components/Dataset
 import type { VariableDef } from '@nemo/common/src/components/form/VariableTextArea';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { useEvaluatorCreateEvaluateJob } from '@nemo/sdk/generated/evaluator/api';
 import type { EvaluateJobRequest, MetricInline, Model } from '@nemo/sdk/generated/evaluator/schema';
 import {
@@ -23,7 +25,6 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import type { MetricItemWithId } from '@studio/components/dataViews/EvaluationMetricsDataView/types';
 import { EvalCard } from '@studio/components/evaluation/EvalCard';
 import { FileValidationPanel } from '@studio/components/sidePanels/MetricRunSidePanel/FileValidationPanel';
@@ -43,7 +44,6 @@ import { DEFAULT_INFERENCE_PARAMS_FORM_VALUES } from '@studio/hooks/evaluation/u
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { buildModelPayload } from '@studio/util/evaluations';
-import { logger } from '@studio/util/logger';
 import { Plus } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -54,7 +54,7 @@ import {
   useWatch,
   type UseFormReturn,
 } from 'react-hook-form';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 
 interface MetricRunFileValidationState {
   dataset: string | null;

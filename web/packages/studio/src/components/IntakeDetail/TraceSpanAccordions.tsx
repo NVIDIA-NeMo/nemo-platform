@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import {
   type ListSpansQueryError,
@@ -15,7 +16,6 @@ import {
   type Trace,
 } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeErrorBanner } from '@studio/components/IntakeDetail/IntakeComponents/IntakeErrorBanner';
 import { SpanListView } from '@studio/components/IntakeDetail/TraceSpanListView';
 import {
@@ -35,7 +35,7 @@ import {
   type SessionTrajectory,
 } from '@studio/util/intakeTelemetry';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 
 const TRACE_SPANS_PAGE_SIZE = 1000;
 const EMPTY_SPANS: Span[] = [];

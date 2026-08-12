@@ -28,7 +28,7 @@ from nemo_evaluator_sdk.agent_eval.tasks import (
     SemanticView,
     ViewSignal,
 )
-from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
+from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.agent_inference import AgentInferenceContext, AgentInvocationResult, AgentInvocationStatus
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import (
@@ -47,7 +47,6 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnlineModel,
 )
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
-from nemo_evaluator_sdk.values.results import AggregateScore
 
 
 def test_trial_from_sample_falls_back_to_reasoning_content() -> None:
@@ -145,13 +144,6 @@ def test_metric_row_exposes_reference_but_task_row_hides_it() -> None:
 
     task_row = _task_row(task)
     assert "reference" not in task_row
-
-
-def _score(summary: AgentEvalSummary, name: str) -> AggregateScore:
-    for aggregate in summary.scores.scores:
-        if aggregate.name == name:
-            return aggregate
-    raise KeyError(name)
 
 
 class _ConstantMetric:
@@ -266,6 +258,9 @@ class _TaskRunner:
     def __init__(self) -> None:
         self.config: AgentEvalRunConfig | None = None
 
+    def runner_info(self) -> RunnerInfo:
+        return RunnerInfo(name="test_runner", kind="runner")
+
     async def run_tasks(
         self,
         tasks: Sequence[AgentEvalTask],
@@ -296,18 +291,40 @@ def test_run_rejects_trials_and_target_together() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_writes_nothing_until_persist_is_called(tmp_path: Path) -> None:
+    # The point of the change: computing an evaluation and storing one are separate decisions, so a
+    # run given a work_dir still leaves it empty until the caller asks for a bundle.
+    result = await AgentEvaluator().run(
+        tasks=[_task()],
+        trials=[_candidate_trial()],
+        config=AgentEvalRunConfig(work_dir=tmp_path, parallelism=1),
+    )
+
+    assert not (tmp_path / "run.json").exists()
+    assert not (tmp_path / "report.html").exists()
+    # work_dir comes from the config, so it is known at construction — never patched on afterwards.
+    assert result.work_dir == tmp_path
+
+    result.persist()
+    assert (tmp_path / "run.json").is_file()
+
+
+@pytest.mark.asyncio
 async def test_scores_imported_trials_with_metric_and_persists_bundle(tmp_path: Path) -> None:
     result = await AgentEvaluator().run(
         tasks=[_task()],
         trials=[_candidate_trial()],
-        config=AgentEvalRunConfig(output_dir=tmp_path, parallelism=1),
+        config=AgentEvalRunConfig(work_dir=tmp_path, parallelism=1),
     )
+    # run() no longer writes anything; persisting is the caller's call and defaults to the work_dir.
+    location = result.persist()
 
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
-    assert result.dashboard_path == tmp_path / "report.html"
+    assert result.summary.score("constant_metric.score").mean == 0.75
+    assert location.output_dir == tmp_path
+    assert location.dashboard_path == tmp_path / "report.html"
     assert (tmp_path / "run.json").exists()
     assert (tmp_path / "scores.jsonl").exists()
-    assert "run_id" not in json.loads((tmp_path / "benchmark.json").read_text(encoding="utf-8"))
+    assert "run_id" not in json.loads((tmp_path / "metadata.json").read_text(encoding="utf-8"))
 
     score_payload = json.loads((tmp_path / "scores.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert score_payload["id"] == f"{result.run_id}:task-1:trial-1:constant_metric"
@@ -318,7 +335,7 @@ async def test_scores_imported_trials_with_metric_and_persists_bundle(tmp_path: 
     run_payload = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
     assert run_payload == {
         "artifacts": {
-            "benchmark": "benchmark.json",
+            "metadata": "metadata.json",
             "scores": "scores.jsonl",
             "summary": "summary.json",
             "tasks": "tasks.jsonl",
@@ -346,7 +363,7 @@ async def test_scores_partial_trials() -> None:
         ],
     )
 
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
 
 
 @pytest.mark.asyncio
@@ -360,7 +377,7 @@ async def test_target_runtime_produces_trials_before_scoring() -> None:
     assert result.trials[0].id == "task-1:runtime"
     assert runtime.config is not None
     assert runtime.config.run_id == result.run_id
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
 
 
 @pytest.mark.asyncio
@@ -386,7 +403,7 @@ async def test_live_model_generation_with_mocked_inference() -> None:
     assert result.trials[0].metadata["model_id"] == "target-model"
     assert result.trials[0].output is not None
     assert result.trials[0].output.output_text == "Generated model answer"
-    assert _score(result.summary, "constant_metric.score").mean == 0.75
+    assert result.summary.score("constant_metric.score").mean == 0.75
 
 
 @pytest.mark.asyncio
@@ -499,9 +516,9 @@ def test_summary_reports_coverage_and_merges_views_into_scores() -> None:
 
     summary = AgentEvalSummary.from_scores(scores, tasks=[task])
 
-    assert _score(summary, "constant_metric.score").mean == 1.0
-    assert _score(summary, "other_metric.quality").mean == 0.0
-    assert _score(summary, "view.outcome_correctness").mean == 0.5
+    assert summary.score("constant_metric.score").mean == 1.0
+    assert summary.score("other_metric.quality").mean == 0.0
+    assert summary.score("view.outcome_correctness").mean == 0.5
     assert summary.metric_coverage["constant_metric"]["score"].total == 1
     assert summary.metric_coverage["constant_metric"]["score"].scored == 1
 
@@ -653,7 +670,6 @@ async def test_generation_boundary_names_agent_eval_context() -> None:
             config=AgentEvalRunConfig(
                 run_id="run-123",
                 params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
             ),
         )
 
@@ -689,10 +705,9 @@ async def test_default_agent_invocation_receives_run_context_and_evidence_dir(tm
             target=agent,
             config=AgentEvalRunConfig(
                 run_id="run-123",
-                output_dir=tmp_path,
+                work_dir=tmp_path,
                 prompt_template=prompt_template,
                 params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
             ),
         )
 
@@ -733,9 +748,8 @@ async def test_default_agent_evidence_dirs_are_confined_and_unique(tmp_path: Pat
             target=agent,
             config=AgentEvalRunConfig(
                 run_id="run-123",
-                output_dir=tmp_path,
+                work_dir=tmp_path,
                 params=RunConfigOnline(parallelism=1),
-                write_dashboard=False,
             ),
         )
 
@@ -773,9 +787,8 @@ async def test_agent_inference_factory_receives_per_task_context(tmp_path: Path)
         target=agent,
         config=AgentEvalRunConfig(
             run_id="run-123",
-            output_dir=tmp_path,
+            work_dir=tmp_path,
             params=RunConfigOnline(parallelism=1),
-            write_dashboard=False,
         ),
     )
 
