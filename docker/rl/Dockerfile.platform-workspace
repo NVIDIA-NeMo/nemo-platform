@@ -6,6 +6,8 @@
 FROM scratch AS platform-workspace
 # Reduced workspace file for this partial source tree.
 COPY docker/rl/pyproject.workspace.toml pyproject.toml
+COPY docker/rl/codec-file-removals.txt docker/rl/codec-file-removals.txt
+COPY docker/scripts/remove-listed-files.sh docker/scripts/remove-listed-files.sh
 # nemo-platform-sdk's hatch build force-includes docs/ from the repo root; the
 # openapi symlink must resolve at build time, so copy both trees.
 COPY docs docs
