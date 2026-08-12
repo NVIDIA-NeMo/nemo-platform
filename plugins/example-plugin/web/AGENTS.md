@@ -74,7 +74,7 @@ instance Studio renders — same behavior, same styles, no second copy in the
 bundle. See `src/SharedUiPage.tsx`.
 
 ```ts
-import { StudioDataView, useStudioDataViewState } from '@nemo/common';
+import { AssistantChat, StudioDataView, useStudioDataViewState } from '@nemo/common';
 ```
 
 - **Bare specifier only.** A deep `@nemo/common/src/...` import is not
@@ -92,6 +92,11 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   fine (they erase). A shared component that needs data takes it as a prop or
   callback and the caller supplies it from `host.sdk`; `CreateSecretModal`'s
   `onCreate` and `fetchAllPages`' page fetcher are the pattern.
+- **`AssistantChat` is shared.** A plugin can point it at an authenticated,
+  OpenAI-compatible `baseURL`; Studio supplies its current access token and
+  chat runtime. Use `messageContentProps.markdownLinkComponent` when a plugin
+  owns trusted, in-app citation targets. The plugin should still own the panel,
+  prompts, endpoint, and citation behavior specific to its feature.
 - **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is
   unpublished, so there is nothing to install. `src/env.d.ts` declares the `*.css`
   side-effect imports those sources carry.
