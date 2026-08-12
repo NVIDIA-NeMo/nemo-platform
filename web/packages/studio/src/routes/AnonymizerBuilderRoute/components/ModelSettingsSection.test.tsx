@@ -8,17 +8,17 @@ import {
   STRATEGY_SUBSTITUTE,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
-  AnonymizerFormData,
   getAnonymizerFormDefaults,
+  type AnonymizerFormData,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { render, screen, within } from '@testing-library/react';
-import { FC, ReactNode } from 'react';
+import { type FC, type ReactNode } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 
 vi.mock('@studio/routes/AnonymizerBuilderRoute/useAnonymizerModels', () => ({
   useAnonymizerModels: () => ({
     models: [],
-    items: [{ label: 'gpt-oss-120b', value: 'gpt-oss-120b' }],
+    items: [{ label: 'nemotron-3-nano-30b-a3b', value: 'nvidia/nemotron-3-nano-30b-a3b' }],
     isLoading: false,
     applyModel: vi.fn(),
   }),

@@ -10,10 +10,10 @@ import {
   ROLE_LABELS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
-  AnonymizerFormData,
   anonymizerFormSchema,
   buildAnonymizerJobRequest,
   getAnonymizerFormDefaults,
+  type AnonymizerFormData,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 
 const ALL_ROLES = [...DETECTION_ROLES, REPLACE_ROLE, ...REWRITE_ROLES];
@@ -25,7 +25,7 @@ const roleModels = (model: string, provider: string): AnonymizerFormData['roleMo
 const form = (overrides: Partial<AnonymizerFormData> = {}): AnonymizerFormData => ({
   ...getAnonymizerFormDefaults(),
   source: 'https://example.com/data.csv',
-  roleModels: roleModels('openai/gpt-oss-120b', 'default/nvidia'),
+  roleModels: roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia'),
   ...overrides,
 });
 
@@ -137,13 +137,13 @@ describe('buildAnonymizerJobRequest', () => {
     expect(req.spec.model_configs).toEqual([
       {
         alias: 'model-1',
-        model: 'openai/gpt-oss-120b',
+        model: 'nvidia/nemotron-3-nano-30b-a3b',
         provider: 'default/nvidia',
         inference_parameters: { timeout: 500 },
       },
       {
         alias: 'model-2',
-        model: 'openai/gpt-oss-120b',
+        model: 'nvidia/nemotron-3-nano-30b-a3b',
         provider: 'default/nvidia',
         inference_parameters: { timeout: 500, max_tokens: 16384, temperature: 0.3, top_p: 0.95 },
       },
@@ -151,7 +151,7 @@ describe('buildAnonymizerJobRequest', () => {
   });
 
   it('sends no sampling params to the GLiNER detector, even when the form holds them', () => {
-    const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
+    const models = roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia');
     models[GLINER_ROLE] = {
       modelId: 'gliner',
       model: 'nvidia/gliner-pii',
@@ -165,7 +165,7 @@ describe('buildAnonymizerJobRequest', () => {
   });
 
   it('emits one model_config per unique model+provider', () => {
-    const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
+    const models = roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia');
     models[DETECTION_ROLES[0]] = {
       modelId: 'gliner',
       model: 'nvidia/gliner-pii',
@@ -262,10 +262,10 @@ describe('buildAnonymizerJobRequest', () => {
   });
 
   it('attaches inference_parameters and splits configs when params differ', () => {
-    const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
+    const models = roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia');
     models['entity_validator'] = {
-      modelId: 'gpt',
-      model: 'openai/gpt-oss-120b',
+      modelId: 'nemotron',
+      model: 'nvidia/nemotron-3-nano-30b-a3b',
       provider: 'default/nvidia',
       params: { temperature: 0.1 },
     };
@@ -287,7 +287,7 @@ describe('anonymizerFormSchema', () => {
     anonymizerFormSchema.safeParse({
       ...getAnonymizerFormDefaults(),
       source: 'https://example.com/data.csv',
-      roleModels: roleModels('openai/gpt-oss-120b', 'default/nvidia'),
+      roleModels: roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia'),
       ...overrides,
     });
 
