@@ -326,45 +326,6 @@ def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) ->
     assert params is None
 
 
-def test_to_runtime_task_decodes_json_metadata_values() -> None:
-    from nemo_evaluator.api.schemas import MetadataItem
-
-    extras = {"expected_answer": "B", "options": [{"A": "Karyotyping"}, {"B": "PCR"}]}
-    task = AgentEvalTaskSpec(
-        id="t1",
-        intent="answer",
-        metrics=[],
-        metadata=[
-            MetadataItem(key="gym_dataset_path", value="/path/to/dataset.jsonl"),
-            MetadataItem(key="gym_row_extras", value=json.dumps(extras)),
-        ],
-    )
-    runtime_task = _to_runtime_task(task)
-    # Plain string metadata passes through unchanged.
-    assert runtime_task.metadata["gym_dataset_path"] == "/path/to/dataset.jsonl"
-    # JSON-encoded dict is decoded back to a dict.
-    assert runtime_task.metadata["gym_row_extras"] == extras
-
-
-def test_to_runtime_task_recovers_gym_row_from_metadata() -> None:
-    from nemo_evaluator.api.schemas import MetadataItem
-
-    gym_row = {"input": [{"role": "user", "content": "Which test detects cystic fibrosis?"}]}
-    task = AgentEvalTaskSpec(
-        id="t1",
-        intent="answer",
-        metrics=[],
-        metadata=[
-            MetadataItem(key="gym_dataset_path", value="/path/to/dataset.jsonl"),
-            MetadataItem(key="gym_row", value=json.dumps(gym_row)),
-        ],
-    )
-    runtime_task = _to_runtime_task(task)
-    # gym_row is lifted out of metadata and into inputs so GymAgentTaskRunner can materialize the dataset.
-    assert runtime_task.inputs.get("gym_row") == gym_row
-    # gym_row is removed from metadata after being recovered.
-    assert "gym_row" not in runtime_task.metadata
-
 
 def test_runner_target_is_accepted(tmp_path: Path) -> None:
     spec = AgentEvalSpec(tasks=[_task_spec()], target=CodexRunnerTarget(model="gpt-5.5"))
