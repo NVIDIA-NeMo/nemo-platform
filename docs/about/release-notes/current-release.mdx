@@ -207,21 +207,9 @@ workflows against the upgraded checkout.
 
 ## Known issues
 
-- **Fabric agent-eval trials can be scored as failures after successful runs.**
-  An agent-eval trial run through a NeMo Fabric adapter can be recorded as an
-  adapter failure even though the agent completed its work and produced the
-  expected output. It affects agents whose graph runs nodes concurrently, and
-  it can occur at any parallelism, including one. NeMo Relay closes telemetry
-  scopes in strict last-in-first-out order, but concurrent LangGraph sibling
-  runs finish in an order that can leave a scope open; the enclosing request
-  scope then fails to close with `scope handle is not at the top of the stack`,
-  and the Fabric adapter reports that teardown error as an invocation failure.
-  Affected trials are scored as failures, so evaluation results can understate
-  an agent's accuracy. There is no workaround in this release. The underlying
-  defect is fixed upstream in
-  [NeMo-Relay #755](https://github.com/NVIDIA/NeMo-Relay/pull/755); the fix
-  reaches NeMo Platform once NeMo Relay publishes a release containing it and
-  NeMo Fabric updates its NeMo Relay dependency.
+- **Deep Agents trials can be scored as failures.** Agent-eval trials run
+  through the NeMo Fabric Deep Agents adapter can be recorded as failures even
+  when the agent completed successfully. Fixed in a future release.
 
 ## Links
 
