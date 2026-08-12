@@ -132,26 +132,20 @@ full of it means the platform was unreachable, not that anything went wrong.
 
 Copy the experiment directory back out with `sbx cp` to check the result.
 
-### Run the complete test matrix
+### Run the loop tests
 
-For a local, host-based test run, use the runner below. It runs every static
-check first, builds the shared image once, then runs each Mode 1 and Mode 2 E2E
-case once with four workers. It updates `report.md` after every completed case;
-the report names the log and artifacts, and compares the winner's objective and
-regression metrics with the baseline when an experiment was created.
+The loop tests are developer-invoked and execute model-written shell inside the
+named sandbox. Run the Mode 1 and Mode 2 suites directly with pytest:
 
 ```bash
-uv run --frozen --package nemo-experimentalist-plugin \
-  python plugins/nemo-experimentalist/examples/smoke-agent/scripts/run_e2e_tests.py \
-  --workers 4
+SANDBOX_VM_ID=nemo-experimentalist uv run --frozen pytest \
+  plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_1_loop_e2e.py \
+  plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_2_loop_e2e.py \
+  -m e2e -n 4
 ```
 
-Use `--mode mode-2` or `--mode mode-1` to run one E2E mode with the structural
-checks, for example while comparing model tiers.
-
-The runner does not retry failed cases. A non-zero exit means at least one case
-failed; read the live report to see whether it was a fixture, platform, model,
-Harbor, or assertion failure before deciding what to rerun.
+Pytest writes logs and downloaded experiment artifacts under its temporary test
+directory. It does not retry failed runs.
 
 ## Scenarios
 
