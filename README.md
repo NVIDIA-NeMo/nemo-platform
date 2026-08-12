@@ -22,7 +22,7 @@ curl -LsSf https://astral.sh/uv/0.9.30/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 uv venv --python 3.13
 source .venv/bin/activate
-uv pip install nemo-platform[all]
+uv pip install "nemo-platform[all]"
 
 nemo setup
 ```
