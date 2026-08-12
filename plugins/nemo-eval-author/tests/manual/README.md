@@ -40,10 +40,10 @@ Asks Intake which filter fields and operators it really serves, and prints a rep
 Run it after any change to the Intake span or trace filter schemas.
 
 The docstrings of `query_spans` and `query_traces` are the only guide the agent has when
-it builds a query, so a wrong docstring sends the agent down a dead end. This probe is
-how those docstrings were established. It found five span filters that Intake publishes
-but answers with HTTP 500. If the report and the docstrings disagree, the docstrings are
-wrong.
+it builds a query, so a wrong docstring sends the agent down a dead end. This probe is how
+those docstrings were established, and it is also what found the five span filters that
+Intake published but could not serve, fixed in nemo-platform#1225. If the report and the
+docstrings disagree, the docstrings are wrong.
 
 ```bash
 uv run --frozen python plugins/nemo-eval-author/tests/manual/intake_vocabulary_probe.py

@@ -13,10 +13,9 @@ never is.
 
 ``find_agent_traces`` exists because no single endpoint answers "the recent
 traces of this agent". Only spans carry ``agent_name``, so ``traces.list``
-cannot be scoped to an agent, and ``spans.groups.list`` sorts only by span
-count. The composite scans spans newest first for the distinct trace ids, then
-reads the summary of exactly those ids. It is built on the two raw queries, so
-it is also a worked example of composing them.
+cannot be scoped to an agent. The composite groups spans by trace id to get the
+recent ones, then reads the summary of exactly those ids. It is built on the two
+raw queries, so it is also a worked example of composing them.
 
 Reading and diagnosis are delegated, not rebuilt: ``read_trace`` calls
 ``TraceExplorer`` and ``analyze_trace`` calls ``TraceAnalyzer``.
@@ -61,15 +60,6 @@ def _explain(exc: Exception, *, doing: str, workspace: str) -> TraceQueryError:
             hint = (
                 f"Intake rejected the query: {exc}. Check the filter fields and operators against the "
                 "vocabulary in the docstring of the query you called."
-            )
-        elif exc.status_code == 500:
-            # Intake advertises five span filters it cannot serve: the dataset and prompt
-            # fields have no entry in its attribute catalog, so they raise instead of
-            # returning 400. Name that first, because the message itself says nothing.
-            hint = (
-                f"Intake failed internally: {exc}. If the filter used dataset_id, dataset_name, "
-                "dataset_version, prompt_name, or prompt_version, that is the cause: Intake publishes "
-                "those span filters but cannot serve them. Remove them and query again."
             )
         else:
             hint = f"Intake returned HTTP {exc.status_code}: {exc}"
@@ -151,10 +141,7 @@ async def query_spans(
             - time: ``started_at`` as ``{"gte": ..., "lte": ...}``, either bound or both
 
             No other field is filterable, and ``$in`` is not accepted here: only
-            ``id`` on ``query_traces`` takes a list. Note that ``dataset_id``,
-            ``dataset_name``, ``dataset_version``, ``prompt_name``, and
-            ``prompt_version`` appear in the published schema but return HTTP 500
-            today, so do not filter on them.
+            ``id`` on ``query_traces`` takes a list.
         group_by: When set, roll the matching spans up server-side into one row per
             group. Only ``"trace_id"`` and ``"session_id"`` are groupable. Use this to
             get the distinct traces of any filter, then pass those ids to

@@ -7,15 +7,10 @@ Not a test. Pytest does not collect this file. No automation runs it. See README
 this directory.
 
 The docstrings of ``query_spans`` and ``query_traces`` are the only guide the agent has
-when it builds a query, so a wrong docstring sends the agent down a dead end. Neither
-the Pydantic filter schemas nor the "Unknown filter field" error list can be trusted for
-this. A field can appear in both and still fail:
-
-* ``SpanFilter`` once declared ``dataset_name``, and Intake answered HTTP 500. This probe
-  is what found that, and nemo-platform#1225 unpublished the five fields responsible, so
-  they should now read as rejected rather than as a server fault. The lesson stands: a
-  declared field is not a served field.
-* The 400 message lists the entity's columns, which is wider than what is filterable.
+when it builds a query, so a wrong docstring sends the agent down a dead end. Neither the
+filter schema nor the "Unknown filter field" error list settles the question: the schema
+says what is declared, and the error lists the entity's columns, which is wider than what
+is filterable. Only the server knows.
 
 So probe every field, and record the operators too. Run this after any change to the
 Intake filter schemas. If this report and the docstrings disagree, fix the docstrings.

@@ -346,13 +346,13 @@ async def test_bad_filter_points_at_the_vocabulary() -> None:
         await traces.query_spans(client, workspace="ws", filter={"nonsense": 1})
 
 
-async def test_internal_error_names_the_filters_intake_cannot_serve() -> None:
-    # Intake publishes five span filters that raise instead of returning 400, so a bare
-    # 500 is the only signal the agent gets. The message must name them.
+async def test_an_unexpected_status_still_names_itself() -> None:
+    # No status gets swallowed. A 500 is Intake's fault rather than the caller's, so
+    # there is no corrective action to offer, but the code has to reach the agent.
     client = _client(error=_status_error(500))
 
-    with pytest.raises(traces.TraceQueryError, match="prompt_name"):
-        await traces.query_spans(client, workspace="ws", filter={"dataset_name": "x"})
+    with pytest.raises(traces.TraceQueryError, match="HTTP 500"):
+        await traces.query_spans(client, workspace="ws")
 
 
 async def test_unreachable_platform_names_the_base_url() -> None:
