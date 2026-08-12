@@ -10,6 +10,7 @@ import type { ComponentType, ReactNode } from 'react';
  */
 export interface PluginSdk {
   platform: typeof import('@nemo/sdk/generated/platform/api');
+  agents: typeof import('@nemo/sdk/generated/agents/api');
 }
 
 /** Navigate Studio's shared router; paths are absolute Studio routes. */

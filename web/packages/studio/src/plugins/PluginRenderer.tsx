@@ -3,6 +3,7 @@
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { logger } from '@nemo/common/src/utils/logger';
+import * as agentsSdk from '@nemo/sdk/generated/agents/api';
 import * as platformSdk from '@nemo/sdk/generated/platform/api';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
@@ -19,7 +20,7 @@ import { useAuth } from 'react-oidc-context';
 import { useNavigate, useParams } from 'react-router';
 
 // Module-scope for stable identity; plugins run these on Studio's axios + cache.
-const STUDIO_SDK: PluginSdk = { platform: platformSdk };
+const STUDIO_SDK: PluginSdk = { platform: platformSdk, agents: agentsSdk };
 
 const makeTelemetry = (name: string): PluginTelemetry => ({
   info: (message, cause) => logger.info(`[plugin:${name}] ${message}`, cause),
