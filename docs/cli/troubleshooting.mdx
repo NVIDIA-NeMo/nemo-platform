@@ -14,18 +14,13 @@ This page covers common issues and how to resolve them.
 
 **Cause:**
 
-With `pip` or `uv pip`, the command lives in a virtual environment and works only while that environment is active. With `uv tool install`, it lives in the uv tool executable directory, which uv adds to your `PATH` only when your shell configuration includes it.
+If you installed `nemo-platform` with `pip` or `uv pip`, it was installed in a virtual environment. The `nemo` command is only available when that environment is activated.
 
 **Solution:**
 
 Activate the virtual environment where you installed the package:
 ```bash
 source /path/to/venv/bin/activate
-```
-
-After a tool install, add the uv tool directory to your `PATH`, then restart your shell:
-```bash
-uv tool update-shell
 ```
 
 ## Installation Issues
@@ -37,11 +32,11 @@ uv tool update-shell
 
 **Cause:**
 
-NeMo Platform supports Python 3.12 and 3.13. A tool environment is built with the interpreter uv discovers, and [uv ignores the `requires-python` metadata](https://docs.astral.sh/uv/concepts/tools/#python-versions) when making that choice, so an install can land on Python 3.14 and then try to build dependencies that publish no 3.14 wheels.
+NeMo Platform supports Python 3.12 and 3.13, but uv [picks the interpreter itself](https://docs.astral.sh/uv/concepts/tools/#python-versions), so an install can land on Python 3.14.
 
 **Solution:**
 
-Name a supported interpreter. uv downloads one when your machine has none:
+Name a supported interpreter. uv downloads one if you do not have it:
 
 ```bash
 uv tool install --python 3.13 "nemo-platform[all]"
