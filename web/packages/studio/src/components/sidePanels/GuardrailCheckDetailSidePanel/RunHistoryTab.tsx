@@ -14,6 +14,30 @@ export interface RunHistoryTabProps {
 }
 
 /**
+ * What a run was measured against: a saved config version, or an unsaved draft.
+ *
+ * A draft has no version to show, and showing nothing would read as "old record"
+ * rather than "not a saved config" — so it gets its own marker.
+ */
+const RunOriginBadge: FC<{ readonly run: RunRecord }> = ({ run }) => {
+  if (run.is_draft) {
+    return (
+      <Badge color="yellow" kind="outline">
+        Unsaved draft
+      </Badge>
+    );
+  }
+  if (run.config_version === undefined) {
+    return null;
+  }
+  return (
+    <Badge color="gray" kind="outline">
+      v{run.config_version}
+    </Badge>
+  );
+};
+
+/**
  * Every recorded run of a check, newest first.
  *
  * Each entry carries the config version it ran against, because a config can
@@ -47,11 +71,7 @@ export const RunHistoryTab: FC<RunHistoryTabProps> = ({ runs }) => {
             <Flex align="center" justify="between">
               <Flex align="center" gap="density-sm">
                 <ResultIndicator status={run.status} />
-                {run.config_version !== undefined && (
-                  <Badge color="gray" kind="outline">
-                    v{run.config_version}
-                  </Badge>
-                )}
+                <RunOriginBadge run={run} />
               </Flex>
               <RelativeTime datetime={run.run_at} focusableForTooltip={false} />
             </Flex>
