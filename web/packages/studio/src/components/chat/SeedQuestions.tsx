@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
-import { PromptSuggestionPills } from '@studio/components/PromptSuggestionPills';
-import type { PromptSuggestion } from '@studio/components/PromptSuggestionPills/types';
+import { PromptSuggestionTags } from '@studio/components/PromptSuggestionTags';
+import type { PromptSuggestion } from '@studio/components/PromptSuggestionTags/types';
 import { type FC, type ReactNode, useMemo } from 'react';
 
 interface SeedQuestionsProps {
@@ -18,7 +18,7 @@ interface SeedQuestionsProps {
 }
 
 /**
- * Seed questions for the chat composer: a row of {@link PromptSuggestionPills} flanked by
+ * Seed questions for the chat composer: a row of {@link PromptSuggestionTags} flanked by
  * optional slots for metrics and composer actions. A seed question is its own label, so it
  * maps to a suggestion whose label and prompt are the same string.
  */
@@ -37,7 +37,7 @@ export const SeedQuestions: FC<SeedQuestionsProps> = ({
   return (
     <div className="flex items-start gap-2">
       {slotStart && <div className="shrink-0 self-end">{slotStart}</div>}
-      <PromptSuggestionPills
+      <PromptSuggestionTags
         suggestions={suggestions}
         onSelect={onSelect}
         disabled={disabled}

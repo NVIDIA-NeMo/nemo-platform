@@ -11,7 +11,7 @@ import { PROMPT_SUGGESTIONS } from '@studio/components/CreateFilesetStart/consta
 import { GeneratedConfigResult } from '@studio/components/CreateFilesetStart/GeneratedConfigResult';
 import type { DescribeWithAiPanelProps } from '@studio/components/CreateFilesetStart/types';
 import { useDescribeWithAi } from '@studio/components/CreateFilesetStart/useDescribeWithAi';
-import { PromptSuggestionPills } from '@studio/components/PromptSuggestionPills';
+import { PromptSuggestionTags } from '@studio/components/PromptSuggestionTags';
 import { providerForSelection } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import type { FC } from 'react';
 import { useController } from 'react-hook-form';
@@ -80,7 +80,7 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
             layout="vertical"
             slotEnd={
               showSuggestions ? (
-                <PromptSuggestionPills
+                <PromptSuggestionTags
                   suggestions={PROMPT_SUGGESTIONS}
                   onSelect={(prompt) =>
                     form.setValue('prompt', prompt, { shouldValidate: true, shouldDirty: true })

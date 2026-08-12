@@ -3,7 +3,7 @@
 
 import { FILESET_TEMPLATES } from '@studio/components/CreateFilesetStart/templates';
 import type { StartOption } from '@studio/components/CreateFilesetStart/types';
-import type { PromptSuggestion } from '@studio/components/PromptSuggestionPills/types';
+import type { PromptSuggestion } from '@studio/components/PromptSuggestionTags/types';
 import { LayoutGrid, Plus, Sparkles } from 'lucide-react';
 
 /** "N recipe(s)" badge label, kept in sync with the number of authored templates. */

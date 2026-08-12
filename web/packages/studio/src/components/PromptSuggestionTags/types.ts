@@ -3,13 +3,13 @@
 
 /** A one-click example prompt offered next to a prompt field. */
 export interface PromptSuggestion {
-  /** Short pill label — a few words, not the prompt itself. */
+  /** Short tag label — a few words, not the prompt itself. */
   label: string;
-  /** Full prompt written into the field when the pill is clicked. */
+  /** Full prompt written into the field when the tag is clicked. */
   prompt: string;
 }
 
-export interface PromptSuggestionPillsProps {
+export interface PromptSuggestionTagsProps {
   suggestions: PromptSuggestion[];
   onSelect: (prompt: string) => void;
   disabled?: boolean;
