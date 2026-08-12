@@ -24,13 +24,25 @@ describe('EntityEmptyState', () => {
   const descriptor = ENTITY_EMPTY_STATES.guardrails;
 
   describe('first-use', () => {
-    it('renders registry heading, subheading, and the CLI / prompt copy rows', () => {
+    it('renders the registry heading and subheading', () => {
       wrap(<Guardrails onCreate={vi.fn()} />);
 
       expect(screen.getByText(descriptor.heading)).toBeInTheDocument();
       expect(screen.getByText(descriptor.subheading)).toBeInTheDocument();
-      expect(screen.getByText(descriptor.cliCommand as string)).toBeInTheDocument();
-      expect(screen.getByText(descriptor.skillPrompt as string)).toBeInTheDocument();
+    });
+
+    it('toggles between the NeMo CLI command and the agent prompt', async () => {
+      const user = userEvent.setup();
+      wrap(<Guardrails onCreate={vi.fn()} />);
+
+      const help = screen.getByTestId('entity-empty-state-help');
+      // CLI is the default selection.
+      expect(help).toHaveTextContent(descriptor.cliCommand as string);
+      expect(help).not.toHaveTextContent(descriptor.skillPrompt as string);
+
+      await user.click(screen.getByRole('radio', { name: 'Ask an Agent' }));
+      expect(help).toHaveTextContent(descriptor.skillPrompt as string);
+      expect(help).not.toHaveTextContent(descriptor.cliCommand as string);
     });
 
     it('invokes onCreate from the primary CTA', async () => {
@@ -49,14 +61,6 @@ describe('EntityEmptyState', () => {
       expect(
         screen.queryByRole('button', { name: descriptor.createAction?.label })
       ).not.toBeInTheDocument();
-    });
-
-    it('copies the CLI command to the clipboard', async () => {
-      const user = userEvent.setup();
-      wrap(<Guardrails onCreate={vi.fn()} />);
-
-      await user.click(screen.getByRole('button', { name: 'Copy CLI command' }));
-      expect(await navigator.clipboard.readText()).toBe(descriptor.cliCommand);
     });
   });
 

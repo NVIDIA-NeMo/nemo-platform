@@ -5,11 +5,17 @@ import {
   ENTITY_EMPTY_STATES,
   type EntityKey,
 } from '@nemo/common/src/components/EntityEmptyState/registry';
-import { useCopyToClipboard } from '@nemo/common/src/hooks/useCopyToClipboard';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Button, Flex, StatusMessage, Stack, Text } from '@nvidia/foundations-react-core';
-import { Copy, TriangleAlert } from 'lucide-react';
-import { type FC, useCallback } from 'react';
+import {
+  Button,
+  CodeSnippet,
+  type CodeSnippetLanguage,
+  Flex,
+  SegmentedControl,
+  StatusMessage,
+} from '@nvidia/foundations-react-core';
+import { TriangleAlert } from 'lucide-react';
+import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 /** The three governed empty-state variants. */
@@ -104,14 +110,7 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
         }
       />
       {(cliCommand || skillPrompt) && (
-        <Stack gap="density-sm" className="mt-density-lg w-full max-w-[28rem]">
-          {cliCommand && (
-            <CopyRow label="Prefer the CLI?" value={cliCommand} copyLabel="Copy CLI command" />
-          )}
-          {skillPrompt && (
-            <CopyRow label="Ask an agent" value={skillPrompt} copyLabel="Copy agent prompt" />
-          )}
-        </Stack>
+        <SelfServiceHelp cliCommand={cliCommand} skillPrompt={skillPrompt} />
       )}
     </Centered>
   );
@@ -133,34 +132,48 @@ const Centered: FC<{ children: React.ReactNode; className?: string; testId: stri
   </Flex>
 );
 
+/** Self-service help kind. */
+type HelpKind = 'cli' | 'agent';
+
 /**
- * A compact, copy-to-clipboard row: a small label, a monospace snippet, and a
- * copy button. Kept out of the StatusMessage footer so the ≤2-action rule for
- * empty states holds.
+ * A compact "NeMo CLI · Ask an Agent" disclosure: a KUI CodeSnippet (with its
+ * built-in copy affordance) whose action row hosts a tiny SegmentedControl to
+ * switch between the CLI command and the agent prompt. Kept out of the
+ * StatusMessage footer so the ≤2-action rule for empty states holds.
  */
-const CopyRow: FC<{ label: string; value: string; copyLabel: string }> = ({
-  label,
-  value,
-  copyLabel,
+const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
+  cliCommand,
+  skillPrompt,
 }) => {
   const toast = useToast();
-  const { copyToClipboard } = useCopyToClipboard({
-    onSuccess: () => toast.success('Copied to clipboard'),
-    onError: () => toast.error('Failed to copy to clipboard'),
-  });
-  const handleCopy = useCallback(() => void copyToClipboard(value), [copyToClipboard, value]);
+  const [kind, setKind] = useState<HelpKind>(cliCommand ? 'cli' : 'agent');
+
+  const items: { value: HelpKind; children: string }[] = [];
+  if (cliCommand) items.push({ value: 'cli', children: 'NeMo CLI' });
+  if (skillPrompt) items.push({ value: 'agent', children: 'Ask an Agent' });
+
+  const showCli = kind === 'cli' && !!cliCommand;
+  const value = showCli ? (cliCommand as string) : (skillPrompt ?? cliCommand ?? '');
+  const language: CodeSnippetLanguage = showCli ? 'bash' : 'markdown';
 
   return (
-    <Flex align="center" justify="between" gap="density-sm" className="rounded border p-density-sm">
-      <Stack gap="density-xxs" className="min-w-0">
-        <Text kind="label/bold/xs" className="text-secondary">
-          {label}
-        </Text>
-        <code className="truncate font-mono text-sm text-text-primary">{value}</code>
-      </Stack>
-      <Button kind="tertiary" size="tiny" aria-label={copyLabel} onClick={handleCopy}>
-        <Copy />
-      </Button>
-    </Flex>
+    <div className="mt-density-lg w-full max-w-[32rem]" data-testid="entity-empty-state-help">
+      <CodeSnippet
+        value={value}
+        language={language}
+        kind="block"
+        onCopySuccess={() => toast.success('Copied to clipboard')}
+        slotActions={
+          items.length > 1 ? (
+            <SegmentedControl
+              size="small"
+              value={kind}
+              onValueChange={(next) => setKind(next as HelpKind)}
+              items={items}
+            />
+          ) : undefined
+        }
+      />
+    </div>
   );
 };

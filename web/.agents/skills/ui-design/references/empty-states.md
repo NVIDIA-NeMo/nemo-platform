@@ -31,7 +31,7 @@ fourth idiom.
 
 | Variant | When | Required affordances |
 | --- | --- | --- |
-| `first-use` | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, CLI + agent-prompt rows |
+| `first-use` | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "NeMo CLI · Ask an Agent" self-service snippet |
 | `no-results` | Items exist but current filters/search match zero | heading naming the mismatch, **"Clear filters"** action; **no** create CTA |
 | `error` | Load failed (network/server/timeout) | non-technical heading, **"Try again"** action; no create CTA |
 
@@ -72,7 +72,8 @@ Field rules:
   CLI equivalent.
 - `skillPrompt` — copy-to-clipboard string that triggers the entity's skill.
   **Not wired to Copilot** (deferred by ticket decision 1) — it is stored for a
-  future integration and surfaced as a copy row today. Omit if no skill exists.
+  future integration and surfaced under the "Ask an Agent" snippet toggle today.
+  Omit if no skill exists.
 
 ### 2. Wire the callsite
 
@@ -114,9 +115,11 @@ as a fallback.
 
 - Headings are sentence case and name the entity. CTAs are verb + noun
   ("Create fileset", not "Get started").
-- At most **2 buttons** in the footer (Kaizen empty-state rule). The CLI and
-  agent-prompt rows are copy-to-clipboard rows **below** the footer, not
-  buttons — they do not count against the 2-action limit.
+- At most **2 buttons** in the footer (Kaizen empty-state rule). The CLI command
+  and agent prompt live **below** the footer in a single KUI `CodeSnippet`
+  (with its built-in copy button); a tiny `SegmentedControl` in the snippet's
+  `slotActions` toggles between **NeMo CLI** and **Ask an Agent**. This is not a
+  footer button and does not count against the 2-action limit.
 - CLI commands must match the shipping `nemo` CLI. Verify against the relevant
   plugin skill (`nemo files`, `nemo models`, `nemo guardrail`, `nemo secrets`,
   …) before committing. Because commands are centralized in the registry, a CLI
