@@ -30,6 +30,30 @@ _E2E_IGW_WAIT_TIMEOUT_SEC = 60
 _ENTITY_NAME_PATTERN = re.compile(NAME_PATTERN)
 
 
+def _repo_venv_nemo_command(repo_root: Path) -> list[str] | None:
+    """Return the current repo venv's nemo console script when pytest already runs inside it."""
+    venv = os.environ.get("VIRTUAL_ENV")
+    if not venv:
+        return None
+
+    scripts_dir = "Scripts" if os.name == "nt" else "bin"
+    suffixes = (".exe", "") if os.name == "nt" else ("",)
+    for suffix in suffixes:
+        candidate = Path(venv) / scripts_dir / f"nemo{suffix}"
+        if not candidate.exists():
+            continue
+        try:
+            candidate.resolve().relative_to(repo_root.resolve())
+        except ValueError:
+            continue
+        return [str(candidate)]
+    return None
+
+
+def _nemo_local_command(repo_root: Path) -> list[str]:
+    return _repo_venv_nemo_command(repo_root) or ["uv", "run", "--project", str(repo_root), "--frozen", "nemo"]
+
+
 def assert_exit_0(result: subprocess.CompletedProcess[str], msg: str) -> subprocess.CompletedProcess[str]:
     """Assert that a CLI invocation succeeded, including output in the failure message."""
     assert result.returncode == 0, f"{msg}: {result.stderr or result.stdout}"
@@ -67,21 +91,24 @@ def run_nemo_local(
     with a fake ``.git`` marker so ``skills install`` writes there instead of
     the real repo root).
     """
+    repo_root = get_repo_root()
     with tempfile.TemporaryDirectory(prefix="nmp-cli-config-") as config_dir:
         env = os.environ.copy()
         config_path = Path(config_dir) / "config.yaml"
         config_path.write_text("{}\n")
         env["NMP_CONFIG_FILE"] = str(config_path)
+        if not env_extra or "NEMO_TELEMETRY_ENABLED" not in env_extra:
+            env["NEMO_TELEMETRY_ENABLED"] = "false"
         if base_url is not None:
             env["NMP_BASE_URL"] = base_url.rstrip("/")
         if workspace is not None:
             env["NMP_WORKSPACE"] = workspace
         if env_extra:
             env.update(env_extra)
-        cmd = ["uv", "run", "--project", str(get_repo_root()), "--frozen", "nemo", *args]
+        cmd = [*_nemo_local_command(repo_root), *args]
         return subprocess.run(
             cmd,
-            cwd=cwd or get_repo_root(),
+            cwd=cwd or repo_root,
             env=env,
             timeout=timeout,
             capture_output=True,
