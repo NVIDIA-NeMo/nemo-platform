@@ -43,7 +43,7 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
             self.metric_keys = ("reward",)
 
     class RecordingDatasetFactory:
-        def build_dataset(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
+        def build_dataset(self, evaluator_type: str, ref: DatasetRef, **_options: object) -> SimpleNamespace:
             return SimpleNamespace(ref=ref)
 
         def build_task_template(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
