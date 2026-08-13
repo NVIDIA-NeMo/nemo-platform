@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { BandRenderer, useRangeBand } from '@studio/components/charts/RangeBand';
-import { render, renderHook } from '@testing-library/react';
+import { useRangeBand } from '@studio/components/charts/RangeBand';
+import { BandRenderer } from '@studio/components/charts/RangeBand/BandRenderer';
+import { render, renderHook, screen } from '@testing-library/react';
 import { isValidElement, type ReactElement } from 'react';
 import { Area, Customized } from 'recharts';
 
@@ -21,9 +22,7 @@ const makeData = (steps: number[]) =>
 
 describe('useRangeBand', () => {
   it('returns null when enabled is false', () => {
-    const { result } = renderHook(() =>
-      useRangeBand({ name: 'Band', enabled: false })
-    );
+    const { result } = renderHook(() => useRangeBand({ name: 'Band', enabled: false }));
     expect(result.current).toBeNull();
   });
 
@@ -93,25 +92,25 @@ describe('useRangeBand', () => {
 
 describe('BandRenderer', () => {
   it('returns null when xAxisMap is missing', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer yAxisMap={yAxisMap} data={makeData([0, 100, 200])} />
       </svg>
     );
-    expect(container.querySelector('path')).toBeNull();
+    expect(screen.queryByTestId('range-band-path')).toBeNull();
   });
 
   it('returns null when yAxisMap is missing', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} data={makeData([0, 100, 200])} />
       </svg>
     );
-    expect(container.querySelector('path')).toBeNull();
+    expect(screen.queryByTestId('range-band-path')).toBeNull();
   });
 
   it('returns null when fewer than 2 data points have both bounds', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer
           xAxisMap={xAxisMap}
@@ -120,11 +119,11 @@ describe('BandRenderer', () => {
         />
       </svg>
     );
-    expect(container.querySelector('path')).toBeNull();
+    expect(screen.queryByTestId('range-band-path')).toBeNull();
   });
 
   it('returns null when data has no points with the configured keys', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer
           xAxisMap={xAxisMap}
@@ -138,20 +137,20 @@ describe('BandRenderer', () => {
         />
       </svg>
     );
-    expect(container.querySelector('path')).toBeNull();
+    expect(screen.queryByTestId('range-band-path')).toBeNull();
   });
 
-  it('renders a <path> when axes and data are valid', () => {
-    const { container } = render(
+  it('renders a path when axes and data are valid', () => {
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={makeData([0, 100, 200])} />
       </svg>
     );
-    expect(container.querySelector('path')).not.toBeNull();
+    expect(screen.getByTestId('range-band-path')).toBeInTheDocument();
   });
 
   it('applies fill and fillOpacity from props', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer
           xAxisMap={xAxisMap}
@@ -162,24 +161,24 @@ describe('BandRenderer', () => {
         />
       </svg>
     );
-    const path = container.querySelector('path');
-    expect(path?.getAttribute('fill')).toBe('#ff0000');
-    expect(path?.getAttribute('fill-opacity')).toBe('0.3');
+    const path = screen.getByTestId('range-band-path');
+    expect(path.getAttribute('fill')).toBe('#ff0000');
+    expect(path.getAttribute('fill-opacity')).toBe('0.3');
   });
 
   it('uses default fill and fillOpacity when omitted', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={makeData([0, 100, 200])} />
       </svg>
     );
-    const path = container.querySelector('path');
-    expect(path?.getAttribute('fill')).toBe('#3d8a1e');
-    expect(path?.getAttribute('fill-opacity')).toBe('0.5');
+    const path = screen.getByTestId('range-band-path');
+    expect(path.getAttribute('fill')).toBe('#3d8a1e');
+    expect(path.getAttribute('fill-opacity')).toBe('0.5');
   });
 
   it('uses lowerKey and upperKey to read the correct fields', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer
           xAxisMap={xAxisMap}
@@ -193,7 +192,7 @@ describe('BandRenderer', () => {
         />
       </svg>
     );
-    expect(container.querySelector('path')).not.toBeNull();
+    expect(screen.getByTestId('range-band-path')).toBeInTheDocument();
   });
 
   it('uses xKey to read the x-axis field', () => {
@@ -201,54 +200,58 @@ describe('BandRenderer', () => {
       { epoch: 1, lower: 0.1, upper: 0.5 },
       { epoch: 2, lower: 0.2, upper: 0.6 },
     ];
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={data} xKey="epoch" />
       </svg>
     );
-    expect(container.querySelector('path')).not.toBeNull();
+    expect(screen.getByTestId('range-band-path')).toBeInTheDocument();
   });
 
   it('produces a closed SVG path (ends with Z)', () => {
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={makeData([0, 100, 200])} />
       </svg>
     );
-    const d = container.querySelector('path')?.getAttribute('d') ?? '';
+    const d = screen.getByTestId('range-band-path').getAttribute('d') ?? '';
     expect(d.trim().endsWith('Z')).toBe(true);
   });
 
-  it('path encodes all upper-edge points and all lower-edge points', () => {
+  it('path encodes all upper-edge and lower-edge points', () => {
     const steps = [0, 100, 200, 300];
-    const { container } = render(
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={makeData(steps)} />
       </svg>
     );
-    const d = container.querySelector('path')?.getAttribute('d') ?? '';
+    const d = screen.getByTestId('range-band-path').getAttribute('d') ?? '';
     const coords = d.match(/\d+\.\d+,\d+\.\d+/g) ?? [];
     expect(coords).toHaveLength(steps.length * 2);
   });
 
-  it('emits a clipPath rect when the scale exposes .range()', () => {
-    const { container } = render(
+  it('emits a clipPath when the scale exposes .range()', () => {
+    render(
       <svg>
         <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={makeData([0, 100, 200])} />
       </svg>
     );
-    expect(container.querySelector('clipPath rect')).not.toBeNull();
+    expect(screen.getByTestId('range-band-clip')).toBeInTheDocument();
   });
 
   it('renders without a clipPath when the scale has no .range()', () => {
     const bareScale = (v: number) => v * 2;
     const bareAxisMap = { 0: { scale: bareScale } };
-    const { container } = render(
+    render(
       <svg>
-        <BandRenderer xAxisMap={bareAxisMap} yAxisMap={bareAxisMap} data={makeData([0, 100, 200])} />
+        <BandRenderer
+          xAxisMap={bareAxisMap}
+          yAxisMap={bareAxisMap}
+          data={makeData([0, 100, 200])}
+        />
       </svg>
     );
-    expect(container.querySelector('clipPath')).toBeNull();
-    expect(container.querySelector('path')).not.toBeNull();
+    expect(screen.queryByTestId('range-band-clip')).toBeNull();
+    expect(screen.getByTestId('range-band-path')).toBeInTheDocument();
   });
 });
