@@ -69,7 +69,7 @@ export const EntityEmptyState: FC<EntityEmptyStateProps> = ({
           slotFooter={
             onClearFilters ? (
               <Button kind="tertiary" onClick={onClearFilters}>
-                Clear filters
+                Clear Filters
               </Button>
             ) : null
           }

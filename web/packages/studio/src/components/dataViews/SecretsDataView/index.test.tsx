@@ -85,7 +85,7 @@ describe('SecretsDataView', () => {
           'Store API keys and credentials as secrets so providers and jobs can reference them securely.'
         )
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Create secret' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Create Secret' })).toBeInTheDocument();
     });
 
     it('invokes onCreate when the create button is clicked', async () => {
@@ -111,7 +111,7 @@ describe('SecretsDataView', () => {
 
       const createButton = await screen.findByRole(
         'button',
-        { name: 'Create secret' },
+        { name: 'Create Secret' },
         { timeout: XL_SELECTOR_TIMEOUT }
       );
       await user.click(createButton);
@@ -156,7 +156,7 @@ describe('SecretsDataView', () => {
       expect(
         screen.getByText('No items match your current search or filters.')
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Clear Filters' })).toBeInTheDocument();
     });
   });
 });

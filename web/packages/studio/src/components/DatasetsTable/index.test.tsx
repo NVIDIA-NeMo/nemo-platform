@@ -462,7 +462,7 @@ describe('DatasetsTable', () => {
         )
       ).toBeInTheDocument();
 
-      const createButton = screen.getByRole('button', { name: 'Create fileset' });
+      const createButton = screen.getByRole('button', { name: 'Create Fileset' });
       await user.click(createButton);
       expect(await screen.findByText('Create Dataset')).toBeInTheDocument();
     });

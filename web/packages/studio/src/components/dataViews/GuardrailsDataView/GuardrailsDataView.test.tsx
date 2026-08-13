@@ -107,7 +107,7 @@ describe('GuardrailsDataView', () => {
         timeout: XL_SELECTOR_TIMEOUT,
       })
     ).toBeInTheDocument();
-    const createButton = screen.getByRole('button', { name: 'Create guardrail config' });
+    const createButton = screen.getByRole('button', { name: 'Create Guardrail Config' });
     expect(createButton).toBeInTheDocument();
 
     await user.click(createButton);

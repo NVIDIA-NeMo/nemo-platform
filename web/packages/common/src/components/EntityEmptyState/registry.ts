@@ -94,7 +94,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     subheading:
       'Guardrail configs add content-safety, jailbreak, and PII rails to the models in this workspace.',
     // Create is a modal owned by the route, so the callsite supplies `onCreate`.
-    createAction: { label: 'Create guardrail config' },
+    createAction: { label: 'Create Guardrail Config' },
     cliCommand: 'nemo guardrail configs create <config-name>',
     skillPrompt: 'Help me create my first guardrail config with the nemo-guardrails skill',
   },
@@ -111,7 +111,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     heading: 'No filesets yet',
     subheading:
       'Filesets group the files your agents and jobs read from — training data, models, or other artifacts.',
-    createAction: { label: 'Create fileset' },
+    createAction: { label: 'Create Fileset' },
     cliCommand: 'nemo files filesets create <fileset-name> --workspace <workspace>',
     skillPrompt: 'Help me create my first fileset with the nemo-files skill',
   },
@@ -119,7 +119,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: FolderOpen,
     heading: 'No files yet',
     subheading: 'Upload files to this fileset to make them available to agents and jobs.',
-    createAction: { label: 'Upload files' },
+    createAction: { label: 'Upload Files' },
     cliCommand: 'nemo files upload <local-path> --fileset <fileset-name> --workspace <workspace>',
     skillPrompt: 'Help me upload files to a fileset with the nemo-files skill',
   },
@@ -127,7 +127,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: BrainCircuit,
     heading: 'No custom models yet',
     subheading: 'Customize a model with fine-tuning or prompt tuning to meet your specific needs.',
-    createAction: { label: 'Customize model' },
+    createAction: { label: 'Customize Model' },
     cliCommand: 'nemo customization automodel submit <job-spec>.json --workspace <workspace>',
     skillPrompt: 'Help me create my first custom model with the nemo-customizer skill',
   },
@@ -141,7 +141,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: Rocket,
     heading: 'No deployments yet',
     subheading: 'Deploy a custom model to serve it for inference.',
-    createAction: { label: 'Create deployment' },
+    createAction: { label: 'Create Deployment' },
     cliCommand: 'nemo inference deployments create <deployment-name> --input-file <config>.json',
     skillPrompt: 'Help me deploy my first model with the nemo-build-agent skill',
   },
@@ -150,7 +150,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     heading: 'No inference providers yet',
     subheading:
       'Register an inference provider to make its models available for chat and evaluation.',
-    createAction: { label: 'Add inference provider' },
+    createAction: { label: 'Add Inference Provider' },
     cliCommand:
       'nemo inference providers create <provider-name> --workspace <workspace> --host-url "<host-url>" --api-key-secret-name "<secret-name>"',
     skillPrompt: 'Help me create my first inference provider with the nemo-inference skill',
@@ -160,7 +160,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     heading: 'No virtual models yet',
     subheading:
       'Virtual models route inference traffic across one or more providers, with optional switchyard and guardrail middleware.',
-    createAction: { label: 'Create virtual model' },
+    createAction: { label: 'Create Virtual Model' },
     cliCommand:
       'nemo inference virtual-models create <model-name> --workspace <workspace> --models \'[{"model":"<workspace>/<provider-model>","backend_format":"OPENAI_CHAT"}]\'',
     skillPrompt: 'Help me create my first virtual model with the nemo-inference skill',
@@ -170,7 +170,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     heading: 'No secrets yet',
     subheading:
       'Store API keys and credentials as secrets so providers and jobs can reference them securely.',
-    createAction: { label: 'Create secret' },
+    createAction: { label: 'Create Secret' },
     cliCommand:
       'nemo secrets create <secret-name> --value "<secret-value>" --workspace <workspace>',
     skillPrompt: 'Help me create my first secret with the nemo-secrets skill',
@@ -180,7 +180,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     heading: 'No members yet',
     subheading:
       'Besides implicit workspace owners, no principals have been granted Viewer, Editor, or Admin access yet.',
-    createAction: { label: 'Add member' },
+    createAction: { label: 'Add Member' },
     cliCommand:
       'nemo workspaces members create --workspace <workspace-id> --principal <email> --roles <RoleName>',
   },
@@ -195,7 +195,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     heading: 'No anonymizer jobs yet',
     subheading:
       'Detect and protect PII in your datasets through context-aware replacement and rewriting.',
-    createAction: { label: 'Anonymize data' },
+    createAction: { label: 'Anonymize Data' },
     cliCommand: 'nemo anonymizer run submit --spec-file <run-spec>.yaml --workspace <workspace>',
     skillPrompt: 'Help me create my first anonymizer job with the nemo-anonymizer skill',
   },
@@ -203,7 +203,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: Lightbulb,
     heading: 'No Data Designer jobs yet',
     subheading: 'Create and manage Data Designer jobs to generate or transform synthetic datasets.',
-    createAction: { label: 'New job' },
+    createAction: { label: 'New Job' },
     cliCommand: 'nemo data-designer create run <config-path>.yaml --num-records <n>',
     skillPrompt:
       'Help me create my first synthetic dataset with the nemo-data-designer-plugin skill',
@@ -212,7 +212,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: ShieldCheck,
     heading: 'No Safe Synthesizer jobs yet',
     subheading: 'Generate a private version of a sensitive tabular dataset.',
-    createAction: { label: 'Synthesize data' },
+    createAction: { label: 'Synthesize Data' },
     cliCommand:
       'nemo safe-synthesizer run-local --workspace <workspace> --spec-file <job-spec>.json --data-source <input.csv> --output-dir <output-dir>',
     skillPrompt:
@@ -232,7 +232,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: FlaskConical,
     heading: 'No evaluations yet',
     subheading: 'Submit an evaluation job to score a model or agent against a benchmark.',
-    createAction: { label: 'Create evaluation' },
+    createAction: { label: 'Create Evaluation' },
     cliCommand: 'nemo evaluator evaluate submit --spec-file <spec>.json --workspace <workspace>',
     skillPrompt: 'Help me create my first evaluation with the nemo-nemo-evaluator-plugin skill',
   },
@@ -245,7 +245,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: FlaskConical,
     heading: 'No experiments yet',
     subheading: 'Log an experiment to compare evaluation runs across models and configurations.',
-    createAction: { label: 'Create experiment' },
+    createAction: { label: 'Create Experiment' },
     cliCommand: 'nemo experiments create <experiment-name> --input-file <config>.json',
     skillPrompt: 'Help me log my first experiment with the nemo-experiments-upload skill',
   },
@@ -265,7 +265,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: FlaskConical,
     heading: 'No experiments',
     subheading: 'No experiments for this insight yet.',
-    createAction: { label: 'Run experiment' },
+    createAction: { label: 'Run Experiment' },
   },
   insightTraces: {
     icon: Anchor,

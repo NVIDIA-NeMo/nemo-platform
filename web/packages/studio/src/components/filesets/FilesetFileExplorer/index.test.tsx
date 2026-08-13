@@ -175,7 +175,7 @@ describe('FilesetFileExplorer', () => {
       await screen.findByText('No files yet');
       expect(await screen.findByTestId('dataset-details-new-directory-button')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Upload File' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Upload files' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Upload Files' })).toBeInTheDocument();
     });
 
     it('hides create actions for external fileset', async () => {
@@ -184,7 +184,7 @@ describe('FilesetFileExplorer', () => {
       await screen.findByText('No files yet');
       expect(screen.queryByTestId('dataset-details-new-directory-button')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Upload File' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Upload files' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Upload Files' })).not.toBeInTheDocument();
     });
   });
 

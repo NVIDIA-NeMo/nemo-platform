@@ -79,7 +79,7 @@ describe('EntityEmptyState', () => {
         screen.queryByRole('button', { name: descriptor.createAction?.label })
       ).not.toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Clear Filters' }));
       expect(onClearFilters).toHaveBeenCalledTimes(1);
     });
   });
