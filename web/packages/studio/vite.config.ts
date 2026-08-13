@@ -92,6 +92,8 @@ const WORKSPACE_ALIASES: Record<string, string> = {
 
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
+const IN_NODE_MODULES = /(^|[\\/])node_modules([\\/]|$)/;
+
 const resolveSourceFile = (base: string): string | null => {
   if (fs.existsSync(base) && fs.statSync(base).isFile()) return base;
   for (const ext of SOURCE_EXTENSIONS) {
@@ -118,7 +120,7 @@ const workspaceSourcePlugin = (): RolldownPlugin => ({
     }
     if (
       importer &&
-      !importer.includes('node_modules') &&
+      !IN_NODE_MODULES.test(importer) &&
       (id.startsWith('./') || id.startsWith('../'))
     ) {
       return resolveSourceFile(path.resolve(path.dirname(importer), id));
@@ -169,7 +171,7 @@ async function buildVendorBundles(
   outdir: string,
   projectRoot: string,
   dev: boolean,
-  env: Record<string, string>
+  env: Readonly<Record<string, unknown>>
 ): Promise<void> {
   // Load React modules from studio's node_modules and enumerate their real
   // runtime exports so we can generate explicit named re-exports.
@@ -302,7 +304,7 @@ function vendorPlugin(): Plugin {
   let projectRoot = '';
   let isServe = false;
   let isPreview = false;
-  let viteEnv: Record<string, string> = {};
+  let viteEnv: Readonly<Record<string, unknown>> = {};
   let pending: Promise<void> | null = null;
 
   // buildVendorBundles wipes outdir and rebuilds on every vite process start,
@@ -343,7 +345,7 @@ function vendorPlugin(): Plugin {
       base = config.base;
       isServe = config.command === 'serve' && !isPreview;
       projectRoot = config.root;
-      viteEnv = config.env as Record<string, string>;
+      viteEnv = config.env;
       outdir = isServe
         ? path.resolve(projectRoot, DEV_VENDOR_DIR)
         : path.resolve(projectRoot, 'public', 'vendor');
