@@ -7,6 +7,7 @@ import type {
   EvaluationSessionResponse,
   EvaluationSessionResponsesPage,
   ExperimentResponse,
+  ExperimentResponsesPage,
 } from '@nemo/sdk/generated/platform/schema';
 
 const WORKSPACE = 'default';
@@ -35,6 +36,11 @@ const mockEvaluation = (name: string): EvaluationResponse => ({
 
 export const mockEvaluationsPage = (): EvaluationResponsesPage => ({
   data: MOCK_EVALUATION_NAMES.map(mockEvaluation),
+});
+
+/** The group the mock evaluations belong to, so a caller resolving experiment_ids finds a name. */
+export const mockExperimentsPage = (): ExperimentResponsesPage => ({
+  data: [{ ...mockExperiment('my-group'), id: 'grp_my-group' }],
 });
 
 const mockRun = (

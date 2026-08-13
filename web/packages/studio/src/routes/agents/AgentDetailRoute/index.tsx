@@ -208,11 +208,7 @@ export const AgentDetailRoute: FC = () => {
           </TabsList>
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="evaluations">
-            <EvaluationsTab
-              workspace={workspace}
-              evals={agentEvals}
-              onRunEvaluation={() => setSubmitEvalOpen(true)}
-            />
+            <EvaluationsTab workspace={workspace} evals={agentEvals} />
           </TabsContent>
 
           <TabsContent className="min-h-0 flex-1 overflow-auto p-0 pt-6" value="deployments">

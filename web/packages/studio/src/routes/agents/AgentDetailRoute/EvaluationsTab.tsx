@@ -1,93 +1,49 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import {
-  EVAL_JOB_KIND_LABEL,
-  evalJobDetailRoute,
-  type EvalJobRow,
-  hasMixedEvalKinds,
-} from '@studio/api/evaluation/utils';
+import { SegmentedControl, Stack } from '@nvidia/foundations-react-core';
+import { EvaluationsTable } from '@studio/routes/agents/AgentDetailRoute/evaluations/EvaluationsTable';
+import { ExperimentsTable } from '@studio/routes/agents/AgentDetailRoute/evaluations/ExperimentsTable';
+import { groupByExperiment } from '@studio/routes/agents/AgentDetailRoute/evaluations/groupByExperiment';
 import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
-import { getAgentEvaluationsListRoute } from '@studio/routes/utils';
-import type { FC } from 'react';
-import { Link } from 'react-router';
+import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
+import { type FC, useMemo, useState } from 'react';
+
+const VIEW_EVALUATIONS = 'evaluations';
+const VIEW_EXPERIMENTS = 'experiments';
+
+const VIEW_ITEMS = [
+  { value: VIEW_EVALUATIONS, children: 'Evaluations' },
+  { value: VIEW_EXPERIMENTS, children: 'Experiments' },
+];
 
 interface EvaluationsTabProps {
   workspace: string;
-  evals: EvalJobRow[];
-  onRunEvaluation: () => void;
+  evals: AgentEvaluationRow[];
 }
 
-/** Recent evaluation jobs for the agent, linking through to each run. */
-export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, onRunEvaluation }) => {
-  const showKind = hasMixedEvalKinds(evals);
+/** The agent's published evaluations, either flat or rolled up by experiment. Both views read the
+ *  same evaluations; only the grouping differs, which is why this is a toggle and not a tab. */
+export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals }) => {
+  const [view, setView] = useState<string>(VIEW_EVALUATIONS);
+  const experiments = useMemo(() => groupByExperiment(evals), [evals]);
 
   return (
-    <DetailPanel
-      title="Recent evaluations"
-      flush
-      slotAction={
-        <Button kind="secondary" size="small" onClick={onRunEvaluation}>
-          Run evaluation
-        </Button>
-      }
-    >
-      {evals.length === 0 ? (
-        <Stack gap="2" className="p-4">
-          <Text color="secondary">No evaluation jobs found for this agent.</Text>
-          <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
-            View all evaluations →
-          </Link>
-        </Stack>
-      ) : (
-        <Stack gap="0">
-          {evals.map((job, index) => (
-            <Link
-              key={job.id}
-              to={evalJobDetailRoute(workspace, job)}
-              className="text-inherit no-underline"
-            >
-              <Flex
-                align="center"
-                gap="2"
-                className={`px-4 py-4 hover:bg-surface-hover ${index > 0 ? 'border-t border-base' : ''}`}
-              >
-                <Stack gap="1" className="min-w-0 flex-1">
-                  <Flex align="baseline" gap="2" className="min-w-0">
-                    <Text kind="body/semibold/md" className="truncate">
-                      {job.name}
-                    </Text>
-                    {showKind && (
-                      <Text kind="body/regular/sm" color="secondary" className="shrink-0">
-                        ({EVAL_JOB_KIND_LABEL[job.kind]})
-                      </Text>
-                    )}
-                  </Flex>
-                  {job.configLabel && (
-                    <Text kind="body/regular/sm" color="secondary" className="truncate">
-                      Eval Config: {job.configLabel}
-                    </Text>
-                  )}
-                </Stack>
-                <Stack gap="1" align="end" className="shrink-0">
-                  <StatusBadge status={job.status} />
-                  <Text kind="body/regular/sm" color="secondary">
-                    {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
-                  </Text>
-                </Stack>
-              </Flex>
-            </Link>
-          ))}
-          <div className="border-t border-base px-4 py-3">
-            <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
-              View all evaluations →
-            </Link>
-          </div>
-        </Stack>
-      )}
+    <DetailPanel title="Evaluations" flush>
+      <Stack gap="density-lg" className="p-4">
+        <SegmentedControl
+          className="w-fit"
+          aria-label="Group evaluations"
+          value={view}
+          onValueChange={setView}
+          items={VIEW_ITEMS}
+        />
+        {view === VIEW_EXPERIMENTS ? (
+          <ExperimentsTable workspace={workspace} experiments={experiments} />
+        ) : (
+          <EvaluationsTable workspace={workspace} evaluations={evals} />
+        )}
+      </Stack>
     </DetailPanel>
   );
 };

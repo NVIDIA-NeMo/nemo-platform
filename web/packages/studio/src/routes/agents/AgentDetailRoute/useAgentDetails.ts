@@ -9,11 +9,17 @@ import {
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
-import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
-import { targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
+import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
+import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
 import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
+
+/** Backend caps page_size at 100. Enough to name the experiments behind a panel's worth of rows. */
+const EXPERIMENT_PAGE_SIZE = 100;
+
+/** A published evaluation plus the experiment name its detail route is nested under. */
+export type AgentEvaluationRow = EvaluationResponse & { experimentName: string | null };
 
 interface UseAgentPanelParams {
   workspace: string;
@@ -58,19 +64,19 @@ export const useAgentDetails = ({
   const agentsData = agentsResponse?.data;
   const deploymentsData = deploymentsResponse?.data;
 
-  // Recent evaluations targeting this agent. The platform's job filter API
-  // doesn't expose ``spec.agent`` as a top-level filter, so we fetch the
-  // workspace's eval jobs and filter client-side. Capped at the most recent
-  // N to keep the panel scannable; the full list is on the evaluations route.
-  const { data: agentEvalsData } = useQuery({
-    queryKey: ['evaluator-jobs', workspace, 'panel', agentName] as const,
-    queryFn: ({ signal }) =>
-      fetchEvaluatorJobs(workspace, signal, (all) => {
-        const matched = all.filter((j) => targetNameForEvalJob(j) === agentName).length;
-        return matched >= RECENT_EVAL_LIMIT;
-      }),
-    enabled: !!agentName && !!workspace,
-  });
+  // Recent evaluations for this agent, read from Intake rather than the job list: only Intake
+  // carries the telemetry rollups (latency, cost, tokens, evaluator scores) the panel shows, and
+  // ``filter[agent_name]`` scopes them server-side. An evaluation appears once its run publishes,
+  // so in-flight and failed runs are not here — they stay on the workspace-wide evaluations route.
+  const { data: agentEvalsResponse } = useListEvaluations(
+    workspace,
+    {
+      filter: { agent_name: agentName ?? '' },
+      page_size: RECENT_EVAL_LIMIT,
+      sort: '-created_at',
+    },
+    { query: { enabled: !!agentName && !!workspace } }
+  );
 
   const deleteDeploymentMutation = useAgentsDeleteDeployment({
     mutation: {
@@ -91,13 +97,28 @@ export const useAgentDetails = ({
     [deploymentsData, agentName]
   );
 
-  const agentEvals = useMemo(() => {
+  // The evaluation detail route is nested under an experiment, but an evaluation carries only
+  // ``experiment_ids``. One list call resolves them; the panel shows a handful of rows, so this
+  // is cheaper than a lookup per row.
+  const { data: experimentsResponse } = useListExperiments(
+    workspace,
+    { page_size: EXPERIMENT_PAGE_SIZE },
+    { query: { enabled: !!agentName && !!workspace } }
+  );
+
+  const agentEvals: AgentEvaluationRow[] = useMemo(() => {
     if (!agentName) return [];
-    const all = (agentEvalsData ?? []).map(toEvalJobRow);
-    // Match either the bare agent name or a workspace-prefixed ref.
-    const matches = all.filter((job) => job.agentName === agentName);
-    return matches.slice(0, RECENT_EVAL_LIMIT);
-  }, [agentEvalsData, agentName]);
+    const namesById = new Map(
+      (experimentsResponse?.data ?? []).map((experiment) => [experiment.id, experiment.name])
+    );
+    return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
+      ...evaluation,
+      // First id, mirroring the API's own deprecated ``experiment_group_id`` ("first of
+      // experiment_ids"). Null when the experiment is missing, which drops the row's link
+      // rather than routing somewhere broken.
+      experimentName: namesById.get(evaluation.experiment_ids[0] ?? '') ?? null,
+    }));
+  }, [agentEvalsResponse, experimentsResponse, agentName]);
 
   const healthyDeployments = useMemo(
     () => agentDeployments.filter((d) => d.status === 'running'),

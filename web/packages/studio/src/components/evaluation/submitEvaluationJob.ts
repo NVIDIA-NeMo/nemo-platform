@@ -9,10 +9,15 @@ import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 export const CREATE_NEW = '__create_new__';
 
 export const MODE_DEFAULT = 'default';
-export const MODE_FILESET = 'fileset';
+/** Re-run an existing Experiment, which owns the fileset holding its eval config. */
+export const MODE_EXPERIMENT = 'experiment';
 
-/** Suggested name for a new eval-config fileset (e.g. "wise-blue"). */
+/** Suggested name for a new experiment (e.g. "wise-blue"). */
 export const generateEvalConfigName = (): string => generateDefaultName({ length: 2 });
+
+/** The fileset that stores an experiment's eval config and data artifacts. */
+export const filesetNameForExperiment = (experimentName: string): string =>
+  `${experimentName}-data`;
 
 /** Default parallelism for a submitted eval (Studio default; the config value is a hint). */
 export const DEFAULT_MAX_CONCURRENT_TASKS = 1;
@@ -100,7 +105,24 @@ export interface SubmitSelections {
   agent: string;
   /** Eval-config fileset name, stored under spec.labels.eval_config_fileset for display. */
   filesetName?: string;
+  /** Experiment this run belongs to; names the job so it reads as one of that experiment's runs. */
+  experimentName?: string;
+  /** Name of an existing Intake Evaluation to publish results under. The job fails if it
+   *  names nothing — the worker never creates it. Omitted means the run publishes nowhere. */
+  evaluationId?: string;
 }
+
+/** ``spec.publication`` for a run that asked to publish, or nothing at all. ``agent_name`` is
+ *  left off deliberately: the backend derives it from the agent target. */
+const publicationSpec = (evaluationId: string | undefined) =>
+  evaluationId ? { publication: { intake: { evaluation_id: evaluationId } } } : {};
+
+/** ``{ name }`` for the job, stemmed from the experiment it belongs to and falling back to the
+ *  fileset for a submit that names no experiment. Absent when neither is known. */
+const jobName = (selections: SubmitSelections) => {
+  const stem = selections.experimentName ?? selections.filesetName;
+  return stem ? { name: buildEvalJobName(stem) } : {};
+};
 
 /** Strip an optional ``workspace/`` prefix, returning the bare model/agent name. */
 export const bareName = (value: string): string =>
@@ -171,12 +193,13 @@ export const buildAgentEvalRequestBody = (
   spec: PersistedEvalSpec,
   selections: SubmitSelections
 ) => ({
-  ...(selections.filesetName ? { name: buildEvalJobName(selections.filesetName) } : {}),
+  ...jobName(selections),
   spec: {
     tasks: spec.tasks,
     target: buildAgentTarget(selections.workspace, selections.agent),
     max_concurrent_tasks: spec.max_concurrent_tasks ?? DEFAULT_MAX_CONCURRENT_TASKS,
     ...(selections.filesetName ? { labels: { eval_config_fileset: selections.filesetName } } : {}),
+    ...publicationSpec(selections.evaluationId),
   },
 });
 
@@ -195,7 +218,7 @@ export const buildDatasetEvalRequestBody = (
   selections: SubmitSelections,
   judgeModel: string | null
 ) => ({
-  ...(selections.filesetName ? { name: buildEvalJobName(selections.filesetName) } : {}),
+  ...jobName(selections),
   spec: {
     dataset: spec.dataset,
     metrics: judgeModel
@@ -205,6 +228,7 @@ export const buildDatasetEvalRequestBody = (
     prompt_template: spec.prompt_template,
     ...(spec.field_mapping ? { field_mapping: spec.field_mapping } : {}),
     params: AGENT_RUN_PARAMS,
+    ...publicationSpec(selections.evaluationId),
   },
 });
 
