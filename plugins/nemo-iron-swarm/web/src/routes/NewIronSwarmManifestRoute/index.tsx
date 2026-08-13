@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { fetchAgentsForSelect } from '@iron-swarm/api/agents';
+import { useAgentsForSelect } from '@iron-swarm/api/agents';
 import { useInspectAgent } from '@iron-swarm/api/filesets';
 import { ModelGroupFields } from '@iron-swarm/components/ModelGroupFields';
 import { ProjectManifestWizard } from '@iron-swarm/components/ProjectManifestWizard';
@@ -25,7 +25,7 @@ import {
   Stack,
   Text,
 } from '@nvidia/foundations-react-core';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
@@ -109,11 +109,7 @@ export const NewIronSwarmManifestRoute: FC = () => {
     );
   }, [source, selectedAgent, workspace, runInspectAgent, setValue]);
 
-  const { data: agents = [], isLoading: agentsLoading } = useQuery({
-    queryKey: ['iron-swarm-init', 'agents', workspace],
-    queryFn: ({ signal }) => fetchAgentsForSelect(workspace, signal),
-    enabled: !!workspace,
-  });
+  const { data: agents = [], isLoading: agentsLoading } = useAgentsForSelect(workspace);
   const agentItems = useMemo(
     () =>
       agents.flatMap((agent) => (agent.name ? [{ value: agent.name, children: agent.name }] : [])),

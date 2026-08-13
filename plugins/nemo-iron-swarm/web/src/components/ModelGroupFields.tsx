@@ -10,13 +10,14 @@
  */
 
 import { usePlatformSdk } from '@iron-swarm/api/platform';
-import { CreateSecretModal } from '@iron-swarm/components/CreateSecretModal';
 import { useIronSwarmValidateModelConfig } from '@iron-swarm/generated/api';
 import type {
   ModelChoice,
   ModelConfigDefaults,
   WarGameModels,
 } from '@iron-swarm/generated/schema';
+import { useToast } from '@iron-swarm/host';
+import { CreateSecretModal, getErrorMessage } from '@nemo/common';
 import {
   Button,
   Flex,
@@ -150,7 +151,11 @@ const CredentialedGroupFields: FC<CredentialedGroupProps> = ({
   const [createSecretOpen, setCreateSecretOpen] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const validate = useIronSwarmValidateModelConfig();
-  const { secretsListSecrets } = usePlatformSdk();
+  const { secretsListSecrets, useSecretsCreateSecret } = usePlatformSdk();
+  const toast = useToast();
+  const notify = (message: string, type?: 'success' | 'error' | 'info' | 'warning') =>
+    toast[type ?? 'info'](message);
+  const createSecret = useSecretsCreateSecret();
 
   const secrets = useQuery({
     queryKey: ['iron-swarm-model-secrets', workspace],
@@ -260,10 +265,14 @@ const CredentialedGroupFields: FC<CredentialedGroupProps> = ({
         <CreateSecretModal
           open={createSecretOpen}
           onClose={() => setCreateSecretOpen(false)}
-          workspace={workspace}
-          onSecretCreated={(name) => {
-            onChange(withGroup(value, group, { api_key_secret: name }));
+          pending={createSecret.isPending}
+          errorText={createSecret.error ? getErrorMessage(createSecret.error) : undefined}
+          onNotify={notify}
+          onCreate={async (data) => {
+            const created = await createSecret.mutateAsync({ workspace, data });
+            onChange(withGroup(value, group, { api_key_secret: created.name }));
             void secrets.refetch();
+            setCreateSecretOpen(false);
           }}
         />,
         document.body
