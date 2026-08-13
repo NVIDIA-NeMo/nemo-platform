@@ -12,6 +12,7 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -25,7 +26,6 @@ import { ChangesetBadge } from '@studio/components/ChangesetBadge';
 import { ExperimentParetoChart } from '@studio/components/charts/ExperimentParetoChart';
 import { AddToGroupModal } from '@studio/components/dataViews/ExperimentDataView/AddToGroupModal';
 import '@studio/components/dataViews/ExperimentDataView/ExperimentDataView.css';
-import { Empty } from '@studio/components/dataViews/ExperimentDataView/Empty';
 import { MeanValueTooltipCell } from '@studio/components/dataViews/ExperimentDataView/MeanValueTooltipCell';
 import {
   type EvaluationRow,
@@ -610,8 +610,14 @@ export const ExperimentDataView: FC<ExperimentDataViewProps> = ({ group, paretoV
           DataViewTableContent: {
             enableColumnReordering: true,
             renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
-              hasFiltersApplied || hasSearchApplied ? null : (
-                <Empty experimentName={experimentName} />
+              hasFiltersApplied || hasSearchApplied ? (
+                <EntityEmptyState
+                  entity="evaluationResults"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
+                />
+              ) : (
+                <EntityEmptyState entity="evaluationResults" variant="first-use" />
               ),
           },
         }}

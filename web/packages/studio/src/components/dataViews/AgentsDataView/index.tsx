@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { Root as DataViewRoot } from '@nemo/common/src/components/DataView/internal';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
@@ -8,9 +9,9 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
-import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { JOB_POLLING_INTERVAL_LONG } from '@nemo/common/src/constants';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -28,13 +29,11 @@ import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
-import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { MODEL_COMPARE_ENABLED } from '@studio/constants/environment';
-import { LINK_DOCS_STUDIO } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getModelCompareRoute } from '@studio/routes/utils';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { HatGlasses, Trash } from 'lucide-react';
+import { Trash } from 'lucide-react';
 import { ComponentProps, FC, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -317,10 +316,6 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     }),
   ];
 
-  if (agentsError) {
-    return <ErrorMessage message="Failed to load agents." />;
-  }
-
   return (
     <>
       <StudioDataView
@@ -342,15 +337,26 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
           DataViewRoot: {
             data: tableData,
             totalCount,
-            requestStatus: agentsLoading && !agentsData ? 'loading' : undefined,
+            requestStatus: agentsError
+              ? 'error'
+              : agentsLoading && !agentsData
+                ? 'loading'
+                : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: () => (
-              <TableEmptyState
-                header="No Agents Found"
-                emptyMessage="No agents have been created yet."
-                icon={<HatGlasses className="m-0 size-24" />}
-                actions={<DocumentationButton href={LINK_DOCS_STUDIO} />}
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? (
+                <EntityEmptyState
+                  entity="agents"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
+                />
+              ) : (
+                <EntityEmptyState entity="agents" variant="first-use" />
+              ),
+            renderErrorState: () => (
+              <ErrorPanel
+                errorMessage={getErrorMessage(agentsError ?? new Error('Failed to load agents.'))}
               />
             ),
           },

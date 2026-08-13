@@ -16,24 +16,22 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useSecretsDeleteSecret, useSecretsListSecrets } from '@nemo/sdk/generated/platform/api';
 import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
-import { Button, Stack, Text } from '@nvidia/foundations-react-core';
-import { DocumentationButton } from '@studio/components/DocumentationButton';
-import { LINK_DOCS_SECRETS } from '@studio/constants/links';
+import { Stack, Text } from '@nvidia/foundations-react-core';
 import { EditSecretModal } from '@studio/routes/SecretsListRoute/EditSecretModal';
 import { keepPreviousData } from '@tanstack/react-query';
-import { LockKeyhole, Pencil, Trash } from 'lucide-react';
+import { Pencil, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 
 export interface SecretsDataViewProps {
   workspace: string;
-  emptyStateActions?: React.ReactNode;
+  onCreate?: () => void;
   attributes?: {
     Stack?: React.ComponentProps<typeof Stack>;
   };
@@ -43,11 +41,7 @@ type SecretWithId = PlatformSecretResponse & { id: string };
 
 type ModalState = 'delete' | 'edit' | 'none';
 
-export const SecretsDataView: FC<SecretsDataViewProps> = ({
-  workspace,
-  emptyStateActions,
-  attributes,
-}) => {
+export const SecretsDataView: FC<SecretsDataViewProps> = ({ workspace, onCreate, attributes }) => {
   const toast = useToast();
 
   const dataViewState = useStudioDataViewState({
@@ -174,8 +168,6 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
       []
     );
 
-  const hasActiveFilters = !!searchBar;
-
   return (
     <Stack gap="density-2xl" {...attributes?.Stack}>
       <StudioDataView
@@ -192,29 +184,15 @@ export const SecretsDataView: FC<SecretsDataViewProps> = ({
             requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: () =>
-              hasActiveFilters ? (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No secrets match your search"
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Search
-                    </Button>
-                  }
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? (
+                <EntityEmptyState
+                  entity="secrets"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
               ) : (
-                <TableEmptyState
-                  icon={<LockKeyhole className="size-16" />}
-                  header="Manage Secrets"
-                  emptyMessage="Start by creating a secret, refer to the documentation for formatting details."
-                  actions={
-                    <Stack direction="row" gap="density-md">
-                      <DocumentationButton href={LINK_DOCS_SECRETS} />
-                      {emptyStateActions}
-                    </Stack>
-                  }
-                />
+                <EntityEmptyState entity="secrets" variant="first-use" onCreate={onCreate} />
               ),
             renderErrorState: () => (
               <ErrorPanel

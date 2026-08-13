@@ -74,7 +74,19 @@ const getErrorCode = (error: unknown): string | undefined => {
  * ```
  */
 export const ErrorPanel: FC<ErrorPanelProps> = ({ title, errorMessage, attributes }) => {
-  const error = useRouteError();
+  // `useRouteError` (and the data-router hooks it calls internally) throws when there is no
+  // ancestor `RouterProvider`/data router — which is expected when `ErrorPanel` is rendered
+  // inline (e.g. a DataView's `renderErrorState`) rather than as a route `errorElement`. Degrade
+  // to `undefined` in that case instead of crashing the tree.
+  let error: unknown;
+  try {
+    // Called unconditionally every render; the try/catch only guards against a missing
+    // data-router ancestor, not conditional invocation.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    error = useRouteError();
+  } catch {
+    error = undefined;
+  }
   const errorCode = getErrorCode(error);
   const errorMessageInternal =
     errorMessage ?? getRouterErrorMessage(error) ?? DEFAULT_ERROR_MESSAGE;

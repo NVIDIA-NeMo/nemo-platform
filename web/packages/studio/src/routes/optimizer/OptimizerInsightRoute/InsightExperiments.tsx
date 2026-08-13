@@ -3,16 +3,15 @@
 
 import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { useRowClick } from '@nemo/common/src/components/DataView/useRowClick';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
 import { useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentResponse } from '@nemo/sdk/generated/platform/schema';
 import { Button, Text } from '@nvidia/foundations-react-core';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { FlaskConical } from 'lucide-react';
 import { type ComponentProps, type FC } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -99,20 +98,10 @@ export const InsightExperiments: FC<InsightExperimentsProps> = ({
           className={`min-h-0 flex-1 overflow-auto bg-transparent [&_td]:!bg-transparent [&_thead]:!bg-transparent [&_thead_th]:!bg-transparent ${className}`}
           onClick={onClick}
           renderEmptyState={() => (
-            <TableEmptyState
-              header="No experiments"
-              emptyMessage="No experiments for this insight."
-              icon={<FlaskConical className="size-12" />}
-              actions={
-                <Button
-                  kind="primary"
-                  color="brand"
-                  disabled={runExperimentDisabled}
-                  onClick={onRunExperiment}
-                >
-                  Run experiment
-                </Button>
-              }
+            <EntityEmptyState
+              entity="insightExperiments"
+              variant="first-use"
+              onCreate={runExperimentDisabled ? undefined : onRunExperiment}
             />
           )}
           renderErrorState={() => (

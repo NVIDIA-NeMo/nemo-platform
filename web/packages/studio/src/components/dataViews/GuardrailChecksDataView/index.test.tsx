@@ -233,9 +233,9 @@ describe('GuardrailChecksDataView', () => {
     await user.type(screen.getByPlaceholderText('Search tests...'), 'no-such-test');
 
     expect(
-      await screen.findByText('No Results Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+      await screen.findByText('No results found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Clear Filters/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Clear filters/i })).toBeInTheDocument();
   });
 
   describe('detail selection', () => {

@@ -9,9 +9,9 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useDeferredUnmount } from '@nemo/common/src/hooks/useDeferredUnmount';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -25,11 +25,10 @@ import type {
   VirtualModel,
   VirtualModelFilter,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import { Stack, Text } from '@nvidia/foundations-react-core';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { Waypoints } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 
 export interface VirtualModelsDataViewProps {
@@ -242,61 +241,44 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
   const isInitialEmpty =
     virtualModelsWithId.length === 0 && !isFetching && !error && !hasSearchOrFilters;
 
-  const emptyState = (
-    <Flex
-      justify="center"
-      align="center"
-      className="h-full min-h-[min(480px,60vh)] w-full py-density-3xl"
-    >
-      <StatusMessage
-        className="max-w-lg"
-        size="medium"
-        slotHeading="No Virtual Models"
-        slotSubheading="Auto-provisioned passthrough routes are hidden. Create virtual models via the CLI or SDK to define custom inference routing and middleware pipelines."
-        slotMedia={<Waypoints className="w-[48px] h-[48px]" />}
-      />
-    </Flex>
-  );
-
   return (
     <Stack gap="density-xl" {...attributes?.Stack}>
-      <StudioDataView
-        dataViewState={dataViewState}
-        searchField="name"
-        makeColumns={makeColumns}
-        onRowClick={(row: VirtualModelWithId) => openDetailsPanel(row)}
-        attributes={{
-          DataViewSearchBar: {
-            placeholder: 'Search by name...',
-          },
-          DataViewRoot: {
-            data: virtualModelsWithId,
-            totalCount: pagination?.total_results,
-            requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
-          },
-          DataViewTableContent: {
-            renderEmptyState: () =>
-              isInitialEmpty ? (
-                emptyState
-              ) : (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No virtual models match your search or filters"
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Filters
-                    </Button>
-                  }
+      {isInitialEmpty ? (
+        <EntityEmptyState entity="virtualModels" variant="first-use" />
+      ) : (
+        <StudioDataView
+          dataViewState={dataViewState}
+          searchField="name"
+          makeColumns={makeColumns}
+          onRowClick={(row: VirtualModelWithId) => openDetailsPanel(row)}
+          attributes={{
+            DataViewSearchBar: {
+              placeholder: 'Search by name...',
+            },
+            DataViewRoot: {
+              data: virtualModelsWithId,
+              totalCount: pagination?.total_results,
+              requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
+            },
+            DataViewTableContent: {
+              renderEmptyState: () => (
+                <EntityEmptyState
+                  entity="virtualModels"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
               ),
-            renderErrorState: () => (
-              <ErrorPanel
-                errorMessage={getErrorMessage(error ?? new Error('Failed to fetch virtual models'))}
-              />
-            ),
-          },
-        }}
-      />
+              renderErrorState: () => (
+                <ErrorPanel
+                  errorMessage={getErrorMessage(
+                    error ?? new Error('Failed to fetch virtual models')
+                  )}
+                />
+              ),
+            },
+          }}
+        />
+      )}
 
       {modalVirtualModel && (
         <DeleteConfirmationModal

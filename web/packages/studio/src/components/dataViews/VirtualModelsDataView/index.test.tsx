@@ -104,7 +104,7 @@ describe('VirtualModelsDataView', () => {
     server.use(http.get(VMS_URL, () => HttpResponse.json(page([]))));
     renderDataView();
 
-    expect(await screen.findByText('No Virtual Models')).toBeInTheDocument();
+    expect(await screen.findByText('No virtual models yet')).toBeInTheDocument();
   });
 
   it('deletes a virtual model through the row action', async () => {

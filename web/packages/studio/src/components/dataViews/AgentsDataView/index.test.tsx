@@ -109,9 +109,11 @@ describe('CombinedAgentsTable', () => {
       renderTable();
 
       expect(
-        await screen.findByText('No Agents Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText('No agents yet', undefined, { timeout: XL_SELECTOR_TIMEOUT })
       ).toBeInTheDocument();
-      expect(screen.getByText('No agents have been created yet.')).toBeInTheDocument();
+      expect(
+        screen.getByText('Build and deploy an agent to see it listed here.')
+      ).toBeInTheDocument();
     });
   });
 

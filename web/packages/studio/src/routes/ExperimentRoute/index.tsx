@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import type { WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import {
@@ -9,6 +10,8 @@ import {
 } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from '@nemo/common/src/constants/pagination';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useListExperiments } from '@nemo/sdk/generated/platform/api';
@@ -16,7 +19,6 @@ import type { ExperimentFilter, ExperimentResponse } from '@nemo/sdk/generated/p
 import {
   Block,
   Button,
-  Flex,
   PageHeader,
   PaginationArrowButton,
   PaginationControlsGroup,
@@ -27,7 +29,6 @@ import {
   PaginationPageInput,
   PaginationPageSizeSelect,
   Stack,
-  StatusMessage,
   Text,
 } from '@nvidia/foundations-react-core';
 import { ExperimentCreateModal } from '@studio/components/ExperimentCreateModal';
@@ -37,7 +38,6 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { ExperimentCard } from '@studio/routes/ExperimentRoute/ExperimentCard';
 import { keepPreviousData } from '@tanstack/react-query';
-import { CircleAlert } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo, useState } from 'react';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -148,24 +148,27 @@ export const ExperimentRoute: FC = () => {
             <Block className="flex-1 min-h-0 overflow-auto">
               <DataView.CustomContent<ExperimentResponse>
                 renderLoadingState={() => <Loading description="Loading experiments..." />}
-                renderEmptyState={({ hasSearchApplied, hasFiltersApplied }) => (
-                  <Flex justify="center" className="p-density-2xl">
-                    <Text kind="body/regular/md" className="text-secondary">
-                      {hasSearchApplied || hasFiltersApplied
-                        ? 'No experiments match your search or filters.'
-                        : 'No experiments yet.'}
-                    </Text>
-                  </Flex>
-                )}
-                renderErrorState={() => (
-                  <Flex justify="center" className="p-density-2xl">
-                    <StatusMessage
-                      size="medium"
-                      slotMedia={<CircleAlert width={65} height={65} />}
-                      slotHeading="Error loading experiments"
-                      slotSubheading={error?.message}
+                renderEmptyState={({ hasSearchApplied, hasFiltersApplied }) =>
+                  hasSearchApplied || hasFiltersApplied ? (
+                    <EntityEmptyState
+                      entity="experiments"
+                      variant="no-results"
+                      onClearFilters={dataViewState.resetFilters}
                     />
-                  </Flex>
+                  ) : (
+                    <EntityEmptyState
+                      entity="experiments"
+                      variant="first-use"
+                      onCreate={() => setIsCreateModalOpen(true)}
+                    />
+                  )
+                }
+                renderErrorState={() => (
+                  <ErrorPanel
+                    errorMessage={getErrorMessage(
+                      error ?? new Error('Failed to load experiments.')
+                    )}
+                  />
                 )}
               >
                 {({ rows }) => (

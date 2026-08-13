@@ -13,7 +13,7 @@ import { MemoryRouter } from 'react-router';
 
 const workspace = 'default';
 
-const renderComponent = (props?: { emptyStateActions?: React.ReactNode }) => {
+const renderComponent = (props?: { onCreate?: () => void }) => {
   return render(
     <MemoryRouter>
       <TestProviders>
@@ -74,21 +74,24 @@ describe('SecretsDataView', () => {
         )
       );
 
-      renderComponent();
+      renderComponent({ onCreate: () => {} });
 
       expect(
-        await screen.findByText('Manage Secrets', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText('No secrets yet', undefined, { timeout: XL_SELECTOR_TIMEOUT })
       ).toBeInTheDocument();
 
       expect(
         screen.getByText(
-          'Start by creating a secret, refer to the documentation for formatting details.'
+          'Store API keys and credentials as secrets so providers and jobs can reference them securely.'
         )
       ).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /Documentation/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Create secret' })).toBeInTheDocument();
     });
 
-    it('renders empty state actions when provided', async () => {
+    it('invokes onCreate when the create button is clicked', async () => {
+      const user = userEvent.setup();
+      const onCreate = vi.fn();
+
       server.use(
         http.get(`${PLATFORM_BASE_URL}/apis/secrets/v2/workspaces/:workspace/secrets`, () =>
           HttpResponse.json({
@@ -104,15 +107,16 @@ describe('SecretsDataView', () => {
         )
       );
 
-      renderComponent({
-        emptyStateActions: <button type="button">Create Secret</button>,
-      });
+      renderComponent({ onCreate });
 
-      expect(
-        await screen.findByText('Manage Secrets', undefined, { timeout: XL_SELECTOR_TIMEOUT })
-      ).toBeInTheDocument();
+      const createButton = await screen.findByRole(
+        'button',
+        { name: 'Create secret' },
+        { timeout: XL_SELECTOR_TIMEOUT }
+      );
+      await user.click(createButton);
 
-      expect(screen.getByRole('button', { name: 'Create Secret' })).toBeInTheDocument();
+      expect(onCreate).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -146,11 +150,13 @@ describe('SecretsDataView', () => {
       await user.type(searchInput, 'nonexistent-secret-name');
 
       expect(
-        await screen.findByText('No Results Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText('No results found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
       ).toBeInTheDocument();
 
-      expect(screen.getByText('No secrets match your search')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Clear Search' })).toBeInTheDocument();
+      expect(
+        screen.getByText('No items match your current search or filters.')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
     });
   });
 });

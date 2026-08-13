@@ -17,10 +17,10 @@ import {
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
 import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useDeferredUnmount } from '@nemo/common/src/hooks/useDeferredUnmount';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -34,17 +34,16 @@ import {
   ModelProviderFilter,
   ModelProviderSort,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
-import { LINK_DOCS_INFERENCE_PROVIDERS } from '@studio/constants/links';
+import { Stack, Text } from '@nvidia/foundations-react-core';
 import { EditInferenceProviderModal } from '@studio/routes/InferenceProvidersListRoute/EditInferenceProviderModal';
 import { InferenceProviderDetailsSidePanel } from '@studio/routes/InferenceProvidersListRoute/InferenceProviderDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { Workflow } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 
 export interface InferenceProvidersDataViewProps {
   workspace: string;
-  emptyStateActions?: React.ReactNode;
+  /** Opens the create-provider flow from the first-use empty state. */
+  onCreate?: () => void;
   attributes?: {
     Stack?: React.ComponentProps<typeof Stack>;
   };
@@ -56,7 +55,7 @@ type ModalState = 'delete' | 'edit' | 'none';
 
 export const InferenceProvidersDataView: FC<InferenceProvidersDataViewProps> = ({
   workspace,
-  emptyStateActions,
+  onCreate,
   attributes,
 }) => {
   const toast = useToast();
@@ -220,76 +219,44 @@ export const InferenceProvidersDataView: FC<InferenceProvidersDataViewProps> = (
   const isInitialEmpty =
     providersWithId.length === 0 && !isFetching && !error && !hasSearchOrFilters;
 
-  const emptyState = (
-    <Flex
-      justify="center"
-      align="center"
-      className="h-full min-h-[min(480px,60vh)] w-full py-density-3xl"
-    >
-      <StatusMessage
-        className="max-w-lg"
-        size="medium"
-        slotHeading="Manage Inference Providers"
-        slotSubheading="Connect external providers to enable model inference in your workspace."
-        slotMedia={<Workflow className="w-[48px] h-[48px]" />}
-        slotFooter={
-          <Flex gap="density-md" justify="center" wrap="wrap">
-            <Button
-              kind="tertiary"
-              onClick={() =>
-                window.open(LINK_DOCS_INFERENCE_PROVIDERS, '_blank', 'noopener,noreferrer')
-              }
-            >
-              Documentation
-            </Button>
-            {emptyStateActions}
-          </Flex>
-        }
-      />
-    </Flex>
-  );
-
   return (
     <Stack gap="density-xl" {...attributes?.Stack}>
-      <StudioDataView
-        dataViewState={dataViewState}
-        searchField="name"
-        makeColumns={makeColumns}
-        onRowClick={(row: ProviderWithId) => openDetailsPanel(row)}
-        attributes={{
-          DataViewSearchBar: {
-            placeholder: 'Search Providers...',
-          },
-          DataViewRoot: {
-            data: providersWithId,
-            totalCount: pagination?.total_results,
-            requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
-          },
-          DataViewTableContent: {
-            renderEmptyState: () =>
-              isInitialEmpty ? (
-                emptyState
-              ) : (
-                <TableEmptyState
-                  header="No Results Found"
-                  emptyMessage="No inference providers match your search"
-                  actions={
-                    <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                      Clear Search
-                    </Button>
-                  }
+      {isInitialEmpty ? (
+        <EntityEmptyState entity="inferenceProviders" variant="first-use" onCreate={onCreate} />
+      ) : (
+        <StudioDataView
+          dataViewState={dataViewState}
+          searchField="name"
+          makeColumns={makeColumns}
+          onRowClick={(row: ProviderWithId) => openDetailsPanel(row)}
+          attributes={{
+            DataViewSearchBar: {
+              placeholder: 'Search Providers...',
+            },
+            DataViewRoot: {
+              data: providersWithId,
+              totalCount: pagination?.total_results,
+              requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
+            },
+            DataViewTableContent: {
+              renderEmptyState: () => (
+                <EntityEmptyState
+                  entity="inferenceProviders"
+                  variant="no-results"
+                  onClearFilters={dataViewState.resetFilters}
                 />
               ),
-            renderErrorState: () => (
-              <ErrorPanel
-                errorMessage={getErrorMessage(
-                  error ?? new Error('Failed to fetch inference providers')
-                )}
-              />
-            ),
-          },
-        }}
-      />
+              renderErrorState: () => (
+                <ErrorPanel
+                  errorMessage={getErrorMessage(
+                    error ?? new Error('Failed to fetch inference providers')
+                  )}
+                />
+              ),
+            },
+          }}
+        />
+      )}
 
       {modalOpen === 'delete' && modalProvider && (
         <DeleteConfirmationModal

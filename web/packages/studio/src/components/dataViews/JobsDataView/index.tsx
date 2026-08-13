@@ -6,10 +6,10 @@ import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { CancelJobButton } from '@nemo/common/src/components/CancelJobButton';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
 import { useJobsListJobs } from '@nemo/sdk/generated/platform/api';
@@ -18,7 +18,7 @@ import type {
   PlatformJobResponse,
   PlatformJobsListFilter,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, StatusMessage } from '@nvidia/foundations-react-core';
+import { Flex } from '@nvidia/foundations-react-core';
 import {
   HIDDEN_JOB_SOURCES,
   JOB_SOURCE,
@@ -26,12 +26,11 @@ import {
 } from '@studio/components/dataViews/JobsDataView/constants';
 import { getJobDetailRoute } from '@studio/components/dataViews/JobsDataView/utils';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
-import { LINK_DOCS_JOBS } from '@studio/constants/links';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ChartBar, Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
+import { ChartBar, Cog, LayoutList, Sliders, Sparkles } from 'lucide-react';
 import { ComponentProps, type ReactNode, useRef } from 'react';
 import { useNavigate } from 'react-router';
 
@@ -206,10 +205,6 @@ export const JobsDataView = () => {
     }),
   ];
 
-  const hasActiveFilters =
-    !!dataViewState.debouncedSearchBar || dataViewState.debouncedColumnFilters.length > 0;
-  const isInitialEmpty = jobs.length === 0 && !isFetching && !error && !hasActiveFilters;
-
   if (error) {
     return <ErrorPanel errorMessage={getErrorMessage(error)} />;
   }
@@ -232,41 +227,15 @@ export const JobsDataView = () => {
           requestStatus: isFetching ? 'loading' : undefined,
         },
         DataViewTableContent: {
-          renderEmptyState: () =>
-            isInitialEmpty ? (
-              <Flex
-                justify="center"
-                align="center"
-                className="h-full min-h-[min(480px,60vh)] w-full py-density-3xl"
-              >
-                <StatusMessage
-                  className="max-w-lg"
-                  size="medium"
-                  slotHeading="Manage Jobs"
-                  slotSubheading="Manage and monitor your NeMo Platform jobs with full visibility into every run. One hub for all your NeMo Platform jobs — configure, manage, and monitor with ease."
-                  slotMedia={<ListChecks className="size-12" />}
-                  slotFooter={
-                    <Flex gap="density-md" justify="center">
-                      <Button
-                        kind="tertiary"
-                        onClick={() => window.open(LINK_DOCS_JOBS, '_blank', 'noopener,noreferrer')}
-                      >
-                        Documentation
-                      </Button>
-                    </Flex>
-                  }
-                />
-              </Flex>
-            ) : (
-              <TableEmptyState
-                header="No Results Found"
-                emptyMessage="No jobs match your search or filters."
-                actions={
-                  <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                    Clear Filters
-                  </Button>
-                }
+          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+            hasFiltersApplied || hasSearchApplied ? (
+              <EntityEmptyState
+                entity="jobs"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
               />
+            ) : (
+              <EntityEmptyState entity="jobs" variant="first-use" />
             ),
         },
       }}

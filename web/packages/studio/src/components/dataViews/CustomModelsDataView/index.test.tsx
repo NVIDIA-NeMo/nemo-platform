@@ -65,7 +65,7 @@ describe('CustomModelsDataView', () => {
 
     renderComponent();
 
-    expect(await screen.findByText('Manage Custom Models')).toBeInTheDocument();
+    expect(await screen.findByText('No custom models yet')).toBeInTheDocument();
   });
 
   it('renders the error state when there is an error fetching models', async () => {

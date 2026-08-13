@@ -69,8 +69,7 @@ describe('JobsDataView', () => {
 
     renderComponent();
 
-    expect(await screen.findByText('Manage Jobs')).toBeInTheDocument();
-    expect(screen.getByText('Documentation')).toBeInTheDocument();
+    expect(await screen.findByText('No jobs yet')).toBeInTheDocument();
   });
 
   it('renders job data in the table', async () => {
