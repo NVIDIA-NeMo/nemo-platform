@@ -1418,7 +1418,11 @@ class EvolutionaryOptimizer(Agent):
             status="running",
             rounds_completed=0,
         )
-        return await backend.create_run(workspace=workspace, run=run)
+        metric_targets = [*config.objective_function, *config.regression_metrics]
+        sort_by = ",".join(
+            f"{'-' if target.direction == 'maximize' else ''}evaluators.{target.name}.mean" for target in metric_targets
+        )
+        return await backend.create_run(workspace=workspace, run=run, sort_by=sort_by)
 
     async def _generate_architecture_doc(
         self,

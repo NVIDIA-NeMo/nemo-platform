@@ -29,7 +29,7 @@ class _StatefulGroups:
     stored body to exactly the fields passed, treating ``omit`` (or an absent kwarg)
     as "field became None". This is what catches accidental field-wiping on update."""
 
-    _TRACKED = ("insight_id", "summary", "metadata")
+    _TRACKED = ("insight_id", "summary", "metadata", "default_sort")
 
     def __init__(self) -> None:
         self.name: str | None = None
@@ -83,6 +83,16 @@ async def test_ensure_group_creates_with_insight_and_metadata():
     kwargs = groups.create.await_args.kwargs
     assert kwargs["name"] == "opt-run-1" and kwargs["insight_id"] == "ins-1"
     assert kwargs["metadata"]["agent"] == "a"
+
+
+async def test_ensure_group_creates_with_metric_default_sort():
+    groups = AsyncMock()
+    groups.create.return_value = SimpleNamespace(id="grp-1", name="opt-run-1")
+    mirror = ExperimentMirror(_client(groups, AsyncMock()), workspace="default")
+
+    await mirror.ensure_group(_run(), sort_by="-evaluators.reward.mean,evaluators.cost.mean")
+
+    assert groups.create.await_args.kwargs["default_sort"] == ("-evaluators.reward.mean,evaluators.cost.mean")
 
 
 async def test_ensure_group_conflict_retrieves():
@@ -211,7 +221,9 @@ async def test_finalize_round0_winner_preserves_existing_source_link():
     # A round-0 winner with no PR must keep the source_link written during the run (e.g. a
     # real {repo}@{ref}), not have it clobbered with a pseudo link by the full-replace update.
     groups = AsyncMock()
-    groups.retrieve.return_value = SimpleNamespace(id="grp-1", name="opt-run-1", insight_id=None, metadata=None)
+    groups.retrieve.return_value = SimpleNamespace(
+        id="grp-1", name="opt-run-1", insight_id=None, metadata=None, default_sort="-created_at"
+    )
     experiments = AsyncMock()
     experiments.retrieve.return_value = SimpleNamespace(id="exp-w", source_link="https://git/repo.git@main")
     experiments.create.return_value = SimpleNamespace(id="exp-w")
@@ -223,19 +235,20 @@ async def test_finalize_round0_winner_preserves_existing_source_link():
     assert kwargs["status"] == "winner"
 
 
-async def test_group_update_and_finalize_do_not_wipe_insight_or_metadata():
+async def test_group_update_and_finalize_preserve_full_group_configuration():
     # experiments.update is a full-replace PUT; ensure_group → update_group →
     # finalize must all preserve insight_id + metadata rather than reset them to None.
     groups = _StatefulGroups()
     mirror = ExperimentMirror(_client(groups, AsyncMock()), workspace="default")
     run = _run(insight="ins-1")
-    await mirror.ensure_group(run)
+    await mirror.ensure_group(run, sort_by="-evaluators.reward.mean")
     await mirror.update_group(run)
     await mirror.finalize(run_id="run-1", summary="done", winner=None)
     assert groups.body["insight_id"] == "ins-1"
     assert groups.body["metadata"] == group_metadata(run)
     assert groups.body["metadata"] is not None
     assert groups.body["summary"] == "done"
+    assert groups.body["default_sort"] == "-evaluators.reward.mean"
 
 
 async def test_mirror_projects_every_measured_channel_without_an_allowlist() -> None:

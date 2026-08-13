@@ -100,11 +100,12 @@ class ExperimentMirror:
         self._client = client
         self._workspace = workspace
         self._group_ids: dict[str, str] = {}  # run_id -> ExperimentGroup id
+        self._group_default_sorts: dict[str, str] = {}  # run_id -> evaluations list sort
         self._experiment_ids: dict[tuple[str, str], str] = {}  # (label, split) -> Experiment id
 
     # -- ExperimentGroup ----------------------------------------------------
 
-    async def ensure_group(self, run: ExperimentRun) -> None:
+    async def ensure_group(self, run: ExperimentRun, sort_by: str | None = None) -> None:
         gname = group_name(run.id)
         try:
             grp = await self._client.experiments.create(
@@ -113,10 +114,19 @@ class ExperimentMirror:
                 insight_id=run.insight or omit,
                 summary=run.summary or "",
                 metadata=group_metadata(run),
+                default_sort=sort_by or omit,
             )
         except ConflictError:
             grp = await self._client.experiments.retrieve(gname, workspace=self._workspace)
         self._group_ids[run.id] = grp.id
+        self._group_default_sorts[run.id] = sort_by or getattr(grp, "default_sort", "-created_at")
+
+    async def _default_sort_for(self, run_id: str) -> str:
+        default_sort = self._group_default_sorts.get(run_id)
+        if default_sort is None:
+            grp = await self._client.experiments.retrieve(group_name(run_id), workspace=self._workspace)
+            default_sort = self._group_default_sorts[run_id] = grp.default_sort
+        return default_sort
 
     async def update_group(self, run: ExperimentRun) -> None:
         gname = group_name(run.id)
@@ -129,6 +139,7 @@ class ExperimentMirror:
             summary=run.summary or "",
             insight_id=run.insight or omit,
             metadata=group_metadata(run),
+            default_sort=await self._default_sort_for(run.id),
         )
 
     async def _group_id_for(self, run_id: str) -> str:
@@ -283,6 +294,7 @@ class ExperimentMirror:
             summary=summary,
             insight_id=grp.insight_id if grp.insight_id is not None else omit,
             metadata=grp.metadata if grp.metadata is not None else omit,
+            default_sort=grp.default_sort,
         )
         if winner is None:
             return

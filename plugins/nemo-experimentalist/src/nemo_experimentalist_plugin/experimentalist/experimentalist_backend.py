@@ -153,8 +153,11 @@ class ExperimentalistBackend(ABC):
     # -- ExperimentRun CRUD --------------------------------------------------
 
     @abstractmethod
-    async def create_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
-        """Persist a new ExperimentRun and return it with its durable id."""
+    async def create_run(self, *, workspace: str, run: ExperimentRun, sort_by: str | None = None) -> ExperimentRun:
+        """Persist a new ExperimentRun and return it with its durable id.
+
+        *sort_by* is the metric to sort the experiments by.
+        """
         ...
 
     @abstractmethod
@@ -525,11 +528,11 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     # ExperimentRun CRUD  (eval-and-optimize/run.json)
     # ------------------------------------------------------------------
 
-    async def create_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
+    async def create_run(self, *, workspace: str, run: ExperimentRun, sort_by: str | None = None) -> ExperimentRun:
         if not run.id:
             run._id = str(uuid.uuid4())  # type: ignore[attr-defined]
         (self._eo / "run.json").write_text(run.model_dump_json(indent=2))
-        await self._project_best_effort(workspace, lambda m: m.ensure_group(run))
+        await self._project_best_effort(workspace, lambda m: m.ensure_group(run, sort_by=sort_by))
         return run
 
     async def update_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
