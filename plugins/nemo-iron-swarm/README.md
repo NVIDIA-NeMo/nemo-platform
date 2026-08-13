@@ -60,8 +60,8 @@ Three things that trip people up, each covered in full below:
   `wiki_search` is broken upstream regardless (see the egress note in
   [One-time setup](#one-time-setup)). Your own agent almost certainly needs it.
   [More](#run-it-from-the-cli)
-- **The Studio tab is off by default**, and the flag is a config-file setting, not an environment
-  variable. [How to enable](#run-it-in-the-ui)
+- **The Studio entry appears as soon as the plugin is installed** — the UI ships inside the plugin
+  as a Studio bundle, so there is no flag to set. [More](#run-it-in-the-ui)
 
 Got your own agent instead? `init --agent <name>` works for any registered agent, and
 `init --project-dir <path>` war-games a local NAT project with nothing registered at all.
@@ -250,27 +250,20 @@ uv run nemo agents create --name react-agent \
 
 ## Run it in the UI
 
-Iron Swarm is behind a feature flag that is **off by default**, and it is not an environment
-variable — it comes from the platform config file. `--config` *replaces* the bundled config rather
-than merging into it, so copy that one and append the flag:
+The UI ships **inside this plugin** as a Studio plugin bundle, so there is no feature flag to set:
+installing the plugin is what puts it in Studio. Studio discovers it through the `nemo.studio`
+entry point, serves the bundle at `/plugin-ui/iron-swarm/index.js`, and renders it inside its own
+React tree.
+
+Start the platform as usual:
 
 ```bash
-CFG=$(uv run python -c "from importlib.resources import files; print(files('nmp.platform_runner').joinpath('config/local.yaml'))")
-cp "$CFG" /tmp/nemo-iron-swarm.yaml
-cat >> /tmp/nemo-iron-swarm.yaml <<'EOF'
-
-studio:
-  feature_flags:
-    iron_swarm_enabled: true
-EOF
-
-uv run nemo services stop
 uv run nemo services run --service-group all --controllers models,jobs \
-  --host 0.0.0.0 --port 8080 --config /tmp/nemo-iron-swarm.yaml > /tmp/nemo-platform.log 2>&1 &
+  --host 0.0.0.0 --port 8080 > /tmp/nemo-platform.log 2>&1 &
 ```
 
-Open **http://localhost:8080/studio/** → **Safety → Iron Swarm**. If the tab is missing, hard-reload
-(⌘⇧R) — the flag is baked into a cached JS asset.
+Open **http://localhost:8080/studio/** → **Governance → Iron Swarm**. If the entry is missing,
+confirm the plugin is installed (`curl -s localhost:8080/apis/plugins`) and hard-reload (⌘⇧R).
 
 1. **Manifests → New Manifest** — pick `react-agent`, accept the detected port and secrets, add any
    **egress** hosts the agent calls (same rule as the CLI, see the warning above), **Create**.
@@ -376,11 +369,10 @@ uv run nemo iron-swarm sanity-check --manifest-id react-agent \
 
 ## Troubleshooting
 
-**Iron Swarm missing from the Studio side nav.** The feature flag is off (its default). It is *not*
-an environment variable — `STUDIO_UI_VITE_FF_IRON_SWARM_ENABLED` is a marker the server substitutes
-into the JS bundle, so exporting it does nothing. Set `studio.feature_flags.iron_swarm_enabled: true`
-in the platform config file and pass it with `--config` (see [Run it in the UI](#run-it-in-the-ui)).
-Then hard-reload the browser — the value is baked into a cached asset.
+**Iron Swarm missing from the Studio side nav.** The UI ships with the plugin, so this means
+Studio did not load its bundle. Check the plugin is registered (`curl -s localhost:8080/apis/plugins`
+should list `iron-swarm` with a `bundleUrl`) and that the bundle is served
+(`curl -sI localhost:8080/plugin-ui/iron-swarm/index.js`). Then hard-reload the browser.
 
 **`Missing required secrets: <NAME>`.** The agent config references `${<NAME>}` and nothing provides
 it. Iron Swarm derives required secrets from the agent's *stored* config, so this means the variable
@@ -426,9 +418,6 @@ CLI-only. `uv tool uninstall openshell`, then use the curl installer above.
 
 All `NEMO_IRON_SWARM_*` values can also be set via Helm `platformConfig.iron_swarm.*`.
 
-Showing Iron Swarm in Studio is **not** an environment variable — it is
-`studio.feature_flags.iron_swarm_enabled` (default `false`) in the platform config file.
-
 ---
 
 ## How it works
@@ -449,3 +438,37 @@ resulting scaffold as a fileset the run re-downloads, so two runs of one manifes
 target — which is what a "did the hardening help?" answer depends on. Edits to a registered agent
 reach an existing manifest only through `POST /manifests/{name}/refresh`, which `apply-mitigation`
 calls for you. The stored settings (egress, secrets, port) are what persist — not the rendered YAML.
+
+---
+
+## Studio UI
+
+The web UI lives in [`web/`](web/) and ships as a Studio plugin bundle: `src/index.ts` exports a
+`Root` component and `navItems`, Studio renders `Root` inside its own React tree (its Router,
+QueryClient and theme), and `studio.py` points Studio at the built
+`src/nemo_iron_swarm_plugin/web/dist/index.js` through the `nemo.studio` entry point.
+
+The contract and its rules — shared singletons, KUI, theme tokens, auth — are documented in
+[`plugins/example-plugin/web/AGENTS.md`](../example-plugin/web/AGENTS.md), the canonical template.
+
+```bash
+cd plugins/nemo-iron-swarm/web
+pnpm install
+pnpm gen        # regenerate the API client from ../openapi/openapi.yaml
+pnpm build      # emits ../src/nemo_iron_swarm_plugin/web/dist/index.js (shipped in the wheel)
+pnpm typecheck && pnpm lint && pnpm test
+```
+
+Commit the rebuilt `dist/index.js` — it is the artifact the wheel installs, and the repo's global
+`dist` ignore means it needs `git add -f`.
+
+Two things to keep in mind when editing it:
+
+- **Only use styling Studio already compiles.** Studio's Tailwind scans `web/packages/**`, so a
+  utility class it does not already emit has no CSS once the code lives under `plugins/`. Nothing
+  catches this — build, typecheck and tests all pass, and it shows only as unstyled UI. Use the
+  semantic tokens in `src/theme.ts`.
+- **Shared deps stay external.** `react`, `react-dom`, `react-router`,
+  `@nvidia/foundations-react-core`, `@tanstack/react-query` and `@nemo/common` must remain bare
+  imports in the built bundle so the browser resolves them to Studio's single instance:
+  `grep -oE 'from *"[^"]+"' ../src/nemo_iron_swarm_plugin/web/dist/index.js | sort -u`.
