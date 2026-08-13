@@ -116,18 +116,48 @@ def test_resolve_ephemeral_work_path_uses_tmp_when_no_scratch() -> None:
 def test_egress_is_operator_scoped_not_per_job() -> None:
     """The job schema must have no path to widen sandbox egress.
 
-    allow_internet is the single lever, sourced from the compiler. NeMo-RL's public_dns_allow
-    is not mirrored, so there is no field a submission could populate.
+    Both levers -- allow_internet and public_dns_allow -- are resolved by the compiler from
+    RlConfig, so they are per-deployment. Asserting on the submission schema is what actually
+    pins the invariant: the compiler-side models legitimately carry both fields.
     """
+    from nmp.rl.schemas.job import GRPOTraining
+
+    for field in ("allow_internet", "public_dns_allow", "egress_allow", "network_policy"):
+        assert field not in GRPOTraining.model_fields
+
+    with pytest.raises(ValidationError):
+        GRPOTraining(public_dns_allow=("evil.example",))
+
+
+def test_sandbox_config_carries_both_operator_egress_levers() -> None:
     from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
         SandboxConfig,
         SandboxNetworkPolicy,
     )
 
-    assert "public_dns_allow" not in SandboxNetworkPolicy.model_fields
-    with pytest.raises(ValidationError):
-        SandboxNetworkPolicy(public_dns_allow=("evil.example",))
-
     common = {"environment_pvc_claim": "c", "workspace_pvc_claim": "c"}
     assert SandboxConfig(image="i", **common).allow_internet is False
     assert SandboxConfig(image="i", allow_internet=True, **common).allow_internet is True
+
+    assert SandboxNetworkPolicy().public_dns_allow == ()
+    policy = SandboxNetworkPolicy(public_dns_allow=("hub.primeintellect.ai",))
+    assert policy.public_dns_allow == ("hub.primeintellect.ai",)
+
+
+def test_master_egress_refresh_preserves_public_dns_allow() -> None:
+    """Refreshing vLLM/broker endpoints must not drop operator DNS configuration."""
+    from nmp.rl.tasks.training.backends.nemo_rl.sandbox_config import (
+        SandboxConfig,
+        SandboxNetworkPolicy,
+        apply_master_egress_to_sandbox_config,
+    )
+
+    sandbox = SandboxConfig(
+        image="i",
+        environment_pvc_claim="c",
+        workspace_pvc_claim="c",
+        network_policy=SandboxNetworkPolicy(public_dns_allow=("hub.primeintellect.ai",)),
+    )
+    refreshed = apply_master_egress_to_sandbox_config(sandbox)
+    assert refreshed.network_policy.public_dns_allow == ("hub.primeintellect.ai",)
+    assert refreshed.network_policy.egress_allow  # recomputed from master endpoints

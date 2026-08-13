@@ -82,6 +82,18 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         ),
     )
 
+    sandbox_public_dns_allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra DNS suffixes or FQDNs added to env.nemo_gym.sandbox.network_policy."
+            "public_dns_allow, consulted only when sandbox_allow_internet is true. NeMo-RL's "
+            "built-in list covers *.com and *.org, so an environment whose package index lives "
+            "on another TLD needs its host named here (e.g. hub.primeintellect.ai for Prime "
+            "Intellect hub environments). Prefer exact FQDNs over wildcards. Operator-scoped: "
+            "jobs cannot set it."
+        ),
+    )
+
     sandbox_cluster_capable: bool = Field(
         default=False,
         description=(

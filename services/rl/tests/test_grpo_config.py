@@ -419,3 +419,25 @@ def test_sandbox_egress_comes_from_the_compiled_step_not_service_config(
     step.gym.allow_internet = True
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
     assert sandbox["allow_internet"] is True
+
+
+def test_public_dns_allow_reaches_the_sandbox_network_policy(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Operator-configured suffixes must land where NeMo-RL reads them.
+
+    NeMo-RL takes them from ``sandbox.network_policy.public_dns_allow`` (nemo_gym_actor), not
+    from ``sandbox`` directly, and only consults them when ``allow_internet`` is set. Its
+    built-in list is ``*.com``/``*.org``, so an index on any other TLD needs this to resolve.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["network_policy"]["public_dns_allow"] == ()
+
+    step.gym.allow_internet = True
+    step.gym.public_dns_allow = ["hub.primeintellect.ai"]
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["network_policy"]["public_dns_allow"] == ("hub.primeintellect.ai",)
