@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run, read_trials
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, TrialMetricValue
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
@@ -82,6 +82,70 @@ def test_persist_run_writes_bundle_relative_refs_that_survive_a_move(tmp_path: P
     (trial,) = read_trials(moved)
     resolved = Path(trial.evidence.require("workspace").ref)  # type: ignore[arg-type]
     assert resolved.is_dir() and resolved == moved / "evidence" / "fabric" / "r" / "000000-taskA" / "workspace"
+
+
+def test_persist_run_writes_per_task_values_to_summary(tmp_path: Path) -> None:
+    summary = AgentEvalSummary(
+        task_metric_values={
+            "task-a": {
+                "harbor_reward.reward": [
+                    TrialMetricValue(trial_id="task-a__aaa", value=1.0),
+                    TrialMetricValue(trial_id="task-a__bbb", value=0.0),
+                ]
+            },
+            "task-b": {
+                "harbor_reward.reward": [
+                    TrialMetricValue(trial_id="task-b__ccc", value=1.0),
+                    TrialMetricValue(trial_id="task-b__ddd", value=None),
+                ]
+            },
+        }
+    )
+    result = AgentEvalResult(run_id="run", tasks=[], trials=[], scores=[], summary=summary)
+
+    persist_run(result, tmp_path)
+
+    payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert payload["task_metric_values"] == {
+        "task-a": {
+            "harbor_reward.reward": [
+                {"trial_id": "task-a__aaa", "value_type": "number", "value": 1.0},
+                {"trial_id": "task-a__bbb", "value_type": "number", "value": 0.0},
+            ]
+        },
+        "task-b": {
+            "harbor_reward.reward": [
+                {"trial_id": "task-b__ccc", "value_type": "number", "value": 1.0},
+                {"trial_id": "task-b__ddd", "value_type": "missing", "value": None},
+            ]
+        },
+    }
+    assert AgentEvalSummary.model_validate(payload).task_metric_values == summary.task_metric_values
+
+
+def test_summary_json_round_trips_trial_order_through_sort_keys(tmp_path: Path) -> None:
+    # persist_run writes with sort_keys=True. Values are a list precisely so that trial order
+    # survives that: keying them by trial id would come back sorted lexicographically instead.
+    summary = AgentEvalSummary(
+        task_metric_values={
+            "task-a": {
+                "harbor_reward.reward": [
+                    TrialMetricValue(trial_id="z-trial", value=1.0),
+                    TrialMetricValue(trial_id="a-trial", value=0.0),
+                ]
+            }
+        }
+    )
+    result = AgentEvalResult(run_id="run", tasks=[], trials=[], scores=[], summary=summary)
+
+    persist_run(result, tmp_path)
+    payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    reloaded = AgentEvalSummary.model_validate(payload)
+
+    assert [a.trial_id for a in reloaded.task_metric_values["task-a"]["harbor_reward.reward"]] == [
+        "z-trial",
+        "a-trial",
+    ]
 
 
 def test_read_trials_rejects_evidence_ref_that_escapes_the_bundle(tmp_path: Path) -> None:
