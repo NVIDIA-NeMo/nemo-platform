@@ -10,6 +10,10 @@ fast `g1-aggregation` scenario; later sections show optional dataset-driven and
 full-dataset runs.
 
 To optimize an agent you already have, follow the [agent onboarding guide](/documentation/get-started) instead.
+For component details, see the [Insights Analyst](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-insights/README.md),
+[Eval Author](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-eval-author/README.md),
+and [Experimentalist](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-experimentalist/README.md)
+READMEs.
 
 ## Prerequisites
 
@@ -66,19 +70,23 @@ explains those scenarios and task splits.
 
 Run model-authored work in a Docker Sandbox. Clone mode gives the sandbox a
 private writable checkout, so generated code cannot modify your working tree.
-
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 smoke="plugins/nemo-experimentalist/examples/smoke-agent"
 platform_url="http://host.docker.internal:8080"
 workspace="canonical-smoke-agent"
 no_proxy="localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
+sandbox_env=(
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy"
+)
 
 uv run --frozen nemo workspaces create "$workspace" \
   --description "Smoke-agent Experimentalist runs" \
   --exist-ok
 
-sbx create --clone --profile external-only --name nemo-experimentalist shell "$repo"
+sbx create --clone  --name nemo-experimentalist shell "$repo"
 sbx exec --user root nemo-experimentalist bash -lc \
   'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
@@ -107,10 +115,7 @@ ingests their traces into the `smoke-agent` workspace and prints a task name and
 trace ID for every upload.
 
 ```bash
-sbx exec --workdir "$repo" \
-  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+sbx exec --workdir "$repo" "${sandbox_env[@]}" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -135,10 +140,7 @@ It includes the trace IDs that support it; it does not prescribe a code change.
 The Experimentalist diagnoses and repairs the implementation from that evidence.
 
 ```bash
-sbx exec --workdir "$repo" \
-  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+sbx exec --workdir "$repo" "${sandbox_env[@]}" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -211,7 +213,7 @@ the private repository. The explicit `--agent` flag takes precedence over the
 local `agent_source` in `optimizer.yaml`, so this run optimizes the Git baseline.
 
 ```bash
-sbx create --clone --profile external-only --name nemo-experimentalist-git shell "$repo"
+sbx create --clone  --name nemo-experimentalist-git shell "$repo"
 sbx exec --user root nemo-experimentalist-git bash -lc \
   'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 gh auth token | sbx exec -i --workdir "$repo" nemo-experimentalist-git \
@@ -220,10 +222,7 @@ sbx exec --workdir "$repo" nemo-experimentalist-git gh auth setup-git
 sbx exec --workdir "$repo" nemo-experimentalist-git bash -lc \
   "cd $smoke && uv run --no-project scripts/build_image.py"
 
-sbx exec --workdir "$repo" \
-  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+sbx exec --workdir "$repo" "${sandbox_env[@]}" \
   nemo-experimentalist-git \
   bash -lc "uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -274,10 +273,7 @@ changes only a private sandbox clone and never creates a PR/MR. The sandbox uses
 `host.docker.internal` to reach Platform services on the host:
 
 ```bash
-sbx exec --workdir "$repo" \
-  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+sbx exec --workdir "$repo" "${sandbox_env[@]}" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -320,10 +316,7 @@ train and validation dataset and want to optimize directly against it. This
 uses the same `g1-aggregation` repair scenario, but passes `--no-insight`.
 
 ```bash
-sbx exec --workdir "$repo" \
-  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+sbx exec --workdir "$repo" "${sandbox_env[@]}" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -347,10 +340,7 @@ Build the generated dataset, then use its profile with `full.yaml`:
 sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
   "cd $smoke && uv run --no-project scripts/build_all_group.py"
 
-sbx exec --workdir "$repo" \
-  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+sbx exec --workdir "$repo" "${sandbox_env[@]}" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
