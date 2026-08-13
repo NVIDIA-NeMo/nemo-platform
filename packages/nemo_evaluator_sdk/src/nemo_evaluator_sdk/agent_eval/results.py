@@ -415,22 +415,41 @@ class AgentEvalSummary(BaseModel):
         """
         return self.scores.score(name)
 
-    def task_outcomes(self) -> list[PerTaskOutcomes]:
+    def task_outcomes(self, metric_name: str | None = None) -> list[PerTaskOutcomes]:
         """:attr:`task_metric_values` as models that name their own keys, sorted by task then metric.
 
         A read-time *view*, not the wire format. The field itself stays a nested dict because it is
         persisted per run: repeating "task_id"/"metric_name" on every row would grow ``summary.json``
         for no new information, and lookup by task and metric stays O(1). Reach for this when you
         want a typed object to pass around or to hand to a template.
+
+        ``metric_name`` narrows to one ``"<metric_type>.<output>"``, which is what a report over a
+        single metric wants::
+
+            summary.task_outcomes()                       -> every task, every metric output
+            summary.task_outcomes("gym_reward.reward")    -> every task that metric measured
+
+        A task the named metric never measured is **dropped**, not returned empty: it was scored by
+        a different metric, so reporting it as unmeasured would invent missing coverage. A task that
+        declared the metric but produced no usable value is different - it keeps its entry with an
+        empty ``trials`` list, because there the coverage really is missing. That is the same
+        distinction :attr:`task_metric_values` draws by having a key at all.
         """
-        return [
-            PerTaskOutcomes(
-                task_id=task_id,
-                outcomes=[
-                    PerTaskOutcome(metric_name=key, trials=list(records)) for key, records in sorted(by_key.items())
+        outcomes_by_task = [
+            (
+                task_id,
+                [
+                    PerTaskOutcome(metric_name=key, trials=list(records))
+                    for key, records in sorted(by_key.items())
+                    if metric_name is None or key == metric_name
                 ],
             )
             for task_id, by_key in sorted(self.task_metric_values.items())
+        ]
+        return [
+            PerTaskOutcomes(task_id=task_id, outcomes=outcomes)
+            for task_id, outcomes in outcomes_by_task
+            if metric_name is None or outcomes
         ]
 
     @staticmethod

@@ -58,9 +58,11 @@ Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/...
 ## Read the results
 
 `inspect_results.py` reads `summary.json` and shows each result layer: run aggregates from
-`summary.scores`, ordered per-task values from `summary.task_metric_values`, and runner-owned
-aggregates under `runner.gym.*`. Per-task keys use `<metric_type>.<output>`; a `null` value is a trial
-that failed before scoring, while an empty list means the metric produced no usable measurement.
+`summary.scores`, ordered per-task values from `summary.task_outcomes("<metric_type>.<output>")`, and
+runner-owned aggregates under `runner.gym.*`. That accessor returns models rather than nested dicts —
+each row names its own `task_id` and `metric_name` — so the example needs no per-task accessor of its
+own. A `null` value is a trial that failed before scoring, while an empty `trials` list means the
+metric produced no usable measurement; a task the metric never measured is not returned at all.
 
 Each record names the trial that produced it, so `trial_id` — not list position — is what joins two
 outputs of the same task, or looks up `trials.jsonl`. A trial whose metric failed is absent

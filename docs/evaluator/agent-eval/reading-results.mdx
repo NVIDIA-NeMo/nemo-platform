@@ -66,8 +66,23 @@ result = await AgentEvaluator().run(tasks=..., target=...)
   scores = numeric_metric_values(records)   # [1.0, None, 0.0]
   ```
 
-  For a typed object rather than nested dicts, `result.summary.task_outcomes()` returns
-  `list[PerTaskOutcomes]`, each naming its `task_id` and its outcomes' `metric_name`.
+- **`summary.task_outcomes(metric_name=None)`** — the same data as models rather than nested dicts,
+  sorted by task then metric, each naming its own `task_id` and `metric_name`. Pass a
+  `"<metric.type>.<output>"` to narrow to one metric, which is what a report over a single metric
+  wants:
+
+  ```python
+  for per_task in result.summary.task_outcomes("reward.score"):
+      for outcome in per_task.outcomes:
+          values = numeric_metric_values(outcome.trials)
+          print(per_task.task_id, outcome.metric_name, values)
+  ```
+
+  - When you narrow, a task the metric never measured is **dropped** — it was scored by a different
+    metric, so listing it would invent missing coverage.
+  - A task that declared the metric but produced no usable value keeps its entry with an empty
+    `trials` list, because there the coverage really is missing.
+  - Unfiltered, every task is returned.
 - **`summary.task_count`**, **`summary.trial_count`**, **`summary.score_count`**.
 
 ### Per-metric scores

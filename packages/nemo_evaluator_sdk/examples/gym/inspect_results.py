@@ -7,10 +7,11 @@ Companion to ``run_gym_eval.py``: that script *produces* a run bundle, this one 
 how to get at each kind of result — headline aggregates, ``pass@k``, per-task outcomes, and the
 runner's own aggregations.
 
-The helpers below (:func:`aggregate`, :func:`per_task_outcomes`) are written to be lifted directly
-into your own code. Everything shown here also works on the in-memory ``AgentEvalResult`` returned by
-``AgentEvaluator().run(...)`` — reading from a bundle just makes the example runnable without a live
-run.
+Per-task results are read through the SDK's own typed view, ``summary.task_outcomes(metric_name)``,
+rather than by walking the nested ``summary.task_metric_values`` dict here — that is the accessor to
+lift into your own code. Everything shown here also works on the in-memory ``AgentEvalResult``
+returned by ``AgentEvaluator().run(...)`` — reading from a bundle just makes the example runnable
+without a live run.
 
 There is no bundle checked into the repo — ``run_gym_eval.py`` makes one. It writes to a fresh
 temporary directory by default, so give it an explicit ``--output-dir`` and point this script at the
@@ -33,7 +34,7 @@ from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval.results import (
     AgentEvalSummary,
-    TrialMetricValue,
+    PerTaskOutcomes,
     numeric_metric_values,
 )
 from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
@@ -67,47 +68,13 @@ def aggregate(summary: AgentEvalSummary, name: str) -> AggregateScore:
     raise KeyError(f"no aggregate named {name!r}; available: {available}")
 
 
-def per_task_outcomes(
-    summary: AgentEvalSummary,
-    *,
-    metric_type: str,
-    output_name: str,
-) -> dict[str, list[float | None]]:
-    """Read ordered trial values from the summary for one metric output.
-
-    ``None`` is a failed trial and therefore did not pass. An empty list means the task had no
-    usable measurement — its metric failed, omitted the output, produced no trial at all, or scored
-    only non-numeric labels.
-
-    Use :func:`per_task_trial_values` when you need to know *which* trial produced a value.
-    """
-    return {
-        task_id: numeric_metric_values(records)
-        for task_id, records in per_task_trial_values(summary, metric_type=metric_type, output_name=output_name).items()
-    }
-
-
-def per_task_trial_values(
-    summary: AgentEvalSummary,
-    *,
-    metric_type: str,
-    output_name: str,
-) -> dict[str, list[TrialMetricValue]]:
-    """The same values, each still naming the trial that produced it.
-
-    A trial whose metric failed is absent rather than null, so lists for two different outputs of
-    one task need not be the same length — ``trial_id``, not position, is what lines them up. It is
-    also the lookup key into ``trials.jsonl``, which is where a failed trial's error lives.
-    """
-    key = f"{metric_type}.{output_name}"
-    return {
-        task_id: list(by_metric[key]) for task_id, by_metric in summary.task_metric_values.items() if key in by_metric
-    }
-
-
-# The typed view over the same data lives in the SDK: `summary.task_outcomes()` returns
-# `list[PerTaskOutcomes]`, each naming its task and metric. Use it when you want an object to pass
-# around rather than a dict keyed by strings.
+# Per-task values need no accessor here: `summary.task_outcomes("<metric_type>.<output>")` returns
+# `list[PerTaskOutcomes]` already sorted by task, each naming its own `task_id` and `metric_name`,
+# and each trial naming the `trial_id` that produced it — so a value can be joined back to
+# `trials.jsonl` (where a failed trial's error lives) or across to another metric's outcomes.
+# Records are ordered by trial, and `trial_id` rather than position is what lines two outputs up:
+# a trial whose metric failed is absent rather than null, so two lists for one task need not be the
+# same length.
 
 # --------------------------------------------------------------------------------------------------
 # Bundle loading (see the run.json manifest for the full artifact list).
@@ -166,8 +133,11 @@ def show_aggregates(summary: AgentEvalSummary) -> None:
     print(f"\n  {summary.task_count} tasks · {summary.trial_count} trials · {summary.score_count} scores")
 
 
-def show_per_task(by_task: dict[str, list[float | None]]) -> None:
+def show_per_task(outcomes: list[PerTaskOutcomes]) -> None:
     """Per-task outcomes: which tasks were solved, and how consistently.
+
+    Takes the SDK's typed view, so every row already knows its own task and metric and no dict has
+    to be re-keyed here. Already sorted by task, hence no ``sorted()``.
 
     A trial passes on full credit (``>= PASS_VALUE``), matching how the SDK computes pass@k. A
     ``None`` is a trial that died: it counts toward ``n`` and never as a pass, so a task that passed
@@ -175,24 +145,29 @@ def show_per_task(by_task: dict[str, list[float | None]]) -> None:
     """
     print("\nPer-task outcomes (trial values; a trial passes at full credit)")
     solved = flaky = failed = unmeasured = 0
-    for task_id, values in sorted(by_task.items()):
-        if not values:
-            verdict, marker = "unmeasured", "?"
-            unmeasured += 1
-            shown = ""
-        else:
-            passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
-            if passes == len(values):
-                verdict, marker = "solved", "+"
-                solved += 1
-            elif passes:
-                verdict, marker = f"flaky ({passes}/{len(values)})", "~"
-                flaky += 1
+    for per_task in outcomes:
+        for outcome in per_task.outcomes:
+            # Projected to floats only here, where the work is genuinely arithmetic: `>=` and `:g`
+            # both raise on a judge's label, and numeric_metric_values drops those while keeping a
+            # dead trial's None. Everything above reads the records as they were recorded.
+            values = numeric_metric_values(outcome.trials)
+            if not values:
+                verdict, marker = "unmeasured", "?"
+                unmeasured += 1
+                shown = ""
             else:
-                verdict, marker = "failed", "-"
-                failed += 1
-            shown = ", ".join("died" if value is None else f"{value:g}" for value in values)
-        print(f"  {marker} {task_id[:16]}…  [{shown}]  {verdict}")
+                passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
+                if passes == len(values):
+                    verdict, marker = "solved", "+"
+                    solved += 1
+                elif passes:
+                    verdict, marker = f"flaky ({passes}/{len(values)})", "~"
+                    flaky += 1
+                else:
+                    verdict, marker = "failed", "-"
+                    failed += 1
+                shown = ", ".join("died" if value is None else f"{value:g}" for value in values)
+            print(f"  {marker} {per_task.task_id[:16]}…  [{shown}]  {verdict}")
     print(f"\n  {solved} solved · {flaky} flaky · {failed} failed · {unmeasured} unmeasured")
 
 
@@ -243,9 +218,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(str(exc)) from exc
 
     show_aggregates(summary)
-    by_task = per_task_outcomes(summary, metric_type=args.metric_type, output_name=args.output_name)
-    if by_task:
-        show_per_task(by_task)
+    # Empty when no task was measured by this metric at all -- typically a wrong --metric-type.
+    outcomes = summary.task_outcomes(f"{args.metric_type}.{args.output_name}")
+    if outcomes:
+        show_per_task(outcomes)
     show_runner_aggregations(summary)
 
     print(f"\nFull report: {args.bundle / 'report.html'}")

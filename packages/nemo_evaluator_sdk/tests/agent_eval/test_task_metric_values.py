@@ -631,26 +631,62 @@ def test_summary_task_outcomes_name_their_own_keys() -> None:
     assert [(t.trial_id, t.value) for t in outcomes[0].outcomes[0].trials] == [("task-a__aaa", 1.0)]
 
 
-def test_gym_example_reads_task_outcomes_from_summary() -> None:
-    from packages.nemo_evaluator_sdk.examples.gym.inspect_results import per_task_outcomes, per_task_trial_values
-
-    summary = AgentEvalSummary(
+def _mixed_metric_summary() -> AgentEvalSummary:
+    """One task measured by the metric, one that declared it but yielded nothing, one scored by another."""
+    return AgentEvalSummary(
         task_metric_values={
             "task-a": {
                 "gym_reward.reward": [
                     TrialMetricValue(trial_id="task-a__aaa", value=1.0),
                     TrialMetricValue(trial_id="task-a__bbb", value=0.0),
-                ]
+                ],
+                "steps.count": [TrialMetricValue(trial_id="task-a__aaa", value=7)],
             },
             "task-b": {"gym_reward.reward": []},
+            "task-c": {"judge.rating": [TrialMetricValue(trial_id="task-c__ccc", value=0.5)]},
         }
     )
 
-    # The example's headline accessor keeps its bare-value shape...
-    assert per_task_outcomes(summary, metric_type="gym_reward", output_name="reward") == {
-        "task-a": [1.0, 0.0],
-        "task-b": [],
-    }
-    # ...and its sibling exposes the identity that makes a value traceable back to a rollout.
-    records = per_task_trial_values(summary, metric_type="gym_reward", output_name="reward")
-    assert [(a.trial_id, a.value) for a in records["task-a"]] == [("task-a__aaa", 1.0), ("task-a__bbb", 0.0)]
+
+def test_task_outcomes_narrows_to_one_metric() -> None:
+    # The filter is what makes the typed view usable for a single-metric report; without it a caller
+    # has to re-filter the nested lists by hand, which is what the dict shape already made them do.
+    outcomes = _mixed_metric_summary().task_outcomes("gym_reward.reward")
+
+    assert [o.task_id for o in outcomes] == ["task-a", "task-b"]
+    assert [[oc.metric_name for oc in o.outcomes] for o in outcomes] == [["gym_reward.reward"], ["gym_reward.reward"]]
+    assert [(t.trial_id, t.value) for t in outcomes[0].outcomes[0].trials] == [
+        ("task-a__aaa", 1.0),
+        ("task-a__bbb", 0.0),
+    ]
+
+
+def test_task_outcomes_drops_a_task_the_metric_never_measured_but_keeps_an_empty_one() -> None:
+    # The two states are not the same and must not be flattened together. task-b declared the metric
+    # and yielded no usable value -- that is missing coverage, so it stays with an empty trials list
+    # and reports as unmeasured. task-c was scored by a different metric entirely; reporting it would
+    # invent coverage the run never asked for.
+    outcomes = _mixed_metric_summary().task_outcomes("gym_reward.reward")
+
+    by_task = {o.task_id: o for o in outcomes}
+    assert "task-c" not in by_task
+    assert by_task["task-b"].outcomes[0].trials == []
+
+    # Unfiltered, every task is present including the one scored by another metric.
+    assert [o.task_id for o in _mixed_metric_summary().task_outcomes()] == ["task-a", "task-b", "task-c"]
+
+
+def test_gym_example_reads_task_outcomes_from_summary() -> None:
+    # The example reads the SDK's typed view rather than re-deriving one: each row names its own
+    # task and metric, and each trial the rollout that produced it.
+    from packages.nemo_evaluator_sdk.examples.gym.inspect_results import show_per_task
+
+    outcomes = _mixed_metric_summary().task_outcomes("gym_reward.reward")
+
+    assert [(o.task_id, o.outcomes[0].metric_name) for o in outcomes] == [
+        ("task-a", "gym_reward.reward"),
+        ("task-b", "gym_reward.reward"),
+    ]
+    # The display path is what the projection to floats exists for; it must not raise on an empty
+    # outcome, which is the task that reports as unmeasured.
+    show_per_task(outcomes)
