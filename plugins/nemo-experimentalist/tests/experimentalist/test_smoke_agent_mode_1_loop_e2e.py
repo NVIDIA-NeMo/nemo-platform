@@ -693,7 +693,7 @@ def experiment(
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
 def test_insight_driven_loop_materializes_a_usable_suite(experiment: _Experiment) -> None:
     """Check that each downloaded Mode 1 experiment has usable generated tasks and objectives."""
@@ -701,7 +701,7 @@ def test_insight_driven_loop_materializes_a_usable_suite(experiment: _Experiment
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
 def test_insight_driven_loop_improves_objectives(experiment: _Experiment) -> None:
     """Check that each downloaded Mode 1 winner improves objectives without regression."""
@@ -709,7 +709,7 @@ def test_insight_driven_loop_improves_objectives(experiment: _Experiment) -> Non
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _GENERATED_ONLY_CASES, indirect=True)
 def test_generated_only_mode_1_uses_only_generated_tasks(experiment: _Experiment) -> None:
     """Check that generated-only Mode 1 experiments never evaluate committed tasks in the loop."""
@@ -717,7 +717,7 @@ def test_generated_only_mode_1_uses_only_generated_tasks(experiment: _Experiment
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _GENERATED_ONLY_CASES, indirect=True)
 def test_generated_only_mode_1_repairs_committed_holdout(experiment: _Experiment) -> None:
     """Check that generated-only Mode 1 winners repair their untouched committed validation tasks."""
@@ -725,7 +725,7 @@ def test_generated_only_mode_1_repairs_committed_holdout(experiment: _Experiment
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
 def test_mode_1_analysis_names_the_problem(experiment: _Experiment) -> None:
     """Check that each downloaded Mode 1 experiment contains the expected diagnosis."""

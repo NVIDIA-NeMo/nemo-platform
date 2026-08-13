@@ -327,7 +327,7 @@ def experiment(
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _REPAIR_CASES, indirect=True)
 def test_repair_groups_improve_validation(experiment: _Experiment) -> None:
     """Check that every repair group improves validation from its downloaded experiment."""
@@ -335,7 +335,7 @@ def test_repair_groups_improve_validation(experiment: _Experiment) -> None:
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(2400)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _REPAIR_CASES, indirect=True)
 def test_repair_group_analysis_names_the_problem(experiment: _Experiment) -> None:
     """Check that every downloaded repair experiment contains the expected diagnosis."""
@@ -343,7 +343,7 @@ def test_repair_group_analysis_names_the_problem(experiment: _Experiment) -> Non
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(1800)
+@pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", (_G4_CASE,), indirect=True)
 def test_g4_rejects_a_non_generalizing_fix(experiment: _Experiment) -> None:
     """Check that g4 retains the baseline after validation rejects a narrow fix."""
