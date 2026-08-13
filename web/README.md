@@ -7,7 +7,7 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 1. For first setup, install Flox from the repository root and run `make bootstrap-studio`; it provides the pinned Node.js and pnpm versions without requiring global installation. For interactive web work, activate Flox:
 
    ```bash
-   flox activate      # from the repository root
+   flox -q activate   # from the repository root
    ```
 
    Or install the Node.js and pnpm versions printed by `make toolchain-versions`, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.

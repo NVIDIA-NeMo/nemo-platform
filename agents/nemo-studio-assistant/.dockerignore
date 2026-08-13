@@ -1,0 +1,18 @@
+# Managed by `nemo agents package` — safe to delete if you take ownership.
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+node_modules/

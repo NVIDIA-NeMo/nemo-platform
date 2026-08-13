@@ -137,7 +137,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
       <TabsRoot defaultValue="create" className="w-full min-w-0">
         <TabsList>
           <TabsTrigger value="create">Create experiment</TabsTrigger>
-          <TabsTrigger value="copilot">NeMo Copilot</TabsTrigger>
+          <TabsTrigger value="assistant">NeMo Assistant</TabsTrigger>
           <TabsTrigger value="cli">CLI command</TabsTrigger>
         </TabsList>
 
@@ -180,7 +180,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
           </Stack>
         </TabsContent>
 
-        <TabsContent value="copilot" className="px-0 w-full">
+        <TabsContent value="assistant" className="px-0 w-full">
           <CodeSnippet
             className="min-w-full"
             value="To be determined"

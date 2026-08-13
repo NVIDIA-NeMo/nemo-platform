@@ -593,23 +593,23 @@ cyclopts==4.22.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     # via
     #   fastmcp-slim
     #   nemo-anonymizer
-data-designer==0.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:8b3505ea5efb503c3e2b78c261dc82a1912c4d2529b4d24366a00e0808ebbeba \
-    --hash=sha256:d8d79fcff242547151df805fb6f633460ecd36397b941b4da2ec84dcc708f937
+data-designer==0.9.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:c1b02b11baddd89a9ebdc6105bfdd84ec970dce0cb7079767c53d6995e08475c \
+    --hash=sha256:ce6d4bc9fcd2c10fb59c28fe8f495cfb5fa39952b17b3d0b159b7dfc7fd724c1
     # via
     #   data-designer-nemo
     #   nemo-anonymizer
     #   nemo-anonymizer-plugin
     #   nemo-data-designer-plugin
-data-designer-config==0.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:5cc22555ba0575880b6dd00e8ec57602f0b9e8ad52d8941169a624e4eef13db8 \
-    --hash=sha256:a062cbc3334534435380e61ac9abc751943057adbb3177950008df854f892faf
+data-designer-config==0.9.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:8944578a74f28980b7b06b5b12c5e866da313af3fe6b5cc5d446bedf5756744e \
+    --hash=sha256:d4aca73a5b21284729e6f5b05ed1eba7c6e1b7c77d591c6e4e2f330b508d5c39
     # via
     #   data-designer
     #   data-designer-engine
-data-designer-engine==0.8.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:4c4a51d1a3dee18e1b96b1d8aa20117e939854cfab9f9798aa4370e8a39d6734 \
-    --hash=sha256:7544c92b641e1ce490e8c6a01880d84dd76a81ee686852be8477d990630218e0
+data-designer-engine==0.9.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:d86822d227335980fb70a993327e1e754216c8181b474c5c58590ac8e465dbdf \
+    --hash=sha256:df6017f4623d696d8075b33fd3ab5b76dfda0e4cd623c109b8497ae46abfb918
     # via data-designer
 databricks-sdk==0.125.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:a562669e248324b808ed7915a73de61f53bae687baef383266a5907907618fef \
@@ -991,6 +991,7 @@ httpx==0.28.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   anthropic
+    #   data-designer-config
     #   data-designer-engine
     #   datasets
     #   fastapi
@@ -1048,6 +1049,7 @@ huggingface-hub==1.26.0 ; (platform_machine == 'arm64' and sys_platform == 'darw
     --hash=sha256:c8cd4e2df1ba9402f77fce9b509ec1d52debb502551789473f34016acc14e361 \
     --hash=sha256:e8cca670caa5d8dfa7e45bf45e86b466698198cd8150c021bcdb4a86b9252364
     # via
+    #   data-designer
     #   data-designer-engine
     #   datasets
     #   fastembed
@@ -1552,8 +1554,8 @@ mypy-extensions==1.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
     # via
     #   nemoplatform
     #   typing-inspect
-nemo-anonymizer==0.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:342cba7427df553afc214e85bd2ee947328ae60f60adaa75dad2e09096c7ba4d
+nemo-anonymizer==0.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:ee5a47c67121ce145c24e42611bcc1671dc60574a6ec779e9f732d3e32418761
     # via nemo-anonymizer-plugin
 nemo-fabric @ git+https://github.com/NVIDIA/NeMo-Fabric.git@e7353383024523179be6a009ef16dea223bea8c0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
@@ -2228,6 +2230,7 @@ pydantic==2.13.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     --hash=sha256:c40756b57adaa8b1efeeced5c196f3f3b7c435f90e84ea7f443901bec8099ef6
     # via
     #   anthropic
+    #   data-designer
     #   data-designer-config
     #   data-designer-engine
     #   data-designer-nemo
@@ -2574,6 +2577,7 @@ rich==14.3.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     --hash=sha256:817e02727f2b25b40ef56f5aa2217f400c8489f79ca8f46ea2b70dd5e14558a9
     # via
     #   cyclopts
+    #   data-designer
     #   data-designer-config
     #   fastmcp-slim
     #   harbor

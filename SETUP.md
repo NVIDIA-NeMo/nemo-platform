@@ -96,7 +96,7 @@ Before running `make bootstrap`, install Flox from the [Flox installation guide]
 
 ```bash
 make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
-flox activate            # enter the managed development environment
+flox -q activate         # enter the managed development environment
 nemo setup               # interactive: prompts for provider, picks default/fast models, optionally deploys calculator-agent
 ```
 
@@ -132,7 +132,7 @@ make: *** [test-unit] Error 127
 That covers the `make` targets only. To run `uv` or `pnpm` directly, activate Flox first:
 
 ```bash
-flox activate
+flox -q activate
 ```
 
 Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.

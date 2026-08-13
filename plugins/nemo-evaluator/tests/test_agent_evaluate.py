@@ -314,6 +314,7 @@ def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) ->
         num_repeats=2,
         concurrency=4,
         reward_key="score",
+        env_overrides={"model": {"temperature": 0.7}},
     )
     target, prompt_template, params = AgentEvalJob._resolve_target(gym_target, ctx)
     assert isinstance(target, GymAgentTaskRunner)
@@ -321,6 +322,9 @@ def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) ->
     assert target._config.resources_server == "mcqa"
     assert target._config.num_repeats == 2
     assert target._config.reward_key == "score"
+    # Overrides are nested data on both sides of the seam — the spec model and the runtime config
+    # must agree on the shape, or the spec validates and the runtime rejects it.
+    assert target._config.env_overrides == {"model": {"temperature": 0.7}}
     # A runner shapes its own request, so it contributes no prompt template or inference params.
     assert prompt_template is None
     assert params is None

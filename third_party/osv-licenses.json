@@ -488,7 +488,7 @@
         {
           "package": {
             "name": "data-designer",
-            "version": "0.8.0",
+            "version": "0.9.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -498,7 +498,7 @@
         {
           "package": {
             "name": "data-designer-config",
-            "version": "0.8.0",
+            "version": "0.9.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -508,7 +508,7 @@
         {
           "package": {
             "name": "data-designer-engine",
-            "version": "0.8.0",
+            "version": "0.9.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1758,7 +1758,7 @@
         {
           "package": {
             "name": "nemo-anonymizer",
-            "version": "0.3.1",
+            "version": "0.3.3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -4540,9 +4540,9 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-08-07T10:42:58Z",
+              "modified": "2026-08-13T10:42:06Z",
               "published": "2026-07-14T17:29:56Z",
-              "schema_version": "1.7.5",
+              "schema_version": "1.8.0",
               "id": "GO-2026-5970",
               "aliases": [
                 "CVE-2026-56852"
@@ -4580,7 +4580,9 @@
                 "RHSA-2026:48306",
                 "RHSA-2026:49317",
                 "RHSA-2026:49360",
-                "RHSA-2026:51065"
+                "RHSA-2026:51065",
+                "RHSA-2026:52912",
+                "RHSA-2026:54364"
               ],
               "summary": "Infinite loop on invalid input in golang.org/x/text",
               "details": "A norm.Iter can enter an infinite loop when handling input containing invalid UTF-8 bytes.",
@@ -4653,6 +4655,11 @@
                   "url": "https://go.dev/cl/794100"
                 }
               ],
+              "credits": [
+                {
+                  "name": "Viky Choi (\"vikychoi\" on GitHub)"
+                }
+              ],
               "database_specific": {
                 "review_status": "REVIEWED",
                 "url": "https://pkg.go.dev/vuln/GO-2026-5970"
@@ -4668,12 +4675,6 @@
                 "CVE-2026-56852",
                 "GO-2026-5970"
               ],
-              "experimental_analysis": {
-                "GO-2026-5970": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             }
           ],
@@ -4752,7 +4753,7 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-08-03T10:45:58Z",
+              "modified": "2026-08-12T10:41:55Z",
               "published": "2026-04-07T22:53:49Z",
               "schema_version": "1.7.5",
               "id": "GO-2026-4864",
@@ -4840,6 +4841,7 @@
                 "RHSA-2026:48790",
                 "RHSA-2026:49509",
                 "RHSA-2026:49600",
+                "RHSA-2026:54191",
                 "RHSA-2026:7291",
                 "RHSA-2026:7385"
               ],
@@ -5101,7 +5103,7 @@
               }
             },
             {
-              "modified": "2026-08-07T10:42:58Z",
+              "modified": "2026-08-12T10:41:55Z",
               "published": "2026-04-07T22:53:49Z",
               "schema_version": "1.7.5",
               "id": "GO-2026-4870",
@@ -5208,6 +5210,7 @@
                 "RHSA-2026:49600",
                 "RHSA-2026:49944",
                 "RHSA-2026:51288",
+                "RHSA-2026:54191",
                 "RHSA-2026:7291",
                 "RHSA-2026:7385"
               ],
@@ -5587,7 +5590,7 @@
               }
             },
             {
-              "modified": "2026-08-07T10:42:57Z",
+              "modified": "2026-08-12T10:41:54Z",
               "published": "2026-04-07T22:53:49Z",
               "schema_version": "1.7.5",
               "id": "GO-2026-4947",
@@ -5685,7 +5688,8 @@
                 "RHSA-2026:49600",
                 "RHSA-2026:49838",
                 "RHSA-2026:49944",
-                "RHSA-2026:51288"
+                "RHSA-2026:51288",
+                "RHSA-2026:54191"
               ],
               "summary": "Unexpected work during chain building in crypto/x509",
               "details": "During chain building, the amount of work that is done is not correctly limited when a large number of intermediate certificates are passed in VerifyOptions.Intermediates, which can lead to a denial of service. This affects both direct users of crypto/x509 and users of crypto/tls.",
@@ -6214,7 +6218,7 @@
               }
             },
             {
-              "modified": "2026-08-07T10:42:57Z",
+              "modified": "2026-08-12T10:41:54Z",
               "published": "2026-05-07T19:21:40Z",
               "schema_version": "1.7.5",
               "id": "GO-2026-4981",
@@ -6249,7 +6253,12 @@
                 "RHSA-2026:49703",
                 "RHSA-2026:50319",
                 "RHSA-2026:50336",
-                "RHSA-2026:51187"
+                "RHSA-2026:51187",
+                "RHSA-2026:53412",
+                "RHSA-2026:53413",
+                "RHSA-2026:53415",
+                "RHSA-2026:54168",
+                "RHSA-2026:54191"
               ],
               "summary": "Crash when handling long CNAME response in net",
               "details": "When using LookupCNAME with the cgo DNS resolver, a very long CNAME response can trigger a double-free of C memory and a crash.",
@@ -6492,7 +6501,7 @@
               }
             },
             {
-              "modified": "2026-08-07T10:42:57Z",
+              "modified": "2026-08-13T10:42:06Z",
               "published": "2026-06-02T21:39:47Z",
               "schema_version": "1.7.5",
               "id": "GO-2026-5037",
@@ -6526,7 +6535,14 @@
                 "RHSA-2026:46395",
                 "RHSA-2026:49703",
                 "RHSA-2026:50319",
-                "RHSA-2026:51187"
+                "RHSA-2026:51187",
+                "RHSA-2026:53374",
+                "RHSA-2026:53412",
+                "RHSA-2026:53413",
+                "RHSA-2026:53415",
+                "RHSA-2026:53416",
+                "RHSA-2026:54168",
+                "RHSA-2026:54401"
               ],
               "summary": "Inefficient candidate hostname parsing in crypto/x509",
               "details": "(*x509.Certificate).VerifyHostname previously called matchHostnames in a loop over all DNS Subject Alternative Name (SAN) entries. This caused strings.Split(host, \".\") to execute repeatedly on the same input hostname.\n\nWith a large DNS SAN list, verification costs scaled quadratically based on the number of SAN entries multiplied by the hostname's label count. Because x509.Verify validates hostnames before building the certificate chain, this overhead occurred even for untrusted certificates.",
@@ -6878,12 +6894,6 @@
                 "CVE-2026-32282",
                 "GO-2026-4864"
               ],
-              "experimental_analysis": {
-                "GO-2026-4864": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6895,12 +6905,6 @@
                 "CVE-2026-32289",
                 "GO-2026-4865"
               ],
-              "experimental_analysis": {
-                "GO-2026-4865": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6912,12 +6916,6 @@
                 "CVE-2026-32288",
                 "GO-2026-4869"
               ],
-              "experimental_analysis": {
-                "GO-2026-4869": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6929,12 +6927,6 @@
                 "CVE-2026-32283",
                 "GO-2026-4870"
               ],
-              "experimental_analysis": {
-                "GO-2026-4870": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6946,12 +6938,6 @@
                 "CVE-2026-33814",
                 "GO-2026-4918"
               ],
-              "experimental_analysis": {
-                "GO-2026-4918": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6963,12 +6949,6 @@
                 "CVE-2026-32281",
                 "GO-2026-4946"
               ],
-              "experimental_analysis": {
-                "GO-2026-4946": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6980,12 +6960,6 @@
                 "CVE-2026-32280",
                 "GO-2026-4947"
               ],
-              "experimental_analysis": {
-                "GO-2026-4947": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -6997,12 +6971,6 @@
                 "CVE-2026-39822",
                 "GO-2026-4970"
               ],
-              "experimental_analysis": {
-                "GO-2026-4970": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7014,12 +6982,6 @@
                 "CVE-2026-39836",
                 "GO-2026-4971"
               ],
-              "experimental_analysis": {
-                "GO-2026-4971": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7031,12 +6993,6 @@
                 "CVE-2026-39825",
                 "GO-2026-4976"
               ],
-              "experimental_analysis": {
-                "GO-2026-4976": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7048,12 +7004,6 @@
                 "CVE-2026-42499",
                 "GO-2026-4977"
               ],
-              "experimental_analysis": {
-                "GO-2026-4977": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7065,12 +7015,6 @@
                 "CVE-2026-39826",
                 "GO-2026-4980"
               ],
-              "experimental_analysis": {
-                "GO-2026-4980": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7082,12 +7026,6 @@
                 "CVE-2026-33811",
                 "GO-2026-4981"
               ],
-              "experimental_analysis": {
-                "GO-2026-4981": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7099,12 +7037,6 @@
                 "CVE-2026-39823",
                 "GO-2026-4982"
               ],
-              "experimental_analysis": {
-                "GO-2026-4982": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7116,12 +7048,6 @@
                 "CVE-2026-39820",
                 "GO-2026-4986"
               ],
-              "experimental_analysis": {
-                "GO-2026-4986": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7133,12 +7059,6 @@
                 "CVE-2026-27145",
                 "GO-2026-5037"
               ],
-              "experimental_analysis": {
-                "GO-2026-5037": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7150,12 +7070,6 @@
                 "CVE-2026-42504",
                 "GO-2026-5038"
               ],
-              "experimental_analysis": {
-                "GO-2026-5038": {
-                  "called": false,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7167,12 +7081,6 @@
                 "CVE-2026-42507",
                 "GO-2026-5039"
               ],
-              "experimental_analysis": {
-                "GO-2026-5039": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             },
             {
@@ -7184,12 +7092,6 @@
                 "CVE-2026-42505",
                 "GO-2026-5856"
               ],
-              "experimental_analysis": {
-                "GO-2026-5856": {
-                  "called": true,
-                  "unimportant": false
-                }
-              },
               "max_severity": ""
             }
           ],
