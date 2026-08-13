@@ -10,6 +10,19 @@ merely completed.
 
 ## Where the tasks live
 
+> **Explanation.** This document describes the fixture for maintainers. It is
+> deliberately outside the agent source and specification so the Coder must
+> infer failures from evaluation evidence.
+
+## Prerequisites
+
+Read this alongside the smoke-agent README and its baseline guard tests.
+
+**Do not fix them in the agent.** A well-meaning cleanup silently destroys what
+the fixture measures: with the weakness gone, the baseline passes, the Analyzer
+gets no failing trace, and a run that does nothing looks identical to a run that
+works.
+
 Tasks are authored in `examples/smoke-agent/dataset/tasks.json` and rendered into
 Harbor task directories under `dataset/groups/` by `scripts/render_tasks.py`,
 which `scripts/build_image.py` runs. `dataset/groups/` is gitignored: edits made
@@ -151,3 +164,9 @@ before changing either.
 What is **not** pinned: no test asserts which task sits in which split. The split
 assignments described above can drift without a test failing, so check them
 against `dataset/tasks.json` whenever you edit the manifest.
+
+## Next steps
+
+After changing a scenario, run the smoke-agent asset and baseline tests before
+running an Experimentalist loop. Check split assignments against `dataset/tasks.json`
+whenever you edit the manifest.

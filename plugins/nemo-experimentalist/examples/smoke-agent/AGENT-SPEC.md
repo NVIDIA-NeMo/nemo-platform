@@ -3,6 +3,11 @@
 
 # smoke-agent
 
+## Prerequisites
+
+- The records file is available at `/app/data/records.json`.
+- The task runner can write `/app/artifacts/` and `/app/traces/`.
+
 ## Job
 
 Answer one question about the records file at `/app/data/records.json` and write
@@ -64,3 +69,7 @@ where `total=99` is expected, even though the number is right.
 - The output line is compared byte-for-byte against the task's expected value,
   so trailing whitespace, extra lines, and changes to the `<field>=<value>` form
   all count as wrong answers.
+
+## Next steps
+
+Run the requested task and preserve this contract in any implementation change.

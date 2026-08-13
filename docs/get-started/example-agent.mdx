@@ -9,6 +9,8 @@ a small, deterministic example with known failures. The default path uses the
 fast `g1-aggregation` scenario; later sections show optional dataset-driven and
 full-dataset runs.
 
+To optimize an agent you already have, follow the [agent onboarding guide](/documentation/get-started) instead.
+
 ## Prerequisites
 
 - Git, GNU Make, uv, and pnpm
@@ -32,15 +34,22 @@ Make sure Docker Desktop or the Docker daemon is running, then start setup:
 uv run nemo setup
 ```
 
+Agent traces are stored in ClickHouse. Intake automatically provisions a local
+container; to use an external instance, set `NMP_INTAKE_CLICKHOUSE_URL` before
+running setup.
+
 Register the provider you want Platform agents to use, then select a default
-model and a fast model. `nemo setup` stores their credentials in Platform
-Secrets and creates workspace-qualified Model Entities. Confirm that the
-Platform is ready:
+model and a fast model. Press Enter at the fast-model prompt to reuse the
+default model. `nemo setup` stores credentials in Platform Secrets and creates
+workspace-qualified Model Entities. Confirm that the Platform is ready:
 
 ```bash
 export NMP_BASE_URL=http://localhost:8080
 curl -sf "$NMP_BASE_URL/health/ready"
 ```
+
+Open [NeMo Studio](http://localhost:8080) to browse the workspace, traces, and
+optimization runs created below.
 
 ## 3. Prepare smoke-agent
 
@@ -48,11 +57,11 @@ The smoke agent makes no model calls. It reads a small records file with regular
 expressions, so its baseline failure is repeatable. The Analyst and
 Experimentalist do use the Model Entities configured above.
 
-The walkthrough starts with G1: the agent can look up, list, and count records,
+The walkthrough starts with the first group, G1 (`g1-aggregation`): the agent can look up, list, and count records,
 but cannot calculate total hours. Its validation tasks vary the scope from a
 department to all records or a role, so a narrow repair does not transfer. Later
 sections combine G1 with the name, long-input, dispatch-order, and edge-case
-weaknesses. The fixture's [detailed weakness rationale](../../plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md)
+weaknesses. The fixture's [detailed weakness rationale](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md)
 explains those scenarios and task splits.
 
 Run model-authored work in a Docker Sandbox. Clone mode gives the sandbox a
@@ -83,14 +92,6 @@ rendered directories are disposable; edit the manifest or template instead.
 The fresh external-only sandbox does not include a C compiler or Python headers.
 They are needed once to build `nemo-fabric-runtime`, a dependency used by the
 Experimentalist.
-
-The commands below use the Model Entity IDs created by the local setup used to
-test this example. Replace them if your `nemo setup` registered different IDs.
-
-```bash
-default_model="default/openai-openai-gpt-5-6-terra"
-fast_model="default/openai-openai-gpt-5-6-luna"
-```
 
 <Warning>
 Clone mode protects the host checkout from writes, but it does not isolate
@@ -126,16 +127,17 @@ sbx exec --workdir "$repo" \
 If a trace cannot be retrieved, do not continue; rerun the recording command
 after checking that the Platform is ready.
 
+The uploaded traces appear in the [Traces view](http://localhost:8080/studio/workspaces/canonical-smoke-agent/intake/traces).
+
 The Analyst reads those traces and files an Insight in the Platform. An Insight
 is a human-readable description of a recurring problem, similar to a bug report.
-It includes the trace IDs that support it.
+It includes the trace IDs that support it; it does not prescribe a code change.
+The Experimentalist diagnoses and repairs the implementation from that evidence.
 
 ```bash
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NEMO_DEFAULT_MODEL="$default_model" \
-  --env NEMO_FAST_MODEL="$fast_model" \
   --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
@@ -164,12 +166,16 @@ data, proposes a code change, and validates it. Eval Author uses the Insight’s
 trace references to create additional tasks; the committed `g1-aggregation`
 datasets remain as regression checks.
 
+The default G1 scenario typically takes tens of minutes; allow up to an hour.
+
 The Experimentalist generates a draft pull request (PR) or merge request (MR)
 when it receives a GitHub or GitLab agent source. It creates a branch only when
 a changed candidate wins validation.
 
 Git integration is optional. To run the optimization without creating a
 repository or PR/MR, [jump to the local-only alternative](#optional-run-locally-without-creating-a-pr-or-mr).
+A local Git repository is also sufficient when it is reachable from the sandbox;
+a remote is only needed to publish a PR or MR.
 
 To optimize the example agent, create a private GitHub repository with the
 [GitHub CLI](https://cli.github.com/) and populate it with the smoke-agent
@@ -204,12 +210,6 @@ configuration. Authenticate GitHub inside the sandbox so it can clone and push
 the private repository. The explicit `--agent` flag takes precedence over the
 local `agent_source` in `optimizer.yaml`, so this run optimizes the Git baseline.
 
-<Warning>
-Clone mode is an integrity boundary, not a confidentiality boundary. The
-sandbox can read the cloned host repository and every credential passed with
-`sbx exec --env`. Use dedicated, revocable, spending-limited credentials.
-</Warning>
-
 ```bash
 sbx create --clone --profile external-only --name nemo-experimentalist-git shell "$repo"
 sbx exec --user root nemo-experimentalist-git bash -lc \
@@ -223,8 +223,6 @@ sbx exec --workdir "$repo" nemo-experimentalist-git bash -lc \
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NEMO_DEFAULT_MODEL="$default_model" \
-  --env NEMO_FAST_MODEL="$fast_model" \
   --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist-git \
   bash -lc "uv run --frozen --python 3.13 \
@@ -279,8 +277,6 @@ changes only a private sandbox clone and never creates a PR/MR. The sandbox uses
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NEMO_DEFAULT_MODEL="$default_model" \
-  --env NEMO_FAST_MODEL="$fast_model" \
   --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
@@ -296,17 +292,7 @@ sbx exec --workdir "$repo" \
 
 The sandbox needs access to the package, model, Docker daemon, and Platform
 endpoints used by the run. `host.docker.internal` reaches the Platform service
-on the host.
-
-<Warning>
-Clone mode protects the host checkout from writes, but it does not isolate
-secrets or host services from code in the sandbox. The complete host repository,
-including ignored `.env` files, is readable at `/run/sandbox/source`. Values
-passed with `sbx exec --env` are readable by the optimizer, candidate agents,
-Harbor verifier, and their subprocesses. Use dedicated, revocable,
-spending-limited credentials, and do not expose unrelated host services or
-network destinations.
-</Warning>
+on the host; the safety boundary described above applies here too.
 
 After the run completes, inspect the run summary and compare the baseline with
 the candidate. The `diff` command exits with status 1 when it finds candidate
@@ -327,15 +313,6 @@ mkdir -p tmp/smoke-agent-artifacts
 sbx cp "nemo-experimentalist:$artifact_dir" tmp/smoke-agent-artifacts/
 ```
 
-Stopping preserves the VM, its private Git clone, experiment output, installed
-packages, and Docker image/build cache. Remove the sandbox when you no longer
-need that state:
-
-```bash
-sbx stop nemo-experimentalist
-sbx rm nemo-experimentalist
-```
-
 ## Optional: run directly from datasets
 
 Mode 2 skips the Analyst and Insight. Use it when you already have a trusted
@@ -346,8 +323,6 @@ uses the same `g1-aggregation` repair scenario, but passes `--no-insight`.
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NEMO_DEFAULT_MODEL="$default_model" \
-  --env NEMO_FAST_MODEL="$fast_model" \
   --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
@@ -375,8 +350,6 @@ sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
   --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
-  --env NEMO_DEFAULT_MODEL="$default_model" \
-  --env NEMO_FAST_MODEL="$fast_model" \
   --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist \
   bash -lc "uv run --frozen --python 3.13 \
@@ -390,9 +363,20 @@ sbx exec --workdir "$repo" \
 ```
 
 The combined dataset is generated and not committed. Rebuild it after changing
-an included group. The [smoke-agent README](../../plugins/nemo-experimentalist/examples/smoke-agent/README.md)
+an included group. The [smoke-agent README](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-experimentalist/examples/smoke-agent/README.md)
 lists the included groups and explains why others are held out.
 
-The `OTLP_ENDPOINT` setting in the sandbox commands sends Experimentalist,
-Analyst, and agent telemetry to the tracing endpoint on the host, where it can
-be viewed alongside the Platform run.
+`OTLP_ENDPOINT` routes sandbox telemetry to the host trace collector. The
+`host.docker.internal` address is required because the sandbox has its own network namespace.
+
+## Clean up
+
+Stopping preserves each sandbox's private checkout, experiment output, installed
+packages, and image cache. Remove both sandboxes when that state is no longer useful:
+
+```bash
+for sandbox in nemo-experimentalist nemo-experimentalist-git; do
+  sbx stop "$sandbox"
+  sbx rm "$sandbox"
+done
+```
