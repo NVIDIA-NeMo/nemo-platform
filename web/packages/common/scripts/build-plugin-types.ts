@@ -32,4 +32,5 @@ await build({
   output: { dir: OUT_DIR, format: 'esm', banner: LICENSE_BANNER },
 });
 
+// eslint-disable-next-line no-console
 console.log(`Plugin surface types written to ${OUT_DIR}/plugin.d.ts`);

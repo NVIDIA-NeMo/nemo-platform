@@ -16,7 +16,7 @@
     "test:ci": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:once": "vitest --run",
-    "types:plugin": "node scripts/build-plugin-types.mjs",
+    "types:plugin": "tsx scripts/build-plugin-types.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
