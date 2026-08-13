@@ -252,12 +252,23 @@ def test_task_template_has_an_empty_environment_dir() -> None:
 
 
 def test_renderer_reproduces_the_curated_task_tree(tmp_path: Path) -> None:
-    """Check that the compact manifest renders the exact checked-in fixture."""
+    """Check that the compact manifest renders the exact checked-in fixture.
+
+    The hash covers every rendered path and its bytes, so it moves whenever
+    ``tasks.json`` or ``task-template/`` changes. That is intended -- an edit to
+    either should be a deliberate, reviewed act -- but it means the digest has to
+    be updated by hand, and a stale digest says nothing about *what* differs.
+    """
     dataset = tmp_path / "dataset"
     shutil.copytree(_EXAMPLE_DIR / "dataset", dataset)
     rendered = _renderer().render(dataset)
     assert len(rendered) == 50
-    assert _tree_sha256(dataset / "groups") == _RENDERED_TASK_TREE_SHA256
+    actual = _tree_sha256(dataset / "groups")
+    assert actual == _RENDERED_TASK_TREE_SHA256, (
+        f"rendered task tree changed: expected {_RENDERED_TASK_TREE_SHA256}, got {actual}. "
+        "If the manifest or template edit was intended, set _RENDERED_TASK_TREE_SHA256 to the "
+        "value above after confirming the rendered tasks are correct."
+    )
 
 
 @functools.cache
