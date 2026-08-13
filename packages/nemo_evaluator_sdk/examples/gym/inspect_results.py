@@ -67,15 +67,6 @@ def aggregate(summary: AgentEvalSummary, name: str) -> AggregateScore:
     available = ", ".join(sorted(score.name for score in summary.scores.scores))
     raise KeyError(f"no aggregate named {name!r}; available: {available}")
 
-
-# Per-task values need no accessor here: `summary.task_outcomes("<metric_type>.<output>")` returns
-# `list[PerTaskOutcomes]` already sorted by task, each naming its own `task_id` and `metric_name`,
-# and each trial naming the `trial_id` that produced it — so a value can be joined back to
-# `trials.jsonl` (where a failed trial's error lives) or across to another metric's outcomes.
-# Records are ordered by trial, and `trial_id` rather than position is what lines two outputs up:
-# a trial whose metric failed is absent rather than null, so two lists for one task need not be the
-# same length.
-
 # --------------------------------------------------------------------------------------------------
 # Bundle loading (see the run.json manifest for the full artifact list).
 # --------------------------------------------------------------------------------------------------
