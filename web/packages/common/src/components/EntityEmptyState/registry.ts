@@ -135,7 +135,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: BrainCircuit,
     heading: 'No base models available',
     subheading:
-      'Base models are discovered automatically from registered inference providers in this workspace.',
+      'Registered inference providers in this workspace automatically surface their base models here.',
   },
   deployments: {
     icon: Rocket,
@@ -179,7 +179,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
     icon: UsersRound,
     heading: 'No members yet',
     subheading:
-      'Besides implicit workspace owners, no principals have been granted Viewer, Editor, or Admin access yet.',
+      'Add a member to grant Viewer, Editor, or Admin access beyond the implicit workspace owners.',
     createAction: { label: 'Add Member' },
     cliCommand:
       'nemo workspaces members create --workspace <workspace-id> --principal <email> --roles <RoleName>',
@@ -263,14 +263,14 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
   },
   insightExperiments: {
     icon: FlaskConical,
-    heading: 'No experiments',
-    subheading: 'No experiments for this insight yet.',
+    heading: 'No experiments yet',
+    subheading: 'This insight has no linked experiments yet.',
     createAction: { label: 'Run Experiment' },
   },
   insightTraces: {
     icon: Anchor,
-    heading: 'No traces',
-    subheading: 'This insight has no linked traces.',
+    heading: 'No traces yet',
+    subheading: 'This insight has no linked traces yet.',
   },
   telemetryTraces: {
     icon: Anchor,
@@ -285,7 +285,7 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
   agentMonitorRuns: {
     icon: HatGlasses,
     heading: 'No runs yet',
-    subheading: 'Invoke an agent to populate the nemo-agent-telemetry fileset.',
+    subheading: 'Agent invocations populate this list once telemetry reaches the nemo-agent-telemetry fileset.',
   },
   agents: {
     icon: HatGlasses,

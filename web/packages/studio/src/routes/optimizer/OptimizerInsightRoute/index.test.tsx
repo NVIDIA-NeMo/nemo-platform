@@ -118,7 +118,7 @@ describe('OptimizerInsightRoute experiments', () => {
     const { unmount } = renderInsight();
 
     expect(await screen.findByText('Failed to load experiments')).toBeInTheDocument();
-    expect(screen.queryByText('No experiments for this insight yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('This insight has no linked experiments yet.')).not.toBeInTheDocument();
     unmount();
 
     server.use(
@@ -126,7 +126,7 @@ describe('OptimizerInsightRoute experiments', () => {
     );
     renderInsight();
 
-    expect(await screen.findByText('No experiments for this insight yet.')).toBeInTheDocument();
+    expect(await screen.findByText('This insight has no linked experiments yet.')).toBeInTheDocument();
     expect(screen.queryByText('Failed to load experiments')).not.toBeInTheDocument();
   });
 
