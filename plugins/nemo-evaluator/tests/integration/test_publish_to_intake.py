@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 import os
+import shutil
 import socket
 import subprocess
 import time
@@ -104,30 +105,48 @@ def _wait_for_ready(base_url: str, *, timeout: float) -> None:
     raise RuntimeError(f"platform at {base_url} not ready within {timeout}s")
 
 
+#: Stable data directory for this suite's ClickHouse container.
+#
+# Deliberately not a per-session temp directory. The provisioner names the container from a fixed
+# legacy name but validates it against the data directory it was created with, so a per-session
+# path means every new session presents a *different* directory under the *same* container name.
+# One container that outlives its session — which is exactly what happens when an xdist worker is
+# killed before its teardown runs — then makes every later session fail to provision with
+# "does not use the expected data directory", and `--remove` cannot clear it because removal only
+# matches containers whose data directory equals the one being asked for.
+#
+# With a stable path, a stranded container is reclaimable: `--remove` below matches it, so the
+# next session cleans it up instead of colliding with it.
+_CLICKHOUSE_DATA_DIR = REPO_ROOT / "tmp" / "evaluator-intake-clickhouse"
+
+
+def _run_clickhouse_script(*args: str, env: dict[str, str], check: bool) -> None:
+    """Invoke the local ClickHouse provisioner script."""
+    subprocess.run(
+        ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh"), *args],
+        check=check,
+        cwd=REPO_ROOT,
+        env=env,
+    )
+
+
 @pytest.fixture(scope="session")
-def _clickhouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+def _clickhouse() -> Iterator[None]:
     if not _docker_available():
         pytest.skip("Docker not available; required for ClickHouse-backed Intake")
-    clickhouse_env = {
-        **os.environ,
-        "CLICKHOUSE_DATA_DIR": str(tmp_path_factory.mktemp("evaluator-intake-clickhouse")),
-    }
+    clickhouse_env = {**os.environ, "CLICKHOUSE_DATA_DIR": str(_CLICKHOUSE_DATA_DIR)}
+    # Reclaim anything a previous session left behind before provisioning. Not check=True: there is
+    # usually nothing to remove, and a failure here must not mask the provisioning error below.
+    _run_clickhouse_script("--remove", env=clickhouse_env, check=False)
+    shutil.rmtree(_CLICKHOUSE_DATA_DIR, ignore_errors=True)
     try:
-        subprocess.run(
-            ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
-            check=True,
-            cwd=REPO_ROOT,
-            env=clickhouse_env,
-        )
+        _run_clickhouse_script(env=clickhouse_env, check=True)
         _wait_for_tcp("localhost", 8123, timeout=60)
         yield
     finally:
-        subprocess.run(
-            ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh"), "--remove"],
-            check=True,
-            cwd=REPO_ROOT,
-            env=clickhouse_env,
-        )
+        # Best effort: teardown must not turn a test failure into a fixture error, and the setup
+        # above no longer depends on this having run.
+        _run_clickhouse_script("--remove", env=clickhouse_env, check=False)
 
 
 @pytest.fixture(scope="session")
