@@ -16,7 +16,7 @@ vi.mock('@studio/components/UserPopover', () => ({
   UserPopover: () => <div data-testid="user-popover" />,
 }));
 
-vi.mock('@studio/routes/PageLayout/ThemeSwitch', () => ({
+vi.mock('@studio/components/Layouts/GlobalNav/components/ThemeSwitch', () => ({
   ThemeSwitch: () => <div data-testid="theme-switch" />,
 }));
 
@@ -24,7 +24,7 @@ vi.mock('@studio/routes/agents/AssistantChatRoute/AssistantTopBarChat', () => ({
   AssistantTopBarChat: () => <div data-testid="assistant-top-bar-chat" />,
 }));
 
-vi.mock('@studio/routes/PageLayout/DocumentationLink', () => ({
+vi.mock('@studio/components/Layouts/GlobalNav/components/DocumentationLink', () => ({
   DocumentationLink: () => <div data-testid="documentation-link" />,
 }));
 
