@@ -130,9 +130,7 @@ class AutomodelRecipeWrapper:
                 self.callback.report_train_step(
                     step=getattr(log_data, "step", 0) + 1,  # Convert to 1-based
                     epoch=getattr(log_data, "epoch", 0) + 1,  # Convert to 1-based
-                    loss=metrics.get("loss", 0.0),
-                    lr=metrics.get("lr"),
-                    grad_norm=metrics.get("grad_norm"),
+                    metrics=dict(metrics),
                 )
             except Exception as e:
                 logger.warning(f"Failed to report training progress: {e}")
@@ -173,7 +171,11 @@ class AutomodelRecipeWrapper:
                 self.callback.report_validation(
                     step=getattr(log_data, "step", 0) + 1,  # Convert to 1-based
                     epoch=getattr(log_data, "epoch", 0) + 1,  # Convert to 1-based
-                    val_loss=metrics.get("val_loss", 0.0),
+                    # Automodel names it `val_loss`; renaming to `loss` lets the
+                    # phase prefix produce `val_loss` the way it does elsewhere.
+                    # An absent one now yields no point, where it used to chart
+                    # a fabricated 0.0.
+                    metrics={("loss" if name == "val_loss" else name): value for name, value in metrics.items()},
                 )
             except Exception as e:
                 logger.warning(f"Failed to report validation progress: {e}")

@@ -46,8 +46,8 @@ class TestHfTrainerProgressCallback:
         assert kwargs["phase"] == "training"
         assert kwargs["step"] == 8
         assert kwargs["train_loss"] == 2.89
-        assert kwargs["lr"] == 5e-5
-        assert kwargs["grad_norm"] == 10.6
+        assert kwargs["train_lr"] == 5e-5
+        assert kwargs["train_grad_norm"] == 10.6
         assert kwargs["backend"] == "unsloth"
         assert kwargs["metrics"]["train_loss"][-1]["value"] == 2.89
 

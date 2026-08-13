@@ -182,8 +182,8 @@ export const getTrainingTelemetry = (
     epoch: asFiniteNumber(details.epoch),
     trainLoss: asFiniteNumber(details.train_loss),
     valLoss: asFiniteNumber(details.val_loss),
-    learningRate: asFiniteNumber(details.lr),
-    gradNorm: asFiniteNumber(details.grad_norm),
+    learningRate: asFiniteNumber(details.train_lr),
+    gradNorm: asFiniteNumber(details.train_grad_norm),
     checkpointPath: asNonEmptyString(details.checkpoint_path),
   };
 };

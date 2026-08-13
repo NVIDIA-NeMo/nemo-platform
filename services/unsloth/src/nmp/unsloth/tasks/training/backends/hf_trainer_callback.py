@@ -50,9 +50,14 @@ def create_hf_trainer_progress_callback(
             self._progress.report_train_step(
                 step=int(state.global_step),
                 epoch=_epoch_from_value(epoch_raw, self._num_epochs),
-                loss=float(logs["loss"]),
-                lr=float(logs["learning_rate"]) if logs.get("learning_rate") is not None else None,
-                grad_norm=float(logs["grad_norm"]) if logs.get("grad_norm") is not None else None,
+                # `learning_rate` is renamed to the `lr` every other backend uses,
+                # so the series is `train_lr` regardless of who reported it. The
+                # callback drops whichever of these the trainer did not produce.
+                metrics={
+                    "loss": float(logs["loss"]),
+                    "lr": logs.get("learning_rate"),
+                    "grad_norm": logs.get("grad_norm"),
+                },
                 backend=self._backend,
             )
 
@@ -71,7 +76,7 @@ def create_hf_trainer_progress_callback(
             self._progress.report_validation(
                 step=int(state.global_step),
                 epoch=_epoch_from_value(epoch_raw, self._num_epochs),
-                val_loss=float(metrics["eval_loss"]),
+                metrics={"loss": float(metrics["eval_loss"])},
                 backend=self._backend,
             )
 

@@ -22,35 +22,16 @@ _logger = logging.getLogger(__name__)
 # notion of a reporting cadence, so it is derived from val_period.
 _REPORTS_PER_VAL_PERIOD = 10
 
-# Metric keys forwarded to Jobs Service, in addition to loss/lr/grad_norm.
-# Selection is by presence, so an algorithm that does not produce one of these
-# simply omits it.
-_TRAIN_METRIC_KEYS = (
-    "num_valid_samples",
-    "preference_loss",
-    "rewards_rejected_mean",
-    "global_valid_seqs",
-    "global_valid_toks",
-)
-
-_VALIDATION_METRIC_KEYS = _TRAIN_METRIC_KEYS
-
-
-def has_metric_value(metric: Any) -> bool:
-    """Whether ``metric`` is a finite scalar to forward to Jobs Service.
-
-    The type check is load-bearing, not defensive. NeMo-RL's metric dicts carry
-    non-scalars alongside the numbers: ``calculate_single_metric`` emits a
-    ``<key>/histogram`` holding a ``Histogram`` object, NeMo-Gym adds a
-    per-agent ``full_result`` ``Table``, and ``generation_logger_metrics`` is a
-    nested dict. ``math.isfinite`` raises ``TypeError`` on all of those, so a
-    bare None-check would turn a widened key list into a crash mid-training.
-
-    Delegates to the shared predicate so the wire filter and the series filter
-    cannot drift apart -- a metric this forwards must be one the callback can
-    chart.
-    """
-    return is_chartable(metric)
+# NeMo-RL's metric dicts are forwarded whole. There is no allow-list: the
+# callback keeps the finite scalars and drops everything else, so a metric
+# NeMo-RL adds charts itself instead of waiting on a change here. That is what
+# the old list cost -- DPO's `accuracy`, `sft_loss` and `rewards_chosen_mean`
+# were dropped silently for never having been added to it.
+#
+# The callback's filter is load-bearing, not defensive: `calculate_single_metric`
+# emits a `<key>/histogram` holding a `Histogram`, NeMo-Gym adds a per-agent
+# `full_result` `Table`, and `generation_logger_metrics` is a nested dict. Each
+# one rides in the same dict as the scalars.
 
 
 def resolve_log_interval(val_period: int | None) -> int:
@@ -187,15 +168,8 @@ class NemoRLLogger(LoggerInterface):
         epoch = (max(step - 1, 0) // self._steps_per_epoch) + 1
 
         # Handle training loss
-        if prefix == "train" and has_metric_value(metrics.get("loss")):
-            report = {
-                "step": step,
-                "epoch": epoch,
-                "loss": metrics["loss"],
-                "lr": metrics.get("lr"),
-                "grad_norm": metrics.get("grad_norm"),
-                **self._select_metrics(metrics, _TRAIN_METRIC_KEYS),
-            }
+        if prefix == "train" and is_chartable(metrics.get("loss")):
+            report = {"step": step, "epoch": epoch, "metrics": dict(metrics)}
             # Throttled to log_interval to reduce output. A withheld step is held as
             # pending rather than dropped, so close() can flush the last one.
             if step % self._log_interval == 0:
@@ -206,25 +180,15 @@ class NemoRLLogger(LoggerInterface):
 
         # Handle validation metrics
         elif prefix and prefix.startswith("validation"):
-            if has_metric_value(metrics.get("loss")):
+            if is_chartable(metrics.get("loss")):
                 val_loss = metrics["loss"]
-                self._callback.report_validation(
-                    step=step,
-                    epoch=epoch,
-                    val_loss=val_loss,
-                    **self._select_metrics(metrics, _VALIDATION_METRIC_KEYS),
-                )
+                self._callback.report_validation(step=step, epoch=epoch, metrics=dict(metrics))
                 # Track best validation loss
                 if val_loss < self._best_metric_value:
                     self._best_metric_value = val_loss
                     self._best_epoch = epoch
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
-
-    @staticmethod
-    def _select_metrics(metrics: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
-        """Pick the whitelisted keys that carry a forwardable scalar."""
-        return {key: metrics[key] for key in keys if has_metric_value(metrics.get(key))}
 
     def log_hyperparams(self, params: Mapping[str, Any]) -> None:
         """Log hyperparameters and report training start.

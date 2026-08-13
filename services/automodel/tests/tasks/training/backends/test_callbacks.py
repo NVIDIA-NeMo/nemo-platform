@@ -26,9 +26,9 @@ class TestTrainingProgressCallback:
     def test_train_step_accumulates_metrics(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
-        callback.report_train_step(step=2, epoch=1, loss=2.89)
-        callback.report_train_step(step=3, epoch=1, loss=2.56)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 2.89})
+        callback.report_train_step(step=3, epoch=1, metrics={"loss": 2.56})
 
         kwargs = self._last_report_kwargs(reporter)
         assert kwargs["metrics"]["train_loss"] == [
@@ -40,8 +40,8 @@ class TestTrainingProgressCallback:
     def test_validation_accumulates_metrics(self):
         callback, reporter = self._make_callback()
 
-        callback.report_validation(step=250, epoch=1, val_loss=3.19)
-        callback.report_validation(step=500, epoch=2, val_loss=2.09)
+        callback.report_validation(step=250, epoch=1, metrics={"loss": 3.19})
+        callback.report_validation(step=500, epoch=2, metrics={"loss": 2.09})
 
         kwargs = self._last_report_kwargs(reporter)
         assert kwargs["metrics"]["val_loss"] == [
@@ -53,10 +53,10 @@ class TestTrainingProgressCallback:
     def test_mixed_train_and_val_both_present(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
-        callback.report_train_step(step=2, epoch=1, loss=2.89)
-        callback.report_validation(step=2, epoch=1, val_loss=3.19)
-        callback.report_train_step(step=3, epoch=1, loss=2.56)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 2.89})
+        callback.report_validation(step=2, epoch=1, metrics={"loss": 3.19})
+        callback.report_train_step(step=3, epoch=1, metrics={"loss": 2.56})
 
         kwargs = self._last_report_kwargs(reporter)
         assert len(kwargs["metrics"]["train_loss"]) == 3
@@ -65,19 +65,19 @@ class TestTrainingProgressCallback:
     def test_metrics_included_in_every_update(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
         first_call_kwargs = reporter.report_running.call_args_list[0].kwargs
         assert len(first_call_kwargs["metrics"]["train_loss"]) == 1
         assert first_call_kwargs["metrics"]["val_loss"] == []
 
-        callback.report_train_step(step=2, epoch=1, loss=2.89)
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 2.89})
         second_call_kwargs = reporter.report_running.call_args_list[1].kwargs
         assert len(second_call_kwargs["metrics"]["train_loss"]) == 2
 
     def test_train_step_uses_train_loss_flat_field(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
 
         kwargs = self._last_report_kwargs(reporter)
         assert kwargs["train_loss"] == 3.21
@@ -86,11 +86,11 @@ class TestTrainingProgressCallback:
     def test_train_step_passes_optional_fields(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21, lr=0.0002, grad_norm=1.5)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21, "lr": 0.0002, "grad_norm": 1.5})
 
         kwargs = self._last_report_kwargs(reporter)
-        assert kwargs["lr"] == 0.0002
-        assert kwargs["grad_norm"] == 1.5
+        assert kwargs["train_lr"] == 0.0002
+        assert kwargs["train_grad_norm"] == 1.5
 
     def test_seeds_from_server_on_init(self):
         prior = {
@@ -115,7 +115,7 @@ class TestTrainingProgressCallback:
         }
         callback, reporter = self._make_callback(prior_metrics=prior)
 
-        callback.report_train_step(step=2, epoch=1, loss=2.89)
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 2.89})
 
         kwargs = self._last_report_kwargs(reporter)
         assert kwargs["metrics"]["train_loss"] == [
@@ -130,7 +130,7 @@ class TestTrainingProgressCallback:
         }
         callback, reporter = self._make_callback(prior_metrics=prior)
 
-        callback.report_train_step(step=2, epoch=1, loss=2.89)
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 2.89})
 
         kwargs = self._last_report_kwargs(reporter)
         assert len(kwargs["metrics"]["val_loss"]) == 1
@@ -171,7 +171,7 @@ class TestTrainingProgressCallback:
         """
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
         callback.report_checkpoint_saved(step=1, epoch=1, checkpoint_path="/tmp/ckpt")
 
         assert "metrics" not in self._last_report_kwargs(reporter)
@@ -179,7 +179,7 @@ class TestTrainingProgressCallback:
     def test_epoch_end_report_leaves_the_accumulated_series_alone(self):
         callback, reporter = self._make_callback()
 
-        callback.report_train_step(step=1, epoch=1, loss=3.21)
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 3.21})
         callback.report_epoch_end(step=1, epoch=1)
 
         assert "metrics" not in self._last_report_kwargs(reporter)

@@ -18,14 +18,21 @@ partial copy.
 
 Series naming
 -------------
-Series are namespaced by the phase that produced them: ``train_<name>`` and
-``val_<name>``, which is what the long-standing ``train_loss``/``val_loss`` pair
-already did. The prefix is load-bearing rather than cosmetic -- DPO reports
-``accuracy`` in both its train and validation dicts, so unprefixed names would
-interleave two different quantities into one series.
+One rule, no exceptions: a metric is stored and reported as ``<phase>_<name>``,
+where the backend supplies its framework's own ``<name>`` (``loss``, ``lr``,
+``accuracy``) and the phase that produced it supplies the prefix. The same
+namespaced name is used for the accumulated series and for the current-step
+value in ``status_details``.
 
-``train_loss`` and ``val_loss`` keep those exact names, so existing consumers
-(the Studio loss chart) are unaffected.
+The prefix is load-bearing rather than cosmetic -- DPO reports ``accuracy`` in
+both its train and validation dicts, so bare names would interleave two
+different quantities into one series. It also makes the payload collision-proof:
+nothing a ``<phase>_`` name can spell reaches ``phase``, ``step``, ``epoch`` or
+``metrics``.
+
+``train_loss`` and ``val_loss``, the two series Studio charts, are what this rule
+produces for a metric named ``loss``. They are not special cases, and there are
+none.
 
 Payload size
 ------------
@@ -54,26 +61,12 @@ Callers may also pass ``backend`` per call (e.g. unsloth's HF trainer callback).
 import logging
 import math
 import numbers
+from collections.abc import Mapping
 from typing import Any, ClassVar, cast
 
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
-
-#: ``(phase, name)`` pairs that keep the bare name instead of taking a phase
-#: prefix, because they predate the prefixing scheme and are read by name
-#: downstream.
-#:
-#: Keyed on the phase as well as the name, not the name alone: a backend that
-#: reports ``val_loss`` among a *train* step's metrics would otherwise append it
-#: to the validation loss curve, which is exactly the cross-phase interleaving
-#: the prefix exists to prevent. Such a metric becomes ``train_val_loss``.
-_UNPREFIXED = frozenset({("train", "train_loss"), ("val", "val_loss")})
-
-#: Names a backend metric may not use, because ``report_running`` takes ``phase``
-#: as its own parameter -- a collision is a TypeError out of the training loop
-#: rather than the silent shadowing that splat order gives the other names.
-_RESERVED = frozenset({"phase"})
 
 
 def is_chartable(value: Any) -> bool:
@@ -103,21 +96,36 @@ def is_chartable(value: Any) -> bool:
         return False
 
 
-def _forwardable(additional_metrics: dict[str, object]) -> dict[str, object]:
-    """The subset of ``additional_metrics`` that may ride along in status_details.
+def _namespace(phase: str, metrics: Mapping[str, object]) -> dict[str, float | int]:
+    """The chartable subset of ``metrics``, keyed by ``<phase>_<name>``.
 
-    Keeps one invariant: a metric appears as a current-step scalar exactly when
-    it also entered a series. Both drops are silent, for the same reason -- one
-    bad metric should cost its own curve, never the whole report:
+    The single naming rule. A backend passes its framework's own metric names --
+    ``loss``, ``lr``, ``accuracy`` -- and the phase that produced them supplies
+    the prefix, so the train and validation copies of one name cannot collide.
+    ``train_loss`` and ``val_loss`` are what the rule produces for ``loss``, not
+    exceptions carved out of it.
 
-    - Values :func:`is_chartable` rejects. ``_record`` already skipped these, but
-      they were still splatted into the payload, where a ``Histogram`` makes the
-      whole update fail to serialize. ``update_task`` swallows that error, so
-      every metric in the report is lost while the job goes on looking healthy.
-    - :data:`_RESERVED` names, which collide with ``report_running``'s own
-      parameters and raise ``TypeError`` into the training loop.
+    Prefixing is also what makes the payload collision-proof: ``report_running``
+    owns ``phase``, and this callback owns ``step``, ``epoch`` and ``metrics``,
+    none of which a ``<phase>_`` name can reach.
+
+    Values :func:`is_chartable` rejects are dropped silently, and dropped from
+    the report as well as the series -- one bad metric should cost its own curve,
+    never the whole report. A ``Histogram`` left in ``status_details`` makes the
+    update fail to serialize, and ``update_task`` swallows that error, so every
+    metric in the report is lost while the job goes on looking healthy.
     """
-    return {name: value for name, value in additional_metrics.items() if name not in _RESERVED and is_chartable(value)}
+    return {f"{phase}_{name}": _coerce(value) for name, value in metrics.items() if is_chartable(value)}
+
+
+def _coerce(value: object) -> float | int:
+    """Narrow a chartable value to a JSON-serializable builtin.
+
+    numpy scalars satisfy ``numbers.Real`` but are not serializable. Counts stay
+    ``int`` rather than becoming ``64.0``.
+    """
+    real = cast(numbers.Real, value)
+    return int(real) if isinstance(real, numbers.Integral) else float(real)
 
 
 class TrainingProgressCallback:
@@ -144,21 +152,35 @@ class TrainingProgressCallback:
     def _resolve_backend(self, backend: str | None) -> str | None:
         return backend if backend is not None else self._default_backend
 
-    def _record(self, phase: str, name: str, step: int, epoch: int, value: object) -> None:
-        """Append one point to the ``<phase>_<name>`` series, if it is chartable.
+    def _report_metrics(
+        self,
+        phase: str,
+        report_phase: str,
+        step: int,
+        epoch: int,
+        metrics: Mapping[str, object],
+        backend: str | None,
+    ) -> None:
+        """Record every metric as a point and report them as current values.
 
-        Silently drops non-numeric values rather than raising: a backend adding a
-        metric that turns out to be a histogram should lose that one series, not
-        fail the training run's progress reporting.
+        The one path both ``report_train_step`` and ``report_validation`` take.
+        ``phase`` namespaces the series (``train``/``val``); ``report_phase`` is
+        what the Jobs service records as the task's phase.
         """
-        if not is_chartable(value):
-            return
-        # Coerce to a built-in: numpy scalars satisfy numbers.Real but are not
-        # JSON-serializable. Counts stay ints rather than becoming 64.0.
-        real = cast(numbers.Real, value)
-        numeric: float | int = int(real) if isinstance(real, numbers.Integral) else float(real)
-        series = name if (phase, name) in _UNPREFIXED else f"{phase}_{name}"
-        self._series.setdefault(series, []).append({"step": step, "epoch": epoch, "value": numeric})
+        namespaced = _namespace(phase, metrics)
+        for name, value in namespaced.items():
+            self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
+
+        details: dict[str, object] = {
+            "step": step,
+            "epoch": epoch,
+            **namespaced,
+            "metrics": self._build_metrics_summary(),
+        }
+        resolved = self._resolve_backend(backend)
+        if resolved is not None:
+            details["backend"] = resolved
+        self._reporter.report_running(phase=report_phase, **details)
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
         """Build the accumulated metrics payload for inclusion in status_details.
@@ -190,83 +212,36 @@ class TrainingProgressCallback:
         self._reporter.report_running(phase="training", **details)
 
     def report_train_step(
-        self,
-        step: int,
-        epoch: int,
-        loss: float,
-        lr: float | None = None,
-        grad_norm: float | None = None,
-        *,
-        backend: str | None = None,
-        **additional_metrics: object,
+        self, step: int, epoch: int, metrics: Mapping[str, object], *, backend: str | None = None
     ) -> None:
-        """Report training step with metrics.
+        """Report one training step.
 
-        ``additional_metrics`` are backend-specific (DPO's ``preference_loss``,
-        ``rewards_rejected_mean``, ...). Each numeric one accumulates into
-        its own ``train_<name>`` series *and* rides along as a current-step
-        scalar, so consumers can read either the curve or the latest value.
+        Hand over the framework's metric dict as-is, under its own names --
+        ``loss``, ``lr``, ``grad_norm``, ``preference_loss``, whatever it
+        produces. Each chartable entry becomes a ``train_<name>`` series *and* a
+        ``train_<name>`` current value, so a consumer can read either the curve or
+        the latest point.
 
-        Every scalar is stated only when it was actually observed, matching
-        ``val_loss``: an absent ``lr`` or a NaN ``grad_norm`` reaches the server
-        as a null, which a chart reads as a real zero.
+        No metric is required and none is privileged: a step that produces no
+        loss reports no ``train_loss``, and a name is stated only when it was
+        observed, because a null charts as a real zero.
+
+        Taken as a dict rather than ``**kwargs`` so that the metric namespace and
+        this method's own parameters cannot collide. Backends forward whatever
+        their framework emits, and a framework is free to call something ``step``.
         """
-        forwardable = _forwardable(additional_metrics)
-        self._record("train", "train_loss", step, epoch, loss)
-        self._record("train", "lr", step, epoch, lr)
-        self._record("train", "grad_norm", step, epoch, grad_norm)
-        for name, value in forwardable.items():
-            self._record("train", name, step, epoch, value)
-        # `**forwardable` is splatted first, matching report_validation, so a
-        # backend metric cannot shadow the accumulated series or the step's own loss.
-        # `step`/`epoch`/`lr`/`grad_norm` are named parameters and so already safe.
-        details: dict[str, object] = {
-            **forwardable,
-            "step": step,
-            "epoch": epoch,
-            "metrics": self._build_metrics_summary(),
-        }
-        for name, value in (("train_loss", loss), ("lr", lr), ("grad_norm", grad_norm)):
-            if is_chartable(value):
-                details[name] = value
-        resolved = self._resolve_backend(backend)
-        if resolved is not None:
-            details["backend"] = resolved
-        self._reporter.report_running(phase="training", **details)
+        self._report_metrics("train", "training", step, epoch, metrics, backend)
 
     def report_validation(
-        self,
-        step: int,
-        epoch: int,
-        val_loss: float | None = None,
-        *,
-        backend: str | None = None,
-        **additional_metrics: object,
+        self, step: int, epoch: int, metrics: Mapping[str, object], *, backend: str | None = None
     ) -> None:
-        """Report validation results.
+        """Report one validation pass.
 
-        ``val_loss`` is optional because not every algorithm produces one -- an
-        algorithm may validate purely on task metrics and report no loss at all.
-        The key is omitted rather than sent as null, which would chart as a real
-        zero, and the ``val_loss`` series simply stays empty for such runs.
+        The same rule under the ``val_`` prefix. An algorithm that validates on
+        task metrics alone and reports no ``loss`` simply leaves ``val_loss``
+        empty, which is why nothing here is required either.
         """
-        forwardable = _forwardable(additional_metrics)
-        details: dict[str, object] = {
-            "step": step,
-            "epoch": epoch,
-            **forwardable,
-        }
-        for name, value in forwardable.items():
-            self._record("val", name, step, epoch, value)
-        if is_chartable(val_loss):
-            self._record("val", "val_loss", step, epoch, val_loss)
-            details["val_loss"] = val_loss
-        details["metrics"] = self._build_metrics_summary()
-
-        resolved = self._resolve_backend(backend)
-        if resolved is not None:
-            details["backend"] = resolved
-        self._reporter.report_running(phase="validation", **details)
+        self._report_metrics("val", "validation", step, epoch, metrics, backend)
 
     def report_checkpoint_saved(
         self,

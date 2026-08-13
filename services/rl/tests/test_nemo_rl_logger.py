@@ -5,8 +5,10 @@
 
 The metric dicts here mirror what NeMo-RL actually hands the logger, including the
 non-scalar entries (``Histogram`` objects, tables, nested dicts) that share the dict
-with the numbers. Those are the reason ``has_metric_value`` type-checks rather than
-just None-checks, so they are exercised rather than sanitised away.
+with the numbers, so they are exercised rather than sanitised away.
+
+The logger forwards the dict whole and decides only *whether* and *when* to report:
+which entries survive is the shared callback's business, covered by its own suite.
 """
 
 from __future__ import annotations
@@ -50,7 +52,6 @@ if importlib.util.find_spec("nemo_rl") is None:  # pragma: no cover - env depend
 from nmp.rl.tasks.training.backends.nemo_rl import nemo_rl_logger  # noqa: E402
 from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (  # noqa: E402
     NemoRLLogger,
-    has_metric_value,
     resolve_log_interval,
     resolve_steps_per_epoch,
 )
@@ -68,13 +69,11 @@ class _RecordingCallback:
     def report_training_start(self, max_steps: int, num_epochs: int) -> None:
         self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
 
-    def report_train_step(self, step, epoch, loss, lr=None, grad_norm=None, **additional):
-        self.train_steps.append(
-            {"step": step, "epoch": epoch, "loss": loss, "lr": lr, "grad_norm": grad_norm, **additional}
-        )
+    def report_train_step(self, step, epoch, metrics, *, backend=None):
+        self.train_steps.append({"step": step, "epoch": epoch, "metrics": metrics})
 
-    def report_validation(self, step, epoch, val_loss=None, **additional):
-        self.validations.append({"step": step, "epoch": epoch, "val_loss": val_loss, **additional})
+    def report_validation(self, step, epoch, metrics, *, backend=None):
+        self.validations.append({"step": step, "epoch": epoch, "metrics": metrics})
 
     def close(self) -> None:
         self.closed = True
@@ -109,8 +108,8 @@ class _Histogram:
     """Stand-in for a non-numeric metric value — NaN-hostile, like the real thing."""
 
 
-# A DPO `train` dict: the whitelisted scalars, plus the non-scalars that ride
-# along with them in a real NeMo-RL metric dict.
+# A DPO `train` dict: the scalars, plus the non-scalars that ride along with them
+# in a real NeMo-RL metric dict.
 TRAIN_METRICS: dict[str, Any] = {
     "loss": 0.5,
     "lr": 1e-5,
@@ -129,40 +128,8 @@ VALIDATION_METRICS: dict[str, Any] = {"loss": 0.25, "num_valid_samples": 8}
 
 
 # --------------------------------------------------------------------------- #
-# has_metric_value
+# Module stub hygiene
 # --------------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        (0.5, True),
-        (0, True),
-        (-1.5, True),
-        (float("nan"), False),
-        # A diverged loss. Not a chart value, and `Infinity` is not valid JSON.
-        (float("inf"), False),
-        (float("-inf"), False),
-        (None, False),
-        # Non-scalars that genuinely appear in NeMo-RL metric dicts. Each of these
-        # raises TypeError under a bare math.isfinite, which is the regression guarded here.
-        (_Histogram(), False),
-        ({"inflight": [1, 2]}, False),
-        ([1, 2, 3], False),
-        ("0.5", False),
-        # bool is an int subclass; charting a flag as 0/1 is not wanted.
-        (True, False),
-        (False, False),
-    ],
-)
-def test_has_metric_value(value: Any, expected: bool) -> None:
-    assert has_metric_value(value) is expected
-
-
-def test_has_metric_value_does_not_raise_on_any_real_metric() -> None:
-    """Every value in a real metric dict must be classifiable without raising."""
-    for key, value in TRAIN_METRICS.items():
-        assert isinstance(has_metric_value(value), bool), key
 
 
 def test_module_stub_does_not_break_find_spec() -> None:
@@ -176,26 +143,31 @@ def test_module_stub_does_not_break_find_spec() -> None:
     assert importlib.util.find_spec("nemo_rl") is not None
 
 
-def test_has_metric_value_accepts_numpy_scalars() -> None:
-    np = pytest.importorskip("numpy")
-    assert has_metric_value(np.float32(0.5)) is True
-    assert has_metric_value(np.float64(0.5)) is True
-    assert has_metric_value(np.int64(3)) is True
-    assert has_metric_value(np.float32("nan")) is False
-
-
 # --------------------------------------------------------------------------- #
 # Train metrics
 # --------------------------------------------------------------------------- #
 
 
-def test_train_step_drops_non_scalar_metrics(callback: _RecordingCallback) -> None:
-    """Histograms/Tables/nested dicts must not be forwarded, and must not raise."""
+def test_the_metric_dict_is_forwarded_whole(callback: _RecordingCallback) -> None:
+    """No allow-list: a metric NeMo-RL adds charts without a change here.
+
+    The old list silently dropped anything never added to it -- DPO's `accuracy`,
+    `sft_loss` and `rewards_chosen_mean` among them. Deciding which entries are
+    chartable is the callback's job, not a second gate doing a weaker version of
+    the same check.
+    """
     _make_logger().log_metrics(TRAIN_METRICS, step=0, prefix="train")
 
-    reported = callback.train_steps[0]
-    for key in ("some/histogram", "generation_logger_metrics", "per_worker_token_counts"):
-        assert key not in reported
+    assert callback.train_steps[0]["metrics"] == TRAIN_METRICS
+
+
+def test_the_forwarded_dict_is_a_copy(callback: _RecordingCallback) -> None:
+    """NeMo-RL reuses its metric dict across steps; a reference would alias it."""
+    metrics = dict(TRAIN_METRICS)
+    _make_logger().log_metrics(metrics, step=0, prefix="train")
+    metrics["loss"] = 99.0
+
+    assert callback.train_steps[0]["metrics"]["loss"] == 0.5
 
 
 def test_train_call_without_a_loss_is_ignored(callback: _RecordingCallback) -> None:
@@ -206,11 +178,11 @@ def test_train_call_without_a_loss_is_ignored(callback: _RecordingCallback) -> N
     assert callback.train_steps == []
 
 
-def test_whitelisted_train_metrics_are_forwarded(callback: _RecordingCallback) -> None:
-    """The whitelisted scalars ride along with loss/lr/grad_norm."""
+def test_every_train_scalar_is_forwarded(callback: _RecordingCallback) -> None:
+    """Including the ones the old allow-list had no entry for."""
     _make_logger().log_metrics(TRAIN_METRICS, step=0, prefix="train")
 
-    reported = callback.train_steps[0]
+    reported = callback.train_steps[0]["metrics"]
     assert reported["loss"] == 0.5
     assert reported["preference_loss"] == 0.42
     assert reported["rewards_rejected_mean"] == -0.3
@@ -264,8 +236,8 @@ def test_flushed_step_carries_the_full_metric_payload(callback: _RecordingCallba
 
     flushed = callback.train_steps[-1]
     assert flushed["step"] == 1
-    assert flushed["loss"] == 0.5
-    assert flushed["preference_loss"] == 0.42
+    assert flushed["metrics"]["loss"] == 0.5
+    assert flushed["metrics"]["preference_loss"] == 0.42
 
 
 def test_double_close_flushes_once(callback: _RecordingCallback) -> None:
@@ -415,11 +387,12 @@ def test_validate_at_start_reports_step_zero(callback: _RecordingCallback) -> No
 # --------------------------------------------------------------------------- #
 
 
-def test_validation_reports_loss_and_whitelisted_metrics(callback: _RecordingCallback) -> None:
+def test_validation_forwards_the_dict_whole(callback: _RecordingCallback) -> None:
+    """`loss` is forwarded under its own name; the phase prefix makes it val_loss."""
     _make_logger().log_metrics(VALIDATION_METRICS, step=10, prefix="validation")
 
-    reported = callback.validations[0]
-    assert reported["val_loss"] == 0.25
+    reported = callback.validations[0]["metrics"]
+    assert reported["loss"] == 0.25
     assert reported["num_valid_samples"] == 8
 
 

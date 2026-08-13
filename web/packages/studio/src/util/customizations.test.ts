@@ -234,8 +234,8 @@ describe('getTrainingTelemetry', () => {
           epoch: 1,
           train_loss: 0.42,
           val_loss: 0.55,
-          lr: 0.000005,
-          grad_norm: 1.25,
+          train_lr: 0.000005,
+          train_grad_norm: 1.25,
           checkpoint_path: 'ws/fileset/checkpoints/step-4',
         })
       )
@@ -259,8 +259,8 @@ describe('getTrainingTelemetry', () => {
         jobWithDetails({
           phase: '',
           step: Number.NaN,
-          lr: null,
-          grad_norm: 'oops',
+          train_lr: null,
+          train_grad_norm: 'oops',
           checkpoint_path: '',
         })
       )
