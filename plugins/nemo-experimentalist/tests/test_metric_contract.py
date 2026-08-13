@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+from typing import cast
+from unittest.mock import AsyncMock
+
 import pytest
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
@@ -8,7 +12,7 @@ from nemo_experimentalist_plugin.config import (
     has_metric_dimensions,
     pareto_objectives,
 )
-from nemo_experimentalist_plugin.experimentalist.components.loop import _with_insight_objective
+from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizer, _with_insight_objective
 
 
 def test_metric_contract_supports_multiple_objective_metrics() -> None:
@@ -26,6 +30,38 @@ def test_metric_contract_supports_multiple_objective_metrics() -> None:
         "Optimize these objective metric(s): tokens (minimize), cost (minimize). "
         "Do not regress these metric(s): success_rate (maximize). "
         "Metric values, including aggregates, are produced by the evaluator; do not invent formulas or weights."
+    )
+
+
+@pytest.mark.asyncio
+async def test_experiment_run_default_sort_follows_metric_priority_and_direction() -> None:
+    config = EvolutionaryOptimizerConfig.model_validate(
+        {
+            "objective_function": [
+                {"name": "quality", "direction": "maximize"},
+                {"name": "cost", "direction": "minimize"},
+            ],
+            "regression_metrics": [
+                {"name": "safety", "direction": "maximize"},
+                {"name": "latency", "direction": "minimize"},
+            ],
+        }
+    )
+    backend = AsyncMock()
+    backend.create_run.return_value = object()
+
+    await EvolutionaryOptimizer._create_experiment_run(
+        cast(EvolutionaryOptimizer, object()),
+        workspace="default",
+        backend=backend,
+        agent_name="agent",
+        agent_path=Path("agent"),
+        insight_ref=None,
+        config=config,
+    )
+
+    assert backend.create_run.await_args.kwargs["sort_by"] == (
+        "-evaluators.quality.mean,evaluators.cost.mean,-evaluators.safety.mean,evaluators.latency.mean"
     )
 
 
