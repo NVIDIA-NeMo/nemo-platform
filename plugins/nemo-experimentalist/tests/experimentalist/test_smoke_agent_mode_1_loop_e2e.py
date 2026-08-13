@@ -26,8 +26,6 @@ _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke
 _HOST_PLATFORM_URL = "http://localhost:8080"
 _WORKSPACE = "smoke-agent"
 _NO_PROXY = "localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
-_DEFAULT_MODEL = os.environ.get("NEMO_DEFAULT_MODEL", "default/openai-openai-gpt-5-6-terra")
-_FAST_MODEL = os.environ.get("NEMO_FAST_MODEL", "default/openai-openai-gpt-5-6-luna")
 _RECORDS = _FIXTURE / "dataset" / "_shared" / "records.json"
 _REPAIR_GROUPS = ("g1-aggregation", "g2-name-patterns", "g3-long-inputs", "g5-edge-cases")
 _INSIGHT_EVIDENCE_TASKS = {
@@ -145,14 +143,6 @@ _MOCK_INSIGHTS = {
 
 
 @dataclass(frozen=True)
-class _E2EEnvironment:
-    """The Platform model pair used by the host-side E2E run."""
-
-    default_model: str
-    fast_model: str
-
-
-@dataclass(frozen=True)
 class _ExperimentCase:
     """One Mode 1 loop configuration."""
 
@@ -192,7 +182,7 @@ _GENERATED_ONLY_CASES = tuple(
 )
 
 
-def _require_e2e_environment() -> _E2EEnvironment:
+def _require_e2e_environment() -> None:
     """Check that the host services required by the handover procedure are available."""
     platform = subprocess.run(
         ["curl", "-sf", f"{_HOST_PLATFORM_URL}/health/ready"],
@@ -202,21 +192,17 @@ def _require_e2e_environment() -> _E2EEnvironment:
     )
     if platform.returncode != 0:
         pytest.skip(f"start the Platform on {_HOST_PLATFORM_URL} before running the smoke-agent E2E tests")
-    return _E2EEnvironment(default_model=_DEFAULT_MODEL, fast_model=_FAST_MODEL)
 
 
-def _process_environment(environment: _E2EEnvironment) -> dict[str, str]:
+def _process_environment() -> dict[str, str]:
     """Build the minimum environment shared by recording and optimization commands."""
     return {
-        "NEMO_DEFAULT_MODEL": environment.default_model,
-        "NEMO_FAST_MODEL": environment.fast_model,
         "NO_PROXY": _NO_PROXY,
         "no_proxy": _NO_PROXY,
     }
 
 
 def _record_trace_ids(
-    environment: _E2EEnvironment,
     runtime: SandboxRunner,
     *,
     group: str,
@@ -255,7 +241,7 @@ def _record_trace_ids(
             runtime.platform_url,
         ],
         log=log,
-        environment=_process_environment(environment),
+        environment=_process_environment(),
         capture_output=True,
     )
     published = dict(re.findall(r"^(\S+)\s+([0-9a-f]{32})$", output, flags=re.MULTILINE))
@@ -300,7 +286,6 @@ def _write_mock_insight(
 
 
 def _run_experimentalist(
-    environment: _E2EEnvironment,
     runtime: SandboxRunner,
     *,
     remote_fixture: str,
@@ -340,7 +325,7 @@ def _run_experimentalist(
         "--experiment-dir",
         remote_experiment,
     ]
-    runtime.run(command, log=log, environment=_process_environment(environment))
+    runtime.run(command, log=log, environment=_process_environment())
 
 
 def _winner_label(experiment: Path) -> str:
@@ -623,7 +608,7 @@ def _run_mode_1_case(
     generated_only: bool,
 ) -> Path:
     """Run and download one Mode 1 group with either augmented or generated-only data."""
-    environment = _require_e2e_environment()
+    _require_e2e_environment()
     mode = "generated-only" if generated_only else "augmented"
     artifact_parent = tmp_path / f"{group}-{mode}"
     experiment = artifact_parent / "experiment"
@@ -657,7 +642,6 @@ def _run_mode_1_case(
             log=log,
         )
     trace_ids = _record_trace_ids(
-        environment,
         runtime,
         group=group,
         remote_fixture=remote_fixture,
@@ -676,7 +660,6 @@ def _run_mode_1_case(
     runtime.make_directories(remote_insights, log=log)
     runtime.copy_in(insight, remote_insights, log=log)
     _run_experimentalist(
-        environment,
         runtime,
         remote_fixture=remote_fixture,
         remote_experiment=remote_experiment,

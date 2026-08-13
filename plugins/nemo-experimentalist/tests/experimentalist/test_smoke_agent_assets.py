@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
 _HASHED = ("Dockerfile", "records.json")
-_RENDERED_TASK_TREE_SHA256 = "b01973d34ad9b041ac2dbb027d2e58991ba42c5bb2be0c630fab9495c600a9eb"
+_RENDERED_TASK_TREE_SHA256 = "3fabb557da0cd6f4cda6c713b261e591bf52ed5ad936f2d3ee7bd6b12431099a"
 
 
 def _root_nooa_rev() -> str:
@@ -188,6 +188,14 @@ def test_dockerfile_nooa_rev_matches_workspace() -> None:
     found = re.search(r"labs-OO-Agents\.git@([0-9a-f]{40})", dockerfile_path.read_text(encoding="utf-8"))
     assert found is not None, "Dockerfile must pin NOOA to an explicit revision"
     assert found.group(1) == _root_nooa_rev()
+
+
+def test_task_image_runs_as_a_non_root_user() -> None:
+    """Check that model-written task code does not run as root."""
+    dockerfile = (_SHARED / "Dockerfile").read_text(encoding="utf-8")
+    assert "USER smoke-agent" in dockerfile
+    assert "useradd --uid 10001" in dockerfile
+    assert "COPY --chown=smoke-agent:smoke-agent records.json" in dockerfile
 
 
 def test_task_template_references_the_current_image() -> None:

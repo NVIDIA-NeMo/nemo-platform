@@ -18,6 +18,12 @@ checked for more than "it completed".
 > Why a baseline must not change, and the per-group detail, live in
 > `plugins/nemo-experimentalist/docs/`.
 
+## Prerequisites
+
+- A local NeMo Platform with default and fast Model Entities selected by `nemo setup`
+- Docker Engine and Docker Sandboxes (`sbx`)
+- `uv`
+
 ## Design
 
 - **The agent makes no model calls.** Handlers are regular expressions plus a
@@ -71,8 +77,8 @@ sbx create --clone --profile external-only --name nemo-experimentalist shell "$r
 ```
 
 `--clone` mounts your checkout read-only and gives the sandbox a private clone to
-work in, so a run cannot modify your working tree. NVIDIA employees must also
-pass `--profile external-only`.
+work in, so a run cannot modify your working tree. This example uses the
+`external-only` profile.
 
 > **In a git worktree?** `--clone` refuses to run there, so bind-mount instead:
 >
@@ -101,8 +107,6 @@ with `No module named 'nemo_agents_plugin'`.
 ```bash
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env NEMO_DEFAULT_MODEL=default/openai-openai-gpt-5-6-terra \
-  --env NEMO_FAST_MODEL=default/openai-openai-gpt-5-6-luna \
   nemo-experimentalist \
   bash -lc 'uv run --frozen --python 3.13 \
     --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
@@ -117,13 +121,9 @@ sbx exec --workdir "$repo" \
 **Models come from the platform, not from this example.** The Experimentalist
 reads a *Model Entity* pair from the active CLI context — `default_model` and
 `fast_model`, the second falling back to the first when unset — so `nemo setup`
-is what normally configures them. `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL`
-override the context, which is what the command above does; the value is an
-entity id of the form `<workspace>/<name>`, not a litellm routing string. List
-what your platform has with `nemo models list --all-pages`; this local setup uses
-`default/openai-openai-gpt-5-6-terra` and
-`default/openai-openai-gpt-5-6-luna`. With neither variable set, the run stops at
-preflight with "No default model is configured".
+is what configures them. The value is an entity id of the form
+`<workspace>/<name>`, not a Litellm routing string. List what your Platform has
+with `nemo models list --all-pages`.
 
 Preflight only checks that a value is *set*, not that the entity exists — a typo
 passes `doctor` and fails at the first LLM call, minutes into a run.
@@ -199,11 +199,8 @@ header would become part of the expected answer and every task would fail;
 `instruction.md` is the prompt handed to the agent, so a header would become part
 of the question.
 
-This matches the repository as it stands rather than carving out a new exception:
-the `copyright-fix` hook is scoped to `\.(py|ts)$`, and comparable fixtures
-elsewhere — `sdk/python/nemo-platform/tests/sample_file.txt`, the model-spec
-`test_data/**/README.md` files, the `automodel` upload fixtures — carry no header
-either. Every file here that *is* source does carry one.
+The repository's `.copyrightignore` explicitly exempts these task payloads from
+SPDX headers. Every source file in this fixture retains the standard header.
 
 ## Groups
 
@@ -279,3 +276,9 @@ Measured on 2026-08-05, one round, two candidates, three tasks per split:
 Container evaluation is negligible by design. The cost is the Experimentalist's
 own components — the architecture doc, Analyzer, Proposer, and one Coder pass per
 candidate — which is the part under test and cannot be optimized away here.
+
+## Next steps
+
+- Read the [weakness rationale](../../docs/smoke-agent-weaknesses.md) before changing the baseline.
+- Run the [asset guards](../../tests/experimentalist/test_smoke_agent_assets.py) after changing the image, task template, or manifest.
+- Use `optimizer-full.yaml` with `configs/full.yaml` to exercise the combined scenario.

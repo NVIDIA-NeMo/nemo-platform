@@ -22,6 +22,6 @@ timeout_sec = 60.0
 [environment]
 # Set by scripts/build_image.py; a test asserts it matches the current content
 # hash of the Dockerfile and records file. Tasks ship no environment/ directory.
-docker_image = "smoke-agent-env:sha-bc1849bfdcf5"
+docker_image = "smoke-agent-env:sha-16a0493fe720"
 cpus = 1
 memory_mb = 1024

@@ -21,5 +21,9 @@ RUN uv pip install --system --no-cache \
     "nooa[tracing] @ git+https://github.com/NVIDIA-NeMo/labs-OO-Agents.git@6e0274dd03f883254a084cfb9f871ea580e03434"
 
 WORKDIR /app
-RUN mkdir -p /app/artifacts /app/traces /app/data
-COPY records.json /app/data/records.json
+RUN groupadd --gid 10001 smoke-agent \
+    && useradd --uid 10001 --gid smoke-agent --create-home --shell /usr/sbin/nologin smoke-agent \
+    && mkdir -p /app/artifacts /app/traces /app/data \
+    && chown -R smoke-agent:smoke-agent /app
+COPY --chown=smoke-agent:smoke-agent records.json /app/data/records.json
+USER smoke-agent

@@ -24,8 +24,6 @@ from conftest import SandboxRunner
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"
 _NO_PROXY = "localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
-_DEFAULT_MODEL = os.environ.get("NEMO_DEFAULT_MODEL", "default/openai-openai-gpt-5-6-terra")
-_FAST_MODEL = os.environ.get("NEMO_FAST_MODEL", "default/openai-openai-gpt-5-6-luna")
 _RECORDS = _FIXTURE / "dataset" / "_shared" / "records.json"
 _G4_CONTROL_TASKS = {"smoke/g4-lookup-grace"}
 _REWARD_DELTA_THRESHOLD = 0.3
@@ -36,14 +34,6 @@ _ROOT_CAUSE_TERMS = {
     "g5-edge-cases": ("missing", "empty", "exception", "unknown", "lookup"),
 }
 _MIN_ROOT_CAUSE_HITS = 2
-
-
-@dataclass(frozen=True)
-class _E2EEnvironment:
-    """The Platform model pair used by host-side E2E runs."""
-
-    default_model: str
-    fast_model: str
 
 
 @dataclass(frozen=True)
@@ -73,7 +63,7 @@ _G4_CASE = pytest.param(
 )
 
 
-def _require_e2e_environment() -> tuple[str, str]:
+def _require_e2e_environment() -> None:
     """Check that the host services required by the handover procedure are available."""
     platform = subprocess.run(
         ["curl", "-sf", "http://localhost:8080/health/ready"],
@@ -83,17 +73,12 @@ def _require_e2e_environment() -> tuple[str, str]:
     )
     if platform.returncode != 0:
         pytest.skip("start the Platform on http://localhost:8080 before running the smoke-agent E2E tests")
-    return _DEFAULT_MODEL, _FAST_MODEL
 
 
 @pytest.fixture(scope="session")
-def _e2e_environment(tmp_path_factory: pytest.TempPathFactory, sandbox_runner: SandboxRunner) -> _E2EEnvironment:
+def _e2e_environment(tmp_path_factory: pytest.TempPathFactory, sandbox_runner: SandboxRunner) -> None:
     """Prepare the shared sandbox environment used by every E2E group."""
-    default_model, fast_model = _require_e2e_environment()
-    environment = _E2EEnvironment(
-        default_model=default_model,
-        fast_model=fast_model,
-    )
+    _require_e2e_environment()
     if os.environ.get("SMOKE_AGENT_IMAGE_BUILT") != "1":
         log = tmp_path_factory.mktemp("smoke-agent-e2e") / "host.log"
         sandbox_runner.run(
@@ -105,30 +90,17 @@ def _e2e_environment(tmp_path_factory: pytest.TempPathFactory, sandbox_runner: S
             ],
             log=log,
         )
-    return environment
 
 
-def _run_e2e_command(
-    environment: _E2EEnvironment,
-    runtime: SandboxRunner,
-    command: list[str],
-    *,
-    log: Path,
-) -> None:
+def _run_e2e_command(runtime: SandboxRunner, command: list[str], *, log: Path) -> None:
     """Run one Experimentalist command inside the selected isolation boundary."""
-    process_environment = {
-        "NEMO_DEFAULT_MODEL": environment.default_model,
-        "NEMO_FAST_MODEL": environment.fast_model,
-        "NO_PROXY": _NO_PROXY,
-        "no_proxy": _NO_PROXY,
-    }
+    process_environment = {"NO_PROXY": _NO_PROXY, "no_proxy": _NO_PROXY}
     runtime.run(command, log=log, environment=process_environment)
 
 
 def _run_group(
     group: str,
     *,
-    environment: _E2EEnvironment,
     runtime: SandboxRunner,
     artifact_parent: Path,
     profile_name: str = "optimizer.yaml",
@@ -145,7 +117,6 @@ def _run_group(
     if group == "g5-edge-cases":
         runtime.replace_text(config, "disable_trajectory_scoring: true", "disable_trajectory_scoring: false", log=log)
     _run_e2e_command(
-        environment,
         runtime,
         [
             "uv",
@@ -309,7 +280,7 @@ def _assert_g4_rejected_narrow_fix(experiment: Path) -> None:
 @pytest.fixture(scope="session")
 def experiment(
     request: pytest.FixtureRequest,
-    _e2e_environment: _E2EEnvironment,
+    _e2e_environment: None,
     sandbox_runner: SandboxRunner,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> _Experiment:
@@ -319,7 +290,6 @@ def experiment(
     artifact_parent = tmp_path_factory.mktemp(f"mode-2-{case.group}")
     path, _ = _run_group(
         case.group,
-        environment=_e2e_environment,
         runtime=sandbox_runner,
         artifact_parent=artifact_parent,
         profile_name=case.profile,
