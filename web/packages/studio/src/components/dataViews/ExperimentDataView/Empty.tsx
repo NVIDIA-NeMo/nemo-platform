@@ -35,9 +35,9 @@ export const Empty = ({ experimentName }: EmptyProps) => {
         <div className="w-[560px] border border-base rounded-lg overflow-hidden bg-surface-overlay">
           <TabsRoot defaultValue="cli">
             <TabsList className="px-density-md">
-              <TabsTrigger value="copilot">
+              <TabsTrigger value="assistant">
                 <Bot className="size-4" />
-                NeMo Copilot
+                NeMo Assistant
               </TabsTrigger>
               <TabsTrigger value="cli">
                 <Terminal className="size-4" />
@@ -45,7 +45,7 @@ export const Empty = ({ experimentName }: EmptyProps) => {
               </TabsTrigger>
             </TabsList>
             <div className="px-density-md pb-density-md flex flex-col gap-density-sm">
-              <TabsContent value="copilot" className="px-0 pb-0 w-full">
+              <TabsContent value="assistant" className="px-0 pb-0 w-full">
                 <CodeSnippet
                   value="To be determined"
                   language="text"
