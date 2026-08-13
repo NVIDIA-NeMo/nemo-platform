@@ -17,7 +17,7 @@
 
 # Kept in lockstep with the pinned NEMO_RL_REF: RL's own Dockerfile builds on this tag, and its lock
 # overrides nvidia-nccl-cu13 to the version that ships here. Bump both together.
-ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.05-cuda13.2-devel-ubuntu24.04
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.07-cuda13.3-devel-ubuntu24.04
 
 # Source. Default clones the soluwalana/RL fork at the given ref; override with a local checkout via
 # `--build-context nemo-rl=<path>` or point elsewhere via the NEMO_RL_{REPO,REF} build-args. Gym is
@@ -47,6 +47,7 @@ ADD ${NEMO_RL_REPO}#${NEMO_RL_REF} /
 FROM ${BASE_IMAGE} AS base
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
+RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages.txt
 
 # openssl is the only dpkg package here with an out-of-SLA CVE. Upgraded explicitly rather than via
 # a blanket `apt-get upgrade`, which would also pull newer CUDA packages from the NVIDIA repos.
@@ -85,6 +86,9 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
     cp /root/.local/bin/uv /usr/local/bin/uv && \
     uv python install "${PYTHON_VERSION}"
+COPY docker/scripts/collect-apt-sources.sh \
+    docker/scripts/collect-python-sdists.py \
+    /usr/local/bin/
 
 # Ray / NeMo-RL runtime behavior (affects the running container, not the build):
 #   RAY_USAGE_STATS_ENABLED=0        - no telemetry phone-home.
@@ -373,7 +377,6 @@ RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
         /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
         /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
-
 # NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on every
 # `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts many
 # worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped entirely.
@@ -424,6 +427,30 @@ if [ "${privatized}" -eq 0 ]; then
     exit 1
 fi
 echo "privatized vllm/ in ${privatized} venv(s)"
+EOF
+
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv <<'EOF' bash -eu
+source_dir=/usr/share/nemo-platform/source-distributions/nmp-rl-base
+bash /usr/local/bin/collect-apt-sources.sh "${source_dir}/apt" \
+    --changed-from /tmp/base-dpkg-packages.txt
+uv run --no-project --python /opt/nemo_rl_venv/bin/python \
+    /usr/local/bin/collect-python-sdists.py \
+    --python /opt/nemo_rl_venv/bin/python \
+    --output "${source_dir}" \
+    --lock-file /opt/nemo-rl/uv.lock \
+    --label nemo-rl-venv
+for python_path in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
+    [ -x "${python_path}" ] || continue
+    label="$(printf '%s' "${python_path%/bin/python}" | sed -E 's#^/opt/##; s#[^A-Za-z0-9_.-]+#-#g')"
+    uv run --no-project --python "${python_path}" \
+        /usr/local/bin/collect-python-sdists.py \
+        --python "${python_path}" \
+        --output "${source_dir}" \
+        --lock-file /opt/nemo-rl/uv.lock \
+        --label "${label}"
+done
 EOF
 
 # Gym falls back to this in-tree cache when a process does not inherit NRL_CONTAINER / UV_CACHE_DIR
