@@ -645,8 +645,8 @@ paths:
       tags:
       - Iron Swarm Manifests
       summary: Delete Manifest
-      description: Delete a saved manifest by name, along with the victim bundle it
-        owns.
+      description: Delete a saved manifest by name, along with the victim bundle the
+        service created for it.
       operationId: delete_manifest_apis_iron_swarm_v2_workspaces__workspace__manifests__name__delete
       parameters:
       - name: workspace
