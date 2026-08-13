@@ -58,7 +58,7 @@ client = NeMoPlatform(
 evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 ```
 
-Use `evaluator.run(metric=metric, dataset=dataset)` for a local synchronous evaluation. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need a durable remote job:
+Use `evaluator.submit(metric=metric, dataset=dataset)` for a durable platform job. For local in-process iteration without the platform, use `nemo_evaluator_sdk.Evaluator` directly:
 
 ```python
 def submit_evaluation(evaluator, metric, dataset):
@@ -211,7 +211,9 @@ Measures the fraction of relevant content retrieved compared to the total releva
 ```python
 metric = ContextRecallMetric(judge_model=judge_model)
 
-result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -287,7 +289,9 @@ Measures the proportion of relevant chunks in the retrieved contexts (precision@
 ```python
 metric = ContextPrecisionMetric(judge_model=judge_model)
 
-result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -357,7 +361,7 @@ Measures how relevant the retrieved contexts are to the user input.
 ```python
 metric = ContextRelevanceMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -367,6 +371,8 @@ result = evaluator.run(
     ],
     config=RunConfig(parallelism=8),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -422,7 +428,7 @@ Measures how many important entities from the reference are present in the retri
 ```python
 metric = ContextEntityRecallMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -432,6 +438,8 @@ result = evaluator.run(
     ],
     config=RunConfig(parallelism=8),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -488,7 +496,9 @@ Measures factual consistency of the response with the retrieved context.
 ```python
 metric = FaithfulnessMetric(judge_model=judge_model)
 
-result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -500,13 +510,15 @@ for score in result.aggregate_scores.scores:
 ```python
 metric = FaithfulnessMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=online_dataset,
     config=online_config,
     target=generation_model,
     prompt_template=online_prompt_template,
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -559,7 +571,9 @@ Evaluates whether the response is grounded in the retrieved context without hall
 ```python
 metric = ResponseGroundednessMetric(judge_model=judge_model)
 
-result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -571,13 +585,15 @@ for score in result.aggregate_scores.scores:
 ```python
 metric = ResponseGroundednessMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=online_dataset,
     config=online_config,
     target=generation_model,
     prompt_template=online_prompt_template,
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -639,7 +655,7 @@ Noise Sensitivity uses RAGAS mode-qualified outputs internally. The SDK normaliz
 ```python
 metric = NoiseSensitivityMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -654,6 +670,8 @@ result = evaluator.run(
     ],
     config=RunConfig(parallelism=8),
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -725,7 +743,9 @@ metric = ResponseRelevancyMetric(
     strictness=1,
 )
 
-result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -741,13 +761,15 @@ metric = ResponseRelevancyMetric(
     strictness=1,
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=online_dataset,
     config=online_config,
     target=generation_model,
     prompt_template=online_prompt_template,
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")

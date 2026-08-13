@@ -28,7 +28,7 @@ sdk = NeMoPlatform(
 evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 ```
 
-Use `evaluator.run(metric=metric, dataset=dataset)` for a local synchronous evaluation. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need a durable remote job:
+Use `evaluator.submit(metric=metric, dataset=dataset)` for a durable platform job. For local in-process iteration without the platform, use `nemo_evaluator_sdk.Evaluator` directly:
 
 ```python
 job = evaluator.submit(metric=metric, dataset=dataset)
@@ -80,7 +80,7 @@ metric = BLEUMetric(
     candidate="{{item.model_output}}",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -95,6 +95,8 @@ result = evaluator.run(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -180,7 +182,7 @@ metric = ExactMatchMetric(
     description="Exact match for question answering",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"correct_answer": "Paris", "model_answer": "Paris"},
@@ -188,6 +190,8 @@ result = evaluator.run(
         {"correct_answer": "Berlin", "model_answer": "Munich"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -259,7 +263,7 @@ metric = F1Metric(
     candidate="{{item.answer}}",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -269,6 +273,8 @@ result = evaluator.run(
         {"reference": "a red apple", "answer": "red apple"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -352,7 +358,7 @@ metric = NumberCheckMetric(
     description="Check if values match within tolerance",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"expected": "100", "predicted": "100"},
@@ -360,6 +366,8 @@ result = evaluator.run(
         {"expected": "99", "predicted": "101"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -434,7 +442,7 @@ metric = ROUGEMetric(
     candidate="{{item.model_summary}}",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -447,6 +455,8 @@ result = evaluator.run(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -545,7 +555,7 @@ metric = StringCheckMetric(
     right_template="{{item.must_contain}}",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"output": "The answer is: 42", "must_contain": "answer"},
@@ -553,6 +563,8 @@ result = evaluator.run(
         {"output": "Error occurred", "must_contain": "Success"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")

@@ -21,7 +21,6 @@ NeMo Evaluator supports two execution modes through the Evaluator plugin SDK:
 
 | Mode | Use Case | SDK Call |
 |------|----------|----------|
-| **Local execution** | Rapid prototyping and synchronous workflows | `evaluator.run(metric=metric, dataset=dataset)` |
 | **Durable remote job** | Production workloads that should run as platform jobs | `evaluator.submit(metric=metric, dataset=dataset)` |
 
 ## Prerequisites
@@ -85,13 +84,15 @@ metric = RemoteMetric(
 )
 
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"reference": "The capital is Paris", "output": "Paris is the capital"},
         {"reference": "2", "output": "2"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}, count={score.count}")
@@ -117,7 +118,7 @@ metric = NemoAgentToolkitRemoteMetric(
 )
 
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -131,6 +132,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -247,7 +250,9 @@ metric = RemoteMetric(
     api_key_secret=SecretRef(root="my-remote-api-key"),
 )
 
-result = evaluator.run(metric=metric, dataset=[{"input": "test"}])
+job = evaluator.submit(metric=metric, dataset=[{"input": "test"}])
+job.wait_until_done()
+result = job.get_result()
 ```
 
 

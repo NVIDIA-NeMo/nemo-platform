@@ -73,7 +73,7 @@ Agentic metrics evaluate different aspects of agent behavior:
 
 <Note>
 
-Use `evaluator.run(...)` for local in-process evaluation and `evaluator.submit(...)` for durable remote platform jobs. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
+Use `evaluator.submit(...)` for durable platform jobs. For local in-process evaluation without the platform, use `nemo_evaluator_sdk.Evaluator` directly. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
 
 </Note>
 ## Prerequisites
@@ -135,7 +135,7 @@ from nemo_evaluator_sdk import (
 )
 ```
 
-Use `dataset=[...]` for inline rows. For offline scoring options, use `config=RunConfig(parallelism=...)`. Whenever outputs must be generated before scoring, pass `target=Model(...)` or `target=Agent(...)` plus the corresponding online parameters. Use the same `dataset`, `config`, and `target` arguments for both `evaluator.run(...)` and `evaluator.submit(...)`; durable jobs follow the identical pattern as local runs and only differ in waiting for and fetching results.
+Use `dataset=[...]` for inline rows. For offline scoring options, use `config=RunConfig(parallelism=...)`. Whenever outputs must be generated before scoring, pass `target=Model(...)` or `target=Agent(...)` plus the corresponding online parameters. Pass `dataset`, `config`, and `target` to `evaluator.submit(...)`, then wait for the job and fetch its result.
 
 ---
 
@@ -193,13 +193,13 @@ Evaluates whether the agent invoked the correct tools with the correct arguments
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
 metric = ToolCallAccuracyMetric()
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -219,6 +219,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -366,7 +368,7 @@ Data must use OpenAI-compliant tool calling format:
 </Note>
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 
@@ -374,7 +376,7 @@ Data must use OpenAI-compliant tool calling format:
 from nemo_evaluator_sdk import ToolCallingMetric
 metric = ToolCallingMetric(reference="{{item.tool_calls}}")
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -420,6 +422,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -531,13 +535,13 @@ Measures how well the agent maintained focus on assigned topics throughout a con
 
 <Note>
 
-Topic Adherence is a multi-turn metric: it scores a complete conversation supplied as a `user_input` message list. Online target generation produces a single response from a single prompt and cannot construct a multi-turn conversation, so it is not supported for this metric. Use the offline **Run Locally** or **Submit Job** modes with a pre-built multi-turn conversation.
+Topic Adherence is a multi-turn metric: it scores a complete conversation supplied as a `user_input` message list. Online target generation produces a single response from a single prompt and cannot construct a multi-turn conversation, so it is not supported for this metric. Use the offline **Offline Scoring** or **Submit Job** modes with a pre-built multi-turn conversation.
 
 </Note>
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import InferenceParams, Model, SecretRef
@@ -557,7 +561,7 @@ metric = TopicAdherenceMetric(
     inference=InferenceParams.model_validate({"temperature": 0, "response_format": {"type": "json_object"}}),
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -572,6 +576,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -701,7 +707,7 @@ Compare the agent's outcome against a known reference:
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
@@ -714,7 +720,7 @@ judge_model = Model(
 )
 metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -735,6 +741,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -848,7 +856,7 @@ The judge LLM infers the goal from the conversation context:
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
@@ -861,7 +869,7 @@ judge_model = Model(
 )
 metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -890,6 +898,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -963,7 +973,7 @@ Evaluates the factual correctness of an agent's answer by comparing it against a
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
@@ -976,7 +986,7 @@ judge_model = Model(
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -986,6 +996,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 

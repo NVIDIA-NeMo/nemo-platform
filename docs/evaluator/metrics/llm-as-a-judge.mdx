@@ -18,7 +18,6 @@ NeMo Evaluator supports two execution modes through the Evaluator plugin SDK:
 
 | Mode | Use Case | SDK Call |
 |------|----------|----------|
-| **Local execution** | Rapid prototyping, metric development, and synchronous workflows | `evaluator.run(metric=metric, dataset=dataset)` |
 | **Durable remote job** | Production workloads that should run as platform jobs | `evaluator.submit(metric=metric, dataset=dataset)` |
 
 ## Prerequisites
@@ -114,7 +113,7 @@ metric = LLMJudgeMetric(
 )
 
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -127,6 +126,8 @@ result = evaluator.run(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean:.2f}, count={score.count}")
@@ -222,7 +223,7 @@ metric = LLMJudgeMetric(
     },
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -231,8 +232,9 @@ result = evaluator.run(
         },
         {"input": "Explain quantum physics", "output": "I don't know."},
     ],
-    aggregate_fields=("rubric_distribution", "mode_category"),
 )
+job.wait_until_done()
+result = job.get_result(aggregate_fields=("rubric_distribution", "mode_category"))
 
 print(result.aggregate_scores.model_dump(exclude_none=True))
 ```
@@ -244,14 +246,15 @@ By default, aggregate scores include `count`, `mean`, `min`, and `max`. Request 
 
 
 ```python
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"input": "What is the capital of France?", "output": "Paris."},
         {"input": "What is 2 + 2?", "output": "4."},
     ],
-    aggregate_fields=("std_dev", "variance"),
 )
+job.wait_until_done()
+result = job.get_result(aggregate_fields=("std_dev", "variance"))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}:")
