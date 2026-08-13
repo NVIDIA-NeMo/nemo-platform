@@ -110,9 +110,7 @@ class NemoRLLogger(LoggerInterface):
         self._num_epochs = num_epochs
         self._steps_per_epoch = steps_per_epoch
 
-        # Create the callback for progress reporting
-        self._reporter = JobsServiceProgressReporter(self._job_ctx)
-        self._callback = TrainingProgressCallback(self._reporter)
+        self._callback = TrainingProgressCallback(JobsServiceProgressReporter(self._job_ctx))
 
         # Track best metrics for monitoring
         self._best_metric_value = float("inf")
