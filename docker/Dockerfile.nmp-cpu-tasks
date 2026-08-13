@@ -12,13 +12,35 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --inexact --package nemo-evaluator-plugin --no-editable
 
+# NeMo Gym, for the GymAgentTaskRunner path (agent-evaluate jobs with a GymRunnerTarget). Gym
+# imports Ray at module load; nemo-platform excludes Ray workspace-wide via a `uv`
+# override-dependencies constraint (unfixed CVE, see root pyproject.toml), so it can never join
+# the `uv sync` above -- same reasoning as docker/rl/Dockerfile.nmp-rl-base's separate Ray venv,
+# just without that image's much heavier multi-venv-per-actor machinery, which Gym-through-
+# Evaluator doesn't need: one `gym` process on PATH is enough here.
+RUN python3 -m venv /opt/gym-venv \
+    && /opt/gym-venv/bin/pip install --no-cache-dir nemo-gym tiktoken
+# Gym's collector reads model credentials from a gitignored env.yaml, checked in its process's
+# cwd first, then falling back to its own install root (nemo_gym/global_config.py: PARENT_DIR,
+# i.e. the directory *containing* the nemo_gym package -- verified against the installed package,
+# not guessed). Baking it there means it resolves regardless of the job process's cwd. Points at
+# a fixed, idempotently-created mock-provider model (see e2e/test_evaluator_plugin.py) rather
+# than a per-test one, since GymRunnerTarget has no field to carry dynamic credentials into this
+# lookup -- this is the actual "friction-log issue #1" the ticket names.
+RUN GYM_SITE_PACKAGES="$(/opt/gym-venv/bin/python -c 'import nemo_gym, os; print(os.path.dirname(os.path.dirname(nemo_gym.__file__)))')" \
+    && printf 'policy_base_url: http://nemo-platform-api:8080/apis/inference-gateway/v2/workspaces/default/model/gym-mock-mcqa/-/v1\npolicy_api_key: not-used-mock-provider\npolicy_model_name: gym-mock-mcqa\n' \
+       > "${GYM_SITE_PACKAGES}/env.yaml"
+
 FROM ${NMP_PYTHON_BASE} AS runtime
 ENV USERNAME=nvs \
     HOME=/home/nvs
 COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
 COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
+COPY --chown=nvs:nvs --from=builder /opt/gym-venv /opt/gym-venv
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
-ENV PATH="/app/.venv/bin:$PATH"
+# App venv first, so it wins any name collision; /opt/gym-venv only contributes `gym` (and its
+# own python/pip, which nothing else on this PATH needs to resolve to).
+ENV PATH="/app/.venv/bin:/opt/gym-venv/bin:$PATH"
 USER 0
 COPY docker/scripts/cve-cleanup.sh /bin/
 RUN bash /bin/cve-cleanup.sh
