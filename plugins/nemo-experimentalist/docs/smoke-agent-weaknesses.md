@@ -8,46 +8,40 @@ weaknesses, each paired with a group of Harbor tasks that surfaces it, so an
 Experimentalist run can be asserted to have *repaired* something rather than
 merely completed.
 
-**Do not fix them in the agent.** A well-meaning cleanup silently destroys what
-the fixture measures: with the weakness gone, the baseline passes, the Analyzer
-gets no failing trace, and a run that does nothing looks identical to a run that
-works.
+## Where the tasks live
 
-## Why this file is here and not next to the agent
+Tasks are authored in `examples/smoke-agent/dataset/tasks.json` and rendered into
+Harbor task directories under `dataset/groups/` by `scripts/render_tasks.py`,
+which `scripts/build_image.py` runs. `dataset/groups/` is gitignored: edits made
+there are discarded on the next build. Change the manifest, not the rendered
+tree.
 
-`get_agent_code` copies the example directory into `source-agent/` minus
-`_AGENT_COPY_EXCLUDE_NAMES` (`__pycache__`, `.git`, `.claude`, `.uv`, `.venv`,
-`artifacts`, `dataset`, `eval-and-optimize`, `scratch`). **Everything else under
-the example root is readable by the Coder**, including `AGENT-SPEC.md`, which
-`coder.py` reads before any source file.
-
-So a description of the weaknesses inside the example would hand the Coder the
-diagnosis the fixture exists to test, and a run could pass with a broken
-Analyzer. That is why `agent.py` carries only ordinary engineering comments,
-`AGENT-SPEC.md` has no known-gaps section, and the frozen Insights live under
-`dataset/` — the one in-example directory the copy excludes.
-
-There is evidence this matters and works: the analyst diagnosed G1 correctly from
-traces alone, with no hint available in the source or the spec.
+Every group carries a `train` and a `validation` split. Every group except
+`g4-dispatch-order` also carries an `insight-evidence` split of five tasks, which
+is what an Insight-driven (mode 1) run and the Analyst read; the getting-started
+walkthrough uses `g1-aggregation`'s.
 
 ## The five weaknesses
 
-All line references are to `examples/smoke-agent/agent/agent.py`.
+The agent is `examples/smoke-agent/agent/agent.py`.
 
 ### G1 — no aggregation capability
 
 **What.** Nothing sums or averages a numeric field. `solve` dispatches over
 `handle_lookup`, `handle_list`, `handle_count`; none matches "what is the total
-`<field>` for …", so every aggregation question falls through to `FALLBACK`.
+`<field>` in the …", so every aggregation question falls through to `FALLBACK`.
 
 **Odd one out.** This is the only *missing* capability; G2–G5 are flawed code
 paths that exist. There is no wrong code to find, only absent code, so G1's tasks
 exercise the Proposer more than the Coder.
 
-**Tasks.** `dataset/groups/g1-aggregation/` — train sums by department
-(`total=29`, `total=13`); validation sums with no scope (`total=42`) and by
-*role* (`total=20`). A fix that hardcodes a department filter passes train and
-fails validation. That is the generalization axis.
+**Tasks.** Group `g1-aggregation` — an aggregation question scopes its sum
+either by department or by role, and **both splits carry both scopes**. Train
+sums by department (`total=29`, research) and by role (`total=20`, engineer);
+validation sums by role (`total=9`, analyst) and by department (`total=13`,
+ops). A fix that hardcodes either scope therefore fails inside its own split
+rather than surviving to validation: the pressure to read the scope from the
+question is applied immediately, not held out.
 
 **A correct repair** adds a handler that sums a field over a record subset, with
 the scope taken from the question rather than assumed, and inserts it into the
@@ -59,7 +53,7 @@ dispatch tuple.
 apostrophe, a hyphen, or a non-ASCII character fails to match at all and falls
 through to `FALLBACK`.
 
-**Tasks.** `dataset/groups/g2-name-patterns/` — `O'Brien`, `Zoë Washington`,
+**Tasks.** Group `g2-name-patterns` — `O'Brien`, `Zoë Washington`,
 `Ann-Marie Cruz`. Controls are plain-ASCII lookups that already work.
 
 **A correct repair** widens the character class. Note `str.isalpha()` is *not* a
@@ -72,8 +66,10 @@ class for exactly this reason.
 **What.** `solve` truncates to `MAX_INSTRUCTION_CHARS = 240` before dispatching,
 so a question preceded by a long preamble is cut off and matches nothing.
 
-**Tasks.** `dataset/groups/g3-long-inputs/` — a ~300-character reporting-policy
-preamble in front of a question that works without it.
+**Tasks.** Group `g3-long-inputs` — a ~320-character reporting-policy preamble
+in front of a question that works without it. `preamble-long-dept` doubles the
+preamble to roughly 650 characters, so a repair that only nudges the limit
+upward still fails it.
 
 **The control is load-bearing.** `trailing-prose` puts the question *first* and
 the prose after, so it passes at baseline **and** would break under a fix that
@@ -97,8 +93,8 @@ Measured: G4 train aggregates to `reward 0.333, shape_ok 1.0`, G5 validation to
 **Two halves, one repair.** `LIST_RE` and the dispatch tuple order are a matched
 pair. Changing either alone leaves the shadowing in place.
 
-**Tasks.** `dataset/groups/g4-dispatch-order/` — train counts people per
-department; validation counts *by role within* a department, which matches
+**Tasks.** Group `g4-dispatch-order` — train counts people per department;
+validation counts *by role within* a department, which matches
 `LIST_RE` but **not** `COUNT_RE`. So reordering the tuple alone still fails
 validation; the count pattern has to widen too.
 
@@ -118,14 +114,15 @@ leaves the Analyzer nothing to read. Verified: G5 trials complete with
 `status=completed` and reward 0. The catch controls the exit code, not the trace;
 NOOA already records the exception on the failing handler's span.
 
-**Tasks.** `dataset/groups/g5-edge-cases/` — a name absent from the records, and
-Karl Jung's empty `role`. Expected answers use `unknown`.
+**Tasks.** Group `g5-edge-cases` — names absent from the records, and Karl
+Jung's empty `role`. Expected answers use `unknown`.
 
 ## Orthogonality, including the data
 
 Each group's tasks must supply evidence for **its own weakness only**, so a run's
-failing traces point at one root cause. That extends to `records.json`, which all
-five groups share — the data is a coupling surface as much as the code is.
+failing traces point at one root cause. That extends to
+`dataset/_shared/records.json`, which all five groups share — the data is a
+coupling surface as much as the code is.
 
 Current assignment, pinned by `test_smoke_agent_baseline.py`:
 
@@ -146,6 +143,11 @@ both when adding either.
 
 ## If a guard test fails
 
-`test_smoke_agent_baseline.py` and `test_smoke_agent.py` pin every behaviour
-above. A failure almost always means the agent was "fixed" rather than that the
-tests are wrong. Confirm against this document before changing either.
+`test_smoke_agent_baseline.py` and `test_smoke_agent.py` pin the agent behavior
+and the records table described above. A failure almost always means the agent
+was "fixed" rather than that the tests are wrong. Confirm against this document
+before changing either.
+
+What is **not** pinned: no test asserts which task sits in which split. The split
+assignments described above can drift without a test failing, so check them
+against `dataset/tasks.json` whenever you edit the manifest.

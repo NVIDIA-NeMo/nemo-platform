@@ -46,8 +46,8 @@ from. The vocabulary is fixed:
   however the records were selected
 - a number of records is reported as `count=`
 
-Keys are compared byte-for-byte like the rest of the line, so `hours=42` is wrong
-where `total=42` is expected, even though the number is right.
+Keys are compared byte-for-byte like the rest of the line, so `hours=99` is wrong
+where `total=99` is expected, even though the number is right.
 
 ## Constraints — these are hard requirements
 
