@@ -9,6 +9,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 from typing import cast
@@ -50,7 +51,7 @@ class SandboxRunner:
         self.sandbox = sandbox
         self.repo_root = _REPO_ROOT
         self.plugin_root = _PLUGIN_ROOT
-        self.run_root = f"/tmp/nemo-experimentalist-smoke-e2e/{uuid.uuid4().hex}"
+        self.run_root = "/tmp/nemo-experimentalist-smoke-e2e/source"
         self.remote_plugin_root = f"{self.run_root}/nemo-experimentalist"
 
     @property
@@ -102,113 +103,32 @@ class SandboxRunner:
             pytest.fail(f"E2E command failed; log: {log}\n{log.read_text(encoding='utf-8')}")
         return result.stdout or ""
 
-    def bootstrap(self, *, log: Path) -> None:
-        """Prepare the sandbox once for E2E loops."""
-        if not self.sandbox:
-            return
-        self._create_sandbox_if_needed(log=log)
-        check = subprocess.run(
-            ["sbx", "exec", self.sandbox, "sh", "-lc", "command -v gcc && dpkg -s python3-dev >/dev/null"],
-            cwd=self.repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        with log.open("a", encoding="utf-8") as output:
-            output.write(f"$ sbx exec {self.sandbox} sh -lc 'command -v gcc && dpkg -s python3-dev >/dev/null'\n")
-            output.write(check.stdout or "")
-            output.write(check.stderr or "")
-        if check.returncode:
-            self._bootstrap_packages(log=log)
-        self.run(
-            [
-                "uv",
-                "sync",
-                "--frozen",
-                "--package",
-                "nemo-experimentalist-plugin",
-                "--package",
-                "nemo-platform-plugin",
-                "--package",
-                "nemo-agents-plugin",
-            ],
-            log=log,
-        )
-
-    def _create_sandbox_if_needed(self, *, log: Path) -> None:
-        """Create the configured sandbox when it is absent."""
-        assert self.sandbox
-        exists = subprocess.run(
-            ["sbx", "ls", "--quiet"],
-            cwd=self.repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        with log.open("a", encoding="utf-8") as output:
-            output.write("$ sbx ls --quiet\n")
-            output.write(exists.stdout or "")
-            output.write(exists.stderr or "")
-        if exists.returncode:
-            pytest.fail(f"could not list sandboxes; log: {log}\n{log.read_text(encoding='utf-8')}")
-        if self.sandbox in exists.stdout.splitlines():
-            return
-        command = [
-            "sbx",
-            "create",
-            "--clone",
-            "--name",
-            self.sandbox,
-            "shell",
-            str(self.repo_root),
-        ]
-        result = subprocess.run(command, cwd=self.repo_root, capture_output=True, text=True, check=False)
-        with log.open("a", encoding="utf-8") as output:
-            output.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n")
-            output.write(result.stdout or "")
-            output.write(result.stderr or "")
-        if result.returncode:
-            pytest.fail(f"could not create sandbox {self.sandbox!r}; log: {log}\n{log.read_text(encoding='utf-8')}")
-
-    def _bootstrap_packages(self, *, log: Path) -> None:
-        """Install native build prerequisites."""
-        assert self.sandbox
-        command = [
-            "sbx",
-            "exec",
-            "--user",
-            "root",
-            self.sandbox,
-            "sh",
-            "-lc",
-            "apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev",
-        ]
-        result = subprocess.run(command, cwd=self.repo_root, capture_output=True, text=True, check=False)
-        with log.open("a", encoding="utf-8") as output:
-            output.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n")
-            output.write(result.stdout or "")
-            output.write(result.stderr or "")
-        if result.returncode:
-            pytest.fail(f"could not install sandbox build prerequisites; log: {log}\n{log.read_text(encoding='utf-8')}")
-
     def sync(self, *, log: Path) -> None:
-        """Copy the plugin tree into the sandbox."""
+        """Copy the current plugin tree into the sandbox."""
         if not self.sandbox:
             return
         self.run(["mkdir", "-p", self.run_root], log=log)
-        result = subprocess.run(
-            ["sbx", "cp", str(self.plugin_root), f"{self.sandbox}:{self.run_root}"],
-            cwd=self.repo_root,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        with log.open("a", encoding="utf-8") as output:
-            output.write(f"$ sbx cp {self.plugin_root} {self.sandbox}:{self.run_root}\n")
-            output.write(result.stdout or "")
-            output.write(result.stderr or "")
-        if result.returncode:
-            pytest.fail(f"could not sync the Experimentalist worktree; log: {log}\n{log.read_text(encoding='utf-8')}")
+        staging_root = Path(tempfile.mkdtemp(prefix="smoke-agent-e2e-sync-"))
+        staged_plugin = staging_root / self.plugin_root.name
+        try:
+            shutil.copytree(self.plugin_root, staged_plugin, ignore=shutil.ignore_patterns("tmp"))
+            result = subprocess.run(
+                ["sbx", "cp", str(staged_plugin), f"{self.sandbox}:{self.run_root}"],
+                cwd=self.repo_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            with log.open("a", encoding="utf-8") as output:
+                output.write(f"$ sbx cp {staged_plugin} {self.sandbox}:{self.run_root}\n")
+                output.write(result.stdout or "")
+                output.write(result.stderr or "")
+            if result.returncode:
+                pytest.fail(
+                    f"could not sync the Experimentalist worktree; log: {log}\n{log.read_text(encoding='utf-8')}"
+                )
+        finally:
+            shutil.rmtree(staging_root, ignore_errors=True)
         ownership = subprocess.run(
             ["sbx", "exec", "--user", "root", self.sandbox, "chown", "-R", "agent:agent", self.remote_plugin_root],
             cwd=self.repo_root,
@@ -304,15 +224,39 @@ class SandboxRunner:
             pytest.fail(f"could not fetch sandbox E2E artifacts; log: {log}\n{log.read_text(encoding='utf-8')}")
 
 
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Copy the plugin tree once before E2E workers start."""
+    if hasattr(session.config, "workerinput") or "e2e" not in session.config.option.markexpr:
+        return
+    sandbox = os.environ.get(_SANDBOX_NAME_ENV)
+    if sandbox is None or os.environ.get(_CI_ENV):
+        return
+    sandboxes = subprocess.run(
+        ["sbx", "ls", "--quiet"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if sandboxes.returncode or sandbox not in sandboxes.stdout.splitlines():
+        raise pytest.UsageError(
+            f"sandbox {sandbox!r} does not exist. Create it before running E2E tests:\n"
+            "  sbx create --clone --profile external-only "
+            f"--name {sandbox} shell \"$(git rev-parse --show-toplevel)\"\n\n"
+            "Then run:\n"
+            f"  SANDBOX_VM_ID={sandbox} uv run --frozen pytest "
+            "plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_1_loop_e2e.py "
+            "plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_2_loop_e2e.py "
+            "-m e2e -n 4 --dist loadgroup"
+        )
+    runtime = SandboxRunner(sandbox)
+    runtime.sync(log=Path("/tmp") / f"smoke-agent-e2e-sync-{uuid.uuid4().hex}.log")
+
+
 @pytest.fixture(scope="session")
 def sandbox_runner() -> SandboxRunner:
-    """Provide one shared sandbox runner."""
-    sandbox = os.environ.get(_SANDBOX_NAME_ENV)
-    runtime = SandboxRunner(sandbox)
-    log = Path("/tmp") / f"smoke-agent-e2e-sync-{uuid.uuid4().hex}.log"
-    runtime.bootstrap(log=log)
-    runtime.sync(log=log)
-    return runtime
+    """Provide the configured sandbox runner."""
+    return SandboxRunner(os.environ.get(_SANDBOX_NAME_ENV))
 
 
 @pytest.fixture(autouse=True)
