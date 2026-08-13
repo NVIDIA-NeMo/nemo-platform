@@ -141,9 +141,12 @@ VALIDATION_METRICS: dict[str, Any] = {"loss": 0.25, "num_valid_samples": 8}
         (0, True),
         (-1.5, True),
         (float("nan"), False),
+        # A diverged loss. Not a chart value, and `Infinity` is not valid JSON.
+        (float("inf"), False),
+        (float("-inf"), False),
         (None, False),
         # Non-scalars that genuinely appear in NeMo-RL metric dicts. Each of these
-        # raises TypeError under a bare math.isnan, which is the regression guarded here.
+        # raises TypeError under a bare math.isfinite, which is the regression guarded here.
         (_Histogram(), False),
         ({"inflight": [1, 2]}, False),
         ([1, 2, 3], False),

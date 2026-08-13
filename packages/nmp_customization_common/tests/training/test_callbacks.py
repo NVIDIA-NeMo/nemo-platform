@@ -113,6 +113,30 @@ def test_validation_with_loss_records_both_key_and_series(reporter: _RecordingRe
 
 
 # --------------------------------------------------------------------------- #
+# Optional checkpoint_path
+# --------------------------------------------------------------------------- #
+
+
+def test_checkpoint_report_without_a_path_omits_the_key(reporter: _RecordingReporter) -> None:
+    """A null would overwrite the last known checkpoint instead of carrying it.
+
+    `checkpoint_path` is a sticky carry-forward field: the reporter restates it
+    only on updates that don't state one of their own, and an explicit null
+    counts as stating one. automodel and unsloth both pass None when their
+    framework hands back no path.
+    """
+    _make_callback(reporter).report_checkpoint_saved(step=1, epoch=1)
+
+    assert "checkpoint_path" not in reporter.reports[-1]
+
+
+def test_checkpoint_report_with_a_path_states_it(reporter: _RecordingReporter) -> None:
+    _make_callback(reporter).report_checkpoint_saved(step=1, epoch=1, checkpoint_path="/ckpt")
+
+    assert reporter.reports[-1]["checkpoint_path"] == "/ckpt"
+
+
+# --------------------------------------------------------------------------- #
 # additional_metrics
 # --------------------------------------------------------------------------- #
 
@@ -180,6 +204,16 @@ def test_non_numeric_metrics_are_dropped_from_the_series(reporter: _RecordingRep
     """Histograms and tables ride in the same dict as the scalars upstream."""
     _make_callback(reporter).report_train_step(
         step=1, epoch=1, loss=0.5, histogram=object(), nested={"a": 1}, flag=True, missing=float("nan")
+    )
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert set(metrics) == {"train_loss", "val_loss"}
+
+
+def test_infinite_metrics_are_dropped_from_the_series(reporter: _RecordingReporter) -> None:
+    """A diverged run's inf is not a chart value, and `Infinity` is not valid JSON."""
+    _make_callback(reporter).report_train_step(
+        step=1, epoch=1, loss=0.5, diverged=float("inf"), collapsed=float("-inf")
     )
 
     metrics = reporter.reports[-1]["metrics"]

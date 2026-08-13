@@ -37,14 +37,14 @@ _VALIDATION_METRIC_KEYS = _TRAIN_METRIC_KEYS
 
 
 def has_metric_value(metric: Any) -> bool:
-    """Whether ``metric`` is a finite-enough scalar to forward to Jobs Service.
+    """Whether ``metric`` is a finite scalar to forward to Jobs Service.
 
     The type check is load-bearing, not defensive. NeMo-RL's metric dicts carry
     non-scalars alongside the numbers: ``calculate_single_metric`` emits a
     ``<key>/histogram`` holding a ``Histogram`` object, NeMo-Gym adds a
     per-agent ``full_result`` ``Table``, and ``generation_logger_metrics`` is a
-    nested dict. ``math.isnan`` raises ``TypeError`` on all of those, so a bare
-    None-check would turn a widened key list into a crash mid-training.
+    nested dict. ``math.isfinite`` raises ``TypeError`` on all of those, so a
+    bare None-check would turn a widened key list into a crash mid-training.
 
     Delegates to the shared predicate so the wire filter and the series filter
     cannot drift apart -- a metric this forwards must be one the callback can

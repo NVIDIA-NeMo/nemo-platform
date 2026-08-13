@@ -70,15 +70,20 @@ def is_chartable(value: Any) -> bool:
 
     Backends hand us whatever their framework produced, which is not always a
     number: NeMo-RL's metric dicts interleave ``Histogram`` objects, tables and
-    nested dicts with the scalars, and ``math.isnan`` raises ``TypeError`` on all
-    of those rather than returning False.
+    nested dicts with the scalars, and ``math.isfinite`` raises ``TypeError`` on
+    all of those rather than returning False.
+
+    NaN and both infinities are rejected. Neither is a chart value, and a
+    diverged loss that reaches the wire serializes as a bare ``NaN``/
+    ``Infinity`` token, which is not valid JSON -- one such point would put the
+    whole ``status_details`` blob beyond a strict parser's reach.
 
     ``bool`` is rejected despite being an ``int`` subclass: no metric here is a
     flag, and silently charting one as 0/1 is worse than dropping it.
     """
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return False
-    return not math.isnan(float(value))
+    return math.isfinite(float(value))
 
 
 class TrainingProgressCallback:
@@ -227,13 +232,22 @@ class TrainingProgressCallback:
         *,
         backend: str | None = None,
     ) -> None:
-        """Report that a checkpoint was saved."""
+        """Report that a checkpoint was saved.
+
+        The ``checkpoint_path`` key is omitted when the backend has no path to
+        state -- both automodel and unsloth pass ``None`` when their framework
+        doesn't hand one back. Sending it as null would not merely say nothing:
+        the field is a sticky latest-value carried across updates, and an
+        explicit null counts as this report's own value, so it would overwrite
+        the last known checkpoint rather than let it carry forward.
+        """
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            "checkpoint_path": checkpoint_path,
             "metrics": self._build_metrics_summary(),
         }
+        if checkpoint_path:
+            details["checkpoint_path"] = checkpoint_path
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
