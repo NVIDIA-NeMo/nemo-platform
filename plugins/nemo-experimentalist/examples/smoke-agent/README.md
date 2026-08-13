@@ -42,6 +42,7 @@ agent/main.py                  container entry point
 agent/harbor_wrapper.py        Harbor upload + exec adapter
 AGENT-SPEC.md                  behaviour contract read by the LLM components
 optimizer.yaml                 profile: agent source, spec, g1 datasets
+optimizer-full.yaml            profile: the generated combined datasets
 optimizer-generalization.yaml  profile: same agent, g4 datasets (see Scenarios)
 configs/short.yaml            loop settings shared by the per-group gate checks
 configs/full.yaml              loop settings for the multi-round scenario
@@ -135,7 +136,8 @@ Copy the experiment directory back out with `sbx cp` to check the result.
 ### Run the loop tests
 
 The loop tests are developer-invoked and execute model-written shell inside the
-named sandbox. Run the Mode 1 and Mode 2 suites directly with pytest:
+named sandbox. Create the `nemo-experimentalist` sandbox with the command above
+before running them. Then run the Mode 1 and Mode 2 suites directly with pytest:
 
 ```bash
 SANDBOX_VM_ID=nemo-experimentalist uv run --frozen pytest \
@@ -157,7 +159,7 @@ profile:
 | --- | --- | --- | --- |
 | `optimizer.yaml` | `short.yaml` | 2 | the winner beating the baseline |
 | `optimizer-generalization.yaml` | `short.yaml` | 2 | the baseline correctly retained |
-| `optimizer.yaml` | `full.yaml` | up to 5 | every task in the combined group passing |
+| `optimizer-full.yaml` | `full.yaml` | up to 5 | every task in the combined group passing |
 
 The first two are opposite tests, so a run is only meaningful once you know which
 one you started — and the config cannot tell you, because both use the same one.

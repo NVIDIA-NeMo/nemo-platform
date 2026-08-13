@@ -1,20 +1,22 @@
 ---
 title: "Get started with an example agent"
-description: "Run the optimization loop from end to end on τ-Bench"
+description: "Run the optimization loop from end to end on an example agent"
 ---
 
-This provides a guide for how you can quickly load agent traces into your NeMo Platform, run the analyst agent to discover issues with that agent, and launch an experimentalist to fix those issues. This is meant as an example to show how the whole platform works. You can also jump straight to setting up your agent with NeMo Platform.
+This guide shows how to load agent traces into NeMo Platform, run the Analyst to
+find an issue, and launch the Experimentalist to repair it. It uses smoke-agent:
+a small, deterministic example with known failures. The default path uses the
+fast `g1-aggregation` scenario; later sections show optional dataset-driven and
+full-dataset runs.
 
 ## Prerequisites
 
 - Git, GNU Make, uv, and pnpm
 - Docker Engine 29.6.2 or later
 - [Docker Sandboxes](https://docs.docker.com/ai/sandboxes/) (`sbx`) 0.37.1 or later
-- An API key for the inference provider used by the Tau3 agent under test.
+- A default and fast Model Entity configured in NeMo Platform
 
 ## 1. Clone and bootstrap NeMo Platform
-
-This step will walk you through setting up NeMo Platform on your local computer. It will install the platform and its dependencies.
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
@@ -24,93 +26,132 @@ make bootstrap
 
 ## 2. Start NeMo Platform
 
-Agent traces are stored in ClickHouse. Make sure Docker Desktop or the Docker daemon is running, then
-run setup. Intake automatically provisions and reuses a local ClickHouse container. Setup starts the
-platform services in the background and walks you through the configuration required to run the platform:
+Make sure Docker Desktop or the Docker daemon is running, then start setup:
 
 ```bash
 uv run nemo setup
 ```
 
-Register the provider you want the Platform agents to use, then select a
-default model for quality-critical work and a fast model for latency-sensitive
-work. Press Enter at the fast-model prompt to reuse the default. These
-workspace-qualified Model Entities are used by the Analyst, Eval Author, and
-Experimentalist; their provider credentials stay in Platform Secrets.
-
-To use an external ClickHouse instead, set `NMP_INTAKE_CLICKHOUSE_URL` before running setup.
-
-You should now be able to navigate to `http://localhost:8080` and see the NeMo Platform web UI.
-
-## 3. Prepare τ-Bench and run the airline agent
-
-Now that we have a running NeMo Platform, it's time to load up some data! This example uses the τ-Bench from Sierra. It's a great representation of a simplified agent that performs a business-critical task. Our first step will be to set up our environment variables so that we can run models properly.
+Register the provider you want Platform agents to use, then select a default
+model and a fast model. `nemo setup` stores their credentials in Platform
+Secrets and creates workspace-qualified Model Entities. Confirm that the
+Platform is ready:
 
 ```bash
-cp plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env.example plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env
+export NMP_BASE_URL=http://localhost:8080
+curl -sf "$NMP_BASE_URL/health/ready"
 ```
 
-Then, update the `.env` file with the inference endpoint and key for the Tau3
-agent under test. If you will run the Experimentalist in a Docker Sandbox,
-also uncomment `NEMO_DEFAULT_MODEL` and `NEMO_FAST_MODEL` and copy the
-workspace-qualified IDs reported by `nemo setup`. Source the file afterward.
+## 3. Prepare smoke-agent
+
+The smoke agent makes no model calls. It reads a small records file with regular
+expressions, so its baseline failure is repeatable. The Analyst and
+Experimentalist do use the Model Entities configured above.
+
+Run model-authored work in a Docker Sandbox. Clone mode gives the sandbox a
+private writable checkout, so generated code cannot modify your working tree.
 
 ```bash
-source plugins/nemo-experimentalist/examples/tau3-nooa-agent/.env
+repo="$(git rev-parse --show-toplevel)"
+smoke="plugins/nemo-experimentalist/examples/smoke-agent"
+platform_url="http://host.docker.internal:8080"
+workspace="canonical-smoke-agent"
+no_proxy="localhost,127.0.0.1,::1,gateway.docker.internal,host.docker.internal"
+
+uv run --frozen nemo workspaces create "$workspace" \
+  --description "Smoke-agent Experimentalist runs" \
+  --exist-ok
+
+sbx create --clone --name nemo-experimentalist shell "$repo"
+sbx exec --user root nemo-experimentalist bash -lc \
+  'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
+sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
+  "cd $smoke && uv run --no-project scripts/build_image.py"
 ```
 
-Then, we'll run a script to download the benchmark datasets and put it into the appropriate directories:
+The fresh external-only sandbox does not include a C compiler or Python headers.
+They are needed once to build `nemo-fabric-runtime`, a dependency used by the
+Experimentalist.
+
+The commands below use the Model Entity IDs created by the local setup used to
+test this example. Replace them if your `nemo setup` registered different IDs.
 
 ```bash
-plugins/nemo-experimentalist/examples/tau3-nooa-agent/prepare-airline-datasets.sh
+default_model="default/openai-openai-gpt-5-6-terra"
+fast_model="default/openai-openai-gpt-5-6-luna"
 ```
 
-Finally, we'll run our agent using the dataset tasks and record the data to NeMo Platform:
-
-```bash
-uv run --frozen plugins/nemo-experimentalist/examples/tau3-nooa-agent/record_tau_airline_traces.py
-```
-
-To run more tasks concurrently, add an explicit value such as `--concurrency 10`.
-Each task starts Docker containers, so choose a value appropriate for your
-available CPU and memory.
-
-At this point you can navigate to the [traces tab](http://localhost:8080/studio/workspaces/tau3-airline/intake/traces) and see the traces from the agent.
-
+<Warning>
+Clone mode protects the host checkout from writes, but it does not isolate
+credentials or host services from code in the sandbox. Use dedicated,
+revocable credentials and expose only the model access this example needs.
+</Warning>
 
 ## 4. Run the Analyst
 
-Now that we have data in our system, we can run the analyst agent to understand the ways that our agent is performing well, and where it is falling down. The goal of the analyst agent is to crawl production data, and determine where your agent is falling down or disappointing your customers.
-
-If the analyst discovers issues in your application, it will create what we call an 'insight'. An insight is a human-readable description of a problem in your agentic system. The closest analogy is a bug report. They don't try to describe why an issue happened or the code you should change to fix it, and they should be understandable to a user of your agent.
-
-Let's run it:
-
-```bash
-uv run --frozen nemo agents analyst run \
-  --agent nemo-experimentalist-tau3-nooa \
-  --workspace tau3-airline \
-  --base-url "$NMP_BASE_URL"
-```
-
-This will take a few minutes to run. Once it's done, you can navigate to the [insights tab](http://localhost:8080/studio/workspaces/tau3-airline/optimizer) to see the issues the analyst discovered in the τ-Bench Airline Agent.
-
-## 5. Optimize performance with the experimentalist
-
-The next step is to improve the τ-Bench agent using the experimentalist. The
-experimentalist will run your evals, debug failures using trace data, understand
-the root cause of the failure and attempt to fix it. After it makes the change,
-it will run the evals again to validate whether the change improved the
-performance of your agent on the evaluation.
-
-This is a shortened example that only uses a few tasks, but it can still take up
-to an hour to finish. First we will set up a new workspace for the optimization process:
+Now that the Platform is running, record failing smoke-agent traces. The
+`g1-aggregation` scenario contains five `insight-evidence` tasks. The command
+ingests their traces into the `smoke-agent` workspace and prints a task name and
+trace ID for every upload.
 
 ```bash
-uv run --frozen nemo workspaces create canonical-tau3-airline \
-  --description "Tau3 Airline Experimentalist runs" \
-  --exist-ok
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+  nemo-experimentalist \
+  bash -lc "uv run --frozen --python 3.13 \
+    --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+    python $smoke/scripts/record_traces.py \
+      --group g1-aggregation \
+      --split insight-evidence \
+      --workspace $workspace \
+      --agent $smoke/agent \
+      --dataset-root $smoke/dataset \
+      --output /tmp/smoke-g1-recordings \
+      --base-url $platform_url"
 ```
+
+If a trace cannot be retrieved, do not continue; rerun the recording command
+after checking that the Platform is ready.
+
+The Analyst reads those traces and files an Insight in the Platform. An Insight
+is a human-readable description of a recurring problem, similar to a bug report.
+It includes the trace IDs that support it.
+
+```bash
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
+  --env NEMO_DEFAULT_MODEL="$default_model" \
+  --env NEMO_FAST_MODEL="$fast_model" \
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+  nemo-experimentalist \
+  bash -lc "uv run --frozen --python 3.13 \
+    --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+    nemo agents analyst run \
+      --agent smoke-agent \
+      --agent-spec $smoke/AGENT-SPEC.md \
+      --workspace $workspace \
+      --base-url $platform_url"
+```
+
+The Analyst prints whether it created or updated an Insight. Open the
+[Insights view](http://localhost:8080/studio/workspaces/canonical-smoke-agent/optimizer),
+select the total-hours Insight, and copy its platform ID. Check that it has a
+clear title, an actionable description, and non-empty trace references before
+continuing.
+
+```bash
+insight_id="<the Platform Insight ID>"
+```
+
+## 5. Optimize performance with the Experimentalist
+
+The Experimentalist runs the evaluations, diagnoses the failure from the trace
+data, proposes a code change, and validates it. Eval Author uses the Insight’s
+trace references to create additional tasks; the committed `g1-aggregation`
+datasets remain as regression checks.
 
 The Experimentalist generates a draft pull request (PR) or merge request (MR)
 when it receives a GitHub or GitLab agent source. It creates a branch only when
@@ -120,10 +161,11 @@ Git integration is optional. To run the optimization without creating a
 repository or PR/MR, [jump to the local-only alternative](#optional-run-locally-without-creating-a-pr-or-mr).
 
 To optimize the example agent, create a private GitHub repository with the
-[GitHub CLI](https://cli.github.com/) and populate it with the example source.
-Replace `your-github-user-or-org` with the GitHub account or organization that
-will own the repository. `rsync` excludes `.env`, so your API key is not copied
-into the repository.
+[GitHub CLI](https://cli.github.com/) and populate it with the smoke-agent
+source. The agent source and `AGENT-SPEC.md` are enough: datasets and optimizer
+configuration stay in this checkout. The copy excludes `.env` files, so local
+credentials are not added to the repository. Replace `your-github-user-or-org`
+with the GitHub account or organization that will own the repository.
 
 ```bash
 gh auth login
@@ -131,15 +173,16 @@ gh auth login
 export GITHUB_OWNER="your-github-user-or-org"
 mkdir -p "$HOME/src"
 cd "$HOME/src"
-gh repo create "$GITHUB_OWNER/tau3-nooa-agent" --private --clone
-export EXAMPLE_AGENT_REPO="$PWD/tau3-nooa-agent"
+gh repo create "$GITHUB_OWNER/smoke-agent" --private --clone
+export EXAMPLE_AGENT_REPO="$PWD/smoke-agent"
 cd -
-rsync -a --exclude='.env' plugins/nemo-experimentalist/examples/tau3-nooa-agent/ "$EXAMPLE_AGENT_REPO/"
+rsync -a --exclude='.env' --exclude='.env.*' "$smoke/agent/" "$EXAMPLE_AGENT_REPO/"
+rsync -a --exclude='.env' --exclude='.env.*' "$smoke/AGENT-SPEC.md" "$EXAMPLE_AGENT_REPO/"
 git -C "$EXAMPLE_AGENT_REPO" checkout -b main
 git -C "$EXAMPLE_AGENT_REPO" add .
-git -C "$EXAMPLE_AGENT_REPO" commit -m "Add the tau3 NOOA example agent"
+git -C "$EXAMPLE_AGENT_REPO" commit -m "Add the smoke-agent example source"
 git -C "$EXAMPLE_AGENT_REPO" push -u origin main
-export AGENT_REPO_URL="https://github.com/$GITHUB_OWNER/tau3-nooa-agent.git"
+export AGENT_REPO_URL="https://github.com/$GITHUB_OWNER/smoke-agent.git"
 ```
 
 Run the Experimentalist against the Git repository inside a Docker Sandbox. The
@@ -147,103 +190,102 @@ Run the Experimentalist against the Git repository inside a Docker Sandbox. The
 pushes a validated winner to a new branch, and opens a draft PR or MR against
 `main`. To use a different target branch, set `storage.pr_base_branch` in the
 configuration. Authenticate GitHub inside the sandbox so it can clone and push
-the private repository.
+the private repository. The explicit `--agent` flag takes precedence over the
+local `agent_source` in `optimizer.yaml`, so this run optimizes the Git baseline.
 
 <Warning>
-Clone mode is an integrity boundary, not a confidentiality boundary. The sandbox
-can read the cloned host repository and every credential passed with `sbx exec --env`.
-Use dedicated, revocable, spending-limited credentials.
+Clone mode is an integrity boundary, not a confidentiality boundary. The
+sandbox can read the cloned host repository and every credential passed with
+`sbx exec --env`. Use dedicated, revocable, spending-limited credentials.
 </Warning>
 
 ```bash
-repo="$(git rev-parse --show-toplevel)"
 sbx create --clone --name nemo-experimentalist-git shell "$repo"
+sbx exec --user root nemo-experimentalist-git bash -lc \
+  'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 gh auth token | sbx exec -i --workdir "$repo" nemo-experimentalist-git \
   gh auth login --with-token
 sbx exec --workdir "$repo" nemo-experimentalist-git gh auth setup-git
-sbx exec --workdir "$repo" nemo-experimentalist-git \
-  git clone "$AGENT_REPO_URL" /tmp/tau3-nooa-agent
+sbx exec --workdir "$repo" nemo-experimentalist-git bash -lc \
+  "cd $smoke && uv run --no-project scripts/build_image.py"
+
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env INFERENCE_API_KEY \
-  --env INFERENCE_API_BASE \
-  --env OPENAI_API_KEY \
-  --env OPENAI_BASE_URL \
-  --env NEMO_DEFAULT_MODEL \
-  --env NEMO_FAST_MODEL \
-  --env TAU2_USER_MODEL \
-  --env TAU2_NL_ASSERTIONS_MODEL \
-  --env AUT_MODEL_NAME \
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
+  --env NEMO_DEFAULT_MODEL="$default_model" \
+  --env NEMO_FAST_MODEL="$fast_model" \
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist-git \
-  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
-  nemo agents experimentalist run \
-  --no-insight \
-  --agent "${AGENT_REPO_URL}@main" \
-  --agent-spec /tmp/tau3-nooa-agent/AGENT-SPEC.md \
-  --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
-  --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
-  --workspace canonical-tau3-airline \
-  --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
-  --config /tmp/tau3-nooa-agent/experimentalist-smoke.yaml \
-  --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
-  --base-url http://host.docker.internal:8080
+  bash -lc "uv run --frozen --python 3.13 \
+    --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+    nemo agents experimentalist run \
+      --profile $smoke/optimizer.yaml \
+      --agent ${AGENT_REPO_URL}@main \
+      --agent-spec $smoke/AGENT-SPEC.md \
+      --insight $insight_id \
+      --workspace $workspace \
+      --base-url $platform_url \
+      --config $smoke/configs/short.yaml \
+      --experiment-dir /tmp/smoke-g1-insight-git"
 ```
 
-This setup enables `storage.archive_candidates`, which pushes every generated
-candidate branch; the default pushes only the winner. After the run, inspect a
-non-winning candidate with `git fetch origin`,
-`git -C "$EXAMPLE_AGENT_REPO" branch -r --list 'origin/optimizer/*'`, and
-`git diff main...origin/optimizer/<run-id>/<candidate>`.
+After the run, inspect the draft PR or MR that the Experimentalist opened for
+the winner. GitLab is supported too: use a GitLab repository URL and
+authenticate with `glab auth login` in the sandbox. By default the
+Experimentalist publishes only the winning candidate. Set
+`storage.archive_candidates: true` in a separate run configuration when you
+also need every generated candidate branch for review.
 
-GitLab is supported too: use a GitLab repository URL and authenticate with
-`glab auth login`. The Experimentalist opens a draft PR/MR only when it finds a
-changed winning candidate.
+### Download and inspect the experiment
 
-The trace records include the Experimentalist evaluation ID and Tau3 task ID.
-After the run completes, inspect the sandbox's
-`plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize/run.json`
-for the selected winner and compare the `agent-0` and `agent-1` directories to
-review the code change that was evaluated.
+Copy the complete experiment directory to the host after the run finishes. It
+contains the resolved baseline, generated candidates, per-task results, logs,
+and the run summary:
+
+```bash
+experiment_dir="/tmp/smoke-g1-insight-git"
+download_dir="tmp/smoke-agent-artifacts"
+mkdir -p "$download_dir"
+sbx cp "nemo-experimentalist-git:$experiment_dir" "$download_dir/"
+
+artifact_dir="$download_dir/smoke-g1-insight-git/eval-and-optimize"
+sed -n '1,240p' "$artifact_dir/run.json"
+find "$artifact_dir/results" -name 'metric_*.json' -print
+diff -ru "$artifact_dir/agents/agent-0" "$artifact_dir/agents/agent-1"
+```
+
+The `diff` command exits with status 1 when it finds candidate changes, which
+is expected. The trace records include the Experimentalist evaluation ID and
+smoke-agent task ID.
 
 ### Optional: run locally without creating a PR or MR
 
 Use this alternative if you do not want to create or push to a repository. It
-changes only a private sandbox clone and never creates a PR/MR. The sandbox
-uses `host.docker.internal` to reach the NeMo Platform services running on the
-host:
+changes only a private sandbox clone and never creates a PR/MR. The sandbox uses
+`host.docker.internal` to reach Platform services on the host:
 
 ```bash
-repo="$(git rev-parse --show-toplevel)"
-sbx create --clone --name nemo-experimentalist shell "$repo"
 sbx exec --workdir "$repo" \
   --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
-  --env INFERENCE_API_KEY \
-  --env INFERENCE_API_BASE \
-  --env OPENAI_API_KEY \
-  --env OPENAI_BASE_URL \
-  --env NEMO_DEFAULT_MODEL \
-  --env NEMO_FAST_MODEL \
-  --env TAU2_USER_MODEL \
-  --env TAU2_NL_ASSERTIONS_MODEL \
-  --env AUT_MODEL_NAME \
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
+  --env NEMO_DEFAULT_MODEL="$default_model" \
+  --env NEMO_FAST_MODEL="$fast_model" \
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
   nemo-experimentalist \
-  uv run --frozen --python 3.13 --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
-  nemo agents experimentalist run \
-  --no-insight \
-  --agent plugins/nemo-experimentalist/examples/tau3-nooa-agent \
-  --agent-spec plugins/nemo-experimentalist/examples/tau3-nooa-agent/AGENT-SPEC.md \
-  --train-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/train \
-  --validation-dataset /run/sandbox/source/plugins/nemo-experimentalist/tmp/tau3-airline/experimentalist/validation \
-  --workspace canonical-tau3-airline \
-  --framework-skills plugins/nemo-experimentalist/framework-skills/nooa \
-  --config plugins/nemo-experimentalist/examples/tau3-nooa-agent/experimentalist-smoke.yaml \
-  --experiment-dir plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist \
-  --base-url http://host.docker.internal:8080
+  bash -lc "uv run --frozen --python 3.13 \
+    --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+    nemo agents experimentalist run \
+      --profile $smoke/optimizer.yaml \
+      --insight $insight_id \
+      --workspace $workspace \
+      --base-url $platform_url \
+      --config $smoke/configs/short.yaml \
+      --experiment-dir /tmp/smoke-g1-insight-local"
 ```
-The sandbox needs outbound access to the package, model, registry, Harbor
-dataset, and NeMo Platform endpoints used by the run. `host.docker.internal`
-is translated to the host's loopback interface so the sandbox can reach the
-NeMo Platform service on port 8080.
+
+The sandbox needs access to the package, model, Docker daemon, and Platform
+endpoints used by the run. `host.docker.internal` reaches the Platform service
+on the host.
 
 <Warning>
 Clone mode protects the host checkout from writes, but it does not isolate
@@ -252,17 +294,15 @@ including ignored `.env` files, is readable at `/run/sandbox/source`. Values
 passed with `sbx exec --env` are readable by the optimizer, candidate agents,
 Harbor verifier, and their subprocesses. Use dedicated, revocable,
 spending-limited credentials, and do not expose unrelated host services or
-network destinations. Optimizer and task code can use any outbound access
-granted to the sandbox.
+network destinations.
 </Warning>
 
-The trace records include the Experimentalist evaluation ID and Tau3 task ID.
 After the run completes, inspect the run summary and compare the baseline with
 the candidate. The `diff` command exits with status 1 when it finds candidate
 changes, which is expected:
 
 ```bash
-artifact_dir="plugins/nemo-experimentalist/tmp/tau3-airline-experimentalist/eval-and-optimize"
+artifact_dir="/tmp/smoke-g1-insight-local/eval-and-optimize"
 sbx exec --workdir "$repo" nemo-experimentalist \
   sed -n '1,240p' "$artifact_dir/run.json"
 sbx exec --workdir "$repo" nemo-experimentalist \
@@ -272,9 +312,8 @@ sbx exec --workdir "$repo" nemo-experimentalist \
 Copy artifacts you want to retain to the host before removing the sandbox:
 
 ```bash
-mkdir -p tmp/tau3-airline-artifacts
-sbx cp "nemo-experimentalist:$repo/$artifact_dir" \
-  tmp/tau3-airline-artifacts/
+mkdir -p tmp/smoke-agent-artifacts
+sbx cp "nemo-experimentalist:$artifact_dir" tmp/smoke-agent-artifacts/
 ```
 
 Stopping preserves the VM, its private Git clone, experiment output, installed
@@ -285,3 +324,64 @@ need that state:
 sbx stop nemo-experimentalist
 sbx rm nemo-experimentalist
 ```
+
+## Optional: run directly from datasets
+
+Mode 2 skips the Analyst and Insight. Use it when you already have a trusted
+train and validation dataset and want to optimize directly against it. This
+uses the same `g1-aggregation` repair scenario, but passes `--no-insight`.
+
+```bash
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
+  --env NEMO_DEFAULT_MODEL="$default_model" \
+  --env NEMO_FAST_MODEL="$fast_model" \
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+  nemo-experimentalist \
+  bash -lc "uv run --frozen --python 3.13 \
+    --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+    nemo agents experimentalist run \
+      --profile $smoke/optimizer.yaml \
+      --no-insight \
+      --base-url $platform_url \
+      --config $smoke/configs/short.yaml \
+      --experiment-dir /tmp/smoke-g1-datasets"
+```
+
+## Optional: run the combined scenario
+
+The combined scenario joins the supported repair groups, runs up to five rounds,
+and exercises survivor selection, candidate ranking, and convergence. It can
+take one to two hours.
+
+Build the generated dataset, then use its profile with `full.yaml`:
+
+```bash
+sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
+  "cd $smoke && uv run --no-project scripts/build_all_group.py"
+
+sbx exec --workdir "$repo" \
+  --env UV_PROJECT_ENVIRONMENT=/home/agent/.venvs/nemo-platform \
+  --env OTLP_ENDPOINT=http://host.docker.internal:5001/v1/traces \
+  --env NEMO_DEFAULT_MODEL="$default_model" \
+  --env NEMO_FAST_MODEL="$fast_model" \
+  --env NO_PROXY="$no_proxy" --env no_proxy="$no_proxy" \
+  nemo-experimentalist \
+  bash -lc "uv run --frozen --python 3.13 \
+    --package nemo-experimentalist-plugin --with ./plugins/nemo-agents \
+    nemo agents experimentalist run \
+      --profile $smoke/optimizer-full.yaml \
+      --no-insight \
+      --base-url $platform_url \
+      --config $smoke/configs/full.yaml \
+      --experiment-dir /tmp/smoke-all"
+```
+
+The combined dataset is generated and not committed. Rebuild it after changing
+an included group. The [smoke-agent README](../../plugins/nemo-experimentalist/examples/smoke-agent/README.md)
+lists the included groups and explains why others are held out.
+
+The `OTLP_ENDPOINT` setting in the sandbox commands sends Experimentalist,
+Analyst, and agent telemetry to the tracing endpoint on the host, where it can
+be viewed alongside the Platform run.
