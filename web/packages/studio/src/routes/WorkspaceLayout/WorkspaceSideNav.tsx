@@ -230,14 +230,16 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           },
         ]
       : [];
-    const virtualModelsNav = [
-      {
-        id: 'virtual-models',
-        slotIcon: <Waypoints className={iconColorClass} />,
-        slotLabel: 'Virtual Models',
-        href: getWorkspaceVirtualModelsRoute(workspace),
-      },
-    ];
+    const virtualModelsNav = GUARDRAILS_ENABLED
+      ? [
+          {
+            id: 'virtual-models',
+            slotIcon: <Waypoints className={iconColorClass} />,
+            slotLabel: 'Virtual Models',
+            href: getWorkspaceVirtualModelsRoute(workspace),
+          },
+        ]
+      : [];
 
     const modelCompareNav = MODEL_COMPARE_ENABLED
       ? [

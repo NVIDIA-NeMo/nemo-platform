@@ -161,11 +161,12 @@ describe('UploadModal utils', () => {
       expect(sanitizeFilenameForDatasetName('file.txt')).toBe('file');
     });
 
-    it('keeps valid characters (alphanumeric, dots, underscores, dashes)', () => {
+    it('lowercases and keeps valid characters (alphanumeric, dots, underscores, dashes)', () => {
       expect(sanitizeFilenameForDatasetName('my-dataset-123.json')).toBe('my-dataset-123');
       expect(sanitizeFilenameForDatasetName('my_dataset_v2.json')).toBe('my_dataset_v2');
       expect(sanitizeFilenameForDatasetName('dataset.v1.0.json')).toBe('dataset.v1.0');
-      expect(sanitizeFilenameForDatasetName('Dataset123.json')).toBe('Dataset123');
+      expect(sanitizeFilenameForDatasetName('Dataset123.json')).toBe('dataset123');
+      expect(sanitizeFilenameForDatasetName('MyDataset.JSON')).toBe('mydataset');
     });
 
     it('replaces invalid characters with underscores', () => {

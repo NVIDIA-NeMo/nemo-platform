@@ -10,6 +10,7 @@ import type { ComponentType, ReactNode } from 'react';
  */
 export interface PluginSdk {
   platform: typeof import('@nemo/sdk/generated/platform/api');
+  agents: typeof import('@nemo/sdk/generated/agents/api');
 }
 
 /** Navigate Studio's shared router; paths are absolute Studio routes. */
@@ -56,6 +57,13 @@ export interface PluginTelemetry {
 /** The host handle Studio injects into every plugin; extend it to add capabilities. */
 export interface PluginHost {
   workspaceId: string;
+  /**
+   * Origin the platform API is served from; empty when same-origin. A plugin
+   * that calls its own service needs this: Studio's dev-server `/apis` proxy is
+   * opt-in, so a relative request would otherwise hit the dev server whenever
+   * VITE_PLATFORM_BASE_URL is set.
+   */
+  apiBaseUrl: string;
   // Access tokens only — refresh tokens must not cross the boundary.
   auth: {
     accessToken: string;

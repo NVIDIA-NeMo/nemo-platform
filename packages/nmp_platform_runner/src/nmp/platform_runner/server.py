@@ -140,6 +140,7 @@ def create_app(
     services: list[Service] | None = None,
     controller_run_funcs: dict[str, ControllerRunFunc] | None = None,
     http_client: httpx.AsyncClient | None = None,
+    access_key_lifecycle_http_client: httpx.AsyncClient | None = None,
 ) -> FastAPI:
     """Create the FastAPI app from service instances."""
     services = services or []
@@ -233,7 +234,12 @@ def create_app(
 
     auth_config = get_auth_config()
     logger.info("Adding AuthorizationMiddleware", extra={"auth_enabled": auth_config.enabled})
-    app.add_middleware(AuthorizationMiddleware, service_name="platform", http_client=http_client)
+    app.add_middleware(
+        AuthorizationMiddleware,
+        service_name="platform",
+        http_client=http_client,
+        access_key_lifecycle_http_client=access_key_lifecycle_http_client,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -299,6 +305,7 @@ def build_platform_app(
     config: PlatformAppConfig | None = None,
     *,
     http_client: httpx.AsyncClient | None = None,
+    access_key_lifecycle_http_client: httpx.AsyncClient | None = None,
     env: MutableMapping[str, str] | None = None,
 ) -> FastAPI:
     """Build a platform FastAPI app without starting uvicorn.
@@ -332,7 +339,12 @@ def build_platform_app(
     sidecar_run_funcs = _load_run_functions(sorted(resolved.sidecars), AVAILABLE_SIDECARS)
     controller_run_funcs.update(sidecar_run_funcs)
 
-    return create_app(service_instances, controller_run_funcs=controller_run_funcs, http_client=http_client)
+    return create_app(
+        service_instances,
+        controller_run_funcs=controller_run_funcs,
+        http_client=http_client,
+        access_key_lifecycle_http_client=access_key_lifecycle_http_client,
+    )
 
 
 def run_server(

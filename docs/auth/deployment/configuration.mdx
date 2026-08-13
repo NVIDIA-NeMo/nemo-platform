@@ -89,8 +89,8 @@ Nested auth keys use a double underscore after `NMP_AUTH_`: for example,
 
 Scoped Access Keys let an authenticated user create a scoped bearer token for
 non-SDK clients and automation. The implementation creates user-scoped signed
-JWT access keys and rejects service principals. Revocation and rotation are not
-implemented.
+JWT access keys, persists their lifecycle metadata, and rejects service principals.
+Users can list and revoke their own keys. Rotation is not implemented.
 
 Scoped Access Keys are an auth-service feature exposed under the auth CLI
 namespace (`nemo auth access-keys ...`) and the `/apis/auth/v2/access-keys` API routes.

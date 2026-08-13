@@ -276,11 +276,13 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
-* `create`: Create a Scoped Access Key for the current authenticated...
+* `create`: Create a Scoped Access Key for the currently...
+* `list`: List Scoped Access Keys owned by the currently...
+* `revoke`: Revoke a Scoped Access Key owned by the currently...
 
 ##### nemo auth access-keys create
 
-Create a Scoped Access Key for the current authenticated user.
+Create a Scoped Access Key for the currently authenticated user.
 
 **Usage:**
 
@@ -291,7 +293,45 @@ nemo auth access-keys create [OPTIONS]
 **Options:**
 
 * `--name, -n`: Optional human-readable label for the Scoped Access Key.
+* `--description, -d`: Optional description for the Scoped Access Key.
 * `--expires-in`: Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys list
+
+List Scoped Access Keys owned by the currently authenticated user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys list [OPTIONS]
+```
+
+**Options:**
+
+* `--page <INTEGER RANGE>`: Page number to retrieve. [default: 1]
+* `--page-size <INTEGER RANGE>`: Number of keys to retrieve per page. [default: 100]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys revoke
+
+Revoke a Scoped Access Key owned by the currently authenticated user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys revoke [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to revoke.
 
 **Help:**
 
@@ -1692,7 +1732,7 @@ nemo inference deployment-configs create [OPTIONS] [NAME]
 
 **Arguments:**
 
-* `<NAME>`: Name of the deployment configuration. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+* `<NAME>`: Name of the deployment configuration. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
 
 **Options:**
 
@@ -2015,7 +2055,7 @@ nemo inference deployments create [OPTIONS] [NAME]
 
 **Arguments:**
 
-* `<NAME>`: Name of the deployment. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+* `<NAME>`: Name of the deployment. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
 
 **Options:**
 
@@ -4648,7 +4688,7 @@ nemo models create [OPTIONS] [NAME]
 
 **Arguments:**
 
-* `<NAME>`: Name of the model entity. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+* `<NAME>`: Name of the model entity. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
 
 **Options:**
 
@@ -4890,7 +4930,7 @@ nemo models adapters create [OPTIONS] MODEL_NAME [NAME]
 **Arguments:**
 
 * `<MODEL_NAME>`
-* `<NAME>`: Name of the adapter. Name must be unique in the workspace. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+* `<NAME>`: Name of the adapter. Name must be unique in the workspace. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
 
 **Options:**
 
@@ -6816,19 +6856,14 @@ nemo intake spans list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
 * `--filter.agent-id`
 * `--filter.agent-name`
-* `--filter.dataset-id`
-* `--filter.dataset-name`
-* `--filter.dataset-version`
 * `--filter.evaluation-id`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
 * `--filter.project`
-* `--filter.prompt-name`
-* `--filter.prompt-version`
 * `--filter.provider`
 * `--filter.session-id`
 * `--filter.source`
@@ -6955,7 +6990,7 @@ nemo intake spans groups list [OPTIONS]
 * `--by`: Comma-separated span fields to group by, e.g.
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: [possible values: span_count, -span_count]
+* `--sort <CHOICE>`: Sort groups by size or by start time. Use -started_at for the traces or sessions that began most recently, which answers 'what ran lately' in one call instead of paging through spans. A group's time is its earliest matching span, so this orders by when work started and not by when it was last active. [possible values: span_count, -span_count, started_at, -started_at]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -6967,16 +7002,11 @@ JSON-only fields:
 Filter spans by the same fields as the span list endpoint, then group matching spans by the comma-separated fields in the by query parameter.
 * `--filter.agent-id`
 * `--filter.agent-name`
-* `--filter.dataset-id`
-* `--filter.dataset-name`
-* `--filter.dataset-version`
 * `--filter.evaluation-id`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
 * `--filter.project`
-* `--filter.prompt-name`
-* `--filter.prompt-version`
 * `--filter.provider`
 * `--filter.session-id`
 * `--filter.source`

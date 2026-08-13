@@ -2100,6 +2100,7 @@ components:
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -2271,6 +2272,7 @@ components:
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -3113,6 +3115,11 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/RowPublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result artifacts. Omit to publish nowhere.
         metrics:
           items:
             anyOf:
@@ -3444,6 +3451,11 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/RowPublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result artifacts. Omit to publish nowhere.
         metrics:
           items:
             $ref: '#/components/schemas/MetricInline'
@@ -3734,6 +3746,92 @@ components:
       - format
       title: GenericAgent
       description: Configurable HTTP agent with optional JSON SSE response handling.
+    GymRunnerTarget:
+      properties:
+        kind:
+          type: string
+          const: gym
+          title: Kind
+          default: gym
+        agent:
+          type: string
+          title: Agent
+          description: Agent name to collect rollouts with, e.g. 'simple_agent'.
+        agent_config:
+          type: string
+          title: Agent Config
+          description: Repo-relative agent config passed to `gym env start` (--config).
+        resources_server:
+          type: string
+          title: Resources Server
+          description: Resources-server (environment) name, e.g. 'mcqa' (--resources-server).
+        model_type:
+          type: string
+          title: Model Type
+          description: Model-type config (--model-type). `inference_provider` speaks
+            OpenAI-compatible chat; `openai_model` uses the OpenAI Responses API.
+          default: inference_provider
+        bind_resources_server:
+          type: boolean
+          title: Bind Resources Server
+          description: Auto-bind the agent's `resources_server.name` via a Hydra override.
+            Set False for self-contained agents that already bind their own resources-server.
+          default: true
+        env_overrides:
+          items:
+            type: string
+          type: array
+          title: Env Overrides
+          description: Extra Hydra '+key=value' overrides for `gym env start` (applied
+            after the auto-derived resources-server binding).
+        num_repeats:
+          type: integer
+          minimum: 1.0
+          title: Num Repeats
+          description: Attempts per row; each attempt becomes one trial.
+          default: 1
+        concurrency:
+          type: integer
+          minimum: 1.0
+          title: Concurrency
+          description: Concurrent rollouts for `gym eval run`.
+          default: 4
+        startup_timeout_s:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Startup Timeout S
+          description: Max wait for `gym env start` readiness.
+          default: 240.0
+        collection_timeout_s:
+          title: Collection Timeout S
+          description: Max wait for `gym eval run` collection; None = unbounded.
+          type: number
+          exclusiveMinimum: 0.0
+        shutdown_grace_s:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Shutdown Grace S
+          description: Grace period for the Gym subprocess group to exit on SIGTERM
+            before escalating to SIGKILL.
+          default: 30.0
+        reward_key:
+          type: string
+          title: Reward Key
+          description: Key read from each rollout record.
+          default: reward
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      - agent_config
+      - resources_server
+      title: GymRunnerTarget
+      description: "Generate trials by driving a NeMo Gym environment through the\
+        \ SDK's :class:`GymAgentTaskRunner`.\n\nGym runs locally in the job container\
+        \ (the ``gym`` CLI must be installed in the same environment\nas this SDK).\
+        \ The environment dataset is recovered from the tasks at run time \u2014 the\
+        \ runner stamps\n``gym_dataset_path`` onto each task via ``discover_gym_tasks``,\
+        \ mirroring the Harbor pattern."
     HTTPValidationError:
       properties:
         detail:
@@ -4796,8 +4894,7 @@ components:
       additionalProperties: false
       type: object
       title: PublicationSpec
-      description: Where a completed run publishes its results, beyond its own result
-        bundle.
+      description: Where a completed agent-evaluation run publishes its results.
     ReasoningParams:
       properties:
         end_token:
@@ -4913,6 +5010,65 @@ components:
       required:
       - data
       title: RevisionsPage
+    RowIntakePublicationSpec:
+      properties:
+        evaluation_id:
+          type: string
+          minLength: 1
+          title: Evaluation Id
+          description: Name of the existing Evaluation to publish under. Must already
+            exist; the job does not create it.
+        agent_name:
+          title: Agent Name
+          description: Agent name recorded on each published trajectory. Derived from
+            the target when it names one; required otherwise.
+          type: string
+          minLength: 1
+        agent_version:
+          type: string
+          minLength: 1
+          title: Agent Version
+          description: Agent version recorded on each published trajectory. Neither
+            a Model nor an Agent carries a version, so this defaults to 'unknown'
+            unless the submitter supplies one.
+          default: unknown
+        required:
+          type: boolean
+          title: Required
+          description: Fail the job when publication fails. Defaults to True so a
+            run that asked to publish does not report success with nothing in Experiments.
+            The result bundle is saved before publication runs, so a failed job still
+            leaves the results intact to re-publish. Set False to keep the job successful
+            and report the failure in its output instead.
+          default: true
+        test_case_id_field:
+          title: Test Case Id Field
+          description: "Dataset column identifying each row, recorded as the published\
+            \ test case id. Defaults to a hash of the row's content, which keeps a\
+            \ row's id stable across dataset reorderings and revisions so the same\
+            \ test case can be compared run over run; editing a row makes it a new\
+            \ test case. Name a column here when the dataset has a real identifier\
+            \ \u2014 it reads better and survives content edits. Values must be unique\
+            \ per row; the run is rejected if they are not."
+          type: string
+          minLength: 1
+      additionalProperties: false
+      type: object
+      required:
+      - evaluation_id
+      title: RowIntakePublicationSpec
+      description: Intake publication for a dataset-driven evaluation, where a trial
+        is a dataset row.
+    RowPublicationSpec:
+      properties:
+        intake:
+          allOf:
+          - $ref: '#/components/schemas/RowIntakePublicationSpec'
+          description: Publish scored rows to Intake. Omit to publish nowhere.
+      additionalProperties: false
+      type: object
+      title: RowPublicationSpec
+      description: Where a completed dataset-driven evaluation publishes its results.
     RubricScoreStat:
       properties:
         label:

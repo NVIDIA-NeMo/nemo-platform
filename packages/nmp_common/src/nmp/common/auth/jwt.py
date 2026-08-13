@@ -38,6 +38,24 @@ class TokenClaims:
     raw_claims: dict
 
 
+def groups_from_claim(value: object) -> list[str]:
+    """Parse a groups JWT claim that may be a comma-separated string or a list."""
+    if isinstance(value, str):
+        return [g.strip() for g in value.split(",") if g.strip()]
+    if isinstance(value, list):
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    return []
+
+
+def scopes_from_claim(value: object) -> list[str]:
+    """Parse a scopes JWT claim that may be whitespace-delimited or a list."""
+    if isinstance(value, str):
+        return value.split()
+    if isinstance(value, list):
+        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    return []
+
+
 class UnsignedJWTRejectedError(Exception):
     """Raised when an unsigned JWT is rejected by configuration."""
 
@@ -101,28 +119,14 @@ class JWTValidator:
         groups: list[str] = []
         for claim_name in [self.config.oidc.groups_claim, "cognito:groups"]:
             if claim_name in claims:
-                groups_value = claims[claim_name]
-                if isinstance(groups_value, str):
-                    groups = [g.strip() for g in groups_value.split(",")]
-                elif isinstance(groups_value, list):
-                    groups = groups_value
+                groups = groups_from_claim(claims[claim_name])
                 break
 
-        scopes: list[str] = []
         scope_value = claims.get("scope") or claims.get("scp")
-        if scope_value:
-            if isinstance(scope_value, str):
-                raw_scopes = scope_value.split()
-            elif isinstance(scope_value, list):
-                raw_scopes = scope_value
-            else:
-                raw_scopes = []
-
-            prefix = self.config.oidc.scope_prefix
-            if prefix:
-                scopes = [s[len(prefix) :] if s.startswith(prefix) else s for s in raw_scopes]
-            else:
-                scopes = raw_scopes
+        scopes = scopes_from_claim(scope_value)
+        prefix = self.config.oidc.scope_prefix
+        if prefix:
+            scopes = [scope.removeprefix(prefix) for scope in scopes]
 
         return TokenClaims(
             subject=subject,

@@ -459,8 +459,14 @@ def create_test_client(
         pdp_timeout = Configuration.get_service_config(AuthConfig).policy_decision_point_request_timeout_seconds
         async_http_client = httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=pdp_timeout)
 
-        # Create the app with http_client for middleware injection
-        app = create_app(services_to_start, http_client=async_http_client)
+        # Both callouts target this in-process ASGI app in tests. Pass them
+        # explicitly so production callers never assume the PDP transport can
+        # also reach the auth-service lifecycle endpoint.
+        app = create_app(
+            services_to_start,
+            http_client=async_http_client,
+            access_key_lifecycle_http_client=async_http_client,
+        )
         transport.app = app
 
         # Clean up FastAPI app state that tracks model call counts.

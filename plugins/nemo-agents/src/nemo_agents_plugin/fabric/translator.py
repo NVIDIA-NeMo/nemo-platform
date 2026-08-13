@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 # CI type-checks this plugin via ty extra-paths without installing nemo-agents deps.
@@ -22,6 +23,8 @@ HARNESS_ADAPTER_IDS = {
     "hermes": "nvidia.fabric.hermes",
 }
 
+PLATFORM_RUNTIME_ENV_VARS = ("NEMO_BASE_URL", "NMP_BASE_URL", "NMP_WORKSPACE")
+
 
 class FabricTranslationError(ValueError):
     """Raised when Platform agent config cannot be translated to Fabric config."""
@@ -32,7 +35,10 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
     selected_harness_name, harness = _select_harness(config, harness_name)
     model = _resolve_model(config, selected_harness_name, harness)
     model_payload = bind_platform_gateway_model_credential(_model_payload(model))
-    runtime_env = platform_gateway_credential_env({"models": {"default": model_payload}})
+    runtime_env = {
+        **_platform_runtime_env(),
+        **platform_gateway_credential_env({"models": {"default": model_payload}}),
+    }
     _validate_untranslated_shared_fields(config)
 
     fabric_config = fabric.FabricConfig(
@@ -60,6 +66,11 @@ def translate_agent_config(config: AgentConfig, harness_name: str | None = None)
 
     _apply_telemetry(fabric_config, config, model)
     return fabric_config
+
+
+def _platform_runtime_env() -> dict[str, str]:
+    """Forward the Platform location needed by SDK-backed child tools."""
+    return {name: value for name in PLATFORM_RUNTIME_ENV_VARS if (value := os.environ.get(name))}
 
 
 def _select_harness(config: AgentConfig, harness_name: str | None) -> tuple[str, HarnessConfig]:

@@ -19,4 +19,4 @@ from typing_extensions import Literal, TypeAlias
 
 __all__ = ["SpanGroupSortField"]
 
-SpanGroupSortField: TypeAlias = Literal["span_count", "-span_count"]
+SpanGroupSortField: TypeAlias = Literal["span_count", "-span_count", "started_at", "-started_at"]

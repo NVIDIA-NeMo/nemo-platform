@@ -56,6 +56,9 @@ SPAN_GROUP_COLUMN_FIELDS = {
     "session_id": "session_id",
 }
 
+# Selected by the grouped query itself, so the outer ORDER BY can name them directly.
+SPAN_GROUP_SORT_FIELDS = frozenset({"span_count", "started_at"})
+
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 
 
@@ -168,7 +171,7 @@ class ClickHouseSpanRepository(SpanRepository):
         select_sql = ", ".join(expression.select_sql for expression in group_expressions)
         group_sql = ", ".join(expression.group_sql for expression in group_expressions)
         grouped_sql = f"""
-            SELECT {select_sql}, count() AS span_count
+            SELECT {select_sql}, count() AS span_count, min(start_time) AS started_at
             FROM {table} FINAL
             WHERE {where_sql}
             GROUP BY {group_sql}
@@ -351,12 +354,12 @@ def _order_by(sort: str) -> str:
 def _group_order_by(sort: str, group_by: list[str]) -> str:
     direction = "DESC" if sort.startswith("-") else "ASC"
     field = sort.removeprefix("-")
-    if field != "span_count":
+    if field not in SPAN_GROUP_SORT_FIELDS:
         raise ValueError(f"Unsupported span group sort field: {field}")
-    group_sort = ", ".join(f"{field} ASC" for field in group_by)
-    if group_sort:
-        return f"span_count {direction}, {group_sort}"
-    return f"span_count {direction}"
+    tie_break = ", ".join(f"{key} ASC" for key in group_by)
+    if tie_break:
+        return f"{field} {direction}, {tie_break}"
+    return f"{field} {direction}"
 
 
 def _span_to_row(span: IntakeSpan) -> dict[str, Any]:
@@ -396,6 +399,7 @@ def _row_to_group(row: dict[str, Any], *, group_by: list[str]) -> SpanGroup:
     return SpanGroup(
         group={field: str(row[field]) for field in group_by},
         span_count=int(row["span_count"]),
+        started_at=row["started_at"],
     )
 
 
