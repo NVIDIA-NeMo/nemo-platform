@@ -56,7 +56,7 @@ from nemo_deployments_plugin.backends.openshell.policy import (
     normalize_loaded_policy,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig
+from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig, OpenShellDeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -246,6 +246,37 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             inject_platform_egress(policy_dict, egress)
         return build_sandbox_policy(policy_dict)
 
+    def _build_deployment_policy(self, policy_path_override: str | None) -> Any:
+        """Return the effective policy for a single deployment.
+
+        Uses the per-deployment ``policy_path`` if set; otherwise falls back to
+        the executor-level default built at init time (``self._policy``).
+        The executor's egress rule is always re-injected so the deployment can
+        never lose its path back to the platform, even with a hand-written policy.
+        """
+        if not policy_path_override:
+            return self._policy
+        cfg = self._executor_config.platform_egress
+        egress = (
+            PlatformEgress(
+                host=cfg.host,
+                port=cfg.port,
+                protocol=cfg.protocol,
+                tls=cfg.tls,
+                access=cfg.access,
+                binaries=tuple(cfg.binaries) or DEFAULT_EGRESS_BINARIES,
+            )
+            if cfg is not None
+            else None
+        )
+        compat = self._executor_config.landlock_compatibility
+        policy_dict = normalize_loaded_policy(load_policy_dict(policy_path_override), landlock_compatibility=compat)
+
+        if egress is not None:
+            inject_platform_egress(policy_dict, egress)
+
+        return build_sandbox_policy(policy_dict)
+
     def _create_channel(self) -> grpc.Channel:
         target = self._executor_config.grpc_target()
         if self._executor_config.use_insecure():
@@ -280,7 +311,7 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         labels: dict[str, str],
         backend_config: dict[str, Any],
     ) -> BackendStatusUpdate:
-        del backend_config  # per-deployment openshell overrides: needs entity field + SDK regen (follow-up)
+        openshell_cfg = OpenShellDeploymentConfig.model_validate(backend_config.get("openshell") or {})
         sandbox_nm = _sandbox_name(workspace, name)
 
         existing = await self._try_get_sandbox(sandbox_nm)
@@ -355,8 +386,9 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             ),
         }
 
+        policy = self._build_deployment_policy(openshell_cfg.policy_path)
         template = pb.SandboxTemplate(image=container.image, environment=env, labels=all_labels)
-        spec = pb.SandboxSpec(template=template, environment=env, policy=self._policy)
+        spec = pb.SandboxSpec(template=template, environment=env, policy=policy)
         request = pb.CreateSandboxRequest(spec=spec, name=sandbox_nm, labels=all_labels)
 
         try:

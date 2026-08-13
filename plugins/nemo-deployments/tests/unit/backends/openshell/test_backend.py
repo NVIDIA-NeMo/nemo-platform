@@ -284,6 +284,47 @@ async def test_read_status_not_found_is_lost(
     assert update.status == "LOST"
 
 
+async def test_create_uses_executor_policy_when_no_policy_path_override(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    executor_policy = openshell_backend._policy
+    await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert spec.policy == executor_policy
+
+
+async def test_create_uses_per_deployment_policy_when_policy_path_set(
+    openshell_backend: OpenShellDeploymentBackend,
+    mock_stub: MagicMock,
+    mock_entities: AsyncMock,
+    tmp_path: Path,
+) -> None:
+    policy_file = tmp_path / "policy.yaml"
+    policy_file.write_text("version: 1\nprocess:\n  run_as_user: sandbox\n  run_as_group: sandbox\n")
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    executor_policy = openshell_backend._policy
+    await openshell_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={},
+        backend_config={"openshell": {"policyPath": str(policy_file)}},
+    )
+
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert spec.policy != executor_policy
+
+
 async def test_create_requires_serve_command(
     openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
 ) -> None:
