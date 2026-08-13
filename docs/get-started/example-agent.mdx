@@ -62,8 +62,8 @@ expressions, so its baseline failure is repeatable. The Analyst and
 Experimentalist do use the Model Entities configured above.
 
 The first problem is simple: the agent can look up, list, and count records,
-but cannot calculate total hours. Its validation tasks vary the scope from a
-department to all records or a role, so a narrow repair does not transfer. Later
+but cannot calculate total hours. Both its splits scope a sum by department and
+by role, so a repair that hardcodes either scope fails straight away. Later
 sections combine this problem with other weaknesses, including long inputs,
 dispatch order, and edge cases.
 
