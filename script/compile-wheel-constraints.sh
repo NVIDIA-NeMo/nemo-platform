@@ -37,8 +37,10 @@ emit_constraints() {
   meta="$(mktemp -d)"
   uv venv "${venv}" --python 3.12 --quiet
   # Resolve+install once with the cap so we snapshot consistent, py3.14-safe versions.
+  # --no-config: run from the checkout this would otherwise apply the repo's
+  # [tool.uv] override-dependencies and snapshot versions no user can resolve.
   printf '%s\n' "${LITELLM_CAP%% *}" >"${meta}/cap.txt"
-  uv pip install --python "${venv}/bin/python" --constraint "${meta}/cap.txt" "${spec}" >/dev/null
+  uv pip install --no-config --python "${venv}/bin/python" --constraint "${meta}/cap.txt" "${spec}" >/dev/null
   # Direct external deps = the wheel's own Requires-Dist, minus self-referential extras.
   python3 - "$wheel" >"${meta}/names.txt" <<'PY'
 import sys, zipfile, re
