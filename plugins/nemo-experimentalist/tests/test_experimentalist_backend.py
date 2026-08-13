@@ -343,6 +343,34 @@ async def test_persist_result_writes_run_summary(tmp_path: Path) -> None:
     assert (backend._eo / "OPTIMIZATION.md").read_text() == "the real run summary"
 
 
+async def test_persist_result_names_the_winner_by_label(tmp_path: Path) -> None:
+    """``winner_agent`` must hold 'agent-1', not the candidate id.
+
+    Everything a run writes is filed under the label -- ``agents/agent-1``,
+    ``results/agent-1-validation`` -- so this field exists to be used as a path
+    component. Writing the id gives a reference that resolves to nothing, and the
+    empty lookup downstream reads as "the winner has no results" rather than as a
+    broken reference; a smoke-agent gate reported a passing control as a regression
+    on exactly that.
+    """
+    from doubles import make_candidate
+    from nemo_experimentalist_plugin.entities import ExperimentRun
+    from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
+
+    backend = _local_backend(tmp_path)
+    run = ExperimentRun(workspace="w", agent="a")
+    run._id = "run-1"  # type: ignore[attr-defined]
+    (backend._eo / "run.json").write_text(run.model_dump_json(indent=2))
+
+    winner = make_candidate(label="agent-1", generation=1, ancestor="agent-0")
+    result = ExperimentalistResult(summary="s", run_id="run-1", progress_completed=1, winner=winner)
+    await backend.persist_result(workspace="w", result=result)
+
+    saved = json.loads((backend._eo / "run.json").read_text())
+    assert saved["winner_agent"] == "agent-1"
+    assert saved["winner_agent"] != winner.id
+
+
 async def test_persist_result_preserves_generated_optimization_report(tmp_path: Path) -> None:
     from nemo_experimentalist_plugin.experimentalist.result import ExperimentalistResult
 

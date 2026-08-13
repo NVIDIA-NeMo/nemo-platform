@@ -315,9 +315,10 @@ def load_winner(run_dir: Path) -> Candidate:
     """The winning Candidate of a finished run, read from its stored record.
 
     Here so consumers do not rebuild the run layout themselves. ``run.json`` names the
-    winner by **candidate id**, despite the key being spelled ``winner_agent``; the
-    winner's location comes from its own artifact reference, which stays true even if
-    candidates move off local disk.
+    winner by **label** — 'agent-3', the form every artifact path in the run is built
+    from — while the records under ``candidates/`` are filed by id, so this resolves one
+    to the other. The winner's location then comes from its own artifact reference,
+    which stays true even if candidates move off local disk.
 
     Args:
         run_dir: The run's directory — the one holding ``run.json`` and ``candidates/``.
@@ -327,13 +328,16 @@ def load_winner(run_dir: Path) -> Candidate:
         ValueError: if the run completed without selecting a winner.
     """
     document = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    winner_id = document.get("winner_agent")
-    if not isinstance(winner_id, str) or not winner_id:
+    winner_label = document.get("winner_agent")
+    if not isinstance(winner_label, str) or not winner_label:
         raise ValueError(f"Run at {run_dir} completed without a selected winner")
-    record = run_dir / "candidates" / f"{winner_id}.json"
-    if not record.is_file():
-        raise FileNotFoundError(f"Run at {run_dir} names winner {winner_id!r}, but {record} does not exist")
-    return load_candidate(record)
+    for record in sorted((run_dir / "candidates").glob("*.json")):
+        candidate = load_candidate(record)
+        if candidate.label == winner_label:
+            return candidate
+    raise FileNotFoundError(
+        f"Run at {run_dir} names winner {winner_label!r}, but no candidate record carries that label"
+    )
 
 
 def _load_entity(cls: type[_ModelT], path: Path) -> _ModelT:
@@ -827,7 +831,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             run.progress_completed = result.progress_completed
             run.summary = result.summary  # so publish_candidate's _compose_pr_body reads the real summary
             if result.winner is not None:
-                run.winner_agent = result.winner.id
+                run.winner_agent = result.winner.label
             run_path.write_text(run.model_dump_json(indent=2))
         await self._project_best_effort(
             workspace,

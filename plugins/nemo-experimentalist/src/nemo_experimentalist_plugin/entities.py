@@ -409,8 +409,9 @@ class ExperimentRun(NemoEntity, entity_type="experiment_run"):
     winner_agent: str | None = Field(
         default=None,
         description=(
-            "Entity id of the winning Candidate, or a local filesystem path "
-            "to the agent directory when running offline; set on completion."
+            "Label of the winning Candidate — 'agent-3', not its id. Every artifact "
+            "path in a run is built from the label, so this is the form a reader can "
+            "resolve; set on completion."
         ),
     )
     summary: str | None = Field(

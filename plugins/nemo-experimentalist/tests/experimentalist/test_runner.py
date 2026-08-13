@@ -65,7 +65,7 @@ def _stub_factories(monkeypatch: pytest.MonkeyPatch) -> None:
             "F",
             (),
             {
-                "build_dataset": staticmethod(lambda _type, ref: Dataset(id=ref.uri)),
+                "build_dataset": staticmethod(lambda _type, ref, **_options: Dataset(id=ref.uri)),
                 "build_task_template": staticmethod(lambda _type, ref: Task(id="template", uri=ref.uri)),
             },
         )(),
@@ -131,6 +131,12 @@ async def test_a_completed_run_persists_its_result_and_winner(monkeypatch, tmp_p
     assert backend.results == [result]
     # publish_winner defaults to True upstream, so the winner is published.
     assert backend.published == ["agent-1"]
+    # run.json names the winner by label, because every artifact path is built from
+    # the label -- 'agents/agent-1', 'results/agent-1-validation'. Writing the id here
+    # yields a reference that resolves to nothing, and an empty lookup downstream reads
+    # as "the winner has no results" rather than as a broken reference.
+    assert backend.runs[-1].winner_agent == "agent-1"
+    assert backend.runs[-1].winner_agent != winner.id
 
 
 @pytest.mark.asyncio

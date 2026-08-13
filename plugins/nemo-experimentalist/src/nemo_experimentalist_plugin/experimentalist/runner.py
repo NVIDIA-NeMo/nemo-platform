@@ -384,7 +384,7 @@ class ExperimentRunner:
             winner=winner,
         )
         run.status = "completed"
-        run.winner_agent = winner.id if winner is not None else None
+        run.winner_agent = winner.label if winner is not None else None
         await self._backend.update_run(workspace=self._workspace, run=run)
         await self._backend.persist_result(workspace=self._workspace, result=result)
 
