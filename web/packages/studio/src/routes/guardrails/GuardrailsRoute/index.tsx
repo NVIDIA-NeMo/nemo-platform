@@ -35,6 +35,7 @@ export const GuardrailsRoute: FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [configToDuplicate, setConfigToDuplicate] = useState<GuardrailConfig | null>(null);
   const [configToDelete, setConfigToDelete] = useState<GuardrailConfig | null>(null);
+  const [configsToDelete, setConfigsToDelete] = useState<GuardrailConfig[]>([]);
 
   const { mutateAsync: deleteConfig } = useGuardrailsDeleteConfig();
 
@@ -55,6 +56,21 @@ export const GuardrailsRoute: FC = () => {
       return false;
     }
   }, [configToDelete, deleteConfig, queryClient, workspace]);
+
+  const handleBulkDelete = useCallback(async (): Promise<boolean> => {
+    if (!configsToDelete.length) return false;
+    try {
+      await Promise.all(
+        configsToDelete.filter((c) => c.name).map((c) => deleteConfig({ workspace, name: c.name! }))
+      );
+      await queryClient.invalidateQueries({
+        queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [configsToDelete, deleteConfig, queryClient, workspace]);
 
   return (
     <AccessibleTitle title="Guardrails">
@@ -82,6 +98,7 @@ export const GuardrailsRoute: FC = () => {
           onRequestDuplicate={setConfigToDuplicate}
           onRequestDelete={setConfigToDelete}
           onCreate={() => setIsCreateOpen(true)}
+          onRequestBulkDelete={setConfigsToDelete}
         />
       </Stack>
 
@@ -104,6 +121,19 @@ export const GuardrailsRoute: FC = () => {
           errorText="Failed to delete the guardrail config. Please try again."
           onDelete={handleDelete}
           onClose={() => setConfigToDelete(null)}
+        />
+      ) : null}
+
+      {configsToDelete.length > 0 ? (
+        <DeleteConfirmationModal
+          open
+          simpleConfirm
+          title={`Delete ${configsToDelete.length} guardrail config${configsToDelete.length === 1 ? '' : 's'}?`}
+          description={`This will permanently delete ${configsToDelete.length} guardrail config${configsToDelete.length === 1 ? '' : 's'}. This action cannot be undone.`}
+          successText={`${configsToDelete.length} guardrail config${configsToDelete.length === 1 ? '' : 's'} deleted successfully.`}
+          errorText="Failed to delete some guardrail configs. Please try again."
+          onDelete={handleBulkDelete}
+          onClose={() => setConfigsToDelete([])}
         />
       ) : null}
     </AccessibleTitle>
