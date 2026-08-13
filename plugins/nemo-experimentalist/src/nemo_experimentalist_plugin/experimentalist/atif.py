@@ -51,7 +51,7 @@ def read_session_id(ref: ResourceRef) -> str:
 def build_ingest_payload(
     ref: ResourceRef,
     *,
-    experiment_id: str,
+    evaluation_name: str,
     task_id: str,
     agent_attrs: dict[str, str],
 ) -> dict[str, Any]:
@@ -66,7 +66,7 @@ def build_ingest_payload(
 
     Args:
         ref(ResourceRef): Resource reference to the ATIF trajectory file.
-        experiment_id(str): Evaluation name, used as ``evaluation_context.evaluation_id``.
+        evaluation_name(str): Evaluation name, used as ``evaluation_context.evaluation_id``.
         task_id(str): Test case id, used as ``evaluation_context.test_case_id``.
         agent_attrs(dict[str, str]): OTLP-style agent attributes used as fallbacks.
 
@@ -75,7 +75,7 @@ def build_ingest_payload(
     """
     trajectory = _load(ref)
     trajectory["evaluation_context"] = {
-        "evaluation_id": experiment_id,
+        "evaluation_id": evaluation_name,
         "test_case_id": task_id,
     }
     agent = trajectory.get("agent")
