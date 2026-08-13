@@ -3,10 +3,12 @@
 
 """Unit tests for the shared TrainingProgressCallback.
 
-Focused on the contract that every backend depends on: ``report_running`` REPLACES
-the task's ``status_details``, so the accumulated series must ride on every report
-or it is erased from stored status. Basic accumulation and resume-seeding are
-covered by the per-backend suites; this file covers the shared surface itself.
+Focused on the contract every backend depends on. The Jobs service merges
+``status_details`` key-wise but does so shallowly, so a report either resends a
+series in full or leaves the key out entirely -- and a report states a scalar
+only when it actually observed one, because a null charts as a real zero. Basic
+accumulation and resume-seeding are covered by the per-backend suites; this file
+covers the shared surface itself.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from __future__ import annotations
 from typing import Any, ClassVar, cast
 
 import pytest
-from nmp.customization_common.training.callbacks import TrainingProgressCallback
+from nmp.customization_common.training.callbacks import TrainingProgressCallback, is_chartable
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
 
 
@@ -51,7 +53,7 @@ def _make_callback(reporter: _RecordingReporter) -> TrainingProgressCallback:
 
 
 # --------------------------------------------------------------------------- #
-# Every report path carries the series
+# Which reports carry the series
 # --------------------------------------------------------------------------- #
 
 
@@ -140,12 +142,11 @@ def test_validation_with_loss_records_both_key_and_series(reporter: _RecordingRe
 
 
 def test_checkpoint_report_without_a_path_omits_the_key(reporter: _RecordingReporter) -> None:
-    """A null would overwrite the last known checkpoint instead of carrying it.
+    """A null would overwrite the last known checkpoint instead of leaving it.
 
-    `checkpoint_path` is a sticky carry-forward field: the reporter restates it
-    only on updates that don't state one of their own, and an explicit null
-    counts as stating one. automodel and unsloth both pass None when their
-    framework hands back no path.
+    The server merges key-wise, so omitting the key leaves the stored path
+    standing while an explicit null replaces it. automodel and unsloth both pass
+    None when their framework hands back no path.
     """
     _make_callback(reporter).report_checkpoint_saved(step=1, epoch=1)
 
@@ -230,6 +231,97 @@ def test_non_numeric_metrics_are_dropped_from_the_series(reporter: _RecordingRep
 
     metrics = reporter.reports[-1]["metrics"]
     assert set(metrics) == {"train_loss", "val_loss"}
+
+
+def test_a_dropped_metric_costs_only_itself(reporter: _RecordingReporter) -> None:
+    """It must not ride along in the payload either, or the whole report dies.
+
+    A `Histogram` in status_details makes the SDK update fail to serialize, and
+    `update_task` swallows that error -- so every metric in the report is lost
+    while the job goes on looking healthy. Verified against a live platform
+    before this filter existed: the step never landed.
+    """
+    _make_callback(reporter).report_train_step(step=1, epoch=1, loss=0.5, hist=object(), reward=0.62)
+
+    report = reporter.reports[-1]
+    assert "hist" not in report
+    assert report["reward"] == 0.62, "a well-behaved metric in the same report still lands"
+
+
+def test_a_metric_named_phase_does_not_break_the_report(reporter: _RecordingReporter) -> None:
+    """`phase` is report_running's own parameter; a collision is a TypeError.
+
+    Splat order silently shadows the other reserved names. This one raised
+    straight out of the training loop, so it is filtered rather than shadowed.
+    """
+    callback = _make_callback(reporter)
+    callback.report_train_step(step=1, epoch=1, loss=0.5, phase=1.0)
+    callback.report_validation(step=1, epoch=1, val_loss=0.4, phase=1.0)
+
+    assert [r["phase"] for r in reporter.reports] == ["training", "validation"]
+
+
+def test_a_train_step_metric_named_val_loss_stays_out_of_the_val_curve(
+    reporter: _RecordingReporter,
+) -> None:
+    """The legacy bare names are exempt from prefixing per phase, not per name.
+
+    Matching on the name alone put a training-side number in the series Studio
+    draws as the validation loss.
+    """
+    _make_callback(reporter).report_train_step(step=1, epoch=1, loss=0.5, val_loss=99.0)
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert metrics["val_loss"] == []
+    assert metrics["train_val_loss"] == [{"step": 1, "epoch": 1, "value": 99.0}]
+
+
+def test_the_legacy_names_still_go_unprefixed_in_their_own_phase(reporter: _RecordingReporter) -> None:
+    """The Studio loss chart reads `train_loss`/`val_loss` by those exact names."""
+    callback = _make_callback(reporter)
+    callback.report_train_step(step=1, epoch=1, loss=0.5)
+    callback.report_validation(step=1, epoch=1, val_loss=0.4)
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert metrics["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
+    assert metrics["val_loss"] == [{"step": 1, "epoch": 1, "value": 0.4}]
+
+
+# --------------------------------------------------------------------------- #
+# A scalar is stated only when it was observed
+# --------------------------------------------------------------------------- #
+
+
+def test_absent_lr_and_grad_norm_are_omitted_not_nulled(reporter: _RecordingReporter) -> None:
+    """A null charts as a real zero -- the same reason val_loss is omitted."""
+    _make_callback(reporter).report_train_step(step=1, epoch=1, loss=0.5)
+
+    report = reporter.reports[-1]
+    assert "lr" not in report
+    assert "grad_norm" not in report
+
+
+def test_non_finite_scalars_are_omitted(reporter: _RecordingReporter) -> None:
+    """A NaN grad_norm is routine on a skipped step; the SDK sends it as null."""
+    _make_callback(reporter).report_train_step(step=1, epoch=1, loss=0.5, lr=float("inf"), grad_norm=float("nan"))
+
+    report = reporter.reports[-1]
+    assert "lr" not in report
+    assert "grad_norm" not in report
+    assert report["train_loss"] == 0.5
+
+
+def test_a_non_finite_val_loss_is_omitted(reporter: _RecordingReporter) -> None:
+    _make_callback(reporter).report_validation(step=1, epoch=1, val_loss=float("nan"))
+
+    report = reporter.reports[-1]
+    assert "val_loss" not in report
+    assert report["metrics"]["val_loss"] == []
+
+
+def test_is_chartable_classifies_an_unbounded_int_without_raising() -> None:
+    """float() overflows on a big enough int; the predicate must not propagate it."""
+    assert is_chartable(10**400) is False
 
 
 def test_infinite_metrics_are_dropped_from_the_series(reporter: _RecordingReporter) -> None:

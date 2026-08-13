@@ -60,9 +60,20 @@ from nmp.customization_common.training.progress import JobsServiceProgressReport
 
 logger = logging.getLogger(__name__)
 
-#: Series that keep their bare name instead of taking a phase prefix, because
-#: they predate the prefixing scheme and are read by name downstream.
-_UNPREFIXED = frozenset({"train_loss", "val_loss"})
+#: ``(phase, name)`` pairs that keep the bare name instead of taking a phase
+#: prefix, because they predate the prefixing scheme and are read by name
+#: downstream.
+#:
+#: Keyed on the phase as well as the name, not the name alone: a backend that
+#: reports ``val_loss`` among a *train* step's metrics would otherwise append it
+#: to the validation loss curve, which is exactly the cross-phase interleaving
+#: the prefix exists to prevent. Such a metric becomes ``train_val_loss``.
+_UNPREFIXED = frozenset({("train", "train_loss"), ("val", "val_loss")})
+
+#: Names a backend metric may not use, because ``report_running`` takes ``phase``
+#: as its own parameter -- a collision is a TypeError out of the training loop
+#: rather than the silent shadowing that splat order gives the other names.
+_RESERVED = frozenset({"phase"})
 
 
 def is_chartable(value: Any) -> bool:
@@ -83,7 +94,30 @@ def is_chartable(value: Any) -> bool:
     """
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return False
-    return math.isfinite(float(value))
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        # An unbounded Python int overflows float(). The contract here is that
+        # any value a backend hands us gets classified without raising, so an
+        # absurd counter loses its series rather than the run losing reporting.
+        return False
+
+
+def _forwardable(additional_metrics: dict[str, object]) -> dict[str, object]:
+    """The subset of ``additional_metrics`` that may ride along in status_details.
+
+    Keeps one invariant: a metric appears as a current-step scalar exactly when
+    it also entered a series. Both drops are silent, for the same reason -- one
+    bad metric should cost its own curve, never the whole report:
+
+    - Values :func:`is_chartable` rejects. ``_record`` already skipped these, but
+      they were still splatted into the payload, where a ``Histogram`` makes the
+      whole update fail to serialize. ``update_task`` swallows that error, so
+      every metric in the report is lost while the job goes on looking healthy.
+    - :data:`_RESERVED` names, which collide with ``report_running``'s own
+      parameters and raise ``TypeError`` into the training loop.
+    """
+    return {name: value for name, value in additional_metrics.items() if name not in _RESERVED and is_chartable(value)}
 
 
 class TrainingProgressCallback:
@@ -123,7 +157,7 @@ class TrainingProgressCallback:
         # JSON-serializable. Counts stay ints rather than becoming 64.0.
         real = cast(numbers.Real, value)
         numeric: float | int = int(real) if isinstance(real, numbers.Integral) else float(real)
-        series = name if name in _UNPREFIXED else f"{phase}_{name}"
+        series = name if (phase, name) in _UNPREFIXED else f"{phase}_{name}"
         self._series.setdefault(series, []).append({"step": step, "epoch": epoch, "value": numeric})
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
@@ -172,24 +206,29 @@ class TrainingProgressCallback:
         GRPO's ``reward``/``kl_penalty``, ...). Each numeric one accumulates into
         its own ``train_<name>`` series *and* rides along as a current-step
         scalar, so consumers can read either the curve or the latest value.
+
+        Every scalar is stated only when it was actually observed, matching
+        ``val_loss``: an absent ``lr`` or a NaN ``grad_norm`` reaches the server
+        as a null, which a chart reads as a real zero.
         """
+        forwardable = _forwardable(additional_metrics)
         self._record("train", "train_loss", step, epoch, loss)
         self._record("train", "lr", step, epoch, lr)
         self._record("train", "grad_norm", step, epoch, grad_norm)
-        for name, value in additional_metrics.items():
+        for name, value in forwardable.items():
             self._record("train", name, step, epoch, value)
-        # `**additional_metrics` is splatted first, matching report_validation, so a
+        # `**forwardable` is splatted first, matching report_validation, so a
         # backend metric cannot shadow the accumulated series or the step's own loss.
         # `step`/`epoch`/`lr`/`grad_norm` are named parameters and so already safe.
         details: dict[str, object] = {
-            **additional_metrics,
+            **forwardable,
             "step": step,
             "epoch": epoch,
-            "train_loss": loss,
-            "lr": lr,
-            "grad_norm": grad_norm,
             "metrics": self._build_metrics_summary(),
         }
+        for name, value in (("train_loss", loss), ("lr", lr), ("grad_norm", grad_norm)):
+            if is_chartable(value):
+                details[name] = value
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
@@ -211,14 +250,15 @@ class TrainingProgressCallback:
         key is omitted rather than sent as null, which would chart as a real zero,
         and the ``val_loss`` series simply stays empty for such runs.
         """
+        forwardable = _forwardable(additional_metrics)
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            **additional_metrics,
+            **forwardable,
         }
-        for name, value in additional_metrics.items():
+        for name, value in forwardable.items():
             self._record("val", name, step, epoch, value)
-        if val_loss is not None:
+        if is_chartable(val_loss):
             self._record("val", "val_loss", step, epoch, val_loss)
             details["val_loss"] = val_loss
         details["metrics"] = self._build_metrics_summary()
