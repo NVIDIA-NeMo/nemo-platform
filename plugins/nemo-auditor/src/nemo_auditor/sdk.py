@@ -16,8 +16,7 @@ Mounted on :class:`~nemo_platform.NeMoPlatform` as ``client.auditor`` via the
 - ``client.auditor.list_jobs(workspace=...)`` — list submitted audit jobs.
 - ``client.auditor.get_job(job_name, workspace=...)`` — fetch a single audit job.
 - ``client.auditor.run(config=..., target=..., workspace=...)`` — in-process
-  audit using :class:`~nemo_auditor.jobs.audit.AuditJob`. Mirrors the evaluator
-  plugin's ``client.evaluator.run`` pattern: delegates to
+  audit using :class:`~nemo_auditor.jobs.audit.AuditJob`. Delegates to
   :meth:`~nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`, which
   constructs a tempdir-backed :class:`~nemo_platform_plugin.job_context.JobContext`
   and writes report artifacts via

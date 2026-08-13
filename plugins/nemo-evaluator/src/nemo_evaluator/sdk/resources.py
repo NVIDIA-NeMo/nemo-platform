@@ -48,12 +48,10 @@ from nemo_evaluator.shared.metric_bundles.defaults import resolve_default_metric
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
-    AggregateFieldName,
     FieldMapping,
     Model,
     ModelRef,
 )
-from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
@@ -166,67 +164,6 @@ class Evaluator:
             ),
         )
 
-    @overload
-    def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | None = None,
-        target: None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    @overload
-    def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnlineModel,
-        target: Model,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    @overload
-    def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnline,
-        target: Agent,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any],
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
-        return self._executor.evaluate(
-            metric=metric,
-            dataset=dataset,
-            params=config,
-            target=target,
-            field_mapping=field_mapping,
-            prompt_template=prompt_template,
-            aggregate_fields=aggregate_fields,
-        )
-
 
 class AsyncEvaluator:
     """Async SDK namespace mounted as ``client.evaluator``."""
@@ -271,67 +208,6 @@ class AsyncEvaluator:
             base_url=http_utils.base_url(str(self._platform.base_url)),
             workspace=http_utils.resolve_workspace(self._platform, workspace),
             headers=http_utils.platform_default_headers(self._platform),
-        )
-
-    @overload
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | None = None,
-        target: None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    @overload
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnlineModel,
-        target: Model,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    @overload
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfigOnline,
-        target: Agent,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any],
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult: ...
-
-    async def run(
-        self,
-        *,
-        metric: Metric,
-        dataset: PluginDatasetInput,
-        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
-        field_mapping: FieldMapping | None = None,
-        prompt_template: str | dict[str, Any] | None = None,
-        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
-    ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
-        return await self._executor.evaluate(
-            metric=metric,
-            dataset=dataset,
-            params=config,
-            target=target,
-            field_mapping=field_mapping,
-            prompt_template=prompt_template,
-            aggregate_fields=aggregate_fields,
         )
 
     @overload
