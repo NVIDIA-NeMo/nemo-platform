@@ -92,3 +92,39 @@ def test_a_config_using_the_current_keys_is_accepted() -> None:
     assert config.terminator is None
     assert config.outcome_evaluator == "harbor"
     assert config.outcome_evaluator_config == {"n_attempts": 1}
+
+
+def test_the_skill_documents_only_live_config_keys() -> None:
+    """The skill's example config is what users copy, so a key rejected above is a
+    defect that reaches every reader rather than only the person who wrote it.
+
+    The rejections and the documentation drifted apart once already: the skill still
+    taught `disable_convergence_check`, `coder` and `evaluator` after all three had
+    become errors, so following it produced a run that died at config validation.
+    """
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    skill = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "nemo_experimentalist_plugin"
+        / "skills"
+        / "nemo-experimentalist"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    fields = set(EvolutionaryOptimizerConfig.model_fields)
+    checked = 0
+    for block in re.findall(r"```yaml\n(.*?)```", skill, re.DOTALL):
+        data = yaml.safe_load(block)
+        if not isinstance(data, dict) or "max_rounds" not in data:
+            continue  # not a run config
+        checked += 1
+        unknown = sorted(set(data) - fields)
+        assert not unknown, f"SKILL.md documents keys the schema does not have: {unknown}"
+        EvolutionaryOptimizerConfig.model_validate(data)
+
+    assert checked, "found no run-config example in SKILL.md; the block matcher is wrong"

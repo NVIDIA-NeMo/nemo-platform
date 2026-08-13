@@ -255,9 +255,9 @@ to select the winner.
 | `max_candidates` / `max_survivors` | `1` / `1` | `3` / `3` | Exploration per round and candidates retained as parents. |
 | `max_train_batch_tasks` | Small fixed batch, e.g. `4` | `null` for all train tasks, or a representative fixed batch | Cost and signal available while proposing changes. |
 | `max_trajectory_tasks` | `2` | `8` | Tasks used for trajectory/goal-tree scoring. |
-| `disable_trajectory_scoring` / `disable_convergence_check` | `true` / `true` | Omit them (both default to `false`) | Skips costly diagnostic work for smoke runs; restores quality and early stopping for real runs. |
-| `coder.max_fix_attempts` | `1` | `2` (default) | Maximum repair iterations when a candidate fails its integration check. |
-| `evaluator.n_attempts` | `1` | `1`; increase only when task results are noisy | Repeats each evaluation trial. |
+| `trajectory_scorer` / `terminator` | `null` / `null` | Omit them (they default to `goal-tree` and `convergence`) | `null` means no implementation of that role, skipping costly diagnostic work for smoke runs; omitting restores quality and early stopping for real runs. |
+| `builder_config.max_fix_attempts` | `1` | `2` (default) | Maximum repair iterations when a candidate fails its integration check. |
+| `outcome_evaluator_config.n_attempts` | `1` | `1`; increase only when task results are noisy | Repeats each evaluation trial. |
 | `eval_author.max_traces` | `3` | `10` | Representative Insight traces deeply analyzed in Insight-driven mode. |
 
 A small explicit smoke configuration looks like this:
@@ -269,14 +269,14 @@ max_survivors: 1
 max_candidates: 1
 max_trajectory_tasks: 2
 max_train_batch_tasks: 4
-disable_trajectory_scoring: true
-disable_convergence_check: true
+trajectory_scorer: null
+terminator: null
 storage:
   # The real default is true. Keep this false until you intend to create a PR/MR.
   publish_winner: false
-coder:
+builder_config:
   max_fix_attempts: 1
-evaluator:
+outcome_evaluator_config:
   n_attempts: 1
 eval_author:
   max_traces: 3
