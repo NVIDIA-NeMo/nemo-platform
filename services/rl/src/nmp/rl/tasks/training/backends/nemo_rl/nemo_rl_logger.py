@@ -9,12 +9,11 @@
 # its affiliates is strictly prohibited.
 
 import logging
-import math
-import numbers
 from typing import Any, Mapping, Optional
 
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.training.callbacks import is_chartable
 from nmp.rl.tasks.training.backends.nemo_rl.callbacks import TrainingProgressCallback
 from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
@@ -71,12 +70,11 @@ def has_metric_value(metric: Any) -> bool:
     nested dict. ``math.isnan`` raises ``TypeError`` on all of those, so a bare
     None-check would turn a widened key list into a crash mid-training.
 
-    ``bool`` is rejected despite being an ``int`` subclass: no metric here is a
-    flag, and silently charting one as 0/1 is worse than dropping it.
+    Delegates to the shared predicate so the wire filter and the series filter
+    cannot drift apart -- a metric this forwards must be one the callback can
+    chart.
     """
-    if isinstance(metric, bool) or not isinstance(metric, numbers.Real):
-        return False
-    return not math.isnan(float(metric))
+    return is_chartable(metric)
 
 
 def resolve_log_interval(val_period: int | None) -> int:

@@ -4,10 +4,9 @@
 """Training progress callback shared by the customization backends.
 
 Composes a :class:`nmp.customization_common.training.progress.JobsServiceProgressReporter`
-and provides training-specific methods. Metric accumulation: ``train_loss`` and
-``val_loss`` are accumulated as time-series lists and included in EVERY
-``status_details`` update under a ``metrics`` key, enabling loss-curve
-reconstruction from job status.
+and provides training-specific methods. Every numeric metric a backend reports is
+accumulated as a time series and included in EVERY ``status_details`` update under
+a ``metrics`` key, so any of them can be charted from job status alone.
 
 Every update matters because ``report_running`` REPLACES the task's
 ``status_details`` blob rather than merging into it. A report that omits
@@ -16,9 +15,35 @@ next train step resends it -- and if the job dies inside that window, the curve
 is gone. Checkpoint and epoch-end reports fire mid-training, so they carry the
 payload too.
 
-Only these two series accumulate. Anything passed as ``**additional_metrics``
-rides along as a current-step scalar: the full series set is resent on every
-update, so the payload grows with series count times step count.
+Series naming
+-------------
+Series are namespaced by the phase that produced them: ``train_<name>`` and
+``val_<name>``, which is what the long-standing ``train_loss``/``val_loss`` pair
+already did. The prefix is load-bearing rather than cosmetic -- GRPO reports
+``truncation_rate`` in both its train and validation dicts, and DPO reports
+``accuracy`` in both, so unprefixed names would interleave two different
+quantities into one series.
+
+``train_loss`` and ``val_loss`` keep those exact names, so existing consumers
+(the Studio loss chart) are unaffected.
+
+Payload size
+------------
+Every series is resent in full on every update, so the stored blob grows as
+``series x reports`` and total upload as the square of it. The driver of that
+cost is the number of *reports*, not training steps -- backends throttle
+reporting, so a 500-step GRPO run at ``log_interval=10`` accumulates 50 points
+per series, not 500.
+
+Measured, for GRPO's ~22 series:
+
+    500 steps, log_interval 10  ->   42 KB final blob,   1.1 MB uploaded
+    500 steps, log_interval  1  ->  413 KB final blob, 101.3 MB uploaded
+
+Deliberately accepted for batch training jobs. It does mean a backend that
+reports every step of a long run pays quadratically, so if that becomes a real
+configuration the transport should move to delta appends rather than the series
+being trimmed here.
 
 Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
 ``backend`` field on each report (``"unsloth"``); automodel and NeMo-RL leave it
@@ -27,11 +52,33 @@ Callers may also pass ``backend`` per call (e.g. unsloth's HF trainer callback).
 """
 
 import logging
-from typing import ClassVar
+import math
+import numbers
+from typing import Any, ClassVar, cast
 
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
+
+#: Series that keep their bare name instead of taking a phase prefix, because
+#: they predate the prefixing scheme and are read by name downstream.
+_UNPREFIXED = frozenset({"train_loss", "val_loss"})
+
+
+def is_chartable(value: Any) -> bool:
+    """Whether ``value`` is a finite scalar that can enter a metric series.
+
+    Backends hand us whatever their framework produced, which is not always a
+    number: NeMo-RL's metric dicts interleave ``Histogram`` objects, tables and
+    nested dicts with the scalars, and ``math.isnan`` raises ``TypeError`` on all
+    of those rather than returning False.
+
+    ``bool`` is rejected despite being an ``int`` subclass: no metric here is a
+    flag, and silently charting one as 0/1 is worse than dropping it.
+    """
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        return False
+    return not math.isnan(float(value))
 
 
 class TrainingProgressCallback:
@@ -44,25 +91,46 @@ class TrainingProgressCallback:
     def __init__(self, reporter: JobsServiceProgressReporter):
         self._reporter = reporter
 
-        prior = reporter.fetch_current_metrics()
-        self._train_metrics: list[dict[str, float | int]] = prior.get("train_loss", [])
-        self._val_metrics: list[dict[str, float | int]] = prior.get("val_loss", [])
-        if self._train_metrics or self._val_metrics:
+        #: series name -> [{step, epoch, value}], seeded from the server so a
+        #: resumed job continues its curves instead of restarting them.
+        self._series: dict[str, list[dict[str, float | int]]] = dict(reporter.fetch_current_metrics())
+        if any(self._series.values()):
             logger.info(
-                "Seeded metrics from server: %d train_loss, %d val_loss entries",
-                len(self._train_metrics),
-                len(self._val_metrics),
+                "Seeded %d metric series from server (%d points): %s",
+                len(self._series),
+                sum(len(points) for points in self._series.values()),
+                ", ".join(sorted(self._series)),
             )
 
     def _resolve_backend(self, backend: str | None) -> str | None:
         return backend if backend is not None else self._default_backend
 
+    def _record(self, phase: str, name: str, step: int, epoch: int, value: object) -> None:
+        """Append one point to the ``<phase>_<name>`` series, if it is chartable.
+
+        Silently drops non-numeric values rather than raising: a backend adding a
+        metric that turns out to be a histogram should lose that one series, not
+        fail the training run's progress reporting.
+        """
+        if not is_chartable(value):
+            return
+        # Coerce to a built-in: numpy scalars satisfy numbers.Real but are not
+        # JSON-serializable. Counts stay ints rather than becoming 64.0.
+        real = cast(numbers.Real, value)
+        numeric: float | int = int(real) if isinstance(real, numbers.Integral) else float(real)
+        series = name if name in _UNPREFIXED else f"{phase}_{name}"
+        self._series.setdefault(series, []).append({"step": step, "epoch": epoch, "value": numeric})
+
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
-        """Build the accumulated metrics payload for inclusion in status_details."""
-        return {
-            "train_loss": list(self._train_metrics),
-            "val_loss": list(self._val_metrics),
-        }
+        """Build the accumulated metrics payload for inclusion in status_details.
+
+        ``train_loss``/``val_loss`` are always present, even when empty, so the
+        shape stays stable for consumers that index them directly. Lists are
+        copied: the payload must not mutate after it is handed over.
+        """
+        summary: dict[str, list[dict[str, float | int]]] = {"train_loss": [], "val_loss": []}
+        summary.update({name: list(points) for name, points in self._series.items()})
+        return summary
 
     def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
         """Report that training has started with schedule information."""
@@ -91,11 +159,16 @@ class TrainingProgressCallback:
     ) -> None:
         """Report training step with metrics.
 
-        ``additional_metrics`` are backend-specific current-step scalars (DPO's
-        ``preference_loss``, GRPO's ``reward``/``kl_penalty``, ...). They are not
-        accumulated into the series; see the module docstring.
+        ``additional_metrics`` are backend-specific (DPO's ``preference_loss``,
+        GRPO's ``reward``/``kl_penalty``, ...). Each numeric one accumulates into
+        its own ``train_<name>`` series *and* rides along as a current-step
+        scalar, so consumers can read either the curve or the latest value.
         """
-        self._train_metrics.append({"step": step, "epoch": epoch, "value": loss})
+        self._record("train", "train_loss", step, epoch, loss)
+        self._record("train", "lr", step, epoch, lr)
+        self._record("train", "grad_norm", step, epoch, grad_norm)
+        for name, value in additional_metrics.items():
+            self._record("train", name, step, epoch, value)
         # `**additional_metrics` is splatted first, matching report_validation, so a
         # backend metric cannot shadow the accumulated series or the step's own loss.
         # `step`/`epoch`/`lr`/`grad_norm` are named parameters and so already safe.
@@ -126,15 +199,18 @@ class TrainingProgressCallback:
 
         ``val_loss`` is optional because not every algorithm produces one: GRPO
         validates on ``accuracy``/``avg_length`` and reports no loss at all. The
-        key is omitted rather than sent as null, which would chart as a real zero.
+        key is omitted rather than sent as null, which would chart as a real zero,
+        and the ``val_loss`` series simply stays empty for such runs.
         """
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
             **additional_metrics,
         }
+        for name, value in additional_metrics.items():
+            self._record("val", name, step, epoch, value)
         if val_loss is not None:
-            self._val_metrics.append({"step": step, "epoch": epoch, "value": val_loss})
+            self._record("val", "val_loss", step, epoch, val_loss)
             details["val_loss"] = val_loss
         details["metrics"] = self._build_metrics_summary()
 

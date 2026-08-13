@@ -115,8 +115,15 @@ class JobsServiceProgressReporter:
             logger.warning(f"Failed to update task progress: {e}")
 
     def fetch_current_metrics(self) -> dict[str, list[dict[str, float | int]]]:
+        """Read back every stored metric series.
+
+        Deliberately not restricted to a known set of names: backends decide what
+        they accumulate, and a resumed job that only seeded ``train_loss`` would
+        silently restart every other curve from empty. Non-list values are
+        dropped so a malformed blob cannot poison the accumulator.
+        """
         if not self._enabled:
-            return {"train_loss": [], "val_loss": []}
+            return {}
 
         try:
             jobs = client_from_platform(self._sdk, JobsClient)
@@ -127,16 +134,13 @@ class JobsServiceProgressReporter:
                 step=self._job_ctx.step,
             ).data()
             metrics = cast(dict[str, Any], (task.status_details or {}).get("metrics", {}) or {})
-            return {
-                "train_loss": metrics.get("train_loss", []),
-                "val_loss": metrics.get("val_loss", []),
-            }
+            return {name: points for name, points in metrics.items() if isinstance(points, list)}
         except Exception as e:
             # Expected on a first run, where the task has no stored details yet.
             # Serves both resume seeding and update_task's metric preservation,
             # so the message stays neutral about which caller hit it.
             logger.info(f"No stored metrics available: {e}")
-            return {"train_loss": [], "val_loss": []}
+            return {}
 
     def report_running(self, phase: str, **details: Any) -> None:
         if "step" in details and "percentage_done" not in details and self._max_steps > 0:
