@@ -9,7 +9,7 @@ import {
   useIronSwarmListRuns,
 } from '@iron-swarm/generated/api';
 import type { IronSwarmRun, RunFilter } from '@iron-swarm/generated/schema';
-import { useToast, useWorkspace } from '@iron-swarm/host';
+import { useNotify, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmRunDetailsRoute } from '@iron-swarm/paths';
 import { DeleteConfirmationModal, JOB_POLLING_INTERVAL_MS, QuickActionsMenuRoot, RelativeTime, StatusBadge, StudioDataView, TableEmptyState, getSortParam, useStudioDataViewState, withOperators, type StatusConfigEntry } from '@nemo/common';
 import { Text } from '@nvidia/foundations-react-core';
@@ -36,6 +36,7 @@ export const IronSwarmRunsDataView: FC = () => {
   const navigate = useNavigate();
   const workspace = useWorkspace();
   const toast = useToast();
+  const notify = useNotify();
   const queryClient = useQueryClient();
   const [toDelete, setToDelete] = useState<IronSwarmRunWithId | null>(null);
 
@@ -180,6 +181,7 @@ export const IronSwarmRunsDataView: FC = () => {
         }}
       />
       <DeleteConfirmationModal
+        onNotify={notify}
         open={!!toDelete}
         onClose={() => setToDelete(null)}
         title={`Delete ${toDelete?.name ?? 'run'}?`}

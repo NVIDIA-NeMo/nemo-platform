@@ -17,7 +17,7 @@ import {
 } from '@iron-swarm/components/useSanityCheck';
 import { YamlDiff } from '@iron-swarm/components/YamlDiff';
 import { useIronSwarmApplyMitigation } from '@iron-swarm/generated/api';
-import { useToast } from '@iron-swarm/host';
+import { useNotify, useToast } from '@iron-swarm/host';
 import { ACCENT, tint } from '@iron-swarm/theme';
 import { AccordionSection, ConfirmationModal } from '@nemo/common';
 import {
@@ -166,6 +166,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
   onComposedWorkflowChange,
 }) => {
   const toast = useToast();
+  const notify = useNotify();
   const [selected, setSelected] = useState<Set<string>>(() => new Set(defenses.map((d) => d.id)));
   useEffect(() => {
     setSelected(new Set(defenses.map((d) => d.id)));
@@ -428,6 +429,7 @@ export const HardenPanel: FC<HardenPanelProps> = ({
       ) : null}
 
       <ConfirmationModal
+        onNotify={notify}
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={applyWorkflow}

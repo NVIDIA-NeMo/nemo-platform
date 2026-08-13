@@ -11,7 +11,7 @@
     "test": "vitest --run",
     "test:ci": "CI=true vitest --run",
     "test:watch": "vitest watch",
-    "typecheck": "tsc --noEmit --noErrorTruncation",
+    "typecheck": "tsc6 --noEmit --noErrorTruncation",
     "gen": "orval --config ./orval.config.ts"
   },
   "dependencies": {

@@ -21,7 +21,7 @@ import {
   useIronSwarmUpdateManifest,
 } from '@iron-swarm/generated/api';
 import type { IronSwarmRun, WarGameModels } from '@iron-swarm/generated/schema';
-import { useBreadcrumbs, useToast, useWorkspace } from '@iron-swarm/host';
+import { useBreadcrumbs, useNotify, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
 import { FEEDBACK } from '@iron-swarm/theme';
 import { AccessibleTitle, AccordionSection, ConfirmationModal, FileUpload, FormModal } from '@nemo/common';
@@ -91,6 +91,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
   const workspace = useWorkspace();
   const { ironSwarmManifestName = '' } = useParams<{ ironSwarmManifestName: string }>();
   const toast = useToast();
+  const notify = useNotify();
   const queryClient = useQueryClient();
 
   useBreadcrumbs({
@@ -523,6 +524,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
       </Stack>
 
       <ConfirmationModal
+        onNotify={notify}
         open={confirmClear}
         onClose={() => setConfirmClear(false)}
         title="Clear benign requests?"
@@ -554,6 +556,7 @@ export const IronSwarmManifestDetailRoute: FC = () => {
       </FormModal>
 
       <ConfirmationModal
+        onNotify={notify}
         open={confirmRefresh}
         onClose={() => setConfirmRefresh(false)}
         title={`Refresh ${ironSwarmManifestName}?`}

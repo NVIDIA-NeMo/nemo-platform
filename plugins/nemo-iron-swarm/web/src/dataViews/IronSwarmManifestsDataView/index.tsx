@@ -8,7 +8,7 @@ import {
   useIronSwarmListManifests,
 } from '@iron-swarm/generated/api';
 import type { IronSwarmManifest } from '@iron-swarm/generated/schema';
-import { useToast, useWorkspace } from '@iron-swarm/host';
+import { useNotify, useToast, useWorkspace } from '@iron-swarm/host';
 import {
   getIronSwarmManifestDetailRoute,
   getNewIronSwarmManifestRoute,
@@ -25,6 +25,7 @@ export const IronSwarmManifestsDataView: FC = () => {
   const navigate = useNavigate();
   const workspace = useWorkspace();
   const toast = useToast();
+  const notify = useNotify();
   const queryClient = useQueryClient();
   const dataViewState = useStudioDataViewState({ defaultSort: [{ id: 'created_at', desc: true }] });
   const [toDelete, setToDelete] = useState<IronSwarmManifestWithId | null>(null);
@@ -145,6 +146,7 @@ export const IronSwarmManifestsDataView: FC = () => {
         }}
       />
       <DeleteConfirmationModal
+        onNotify={notify}
         open={!!toDelete}
         onClose={() => setToDelete(null)}
         title={`Delete ${toDelete?.name ?? 'manifest'}?`}

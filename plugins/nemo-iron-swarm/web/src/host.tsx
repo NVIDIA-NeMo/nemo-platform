@@ -26,6 +26,16 @@ export const useHost = (): PluginHost => {
 
 export const useWorkspace = (): string => useHost().workspaceId;
 
+/**
+ * Studio's notification sink, for `@nemo/common` components that take `onNotify`.
+ *
+ * They cannot reach Studio's ToastProvider — a plugin resolves `@nemo/common` to
+ * the vendor copy, which has its own ToastContext — so without this their result
+ * messages are dropped with a console warning rather than shown.
+ */
+export const useNotify = (): PluginHost['notifications']['notify'] =>
+  useHost().notifications.notify;
+
 /** Subset of Studio's toast object that this plugin uses, routed to Studio's toaster. */
 export interface PluginToast {
   success: (message: string) => void;
