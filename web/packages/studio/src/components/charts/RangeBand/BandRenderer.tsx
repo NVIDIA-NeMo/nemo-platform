@@ -34,7 +34,10 @@ export function BandRenderer({
   const yAxis = yAxisMap ? Object.values(yAxisMap)[0] : null;
   if (!xAxis?.scale || !yAxis?.scale) return null;
 
-  const pts = data.filter((d) => d[lowerKey] !== undefined && d[upperKey] !== undefined);
+  const isFiniteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const pts = data.filter(
+    (d) => isFiniteNum(d[xKey]) && isFiniteNum(d[lowerKey]) && isFiniteNum(d[upperKey])
+  );
   if (pts.length < 2) return null;
 
   const upper = pts.map(

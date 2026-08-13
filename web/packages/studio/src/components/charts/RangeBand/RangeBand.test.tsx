@@ -255,4 +255,69 @@ describe('BandRenderer', () => {
     expect(screen.queryByTestId('range-band-clip')).toBeNull();
     expect(screen.getByTestId('range-band-path')).toBeInTheDocument();
   });
+
+  it('filters out points with null coordinate values', () => {
+    const data = [
+      { step: null, lower: 0.1, upper: 0.5 },
+      { step: 0, lower: null, upper: 0.5 },
+      { step: 0, lower: 0.1, upper: null },
+      { step: 100, lower: 0.2, upper: 0.6 },
+      { step: 200, lower: 0.3, upper: 0.7 },
+    ];
+    render(
+      <svg>
+        <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={data} />
+      </svg>
+    );
+    const d = screen.getByTestId('range-band-path').getAttribute('d') ?? '';
+    expect((d.match(/[\d.]+,[\d.]+/g) ?? []).length).toBe(4);
+  });
+
+  it('filters out points with NaN coordinate values', () => {
+    const data = [
+      { step: NaN, lower: 0.1, upper: 0.5 },
+      { step: 0, lower: NaN, upper: 0.5 },
+      { step: 0, lower: 0.1, upper: NaN },
+      { step: 100, lower: 0.2, upper: 0.6 },
+      { step: 200, lower: 0.3, upper: 0.7 },
+    ];
+    render(
+      <svg>
+        <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={data} />
+      </svg>
+    );
+    const d = screen.getByTestId('range-band-path').getAttribute('d') ?? '';
+    expect((d.match(/[\d.]+,[\d.]+/g) ?? []).length).toBe(4);
+  });
+
+  it('filters out points with Infinity coordinate values', () => {
+    const data = [
+      { step: Infinity, lower: 0.1, upper: 0.5 },
+      { step: 0, lower: -Infinity, upper: 0.5 },
+      { step: 0, lower: 0.1, upper: Infinity },
+      { step: 100, lower: 0.2, upper: 0.6 },
+      { step: 200, lower: 0.3, upper: 0.7 },
+    ];
+    render(
+      <svg>
+        <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={data} />
+      </svg>
+    );
+    const d = screen.getByTestId('range-band-path').getAttribute('d') ?? '';
+    expect((d.match(/[\d.]+,[\d.]+/g) ?? []).length).toBe(4);
+  });
+
+  it('returns null when every point has a non-finite coordinate', () => {
+    const data = [
+      { step: NaN, lower: 0.1, upper: 0.5 },
+      { step: 0, lower: Infinity, upper: 0.5 },
+      { step: 0, lower: 0.1, upper: null },
+    ];
+    render(
+      <svg>
+        <BandRenderer xAxisMap={xAxisMap} yAxisMap={yAxisMap} data={data} />
+      </svg>
+    );
+    expect(screen.queryByTestId('range-band-path')).toBeNull();
+  });
 });
