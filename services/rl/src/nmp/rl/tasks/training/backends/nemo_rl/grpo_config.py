@@ -207,6 +207,7 @@ def _build_nemo_gym_env_config(
                 network_policy=SandboxNetworkPolicy(
                     # Defaults until the training master resolves live vLLM/broker endpoints.
                     egress_allow=assemble_master_egress_allow(),
+                    public_dns_allow=tuple(gym.public_dns_allow),
                 ),
                 environment_pvc_claim=mounts.environment_pvc_claim,
                 environment_sub_path=mounts.environment_sub_path,

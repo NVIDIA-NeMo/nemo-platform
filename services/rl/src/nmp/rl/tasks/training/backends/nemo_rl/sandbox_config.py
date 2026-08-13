@@ -22,6 +22,12 @@ class SandboxNetworkPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     egress_allow: list[GymHostEgressRule] = Field(default_factory=list)
+    # Extra DNS suffixes or FQDNs, consulted by NeMo-RL only when allow_internet is true.
+    # NeMo-RL's own default list is ("*.com", "*.org"), so an environment whose package index
+    # lives anywhere else -- hub.primeintellect.ai, for one -- is denied at DNS without this.
+    # Operator-scoped like allow_internet: sourced from platformConfig.rl.sandbox_public_dns_allow,
+    # never from a job submission.
+    public_dns_allow: tuple[str, ...] = ()
 
 
 class SandboxConfig(BaseModel):
@@ -37,10 +43,9 @@ class SandboxConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     image: str
-    # The only egress lever the platform sets; NeMo-RL owns which suffixes it opens. Sourced
-    # from platformConfig.rl.sandbox_allow_internet, so it is per-deployment, never per-job.
-    # NeMo-RL's public_dns_allow is deliberately not mirrored: with no field to populate, the
-    # job schema has no path to widen egress.
+    # Sourced from platformConfig.rl.sandbox_allow_internet, so it is per-deployment, never
+    # per-job. Opens NeMo-RL's default public DNS suffixes; network_policy.public_dns_allow
+    # adds to them. Both are operator-scoped, so the job schema has no path to widen egress.
     allow_internet: bool = False
     env_mount_path: str = "/job/environment"
     dataset_mount_path: str = "/job/dataset"
@@ -192,9 +197,16 @@ def assemble_master_egress_allow(
 
 
 def apply_master_egress_to_sandbox_config(sandbox: SandboxConfig) -> SandboxConfig:
-    """Refresh ``network_policy.egress_allow`` from the current master endpoints."""
+    """Refresh ``network_policy.egress_allow`` from the current master endpoints.
+
+    Only ``egress_allow`` is recomputed. ``public_dns_allow`` is operator configuration that
+    the master cannot re-derive, so it is carried over -- rebuilding the whole policy here
+    would drop it and the sandbox would lose its package index mid-compile.
+    """
     return sandbox.model_copy(
         update={
-            "network_policy": SandboxNetworkPolicy(egress_allow=assemble_master_egress_allow()),
+            "network_policy": sandbox.network_policy.model_copy(
+                update={"egress_allow": assemble_master_egress_allow()},
+            ),
         }
     )
