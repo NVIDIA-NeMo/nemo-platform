@@ -5,7 +5,7 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, SegmentedControl, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
+import { Flex, SegmentedControl, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
@@ -16,7 +16,7 @@ import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecks
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { ListChecks, Plus, Settings } from 'lucide-react';
+import { ListChecks, Plus } from 'lucide-react';
 import { type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
@@ -148,9 +148,6 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
               { value: 'saved', children: 'Saved' },
             ]}
           />
-          <Button kind="tertiary" color="neutral" size="small" disabled aria-label="Settings">
-            <Settings size={16} />
-          </Button>
           <LoadingButton
             kind="primary"
             height={32}
