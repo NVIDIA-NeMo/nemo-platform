@@ -21,7 +21,8 @@ export const STUDIO_MESSAGE_SUMMARY_END = '<<<END_NEMO_STUDIO_MESSAGE_SUMMARY_V1
 const FILE_CHANGE_TOOL_CALL_NAMES = new Set(['Edit', 'MultiEdit', 'Write']);
 
 export const isAssistantJobProgressToolName = (toolName: string): boolean =>
-  toolName === ASSISTANT_JOB_PROGRESS_TOOL_NAME || toolName === ASSISTANT_JOB_PROGRESS_MCP_TOOL_NAME;
+  toolName === ASSISTANT_JOB_PROGRESS_TOOL_NAME ||
+  toolName === ASSISTANT_JOB_PROGRESS_MCP_TOOL_NAME;
 
 export const isAssistantSubtleToolCallName = (toolName: string): boolean =>
   toolName !== ASSISTANT_COLLAPSED_THINKING_TOOL_NAME &&

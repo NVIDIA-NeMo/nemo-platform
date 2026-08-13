@@ -179,6 +179,30 @@ describe('Assistant API helpers', () => {
     ]);
   });
 
+  it('preserves legacy copilot model artifacts when loading a session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          session_id: 'session-1',
+          items: [],
+          chat_artifacts: {
+            model: 'nvidia/legacy-model',
+            model_source: 'copilot',
+            copilot_model: 'nvidia/legacy-model',
+          },
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const history = await getAssistantSessionHistory('session-1');
+
+    expect(history.chat_artifacts.assistant_model).toBe('nvidia/legacy-model');
+    expect(history.chat_artifacts.model).toBeUndefined();
+    expect(history.chat_artifacts.model_source).toBeUndefined();
+  });
+
   it('emits structured permission requests from SSE events', async () => {
     const fetchMock = vi
       .fn()

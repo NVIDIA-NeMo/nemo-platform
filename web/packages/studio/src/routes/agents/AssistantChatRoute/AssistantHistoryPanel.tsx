@@ -17,7 +17,10 @@ import { type FC } from 'react';
 
 type OpenFloatingPanel = 'history' | 'skills';
 
-export const AssistantHistoryPanel: FC<AssistantHistoryPanelProps> = ({ hideArtifacts, ...props }) => {
+export const AssistantHistoryPanel: FC<AssistantHistoryPanelProps> = ({
+  hideArtifacts,
+  ...props
+}) => {
   const [historyOpen, setHistoryOpen] = useLocalStorage(ASSISTANT_HISTORY_OPEN_KEY, 'true');
   const [openFloatingPanel, setOpenFloatingPanel, clearOpenFloatingPanel] =
     useLocalStorage<OpenFloatingPanel>(ASSISTANT_OPEN_FLOATING_PANEL_KEY);

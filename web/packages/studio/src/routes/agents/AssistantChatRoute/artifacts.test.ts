@@ -65,10 +65,13 @@ describe('Assistant chat artifacts', () => {
   });
 
   it('promotes agent and selected model answers while preserving assistant model', () => {
-    const withCodingModel = updateAssistantChatArtifactsFromEvent(createEmptyAssistantChatArtifacts(), {
-      type: 'assistant',
-      message: { model: 'claude-sonnet-4-6', content: [] },
-    });
+    const withCodingModel = updateAssistantChatArtifactsFromEvent(
+      createEmptyAssistantChatArtifacts(),
+      {
+        type: 'assistant',
+        message: { model: 'claude-sonnet-4-6', content: [] },
+      }
+    );
 
     const withSelections = updateAssistantChatArtifactsFromSelections(
       withCodingModel,
@@ -241,10 +244,13 @@ describe('Assistant chat artifacts', () => {
   });
 
   it('promotes draft spec name and model over the assistant model', () => {
-    const withCodingModel = updateAssistantChatArtifactsFromEvent(createEmptyAssistantChatArtifacts(), {
-      type: 'assistant',
-      message: { model: 'claude-sonnet-4-6', content: [] },
-    });
+    const withCodingModel = updateAssistantChatArtifactsFromEvent(
+      createEmptyAssistantChatArtifacts(),
+      {
+        type: 'assistant',
+        message: { model: 'claude-sonnet-4-6', content: [] },
+      }
+    );
 
     const withSpecModel = updateAssistantChatArtifactsFromEvent(withCodingModel, {
       type: 'assistant',

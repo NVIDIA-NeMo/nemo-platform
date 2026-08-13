@@ -23,7 +23,7 @@ from nmp.common.entities.client import EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.studio import assistant, assistant_artifacts, assistant_skills, studio_links
 from nmp.studio.config import StudioConfig
-from nmp.studio.entities import AssistantConversation, AssistantMessage
+from nmp.studio.entities import AssistantConversation, AssistantMessage, LegacyAssistantConversation
 from nmp.studio.service import StudioService
 
 
@@ -387,6 +387,46 @@ def test_list_history_sessions_includes_persisted_conversation(
             },
         }
     ]
+
+
+def test_legacy_conversation_remains_listable_readable_and_deletable(
+    service_client: TestClient,
+    entity_store: FakeEntityStore,
+):
+    session_id = str(uuid.uuid4())
+    conversation = LegacyAssistantConversation.model_validate(
+        {
+            "name": f"copilot-{session_id}",
+            "workspace": "default",
+            "session_id": session_id,
+            "owner_id": "local-user",
+            "messages": [
+                {"role": "user", "content": "Legacy prompt"},
+                {"role": "assistant", "content": "Legacy answer"},
+            ],
+            "chat_artifacts": {
+                "model_source": "copilot",
+                "copilot_model": "nvidia/legacy-model",
+            },
+        }
+    )
+    conversation._created_at = datetime.fromtimestamp(40, UTC)
+    conversation._updated_at = datetime.fromtimestamp(42, UTC)
+    entity_store.entities[("default", conversation.name)] = conversation
+
+    list_response = service_client.get("/v2/assistant/history/sessions")
+    history_response = service_client.get(f"/v2/assistant/history/sessions/{session_id}")
+    delete_response = service_client.delete(f"/v2/assistant/history/sessions/{session_id}")
+
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["chat_artifacts"]["assistant_model"] == "nvidia/legacy-model"
+    assert history_response.status_code == 200
+    assert history_response.json()["items"] == [
+        {"kind": "user", "text": "Legacy prompt"},
+        {"kind": "assistant", "parts": [{"type": "text", "text": "Legacy answer"}]},
+    ]
+    assert delete_response.status_code == 204
+    assert ("default", conversation.name) not in entity_store.entities
 
 
 def test_history_is_scoped_to_workspace_and_owner(

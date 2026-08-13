@@ -54,7 +54,7 @@ from nmp.studio.assistant_mcp_tools import (
     permission_prompt_tool,
 )
 from nmp.studio.assistant_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
-from nmp.studio.entities import AssistantConversation, AssistantMessage
+from nmp.studio.entities import AssistantConversation, AssistantMessage, LegacyAssistantConversation
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.routing import NoMatchFound
 
@@ -229,6 +229,32 @@ def _conversation_name(session_id: str) -> str:
     return f"assistant-{session_id}"
 
 
+def _legacy_conversation_name(session_id: str) -> str:
+    """Return the Entity Store name used before the Assistant rename."""
+    return f"copilot-{session_id}"
+
+
+async def _get_conversation(
+    entity_store: EntityClient,
+    *,
+    session_id: str,
+    workspace: str,
+) -> AssistantConversation:
+    """Load a current conversation, falling back to its pre-rename identity."""
+    try:
+        return await entity_store.get(
+            AssistantConversation,
+            _conversation_name(session_id),
+            workspace=workspace,
+        )
+    except EntityNotFoundError:
+        return await entity_store.get(
+            LegacyAssistantConversation,
+            _legacy_conversation_name(session_id),
+            workspace=workspace,
+        )
+
+
 def _request_principal_id(request: Request) -> str:
     """Return the end-user principal, including service-on-behalf-of requests."""
     return (
@@ -245,9 +271,9 @@ async def _get_owned_conversation(
 ) -> AssistantConversation:
     """Load a conversation and enforce per-user ownership within a workspace."""
     try:
-        conversation = await entity_store.get(
-            AssistantConversation,
-            _conversation_name(session_id),
+        conversation = await _get_conversation(
+            entity_store,
+            session_id=session_id,
             workspace=workspace,
         )
     except EntityNotFoundError as exc:
@@ -749,15 +775,22 @@ async def list_history_sessions(
     """List the current user's durable NeMo Assistant sessions."""
     workspace = _validated_workspace_or_default(workspace)
     owner_id = _request_principal_id(request)
-    result = await entity_store.list(
-        AssistantConversation,
-        workspace=workspace,
-        filter_obj={"owner_id": owner_id},
-        sort="-updated_at",
-        page_size=MAX_RETAINED_SESSIONS,
-    )
+    results = [
+        await entity_store.list(
+            entity_type,
+            workspace=workspace,
+            filter_obj={"owner_id": owner_id},
+            sort="-updated_at",
+            page_size=MAX_RETAINED_SESSIONS,
+        )
+        for entity_type in (AssistantConversation, LegacyAssistantConversation)
+    ]
     sessions: list[HistorySessionResponse] = []
-    for conversation in result.data:
+    seen_session_ids: set[str] = set()
+    for conversation in (conversation for result in results for conversation in result.data):
+        if conversation.session_id in seen_session_ids:
+            continue
+        seen_session_ids.add(conversation.session_id)
         user_messages = [message.content for message in conversation.messages if message.role == "user"]
         if not user_messages:
             continue
@@ -865,11 +898,7 @@ async def get_session_history(
     sid = _validate_session_id(session_id)
     workspace = _validated_workspace_or_default(workspace)
     try:
-        conversation = await entity_store.get(
-            AssistantConversation,
-            _conversation_name(sid),
-            workspace=workspace,
-        )
+        conversation = await _get_conversation(entity_store, session_id=sid, workspace=workspace)
     except EntityNotFoundError:
         conversation = None
     if conversation is not None:
@@ -964,7 +993,7 @@ async def delete_session_history(
     )
     try:
         await entity_store.delete(
-            AssistantConversation,
+            type(conversation),
             conversation.name,
             workspace=workspace,
             expected_db_version=conversation.db_version,

@@ -116,6 +116,7 @@ const getOptionalArtifactString = (value: unknown): string | undefined => {
 };
 
 const parseModelSource = (value: unknown): AssistantChatModelSource | undefined => {
+  if (value === 'copilot') return 'assistant';
   if (value === 'assistant' || value === 'selection' || value === 'spec') return value;
   return undefined;
 };
@@ -169,6 +170,7 @@ const parseChatArtifacts = (value: unknown): AssistantChatArtifacts => {
   const model = getOptionalArtifactString(value.model);
   const assistantModel =
     getOptionalArtifactString(value.assistant_model) ||
+    getOptionalArtifactString(value.copilot_model) ||
     (modelSource === 'assistant' ? model : undefined);
 
   return {
@@ -266,7 +268,9 @@ export const listAssistantHistorySessions = async (
   const response = await fetch(assistantApiUrl(`/history/sessions?${params.toString()}`));
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Assistant history'));
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to load NeMo Assistant history')
+    );
   }
 
   const body = (await response.json()) as unknown;
@@ -281,13 +285,17 @@ export const listAssistantSkills = async (): Promise<AssistantSkill[]> => {
   const response = await fetch(assistantApiUrl('/skills'));
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to load NeMo Assistant skills'));
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to load NeMo Assistant skills')
+    );
   }
 
   const body = (await response.json()) as unknown;
   if (!Array.isArray(body)) return [];
 
-  return body.map(parseAssistantSkill).filter((skill): skill is AssistantSkill => skill !== undefined);
+  return body
+    .map(parseAssistantSkill)
+    .filter((skill): skill is AssistantSkill => skill !== undefined);
 };
 
 export const getAssistantSessionHistory = async (
@@ -300,7 +308,10 @@ export const getAssistantSessionHistory = async (
   );
 
   if (!response.ok) {
-    const message = await getResponseErrorMessage(response, 'Failed to load NeMo Assistant session');
+    const message = await getResponseErrorMessage(
+      response,
+      'Failed to load NeMo Assistant session'
+    );
     if (response.status === 404) {
       throw new AssistantSessionNotFoundError(message);
     }
@@ -526,7 +537,9 @@ export const streamAssistantMessage = async ({
   });
 
   if (!response.ok) {
-    throw new Error(await getResponseErrorMessage(response, 'Failed to send NeMo Assistant message'));
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to send NeMo Assistant message')
+    );
   }
   if (!response.body) {
     throw new Error('NeMo Assistant response did not include a stream');

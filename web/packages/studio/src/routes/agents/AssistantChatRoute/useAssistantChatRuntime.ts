@@ -407,7 +407,9 @@ export const useAssistantChatRuntime = (options?: UseAssistantChatRuntimeOptions
     : null;
   const initialArtifacts = useMemo<AssistantChatArtifacts | undefined>(
     () =>
-      initialArtifactsJson ? (JSON.parse(initialArtifactsJson) as AssistantChatArtifacts) : undefined,
+      initialArtifactsJson
+        ? (JSON.parse(initialArtifactsJson) as AssistantChatArtifacts)
+        : undefined,
     [initialArtifactsJson]
   );
 
@@ -633,7 +635,13 @@ export const useAssistantChatRuntime = (options?: UseAssistantChatRuntimeOptions
   });
 
   const resolveInputRequest = useCallback(
-    async ({ decision, displayText }: { decision: AssistantInputDecision; displayText?: string }) => {
+    async ({
+      decision,
+      displayText,
+    }: {
+      decision: AssistantInputDecision;
+      displayText?: string;
+    }) => {
       if (!sessionId || !activeInput) return;
 
       const resolvedSessionId = sessionId;

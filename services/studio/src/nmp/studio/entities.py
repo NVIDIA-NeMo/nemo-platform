@@ -26,3 +26,9 @@ class AssistantConversation(EntityBase):
     owner_id: str = Field(description="Principal that owns and may read this conversation.")
     messages: list[AssistantMessage] = Field(default_factory=list)
     chat_artifacts: ChatArtifactsResponse = Field(default_factory=ChatArtifactsResponse)
+
+
+class LegacyAssistantConversation(AssistantConversation):
+    """Read-compatible model for conversations persisted before the rename."""
+
+    __entity_type__: ClassVar[str] = "copilot_conversation"

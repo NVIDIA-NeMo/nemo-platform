@@ -51,7 +51,9 @@ export const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps)
             className={`max-h-72 overflow-auto rounded ${CODE_BLOCK_SURFACE_CLASS} p-density-sm text-xs leading-relaxed text-secondary`}
             data-testid="assistant-tool-call-file-change-review-surface"
           >
-            <code data-testid="assistant-tool-call-file-change-review">{summary.reviewContent}</code>
+            <code data-testid="assistant-tool-call-file-change-review">
+              {summary.reviewContent}
+            </code>
           </pre>
         </div>
       </details>

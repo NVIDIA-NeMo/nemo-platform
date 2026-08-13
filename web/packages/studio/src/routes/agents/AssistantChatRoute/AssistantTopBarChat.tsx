@@ -24,7 +24,8 @@ import { useNavigate } from 'react-router';
 
 // Static import would pull the whole chat surface into the entry chunk, since
 // the trigger renders in the global nav on every route.
-const importChatThread = () => import('@studio/routes/agents/AssistantChatRoute/AssistantChatThread');
+const importChatThread = () =>
+  import('@studio/routes/agents/AssistantChatRoute/AssistantChatThread');
 
 // lazy() caches a rejected import forever, so a retry needs a fresh component.
 const createChatThread = () =>

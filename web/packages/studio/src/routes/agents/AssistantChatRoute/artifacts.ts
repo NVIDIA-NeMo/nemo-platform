@@ -289,7 +289,10 @@ const setSpecModel = (artifacts: AssistantChatArtifacts, model: string) => {
   artifacts.model_source = 'spec';
 };
 
-const setSelection = (artifacts: AssistantChatArtifacts, selection: AssistantChatSelectionArtifact) => {
+const setSelection = (
+  artifacts: AssistantChatArtifacts,
+  selection: AssistantChatSelectionArtifact
+) => {
   const cleanedSelection: AssistantChatSelectionArtifact = {
     ...selection,
     value: cleanAssistantArtifactText(selection.value),
@@ -438,7 +441,11 @@ const recordSpecTextArtifacts = (artifacts: AssistantChatArtifacts, text: string
   if (specModel) setSpecModel(artifacts, cleanSpecValue(specModel));
 };
 
-const recordToolArtifacts = (artifacts: AssistantChatArtifacts, toolName: string, input: unknown) => {
+const recordToolArtifacts = (
+  artifacts: AssistantChatArtifacts,
+  toolName: string,
+  input: unknown
+) => {
   pushUnique(artifacts.tools, toolName);
 
   const action = FILE_CHANGE_TOOL_ACTIONS.get(toolName);

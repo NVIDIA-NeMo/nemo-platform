@@ -188,7 +188,9 @@ export const getSelectedArtifactModel = (artifacts: AssistantChatArtifacts): str
     ? artifacts.model
     : undefined;
 
-export const hasArtifacts = (artifacts?: AssistantChatArtifacts): artifacts is AssistantChatArtifacts =>
+export const hasArtifacts = (
+  artifacts?: AssistantChatArtifacts
+): artifacts is AssistantChatArtifacts =>
   !!artifacts &&
   !!(
     artifacts.agent ||

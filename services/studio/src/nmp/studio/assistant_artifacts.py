@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from nmp.studio import studio_links
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class ChatSelectionArtifactResponse(BaseModel):
@@ -49,7 +49,10 @@ class ChatArtifactsResponse(BaseModel):
     agent: str | None = None
     model: str | None = None
     model_source: str | None = None
-    assistant_model: str | None = None
+    assistant_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("assistant_model", "copilot_model"),
+    )
     workspace: str | None = None
     selections: list[ChatSelectionArtifactResponse] = Field(default_factory=list)
     files: list[ChatFileArtifactResponse] = Field(default_factory=list)
