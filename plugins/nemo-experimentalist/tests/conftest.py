@@ -242,7 +242,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         raise pytest.UsageError(
             f"sandbox {sandbox!r} does not exist. Create it before running E2E tests:\n"
             "  sbx create --clone --profile external-only "
-            f"--name {sandbox} shell \"$(git rev-parse --show-toplevel)\"\n\n"
+            f'--name {sandbox} shell "$(git rev-parse --show-toplevel)"\n\n'
             "Then run:\n"
             f"  SANDBOX_VM_ID={sandbox} uv run --frozen pytest "
             "plugins/nemo-experimentalist/tests/experimentalist/test_smoke_agent_mode_1_loop_e2e.py "

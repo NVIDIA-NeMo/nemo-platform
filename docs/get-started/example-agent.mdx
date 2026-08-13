@@ -69,12 +69,16 @@ uv run --frozen nemo workspaces create "$workspace" \
   --description "Smoke-agent Experimentalist runs" \
   --exist-ok
 
-sbx create --clone --name nemo-experimentalist shell "$repo"
+sbx create --clone --profile external-only --name nemo-experimentalist shell "$repo"
 sbx exec --user root nemo-experimentalist bash -lc \
   'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
   "cd $smoke && uv run --no-project scripts/build_image.py"
 ```
+
+`build_image.py` also renders `dataset/tasks.json` through
+`dataset/task-template/` into the task directories used by the run. Those
+rendered directories are disposable; edit the manifest or template instead.
 
 The fresh external-only sandbox does not include a C compiler or Python headers.
 They are needed once to build `nemo-fabric-runtime`, a dependency used by the
@@ -207,7 +211,7 @@ sandbox can read the cloned host repository and every credential passed with
 </Warning>
 
 ```bash
-sbx create --clone --name nemo-experimentalist-git shell "$repo"
+sbx create --clone --profile external-only --name nemo-experimentalist-git shell "$repo"
 sbx exec --user root nemo-experimentalist-git bash -lc \
   'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 gh auth token | sbx exec -i --workdir "$repo" nemo-experimentalist-git \

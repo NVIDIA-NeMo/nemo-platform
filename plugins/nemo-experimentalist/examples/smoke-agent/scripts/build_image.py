@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Build the shared task image and stamp its tag into every task.toml.
+"""Build the shared task image and render the task directories.
 
 The tag is a content hash of the Dockerfile and the records file, so a change to
 either produces a new tag. Tasks reference the tag rather than carrying their own
@@ -17,6 +17,8 @@ import hashlib
 import re
 import subprocess
 from pathlib import Path
+
+from render_tasks import render
 
 HASHED_FILES = ("Dockerfile", "records.json")
 IMAGE_NAME = "smoke-agent-env"
@@ -69,7 +71,7 @@ def stamp_tasks(dataset_dir: Path, tag: str) -> list[Path]:
 
 
 def main() -> None:
-    """Build the shared image and stamp its tag into every task."""
+    """Build the shared image and render every curated task."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dataset-dir",
@@ -79,6 +81,7 @@ def main() -> None:
     parser.add_argument("--skip-build", action="store_true", help="stamp tags without invoking docker")
     args = parser.parse_args()
 
+    render(args.dataset_dir)
     tag = image_tag(args.dataset_dir / "_shared")
     if not args.skip_build:
         build(args.dataset_dir / "_shared", tag)

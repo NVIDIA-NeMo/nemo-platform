@@ -14,6 +14,8 @@ import functools
 import hashlib
 import importlib.util
 import re
+import shutil
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
 _HASHED = ("Dockerfile", "records.json")
+_RENDERED_TASK_TREE_SHA256 = "b01973d34ad9b041ac2dbb027d2e58991ba42c5bb2be0c630fab9495c600a9eb"
 
 
 def _root_nooa_rev() -> str:
@@ -36,17 +39,35 @@ def _expected_tag() -> str:
     return f"smoke-agent-env:sha-{digest.hexdigest()[:12]}"
 
 
-def _task_tomls() -> list[Path]:
-    """Every task in the dataset, the task template included.
+def _template_toml() -> Path:
+    """Return the canonical task shape."""
+    return _EXAMPLE_DIR / "dataset" / "task-template" / "task.toml"
 
-    Scoped to `groups/` once, which quietly exempted `task-template/` from all three
-    checks below. It went stale: its image tag drifted from the content hash while the
-    real tasks stayed current, and a Mode 1 run then generated tasks referencing an
-    image that does not exist -- `pull access denied for smoke-agent-env` -- so the
-    whole Insight suite failed to run and was silently dropped from scoring.
-    """
-    dataset = _EXAMPLE_DIR / "dataset"
-    return sorted(dataset.rglob("task.toml")) if dataset.is_dir() else []
+
+@functools.cache
+def _renderer() -> Any:
+    """Import the renderer by path; scripts is not a package."""
+    path = _EXAMPLE_DIR / "scripts" / "render_tasks.py"
+    spec = importlib.util.spec_from_file_location("_smoke_render_tasks", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    return module
+
+
+def _tree_sha256(root: Path) -> str:
+    """Hash a task tree's paths and bytes."""
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file() and item.name != ".gitignore"):
+        digest.update(path.relative_to(root).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 _EXPECTED_METRIC_KEYS = ("reward", "shape_ok")
@@ -169,29 +190,21 @@ def test_dockerfile_nooa_rev_matches_workspace() -> None:
     assert found.group(1) == _root_nooa_rev()
 
 
-def test_every_task_references_the_current_image() -> None:
-    """Check that every task uses the current task image."""
-    tasks = _task_tomls()
-    if not tasks:
-        return  # Task 6 creates them.
+def test_task_template_references_the_current_image() -> None:
+    """Check that the template uses the current task image."""
     expected = _expected_tag()
-    for task_toml in tasks:
-        actual = tomllib.loads(task_toml.read_text(encoding="utf-8"))["environment"]["docker_image"]
-        assert actual == expected, (
-            f"{task_toml.parent.name} references {actual}, current content is {expected}. "
-            "Run scripts/build_image.py after changing the Dockerfile or records.json."
-        )
+    actual = tomllib.loads(_template_toml().read_text(encoding="utf-8"))["environment"]["docker_image"]
+    assert actual == expected, (
+        f"task template references {actual}, current content is {expected}. "
+        "Run scripts/build_image.py after changing the Dockerfile or records.json."
+    )
 
 
-def test_every_task_carries_the_current_verifier() -> None:
-    """Check that every task uses the current verifier."""
-    tasks = _task_tomls()
-    if not tasks:
-        return  # Task 6 creates them.
+def test_task_template_carries_the_current_verifier() -> None:
+    """Check that the template uses the canonical verifier."""
     canonical = (_SHARED / "test.sh").read_bytes()
-    for task_toml in tasks:
-        actual = (task_toml.parent / "tests" / "test.sh").read_bytes()
-        assert actual == canonical, f"{task_toml.parent.name}/tests/test.sh is stale; run scripts/sync_verifier.py"
+    actual = (_template_toml().parent / "tests" / "test.sh").read_bytes()
+    assert actual == canonical, "task template verifier is stale; run scripts/sync_verifier.py"
 
 
 def test_the_task_template_carries_the_current_records() -> None:
@@ -213,8 +226,8 @@ def test_the_task_template_carries_the_current_records() -> None:
     )
 
 
-def test_every_task_has_an_empty_environment_dir() -> None:
-    """Check that every task has an empty environment directory.
+def test_task_template_has_an_empty_environment_dir() -> None:
+    """Check that the template has the Harbor-required environment directory.
 
     ``TaskModel.is_valid_dir`` returns False when environment/ is absent, and a
     dataset whose tasks all fail that check loads with *zero tasks* rather than
@@ -224,14 +237,19 @@ def test_every_task_has_an_empty_environment_dir() -> None:
     A Dockerfile there would shadow the prebuilt image and reintroduce the
     per-task build the content-hash tag exists to avoid.
     """
-    for task_toml in _task_tomls():
-        environment = task_toml.parent / "environment"
-        assert environment.is_dir(), (
-            f"{task_toml.parent.name} has no environment/; Harbor will not see it as a task. "
-            "Run scripts/build_image.py."
-        )
-        contents = {p.name for p in environment.iterdir()} - {".gitkeep"}
-        assert not contents, f"{task_toml.parent.name}/environment must stay empty, found {sorted(contents)}"
+    environment = _template_toml().parent / "environment"
+    assert environment.is_dir(), "task template has no environment/; Harbor will not see rendered tasks"
+    contents = {p.name for p in environment.iterdir()} - {".gitkeep"}
+    assert not contents, f"task template environment must stay empty, found {sorted(contents)}"
+
+
+def test_renderer_reproduces_the_curated_task_tree(tmp_path: Path) -> None:
+    """Check that the compact manifest renders the exact checked-in fixture."""
+    dataset = tmp_path / "dataset"
+    shutil.copytree(_EXAMPLE_DIR / "dataset", dataset)
+    rendered = _renderer().render(dataset)
+    assert len(rendered) == 50
+    assert _tree_sha256(dataset / "groups") == _RENDERED_TASK_TREE_SHA256
 
 
 @functools.cache
@@ -249,15 +267,17 @@ def _builder() -> Any:
     return module
 
 
-def test_excluded_groups_stay_out_of_the_combined_set() -> None:
+def test_excluded_groups_stay_out_of_the_combined_set(tmp_path: Path) -> None:
     """Check that excluded groups are not part of the combined scenario.
 
     Combining them leaves the full scenario with no reachable pass criterion, so
     an accidental re-inclusion has to fail loudly rather than just lower the score.
     """
-    combined = _EXAMPLE_DIR / "dataset" / "groups" / "_all"
-    if not combined.is_dir():
-        return  # optional; only the full scenario needs it
+    dataset = tmp_path / "dataset"
+    shutil.copytree(_EXAMPLE_DIR / "dataset", dataset)
+    _renderer().render(dataset)
+    _builder().assemble(dataset)
+    combined = dataset / "groups" / "_all"
 
     excluded_keys = {name.split("-")[0] for name in _builder().EXCLUDED_GROUPS}
     assert excluded_keys, "the exclusion list should not be empty; see build_all_group.py"
@@ -267,19 +287,21 @@ def test_excluded_groups_stay_out_of_the_combined_set() -> None:
     )
 
 
-def test_combined_group_matches_its_sources() -> None:
+def test_combined_group_matches_its_sources(tmp_path: Path) -> None:
     """Check that the combined scenario matches its source task groups.
 
     Rebuild with scripts/build_all_group.py after changing any group.
     """
-    groups = _EXAMPLE_DIR / "dataset" / "groups"
+    dataset = tmp_path / "dataset"
+    shutil.copytree(_EXAMPLE_DIR / "dataset", dataset)
+    _renderer().render(dataset)
+    _builder().assemble(dataset)
+    groups = dataset / "groups"
     combined = groups / "_all"
-    if not combined.is_dir():
-        return  # optional; only the full scenario needs it
 
     builder = _builder()
     expected: dict[str, Path] = {}
-    for group_name in builder.source_groups(_EXAMPLE_DIR / "dataset"):
+    for group_name in builder.source_groups(dataset):
         group = groups / group_name
         key = builder.group_key(group_name)
         for split in ("train", "validation"):

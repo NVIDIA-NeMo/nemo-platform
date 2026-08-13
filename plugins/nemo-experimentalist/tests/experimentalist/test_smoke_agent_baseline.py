@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -28,6 +29,30 @@ import pytest
 
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _RECORDS = _EXAMPLE_DIR / "dataset" / "_shared" / "records.json"
+
+
+@functools.cache
+def _renderer() -> Any:
+    """Import the task renderer by path; scripts is not a package."""
+    path = _EXAMPLE_DIR / "scripts" / "render_tasks.py"
+    spec = importlib.util.spec_from_file_location("_smoke_render_tasks", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    return module
+
+
+@pytest.fixture(scope="module")
+def rendered_dataset(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Render the compact task manifest once for these deterministic checks."""
+    dataset = tmp_path_factory.mktemp("smoke-agent-dataset") / "dataset"
+    shutil.copytree(_EXAMPLE_DIR / "dataset", dataset)
+    _renderer().render(dataset)
+    return dataset
 
 
 def _records() -> list[dict]:
@@ -151,9 +176,9 @@ def _normalize(text: str) -> str:
     return re.sub(r"\r$", "", text, flags=re.MULTILINE).rstrip("\n")
 
 
-def _reward_for(group: str, split: str, task_id: str) -> float:
+def _reward_for(dataset: Path, group: str, split: str, task_id: str) -> float:
     """Replay the container verifier in-process for one task."""
-    task = _EXAMPLE_DIR / "dataset" / "groups" / group / split / task_id
+    task = dataset / "groups" / group / split / task_id
     instruction = (task / "instruction.md").read_text(encoding="utf-8").strip()
     expected = (task / "tests" / "expected.txt").read_text(encoding="utf-8")
     written = _agent_class()().solve(instruction) + "\n"
@@ -161,9 +186,9 @@ def _reward_for(group: str, split: str, task_id: str) -> float:
 
 
 @pytest.mark.parametrize(("key", "expected"), list(_EXPECTED_BASELINE.items()))
-def test_baseline_rewards_are_pinned(key: tuple[str, str, str], expected: float) -> None:
+def test_baseline_rewards_are_pinned(rendered_dataset: Path, key: tuple[str, str, str], expected: float) -> None:
     """Check that every task has its expected baseline reward."""
-    assert _reward_for(*key) == expected, (
+    assert _reward_for(rendered_dataset, *key) == expected, (
         f"{key} no longer scores {expected} at baseline. The agent ships with deliberate "
         "weaknesses; see plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md before "
         "changing agent.py."
@@ -172,19 +197,17 @@ def test_baseline_rewards_are_pinned(key: tuple[str, str, str], expected: float)
 
 @pytest.mark.parametrize("group", GROUPS)
 @pytest.mark.parametrize("split", ["train", "validation"])
-def test_each_split_keeps_two_failures_and_one_control(group: str, split: str) -> None:
+def test_each_split_keeps_two_failures_and_one_control(rendered_dataset: Path, group: str, split: str) -> None:
     """Check that every split has two failures and one control."""
     expected_ids = {task_id for (g, s, task_id) in _EXPECTED_BASELINE if g == group and s == split}
     actual_ids = {
-        path.name
-        for path in (_EXAMPLE_DIR / "dataset" / "groups" / group / split).iterdir()
-        if (path / "task.toml").is_file()
+        path.name for path in (rendered_dataset / "groups" / group / split).iterdir() if (path / "task.toml").is_file()
     }
     assert actual_ids == expected_ids, (
         f"{group}/{split} drifted: missing={sorted(expected_ids - actual_ids)} "
         f"unexpected={sorted(actual_ids - expected_ids)}"
     )
-    rewards = sorted(_reward_for(group, split, task_id) for task_id in expected_ids)
+    rewards = sorted(_reward_for(rendered_dataset, group, split, task_id) for task_id in expected_ids)
     assert rewards == [0.0, 0.0, 1.0], f"{group}/{split} lost its two-failure/one-control shape: {rewards}"
 
 

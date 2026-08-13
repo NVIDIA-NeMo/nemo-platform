@@ -41,6 +41,7 @@ def test_configured_model_refs_requires_default(monkeypatch):
     with pytest.raises(ValueError, match="No default model"):
         configured_model_refs()
 
+
 async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
     model_entity = SimpleNamespace(
         workspace="default",
