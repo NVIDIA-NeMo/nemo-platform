@@ -100,6 +100,16 @@ import { AssistantChat, StudioDataView, useStudioDataViewState } from '@nemo/com
 - **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is
   unpublished, so there is nothing to install. `src/env.d.ts` declares the `*.css`
   side-effect imports those sources carry.
+- **Out-of-tree plugins vendor a generated `.d.ts` instead.** A plugin living in
+  its own repository can't use `paths` into these sources — resolving them needs
+  this workspace's `node_modules`, including the unpublished `@nemo/sdk`. Run
+  `pnpm --filter @nemo/common types:plugin` here to roll the whole surface into
+  one `packages/common/dist/plugin-types/plugin.d.ts`, commit that file in the
+  plugin repo, and point its `paths` at it. Two modules stay external and need a
+  short local stub: `@nemo/sdk/generated/platform/schema` (`PlatformJobLog`,
+  `PlatformJobStatus` — reached only through `LogViewer` and the job-status
+  constants) and `class-variance-authority`. Regenerate whenever `plugin.ts`
+  changes; a stale copy compiles happily against a surface that no longer exists.
 - **CSS is already loaded.** The vendor build stubs stylesheet imports because
   Studio bundles the same files through its own graph. A plugin adds no CSS.
 - **`useStudioDataViewState` syncs to URL search params** on Studio's shared
