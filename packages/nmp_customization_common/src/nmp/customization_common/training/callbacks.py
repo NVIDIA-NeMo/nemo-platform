@@ -11,8 +11,10 @@ validation reports, so any of them can be charted from job status alone.
 The Jobs service merges ``status_details`` key-wise, so the stored series
 survives every report that does not mention it: checkpoint, epoch-end and
 training-start reports state only what they observed. The merge is shallow,
-though -- a report that does send ``metrics`` replaces the stored value
-wholesale, so every series goes out in full rather than as a delta.
+though -- a key that is sent replaces the stored value wholesale -- so a report
+carrying ``metrics`` sends every series in full rather than a delta, and a report
+with nothing new to say about the curves omits the key rather than sending a
+partial copy.
 
 Series naming
 -------------

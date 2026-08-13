@@ -12,12 +12,7 @@ The Jobs service MERGES ``status_details`` key-wise rather than replacing the
 blob -- ``JobDispatcher._update_status_details_object``, applied both to the task
 and to the copy propagated up to the job. A field therefore survives every later
 update that does not restate it, and each report sends only what it observed.
-
-The merge is shallow, which matters for exactly one key: a report that sends
-``metrics`` replaces the stored series wholesale. That is why
-``TrainingProgressCallback`` resends every series in full on the reports that
-carry it, and why the reports with nothing new to say about the curves omit the
-key rather than sending a partial copy.
+The merge is shallow: a key that is sent replaces the stored value wholesale.
 
 For training-specific metrics (loss, validation, checkpoints) see the
 ``TrainingProgressCallback`` which composes this reporter.
