@@ -45,7 +45,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
         metrics = [DuplicateMetric(), DuplicateMetric()]
 
-        result = await backend.evaluate_benchmark(metrics=metrics, dataset=dataset, params=params)
+        result = await backend.evaluate_dataset(metrics=metrics, dataset=dataset, params=params)
 
         assert result is expected_result
         mock_prepare.assert_called_once_with(dataset, None, None)
@@ -76,7 +76,7 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
+        await backend.evaluate_dataset(metrics=[DuplicateMetric()], dataset=dataset, params=params)
 
         assert mock_sdk.await_args is not None
         assert "fail_fast" not in mock_sdk.await_args.kwargs
@@ -98,7 +98,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
 
         with pytest.raises(RuntimeError, match="bad dataset"):
-            await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
+            await backend.evaluate_dataset(metrics=[DuplicateMetric()], dataset=dataset, params=params)
 
         mock_sdk.assert_not_awaited()
 
@@ -120,7 +120,7 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
+        await backend.evaluate_dataset(metrics=[DuplicateMetric()], dataset=dataset, params=params)
 
         assert mock_sdk.await_args is not None
         assert mock_sdk.await_args.kwargs["params"] is params
@@ -144,7 +144,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
         original = PreparedBenchmarkMetric()
 
-        await backend.evaluate_benchmark(metrics=[original], dataset=dataset, params=params)
+        await backend.evaluate_dataset(metrics=[original], dataset=dataset, params=params)
 
         assert mock_sdk.await_args is not None
         prepared = mock_sdk.await_args.kwargs["metrics"][0][1]
@@ -177,7 +177,7 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(
+        await backend.evaluate_dataset(
             metrics=[DuplicateMetric()],
             dataset=dataset,
             params=params,
@@ -215,7 +215,7 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(
+        await backend.evaluate_dataset(
             metrics=[DuplicateMetric()],
             dataset=dataset,
             params=params,

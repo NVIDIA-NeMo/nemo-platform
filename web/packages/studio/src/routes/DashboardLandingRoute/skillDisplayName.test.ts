@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { CopilotSkill } from '@studio/routes/agents/CopilotChatRoute/types';
+import type { AssistantSkill } from '@studio/routes/agents/AssistantChatRoute/types';
 import {
   getSkillDisplayName,
   getSkillLookupKeys,
 } from '@studio/routes/DashboardLandingRoute/skillDisplayName';
 
-const skill = (overrides: Partial<CopilotSkill>): CopilotSkill => ({
+const skill = (overrides: Partial<AssistantSkill>): AssistantSkill => ({
   name: 'inference',
   claude_name: 'nemo-inference',
   description: 'Use NeMo Platform inference.',

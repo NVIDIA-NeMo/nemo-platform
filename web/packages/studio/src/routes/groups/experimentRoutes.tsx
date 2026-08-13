@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { EXPERIMENT_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateExperimentRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import { gateExperimentRoutes, getExperimentRoute } from '@studio/routes/utils';
+import { FlaskConical } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -50,3 +53,15 @@ export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
     errorElement: <ErrorPanel title="Evaluation" />,
   },
 ]);
+
+export const getExperimentSideNavItems = (workspace: string) =>
+  EXPERIMENT_ENABLED
+    ? [
+        {
+          id: 'experiment',
+          slotIcon: <FlaskConical className={iconColorClass} />,
+          slotLabel: 'Experiments',
+          href: getExperimentRoute(workspace),
+        },
+      ]
+    : [];

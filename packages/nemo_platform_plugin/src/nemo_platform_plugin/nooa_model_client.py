@@ -14,7 +14,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-from litellm import get_model_info
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.config import get_context
 from nemo_platform.types.inference import ModelProvider
@@ -24,24 +23,8 @@ from nooa.unifiedllm import CompletionClient, UnifiedLLM
 _PLACEHOLDER_API_KEY = "not-needed"
 _OPENAI_FORMAT = "OPENAI_CHAT"
 _ANTHROPIC_FORMAT = "ANTHROPIC_MESSAGES"
-_OPENAI_CHAT_REASONING_EFFORT = "none"
 _ACCEPT_ENCODING_HEADER = "accept-encoding"
 _IDENTITY_ENCODING = "identity"
-
-
-def _openai_chat_reasoning_effort(model: str) -> str | None:
-    """Disable reasoning unless LiteLLM explicitly says this value is unsupported."""
-    try:
-        model_info = get_model_info(model)
-    except Exception as exc:
-        # Custom provider registrations need not appear in LiteLLM's model map.
-        # Preserve the value that makes frontier Chat Completions tool calls work.
-        if "This model isn't mapped yet" not in str(exc):
-            raise
-        return _OPENAI_CHAT_REASONING_EFFORT
-    if model_info.get("supports_none_reasoning_effort") is False:
-        return None
-    return _OPENAI_CHAT_REASONING_EFFORT
 
 
 @dataclass(frozen=True)
@@ -131,10 +114,6 @@ def _completion_client(
             # LiteLLM versions otherwise bridge GPT-5.4+ tool calls with any
             # reasoning_effort value (including "none") to /responses.
             _skip_responses_api_bridge=True,
-            # Chat Completions tool calls on current OpenAI frontier models
-            # require reasoning to be disabled. Use LiteLLM's capability map to
-            # omit that value only when the served model explicitly rejects it.
-            reasoning_effort=_openai_chat_reasoning_effort(litellm_model),
         )
     elif model_entity.backend_format == _ANTHROPIC_FORMAT:
         api_base = api_base.removesuffix("/v1")

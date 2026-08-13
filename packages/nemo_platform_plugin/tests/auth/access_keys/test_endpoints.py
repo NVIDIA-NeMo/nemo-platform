@@ -7,7 +7,7 @@ from nemo_platform_plugin.client.types import PreparedRequest
 
 
 def test_create_access_key_endpoint_uses_gateway_path() -> None:
-    prepared = endpoints.create_access_key(body=AccessKeyCreateRequest(name="gtc-intake"))
+    prepared = endpoints.create_access_key(body=AccessKeyCreateRequest(name="ci-intake"))
 
     assert isinstance(prepared, PreparedRequest)
     assert prepared.method == "POST"
@@ -31,8 +31,9 @@ def test_revoke_access_key_endpoint_uses_jti_path_param() -> None:
     assert prepared.path_params == {"jti": "ak_example"}
 
 
-def test_list_access_keys_endpoint_is_stable_for_future_persistence() -> None:
-    prepared = endpoints.list_access_keys()
+def test_list_access_keys_endpoint_supports_pagination() -> None:
+    prepared = endpoints.list_access_keys(query_params={"page": 3, "page_size": 25})
 
     assert prepared.method == "GET"
     assert prepared.path_template == "/apis/auth/v2/access-keys"
+    assert prepared.query_params == {"page": 3, "page_size": 25}

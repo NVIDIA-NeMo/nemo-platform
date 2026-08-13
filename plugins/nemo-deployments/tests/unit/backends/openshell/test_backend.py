@@ -22,6 +22,7 @@ from nemo_deployments_plugin.backends.labels import (
 )
 from nemo_deployments_plugin.backends.openshell.backend import (
     _CONFIG_DELIVERED_MARKER,
+    _CURL_ABS,
     _DEFAULT_READINESS_TIMEOUT_SECONDS,
     _LAUNCH_MARKER,
     _LIVENESS_PROBE,
@@ -282,6 +283,47 @@ async def test_read_status_not_found_is_lost(
     mock_stub.GetSandbox.side_effect = _not_found()
     update = await openshell_backend.read_status(workspace="default", name="srv")
     assert update.status == "LOST"
+
+
+async def test_create_uses_executor_policy_when_no_policy_path_override(
+    openshell_backend: OpenShellDeploymentBackend, mock_stub: MagicMock, mock_entities: AsyncMock
+) -> None:
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    executor_policy = openshell_backend._policy
+    await openshell_backend.create_deployment(
+        workspace="default", name="srv", config_name="cfg1", labels={}, backend_config={}
+    )
+
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert spec.policy == executor_policy
+
+
+async def test_create_uses_per_deployment_policy_when_policy_path_set(
+    openshell_backend: OpenShellDeploymentBackend,
+    mock_stub: MagicMock,
+    mock_entities: AsyncMock,
+    tmp_path: Path,
+) -> None:
+    policy_file = tmp_path / "policy.yaml"
+    policy_file.write_text("version: 1\nprocess:\n  run_as_user: sandbox\n  run_as_group: sandbox\n")
+    mock_entities.get.return_value = _config()
+    mock_stub.GetSandbox.side_effect = _not_found()
+    mock_stub.CreateSandbox.return_value = MagicMock()
+
+    executor_policy = openshell_backend._policy
+    await openshell_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={},
+        backend_config={"openshell": {"policyPath": str(policy_file)}},
+    )
+
+    spec = mock_stub.CreateSandbox.call_args.args[0].spec
+    assert spec.policy != executor_policy
 
 
 async def test_create_requires_serve_command(
@@ -769,7 +811,11 @@ def test_readiness_probe_command_defaults_to_tcp_on_the_first_port() -> None:
     assert command[:2] == ["/bin/sh", "-c"]
     assert "127.0.0.1" in command[2]
     assert description == "tcp 127.0.0.1:8000"
-    # A network probe self-times in python; the RPC gets that timeout plus headroom.
+    assert "127.0.0.1:8000" in command[2]
+    assert _CURL_ABS in command[2]
+    assert "--noproxy '*'" in command[2]
+    assert '[ "$_rc" -eq 7 ] && exit 1' in command[2]
+    assert "python" not in command[2]
     assert timeout == _DEFAULT_READINESS_TIMEOUT_SECONDS + _READINESS_EXEC_TIMEOUT_MARGIN_SECONDS
 
 
@@ -777,7 +823,20 @@ def test_readiness_probe_command_uses_declared_httpget() -> None:
     container = _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/ready", port=8000))).containers[0]
     command, description, _timeout = _require_probe_command(container)
     assert "http://127.0.0.1:8000/ready" in command[2]
+    assert "--fail" in command[2]
+    assert "--noproxy '*'" in command[2]
+    assert _CURL_ABS in command[2]
     assert description == "httpGet http://127.0.0.1:8000/ready"
+
+
+def test_readiness_probe_command_fails_closed_when_curl_is_missing() -> None:
+    tcp = _require_probe_command(_config().containers[0])[0][2]
+    http = _require_probe_command(
+        _config_with_readiness(Probe(httpGet=HTTPGetAction(path="/health", port=8000))).containers[0]
+    )[0][2]
+    for script in (tcp, http):
+        assert "else exit 1; fi" in script
+        assert "else exit 0" not in script
 
 
 def test_readiness_probe_command_runs_declared_exec_directly() -> None:
@@ -807,8 +866,7 @@ def test_readiness_probe_command_https_uses_unverified_context() -> None:
     ).containers[0]
     command, _description, _timeout = _require_probe_command(container)
     assert "https://127.0.0.1:8000/health" in command[2]
-    # An https probe against a loopback/self-signed cert must not fail verification.
-    assert "_create_unverified_context" in command[2]
+    assert "--insecure" in command[2]
 
 
 def test_readiness_probe_command_normalizes_httpget_path_without_leading_slash() -> None:

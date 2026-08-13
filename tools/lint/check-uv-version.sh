@@ -5,9 +5,21 @@
 set -euo pipefail
 
 _flox_ver="$(yq '.install.uv.version' tools/python/.flox/env/manifest.toml)"
+_make_ver="$(sed -n 's/^UV_VERSION[[:space:]]*:=[[:space:]]*\([^[:space:]#]*\).*/\1/p' Makefile)"
+_pyproject_minimum="$(sed -n 's/^required-version = ">=\([^"]*\)"/\1/p' pyproject.toml)"
 
 if [[ ! "${_flox_ver}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   printf "Flox must install an exact uv version, found: %s\n" "${_flox_ver}" >&2
+  exit 1
+fi
+
+if [[ -z "${_make_ver}" || "${_make_ver}" != "${_flox_ver}" ]]; then
+  printf "Makefile UV_VERSION %s does not match Flox uv version %s.\n" "${_make_ver:-missing}" "${_flox_ver}" >&2
+  exit 1
+fi
+
+if [[ -z "${_pyproject_minimum}" || "${_make_ver}" != "${_pyproject_minimum}" ]]; then
+  printf "Makefile UV_VERSION %s does not match pyproject.toml required-version minimum %s.\n" "${_make_ver}" "${_pyproject_minimum:-missing}" >&2
   exit 1
 fi
 

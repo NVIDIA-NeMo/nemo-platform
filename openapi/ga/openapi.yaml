@@ -167,41 +167,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkloadTokenExchangeErrorResponse'
   /apis/auth/v2/access-keys:
-    get:
-      tags:
-      - Scoped Access Keys
-      summary: List Access Keys
-      operationId: list_access_keys_apis_auth_v2_access_keys_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyListResponse'
-        '404':
-          description: Scoped Access Keys are not enabled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyErrorResponse'
-        '501':
-          description: Not Implemented
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
     post:
       tags:
       - Scoped Access Keys
       summary: Create Access Key
       operationId: create_access_key_apis_auth_v2_access_keys_post
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AccessKeyCreateRequest'
-        required: true
       responses:
         '200':
           description: Successful Response
@@ -215,6 +191,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '404':
+          description: Scoped Access Keys are not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '409':
+          description: Concurrent access-key update conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '501':
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyNotImplementedErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Scoped Access Keys
+      summary: List Access Keys
+      operationId: list_access_keys_apis_auth_v2_access_keys_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 100
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyListResponse'
         '404':
           description: Scoped Access Keys are not enabled
           content:
@@ -245,15 +275,25 @@ paths:
         required: true
         schema:
           type: string
+          pattern: ^ak_[0-9a-f]{32}$
+          description: Stable JWT ID of the Scoped Access Key to revoke.
           title: Jti
+        description: Stable JWT ID of the Scoped Access Key to revoke.
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/AccessKeyRevokeResponse'
         '404':
-          description: Scoped Access Keys are not enabled
+          description: Scoped Access Keys are not enabled or the key was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessKeyErrorResponse'
+        '409':
+          description: Concurrent access-key update conflict
           content:
             application/json:
               schema:
@@ -7943,14 +7983,22 @@ components:
           title: Name
           description: Optional human-readable Scoped Access Key label. The token
             jti remains the stable identifier.
+          nullable: true
           type: string
           maxLength: 128
           minLength: 1
+        description:
+          title: Description
+          description: Optional human-readable description of the Scoped Access Key.
+          nullable: true
+          type: string
+          maxLength: 1024
         expires_in_seconds:
           title: Expires In Seconds
           description: Scoped Access Key lifetime in seconds. Omit to use auth.access_keys.default_expires_in_seconds.
             Send explicit null to request a non-time-delimited key, which requires
             auth.access_keys.max_expires_in_seconds to be disabled.
+          nullable: true
           type: integer
           minimum: 1.0
       type: object
@@ -7965,17 +8013,42 @@ components:
         name:
           title: Name
           description: Optional human-readable Scoped Access Key label.
+          nullable: true
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the Scoped Access Key.
+          nullable: true
           type: string
         principal:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - EXPIRED
+          - REVOKED
+          title: Status
+        issuer:
+          type: string
+          title: Issuer
+          description: Issuer stamped into the Scoped Access Key JWT.
+        audiences:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Audiences
+          description: Audiences accepted for the Scoped Access Key JWT.
         created_at:
           type: string
           format: date-time
           title: Created At
         expires_at:
           title: Expires At
+          nullable: true
           type: string
           format: date-time
         token:
@@ -7989,6 +8062,9 @@ components:
       required:
       - jti
       - principal
+      - status
+      - issuer
+      - audiences
       - created_at
       - token
       - token_type
@@ -7999,6 +8075,13 @@ components:
         detail:
           type: string
           title: Detail
+        code:
+          title: Code
+          description: Set to access_keys_disabled when the Scoped Access Key feature
+            is disabled.
+          nullable: true
+          type: string
+          const: access_keys_disabled
       type: object
       required:
       - detail
@@ -8011,6 +8094,11 @@ components:
             $ref: '#/components/schemas/AccessKeyMetadataResponse'
           type: array
           title: Data
+        has_more:
+          type: boolean
+          title: Has More
+          description: True when another page of keys is available.
+          default: false
       type: object
       required:
       - data
@@ -8025,23 +8113,51 @@ components:
         name:
           title: Name
           description: Optional human-readable Scoped Access Key label.
+          nullable: true
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the Scoped Access Key.
+          nullable: true
           type: string
         principal:
           type: string
           title: Principal
           description: Principal ID stamped into the token.
+        status:
+          type: string
+          enum:
+          - ACTIVE
+          - EXPIRED
+          - REVOKED
+          title: Status
+        issuer:
+          type: string
+          title: Issuer
+          description: Issuer stamped into the Scoped Access Key JWT.
+        audiences:
+          items:
+            type: string
+          type: array
+          uniqueItems: true
+          title: Audiences
+          description: Audiences accepted for the Scoped Access Key JWT.
         created_at:
           type: string
           format: date-time
           title: Created At
         expires_at:
           title: Expires At
+          nullable: true
           type: string
           format: date-time
       type: object
       required:
       - jti
       - principal
+      - status
+      - issuer
+      - audiences
       - created_at
       title: AccessKeyMetadataResponse
       description: Metadata for a Scoped Access Key.
@@ -8055,6 +8171,22 @@ components:
       - detail
       title: AccessKeyNotImplementedErrorResponse
       description: Response returned by unsupported Scoped Access Key lifecycle endpoints.
+    AccessKeyRevokeResponse:
+      properties:
+        jti:
+          type: string
+          title: Jti
+          description: Stable JWT ID for this Scoped Access Key.
+        revoked:
+          type: boolean
+          title: Revoked
+          description: True when this request newly recorded the key's revocation.
+      type: object
+      required:
+      - jti
+      - revoked
+      title: AccessKeyRevokeResponse
+      description: Response returned after a Scoped Access Key revoke request.
     ActionRails:
       properties:
         instant_actions:
@@ -9675,12 +9807,13 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the adapter. Name must be unique in the workspace.
-            Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens,
-            and dots.'
+          description: Name of the adapter. Name must be unique in the workspace.
+            Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+            letters, digits, hyphens, and dots (no consecutive hyphens, cannot end
+            with a hyphen).
           examples:
           - lora-adapter-v1
           - my-finetune
@@ -9786,12 +9919,13 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the adapter. Name must be unique in the workspace.
-            Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens,
-            and dots.'
+          description: Name of the adapter. Name must be unique in the workspace.
+            Name must start with a lowercase letter, be 2-63 characters, and use lowercase
+            letters, digits, hyphens, and dots (no consecutive hyphens, cannot end
+            with a hyphen).
           examples:
           - lora-adapter-v1
           - my-finetune
@@ -9829,11 +9963,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the deployment configuration. Allowed characters:
-            letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the deployment configuration. Name must start with
+            a lowercase letter, be 2-63 characters, and use lowercase letters, digits,
+            hyphens, and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - nim-config-v1
           - production-config
@@ -9879,11 +10014,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the deployment. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the deployment. Name must start with a lowercase letter,
+            be 2-63 characters, and use lowercase letters, digits, hyphens, and dots
+            (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - llama-deploy-v1
           - production-nim
@@ -9913,11 +10049,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the model entity. Allowed characters: letters (a-z,
-            A-Z), digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the model entity. Name must start with a lowercase
+            letter, be 2-63 characters, and use lowercase letters, digits, hyphens,
+            and dots (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -10137,11 +10274,12 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the prompt. Allowed characters: letters (a-z, A-Z),
-            digits (0-9), underscores, hyphens, and dots.'
+          description: Name of the prompt. Name must start with a lowercase letter,
+            be 2-63 characters, and use lowercase letters, digits, hyphens, and dots
+            (no consecutive hyphens, cannot end with a hyphen).
           examples:
           - support-bot-system
           - summarizer
@@ -14239,12 +14377,13 @@ components:
           description: Unique identifier for the deployment
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -14337,12 +14476,13 @@ components:
           description: Unique identifier for the deployment config
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -14642,12 +14782,13 @@ components:
           description: Autogenerated id
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -14891,12 +15032,13 @@ components:
           description: Unique identifier for the model provider
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model
@@ -16922,12 +17064,13 @@ components:
           description: Unique identifier for the prompt.
         name:
           type: string
-          maxLength: 255
-          pattern: ^[\w\-.]+$
+          maxLength: 63
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
           title: Name
-          description: 'Name of the entity. Name/workspace combo must be unique across
-            all entities. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores,
-            hyphens, and dots.'
+          description: Name of the entity. Name/workspace combo must be unique across
+            all entities. Name must start with a lowercase letter, be 2-63 characters,
+            and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+            cannot end with a hyphen).
           examples:
           - llama-3.1-8b
           - my-custom-model

@@ -7,8 +7,10 @@ import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import {
   activeRolesForStrategy,
+  ANONYMIZER_PARAM_METADATA,
   GLINER_ROLE,
   ROLE_LABELS,
+  supportsSamplingParams,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import type { AnonymizerFormData } from '@studio/routes/AnonymizerBuilderRoute/schema';
 import { useAnonymizerModels } from '@studio/routes/AnonymizerBuilderRoute/useAnonymizerModels';
@@ -35,7 +37,7 @@ export const ModelSettingsSection: FC = () => {
   return (
     <Stack gap="density-2xl">
       {roles.map((role, index) => (
-        <Stack key={role} gap="density-lg">
+        <Stack key={role} gap="density-lg" data-testid={`role-settings-${role}`}>
           {index > 0 && <Divider orientation="horizontal" width="small" />}
           <Text kind="label/bold/lg">{ROLE_LABELS[role] ?? role}</Text>
           <Flex gap="density-md" align="end">
@@ -63,14 +65,17 @@ export const ModelSettingsSection: FC = () => {
                 }}
               />
             </div>
-            <ParamsDropdown
-              open={openParamsRole === role}
-              onOpenChange={(next) => setOpenParamsRole(next ? role : null)}
-              inferenceParams={roleModelsValue?.[role]?.params as Partial<InferenceParams>}
-              onInferenceParamsChange={(params) =>
-                setValue(`roleModels.${role}.params`, params as Record<string, unknown>)
-              }
-            />
+            {supportsSamplingParams(role) && (
+              <ParamsDropdown
+                open={openParamsRole === role}
+                onOpenChange={(next) => setOpenParamsRole(next ? role : null)}
+                inferenceParams={roleModelsValue?.[role]?.params as Partial<InferenceParams>}
+                onInferenceParamsChange={(params) =>
+                  setValue(`roleModels.${role}.params`, params as Record<string, unknown>)
+                }
+                fieldMetadata={ANONYMIZER_PARAM_METADATA}
+              />
+            )}
           </Flex>
         </Stack>
       ))}

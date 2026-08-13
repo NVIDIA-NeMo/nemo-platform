@@ -100,7 +100,7 @@ repos:
         name: Check CI and Flox uv versions
         entry: ./tools/lint/check-uv-version.sh
         language: system
-        files: '^(\.github/workflows/.*\.ya?ml|tools/python/\.flox/env/manifest\.toml)$'
+        files: '^(Makefile|pyproject\.toml|\.github/workflows/.*\.ya?ml|tools/python/\.flox/env/manifest\.toml)$'
         pass_filenames: false
       - id: python-version-consistency
         name: Check Make and Flox Python versions
@@ -112,7 +112,7 @@ repos:
         name: Check Node.js and pnpm versions
         entry: ./tools/lint/check-node-version.sh
         language: system
-        files: '^(\.nvmrc|web/package\.json|tools/nodejs/\.flox/env/manifest\.toml|\.github/workflows/ci\.yaml|\.github/actions/build-nemo-platform-wheel/action\.yaml)$'
+        files: '^(Makefile|\.nvmrc|web/package\.json|tools/nodejs/\.flox/env/manifest\.toml|\.github/workflows/ci\.yaml|\.github/actions/build-nemo-platform-wheel/action\.yaml)$'
         pass_filenames: false
       - id: copyright-fix
         name: Fix copyright headers

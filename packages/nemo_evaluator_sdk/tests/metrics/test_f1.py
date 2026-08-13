@@ -59,7 +59,7 @@ class TestF1Metric:
     def test_run_sync(self):
         metric = F1Metric(reference="{{item.reference}}", candidate="{{item.prediction}}")
         result = Evaluator().run_sync(
-            metrics=metric,
+            metrics=[metric],
             dataset=[{"reference": "a", "prediction": "a"}, {"reference": "a", "prediction": "b"}],
         )
         assert len(result.row_scores) == 2

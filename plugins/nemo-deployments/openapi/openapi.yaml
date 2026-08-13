@@ -847,6 +847,8 @@ components:
           $ref: '#/components/schemas/DockerDeploymentConfig'
         k8s:
           $ref: '#/components/schemas/K8sDeploymentConfig'
+        openshell:
+          $ref: '#/components/schemas/OpenShellDeploymentConfig'
       type: object
       title: DeploymentBackendConfig
     DeploymentConfig:
@@ -1214,6 +1216,15 @@ components:
       required:
       - data
       title: NemoListResponse_Volume_
+    OpenShellDeploymentConfig:
+      properties:
+        policyPath:
+          title: Policypath
+          description: Path to a sandbox policy YAML file on the backend host. Overrides
+            the executor-level default_policy_path for this deployment only.
+          type: string
+      type: object
+      title: OpenShellDeploymentConfig
     PaginationData:
       properties:
         page:

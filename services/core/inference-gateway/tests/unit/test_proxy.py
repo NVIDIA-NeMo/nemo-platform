@@ -4,12 +4,14 @@
 """Tests for proxy functionality."""
 
 import asyncio
+import gzip
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
+import aiohttp
 import anthropic.types as anthropic_types
 import openai.types.chat as openai_chat_types
 import pytest
@@ -41,11 +43,13 @@ from nmp.core.inference_gateway.api.proxy import (
     _rewrite_model_field,
     _rewrite_model_field_in_stream,
     build_next_request,
+    fetch_proxy_response,
     normalize_proxy_url,
     proxy_request,
     stream_response_result,
     virtual_model_proxy,
 )
+from pytest_httpserver import HTTPServer
 
 
 @pytest.fixture
@@ -123,6 +127,28 @@ async def test_stream_response_result_prefers_typed_non_streaming_payload():
 
     body = await _read_streaming_response(response)
     assert json.loads(body)["id"] == "typed"
+
+
+@pytest.mark.asyncio
+async def test_stream_response_result_strips_stale_upstream_body_headers():
+    """Re-serialized middleware output does not retain upstream body framing."""
+    response = await stream_response_result(
+        {"id": "decoded"},
+        200,
+        {
+            "content-length": "123",
+            "content-encoding": "gzip",
+            "transfer-encoding": "chunked",
+            "x-upstream-header": "preserved",
+        },
+    )
+
+    assert "content-length" not in response.headers
+    assert "content-encoding" not in response.headers
+    assert "transfer-encoding" not in response.headers
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["x-upstream-header"] == "preserved"
+    assert json.loads(await _read_streaming_response(response)) == {"id": "decoded"}
 
 
 def test_response_annotations_do_not_overwrite_typed_body_fields():
@@ -1433,8 +1459,6 @@ async def test_compressed_response_bytes_passed_through(mock_proxy_client, mock_
     This verifies the gateway doesn't decompress responses, allowing compressed
     data to flow transparently from upstream to client.
     """
-    import gzip
-
     from multidict import CIMultiDict, CIMultiDictProxy
 
     # Simulate a gzip-compressed response from upstream
@@ -1468,6 +1492,93 @@ async def test_compressed_response_bytes_passed_through(mock_proxy_client, mock_
 
     assert received_data == compressed_data
     assert gzip.decompress(received_data) == original_data
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_gzip_json(httpserver: HTTPServer):
+    """The middleware request overrides a non-decompressing session for gzip JSON."""
+    expected = {"id": "response", "choices": [{"message": {"content": "ok"}}]}
+    httpserver.expect_request("/gzip-json").respond_with_data(
+        gzip.compress(json.dumps(expected).encode()),
+        headers={"content-encoding": "gzip"},
+        content_type="application/json",
+    )
+    request_info = NextRequestInfo(
+        url=httpserver.url_for("/gzip-json"),
+        body=None,
+        headers=CIMultiDict({"accept-encoding": "gzip"}),
+        method="GET",
+        query_params={},
+    )
+
+    async with aiohttp.ClientSession(auto_decompress=False) as http_client:
+        result, _, status_code = await fetch_proxy_response(http_client, request_info)
+
+    assert status_code == 200
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_reports_payload_decoding_failure(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """aiohttp payload decoding failures are reported as gateway processing errors."""
+    mock_proxy_response.read = AsyncMock(side_effect=aiohttp.ClientPayloadError("invalid gzip body"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == "Inference Gateway could not decode the upstream response body."
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_reports_json_processing_failure(
+    mock_proxy_client, mock_proxy_response, next_request_info
+):
+    """A JSON parsing failure describes gateway processing instead of blaming the backend."""
+    mock_proxy_response.read = AsyncMock(return_value=b"not-json")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fetch_proxy_response(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == (
+        "Inference Gateway could not parse the upstream response as JSON for inference middleware processing."
+    )
+    assert "backend returned" not in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_proxy_response_decodes_gzip_sse(httpserver: HTTPServer):
+    """The middleware path keeps streaming while aiohttp decodes gzip SSE."""
+    expected = [
+        {"id": "chunk-1", "choices": [{"delta": {"content": "hello"}}]},
+        {"id": "chunk-2", "choices": [{"delta": {"content": " world"}}]},
+    ]
+    encoded = gzip.compress(
+        ("\n".join(f"data: {json.dumps(chunk)}" for chunk in expected) + "\ndata: [DONE]\n").encode()
+    )
+    httpserver.expect_request("/gzip-sse").respond_with_data(
+        encoded,
+        headers={"content-encoding": "gzip"},
+        content_type="text/event-stream",
+    )
+    request_info = NextRequestInfo(
+        url=httpserver.url_for("/gzip-sse"),
+        body=None,
+        headers=CIMultiDict({"accept-encoding": "gzip"}),
+        method="GET",
+        query_params={},
+    )
+
+    async with aiohttp.ClientSession(auto_decompress=False) as http_client:
+        result, _, status_code = await fetch_proxy_response(http_client, request_info)
+        assert status_code == 200
+        assert not isinstance(result, dict)
+        parsed = [chunk async for chunk in result]
+
+    assert parsed == expected
 
 
 # ---------------------------------------------------------------------------

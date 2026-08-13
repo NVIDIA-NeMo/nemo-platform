@@ -113,7 +113,7 @@ available as a legacy path.
 - Safe Synthesizer reports include score-driven gauges.
 - Studio can load plugin web bundles through `/apis/plugins` and render them
   inside the Studio React tree with trusted bundle URL checks.
-- NeMo Studio Copilot adds a packaged agent, chat history, tool-call rendering,
+- NeMo Studio Assistant adds a packaged agent, chat history, tool-call rendering,
   and reasoning display for Studio-assisted workflows.
 
 ### Platform, CLI, and Deployment
@@ -204,6 +204,12 @@ workflows against the upgraded checkout.
   availability, backups, or larger scale.
 - **Python support.** Python 3.11 is no longer part of the supported source
   checkout or `nemo-platform` distribution matrix.
+
+## Known issues
+
+- **Deep Agents trials can be scored as failures.** Agent-eval trials run
+  through the NeMo Fabric Deep Agents adapter can be recorded as failures even
+  when the agent completed successfully. This will be fixed in the next release.
 
 ## Links
 

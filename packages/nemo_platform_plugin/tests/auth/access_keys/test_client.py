@@ -12,7 +12,11 @@ from nemo_platform_plugin.auth.access_keys.issuer import (
     AccessKeyFeatureDisabledError,
     AccessKeyOperationNotImplementedError,
 )
-from nemo_platform_plugin.auth.access_keys.types import AccessKeyCreateRequest, AccessKeyCreateResponse
+from nemo_platform_plugin.auth.access_keys.types import (
+    AccessKeyCreateRequest,
+    AccessKeyCreateResponse,
+    AccessKeyRevokeResponse,
+)
 from nemo_platform_plugin.client.errors import NemoHTTPError
 
 
@@ -35,6 +39,10 @@ def test_access_key_issuer_client_delegates_create_to_client() -> None:
         principal="alice@example.com",
         created_at=datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
         expires_at=None,
+        description=None,
+        status="ACTIVE",
+        issuer="https://platform.example.com/apis/auth",
+        audiences=["nemo-platform-access-key"],
     )
     client = _AccessKeysClientStub()
     client.create_access_key.return_value.data.return_value = created
@@ -48,12 +56,23 @@ def test_access_key_issuer_client_delegates_create_to_client() -> None:
 
 def test_access_key_issuer_client_revokes_by_jti() -> None:
     client = _AccessKeysClientStub()
-    client.revoke_access_key.return_value.data.return_value = None
+    revoked = AccessKeyRevokeResponse(jti="ak_example", revoked=True)
+    client.revoke_access_key.return_value.data.return_value = revoked
 
     issuer = AccessKeyIssuerClient(client.as_client())
-    issuer.revoke("ak_example")
+    result = issuer.revoke("ak_example")
 
+    assert result == revoked
     client.revoke_access_key.assert_called_once_with(jti="ak_example")
+
+
+def test_access_key_issuer_client_lists_requested_page() -> None:
+    client = _AccessKeysClientStub()
+    issuer = AccessKeyIssuerClient(client.as_client())
+
+    issuer.list(page=3, page_size=25)
+
+    client.list_access_keys.assert_called_once_with(query_params={"page": 3, "page_size": 25})
 
 
 def test_access_key_issuer_client_translates_http_501_to_domain_error() -> None:
@@ -71,10 +90,18 @@ def test_access_key_issuer_client_translates_http_501_to_domain_error() -> None:
         issuer.list()
 
 
-def test_access_key_issuer_client_translates_disabled_feature_to_domain_error() -> None:
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"detail": "Scoped Access Keys are not enabled", "code": "access_keys_disabled"},
+        {"detail": "Scoped Access Keys are not enabled"},
+    ],
+    ids=["structured-code", "legacy-detail"],
+)
+def test_access_key_issuer_client_translates_disabled_feature_to_domain_error(body: dict[str, str]) -> None:
     response = httpx.Response(
         404,
-        json={"detail": "Scoped Access Keys are not enabled"},
+        json=body,
         request=httpx.Request("POST", "https://cluster.example.com/apis/auth/v2/access-keys"),
     )
     client = _AccessKeysClientStub()
@@ -84,3 +111,21 @@ def test_access_key_issuer_client_translates_disabled_feature_to_domain_error() 
 
     with pytest.raises(AccessKeyFeatureDisabledError, match="not enabled"):
         issuer.create(AccessKeyCreateRequest())
+
+
+def test_access_key_issuer_client_propagates_not_found_as_http_error() -> None:
+    """Plain 404 (key not found) propagates as NemoHTTPError so @handle_errors renders it correctly."""
+    response = httpx.Response(
+        404,
+        json={"detail": "Scoped Access Key ak_" + "0" * 32 + " was not found"},
+        request=httpx.Request("DELETE", "https://cluster.example.com/apis/auth/v2/access-keys/ak_" + "0" * 32),
+    )
+    client = _AccessKeysClientStub()
+    client.revoke_access_key.side_effect = NemoHTTPError(response)
+
+    issuer = AccessKeyIssuerClient(client.as_client())
+
+    with pytest.raises(NemoHTTPError) as exc_info:
+        issuer.revoke("ak_" + "0" * 32)
+    assert exc_info.value.status_code == 404
+    assert "was not found" in exc_info.value.detail

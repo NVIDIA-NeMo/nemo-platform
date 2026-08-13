@@ -178,10 +178,12 @@ secrets:
 files:
   default_storage_config:
     type: local
-    path: ~/.local/share/nemo/files
+    # Empty means the platform user-data directory, so blobs follow NMP_DATA_DIR
+    # alongside the entity-store database.
+    path: ""
 
 studio:
   static_files_path: web/packages/studio/dist
   sandbox_enabled: true
   feature_flags:
-    copilot_studio_enabled: true
+    assistant_studio_enabled: true

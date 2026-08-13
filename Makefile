@@ -17,7 +17,12 @@ ifeq ($(ARCH),arm64)
 	export BUILD_ARCH ?= linux/arm64
 endif
 PYTEST_EXTRA ?=
+# Default development toolchain versions. Keep these aligned with Flox; the
+# version-consistency checks validate them in pre-commit and CI.
 PYTHON_VERSION ?= 3.12
+UV_VERSION := 0.9.14
+NODE_VERSION := 22.23.2
+PNPM_VERSION := 10.34.5
 BOOTSTRAP_CREATE_VENV ?= 1
 BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
 BOOTSTRAP_ACTIVATION_REMINDER = if [ "$(TOOLCHAIN)" = "flox" ] && [ "$${FLOX_ENV_PROJECT:-}" != "$(CURDIR)" ]; then echo ""; echo "Next steps:"; echo "  flox activate"; echo "  nemo --help"; elif [ "$(TOOLCHAIN)" = "system" ] && [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
@@ -30,6 +35,10 @@ $(info local system architecture: $(PLATFORM)/$(ARCH))
 help:
 	@echo "Makefile commands:"
 	@grep -E '^[a-zA-Z_-][a-zA-Z0-9_/-]*:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: toolchain-versions
+toolchain-versions: ## Print the system toolchain versions accepted by bootstrap
+	@printf 'Python %s\nuv >=%s\nNode.js %s\npnpm %s\n' "$(PYTHON_VERSION)" "$(UV_VERSION)" "$(NODE_VERSION)" "$(PNPM_VERSION)"
 
 DOCKER_BAKE_FILE ?= docker-bake.hcl
 DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
@@ -227,7 +236,7 @@ $(error TOOLCHAIN must be either flox or system)
 endif
 UV := $(FLOX_EXEC) uv
 ifeq ($(TOOLCHAIN),flox)
-PNPM := $(FLOX_EXEC) bash -c 'corepack "pnpm@$$PNPM_VERSION" "$$@"' --
+PNPM := $(FLOX_EXEC) bash -c 'corepack "pnpm@$(PNPM_VERSION)" "$$@"' --
 else
 PNPM := $(FLOX_EXEC) pnpm
 endif

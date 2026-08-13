@@ -48,8 +48,9 @@ async def resolve_bearer_token(
     *,
     jwt_validator: JWTValidator | None = None,
     extra_resolvers: Sequence[ExtraBearerTokenResolver] = (),
+    skip_access_key_check: bool = False,
 ) -> ResolvedBearerToken | None:
-    if config.access_keys.enabled:
+    if config.access_keys.enabled and not skip_access_key_check:
         from .access_keys import validate_access_key_token
 
         access_key_claims = await validate_access_key_token(config, token)
