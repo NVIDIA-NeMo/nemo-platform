@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { BandRenderer, bandLegendArea } from '@studio/components/charts/ConfidenceBand';
-import { render } from '@testing-library/react';
-import { Area } from 'recharts';
+import { BandRenderer, useRangeBand } from '@studio/components/charts/RangeBand';
+import { render, renderHook } from '@testing-library/react';
+import { isValidElement, type ReactElement } from 'react';
+import { Area, Customized } from 'recharts';
+
+type El = ReactElement<Record<string, unknown>>;
 
 const mockXScale = Object.assign((v: number) => v * 2, { range: () => [0, 1000] as number[] });
 const mockYScale = Object.assign((v: number) => 300 - v * 300, {
@@ -16,28 +19,75 @@ const yAxisMap = { 0: { scale: mockYScale } };
 const makeData = (steps: number[]) =>
   steps.map((step) => ({ step, lower: step * 0.001, upper: step * 0.002 }));
 
-describe('bandLegendArea', () => {
-  it('returns a recharts Area element', () => {
-    const el = bandLegendArea({ upperKey: 'p75', name: 'Spread', fill: '#3d8a1e' });
-    expect(el.type).toBe(Area);
+describe('useRangeBand', () => {
+  it('returns null when enabled is false', () => {
+    const { result } = renderHook(() =>
+      useRangeBand({ name: 'Band', enabled: false })
+    );
+    expect(result.current).toBeNull();
   });
 
-  it('forwards upperKey as dataKey, name, and fill onto the element props', () => {
-    const el = bandLegendArea({ upperKey: 'upper', name: 'My band', fill: '#ff0000' });
-    expect(el.props.dataKey).toBe('upper');
-    expect(el.props.name).toBe('My band');
-    expect(el.props.fill).toBe('#ff0000');
+  it('returns an array of two React elements when enabled', () => {
+    const { result } = renderHook(() => useRangeBand({ name: 'Band' }));
+    const nodes = result.current as El[];
+    expect(Array.isArray(nodes)).toBe(true);
+    expect(nodes).toHaveLength(2);
+    expect(nodes.every((n) => isValidElement(n))).toBe(true);
   });
 
-  it('is invisible — fillOpacity and strokeOpacity are 0', () => {
-    const el = bandLegendArea({ upperKey: 'p75', name: 'Spread', fill: '#3d8a1e' });
-    expect(el.props.fillOpacity).toBe(0);
-    expect(el.props.strokeOpacity).toBe(0);
+  it('first element is an Area for legend registration', () => {
+    const { result } = renderHook(() => useRangeBand({ name: 'Band' }));
+    const [legend] = result.current as El[];
+    expect(legend.type).toBe(Area);
   });
 
-  it('uses legendType="square" so recharts adds it to the legend', () => {
-    const el = bandLegendArea({ upperKey: 'p75', name: 'Spread', fill: '#3d8a1e' });
-    expect(el.props.legendType).toBe('square');
+  it('Area uses upperKey as dataKey and is invisible', () => {
+    const { result } = renderHook(() =>
+      useRangeBand({ name: 'Band', upperKey: 'p75', fill: '#ff0000' })
+    );
+    const [legend] = result.current as El[];
+    expect(legend.props.dataKey).toBe('p75');
+    expect(legend.props.name).toBe('Band');
+    expect(legend.props.fill).toBe('#ff0000');
+    expect(legend.props.fillOpacity).toBe(0);
+    expect(legend.props.strokeOpacity).toBe(0);
+    expect(legend.props.legendType).toBe('square');
+  });
+
+  it('second element is a Customized renderer', () => {
+    const { result } = renderHook(() => useRangeBand({ name: 'Band' }));
+    const [, renderer] = result.current as El[];
+    expect(renderer.type).toBe(Customized);
+  });
+
+  it('Customized forwards lowerKey, upperKey, xKey, fill, fillOpacity', () => {
+    const { result } = renderHook(() =>
+      useRangeBand({
+        name: 'Band',
+        lowerKey: 'p25',
+        upperKey: 'p75',
+        xKey: 'epoch',
+        fill: '#123456',
+        fillOpacity: 0.3,
+      })
+    );
+    const [, renderer] = result.current as El[];
+    expect(renderer.props.lowerKey).toBe('p25');
+    expect(renderer.props.upperKey).toBe('p75');
+    expect(renderer.props.xKey).toBe('epoch');
+    expect(renderer.props.fill).toBe('#123456');
+    expect(renderer.props.fillOpacity).toBe(0.3);
+  });
+
+  it('applies default keys and fill when options are omitted', () => {
+    const { result } = renderHook(() => useRangeBand({ name: 'Band' }));
+    const [legend, renderer] = result.current as El[];
+    expect(legend.props.dataKey).toBe('upper');
+    expect(renderer.props.lowerKey).toBe('lower');
+    expect(renderer.props.upperKey).toBe('upper');
+    expect(renderer.props.xKey).toBe('step');
+    expect(renderer.props.fill).toBe('#3d8a1e');
+    expect(renderer.props.fillOpacity).toBe(0.5);
   });
 });
 

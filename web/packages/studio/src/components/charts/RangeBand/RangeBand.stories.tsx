@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Meta, StoryObj } from '@storybook/react';
-import { BandRenderer, bandLegendArea } from '@studio/components/charts/ConfidenceBand';
+import { useRangeBand } from '@studio/components/charts/RangeBand';
 import {
   CartesianGrid,
   ComposedChart,
-  Customized,
   Legend,
   Line,
   ResponsiveContainer,
@@ -38,12 +37,7 @@ const series = makeSeries(STEPS, 0.15, 0.65, 0.01, 7);
 const chartData = series.map(({ step, mean }) => {
   const t = step / 500;
   const halfBand = 0.22 * (1 - t) ** 2 + 0.02;
-  return {
-    step,
-    mean,
-    lower: Math.max(0, mean - halfBand),
-    upper: mean + halfBand,
-  };
+  return { step, mean, lower: Math.max(0, mean - halfBand), upper: mean + halfBand };
 });
 
 interface DemoDataPoint {
@@ -76,12 +70,20 @@ interface DemoProps {
   height?: number;
 }
 
-function ConfidenceBandDemo({
+function RangeBandDemo({
   showLine = true,
   fill = '#3d8a1e',
   fillOpacity = 0.5,
   height = 300,
 }: DemoProps) {
+  const band = useRangeBand({
+    lowerKey: 'lower',
+    upperKey: 'upper',
+    fill,
+    fillOpacity,
+    name: 'Range band (p25–p75)',
+  });
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={chartData}>
@@ -100,14 +102,7 @@ function ConfidenceBandDemo({
         />
         <Legend iconType="square" wrapperStyle={{ paddingTop: 12 }} />
 
-        {bandLegendArea({ upperKey: 'upper', name: 'Confidence band (p25–p75)', fill })}
-        <Customized
-          component={BandRenderer}
-          lowerKey="lower"
-          upperKey="upper"
-          fill={fill}
-          fillOpacity={fillOpacity}
-        />
+        {band}
 
         {showLine && (
           <Line
@@ -126,9 +121,9 @@ function ConfidenceBandDemo({
   );
 }
 
-const meta: Meta<typeof ConfidenceBandDemo> = {
-  title: 'Charts/ConfidenceBand',
-  component: ConfidenceBandDemo,
+const meta: Meta<typeof RangeBandDemo> = {
+  title: 'Charts/RangeBand',
+  component: RangeBandDemo,
   parameters: {
     layout: 'padded',
     backgrounds: { default: 'dark' },
@@ -136,7 +131,7 @@ const meta: Meta<typeof ConfidenceBandDemo> = {
 };
 
 export default meta;
-type Story = StoryObj<typeof ConfidenceBandDemo>;
+type Story = StoryObj<typeof RangeBandDemo>;
 
 export const WithLine: Story = {
   name: 'Band + mean line',
