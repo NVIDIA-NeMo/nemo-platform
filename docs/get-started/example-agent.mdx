@@ -48,6 +48,13 @@ The smoke agent makes no model calls. It reads a small records file with regular
 expressions, so its baseline failure is repeatable. The Analyst and
 Experimentalist do use the Model Entities configured above.
 
+The walkthrough starts with G1: the agent can look up, list, and count records,
+but cannot calculate total hours. Its validation tasks vary the scope from a
+department to all records or a role, so a narrow repair does not transfer. Later
+sections combine G1 with the name, long-input, dispatch-order, and edge-case
+weaknesses. The fixture's [detailed weakness rationale](../../plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md)
+explains those scenarios and task splits.
+
 Run model-authored work in a Docker Sandbox. Clone mode gives the sandbox a
 private writable checkout, so generated code cannot modify your working tree.
 
