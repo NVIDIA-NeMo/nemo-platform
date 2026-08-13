@@ -1903,13 +1903,13 @@ class TestEvaluateMetricOnline:
 
         metric.set_inference_fn(fake_judge_inference)
         mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.inference.make_inference_request",
+            "nemo_evaluator_sdk.execution.benchmark_execution.make_inference_request",
             new_callable=AsyncMock,
             side_effect=fake_generation_inference,
         )
 
-        result = await LocalBackend().evaluate(
-            metric=metric,
+        result = await LocalBackend().evaluate_dataset(
+            metrics=[metric],
             dataset=[{"prompt": "What is the capital of France?"}],
             target=candidate_model,
             prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
@@ -1991,13 +1991,13 @@ class TestEvaluateMetricOnline:
 
         metric.set_inference_fn(fake_judge_inference)
         mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.inference.make_inference_request",
+            "nemo_evaluator_sdk.execution.benchmark_execution.make_inference_request",
             new_callable=AsyncMock,
             side_effect=fake_generation_inference,
         )
 
-        result = await LocalBackend().evaluate(
-            metric=metric,
+        result = await LocalBackend().evaluate_dataset(
+            metrics=[metric],
             dataset=[{"prompt": "What is the capital of France?"}],
             target=candidate_model,
             prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
