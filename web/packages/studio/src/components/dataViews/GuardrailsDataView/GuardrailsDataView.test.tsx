@@ -85,6 +85,8 @@ describe('GuardrailsDataView', () => {
   });
 
   it('shows empty state when there are no configs', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn();
     server.use(
       http.get(`${PLATFORM_BASE_URL}/apis/guardrails/v2/workspaces/:workspace/configs`, () =>
         HttpResponse.json({
@@ -99,13 +101,17 @@ describe('GuardrailsDataView', () => {
         })
       )
     );
-    renderComponent();
+    renderComponent({ onCreate });
     expect(
       await screen.findByText('No guardrail configs yet', undefined, {
         timeout: XL_SELECTOR_TIMEOUT,
       })
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create guardrail config' })).toBeInTheDocument();
+    const createButton = screen.getByRole('button', { name: 'Create guardrail config' });
+    expect(createButton).toBeInTheDocument();
+
+    await user.click(createButton);
+    expect(onCreate).toHaveBeenCalledTimes(1);
   });
 
   it('calls onRequestDelete when the Delete row action is selected', async () => {

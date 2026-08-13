@@ -6,7 +6,7 @@ import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyStat
 import { ToastProvider } from '@nemo/common/src/providers/toast/ToastProvider';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { FC, ReactNode } from 'react';
+import type { FC, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 
 const wrap = (ui: ReactNode) =>
@@ -16,9 +16,16 @@ const wrap = (ui: ReactNode) =>
     </MemoryRouter>
   );
 
-const Guardrails: FC<Partial<React.ComponentProps<typeof EntityEmptyState>>> = (props) => (
-  <EntityEmptyState entity="guardrails" variant="first-use" {...props} />
-);
+const Guardrails: FC<{
+  variant?: 'first-use' | 'no-results';
+  onCreate?: () => void;
+  onClearFilters?: () => void;
+}> = ({ variant = 'first-use', onCreate, onClearFilters }) =>
+  variant === 'no-results' ? (
+    <EntityEmptyState entity="guardrails" variant="no-results" onClearFilters={onClearFilters!} />
+  ) : (
+    <EntityEmptyState entity="guardrails" variant="first-use" onCreate={onCreate} />
+  );
 
 describe('EntityEmptyState', () => {
   const descriptor = ENTITY_EMPTY_STATES.guardrails;
@@ -40,7 +47,7 @@ describe('EntityEmptyState', () => {
       expect(help).toHaveTextContent(descriptor.cliCommand as string);
       expect(help).not.toHaveTextContent(descriptor.skillPrompt as string);
 
-      await user.click(screen.getByRole('radio', { name: 'Ask an Agent' }));
+      await user.click(screen.getByRole('radio', { name: 'Ask an agent' }));
       expect(help).toHaveTextContent(descriptor.skillPrompt as string);
       expect(help).not.toHaveTextContent(descriptor.cliCommand as string);
     });
@@ -65,7 +72,7 @@ describe('EntityEmptyState', () => {
   describe('no-results', () => {
     it('shows the clear-filters action and hides the create CTA', async () => {
       const onClearFilters = vi.fn();
-      wrap(<Guardrails variant="no-results" onCreate={vi.fn()} onClearFilters={onClearFilters} />);
+      wrap(<Guardrails variant="no-results" onClearFilters={onClearFilters} />);
 
       expect(screen.getByText('No results found')).toBeInTheDocument();
       expect(

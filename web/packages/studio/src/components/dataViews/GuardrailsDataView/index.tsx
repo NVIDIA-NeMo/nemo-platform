@@ -150,14 +150,16 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
         },
         DataViewTableContent: {
-          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) => (
-            <EntityEmptyState
-              entity="guardrails"
-              variant={hasFiltersApplied || hasSearchApplied ? 'no-results' : 'first-use'}
-              onCreate={onCreate}
-              onClearFilters={dataViewState.resetFilters}
-            />
-          ),
+          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+            hasFiltersApplied || hasSearchApplied ? (
+              <EntityEmptyState
+                entity="guardrails"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
+              />
+            ) : (
+              <EntityEmptyState entity="guardrails" variant="first-use" onCreate={onCreate} />
+            ),
           renderErrorState: () => (
             <ErrorPanel
               errorMessage={getErrorMessage(

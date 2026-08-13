@@ -20,19 +20,29 @@ import { useNavigate } from 'react-router';
 /** The governed empty-state variants. Errors are handled separately by `ErrorPanel`. */
 export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 
-export interface EntityEmptyStateProps {
+export type EntityEmptyStateBaseProps = {
   entity: EntityKey;
-  variant: EntityEmptyStateVariant;
-  /**
-   * Overrides the registry create action's handler (e.g. opens a create modal).
-   * When omitted, a `createAction.to` route is navigated to instead.
-   * `first-use` only.
-   */
-  onCreate?: () => void;
-  /** Clears the active filters/search. `no-results` only. */
-  onClearFilters?: () => void;
   className?: string;
-}
+};
+
+export type EntityEmptyStateProps = EntityEmptyStateBaseProps &
+  (
+    | {
+        variant: 'first-use';
+        /**
+         * Overrides the registry create action's handler (e.g. opens a create modal).
+         * When omitted, a `createAction.to` route is navigated to instead.
+         */
+        onCreate?: () => void;
+        onClearFilters?: undefined;
+      }
+    | {
+        variant: 'no-results';
+        /** Clears the active filters/search. Required so `no-results` always offers a way out. */
+        onClearFilters: () => void;
+        onCreate?: undefined;
+      }
+  );
 
 /**
  * The single canonical empty state for Studio lists, tables, and panels. Copy,
@@ -115,9 +125,9 @@ const Centered: FC<{ children: React.ReactNode; className?: string; testId: stri
 type HelpKind = 'cli' | 'agent';
 
 /**
- * A compact "NeMo CLI · Ask an Agent" disclosure: a KUI CodeSnippet (with its
+ * A compact "Ask an agent · CLI" disclosure: a KUI CodeSnippet (with its
  * built-in copy affordance) whose action row hosts a tiny SegmentedControl to
- * switch between the CLI command and the agent prompt. Kept out of the
+ * switch between the agent prompt and the CLI command. Kept out of the
  * StatusMessage footer so the ≤2-action rule for empty states holds.
  */
 const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
@@ -128,12 +138,12 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   const [kind, setKind] = useState<HelpKind>(cliCommand ? 'cli' : 'agent');
 
   const items: { value: HelpKind; children: React.ReactNode }[] = [];
-  if (cliCommand) items.push({ value: 'cli', children: 'nemo CLI' });
   if (skillPrompt)
     items.push({
       value: 'agent',
-      children: 'Ask an Agent',
+      children: 'Ask an agent',
     });
+  if (cliCommand) items.push({ value: 'cli', children: 'CLI' });
 
   const showCli = kind === 'cli' && !!cliCommand;
   const value = showCli ? (cliCommand as string) : (skillPrompt ?? cliCommand ?? '');

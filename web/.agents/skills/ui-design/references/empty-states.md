@@ -31,10 +31,10 @@ Canonical locations:
 Every empty state is exactly one of two governed variants. Never invent a
 third idiom.
 
-| Variant      | When                                                         | Required affordances                                                                                  |
-| ------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `first-use`  | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "nemo CLI · Ask an Agent" self-service snippet |
-| `no-results` | Items exist but current filters/search match zero            | heading naming the mismatch, **"Clear filters"** action; **no** create CTA                            |
+| Variant      | When                                                         | Required affordances                                                                             |
+| ------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `first-use`  | Data source is genuinely empty; user hasn't created anything | icon, heading, subheading, primary create CTA, and the "Ask an agent · CLI" self-service snippet |
+| `no-results` | Items exist but current filters/search match zero            | heading naming the mismatch, **"Clear filters"** action; **no** create CTA                       |
 
 **Compute the variant from signals — do not pick it manually.** Inside a
 DataView the signals already exist: `hasFiltersApplied` / `hasSearchApplied`
@@ -67,14 +67,16 @@ Field rules:
   "No Filesets Found" / "Manage Filesets"). Subheading answers "why would I add
   one?" in 1–2 sentences.
 - `createAction?` — **omit** for entities with no in-app create flow (e.g.
-  Agents, Members). Use `to` for route navigation, `onClick` for imperative
-  flows. Renders as `<Button color="brand">`.
+  Agents, Members). Use `to` for route navigation; for imperative or
+  modal-driven creation, omit `to` and pass `onCreate` at the callsite instead
+  (`EmptyStateCreateAction` has no `onClick` field). Renders as
+  `<Button color="brand">`.
 - `cliCommand` — concrete, copy-pasteable, with `<placeholder>` args. Keep it
   accurate to the current CLI (see Accuracy below). Omit if the entity has no
   CLI equivalent.
 - `skillPrompt` — copy-to-clipboard string that triggers the entity's skill.
   **Not wired to Copilot** (deferred by ticket decision 1) — it is stored for a
-  future integration and surfaced under the "Ask an Agent" snippet toggle today.
+  future integration and surfaced under the "Ask an agent" snippet toggle today.
   Omit if no skill exists.
 
 ### 2. Wire the callsite
@@ -122,7 +124,7 @@ fallback.
 - At most **2 buttons** in the footer (Kaizen empty-state rule). The CLI command
   and agent prompt live **below** the footer in a single KUI `CodeSnippet`
   (with its built-in copy button); a tiny `SegmentedControl` in the snippet's
-  `slotActions` toggles between **nemo CLI** and **Ask an Agent**. This is not a
+  `slotActions` toggles between **Ask an agent** and **CLI**. This is not a
   footer button and does not count against the 2-action limit.
 - CLI commands must match the shipping `nemo` CLI. Verify against the relevant
   plugin skill (`nemo files`, `nemo models`, `nemo guardrail`, `nemo secrets`,
