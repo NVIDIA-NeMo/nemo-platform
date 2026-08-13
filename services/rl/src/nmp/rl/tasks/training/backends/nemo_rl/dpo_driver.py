@@ -108,19 +108,14 @@ def main():
     # Log only the non-sensitive job id; the full context carries service URLs
     # and identifiers that should not be dumped to stdout.
     print(f"Job context loaded (job_id={job_ctx.job_id})")
+    customizer_logger: NemoRLLogger | None = None
     if job_ctx.jobs_url:
-        # Extract training parameters for progress reporting
-        max_steps = config.dpo.max_num_steps
-        num_epochs = config.dpo.max_num_epochs
-        steps_per_epoch = config.dpo.steps_per_epoch  # type: ignore[attr-defined] - extra (undeclared) DPOConfig field, allowed via extra="allow"
-        log_interval = (config.dpo.val_period // 10) + 1
-
-        customizer_logger = NemoRLLogger(
-            steps_per_epoch=steps_per_epoch,
+        customizer_logger = NemoRLLogger.for_schedule(
             job_ctx=job_ctx,
-            log_interval=log_interval,
-            max_steps=max_steps,
-            num_epochs=num_epochs,
+            max_steps=config.dpo.max_num_steps,
+            num_epochs=config.dpo.max_num_epochs,
+            val_period=config.dpo.val_period,
+            steps_per_epoch=config.dpo.steps_per_epoch,  # type: ignore[attr-defined] - extra (undeclared) DPOConfig field, allowed via extra="allow"
         )
         # The setup() logger is a composite with a `.loggers` list; guard in case
         # that internal shape changes.
@@ -131,17 +126,24 @@ def main():
 
     logger.log_hyperparams(config.model_dump())
 
-    dpo_train(
-        policy,
-        train_dataloader,
-        val_dataloader,
-        tokenizer,
-        loss_fn,
-        master_config,
-        logger,
-        checkpointer,
-        dpo_save_state,
-    )
+    try:
+        dpo_train(
+            policy,
+            train_dataloader,
+            val_dataloader,
+            tokenizer,
+            loss_fn,
+            master_config,
+            logger,
+            checkpointer,
+            dpo_save_state,
+        )
+    finally:
+        # Flushes the final training step. NeMo-RL never closes the loggers it is
+        # handed, so without this the only fallback is NemoRLLogger.__del__ at
+        # interpreter shutdown, which does not run at all on an abnormal exit.
+        if customizer_logger is not None:
+            customizer_logger.close()
 
 
 if __name__ == "__main__":

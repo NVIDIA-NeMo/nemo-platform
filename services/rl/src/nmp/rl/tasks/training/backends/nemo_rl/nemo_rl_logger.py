@@ -18,16 +18,51 @@ from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
 
+# How many progress reports to aim for across one validation period. NeMo-RL has no
+# notion of a reporting cadence, so it is derived from val_period.
+_REPORTS_PER_VAL_PERIOD = 10
+
+# Metric keys forwarded to Jobs Service, in addition to loss/lr/grad_norm.
+# Selection is by presence, so an algorithm that does not produce one of these
+# simply omits it.
+_TRAIN_METRIC_KEYS = (
+    "num_valid_samples",
+    "preference_loss",
+    "rewards_rejected_mean",
+    "global_valid_seqs",
+    "global_valid_toks",
+)
+
+_VALIDATION_METRIC_KEYS = _TRAIN_METRIC_KEYS
+
 
 def has_metric_value(metric: Any) -> bool:
     """Whether ``metric`` is a finite-enough scalar to forward to Jobs Service.
 
+    The type check is load-bearing, not defensive. NeMo-RL's metric dicts carry
+    non-scalars alongside the numbers: ``calculate_single_metric`` emits a
+    ``<key>/histogram`` holding a ``Histogram`` object, NeMo-Gym adds a
+    per-agent ``full_result`` ``Table``, and ``generation_logger_metrics`` is a
+    nested dict. ``math.isnan`` raises ``TypeError`` on all of those, so a bare
+    None-check would turn a widened key list into a crash mid-training.
+
     Delegates to the shared predicate so the wire filter and the series filter
     cannot drift apart -- a metric this forwards must be one the callback can
-    chart. It also stops being a crash risk: ``math.isnan`` raises ``TypeError``
-    on the non-scalars a metric dict can carry, rather than returning False.
+    chart.
     """
     return is_chartable(metric)
+
+
+def resolve_log_interval(val_period: int | None) -> int:
+    """Steps between progress reports, targeting ~10 reports per validation period."""
+    return max((val_period or 0) // _REPORTS_PER_VAL_PERIOD, 1)
+
+
+def resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explicit: int | None = None) -> int:
+    """Steps per epoch, preferring an explicit value from the algorithm config."""
+    if explicit is not None and explicit >= 1:
+        return explicit
+    return max(max_steps // max(num_epochs or 1, 1), 1)
 
 
 class NemoRLLogger(LoggerInterface):
@@ -84,10 +119,45 @@ class NemoRLLogger(LoggerInterface):
         self._best_epoch: int | None = None
         self._closed = False
 
+        # Last train step built but withheld by the log_interval throttle. Flushed on
+        # close() so the final step is reported even when max_steps is not a multiple
+        # of log_interval -- otherwise the run's last recorded loss is stale.
+        self._pending_train_report: dict[str, Any] | None = None
+
         _logger.info(
             f"Initialized NemoRLLogger with jobs_url={self._job_ctx.jobs_url}, "
             f"log_interval={log_interval}, max_steps={max_steps}, num_epochs={num_epochs}, "
             f"steps_per_epoch={steps_per_epoch}"
+        )
+
+    @classmethod
+    def for_schedule(
+        cls,
+        *,
+        max_steps: int,
+        num_epochs: int | None,
+        val_period: int | None,
+        steps_per_epoch: int | None = None,
+        job_ctx: NMPJobContext | None = None,
+    ) -> "NemoRLLogger":
+        """Build a logger from a NeMo-RL training schedule.
+
+        The arithmetic lives here rather than in each driver. DPO's copy read
+        ``(val_period // 10) + 1``, where the ``+1`` was a divide-by-zero guard
+        that also skewed every value it produced, and raised outright when
+        ``val_period`` was None. Owning it here fixes both and gives any further
+        algorithm one place to call.
+
+        Args:
+            steps_per_epoch: Authoritative value when the algorithm config carries
+                one (DPO does); otherwise derived from max_steps and num_epochs.
+        """
+        return cls(
+            steps_per_epoch=resolve_steps_per_epoch(max_steps, num_epochs, steps_per_epoch),
+            job_ctx=job_ctx,
+            log_interval=resolve_log_interval(val_period),
+            max_steps=max_steps,
+            num_epochs=num_epochs,
         )
 
     def log_metrics(
@@ -107,63 +177,44 @@ class NemoRLLogger(LoggerInterface):
             step_metric: Optional step metric name (ignored in this implementation)
             step_finished: Whether the step is finished (part of NeMo-RL's LoggerInterface; ignored here)
         """
-        step = step + 1  # Increment step since we start counting from 1
-
-        # Calculate epoch from step (epochs start from 1)
-        epoch = ((step - 1) // self._steps_per_epoch) + 1
+        # `step` arrives 1-indexed and is used as-is. Both callers pass
+        # `total_steps + 1`, where total_steps is 0-based and incremented *after*
+        # logging (nemo_rl/algorithms/grpo.py, .../dpo.py), so it is already the
+        # 1-indexed step number. Incrementing again put the last step of an
+        # N-step run at N+1 and shifted the whole series one to the right of the
+        # axis Studio draws it against.
+        #
+        # Step 0 does arrive, from the validate-at-start path only; it belongs to
+        # epoch 1, hence the clamp rather than a bare `step - 1`.
+        epoch = (max(step - 1, 0) // self._steps_per_epoch) + 1
 
         # Handle training loss
         if prefix == "train" and has_metric_value(metrics.get("loss")):
-            # Only report at log_interval to reduce output
+            report = {
+                "step": step,
+                "epoch": epoch,
+                "loss": metrics["loss"],
+                "lr": metrics.get("lr"),
+                "grad_norm": metrics.get("grad_norm"),
+                **self._select_metrics(metrics, _TRAIN_METRIC_KEYS),
+            }
+            # Throttled to log_interval to reduce output. A withheld step is held as
+            # pending rather than dropped, so close() can flush the last one.
             if step % self._log_interval == 0:
-                # Extract core metrics
-                loss = metrics["loss"]
-                lr = metrics.get("lr")
-                grad_norm = metrics.get("grad_norm")
-
-                # Extract additional training metrics (whitelisted only)
-                additional_metrics = {}
-                for key in [
-                    "num_valid_samples",
-                    "preference_loss",
-                    "rewards_rejected_mean",
-                    "global_valid_seqs",
-                    "global_valid_toks",
-                ]:
-                    if has_metric_value(metrics.get(key)):
-                        additional_metrics[key] = metrics[key]
-
-                self._callback.report_train_step(
-                    step=step,
-                    epoch=epoch,
-                    loss=loss,
-                    lr=lr,
-                    grad_norm=grad_norm,
-                    **additional_metrics,
-                )
+                self._callback.report_train_step(**report)
+                self._pending_train_report = None
+            else:
+                self._pending_train_report = report
 
         # Handle validation metrics
         elif prefix and prefix.startswith("validation"):
             if has_metric_value(metrics.get("loss")):
                 val_loss = metrics["loss"]
-
-                # Extract additional validation metrics (whitelisted only)
-                additional_metrics = {}
-                for key in [
-                    "num_valid_samples",
-                    "preference_loss",
-                    "rewards_rejected_mean",
-                    "global_valid_seqs",
-                    "global_valid_toks",
-                ]:
-                    if has_metric_value(metrics.get(key)):
-                        additional_metrics[key] = metrics[key]
-
                 self._callback.report_validation(
                     step=step,
                     epoch=epoch,
                     val_loss=val_loss,
-                    **additional_metrics,
+                    **self._select_metrics(metrics, _VALIDATION_METRIC_KEYS),
                 )
                 # Track best validation loss
                 if val_loss < self._best_metric_value:
@@ -171,6 +222,11 @@ class NemoRLLogger(LoggerInterface):
                     self._best_epoch = epoch
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
+
+    @staticmethod
+    def _select_metrics(metrics: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+        """Pick the whitelisted keys that carry a forwardable scalar."""
+        return {key: metrics[key] for key in keys if has_metric_value(metrics.get(key))}
 
     def log_hyperparams(self, params: Mapping[str, Any]) -> None:
         """Log hyperparameters and report training start.
@@ -208,13 +264,40 @@ class NemoRLLogger(LoggerInterface):
         """
         return None
 
+    def finish(self) -> None:
+        """Alias for :meth:`close` under the name NeMo-RL's composite fans out.
+
+        ``nemo_rl.utils.logger.Logger`` has no ``close()`` at all; its only
+        teardown hook is ``finish()``, dispatched via
+        ``getattr(logger, "finish", None)``. Without this method the composite
+        silently skips us and the withheld final step is never flushed. The
+        driver also calls ``close()`` directly, because ``dpo_train`` never
+        invokes ``finish()`` either -- only the single-controller path does.
+        """
+        self.close()
+
     def close(self) -> None:
-        """Clean up resources."""
+        """Flush any withheld final step, then clean up resources."""
         if self._closed:
             return
         self._closed = True
+        self._flush_pending_train_report()
         _logger.info("NemoRLLogger closing")
         self._callback.close()
+
+    def _flush_pending_train_report(self) -> None:
+        """Report the last step if the log_interval throttle withheld it.
+
+        Reachable from ``__del__``, so failures must not propagate; the reporter
+        already swallows and logs transport errors, and this guards the rest.
+        """
+        if self._pending_train_report is None:
+            return
+        report, self._pending_train_report = self._pending_train_report, None
+        try:
+            self._callback.report_train_step(**report)
+        except Exception as exc:  # pragma: no cover - defensive, shutdown path
+            _logger.warning(f"Failed to flush final train step: {exc}")
 
     def __del__(self):
         """Cleanup when the logger is destroyed."""
