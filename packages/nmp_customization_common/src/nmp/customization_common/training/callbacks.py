@@ -5,15 +5,14 @@
 
 Composes a :class:`nmp.customization_common.training.progress.JobsServiceProgressReporter`
 and provides training-specific methods. Every numeric metric a backend reports is
-accumulated as a time series and included in EVERY ``status_details`` update under
-a ``metrics`` key, so any of them can be charted from job status alone.
+accumulated as a time series and sent under a ``metrics`` key on the train and
+validation reports, so any of them can be charted from job status alone.
 
-Every update matters because ``report_running`` REPLACES the task's
-``status_details`` blob rather than merging into it. A report that omits
-``metrics`` therefore erases the accumulated series from stored status until the
-next train step resends it -- and if the job dies inside that window, the curve
-is gone. Checkpoint and epoch-end reports fire mid-training, so they carry the
-payload too.
+The Jobs service merges ``status_details`` key-wise, so the stored series
+survives every report that does not mention it: checkpoint, epoch-end and
+training-start reports state only what they observed. The merge is shallow,
+though -- a report that does send ``metrics`` replaces the stored value
+wholesale, so every series goes out in full rather than as a delta.
 
 Series naming
 -------------
@@ -29,8 +28,9 @@ quantities into one series.
 
 Payload size
 ------------
-Every series is resent in full on every update, so the stored blob grows as
-``series x reports`` and total upload as the square of it. The driver of that
+Every series is resent in full on every train and validation report, so the
+stored blob grows as ``series x reports`` and total upload as the square of it.
+The driver of that
 cost is the number of *reports*, not training steps -- backends throttle
 reporting, so a 500-step GRPO run at ``log_interval=10`` accumulates 50 points
 per series, not 500.
@@ -73,10 +73,10 @@ def is_chartable(value: Any) -> bool:
     nested dicts with the scalars, and ``math.isfinite`` raises ``TypeError`` on
     all of those rather than returning False.
 
-    NaN and both infinities are rejected. Neither is a chart value, and a
-    diverged loss that reaches the wire serializes as a bare ``NaN``/
-    ``Infinity`` token, which is not valid JSON -- one such point would put the
-    whole ``status_details`` blob beyond a strict parser's reach.
+    NaN and both infinities are rejected: neither is a value a chart can place on
+    an axis, and a single infinity flattens every real point in the series
+    against it. The SDK coerces both to ``null`` on the wire, so letting one
+    through costs a hole in the curve rather than a malformed blob.
 
     ``bool`` is rejected despite being an ``int`` subclass: no metric here is a
     flag, and silently charting one as 0/1 is worse than dropping it.
@@ -138,13 +138,17 @@ class TrainingProgressCallback:
         return summary
 
     def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
-        """Report that training has started with schedule information."""
+        """Report that training has started with schedule information.
+
+        Carries no ``metrics``: it fires before the first step, so it has nothing
+        to add to the curves, and sending the empty accumulator would replace a
+        resumed job's stored series with two empty lists.
+        """
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
         details: dict[str, object] = {
             "step": 0,
             "max_steps": max_steps,
             "num_epochs": num_epochs,
-            "metrics": self._build_metrics_summary(),
         }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
@@ -237,14 +241,12 @@ class TrainingProgressCallback:
         The ``checkpoint_path`` key is omitted when the backend has no path to
         state -- both automodel and unsloth pass ``None`` when their framework
         doesn't hand one back. Sending it as null would not merely say nothing:
-        the field is a sticky latest-value carried across updates, and an
-        explicit null counts as this report's own value, so it would overwrite
-        the last known checkpoint rather than let it carry forward.
+        the server merges key-wise, so an explicit null overwrites the last known
+        checkpoint, while omitting the key leaves it standing.
         """
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            "metrics": self._build_metrics_summary(),
         }
         if checkpoint_path:
             details["checkpoint_path"] = checkpoint_path
@@ -258,7 +260,6 @@ class TrainingProgressCallback:
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            "metrics": self._build_metrics_summary(),
         }
         resolved = self._resolve_backend(backend)
         if resolved is not None:

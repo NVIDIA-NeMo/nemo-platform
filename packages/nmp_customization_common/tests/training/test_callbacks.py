@@ -55,28 +55,50 @@ def _make_callback(reporter: _RecordingReporter) -> TrainingProgressCallback:
 # --------------------------------------------------------------------------- #
 
 
-def test_every_report_path_carries_the_series(reporter: _RecordingReporter) -> None:
-    """An omitted payload erases the curve from stored status_details."""
+def test_step_reports_carry_the_series(reporter: _RecordingReporter) -> None:
+    """The reports that move a curve send every curve, since the merge is shallow."""
     callback = _make_callback(reporter)
-    callback.report_training_start(max_steps=10, num_epochs=1)
     callback.report_train_step(step=1, epoch=1, loss=0.5)
     callback.report_validation(step=1, epoch=1, val_loss=0.45)
-    callback.report_checkpoint_saved(step=1, epoch=1, checkpoint_path="/ckpt")
-    callback.report_epoch_end(step=1, epoch=1)
 
-    assert len(reporter.reports) == 5
+    assert len(reporter.reports) == 2
     for report in reporter.reports:
         assert "metrics" in report, report["phase"]
         assert set(report["metrics"]) == {"train_loss", "val_loss"}
 
 
-def test_training_start_does_not_erase_seeded_metrics() -> None:
-    """report_training_start fires before the first step; it must not blank the blob."""
+def test_non_step_reports_omit_the_series(reporter: _RecordingReporter) -> None:
+    """The server merges, so a report with nothing to add leaves the stored curve alone.
+
+    Sending it anyway is pure upload on every checkpoint, and at training start
+    it is worse than useless: the accumulator is empty there, and a shallow merge
+    would replace a resumed job's stored series with two empty lists.
+    """
+    callback = _make_callback(reporter)
+    callback.report_training_start(max_steps=10, num_epochs=1)
+    callback.report_checkpoint_saved(step=1, epoch=1, checkpoint_path="/ckpt")
+    callback.report_epoch_end(step=1, epoch=1)
+
+    assert len(reporter.reports) == 3
+    for report in reporter.reports:
+        assert "metrics" not in report, report["phase"]
+
+
+def test_training_start_does_not_resend_seeded_metrics() -> None:
+    """It fires before the first step, so it has nothing to say about the curves."""
     prior = {"train_loss": [{"step": 1, "epoch": 1, "value": 0.9}], "val_loss": []}
     reporter = _RecordingReporter(prior)
-    _make_callback(reporter).report_training_start(max_steps=10, num_epochs=1)
+    callback = _make_callback(reporter)
+    callback.report_training_start(max_steps=10, num_epochs=1)
 
-    assert reporter.reports[0]["metrics"]["train_loss"] == prior["train_loss"]
+    assert "metrics" not in reporter.reports[0]
+
+    # ...and the seeded series is still there for the first step that does report.
+    callback.report_train_step(step=2, epoch=1, loss=0.8)
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [
+        {"step": 1, "epoch": 1, "value": 0.9},
+        {"step": 2, "epoch": 1, "value": 0.8},
+    ]
 
 
 def test_series_are_snapshots_not_live_references(reporter: _RecordingReporter) -> None:

@@ -65,7 +65,6 @@ class TestTrainingProgressCallback:
             step=0,
             max_steps=500,
             num_epochs=2,
-            metrics={"train_loss": [], "val_loss": []},
             backend="unsloth",
         )
 

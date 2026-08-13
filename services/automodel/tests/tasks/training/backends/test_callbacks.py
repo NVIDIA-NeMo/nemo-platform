@@ -147,7 +147,6 @@ class TestTrainingProgressCallback:
             step=0,
             max_steps=500,
             num_epochs=2,
-            metrics={"train_loss": [], "val_loss": []},
         )
 
     def test_report_checkpoint_saved_delegates(self):
@@ -160,32 +159,30 @@ class TestTrainingProgressCallback:
             step=100,
             epoch=1,
             checkpoint_path="/tmp/ckpt",
-            metrics={"train_loss": [], "val_loss": []},
         )
 
-    def test_checkpoint_report_preserves_accumulated_series(self):
-        """report_running REPLACES status_details, so an omitted payload erases the curve.
+    def test_checkpoint_report_leaves_the_accumulated_series_alone(self):
+        """The Jobs service merges status_details, so an omitted key is not an erasure.
 
         Checkpoint saves fire mid-training (finetune.py calls this from the save
-        hook), so a report without `metrics` would drop the series from stored
-        status until the next train step -- and lose it entirely if the job then died.
+        hook) and have nothing to add to the curves. Resending every series on
+        each one would be pure upload; omitting the key leaves the stored series
+        exactly as the last train step left it.
         """
         callback, reporter = self._make_callback()
 
         callback.report_train_step(step=1, epoch=1, loss=3.21)
         callback.report_checkpoint_saved(step=1, epoch=1, checkpoint_path="/tmp/ckpt")
 
-        kwargs = self._last_report_kwargs(reporter)
-        assert kwargs["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 3.21}]
+        assert "metrics" not in self._last_report_kwargs(reporter)
 
-    def test_epoch_end_report_preserves_accumulated_series(self):
+    def test_epoch_end_report_leaves_the_accumulated_series_alone(self):
         callback, reporter = self._make_callback()
 
         callback.report_train_step(step=1, epoch=1, loss=3.21)
         callback.report_epoch_end(step=1, epoch=1)
 
-        kwargs = self._last_report_kwargs(reporter)
-        assert kwargs["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 3.21}]
+        assert "metrics" not in self._last_report_kwargs(reporter)
 
     def test_close_delegates(self):
         callback, reporter = self._make_callback()

@@ -3,11 +3,11 @@
 
 """Unit tests for JobsServiceProgressReporter's status_details handling.
 
-Focused on carry-forward: the Jobs service REPLACES ``status_details``, so a
-field lives only as long as the next report repeats it. The runner reports
-checkpoint processing, completion and failure from a different process than the
-training driver, and the driver states the schedule once and the checkpoint path
-once. Without the carry-forward set, each of those is erased by the next update.
+The Jobs service merges ``status_details`` key-wise rather than replacing the
+blob (``JobDispatcher._update_status_details_object``, verified end-to-end
+against a running platform), so a report only ever has to state what it
+observed. These tests pin that: each report sends its own fields and nothing
+else, and the only read the reporter makes is the one-shot resume seeding.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ SERIES: dict[str, list[dict[str, Any]]] = {
     "train_loss": [{"step": 10, "epoch": 1, "value": 0.5}],
     "train_reward": [{"step": 10, "epoch": 1, "value": 0.62}],
 }
-#: A blob a mid-run job would have stored: series plus the sticky facts.
+#: A blob a mid-run job would have stored, as read back on resume.
 STORED: dict[str, Any] = {
     "phase": "training",
     "step": 10,
@@ -52,8 +52,7 @@ class _Reporter(JobsServiceProgressReporter):
     which wants credentials. Every attribute ``update_task`` touches is set here.
 
     The SDK client itself is patched (see the ``jobs`` fixture) rather than
-    ``_fetch_status_details``, so the real fetch runs -- including its
-    carry-forward cache side effect.
+    ``fetch_current_metrics``, so the real fetch runs.
     """
 
     def __init__(self) -> None:
@@ -63,7 +62,6 @@ class _Reporter(JobsServiceProgressReporter):
         self._enabled = True
         self._max_steps = 0
         self._num_epochs = 0
-        self._carried = {}
 
 
 class _Task:
@@ -75,13 +73,12 @@ class _Task:
 
 
 class _Jobs:
-    """A mini Jobs service: replace-on-write, readable back, counting fetches."""
+    """A mini Jobs service: records writes, serves reads, counts fetches."""
 
     def __init__(self) -> None:
         self.sent: list[dict[str, Any]] = []
         self.stored: dict[str, Any] = {}
         self.fetches = 0
-        self.persist = False
 
     def client(self) -> Any:
         harness = self
@@ -89,8 +86,6 @@ class _Jobs:
         class _Client:
             def update_job_step_task(self, **kwargs: Any) -> None:
                 harness.sent.append(kwargs)
-                if harness.persist:
-                    harness.stored = dict(kwargs["body"].status_details or {})
 
             def get_job_step_task(self, **kwargs: Any) -> _Task:
                 harness.fetches += 1
@@ -123,141 +118,63 @@ def _details(jobs: _Jobs, index: int = -1) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# What carries forward
+# A report states what it observed, and nothing else
 # --------------------------------------------------------------------------- #
 
 
-def test_completion_carries_series_schedule_and_checkpoint(jobs: _Jobs) -> None:
-    """The last write of a successful job must not blank what it took to get there."""
-    _reporter(jobs, STORED).report_completed("Training completed")
-
-    details = _details(jobs)
-    assert details["metrics"] == SERIES
-    assert details["max_steps"] == 30
-    assert details["num_epochs"] == 3
-    assert details["step"] == 10
-    assert details["checkpoint_path"] == "/ckpt/step-10"
-    assert details["phase"] == "completed", "the report's own phase still wins"
-
-
-def test_failure_carries_the_same_set(jobs: _Jobs) -> None:
-    """A failed run is exactly when the partial curve and last checkpoint matter."""
-    _reporter(jobs, STORED).report_error("boom")
-
-    details = _details(jobs)
-    assert details["metrics"] == SERIES
-    assert details["step"] == 10
-    assert details["checkpoint_path"] == "/ckpt/step-10"
-
-
-def test_intermediate_phase_carries_forward(jobs: _Jobs) -> None:
-    """processing_checkpoint fires after the driver exits, before completion."""
+def test_a_report_sends_only_its_own_fields(jobs: _Jobs) -> None:
+    """The server merges, so restating untouched fields would be pure upload."""
     _reporter(jobs, STORED).report_running("processing_checkpoint")
 
-    details = _details(jobs)
-    assert details["metrics"] == SERIES
-    assert details["max_steps"] == 30
-    assert details["phase"] == "processing_checkpoint"
+    assert _details(jobs) == {"phase": "processing_checkpoint"}
 
 
-def test_per_step_observations_do_not_carry_forward(jobs: _Jobs) -> None:
-    """A completed task must not advertise a stale current loss or learning rate.
-
-    Nothing is lost: each of these is recoverable from its series in `metrics`.
-    """
+def test_completion_sends_only_its_own_fields(jobs: _Jobs) -> None:
+    """The stored series, schedule and checkpoint path survive on the server."""
     _reporter(jobs, STORED).report_completed("Training completed")
 
-    details = _details(jobs)
-    assert "train_loss" not in details
-    assert "lr" not in details
+    assert _details(jobs) == {"message": "Training completed", "phase": "completed"}
+    assert jobs.sent[-1]["body"].status == "completed"
 
 
-def test_caller_supplied_values_win(jobs: _Jobs) -> None:
-    fresher = {"train_loss": [{"step": 20, "epoch": 2, "value": 0.1}]}
-    _reporter(jobs, STORED).report_running("training", step=20, metrics=fresher, max_steps=99)
-
-    details = _details(jobs)
-    assert details["metrics"] == fresher
-    assert details["step"] == 20
-    assert details["max_steps"] == 99
-
-
-def test_empty_stored_values_add_no_keys(jobs: _Jobs) -> None:
-    """Before training starts there is nothing to carry; don't invent keys."""
-    stored = {"metrics": {"train_loss": [], "val_loss": []}, "checkpoint_path": ""}
-    _reporter(jobs, stored).report_running("compiling_config")
-
-    details = _details(jobs)
-    assert "metrics" not in details
-    assert "checkpoint_path" not in details
-
-
-# --------------------------------------------------------------------------- #
-# Write-through cache: the per-step hot path must not pay for a round-trip
-# --------------------------------------------------------------------------- #
-
-
-def test_reports_carrying_metrics_never_fetch(jobs: _Jobs) -> None:
-    """`metrics` marks an update as coming from the accumulating callback.
-
-    Those are the per-step reports. They omit max_steps and checkpoint_path, so a
-    naive implementation would read the blob back on every single training step.
-    """
-    reporter = _reporter(jobs, STORED)
-    for step in range(1, 11):
-        reporter.report_running("training", step=step, metrics=SERIES)
-
-    assert jobs.fetches == 0
-
-
-def test_a_stated_value_is_restated_without_a_fetch(jobs: _Jobs) -> None:
-    """report_training_start states the schedule once; every later step needs it."""
+def test_percentage_done_is_derived_from_a_stated_step(jobs: _Jobs) -> None:
     reporter = _reporter(jobs)
-    reporter.report_running("training", step=0, max_steps=30, num_epochs=3, metrics=SERIES)
-    reporter.report_running("training", step=1, metrics=SERIES)
+    reporter.configure_progress_tracking(max_steps=40, num_epochs=1)
+    reporter.report_running("training", step=10, metrics=SERIES)
 
-    details = _details(jobs)
-    assert details["max_steps"] == 30
-    assert details["num_epochs"] == 3
-    assert jobs.fetches == 0
+    assert _details(jobs)["percentage_done"] == 25
 
 
-def test_checkpoint_path_survives_the_next_training_step(jobs: _Jobs) -> None:
-    """It was published by one report and wiped by the very next one."""
+def test_percentage_done_is_clamped(jobs: _Jobs) -> None:
+    """A resumed or over-run job can report past max_steps."""
     reporter = _reporter(jobs)
-    reporter.report_running("checkpoint_saved", step=10, checkpoint_path="/ckpt/step-10", metrics=SERIES)
-    reporter.report_running("training", step=11, metrics=SERIES)
+    reporter.configure_progress_tracking(max_steps=10, num_epochs=1)
+    reporter.report_running("training", step=99, metrics=SERIES)
 
-    assert _details(jobs)["checkpoint_path"] == "/ckpt/step-10"
-
-
-def test_a_newer_checkpoint_supersedes_the_carried_one(jobs: _Jobs) -> None:
-    reporter = _reporter(jobs)
-    reporter.report_running("checkpoint_saved", step=10, checkpoint_path="/ckpt/step-10", metrics=SERIES)
-    reporter.report_running("checkpoint_saved", step=20, checkpoint_path="/ckpt/step-20", metrics=SERIES)
-    reporter.report_running("training", step=21, metrics=SERIES)
-
-    assert _details(jobs)["checkpoint_path"] == "/ckpt/step-20"
-
-
-def test_updates_without_metrics_read_the_blob_back(jobs: _Jobs) -> None:
-    """The runner's reports come from a process that holds no state at all."""
-    reporter = _reporter(jobs, STORED)
-    reporter.report_running("processing_checkpoint")
-
-    assert jobs.fetches == 1
+    assert _details(jobs)["percentage_done"] == 100
 
 
 def test_error_details_still_ride_along(jobs: _Jobs) -> None:
-    """Carry-forward must not displace the error payload."""
     _reporter(jobs, STORED).report_error({"message": "oom", "code": "OOM"})
 
     assert jobs.sent[0]["body"].error_details == {"message": "oom", "code": "OOM"}
 
 
 # --------------------------------------------------------------------------- #
-# Resume seeding
+# Reads: exactly one, for resume seeding
 # --------------------------------------------------------------------------- #
+
+
+def test_no_report_reads_the_blob_back(jobs: _Jobs) -> None:
+    """Writes are fire-and-forget. A read per report was the old carry-forward tax."""
+    reporter = _reporter(jobs, STORED)
+    for step in range(1, 11):
+        reporter.report_running("training", step=step, metrics=SERIES)
+    reporter.report_running("processing_checkpoint")
+    reporter.report_completed("Training completed")
+    reporter.report_error("boom")
+
+    assert jobs.fetches == 0
 
 
 def test_fetch_current_metrics_returns_every_series(jobs: _Jobs) -> None:
@@ -272,20 +189,17 @@ def test_fetch_current_metrics_drops_non_list_values(jobs: _Jobs) -> None:
     assert set(_reporter(jobs, stored).fetch_current_metrics()) == {"train_loss"}
 
 
-def test_resume_seeding_also_seeds_the_carry_forward_cache(jobs: _Jobs) -> None:
-    """The callback's construction-time fetch must double as the carry-forward seed.
+def test_fetch_current_metrics_copies_the_point_lists(jobs: _Jobs) -> None:
+    """The caller appends to what it gets back; it must not alias the response."""
+    seeded = _reporter(jobs, STORED).fetch_current_metrics()
+    seeded["train_loss"].append({"step": 20, "epoch": 2, "value": 0.4})
 
-    Otherwise a resumed run drops the previous run's checkpoint_path: its very
-    first report already carries `metrics`, so it never reads the blob back.
-    """
-    reporter = _reporter(jobs, STORED)
-    reporter.fetch_current_metrics()  # what TrainingProgressCallback.__init__ does
-    fetches_after_seeding = jobs.fetches
+    assert len(SERIES["train_loss"]) == 1
 
-    reporter.report_running("training", step=1, metrics=SERIES)
 
-    assert _details(jobs)["checkpoint_path"] == "/ckpt/step-10"
-    assert jobs.fetches == fetches_after_seeding, "no second round-trip"
+def test_fetch_current_metrics_survives_an_unseeded_task(jobs: _Jobs) -> None:
+    """First run: the task has no stored details, which is not an error."""
+    assert _reporter(jobs, {}).fetch_current_metrics() == {}
 
 
 # --------------------------------------------------------------------------- #
@@ -300,6 +214,14 @@ def test_disabled_reporter_sends_nothing(jobs: _Jobs) -> None:
     reporter.report_completed("Training completed")
 
     assert jobs.sent == []
+
+
+def test_disabled_reporter_does_not_fetch(jobs: _Jobs) -> None:
+    reporter = _reporter(jobs, STORED)
+    reporter._enabled = False
+
+    assert reporter.fetch_current_metrics() == {}
+    assert jobs.fetches == 0
 
 
 def test_non_main_rank_sends_nothing(jobs: _Jobs) -> None:
