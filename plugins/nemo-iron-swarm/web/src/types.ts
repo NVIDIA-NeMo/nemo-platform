@@ -14,6 +14,7 @@
  */
 export interface PluginSdk {
   platform: typeof import('@nemo/sdk/generated/platform/api');
+  agents: typeof import('@nemo/sdk/generated/agents/api');
 }
 
 export interface PluginNavigation {

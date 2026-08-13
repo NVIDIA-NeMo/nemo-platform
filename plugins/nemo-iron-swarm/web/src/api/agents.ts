@@ -1,45 +1,44 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// The agents service is a separate plugin, so its client is neither on
-// `host.sdk` (platform only) nor in this plugin's OpenAPI spec. It is one
-// paginated GET, so it goes through this plugin's own fetcher.
+import { useHost } from '@iron-swarm/host';
+import { useQuery } from '@tanstack/react-query';
 
-import { customFetch } from '@iron-swarm/api/fetcher';
 
 const AGENTS_PAGE_SIZE = 100;
 
-/** Only the field the agent picker renders. */
-export interface AgentSummary {
-  name?: string;
-}
+/**
+ * Every agent in the workspace, for the create form's agent picker.
+ *
+ * The picker needs the full list rather than a page, so this walks pagination
+ * itself. The client comes off `host.sdk.agents` — Studio's own instance, on its
+ * authenticated axios and shared cache — so the plugin neither bundles the
+ * agents SDK nor re-implements its auth.
+ */
+export const useAgentsForSelect = (workspace: string) => {
+  const { sdk } = useHost();
+  return useQuery({
+    queryKey: ['iron-swarm-init', 'agents', workspace],
+    queryFn: async ({ signal }) => {
+      const all: Awaited<ReturnType<typeof sdk.agents.agentsListAgents>>['data'] = [];
+      let page = 1;
 
-interface AgentsPage {
-  data?: AgentSummary[];
-  pagination?: { total_pages?: number };
-}
+      while (true) {
+        const response = await sdk.agents.agentsListAgents(
+          workspace,
+          { page, page_size: AGENTS_PAGE_SIZE, sort: 'name' },
+          signal
+        );
+        const batch = response.data ?? [];
+        all.push(...batch);
 
-export const fetchAgentsForSelect = async (
-  workspace: string,
-  signal: AbortSignal
-): Promise<AgentSummary[]> => {
-  const allAgents: AgentSummary[] = [];
-  let page = 1;
+        const totalPages = response.pagination?.total_pages;
+        if (totalPages ? page >= totalPages : batch.length < AGENTS_PAGE_SIZE) break;
+        page += 1;
+      }
 
-  while (true) {
-    const response = await customFetch<AgentsPage>({
-      url: `/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents`,
-      method: 'GET',
-      params: { page, page_size: AGENTS_PAGE_SIZE, sort: 'name' },
-      signal,
-    });
-    const batch = response.data ?? [];
-    allAgents.push(...batch);
-
-    const totalPages = response.pagination?.total_pages;
-    if (totalPages ? page >= totalPages : batch.length < AGENTS_PAGE_SIZE) break;
-    page += 1;
-  }
-
-  return allAgents;
+      return all;
+    },
+    enabled: !!workspace,
+  });
 };
