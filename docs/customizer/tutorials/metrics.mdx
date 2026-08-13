@@ -30,10 +30,38 @@ The time to complete this tutorial is approximately 10 minutes.
 
 ## Available Metrics
 
-Each customization job tracks two key metrics:
+A customization job tracks every numeric metric its backend reports, not a fixed
+list. Training loss and validation loss are always among them:
 
-- **Training Loss**: Calculated during training, logged every 10 steps (default, configurable via hyperparameters)
-- **Validation Loss**: Calculated during validation, logged at each validation interval
+- **Training Loss** (`train_loss`): Calculated during training, logged every 10 steps (default, configurable via hyperparameters)
+- **Validation Loss** (`val_loss`): Calculated during validation, logged at each validation interval
+
+Alongside those you will typically see `train_lr` (learning rate) and
+`train_grad_norm`, plus whatever else the algorithm produces — a DPO job also
+reports `train_preference_loss` and `val_accuracy`, for example.
+
+### How Metrics Are Named
+
+Each metric is named `<phase>_<metric>`, where the phase is `train` or `val` and
+the metric keeps whatever name the training framework gave it. A metric reported
+during both training and validation therefore stays separate: DPO's `accuracy`
+becomes `train_accuracy` and `val_accuracy` rather than one interleaved series.
+
+`train_loss` and `val_loss` are simply what this rule produces for a metric named
+`loss`.
+
+### Where Metrics Appear
+
+Each metric shows up in two places in a training task's `status_details`:
+
+- **The latest value**, as a top-level field under its full name (`train_loss`,
+  `train_lr`, ...). Present only when the metric was actually reported, so a
+  missing field means no value rather than a zero.
+- **The full history**, under `metrics`, as a list of `{step, epoch, value}`
+  points per metric. This is what the loss curves in the UI are drawn from.
+
+Non-numeric values a framework emits alongside the scalars — histograms, tables,
+nested dictionaries — are not charted and do not appear in either place.
 
 ## Viewing Your Metrics
 
@@ -67,11 +95,20 @@ for step in status.steps or []:
             print(f"Epoch: {details.get('epoch')}/{details.get('num_epochs')}")
             print(f"Training Loss: {details.get('train_loss')}")
             print(f"Validation Loss: {details.get('val_loss')}")
-            print(f"Learning Rate: {details.get('lr')}")
-            print(f"Gradient Norm: {details.get('grad_norm')}")
+            print(f"Learning Rate: {details.get('train_lr')}")
+            print(f"Gradient Norm: {details.get('train_grad_norm')}")
 ```
 
-The response includes training progress and metrics including loss, learning rate, and validation loss.
+To read the curves rather than the latest values, use the `metrics` payload. It
+carries every metric the job reported, so iterating it picks up backend-specific
+ones without naming them in advance:
+
+```python
+for name, points in (details.get("metrics") or {}).items():
+    if not points:
+        continue
+    print(f"{name}: {len(points)} points, latest {points[-1]['value']}")
+```
 
 ### Using MLflow
 
