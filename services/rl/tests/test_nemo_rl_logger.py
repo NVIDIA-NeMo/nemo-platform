@@ -98,10 +98,9 @@ def _make_logger(**kwargs: Any) -> NemoRLLogger:
 def _driver_steps(max_steps: int) -> range:
     """The step sequence an N-step run actually produces.
 
-    grpo.py and dpo.py both log `total_steps + 1` with total_steps 0-based and
-    incremented after the log, so an N-step run emits 1..N -- not 0..N-1. Tests
-    that use range(N) directly would validate the throttle against a convention
-    no caller uses.
+    dpo.py logs `total_steps + 1` with total_steps 0-based and incremented after
+    the log, so an N-step run emits 1..N -- not 0..N-1. Tests that use range(N)
+    directly would validate the throttle against a convention no caller uses.
     """
     return range(1, max_steps + 1)
 
@@ -172,7 +171,7 @@ def test_module_stub_does_not_break_find_spec() -> None:
     find_spec consults sys.modules first and raises on a `__spec__` of None, so a
     bare ModuleType here would turn an unrelated later `find_spec("nemo_rl")`
     into a ValueError -- the same kind of cross-suite leak this file's sibling
-    test_grpo_config had to be rewritten around.
+    test_dpo_config had to be rewritten around.
     """
     assert importlib.util.find_spec("nemo_rl") is not None
 
@@ -186,7 +185,7 @@ def test_has_metric_value_accepts_numpy_scalars() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# GRPO train metrics
+# Train metrics
 # --------------------------------------------------------------------------- #
 
 
@@ -200,7 +199,7 @@ def test_train_step_drops_non_scalar_metrics(callback: _RecordingCallback) -> No
 
 
 def test_train_call_without_a_loss_is_ignored(callback: _RecordingCallback) -> None:
-    """GRPO logs `train` twice per step; the mid-step call has no loss and is a partial."""
+    """A `train` log without a loss is a partial, mid-step call rather than a step."""
     rollout_only = {k: v for k, v in TRAIN_METRICS.items() if k != "loss"}
     _make_logger().log_metrics(rollout_only, step=0, prefix="train")
 
@@ -337,7 +336,7 @@ def test_close_with_nothing_pending_reports_nothing(callback: _RecordingCallback
         (5, 1),  # floors to 0 -> clamped
         (1, 1),
         (0, 1),
-        (None, 1),  # GRPO's val_period is Optional
+        (None, 1),  # val_period is Optional
     ],
 )
 def test_resolve_log_interval(val_period: int | None, expected: int) -> None:
@@ -412,7 +411,7 @@ def test_validate_at_start_reports_step_zero(callback: _RecordingCallback) -> No
 
 
 # --------------------------------------------------------------------------- #
-# Validation — the branch GRPO never reached
+# Validation
 # --------------------------------------------------------------------------- #
 
 

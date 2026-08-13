@@ -119,7 +119,7 @@ def test_series_are_snapshots_not_live_references(reporter: _RecordingReporter) 
 
 
 def test_validation_without_loss_omits_the_key(reporter: _RecordingReporter) -> None:
-    """GRPO validates on accuracy; a null val_loss would chart as a real zero."""
+    """An algorithm may validate on task metrics alone; a null val_loss charts as zero."""
     _make_callback(reporter).report_validation(step=1, epoch=1, val_loss=None, accuracy=0.75)
 
     report = reporter.reports[-1]
@@ -213,14 +213,14 @@ def test_additional_validation_metrics_become_series_and_ride_along(reporter: _R
 def test_train_and_validation_metrics_of_the_same_name_stay_separate(
     reporter: _RecordingReporter,
 ) -> None:
-    """GRPO reports `truncation_rate` in both dicts; one series would interleave them."""
+    """DPO reports `accuracy` in both dicts; one series would interleave them."""
     callback = _make_callback(reporter)
-    callback.report_train_step(step=1, epoch=1, loss=0.5, truncation_rate=0.18)
-    callback.report_validation(step=1, epoch=1, truncation_rate=0.04)
+    callback.report_train_step(step=1, epoch=1, loss=0.5, accuracy=0.18)
+    callback.report_validation(step=1, epoch=1, accuracy=0.04)
 
     metrics = reporter.reports[-1]["metrics"]
-    assert metrics["train_truncation_rate"] == [{"step": 1, "epoch": 1, "value": 0.18}]
-    assert metrics["val_truncation_rate"] == [{"step": 1, "epoch": 1, "value": 0.04}]
+    assert metrics["train_accuracy"] == [{"step": 1, "epoch": 1, "value": 0.18}]
+    assert metrics["val_accuracy"] == [{"step": 1, "epoch": 1, "value": 0.04}]
 
 
 def test_non_numeric_metrics_are_dropped_from_the_series(reporter: _RecordingReporter) -> None:

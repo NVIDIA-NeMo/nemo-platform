@@ -18,10 +18,9 @@ Series naming
 -------------
 Series are namespaced by the phase that produced them: ``train_<name>`` and
 ``val_<name>``, which is what the long-standing ``train_loss``/``val_loss`` pair
-already did. The prefix is load-bearing rather than cosmetic -- GRPO reports
-``truncation_rate`` in both its train and validation dicts, and DPO reports
-``accuracy`` in both, so unprefixed names would interleave two different
-quantities into one series.
+already did. The prefix is load-bearing rather than cosmetic -- DPO reports
+``accuracy`` in both its train and validation dicts, so unprefixed names would
+interleave two different quantities into one series.
 
 ``train_loss`` and ``val_loss`` keep those exact names, so existing consumers
 (the Studio loss chart) are unaffected.
@@ -30,12 +29,11 @@ Payload size
 ------------
 Every series is resent in full on every train and validation report, so the
 stored blob grows as ``series x reports`` and total upload as the square of it.
-The driver of that
-cost is the number of *reports*, not training steps -- backends throttle
-reporting, so a 500-step GRPO run at ``log_interval=10`` accumulates 50 points
-per series, not 500.
+The driver of that cost is the number of *reports*, not training steps --
+backends throttle reporting, so a 500-step run at ``log_interval=10``
+accumulates 50 points per series, not 500.
 
-Measured, for GRPO's ~22 series:
+Measured for a backend reporting ~22 series:
 
     500 steps, log_interval 10  ->   42 KB final blob,   1.1 MB uploaded
     500 steps, log_interval  1  ->  413 KB final blob, 101.3 MB uploaded
@@ -203,7 +201,7 @@ class TrainingProgressCallback:
         """Report training step with metrics.
 
         ``additional_metrics`` are backend-specific (DPO's ``preference_loss``,
-        GRPO's ``reward``/``kl_penalty``, ...). Each numeric one accumulates into
+        ``rewards_rejected_mean``, ...). Each numeric one accumulates into
         its own ``train_<name>`` series *and* rides along as a current-step
         scalar, so consumers can read either the curve or the latest value.
 
@@ -245,10 +243,10 @@ class TrainingProgressCallback:
     ) -> None:
         """Report validation results.
 
-        ``val_loss`` is optional because not every algorithm produces one: GRPO
-        validates on ``accuracy``/``avg_length`` and reports no loss at all. The
-        key is omitted rather than sent as null, which would chart as a real zero,
-        and the ``val_loss`` series simply stays empty for such runs.
+        ``val_loss`` is optional because not every algorithm produces one -- an
+        algorithm may validate purely on task metrics and report no loss at all.
+        The key is omitted rather than sent as null, which would chart as a real
+        zero, and the ``val_loss`` series simply stays empty for such runs.
         """
         forwardable = _forwardable(additional_metrics)
         details: dict[str, object] = {
