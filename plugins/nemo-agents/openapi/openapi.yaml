@@ -6246,9 +6246,17 @@ components:
     OptimizeSpec:
       properties:
         optimize_config:
-          type: string
           title: Optimize Config
-          description: Absolute path to the Fabric-native optimization YAML file.
+          description: Absolute path to the Fabric-native optimization YAML file on
+            the platform host.
+          type: string
+        optimize_config_inline:
+          title: Optimize Config Inline
+          description: The Fabric-native optimization config inline, with the same
+            shape as the YAML file. Use instead of optimize_config when submitting
+            from a remote client.
+          additionalProperties: true
+          type: object
         workspace:
           type: string
           title: Workspace
@@ -6258,11 +6266,20 @@ components:
         agent:
           title: Agent
           description: Optional platform agent reference ('name' or 'workspace/name').
-            When omitted, optimize_config must include an inline Fabric agent package.
+            When omitted, the optimization config must include an inline Fabric agent
+            package.
+          type: string
+        output:
+          title: Output
+          description: "Where to publish the study artifacts (optimized config, trials\
+            \ dataframe, pareto plots, ATIF evidence) once the study succeeds \u2014\
+            \ either a local directory (path-shaped: starts with '/', './', '../',\
+            \ '~/') or a NeMo Platform fileset reference ('name' or 'workspace/name').\
+            \  Filesets are created on demand if missing.  This is in addition to\
+            \ the per-job artifacts that ``ctx.results.save`` always registers; it\
+            \ gives remote clients a stable, addressable location to read from."
           type: string
       type: object
-      required:
-      - optimize_config
       title: OptimizeSpec
       description: Spec for an Agents optimize study (``nemo agents optimize``).
     PackageAgentInput:
