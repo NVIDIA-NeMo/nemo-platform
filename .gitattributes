@@ -31,6 +31,10 @@ sdk/python/** linguist-generated
 packages/nemo_platform_ext/src/nemo_platform_ext/cli/commands/api/** linguist-generated
 # Built plugin web bundles (vite output, shipped in the wheel)
 plugins/*/src/*/web/dist/** linguist-generated
+# Rolled-up Studio plugin surface types (pnpm --filter @nemo/common types:plugin)
+web/packages/common/plugin-types/** linguist-generated
+# Generated Studio stylesheet
+web/packages/studio/src/generated/** linguist-generated
 # Generated license files
 third_party/osv-licenses*.json linguist-generated
 third_party/requirements*.txt linguist-generated
