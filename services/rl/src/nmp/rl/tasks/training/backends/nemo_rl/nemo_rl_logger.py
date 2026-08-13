@@ -9,7 +9,7 @@
 # its affiliates is strictly prohibited.
 
 import logging
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Self
 
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
@@ -139,7 +139,7 @@ class NemoRLLogger(LoggerInterface):
         val_period: int | None,
         steps_per_epoch: int | None = None,
         job_ctx: NMPJobContext | None = None,
-    ) -> "NemoRLLogger":
+    ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
 
         The arithmetic lives here rather than in each driver. DPO's copy read

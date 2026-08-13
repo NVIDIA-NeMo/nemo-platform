@@ -66,3 +66,54 @@ def test_driver_closes_the_progress_logger_in_a_finally(driver: str) -> None:
         f"{driver} must close customizer_logger from a finally block; "
         "NeMo-RL does not close loggers, and __del__ does not run on abnormal exit"
     )
+
+
+def _reads_via_defaulted_getattr(source: str, field: str) -> bool:
+    """Whether `field` is read with a three-argument getattr and never as an attribute."""
+    via_getattr = False
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute) and node.attr == field:
+            return False
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) == 3
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == field
+        ):
+            via_getattr = True
+    return via_getattr
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("x = getattr(config.dpo, 'steps_per_epoch', None)\n", True),
+        # Attribute access on an undeclared extra: AttributeError at startup.
+        ("x = config.dpo.steps_per_epoch\n", False),
+        # No default, so it raises exactly as attribute access would.
+        ("x = getattr(config.dpo, 'steps_per_epoch')\n", False),
+        # Never read at all.
+        ("x = 1\n", False),
+    ],
+)
+def test_optional_field_detector_discriminates(source: str, expected: bool) -> None:
+    assert _reads_via_defaulted_getattr(source, "steps_per_epoch") is expected
+
+
+@pytest.mark.parametrize("driver", ["dpo_driver.py"])
+def test_driver_reads_steps_per_epoch_defensively(driver: str) -> None:
+    """It is an undeclared extra, so a config compiled elsewhere simply omits it.
+
+    pydantic raises AttributeError for a missing extra, and this read happens at
+    driver startup -- before `for_schedule` can apply the fallback that derives
+    steps_per_epoch from max_steps and num_epochs. Hard attribute access turns
+    that fallback into dead code and the missing key into a crash.
+    """
+    source = (DRIVERS / driver).read_text()
+
+    assert _reads_via_defaulted_getattr(source, "steps_per_epoch"), (
+        f"{driver} must read steps_per_epoch via getattr with a None default; "
+        "it is an extra=allow field that a config need not carry"
+    )
