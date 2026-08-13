@@ -20,10 +20,10 @@ import { useNavigate } from 'react-router';
 /** The governed empty-state variants. Errors are handled separately by `ErrorPanel`. */
 export type EntityEmptyStateVariant = 'first-use' | 'no-results';
 
-export type EntityEmptyStateBaseProps = {
+export interface EntityEmptyStateBaseProps {
   entity: EntityKey;
   className?: string;
-};
+}
 
 export type EntityEmptyStateProps = EntityEmptyStateBaseProps &
   (
