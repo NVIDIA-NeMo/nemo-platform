@@ -23,13 +23,35 @@ class PolicyEngineError(Exception):
     """Error during policy evaluation."""
 
 
+_engine: Optional[Engine] = None
+_engine_lock = threading.Lock()
+
+
+def _get_engine() -> Engine:
+    """Return the process-wide wasmtime Engine, creating it once (thread-safe, double-checked locking).
+
+    Engine setup is the heavyweight step in wasmtime — JIT code generation and process-wide
+    trap/signal-handling registration — and wasmtime's own guidance is one Engine per process with
+    many cheap Stores created from it. Creating a fresh Engine per OPAPolicy instance (i.e. per
+    AuthService lifecycle, i.e. per test client) churns through hundreds of Engines over an xdist
+    worker's lifetime; that churn, not any single test, is what was crashing workers with no
+    traceback ("node down: Not properly terminated").
+    """
+    global _engine
+    if _engine is None:
+        with _engine_lock:
+            if _engine is None:
+                config = Config()
+                config.consume_fuel = True
+                _engine = Engine(config)
+    return _engine
+
+
 class OPAPolicy:
     """Wrapper for OPA WASM policy evaluation."""
 
     def __init__(self, wasm_path: str, *, fuel_limit: int = 200_000_000, memory_limit_mb: int = 32):
-        config = Config()
-        config.consume_fuel = True
-        engine = Engine(config)
+        engine = _get_engine()
 
         self.fuel_limit = fuel_limit
         self.store = Store(engine)
