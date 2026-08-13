@@ -59,17 +59,19 @@ export const GuardrailsRoute: FC = () => {
 
   const handleBulkDelete = useCallback(async (): Promise<boolean> => {
     if (!configsToDelete.length) return false;
-    try {
-      await Promise.all(
-        configsToDelete.filter((c) => c.name).map((c) => deleteConfig({ workspace, name: c.name! }))
-      );
+    if (configsToDelete.some((c) => !c.name)) return false;
+
+    const results = await Promise.allSettled(
+      configsToDelete.map((c) => deleteConfig({ workspace, name: c.name! }))
+    );
+
+    if (results.some((r) => r.status === 'fulfilled')) {
       await queryClient.invalidateQueries({
         queryKey: [`/apis/guardrails/v2/workspaces/${workspace}/configs`],
       });
-      return true;
-    } catch {
-      return false;
     }
+
+    return results.every((r) => r.status === 'fulfilled');
   }, [configsToDelete, deleteConfig, queryClient, workspace]);
 
   return (
