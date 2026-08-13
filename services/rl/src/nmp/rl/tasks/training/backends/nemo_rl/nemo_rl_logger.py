@@ -14,9 +14,8 @@ from typing import Any, Mapping, Optional
 
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.progress import JobsServiceProgressReporter
-from nmp.rl.app.constants import SERVICE_NAME
-from nmp.rl.tasks.training.backends.nemo_rl.callbacks import TrainingProgressCallback
+from nmp.customization_common.training.callbacks import TrainingProgressCallback
+from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
 
@@ -74,7 +73,7 @@ class NemoRLLogger(LoggerInterface):
         self._steps_per_epoch = steps_per_epoch
 
         # Create the callback for progress reporting
-        self._reporter = JobsServiceProgressReporter(self._job_ctx, SERVICE_NAME)
+        self._reporter = JobsServiceProgressReporter(self._job_ctx)
         self._callback = TrainingProgressCallback(self._reporter)
 
         # Track best metrics for monitoring

@@ -71,10 +71,18 @@ class TrainingProgressCallback:
         grad_norm: float | None = None,
         *,
         backend: str | None = None,
+        **additional_metrics: object,
     ) -> None:
-        """Report training step with metrics."""
+        """Report training step with metrics.
+
+        ``additional_metrics`` are backend-specific scalars (DPO's
+        ``preference_loss``, ...). Splatted first so a backend metric cannot
+        shadow the accumulated series or the step's own loss; every other
+        colliding name is a real parameter and so already errors at the call.
+        """
         self._train_metrics.append({"step": step, "epoch": epoch, "value": loss})
         details: dict[str, object] = {
+            **additional_metrics,
             "step": step,
             "epoch": epoch,
             "train_loss": loss,
@@ -87,15 +95,29 @@ class TrainingProgressCallback:
             details["backend"] = resolved
         self._reporter.report_running(phase="training", **details)
 
-    def report_validation(self, step: int, epoch: int, val_loss: float, *, backend: str | None = None) -> None:
-        """Report validation results."""
-        self._val_metrics.append({"step": step, "epoch": epoch, "value": val_loss})
+    def report_validation(
+        self,
+        step: int,
+        epoch: int,
+        val_loss: float | None = None,
+        *,
+        backend: str | None = None,
+        **additional_metrics: object,
+    ) -> None:
+        """Report validation results.
+
+        ``val_loss`` is optional because not every algorithm produces one. The
+        key is omitted rather than sent as null, which would chart as a real zero.
+        """
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            "val_loss": val_loss,
-            "metrics": self._build_metrics_summary(),
+            **additional_metrics,
         }
+        if val_loss is not None:
+            self._val_metrics.append({"step": step, "epoch": epoch, "value": val_loss})
+            details["val_loss"] = val_loss
+        details["metrics"] = self._build_metrics_summary()
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
