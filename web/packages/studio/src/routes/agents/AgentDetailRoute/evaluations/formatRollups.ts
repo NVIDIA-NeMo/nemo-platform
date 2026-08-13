@@ -25,6 +25,7 @@ export const evaluatorLabel = (key: string): string => {
 };
 
 export interface EvaluatorScore {
+  key: string;
   label: string;
   value: string;
 }
@@ -33,6 +34,7 @@ export interface EvaluatorScore {
  *  cannot each be a column. */
 export const evaluatorScores = (evaluation: AgentEvaluationRow): EvaluatorScore[] =>
   Object.entries(evaluation.aggregate_scores ?? {}).map(([key, aggregate]) => ({
+    key,
     label: evaluatorLabel(key),
     value: formatScore(aggregate?.mean),
   }));

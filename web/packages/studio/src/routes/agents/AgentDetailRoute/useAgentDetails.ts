@@ -115,7 +115,7 @@ export const useAgentDetails = ({
 
   const { data: experimentsResponse } = useListExperiments(
     workspace,
-    { page_size: EXPERIMENT_PAGE_SIZE },
+    { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
     { query: { enabled: !!agentName && !!workspace } }
   );
 

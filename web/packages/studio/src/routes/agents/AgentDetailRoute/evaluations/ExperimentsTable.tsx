@@ -45,11 +45,28 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
 
   const handleDelete = useCallback(
     async (rows: AgentExperimentRow[]) => {
-      await Promise.all(rows.map((row) => deleteExperiment(workspace, row.name)));
+      const names = rows.flatMap((row) => (row.name ? [row.name] : []));
+      if (names.length !== rows.length) {
+        throw new Error(
+          'Some selected experiments could not be resolved to a name and cannot be deleted. Open the experiment to remove it.'
+        );
+      }
+
+      const results = await Promise.allSettled(
+        names.map((name) => deleteExperiment(workspace, name))
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getListExperimentsQueryKey(workspace) }),
         queryClient.invalidateQueries({ queryKey: getListEvaluationsQueryKey(workspace) }),
       ]);
+
+      const failed = rows.filter((_, index) => results[index]?.status === 'rejected');
+      if (failed.length) {
+        setDeleteRows(failed);
+        throw new Error(
+          `${failed.length} of ${rows.length} experiment${rows.length !== 1 ? 's' : ''} could not be deleted. Retry to attempt only those.`
+        );
+      }
     },
     [workspace, queryClient]
   );
@@ -60,7 +77,11 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
         rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
         accessor('name', {
           header: 'Experiment',
-          cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
+          cell: ({ row }) => (
+            <Text title={row.original.name ?? row.original.id}>
+              {row.original.name ?? row.original.id}
+            </Text>
+          ),
         }),
         accessor('evaluationCount', {
           header: 'Evaluations',
@@ -88,7 +109,7 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
       <StudioDataView<AgentExperimentRow>
         dataViewState={dataViewState}
         makeColumns={makeColumns}
-        onRowClick={(row) => navigate(getExperimentDetailRoute(workspace, row.name))}
+        onRowClick={(row) => row.name && navigate(getExperimentDetailRoute(workspace, row.name))}
         renderBulkActions={({ selectedRows }) => (
           <Button
             kind="tertiary"

@@ -37,8 +37,18 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
 
   const handleDelete = useCallback(
     async (rows: AgentEvaluationRow[]) => {
-      await Promise.all(rows.map((row) => deleteEvaluation(workspace, row.name)));
+      const results = await Promise.allSettled(
+        rows.map((row) => deleteEvaluation(workspace, row.name))
+      );
       await queryClient.invalidateQueries({ queryKey: getListEvaluationsQueryKey(workspace) });
+
+      const failed = rows.filter((_, index) => results[index]?.status === 'rejected');
+      if (failed.length) {
+        setDeleteRows(failed);
+        throw new Error(
+          `${failed.length} of ${rows.length} evaluation${rows.length !== 1 ? 's' : ''} could not be deleted. Retry to attempt only those.`
+        );
+      }
     },
     [workspace, queryClient]
   );
@@ -69,7 +79,7 @@ export const EvaluationsTable: FC<EvaluationsTableProps> = ({ workspace, evaluat
               <Flex gap="density-xs" className="flex-wrap">
                 {scores.map((score) => (
                   <Flex
-                    key={score.label}
+                    key={score.key}
                     gap="density-xxs"
                     align="baseline"
                     className="rounded bg-surface-raised px-1.5 py-0.5"

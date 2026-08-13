@@ -4,7 +4,8 @@
 import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
 
 export interface AgentExperimentRow {
-  name: string;
+  id: string;
+  name: string | null;
   evaluationCount: number;
   runCount: number;
   latestCreatedAt: string | null;
@@ -15,19 +16,24 @@ export interface AgentExperimentRow {
  *  Derived from the evaluations rather than queried: the experiments endpoint has no
  *  ``agent_name`` filter, so "which experiments cover this agent" is only answerable through the
  *  evaluations that name it. An experiment with no published evaluation therefore does not appear.
- *  Evaluations whose experiment could not be resolved are skipped — there is nothing to group or
- *  link them under. */
+ *
+ *  Keyed on the experiment id, which every evaluation carries, rather than the resolved name,
+ *  which is only known for experiments inside the fetched page. Grouping therefore never drops a
+ *  row and the counts stay honest; an unresolved row loses only its label and its link. */
 export const groupByExperiment = (evaluations: AgentEvaluationRow[]): AgentExperimentRow[] => {
-  const byName = new Map<string, AgentExperimentRow>();
+  const byId = new Map<string, AgentExperimentRow>();
 
   for (const evaluation of evaluations) {
-    if (!evaluation.experimentName) continue;
-    const existing = byName.get(evaluation.experimentName) ?? {
+    const id = evaluation.experiment_ids[0];
+    if (!id) continue;
+    const existing = byId.get(id) ?? {
+      id,
       name: evaluation.experimentName,
       evaluationCount: 0,
       runCount: 0,
       latestCreatedAt: null,
     };
+    existing.name ??= evaluation.experimentName;
     existing.evaluationCount += 1;
     existing.runCount += evaluation.run_count ?? 0;
     if (
@@ -36,10 +42,10 @@ export const groupByExperiment = (evaluations: AgentEvaluationRow[]): AgentExper
     ) {
       existing.latestCreatedAt = evaluation.created_at;
     }
-    byName.set(evaluation.experimentName, existing);
+    byId.set(id, existing);
   }
 
-  return [...byName.values()].sort((a, b) =>
+  return [...byId.values()].sort((a, b) =>
     (b.latestCreatedAt ?? '').localeCompare(a.latestCreatedAt ?? '')
   );
 };

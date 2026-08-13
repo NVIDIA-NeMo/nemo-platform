@@ -17,6 +17,7 @@ import type {
 } from '@nemo/sdk/generated/evaluator/schema';
 import {
   createExperiment,
+  deleteEvaluation,
   deleteExperiment,
   filesCreateFileset,
   filesDeleteFileset,
@@ -161,17 +162,21 @@ interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onCl
   onSubmitted?: (jobName: string) => void;
 }
 
+interface SeededEntities {
+  filesetName?: string;
+  experimentName?: string;
+  evaluationName?: string;
+}
+
 /** Undo what a failed submit created, and return the error to raise.
  *
- *  Everything here is name-unique per workspace, so a leftover holds the name the retry wants:
- *  without this, the second attempt fails on a conflict instead of the original problem.
- *  Deleting the Experiment also soft-deletes the Evaluation created under it (the API cascades
- *  to members whose only membership was that group) and frees both names, so the two deletes
- *  below unwind the whole chain. When a delete itself fails the returned error names what to
- *  remove by hand. */
+ *  Deleting the Experiment soft-deletes the Evaluations whose only membership was that group, so
+ *  the evaluation is only deleted on its own when the experiment pre-existed this submit and is
+ *  therefore being kept. Names are freed either way, since the API renames on delete. When a
+ *  delete itself fails the returned error names what to remove by hand. */
 const discardSeeded = async (
   workspace: string,
-  seeded: { filesetName?: string; experimentName?: string },
+  seeded: SeededEntities,
   cause: unknown
 ): Promise<unknown> => {
   const leftovers: string[] = [];
@@ -179,6 +184,10 @@ const discardSeeded = async (
   if (seeded.experimentName) {
     await deleteExperiment(workspace, seeded.experimentName, signal).catch(() =>
       leftovers.push(`experiment "${seeded.experimentName}"`)
+    );
+  } else if (seeded.evaluationName) {
+    await deleteEvaluation(workspace, seeded.evaluationName, signal).catch(() =>
+      leftovers.push(`evaluation "${seeded.evaluationName}"`)
     );
   }
   if (seeded.filesetName) {
@@ -438,9 +447,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       const isNew = formData.mode === MODE_DEFAULT;
       const filesetName = isNew ? formData.filesetName.trim() : (experimentFileset ?? '');
 
-      const seeded: { filesetName?: string; experimentName?: string } = isNew
-        ? { filesetName }
-        : {};
+      const seeded: SeededEntities = isNew ? { filesetName } : {};
 
       try {
         const experiment = isNew
@@ -457,6 +464,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
           experimentName: experiment.name,
           filesetName,
         });
+        seeded.evaluationName = evaluationId;
 
         const selections = {
           workspace,

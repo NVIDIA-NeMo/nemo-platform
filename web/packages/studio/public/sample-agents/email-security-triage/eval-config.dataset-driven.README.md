@@ -8,7 +8,7 @@ homogeneous and the interesting variable is coverage, not the kind of task.
 Five rows (three phishing, two benign), each with `subject`, `sender`, `body`, and `label`.
 `prompt_template` assembles them into the RFC-822 message the agent expects:
 
-```
+```jinja
 From: {{ item.sender }}
 Subject: {{ item.subject }}
 
