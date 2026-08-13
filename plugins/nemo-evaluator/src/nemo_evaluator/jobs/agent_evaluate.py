@@ -33,6 +33,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
     Target,
@@ -46,6 +47,7 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTarget
@@ -350,6 +352,24 @@ class AgentEvalJob(NemoJob):
                 work_root=ctx.storage.persistent / "fabric",
             )
             return fabric_runtime, None, None
+        if isinstance(target, GymRunnerTarget):
+            gym_runtime = GymAgentTaskRunner(
+                config=GymRuntimeConfig(
+                    agent=target.agent,
+                    agent_config=target.agent_config,
+                    resources_server=target.resources_server,
+                    model_type=target.model_type,
+                    bind_resources_server=target.bind_resources_server,
+                    env_overrides=target.env_overrides,
+                    num_repeats=target.num_repeats,
+                    concurrency=target.concurrency,
+                    startup_timeout_s=target.startup_timeout_s,
+                    collection_timeout_s=target.collection_timeout_s,
+                    shutdown_grace_s=target.shutdown_grace_s,
+                    reward_key=target.reward_key,
+                )
+            )
+            return gym_runtime, None, None
         if isinstance(target, HarborRunnerTarget):
             harbor_runtime = HarborAgentTaskRunner(
                 config=HarborRuntimeConfig(

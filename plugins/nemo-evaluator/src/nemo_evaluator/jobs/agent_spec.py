@@ -145,9 +145,62 @@ class HarborRunnerTarget(BaseModel):
     )
 
 
+class GymRunnerTarget(BaseModel):
+    """Generate trials by driving a NeMo Gym environment through the SDK's :class:`GymAgentTaskRunner`.
+
+    Gym runs locally in the job container (the ``gym`` CLI must be installed in the same environment
+    as this SDK). The environment dataset is recovered from the tasks at run time — the runner stamps
+    ``gym_dataset_path`` onto each task via ``discover_gym_tasks``, mirroring the Harbor pattern.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["gym"] = "gym"
+    agent: str = Field(description="Agent name to collect rollouts with, e.g. 'simple_agent'.")
+    agent_config: str = Field(
+        description="Repo-relative agent config passed to `gym env start` (--config).",
+    )
+    resources_server: str = Field(
+        description="Resources-server (environment) name, e.g. 'mcqa' (--resources-server).",
+    )
+    model_type: str = Field(
+        default="inference_provider",
+        description="Model-type config (--model-type). `inference_provider` speaks OpenAI-compatible chat; "
+        "`openai_model` uses the OpenAI Responses API.",
+    )
+    bind_resources_server: bool = Field(
+        default=True,
+        description="Auto-bind the agent's `resources_server.name` via a Hydra override. Set False for "
+        "self-contained agents that already bind their own resources-server.",
+    )
+    env_overrides: list[str] = Field(
+        default_factory=list,
+        description="Extra Hydra '+key=value' overrides for `gym env start` (applied after the auto-derived "
+        "resources-server binding).",
+    )
+    num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
+    concurrency: int = Field(
+        default=4,
+        ge=1,
+        description="Concurrent rollouts for `gym eval run`.",
+    )
+    startup_timeout_s: float = Field(default=240.0, gt=0, description="Max wait for `gym env start` readiness.")
+    collection_timeout_s: float | None = Field(
+        default=None,
+        gt=0,
+        description="Max wait for `gym eval run` collection; None = unbounded.",
+    )
+    shutdown_grace_s: float = Field(
+        default=30.0,
+        gt=0,
+        description="Grace period for the Gym subprocess group to exit on SIGTERM before escalating to SIGKILL.",
+    )
+    reward_key: str = Field(default="reward", description="Key read from each rollout record.")
+
+
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved
 #: to a runtime at run time. ``kind``-discriminated; widen with more members as runners land.
-AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | HarborRunnerTarget
+AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | GymRunnerTarget | HarborRunnerTarget
 
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).
@@ -173,6 +226,8 @@ def target_agent_identity(target: Target | Model | AgentBase | None) -> tuple[st
         return target.agent.name, None
     if isinstance(target, HarborRunnerTarget):
         return target.agent_import_path or target.agent_name, target.agent_model_name
+    if isinstance(target, GymRunnerTarget):
+        return target.agent, None
     if isinstance(target, ModelTarget):
         return None, target.model.name
     if isinstance(target, CodexRunnerTarget | FabricRunnerTarget):

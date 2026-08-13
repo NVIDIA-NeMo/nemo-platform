@@ -25,6 +25,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
     Target,
@@ -202,6 +203,10 @@ def _publish(client: AsyncNeMoPlatform | None, *, required: bool = True, agent_n
         (ModelTarget(model=Model(name="gpt-4o", url="http://model")), (None, "gpt-4o")),
         (HarborRunnerTarget(agent_name="oracle", agent_model_name="m"), ("oracle", "m")),
         (HarborRunnerTarget(agent_name="oracle", agent_import_path="pkg:Agent"), ("pkg:Agent", None)),
+        (
+            GymRunnerTarget(agent="simple_agent", agent_config="conf/agent.yaml", resources_server="mcqa"),
+            ("simple_agent", None),
+        ),
         (CodexRunnerTarget(model="gpt-5.5"), (None, "gpt-5.5")),
         (FabricRunnerTarget(config={}, model="p/m"), (None, "p/m")),
         (None, (None, None)),
@@ -249,6 +254,17 @@ def test_agent_name_derived_from_agent_target_needs_no_override() -> None:
     assert spec.publication.intake is not None
     assert spec.publication.intake.agent_name is None
     assert target_agent_identity(spec.target)[0] == "derived"
+
+
+def test_agent_name_derived_from_gym_target_needs_no_override() -> None:
+    spec = _input_spec(
+        GymRunnerTarget(agent="simple_agent", agent_config="conf/agent.yaml", resources_server="mcqa"),
+        PublicationSpec(intake=IntakePublicationSpec(evaluation_id="eval-1")),
+    )
+    assert spec.publication is not None
+    assert spec.publication.intake is not None
+    assert spec.publication.intake.agent_name is None
+    assert target_agent_identity(spec.target)[0] == "simple_agent"
 
 
 @pytest.mark.parametrize(
