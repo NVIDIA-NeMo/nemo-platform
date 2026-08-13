@@ -25,7 +25,7 @@ NODE_VERSION := 22.23.2
 PNPM_VERSION := 10.34.5
 BOOTSTRAP_CREATE_VENV ?= 1
 BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
-BOOTSTRAP_ACTIVATION_REMINDER = if [ "$(TOOLCHAIN)" = "flox" ] && [ "$${FLOX_ENV_PROJECT:-}" != "$(CURDIR)" ]; then echo ""; echo "Next steps:"; echo "  flox activate"; echo "  nemo --help"; elif [ "$(TOOLCHAIN)" = "system" ] && [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
+BOOTSTRAP_ACTIVATION_REMINDER = if [ "$(TOOLCHAIN)" = "flox" ] && [ "$${FLOX_ENV_PROJECT:-}" != "$(CURDIR)" ]; then echo ""; echo "Next steps:"; echo "  flox -q activate"; echo "  nemo --help"; elif [ "$(TOOLCHAIN)" = "system" ] && [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
 
 # Display platform info
 $(info local system architecture: $(PLATFORM)/$(ARCH))
