@@ -105,10 +105,14 @@ import { AssistantChat, StudioDataView, useStudioDataViewState } from '@nemo/com
   this workspace's `node_modules`, including the unpublished `@nemo/sdk`. The
   whole surface is rolled up into `packages/common/plugin-types/plugin.d.ts`,
   which is committed here; a plugin repo copies that file in and points its
-  `paths` at it. Two modules stay external and need a short local stub:
-  `@nemo/sdk/generated/platform/schema` (`PlatformJobLog`, `PlatformJobStatus` —
-  reached only through `LogViewer` and the job-status constants) and
-  `class-variance-authority`.
+  `paths` at it. Whatever the rolled-up file still imports, the consumer has to
+  resolve — check the `import` lines at the top of it rather than assuming this
+  list is current. Published packages (`class-variance-authority`,
+  `@assistant-ui/react` once the chat surface lands) are plain type-only
+  devDependencies. Only `@nemo/sdk/generated/platform/schema` needs a local stub,
+  because it is unpublished; it contributes `PlatformJobLog` and
+  `PlatformJobStatus`, reached solely through `LogViewer` and the job-status
+  constants, so a dozen structural lines cover it.
 - **Regenerate with `pnpm --filter @nemo/common types:plugin` when you change
   `plugin.ts`.** The `web-plugin-types` CI job regenerates and fails on a diff,
   so the artifact can't drift from the surface it describes. It can still drift
