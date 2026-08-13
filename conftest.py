@@ -205,6 +205,51 @@ def pytest_configure(config):
     This runs once at the start of the test session.
     """
     config.option.importmode = "importlib"
+    _enable_crash_dumps(config)
+
+
+def _enable_crash_dumps(config) -> None:
+    """Route fatal-signal tracebacks to a per-worker file when asked to.
+
+    An xdist worker that dies of a fatal signal reports only ``node down: Not properly terminated``
+    on the controller: xdist does not forward worker stdout/stderr live, so anything the dying
+    process writes to its own streams is lost. A file survives, which is the only way to learn what
+    the worker was doing when it aborted.
+
+    Off unless ``PYTEST_CRASH_DUMP_DIR`` is set, so ordinary runs are untouched.
+    """
+    dump_dir = os.environ.get("PYTEST_CRASH_DUMP_DIR")
+    if not dump_dir:
+        return
+
+    import faulthandler
+
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "controller")
+    directory = Path(dump_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    # Line buffered: a fatal signal gives no chance to flush.
+    handle = (directory / f"crash-{worker}-{os.getpid()}.log").open("w", buffering=1)
+    faulthandler.enable(file=handle, all_threads=True)
+    # Held module-level so the file object outlives this function; closing it would disable the
+    # handler, and `pytest_runtest_logstart` below needs the same handle.
+    global _CRASH_DUMP_FILE
+    _CRASH_DUMP_FILE = handle
+    handle.write(f"--- worker {worker} pid {os.getpid()}\n")
+
+
+#: Open crash-dump file for this process, or None when crash dumps are disabled.
+_CRASH_DUMP_FILE = None
+
+
+def pytest_runtest_logstart(nodeid, location):
+    """Record which test this process entered, so a crash dump can be attributed to it.
+
+    The controller only learns that a worker died, never which test it was on when the signal
+    arrived. Writing the nodeid on entry means the tail of the file names it.
+    """
+    del location
+    if _CRASH_DUMP_FILE is not None:
+        _CRASH_DUMP_FILE.write(f"--- entering {nodeid}\n")
 
 
 def pytest_collection_modifyitems(config, items):

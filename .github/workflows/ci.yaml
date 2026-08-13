@@ -1072,6 +1072,12 @@ jobs:
           NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS: "30"
           PYTEST_WORKERS: "4"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          # Fatal-signal tracebacks, one file per worker. pytest's own faulthandler plugin
+          # points at the worker's captured stderr, which xdist never forwards, so a worker
+          # that dies of a signal reports only "node down". Disabling it lets ours write
+          # files that outlive the process and name the test it was running.
+          PYTEST_CRASH_DUMP_DIR: crash-dumps
+          PYTEST_EXTRA: -p no:faulthandler
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1082,6 +1088,16 @@ jobs:
             report.xml
             coverage.xml
             coverage.json
+      - name: Upload worker crash dumps
+        # Separate artifact: the coverage-comment job consumes the results artifact above and
+        # should keep receiving exactly the coverage files it expects.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-integration-crash-dumps
+          retention-days: 30
+          if-no-files-found: ignore
+          path: crash-dumps/
 
   python-auth-idp-static-test:
     name: Python auth-idp static tests
