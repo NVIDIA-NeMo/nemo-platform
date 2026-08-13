@@ -5,6 +5,11 @@
 // Removals are breaking. Explicit exports, not `export *`.
 
 export { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+export { AssistantChat } from '@nemo/common/src/components/AssistantChat';
+export type {
+  AssistantChatMessageContentProps,
+  AssistantChatProps,
+} from '@nemo/common/src/components/AssistantChat/types';
 export { AccordionSection } from '@nemo/common/src/components/AccordionSection';
 // CancelJobButton is deliberately NOT exported
 export { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';

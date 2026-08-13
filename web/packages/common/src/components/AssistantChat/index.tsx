@@ -35,6 +35,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   stopCount,
   slotComposerStart,
   emptyState,
+  messageContentProps,
   composerOverride,
   enableImageAttachments = true,
 }) => {
@@ -76,6 +77,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           composerMode={composerMode}
           slotComposerStart={slotComposerStart}
           emptyState={emptyState}
+          messageContentProps={messageContentProps}
           composerOverride={composerOverride}
           enableImageAttachments={imageAttachmentsEnabled}
         />
