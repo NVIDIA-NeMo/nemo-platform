@@ -51,6 +51,7 @@ describe('useRangeBand', () => {
     expect(legend.props.fillOpacity).toBe(0);
     expect(legend.props.strokeOpacity).toBe(0);
     expect(legend.props.legendType).toBe('square');
+    expect(legend.props.activeDot).toBe(false);
   });
 
   it('second element is a Customized renderer', () => {

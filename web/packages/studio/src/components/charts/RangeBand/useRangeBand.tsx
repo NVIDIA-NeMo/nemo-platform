@@ -40,6 +40,7 @@ export function useRangeBand({
         legendType="square"
         name={name}
         isAnimationActive={false}
+        activeDot={false}
       />,
       <Customized
         key="rb-renderer"
