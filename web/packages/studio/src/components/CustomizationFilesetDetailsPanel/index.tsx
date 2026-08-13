@@ -132,7 +132,9 @@ export const CustomizationFilesetDetailsPanel = ({ filesetUri }: Props) => {
           >
             <DataView.TableContent
               className="studio-data-view-table"
-              renderEmptyState={() => <EntityEmptyState entity="filesetFiles" variant="first-use" />}
+              renderEmptyState={() => (
+                <EntityEmptyState entity="filesetFiles" variant="first-use" />
+              )}
             />
             <DataView.Pagination />
           </DataView.Root>

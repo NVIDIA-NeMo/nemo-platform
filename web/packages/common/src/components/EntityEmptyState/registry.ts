@@ -285,7 +285,8 @@ export const ENTITY_EMPTY_STATES: Record<EntityKey, EmptyStateDescriptor> = {
   agentMonitorRuns: {
     icon: HatGlasses,
     heading: 'No runs yet',
-    subheading: 'Agent invocations populate this list once telemetry reaches the nemo-agent-telemetry fileset.',
+    subheading:
+      'Agent invocations populate this list once telemetry reaches the nemo-agent-telemetry fileset.',
   },
   agents: {
     icon: HatGlasses,
