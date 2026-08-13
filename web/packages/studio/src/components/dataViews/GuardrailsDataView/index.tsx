@@ -120,12 +120,12 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           enableResizing: false,
           rowActions: (config: GuardrailConfig) => [
             {
-              slotLeft: <Copy />,
+              slotStart: <Copy />,
               children: 'Duplicate',
               onSelect: () => onRequestDuplicate?.(config),
             },
             {
-              slotLeft: <Trash />,
+              slotStart: <Trash />,
               children: 'Delete',
               danger: true,
               onSelect: () => onRequestDelete?.(config),
