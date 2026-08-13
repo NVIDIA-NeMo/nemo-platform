@@ -116,7 +116,11 @@ const workspaceSourcePlugin = (): RolldownPlugin => ({
       const rest = id.slice(alias.length).replace(/^\//, '');
       return resolveSourceFile(path.join(WORKSPACE_ALIASES[alias], rest));
     }
-    if (importer && (id.startsWith('./') || id.startsWith('../'))) {
+    if (
+      importer &&
+      !importer.includes('node_modules') &&
+      (id.startsWith('./') || id.startsWith('../'))
+    ) {
       return resolveSourceFile(path.resolve(path.dirname(importer), id));
     }
     return null;
@@ -164,7 +168,8 @@ function buildRequireShim(externals: readonly string[]): string {
 async function buildVendorBundles(
   outdir: string,
   projectRoot: string,
-  dev: boolean
+  dev: boolean,
+  env: Record<string, string>
 ): Promise<void> {
   // Load React modules from studio's node_modules and enumerate their real
   // runtime exports so we can generate explicit named re-exports.
@@ -260,7 +265,13 @@ async function buildVendorBundles(
         // Dev needs React's development build: Fast Refresh's scheduleRefresh
         // hook and dev warnings only exist in the development renderer.
         transform: {
-          define: { 'process.env.NODE_ENV': dev ? '"development"' : '"production"' },
+          define: {
+            'process.env.NODE_ENV': dev ? '"development"' : '"production"',
+            // Rolldown leaves `import.meta.env` undefined, so shared code
+            // reading env vars (PLATFORM_BASE_URL) throws when a plugin loads
+            // this bundle. Inline Vite's resolved env instead.
+            'import.meta.env': JSON.stringify(env),
+          },
         },
         external,
         plugins: [virtualShimPlugin(shims), ...plugins],
@@ -291,13 +302,14 @@ function vendorPlugin(): Plugin {
   let projectRoot = '';
   let isServe = false;
   let isPreview = false;
+  let viteEnv: Record<string, string> = {};
   let pending: Promise<void> | null = null;
 
   // buildVendorBundles wipes outdir and rebuilds on every vite process start,
   // so dev and build never serve bundles left over from the other mode.
   const ensureBuilt = () => {
     if (!pending) {
-      pending = buildVendorBundles(outdir, projectRoot, isServe);
+      pending = buildVendorBundles(outdir, projectRoot, isServe, viteEnv);
     }
     return pending;
   };
@@ -331,6 +343,7 @@ function vendorPlugin(): Plugin {
       base = config.base;
       isServe = config.command === 'serve' && !isPreview;
       projectRoot = config.root;
+      viteEnv = config.env as Record<string, string>;
       outdir = isServe
         ? path.resolve(projectRoot, DEV_VENDOR_DIR)
         : path.resolve(projectRoot, 'public', 'vendor');
