@@ -5,9 +5,16 @@
 
 Composes a :class:`nmp.customization_common.training.progress.JobsServiceProgressReporter`
 and provides training-specific methods. Metric accumulation: ``train_loss`` and
-``val_loss`` are accumulated as time-series lists and included in every
+``val_loss`` are accumulated as time-series lists and included in EVERY
 ``status_details`` update under a ``metrics`` key, enabling loss-curve
 reconstruction from job status.
+
+Every update matters because ``report_running`` REPLACES the task's
+``status_details`` blob rather than merging into it. A report that omits
+``metrics`` therefore erases the accumulated series from stored status until the
+next train step resends it -- and if the job dies inside that window, the curve
+is gone. Checkpoint and epoch-end reports fire mid-training, so they carry the
+payload too.
 
 Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
 ``backend`` field on each report (``"unsloth"``); automodel leaves it ``None`` so
@@ -56,7 +63,12 @@ class TrainingProgressCallback:
     def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
         """Report that training has started with schedule information."""
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
-        details: dict[str, object] = {"step": 0, "max_steps": max_steps, "num_epochs": num_epochs}
+        details: dict[str, object] = {
+            "step": 0,
+            "max_steps": max_steps,
+            "num_epochs": num_epochs,
+            "metrics": self._build_metrics_summary(),
+        }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
@@ -132,7 +144,12 @@ class TrainingProgressCallback:
         backend: str | None = None,
     ) -> None:
         """Report that a checkpoint was saved."""
-        details: dict[str, object] = {"step": step, "epoch": epoch, "checkpoint_path": checkpoint_path}
+        details: dict[str, object] = {
+            "step": step,
+            "epoch": epoch,
+            "checkpoint_path": checkpoint_path,
+            "metrics": self._build_metrics_summary(),
+        }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
@@ -140,7 +157,11 @@ class TrainingProgressCallback:
 
     def report_epoch_end(self, step: int, epoch: int, *, backend: str | None = None) -> None:
         """Report that an epoch has completed."""
-        details: dict[str, object] = {"step": step, "epoch": epoch}
+        details: dict[str, object] = {
+            "step": step,
+            "epoch": epoch,
+            "metrics": self._build_metrics_summary(),
+        }
         resolved = self._resolve_backend(backend)
         if resolved is not None:
             details["backend"] = resolved
