@@ -49,8 +49,12 @@ uv tool install "nemo-platform[all]"
 Use when you also import the SDK from your own code. `nemo` works only while the environment is active.
 
 ```bash
-pip install "nemo-platform[all]"
+uv venv
+source .venv/bin/activate
+uv pip install "nemo-platform[all]"
 ```
+
+Plain `pip install "nemo-platform[all]"` works in an environment you manage yourself.
 
 </Tab>
 
