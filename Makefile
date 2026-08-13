@@ -17,10 +17,15 @@ ifeq ($(ARCH),arm64)
 	export BUILD_ARCH ?= linux/arm64
 endif
 PYTEST_EXTRA ?=
+# Default development toolchain versions. Keep these aligned with Flox; the
+# version-consistency checks validate them in pre-commit and CI.
 PYTHON_VERSION ?= 3.12
+UV_VERSION := 0.9.14
+NODE_VERSION := 22.23.2
+PNPM_VERSION := 10.34.5
 BOOTSTRAP_CREATE_VENV ?= 1
 BOOTSTRAP_EXPECTED_VIRTUAL_ENV := $(CURDIR)/.venv
-BOOTSTRAP_ACTIVATION_REMINDER = if [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
+BOOTSTRAP_ACTIVATION_REMINDER = if [ "$(TOOLCHAIN)" = "flox" ] && [ "$${FLOX_ENV_PROJECT:-}" != "$(CURDIR)" ]; then echo ""; echo "Next steps:"; echo "  flox activate"; echo "  nemo --help"; elif [ "$(TOOLCHAIN)" = "system" ] && [ "$${VIRTUAL_ENV:-}" != "$(BOOTSTRAP_EXPECTED_VIRTUAL_ENV)" ]; then echo ""; echo "Next steps:"; echo "  source .venv/bin/activate"; echo "  nemo --help"; fi
 
 # Display platform info
 $(info local system architecture: $(PLATFORM)/$(ARCH))
@@ -30,6 +35,10 @@ $(info local system architecture: $(PLATFORM)/$(ARCH))
 help:
 	@echo "Makefile commands:"
 	@grep -E '^[a-zA-Z_-][a-zA-Z0-9_/-]*:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: toolchain-versions
+toolchain-versions: ## Print the system toolchain versions accepted by bootstrap
+	@printf 'Python %s\nuv >=%s\nNode.js %s\npnpm %s\n' "$(PYTHON_VERSION)" "$(UV_VERSION)" "$(NODE_VERSION)" "$(PNPM_VERSION)"
 
 DOCKER_BAKE_FILE ?= docker-bake.hcl
 DOCKER_TARGET ?= $(if $(TARGET),$(TARGET),docker-cpu)
@@ -64,21 +73,21 @@ refresh-openapi:  ## Generate the OpenAPI specification
 
 .PHONY: stainless
 stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SDK
-	SDK_RELEASE_TIER=ga $(MISE_EXEC) ./sdk/stainless.sh sync
+	SDK_RELEASE_TIER=ga $(FLOX_EXEC) ./sdk/stainless.sh sync
 
 .PHONY: generate
 generate: stainless ## Alias for SDK generation via Stainless
 
 .PHONY: update-web-sdk
-update-web-sdk: verify-mise ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
-	cd web && $(MISE_EXEC) pnpm gen
+update-web-sdk: verify-toolchain ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
+	cd web && $(PNPM) gen
 
 .PHONY: update-sdk
 update-sdk: build-policy refresh-openapi stainless update-web-sdk update-cli ## Update the SDK by regenerating the OpenAPI spec and syncing it with Stainless
 
 .PHONY: vendor-nemo-platform-ext
 vendor-nemo-platform-ext:
-	$(MISE_EXEC) $(MAKE) -C packages/nemo_platform_ext vendor
+	$(FLOX_EXEC) $(MAKE) -C packages/nemo_platform_ext vendor
 
 .PHONY: generate-cli-commands
 generate-cli-commands: ## Run generation of the CLI commands
@@ -163,14 +172,14 @@ clean-python: ## remove python virtual environment
 	rm -rf .venv/
 
 .PHONY: verify-python-version
-verify-python-version: verify-mise ## Verify Python version and install if necessary
+verify-python-version: verify-toolchain ## Verify Python version and install if necessary
 	@echo "~~~~~~"
 	@echo "verifying python version"
 	$(UV) python find $(PYTHON_VERSION) || $(UV) python install $(PYTHON_VERSION)
 
 # Phony rather than a file target: a `.venv/bin/python` that already exists says
 # nothing about which interpreter it is, so changing PYTHON_VERSION has to force
-# a rebuild. Order-only prerequisite keeps mise resolution out of the recipe.
+# a rebuild. Order-only prerequisite keeps tool resolution out of the recipe.
 .PHONY: .venv
 .venv: | verify-python-version ## Create a Python virtual environment
 	@echo "~~~"
@@ -201,7 +210,7 @@ verify-python-version: verify-mise ## Verify Python version and install if neces
 BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
 
 .PHONY: bootstrap-python
-bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
+bootstrap-python: verify-python-version verify-compiler ## Bootstrap Python dependencies.
 	@echo "~~~~~~"
 	@echo "installing python dependencies"
 	$(UV) sync --python $(PYTHON_VERSION) --frozen --all-packages
@@ -212,53 +221,55 @@ bootstrap-python: verify-python-version ## Bootstrap Python dependencies.
 		$(BOOTSTRAP_ACTIVATION_REMINDER); \
 	fi
 
-# Set NMP_SKIP_MISE=1 to bootstrap against the node/pnpm already on PATH
-# instead of the mise-managed ones (offline installs, nix shells, distro
-# toolchains). web/package.json engines are still enforced either way.
-NMP_SKIP_MISE ?=
-MISE_VERSION ?= v2026.5.7
-MISE := $(shell command -v mise 2>/dev/null || echo $(HOME)/.local/bin/mise)
-MISE_EXEC := $(if $(NMP_SKIP_MISE),,"$(MISE)" exec --)
-UV := $(MISE_EXEC) uv
+TOOLCHAIN ?= flox
+FLOX ?= flox
+ifeq ($(TOOLCHAIN),flox)
+ifeq ($(FLOX_ENV_PROJECT),$(CURDIR))
+FLOX_EXEC :=
+else
+FLOX_EXEC := $(FLOX) activate --dir "$(CURDIR)" --
+endif
+else ifeq ($(TOOLCHAIN),system)
+FLOX_EXEC :=
+else
+$(error TOOLCHAIN must be either flox or system)
+endif
+UV := $(FLOX_EXEC) uv
+ifeq ($(TOOLCHAIN),flox)
+PNPM := $(FLOX_EXEC) bash -c 'corepack "pnpm@$(PNPM_VERSION)" "$$@"' --
+else
+PNPM := $(FLOX_EXEC) pnpm
+endif
 
-.PHONY: verify-mise
-verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
-	@if [ -n "$(NMP_SKIP_MISE)" ]; then \
-		echo "NMP_SKIP_MISE set, using node/pnpm from PATH"; \
-		exit 0; \
-	fi; \
-	if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
-		curl -fsSL https://mise.run | MISE_VERSION=$(MISE_VERSION) sh; \
-	fi; \
-	if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
-		echo "mise not on PATH. Add $$HOME/.local/bin to PATH and re-run,"; \
-		echo "or re-run with NMP_SKIP_MISE=1 to use your own node/pnpm."; \
+.PHONY: verify-toolchain
+verify-toolchain: ## Verify the selected Flox or system toolchain
+ifeq ($(TOOLCHAIN),flox)
+	@if [ "$(FLOX_ENV_PROJECT)" = "$(CURDIR)" ]; then \
+		echo "Using the active Flox environment"; \
+	elif ! command -v "$(FLOX)" >/dev/null 2>&1; then \
+		echo "flox is required. Install it, then rerun this command."; \
 		exit 1; \
-	fi; \
-	if [ -z "$${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then \
-		GITHUB_TOKEN="$$(gh auth token 2>/dev/null)"; \
-		export GITHUB_TOKEN; \
-	fi; \
-	"$(MISE)" install --yes || { \
-		echo ""; \
-		echo "mise could not install the pinned tools."; \
-		echo "pnpm and uv are fetched through the GitHub API, which allows only"; \
-		echo "60 unauthenticated requests per hour per IP. If the output above"; \
-		echo "mentions a rate limit, set GITHUB_TOKEN (or run 'gh auth login')"; \
-		echo "and re-run."; \
+	fi
+else
+	@bash script/verify-system-toolchain.sh
+endif
+
+.PHONY: verify-compiler
+verify-compiler: ## Verify a C compiler is available for Python package builds
+	@if ! command -v cc >/dev/null 2>&1; then \
+		echo "A C compiler is required for Python package builds (for example, annoy)." >&2; \
+		echo "Install Xcode Command Line Tools on macOS or build-essential on Debian/Ubuntu." >&2; \
 		exit 1; \
-	}
+	fi
 
 .PHONY: verify-pnpm
-verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
-	@$(MISE_EXEC) pnpm --version || { \
+verify-pnpm: verify-toolchain ## Verify pnpm is available for Studio bootstrap
+ifeq ($(TOOLCHAIN),system)
+	@bash script/verify-system-toolchain.sh web
+endif
+	@$(PNPM) --version || { \
 		echo "pnpm not found."; \
-		if [ -n "$(NMP_SKIP_MISE)" ]; then \
-			echo "NMP_SKIP_MISE is set, so pnpm has to come from your PATH."; \
-			echo "Install pnpm, or re-run without NMP_SKIP_MISE to use the mise-managed one."; \
-		else \
-			echo "Run 'make verify-mise' to install the pinned toolchain."; \
-		fi; \
+		echo "Install Flox or use TOOLCHAIN=system with pnpm on PATH."; \
 		exit 1; \
 	}
 
@@ -266,14 +277,14 @@ verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
 verify-node-version: verify-pnpm ## Verify pnpm and Node.js satisfy Studio's package engine
 	@echo "~~~~~~"
 	@echo "verifying Node.js version from web/package.json engines"
-	@$(MISE_EXEC) script/verify-node-version.sh
+	@$(FLOX_EXEC) bash script/verify-node-version.sh
 
 .PHONY: bootstrap-studio
 bootstrap-studio: verify-node-version ## Install web dependencies and build Studio assets for FastAPI
 	@echo "~~~~~~"
 	@echo "installing Studio web dependencies and building FastAPI assets"
-	cd web && CI=true $(MISE_EXEC) pnpm install --frozen-lockfile
-	cd web && $(MISE_EXEC) pnpm --filter nemo-studio-ui build:fastapi
+	cd web && CI=true $(PNPM) install --frozen-lockfile
+	cd web && $(PNPM) --filter nemo-studio-ui build:fastapi
 
 .PHONY: bootstrap-plugins
 bootstrap-plugins: .venv ## Install editable plugin packages not covered by the root uv workspace
@@ -339,13 +350,13 @@ check-copyright-headers:
 
 .PHONY: lint
 lint: ## Run all linters (licenses, openapi, config docs, python style/types/sdk, vendored SDK, CLI, auth config)
-	$(MISE_EXEC) bash tools/lint/lint-all.sh
+	$(FLOX_EXEC) bash tools/lint/lint-all.sh
 
 LINT_FIX_VERIFY ?= 0
 
 .PHONY: lint-fix
 lint-fix: ## Auto-fix lint issues (set LINT_FIX_VERIFY=1 to also run CI lint checks)
-	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) $(MISE_EXEC) bash tools/lint/lint-fix.sh
+	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) $(FLOX_EXEC) bash tools/lint/lint-fix.sh
 
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata

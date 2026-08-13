@@ -11,6 +11,7 @@
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
@@ -21,7 +22,6 @@ import {
   useModelsListProviders,
 } from '@nemo/sdk/generated/platform/api';
 import { Button, Flex, FormField, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
 import { InferenceModelProviderSelect } from '@studio/routes/InferenceProvidersListRoute/CreateInferenceProviderSidePanel/InferenceModelProviderSelect';
 import {
   PRESET_CREDENTIALS,

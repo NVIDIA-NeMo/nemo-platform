@@ -35,7 +35,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Set
+from collections.abc import Mapping, Set
+from typing import Any
 
 from nemo_platform_plugin.entities import EntityBase
 
@@ -46,7 +47,16 @@ DIGEST_LENGTH = 64
 DIGEST_PATTERN = r"^[0-9a-f]{64}$"
 
 
-def canonical_payload(entity: EntityBase, *, exclude: Set[str] | None = None) -> str:
+def _as_exclude_map(exclude: Set[str] | Mapping[str, Any] | None) -> dict[str, Any]:
+    """Normalize either accepted ``exclude`` form to pydantic's dict form."""
+    if exclude is None:
+        return {}
+    if isinstance(exclude, Mapping):
+        return {str(name): nested for name, nested in exclude.items()}
+    return {str(name): True for name in exclude}
+
+
+def canonical_payload(entity: EntityBase, *, exclude: Set[str] | Mapping[str, Any] | None = None) -> str:
     """Return the canonical JSON serialization that :func:`content_hash` digests.
 
     Exposed separately because it is the actual compatibility contract: if this string changes
@@ -78,12 +88,15 @@ def canonical_payload(entity: EntityBase, *, exclude: Set[str] | None = None) ->
             their own revision/tag bookkeeping here — a revision's digest must not cover the
             revision index that was assigned *because of* that digest.
     """
-    excluded = set(entity.__base_fields__) | set(exclude or ())
+    # Pydantic's dict form lets a caller exclude a *nested* field (``{"spec": {"config"}}``), which
+    # a flat set cannot express. Both forms are accepted so simple cases stay simple.
+    excluded: dict[str, Any] = {str(name): True for name in entity.__base_fields__}
+    excluded.update(_as_exclude_map(exclude))
     payload = entity.model_dump(exclude=excluded, exclude_computed_fields=True, mode="json")
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
-def content_hash(entity: EntityBase, *, exclude: Set[str] | None = None) -> str:
+def content_hash(entity: EntityBase, *, exclude: Set[str] | Mapping[str, Any] | None = None) -> str:
     """Return the full 64-char lowercase hex SHA-256 digest of an entity's content.
 
     See :func:`canonical_payload` for what is and is not included.

@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
 import { filesDownloadFile, getFilesDownloadFileQueryKey } from '@nemo/sdk/generated/platform/api';
 import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { isBinaryExtension } from '@studio/util/binaryFile';
-import { logger } from '@studio/util/logger';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { parquetRead } from 'hyparquet';

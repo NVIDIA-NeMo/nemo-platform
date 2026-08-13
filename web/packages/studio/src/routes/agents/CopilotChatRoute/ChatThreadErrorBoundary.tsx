@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { logger } from '@nemo/common/src/utils/logger';
 import { Button } from '@nvidia/foundations-react-core';
-import { logger } from '@studio/util/logger';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface ChatThreadErrorBoundaryProps {

@@ -18,7 +18,9 @@ export interface DatasetEvalRow {
   item?: Record<string, unknown>;
   sample?: { output_text?: string };
   metrics?: Record<string, { name?: string; value?: number | string }[]>;
-  requests?: { request?: { input_message?: string } }[];
+  requests?: {
+    request?: { messages?: { content?: string }[]; input_message?: string };
+  }[];
 }
 
 interface DatasetEvalRowResultsPanelProps {
@@ -38,7 +40,9 @@ const expectedValue = (item?: Record<string, unknown>): string | null => {
 };
 
 const inputText = (row: DatasetEvalRow): string => {
-  const rendered = row.requests?.[0]?.request?.input_message;
+  const request = row.requests?.[0]?.request;
+  // `input_message` is the pre-chat-completions body; jobs submitted then still render.
+  const rendered = request?.messages?.at(-1)?.content ?? request?.input_message;
   if (typeof rendered === 'string' && rendered) return rendered;
   return row.item ? JSON.stringify(row.item, null, 2) : '';
 };

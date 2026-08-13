@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import {
@@ -14,10 +16,9 @@ import {
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
+import { MONITOR_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -163,10 +164,12 @@ export const AgentDetailRoute: FC = () => {
           }
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
-              <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
-                <Activity className="size-4" aria-hidden />
-                Open traces
-              </Button>
+              {MONITOR_ENABLED && (
+                <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
+                  <Activity className="size-4" aria-hidden />
+                  Open traces
+                </Button>
+              )}
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}

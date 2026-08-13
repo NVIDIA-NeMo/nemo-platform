@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadAssistantMessagePart } from '@assistant-ui/react';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   createCopilotToolCallPart,
   groupConsecutiveCopilotSubtleToolCalls,
 } from '@studio/routes/agents/CopilotChatRoute/toolParts';
-import { logger } from '@studio/util/logger';
 
 interface ServerSentEvent {
   event?: string;

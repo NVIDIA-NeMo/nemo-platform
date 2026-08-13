@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
+import io
 import socket
+import tarfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from backends.docker.docker_helpers import (
+    config_files_config,
     container_attrs,
     lora_config,
     published_port_config,
@@ -76,7 +79,7 @@ async def test_create_deployment_starts_container(
 ) -> None:
     mock_entities.get.return_value = sample_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -87,7 +90,7 @@ async def test_create_deployment_starts_container(
     )
 
     assert update.status == "STARTING"
-    mock_docker_client.containers.run.assert_called_once()
+    mock_docker_client.containers.create.assert_called_once()
     mock_entities.get.assert_awaited()
 
 
@@ -105,7 +108,7 @@ async def test_create_deployment_maps_command_to_entrypoint(
     """
     mock_entities.get.return_value = sample_config()  # command=["echo"], args=["hello"]
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
 
     await docker_backend.create_deployment(
         workspace="default",
@@ -115,9 +118,142 @@ async def test_create_deployment_maps_command_to_entrypoint(
         backend_config={},
     )
 
-    _, run_kwargs = mock_docker_client.containers.run.call_args
-    assert run_kwargs["entrypoint"] == ["echo"]
-    assert run_kwargs["command"] == ["hello"]
+    _, create_kwargs = mock_docker_client.containers.create.call_args
+    assert create_kwargs["entrypoint"] == ["echo"]
+    assert create_kwargs["command"] == ["hello"]
+
+
+def _delivered_files(put_archive: MagicMock) -> dict[str, bytes]:
+    """Return {path: content} for the regular files in a ``put_archive`` payload."""
+    (dest, archive), _ = put_archive.call_args
+    assert dest == "/", "paths in the tar are absolute-rooted, so the target must be /"
+    delivered: dict[str, bytes] = {}
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r") as tar:
+        for member in tar.getmembers():
+            if not member.isfile():
+                continue
+            payload = tar.extractfile(member)
+            assert payload is not None, f"regular file {member.name} has no payload"
+            delivered[f"/{member.name}"] = payload.read()
+    return delivered
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_delivers_config_files_before_start(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """``config_files`` land in the container's filesystem before it starts.
+
+    The server command reads its config at startup, so delivery after ``start``
+    would race the process. Asserting the ordering is the point: dropping the
+    delivery entirely used to be silent (AIRCORE-999), and delivering it late
+    fails the same way.
+    """
+    mock_entities.get.return_value = config_files_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = created
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    assert update.status == "STARTING"
+    assert _delivered_files(created.put_archive) == {"/tmp/nemo/config.yaml": b"workflow:\n  _type: react_agent\n"}
+    method_order = [name for name, _, _ in created.mock_calls]
+    assert method_order.index("put_archive") < method_order.index("start")
+
+
+@pytest.mark.asyncio
+async def test_config_files_tar_carries_parent_dirs_and_mode(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """Nested paths bring their parent directories; files keep their declared mode.
+
+    ``put_archive`` does not create missing parents, so a tar carrying only the
+    leaf fails for any path below the image's existing tree.
+    """
+    mock_entities.get.return_value = config_files_config(path="/tmp/nemo/sub/agent.yaml")
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = created
+
+    await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    (_, archive), _ = created.put_archive.call_args
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r") as tar:
+        dirs = {m.name for m in tar.getmembers() if m.isdir()}
+        files = {m.name: m.mode for m in tar.getmembers() if m.isfile()}
+
+    assert dirs == {"tmp", "tmp/nemo", "tmp/nemo/sub"}
+    assert files == {"tmp/nemo/sub/agent.yaml": 0o644}
+
+
+@pytest.mark.asyncio
+async def test_create_deployment_without_config_files_skips_put_archive(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    mock_entities.get.return_value = sample_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = created
+
+    await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    created.put_archive.assert_not_called()
+    created.start.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_config_delivery_removes_container_and_reports_error(
+    docker_backend: DockerDeploymentBackend,
+    mock_entities: AsyncMock,
+    mock_docker_client: MagicMock,
+) -> None:
+    """A delivery failure must not leave a started container or a healthy status.
+
+    Without this the container would run with no config and report STARTING,
+    which is the silent-failure shape the original bug had.
+    """
+    mock_entities.get.return_value = config_files_config()
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    created = MagicMock(id="abc123")
+    created.put_archive.side_effect = APIError("no such container")
+    mock_docker_client.containers.create.return_value = created
+
+    update = await docker_backend.create_deployment(
+        workspace="default",
+        name="srv",
+        config_name="cfg1",
+        labels={"managed-by": MANAGED_BY_LABEL},
+        backend_config={},
+    )
+
+    created.start.assert_not_called()
+    created.remove.assert_called_once_with(force=True)
+    assert update.status == "FAILED"
 
 
 def _port_conflict_error(port: int) -> APIError:
@@ -146,13 +282,11 @@ async def test_create_deployment_reallocates_port_after_docker_conflict(
 ) -> None:
     """Docker's port reservations are invisible to the probe, so a publish can still lose a race."""
     first_port = docker_backend._executor_config.port_range_start
-    leftover = MagicMock()
+    server_container = MagicMock(id="abc123")
     mock_entities.get.return_value = published_port_config()
-    mock_docker_client.containers.get.side_effect = [NotFound("missing"), leftover]
-    mock_docker_client.containers.run.side_effect = [
-        _port_conflict_error(first_port),
-        MagicMock(id="abc123"),
-    ]
+    mock_docker_client.containers.get.side_effect = NotFound("missing")
+    mock_docker_client.containers.create.return_value = server_container
+    server_container.start.side_effect = [_port_conflict_error(first_port), None]
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -163,9 +297,8 @@ async def test_create_deployment_reallocates_port_after_docker_conflict(
     )
 
     assert update.status == "STARTING"
-    assert _published_host_ports(mock_docker_client.containers.run) == [first_port, first_port + 1]
-    # run() creates then starts, so the container that failed to start still holds the name.
-    leftover.remove.assert_called_once_with(force=True)
+    assert _published_host_ports(mock_docker_client.containers.create) == [first_port, first_port + 1]
+    server_container.remove.assert_called_once_with(force=True)
 
 
 @pytest.mark.asyncio
@@ -176,9 +309,11 @@ async def test_create_deployment_fails_after_repeated_port_conflicts(
     free_host_ports: None,
 ) -> None:
     first_port = docker_backend._executor_config.port_range_start
+    server_container = MagicMock(id="abc123")
     mock_entities.get.return_value = published_port_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.side_effect = [
+    mock_docker_client.containers.create.return_value = server_container
+    server_container.start.side_effect = [
         _port_conflict_error(first_port + offset) for offset in range(_PORT_CONFLICT_ATTEMPTS)
     ]
 
@@ -192,7 +327,7 @@ async def test_create_deployment_fails_after_repeated_port_conflicts(
 
     assert update.status == "FAILED"
     assert _PORT_CONFLICT_MARKER in (update.status_message or "")
-    published = _published_host_ports(mock_docker_client.containers.run)
+    published = _published_host_ports(mock_docker_client.containers.create)
     assert published == [first_port + offset for offset in range(_PORT_CONFLICT_ATTEMPTS)]
 
 
@@ -203,9 +338,11 @@ async def test_create_deployment_does_not_retry_unrelated_start_failure(
     mock_docker_client: MagicMock,
     free_host_ports: None,
 ) -> None:
+    server_container = MagicMock(id="abc123")
     mock_entities.get.return_value = published_port_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.side_effect = APIError("no such image")
+    mock_docker_client.containers.create.return_value = server_container
+    server_container.start.side_effect = APIError("no such image")
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -216,7 +353,7 @@ async def test_create_deployment_does_not_retry_unrelated_start_failure(
     )
 
     assert update.status == "FAILED"
-    mock_docker_client.containers.run.assert_called_once()
+    mock_docker_client.containers.create.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -233,13 +370,11 @@ async def test_create_lora_group_runs_init_server_and_sidecar(
     mock_entities.get.return_value = lora_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
 
-    # Init container is run+waited: containers.run returns a container whose
-    # wait() reports success.
     init_container = MagicMock()
     init_container.wait.return_value = {"StatusCode": 0}
     server_container = MagicMock(id="server123")
     sidecar_container = MagicMock(id="sidecar123")
-    mock_docker_client.containers.run.side_effect = [init_container, server_container, sidecar_container]
+    mock_docker_client.containers.create.side_effect = [init_container, server_container, sidecar_container]
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -250,21 +385,19 @@ async def test_create_lora_group_runs_init_server_and_sidecar(
     )
 
     assert update.status == "STARTING"
-    calls = mock_docker_client.containers.run.call_args_list
+    calls = mock_docker_client.containers.create.call_args_list
     assert len(calls) == 3
 
-    # 1) init container ran to completion (detached then waited + removed)
+    init_container.start.assert_called_once()
     init_container.wait.assert_called_once()
     init_container.remove.assert_called_once()
 
-    # 2) server publishes ports, no shared netns
     server_kwargs = calls[1].kwargs
     assert server_kwargs["name"] == container_name("default", "srv")
     assert server_kwargs["labels"][CONTAINER_ROLE_LABEL] == "server"
     assert "ports" in server_kwargs
     assert server_kwargs.get("network", "") == ""
 
-    # 3) sidecar shares the server netns, publishes no ports
     sidecar_kwargs = calls[2].kwargs
     assert sidecar_kwargs["name"] == companion_container_name("default", "srv", "lora-adapters")
     assert sidecar_kwargs["labels"][CONTAINER_ROLE_LABEL] == "lora-adapters"
@@ -284,7 +417,7 @@ async def test_create_lora_group_fails_when_init_nonzero(
 
     init_container = MagicMock()
     init_container.wait.return_value = {"StatusCode": 1}
-    mock_docker_client.containers.run.return_value = init_container
+    mock_docker_client.containers.create.return_value = init_container
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -296,8 +429,7 @@ async def test_create_lora_group_fails_when_init_nonzero(
 
     assert update.status == "FAILED"
     assert "init" in update.status_message.lower()
-    # only the init container was run (server/sidecar never started)
-    assert mock_docker_client.containers.run.call_count == 1
+    assert mock_docker_client.containers.create.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -327,7 +459,7 @@ async def test_create_falls_back_to_local_image_when_pull_fails(
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     mock_docker_client.images.pull.side_effect = APIError("404 not found")
     mock_docker_client.images.get.return_value = MagicMock()  # present locally
-    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
 
     update = await backend.create_deployment(
         workspace="default",
@@ -339,7 +471,7 @@ async def test_create_falls_back_to_local_image_when_pull_fails(
 
     assert update.status == "STARTING"
     mock_docker_client.images.get.assert_called_once()
-    mock_docker_client.containers.run.assert_called_once()
+    mock_docker_client.containers.create.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -375,7 +507,7 @@ async def test_create_fails_when_pull_fails_and_no_local_image(
 
     assert update.status == "FAILED"
     assert "pull image" in update.status_message.lower()
-    mock_docker_client.containers.run.assert_not_called()
+    mock_docker_client.containers.create.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -497,7 +629,7 @@ async def test_create_lora_group_does_not_remove_foreign_stale_init_container(
     sidecar_container = MagicMock(id="sidecar123")
     mock_entities.get.return_value = lora_config()
     mock_docker_client.containers.get.side_effect = [NotFound("missing"), foreign_stale]
-    mock_docker_client.containers.run.side_effect = [init_container, server_container, sidecar_container]
+    mock_docker_client.containers.create.side_effect = [init_container, server_container, sidecar_container]
 
     update = await backend.create_deployment(
         workspace="default",
@@ -960,7 +1092,7 @@ async def test_create_never_job_returns_succeeded_when_container_exits_immediate
 ) -> None:
     mock_entities.get.return_value = sample_config(restart_policy="Never")
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = _one_shot_server_container(
+    mock_docker_client.containers.create.return_value = _one_shot_server_container(
         restart_policy="Never",
         exit_code=0,
     )
@@ -975,7 +1107,7 @@ async def test_create_never_job_returns_succeeded_when_container_exits_immediate
 
     assert update.status == "SUCCEEDED"
     assert update.exit_code == 0
-    mock_docker_client.containers.run.return_value.wait.assert_called_once_with(timeout=5)
+    mock_docker_client.containers.create.return_value.wait.assert_called_once_with(timeout=5)
 
 
 @pytest.mark.asyncio
@@ -998,7 +1130,7 @@ async def test_create_never_job_uses_configured_oneshot_observe_timeout(
 
     mock_entities.get.return_value = sample_config(restart_policy="Never")
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = _one_shot_server_container(
+    mock_docker_client.containers.create.return_value = _one_shot_server_container(
         restart_policy="Never",
         exit_code=0,
     )
@@ -1012,7 +1144,7 @@ async def test_create_never_job_uses_configured_oneshot_observe_timeout(
     )
 
     assert update.status == "SUCCEEDED"
-    mock_docker_client.containers.run.return_value.wait.assert_called_once_with(timeout=7)
+    mock_docker_client.containers.create.return_value.wait.assert_called_once_with(timeout=7)
 
 
 @pytest.mark.asyncio
@@ -1023,7 +1155,7 @@ async def test_create_never_job_returns_failed_on_non_zero_exit(
 ) -> None:
     mock_entities.get.return_value = sample_config(restart_policy="Never")
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = _one_shot_server_container(
+    mock_docker_client.containers.create.return_value = _one_shot_server_container(
         restart_policy="Never",
         exit_code=42,
     )
@@ -1049,7 +1181,7 @@ async def test_create_on_failure_returns_succeeded_when_already_exited_zero(
     mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     server = _one_shot_server_container(restart_policy="OnFailure", exit_code=0)
-    mock_docker_client.containers.run.return_value = server
+    mock_docker_client.containers.create.return_value = server
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -1078,7 +1210,7 @@ async def test_create_on_failure_returns_starting_when_failed_under_backoff(
         restart_count=2,
         backoff_limit="6",
     )
-    mock_docker_client.containers.run.return_value = server
+    mock_docker_client.containers.create.return_value = server
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -1102,7 +1234,7 @@ async def test_create_on_failure_returns_starting_when_still_running(
     mock_entities.get.return_value = sample_config(restart_policy="OnFailure")
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     server = _one_shot_server_container(restart_policy="OnFailure", status="running", exit_code=0)
-    mock_docker_client.containers.run.return_value = server
+    mock_docker_client.containers.create.return_value = server
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -1127,7 +1259,7 @@ async def test_create_never_job_returns_starting_when_wait_times_out(
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     server = _one_shot_server_container(restart_policy="Never", exit_code=0)
     server.wait.side_effect = ReadTimeout("timed out")
-    mock_docker_client.containers.run.return_value = server
+    mock_docker_client.containers.create.return_value = server
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -1152,7 +1284,7 @@ async def test_create_never_job_returns_starting_when_wait_connection_error(
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     server = _one_shot_server_container(restart_policy="Never", exit_code=0)
     server.wait.side_effect = RequestsConnectionError("connection reset")
-    mock_docker_client.containers.run.return_value = server
+    mock_docker_client.containers.create.return_value = server
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -1177,7 +1309,7 @@ async def test_create_never_job_cleans_up_on_wait_error(
     mock_docker_client.containers.get.side_effect = NotFound("missing")
     server = _one_shot_server_container(restart_policy="Never", exit_code=0)
     server.wait.side_effect = RuntimeError("boom")
-    mock_docker_client.containers.run.return_value = server
+    mock_docker_client.containers.create.return_value = server
 
     with patch.object(
         docker_backend,
@@ -1205,7 +1337,7 @@ async def test_create_always_still_returns_starting(
 ) -> None:
     mock_entities.get.return_value = sample_config(restart_policy="Always")
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
 
     update = await docker_backend.create_deployment(
         workspace="default",
@@ -1216,7 +1348,7 @@ async def test_create_always_still_returns_starting(
     )
 
     assert update.status == "STARTING"
-    mock_docker_client.containers.run.return_value.wait.assert_not_called()
+    mock_docker_client.containers.create.return_value.wait.assert_not_called()
 
 
 @pytest.mark.asyncio

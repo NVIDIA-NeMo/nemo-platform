@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
@@ -17,17 +18,20 @@ import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef, download_dataset, download_dataset_sync
+from nemo_evaluator.jobs.agent_spec import target_agent_identity
 from nemo_evaluator.jobs.metric_resolution import (
     resolve_metrics_to_inline,
     to_runtime_bundle,
     unresolved_model_refs,
 )
+from nemo_evaluator.jobs.publication import publish_row_eval_result
+from nemo_evaluator.jobs.publication_spec import RowPublicationSpec
 from nemo_evaluator.jobs.result_persistence import persist_evaluate_result
+from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution.config import resolve_params
-from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.values import (
     Agent,
     AgentBase,
@@ -62,8 +66,10 @@ DEFAULT_FILE_NAME = "evaluation-results.json"
 ARTIFACTS_RESULT_NAME = "artifacts"
 AGGREGATE_SCORES_RESULT_NAME = "aggregate-scores"
 ROW_SCORES_RESULT_NAME = "row-scores"
+RUN_METADATA_RESULT_NAME = "run-metadata"
 AGGREGATE_SCORES_FILE_NAME = "aggregate-scores.json"
 ROW_SCORES_FILE_NAME = "row-scores.jsonl"
+RUN_METADATA_FILE_NAME = "run-metadata.json"
 RESULT_IGNORE_PATTERNS = ["cache.db", "cache/"]
 
 
@@ -74,6 +80,7 @@ class EvaluationResultFiles:
     full_result: Path
     aggregate_scores: Path
     row_scores: Path
+    run_metadata: Path
     artifacts_dir: Path
 
 
@@ -89,19 +96,18 @@ def _resolve_run_dataset(
         return dataset
 
     destination = str(ctx.storage.persistent / "dataset")
-    if async_sdk is not None:
-        return run_sync(
-            lambda: download_dataset(
-                sdk=async_sdk,
-                dataset=dataset,
-                destination=destination,
-            )
-        )
+    # Prefer sync when available; async path isolates httpx so later run_sync calls
+    # (result persistence) can reuse the injected async_sdk.
     if sdk is not None:
         return download_dataset_sync(
             sdk=sdk,
             dataset=dataset,
             destination=destination,
+        )
+    if async_sdk is not None:
+        return run_with_isolated_async_sdk(
+            async_sdk,
+            lambda sdk: download_dataset(sdk=sdk, dataset=dataset, destination=destination),
         )
     raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
 
@@ -130,10 +136,31 @@ class _EvaluateSpecCommon(BaseModel):
     field_mapping: FieldMapping | None = Field(
         default=None, description="Optional mapping from canonical evaluator fields to dataset columns."
     )
+    publication: RowPublicationSpec | None = Field(
+        default=None,
+        description="Where the completed run publishes its results, beyond its own result artifacts. "
+        "Omit to publish nowhere.",
+    )
 
     @model_validator(mode="after")
     def validate_params_for_target(self) -> Self:
         self.params = resolve_params(self.params, self.target)
+        return self
+
+    @model_validator(mode="after")
+    def _require_resolvable_publication_identity(self) -> Self:
+        # Publishing needs an agent name and only some targets carry one. Rejecting here makes it a
+        # 422 on submit rather than a failure discovered after the evaluation has already run — and
+        # without it a target that names nothing publishes every trajectory under an empty name.
+        intake = self.publication.intake if self.publication is not None else None
+        if intake is None or intake.agent_name is not None:
+            return self
+        if target_agent_identity(self.target)[0] is None:
+            source = "an offline evaluation" if self.target is None else f"a {type(self.target).__name__} target"
+            raise ValueError(
+                f"`publication.intake.agent_name` is required: it cannot be derived from {source}. "
+                "Supply the name the published trajectories should be recorded under."
+            )
         return self
 
 
@@ -191,8 +218,10 @@ class EvaluateJob(NemoJob):
         return compile_evaluate_job(canonical_spec, profile=profile)
 
     @staticmethod
-    def _write_result_files(result: EvaluationArtifactResult, persistent_dir: Path) -> EvaluationResultFiles:
-        """Write full, aggregate, and row-level evaluator artifacts."""
+    def _write_result_files(
+        result: EvaluationArtifactResult, persistent_dir: Path, *, run_id: str | None, started_at: datetime
+    ) -> EvaluationResultFiles:
+        """Write full, aggregate, row-level and run-metadata evaluator artifacts."""
         result_payload = result.model_dump(mode="json")
         full_result_path = persistent_dir / DEFAULT_FILE_NAME
         full_result_path.write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
@@ -206,10 +235,21 @@ class EvaluateJob(NemoJob):
             for row_score in result.row_scores:
                 f.write(row_score.model_dump_json() + "\n")
 
+        # `EvaluationResult` has nowhere to carry timings, so the run identity Intake publishes
+        # under is written beside the scores. A re-publish must reuse these: `session_id` is
+        # `{run_id}:{trial id}` and the span key includes `start_time`, so minting either afresh
+        # writes a second trajectory instead of replacing the first.
+        run_metadata_path = artifacts_dir / RUN_METADATA_FILE_NAME
+        run_metadata_path.write_text(
+            json.dumps({"run_id": run_id, "started_at": started_at.isoformat()}, indent=2),
+            encoding="utf-8",
+        )
+
         return EvaluationResultFiles(
             full_result=full_result_path,
             aggregate_scores=aggregate_path,
             row_scores=row_scores_path,
+            run_metadata=run_metadata_path,
             artifacts_dir=artifacts_dir,
         )
 
@@ -220,7 +260,10 @@ class EvaluateJob(NemoJob):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: AsyncNeMoPlatform | None,
+        # Widened from the base signature: `resolve_metrics_to_inline` documents that it takes
+        # either client, and the local-run path (`_executor._resolve_sync_local_spec`) forwards the
+        # sync one. Contravariant, so overriding with a wider parameter stays substitutable.
+        async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
         """Resolve submitter-facing model and metric references into the canonical evaluation spec."""
@@ -244,6 +287,7 @@ class EvaluateJob(NemoJob):
             target=submit_spec.target,
             prompt_template=submit_spec.prompt_template,
             field_mapping=submit_spec.field_mapping,
+            publication=submit_spec.publication,
         )
 
     def run(
@@ -256,6 +300,10 @@ class EvaluateJob(NemoJob):
     ) -> dict:
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
+        # Stamped here because the row evaluator records no timing at all and `EvaluationResult` has
+        # nowhere to put it. Publication needs a start time that is a function of the run, not of
+        # when it was published, or re-ingest duplicates spans instead of replacing them.
+        started_at = datetime.now(UTC)
         evaluator = Evaluator()
         params = resolve_params(spec.params, spec.target)
         metrics = [unbundle_metric(to_runtime_bundle(metric)) for metric in spec.metrics]
@@ -301,10 +349,13 @@ class EvaluateJob(NemoJob):
                 field_mapping=spec.field_mapping,
                 prompt_template=None,
             )
-        result_files = self._write_result_files(result, ctx.storage.persistent)
+        result_files = self._write_result_files(
+            result, ctx.storage.persistent, run_id=ctx.job_id, started_at=started_at
+        )
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
         ctx.results.save(ROW_SCORES_RESULT_NAME, result_files.row_scores)
+        ctx.results.save(RUN_METADATA_RESULT_NAME, result_files.run_metadata)
         ctx.results.save(ARTIFACTS_RESULT_NAME, result_files.artifacts_dir, ignore_patterns=RESULT_IGNORE_PATTERNS)
 
         # Persist the queryable result record (aggregate scores); per-row detail lives in the fileset
@@ -335,7 +386,25 @@ class EvaluateJob(NemoJob):
         #     status="completed",
         # )
 
-        return {
+        output = {
             "status": "completed",
             "artifact": artifact.model_dump(),
         }
+
+        # Publication runs last, after the artifacts and the queryable record are both durable, so a
+        # failed publish costs a re-publish rather than a re-run. It is also the only step here that
+        # can fail the job (when `required`).
+        intake = spec.publication.intake if spec.publication is not None else None
+        if intake is not None:
+            outcome = publish_row_eval_result(
+                result,
+                spec=intake,
+                target=spec.target,
+                run_id=ctx.job_id,
+                started_at=started_at,
+                workspace=ctx.workspace,
+                async_sdk=async_sdk,
+            )
+            output["publication"] = outcome.model_dump(exclude_none=True)
+
+        return output

@@ -8,6 +8,7 @@ import { SubmitUploadType } from '@nemo/common/src/components/UploadModal/types'
 import { InputFileSchemaType } from '@nemo/common/src/types';
 import { extractUserFriendlyKeysFromRow } from '@nemo/common/src/utils/file';
 import { validateFileFormat, detectFileStructure } from '@nemo/common/src/utils/fileValidation';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   Banner,
   Button,
@@ -27,7 +28,6 @@ import type {
 import { useDatasetInputFileReducer } from '@studio/components/DatasetInputFile/useDatasetInputFileReducer';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getDatasetDisplayNameFromFilesUrl } from '@studio/util/files';
-import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, CircleCheck, CircleHelp, Eye, File as FileIcon, Trash2 } from 'lucide-react';
 import { FC, useCallback, useEffect, useRef } from 'react';

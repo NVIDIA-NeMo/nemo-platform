@@ -6816,19 +6816,14 @@ nemo intake spans list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
 * `--filter.agent-id`
 * `--filter.agent-name`
-* `--filter.dataset-id`
-* `--filter.dataset-name`
-* `--filter.dataset-version`
 * `--filter.evaluation-id`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
 * `--filter.project`
-* `--filter.prompt-name`
-* `--filter.prompt-version`
 * `--filter.provider`
 * `--filter.session-id`
 * `--filter.source`
@@ -6955,7 +6950,7 @@ nemo intake spans groups list [OPTIONS]
 * `--by`: Comma-separated span fields to group by, e.g.
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: [possible values: span_count, -span_count]
+* `--sort <CHOICE>`: Sort groups by size or by start time. Use -started_at for the traces or sessions that began most recently, which answers 'what ran lately' in one call instead of paging through spans. A group's time is its earliest matching span, so this orders by when work started and not by when it was last active. [possible values: span_count, -span_count, started_at, -started_at]
 * `--all-pages`: Fetch all pages
 
 **Filter Options:**
@@ -6967,16 +6962,11 @@ JSON-only fields:
 Filter spans by the same fields as the span list endpoint, then group matching spans by the comma-separated fields in the by query parameter.
 * `--filter.agent-id`
 * `--filter.agent-name`
-* `--filter.dataset-id`
-* `--filter.dataset-name`
-* `--filter.dataset-version`
 * `--filter.evaluation-id`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
 * `--filter.project`
-* `--filter.prompt-name`
-* `--filter.prompt-version`
 * `--filter.provider`
 * `--filter.session-id`
 * `--filter.source`

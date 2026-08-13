@@ -53,7 +53,7 @@ async def test_create_pulls_nvcr_image_with_ngc_auth(
 ) -> None:
     mock_entities.get.return_value = _nim_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
 
     with patch(
         "nemo_deployments_plugin.backends.docker.backend.resolve_deployment_config_secrets",
@@ -80,7 +80,7 @@ async def test_create_pulls_non_ngc_image_without_auth(
 ) -> None:
     mock_entities.get.return_value = sample_config()
     mock_docker_client.containers.get.side_effect = NotFound("missing")
-    mock_docker_client.containers.run.return_value = MagicMock(id="abc123")
+    mock_docker_client.containers.create.return_value = MagicMock(id="abc123")
 
     update = await docker_backend_pull.create_deployment(
         workspace="default",

@@ -2,18 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
+import * as agentsSdk from '@nemo/sdk/generated/agents/api';
 import * as platformSdk from '@nemo/sdk/generated/platform/api';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { usePlugins, usePluginsLoaded } from '@studio/plugins/PluginContext';
 import { PluginErrorBoundary } from '@studio/plugins/PluginErrorBoundary';
-import type { PluginHost, PluginSdk, PluginTelemetry } from '@studio/plugins/types';
-import { logger } from '@studio/util/logger';
-import { useCallback, useMemo, useRef, type ReactElement } from 'react';
+import type {
+  PluginBreadcrumb,
+  PluginHost,
+  PluginSdk,
+  PluginTelemetry,
+} from '@studio/plugins/types';
+import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { useCallback, useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate, useParams } from 'react-router';
 
 // Module-scope for stable identity; plugins run these on Studio's axios + cache.
-const STUDIO_SDK: PluginSdk = { platform: platformSdk };
+const STUDIO_SDK: PluginSdk = { platform: platformSdk, agents: agentsSdk };
 
 const makeTelemetry = (name: string): PluginTelemetry => ({
   info: (message, cause) => logger.info(`[plugin:${name}] ${message}`, cause),
@@ -41,16 +49,29 @@ export const PluginRenderer = (): ReactElement => {
   accessTokenRef.current = accessToken;
   const getAccessToken = useCallback(() => accessTokenRef.current, []);
 
+  const { setBreadcrumbs } = useBreadcrumbs();
+  const setPluginBreadcrumbs = useCallback(
+    (trail: PluginBreadcrumb[]) =>
+      setBreadcrumbs(trail.map(({ label, href }) => ({ slotLabel: label, href }))),
+    [setBreadcrumbs]
+  );
+  // Studio owns the cleanup so a plugin can't leave a stale trail behind. Keyed
+  // on pluginName too: the router reuses this component across plugins, and the
+  // outgoing plugin's trail would otherwise persist until the next one sets its own.
+  useEffect(() => () => setBreadcrumbs([]), [setBreadcrumbs, pluginName]);
+
   const host = useMemo<PluginHost>(
     () => ({
       workspaceId: workspace,
+      apiBaseUrl: PLATFORM_BASE_URL ?? '',
       auth: { accessToken, getAccessToken },
       sdk: STUDIO_SDK,
       navigation: { navigate: (to) => navigate(to), back: () => navigate(-1) },
-      notifications: { notify: (message, type = 'info') => toast[type](message) },
+      notifications: { notify: (message, type = 'info', options) => toast[type](message, options) },
       telemetry: makeTelemetry(pluginName ?? 'unknown'),
+      breadcrumbs: { set: setPluginBreadcrumbs },
     }),
-    [workspace, accessToken, getAccessToken, navigate, toast, pluginName]
+    [workspace, accessToken, getAccessToken, navigate, toast, pluginName, setPluginBreadcrumbs]
   );
 
   if (!isLoaded) {

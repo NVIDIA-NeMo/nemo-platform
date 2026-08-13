@@ -1,138 +1,82 @@
-# NeMo Copilot Smoke Test
+# NeMo Studio Copilot Fabric smoke test
 
-Covers all changes from the follow-up PR: fallback removal, SyncBuilder-only
-model resolution, and the `_StreamSafeGraph` Studio streaming fix.
+The copilot is a `nemo-agents-spec-v1` Fabric agent using the preinstalled
+Deep Agents adapter. Its platform and Studio tools are exposed by the packaged
+`nemo-studio-copilot-mcp` stdio server.
 
-## Prerequisites
+## Static and unit validation
 
-- `NVIDIA_API_KEY` from https://inference.nvidia.com (Profile > Key Management)
-- macOS: use `http://127.0.0.1:8080`, not `localhost` (IPv6 issue)
-
----
-
-## Part 1: Unit Tests
-
-Run from the worktree root. All tests should pass.
+From the repository root:
 
 ```bash
-uv run --frozen pytest agents/nemo-studio-copilot/tests/test_nemo_studio_copilot.py -v
+PYTHONPATH=agents/nemo-studio-copilot/src \
+  uv run --frozen pytest agents/nemo-studio-copilot/tests/test_nemo_studio_copilot.py -v
+uv run ruff check agents/nemo-studio-copilot/src agents/nemo-studio-copilot/tests
+uv run ruff format --check agents/nemo-studio-copilot/src agents/nemo-studio-copilot/tests
+uv run --frozen ty check
 ```
 
-Verify specifically:
+The tests validate Fabric translation, the Deep Agents adapter, all packaged
+skills, the MCP tool surface, SDK serialization, session validation, and
+approval gating for mutations.
 
-- [ ] `TestGetModel::test_returns_llm_from_builder` — passes (SyncBuilder mock path works)
-- [ ] `TestGetModel::test_raises_without_builder_context` — passes (ValueError propagates)
-- [ ] `TestAgentGraph::test_create_agent_returns_stream_safe_graph` — passes (returns `_StreamSafeGraph`, not raw `CompiledStateGraph`)
-- [ ] `TestAgentGraph::test_stream_safe_graph_delegates_attribute_access` — passes
-- [ ] `TestAgentGraph::test_agent_has_expected_tools` — passes with exactly `nemo_api` and `check_status`
-- [ ] No test imports `langchain_openai` or references `NVIDIA_API_KEY`
+## Register, package, and deploy
 
-## Part 2: Fallback and CLI Tool Removal Verification
-
-Confirm the ChatOpenAI fallback and subprocess-based CLI tool are gone:
+These commands change platform state and should be run independently so each
+result can be verified:
 
 ```bash
-# Should find zero matches in the runtime source.
-rg -n 'ChatOpenAI|NVIDIA_API_KEY|langchain_openai|nemo_cli|subprocess' \
-    agents/nemo-studio-copilot/src/nemo_studio_copilot/register.py
+export NMP_BASE_URL=http://127.0.0.1:8080
+nemo agents create --name nemo-studio-copilot \
+  --agent-config agents/nemo-studio-copilot-spec/agent.yaml
+nemo agents package \
+  --agent agents/nemo-studio-copilot/agent.yaml \
+  --pyproject agents/nemo-studio-copilot/pyproject.toml \
+  --tag nemo-studio-copilot:fabric-local
+nemo agents deploy --agent nemo-studio-copilot \
+  --name nemo-studio-copilot-fabric-deployment \
+  --mode docker --image nemo-studio-copilot:fabric-local
+nemo agents deployments wait nemo-studio-copilot-fabric-deployment
 ```
 
-Expected: no output.
+The generated image must use the Fabric server entrypoint, not `nat serve`.
 
-## Part 3: Platform Boot + Agent Deploy
+## Invocation
 
 ```bash
-export NVIDIA_API_KEY='your-key-here'
-export NMP_BASE_URL='http://127.0.0.1:8080'
-nemo setup --auto --start-services --install-skills --deploy-agent
+nemo agents invoke --agent-deployment nemo-studio-copilot-fabric-deployment \
+  --input "List all workspaces on the platform"
+nemo agents invoke --agent-deployment nemo-studio-copilot-fabric-deployment \
+  --input "List the available models and inference providers using the platform API."
 ```
 
-Wait for setup to complete.
+For mutation approval, invoke through Studio and ask the copilot to create a
+workspace named `nemo-studio-copilot-smoke-test`. Verify that Studio renders an
+approval prompt before the SDK call, and that declining leaves platform state
+unchanged.
+
+## Studio streaming
+
+Open `http://127.0.0.1:8080/studio`, select the copilot deployment, and send
+`List all workspaces`. Verify incremental, nonduplicated text and a terminal
+success or error. Then exercise a selector and an approved mutation to verify
+the callback MCP tools.
+
+## Cleanup
+
+After verification, remove the temporary workspace, then undeploy and delete
+the agent so another smoke-test run starts cleanly:
 
 ```bash
-# Agent should be deployed and running
-nemo agents deployments list
+nemo workspaces delete nemo-studio-copilot-smoke-test
+nemo agents undeploy nemo-studio-copilot-fabric-deployment --yes
+nemo agents delete nemo-studio-copilot --yes
 ```
 
-- [ ] Deployment exists with status `running`
+## Automated evaluation coverage
 
-## Part 4: Agent Invocation
-
-These test that the agent works end-to-end through NAT's `langgraph_wrapper`
-with the real SyncBuilder and API-only platform tools.
-
-```bash
-# nemo_api tool — workspace CRUD
-nemo agents invoke --agent nemo-studio-copilot \
-    --input "List all workspaces on the platform"
-
-# nemo_api tool — model and provider discovery
-nemo agents invoke --agent nemo-studio-copilot \
-    --input "List the available models and inference providers using the platform API."
-
-# Multi-step with nemo_api — create + verify
-nemo agents invoke --agent nemo-studio-copilot \
-    --input "Create a workspace called 'smoke-test' with description 'PR follow-up smoke test', then list workspaces to confirm it exists"
-```
-
-- [ ] All three return coherent responses (no `RuntimeError` about missing builder context)
-- [ ] The workspace `smoke-test` actually exists: `nemo workspaces list`
-
-## Part 5: Studio Streaming (the main fix)
-
-This validates that `_StreamSafeGraph` makes agent chat work in the Studio UI.
-
-1. Open Studio in your browser:
-
-   ```
-   http://127.0.0.1:8080/studio
-   ```
-
-2. Navigate to **Agents** in the left sidebar.
-
-3. Click the **nemo-studio-copilot** row to open the agent panel.
-
-4. Switch to the **Chat Playground** tab.
-
-5. Select the running deployment from the deployment dropdown (if not auto-selected).
-
-6. Send a simple message:
-
-   ```
-   List all workspaces
-   ```
-
-7. Verify:
-
-   - [ ] The chat shows a loading/thinking indicator (stream starts)
-   - [ ] A response appears with workspace data (not empty, not an error)
-   - [ ] The response text is **not garbled or duplicated** (this was the pre-fix bug — NAT's chunk validation failure or full-text concatenation produced gibberish)
-   - [ ] No JavaScript console errors related to `choices`, `delta`, or stream parsing
-
-8. Send a multi-step message to exercise tool calls:
-
-   ```
-   Create a secret called 'studio-test-key' with value 'sk-test-456' in the default workspace, then list all secrets to confirm it was created
-   ```
-
-9. Verify:
-
-   - [ ] Response eventually appears (may take 15-30s for multi-tool agent turns)
-   - [ ] Response mentions the created secret and lists secrets
-   - [ ] No stream errors or broken UI state
-
-### What "broken" looks like (for reference)
-
-Without the `_StreamSafeGraph` fix, you would see one of:
-- **Empty response** — NAT's `_parse_stream_output` throws on a chunk missing `messages`, the stream dies, Studio gets no `choices[0]` and renders nothing
-- **Duplicated/garbled text** — each LangGraph state snapshot contains the full message list; NAT converts `messages[-1].text` to a `ChatResponseChunk`; Studio's reducer appends `delta.content` to the running string, so the same text appears 2-5x
-
-## Part 6: Cleanup
-
-```bash
-nemo agents undeploy --agent nemo-studio-copilot
-nemo agents delete nemo-studio-copilot
-nemo workspaces delete smoke-test 2>/dev/null
-nemo secrets delete studio-test-key 2>/dev/null
-# Ctrl-C the nemo services run process
-```
+The former NAT `/generate/full` evaluation YAML remains removed. Each case in
+`src/nemo_studio_copilot/nemo-studio-copilot-eval-data.json` now has
+deterministic unit coverage for its required `nemo_api` tool path in
+`test_nemo_studio_copilot.py`. Root pytest discovery includes these unit tests,
+so `make test-unit-ci` runs them in CI without a live model endpoint.

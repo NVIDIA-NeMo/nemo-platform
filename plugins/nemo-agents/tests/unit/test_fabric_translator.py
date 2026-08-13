@@ -113,7 +113,10 @@ class TestTranslateAgentConfig:
         assert fabric_config.environment.artifacts == "./artifacts"
         assert fabric_config.relay is None
 
-    def test_selected_harness_uses_default_model(self) -> None:
+    def test_selected_harness_uses_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("NEMO_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_WORKSPACE", raising=False)
         config = AgentConfig.model_validate(_example_yaml_config())
 
         fabric_config = translate_agent_config(config, harness_name="codex")
@@ -129,6 +132,21 @@ class TestTranslateAgentConfig:
         assert fabric_config.models["default"].api_key_env == PLATFORM_IGW_API_KEY_ENV
         assert fabric_config.environment.env == {PLATFORM_IGW_API_KEY_ENV: PLATFORM_IGW_API_KEY_PLACEHOLDER}
         assert config.models["default"].api_key_env is None
+
+    def test_forwards_platform_runtime_environment_to_child_tools(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("NEMO_BASE_URL", "http://command-platform:8080")
+        monkeypatch.setenv("NMP_BASE_URL", "http://shared-platform:8080")
+        monkeypatch.setenv("NMP_WORKSPACE", "request-workspace")
+        config = AgentConfig.model_validate(_example_yaml_config())
+
+        fabric_config = translate_agent_config(config, harness_name="codex")
+
+        assert fabric_config.environment.env == {
+            "NEMO_BASE_URL": "http://command-platform:8080",
+            "NMP_BASE_URL": "http://shared-platform:8080",
+            "NMP_WORKSPACE": "request-workspace",
+            PLATFORM_IGW_API_KEY_ENV: PLATFORM_IGW_API_KEY_PLACEHOLDER,
+        }
 
     def test_promotes_legacy_model_settings_base_url(self) -> None:
         payload = _example_yaml_config()

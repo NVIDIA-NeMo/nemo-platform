@@ -105,6 +105,7 @@ export const CompareComposer: FC<CompareComposerProps> = ({
         <SeedQuestions
           questions={showSeeds ? seedQuestions : []}
           onSelect={(text) => setDraft(text)}
+          disabled={readyPanelCount === 0}
           slotEnd={slotSeedEnd}
         />
       )}

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import type {
   NavInputItem,
@@ -56,7 +57,6 @@ import {
   getWorkspaceSettingsRoute,
   getWorkspaceVirtualModelsRoute,
 } from '@studio/routes/utils';
-import { logger } from '@studio/util/logger';
 import {
   Bot,
   Boxes,
@@ -230,14 +230,16 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           },
         ]
       : [];
-    const virtualModelsNav = [
-      {
-        id: 'virtual-models',
-        slotIcon: <Waypoints className={iconColorClass} />,
-        slotLabel: 'Virtual Models',
-        href: getWorkspaceVirtualModelsRoute(workspace),
-      },
-    ];
+    const virtualModelsNav = GUARDRAILS_ENABLED
+      ? [
+          {
+            id: 'virtual-models',
+            slotIcon: <Waypoints className={iconColorClass} />,
+            slotLabel: 'Virtual Models',
+            href: getWorkspaceVirtualModelsRoute(workspace),
+          },
+        ]
+      : [];
 
     const modelCompareNav = MODEL_COMPARE_ENABLED
       ? [
@@ -384,7 +386,9 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             items: group.items.map((item) => {
               const Icon = getPluginIcon(item.iconName);
               return {
-                id: item.id,
+                // Namespaced: ids are React keys and accordion-state keys, and
+                // merging puts plugin items in the same array as core ones.
+                id: `${plugin.name}:${item.id}`,
                 slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
                 slotLabel: item.label,
                 href: item.href,
@@ -399,11 +403,27 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     [plugins, workspace]
   );
 
-  // A fresh array literal here would re-run NavigationDrawer's own memos on every render.
-  const allItems = useMemo(
-    () => [...items, ...pluginNavGroups, ...systemNavGroup],
-    [items, pluginNavGroups, systemNavGroup]
-  );
+  // A plugin naming an existing group joins it rather than rendering a second
+  // header with the same label. Unmatched groups append in plugin order.
+  const allItems = useMemo<NavInputItem[]>(() => {
+    const pending = new Map<string, NavItemData[]>();
+    for (const { group, items: groupItems } of pluginNavGroups) {
+      pending.set(group, [...(pending.get(group) ?? []), ...groupItems]);
+    }
+
+    const merged: NavInputItem[] = items.map((entry) => {
+      if (!isGroup(entry) || entry.group === undefined) return entry;
+      const extra = pending.get(entry.group);
+      if (!extra) return entry;
+      pending.delete(entry.group);
+      return { ...entry, items: [...entry.items, ...extra] };
+    });
+
+    for (const [group, groupItems] of pending) {
+      merged.push({ group, items: groupItems });
+    }
+    return [...merged, ...systemNavGroup];
+  }, [items, pluginNavGroups, systemNavGroup]);
 
   return <NavigationDrawer items={allItems} collapsed={collapsed} />;
 };

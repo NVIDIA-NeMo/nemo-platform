@@ -10,6 +10,8 @@
 
 Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for example `unit-test`, `e2e-test`, `feature-flags`, `ux-guidelines`, `visual-dev`, `test-coverage-improvement`).
 
+The `kaizen-ui` skill is not committed — it is synced from the `@nvidia/foundations-react-core` design system package on `pnpm install` (root `sync-skills` script) and is gitignored. To refresh it after upgrading the package, run `pnpm sync-skills` from `web/`.
+
 ## Package Overview
 
 - **packages/studio** — Main React frontend application
@@ -32,7 +34,7 @@ Cursor/Claude skills for this monorepo live under **`web/.agents/skills/`** (for
 
 - Use **pnpm** exclusively — never npm or yarn
 - Run frontend commands from `web/`, not from repo root
-- Node.js and pnpm come from mise (`mise.toml` at the repo root). Run `make verify-mise` from the repo root to install the pinned versions; mise lands in `~/.local/bin`, so use `~/.local/bin/mise exec -- <cmd>` if that directory isn't on PATH and mise isn't activated in the shell
+- Node.js and pnpm come from the root Flox environment. Run `flox activate` for interactive work; Corepack provides the repository-pinned pnpm.
 - Install dependencies: `pnpm add <package>`
 - Run scripts: `pnpm <script-name>`
 

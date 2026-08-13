@@ -3,6 +3,7 @@
 #######
 
 ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.8
+ARG DISTROLESS_BASE_3_13=nvcr.io/nvidia/distroless/python:3.13-v4.0.9
 
 #root-uv-binary-base
     FROM ghcr.io/astral-sh/uv:0.9.14 AS root-uv-binary-base
@@ -53,6 +54,9 @@ ARG DISTROLESS_BASE=nvcr.io/nvidia/distroless/python:3.11-v4.0.8
 
 #root-distroless-base-3-11
     FROM ${DISTROLESS_BASE} AS root-distroless-base-3-11
+
+#root-distroless-base-3-13
+    FROM ${DISTROLESS_BASE_3_13} AS root-distroless-base-3-13
 
 #root-golang-base:
     FROM golang:1.23 AS root-golang-base

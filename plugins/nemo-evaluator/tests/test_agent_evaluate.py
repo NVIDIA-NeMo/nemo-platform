@@ -28,6 +28,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
     Target,
@@ -40,6 +41,7 @@ from nemo_evaluator.tasks.runner import SDK_INITIALIZATION_EXIT_CODE
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import (
@@ -301,6 +303,27 @@ def test_resolve_target_agent_carries_no_prompt_template(tmp_path: Path) -> None
 def test_resolve_target_resolves_none_to_no_target(tmp_path: Path) -> None:
     ctx = _job_context(tmp_path)
     assert AgentEvalJob._resolve_target(None, ctx) == (None, None, None)
+
+
+def test_resolve_target_builds_gym_runtime_from_runner_target(tmp_path: Path) -> None:
+    ctx = _job_context(tmp_path)
+    gym_target = GymRunnerTarget(
+        agent="simple_agent",
+        agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+        resources_server="mcqa",
+        num_repeats=2,
+        concurrency=4,
+        reward_key="score",
+    )
+    target, prompt_template, params = AgentEvalJob._resolve_target(gym_target, ctx)
+    assert isinstance(target, GymAgentTaskRunner)
+    assert target._config.agent == "simple_agent"
+    assert target._config.resources_server == "mcqa"
+    assert target._config.num_repeats == 2
+    assert target._config.reward_key == "score"
+    # A runner shapes its own request, so it contributes no prompt template or inference params.
+    assert prompt_template is None
+    assert params is None
 
 
 def test_runner_target_is_accepted(tmp_path: Path) -> None:
@@ -732,6 +755,11 @@ async def test_compile_rejects_reserved_secret_env_name() -> None:
         AgentTarget(agent=_agent(), params=RunConfigOnline()),
         CodexRunnerTarget(model="gpt-5.5"),
         HarborRunnerTarget(agent_name="oracle"),
+        GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
     ],
 )
 def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixture) -> None:
@@ -758,6 +786,8 @@ def test_run_local_executes_each_target_type(target: Target, mocker: MockerFixtu
         assert isinstance(fake.received_target, CodexCliAgentRuntime)
     elif isinstance(target, HarborRunnerTarget):
         assert isinstance(fake.received_target, HarborAgentTaskRunner)
+    elif isinstance(target, GymRunnerTarget):
+        assert isinstance(fake.received_target, GymAgentTaskRunner)
     elif isinstance(target, ModelTarget):
         assert getattr(fake.received_target, "name", None) == target.model.name
     else:

@@ -67,8 +67,8 @@ export const sanitizeFilenameForDatasetName = (filename: string): string => {
   // Remove file extension
   const nameWithoutExtension = filename.replace(/\.[^/.]+$/, '');
 
-  // Replace any character that's not alphanumeric, dot, underscore, or dash with an underscore
-  const sanitized = nameWithoutExtension.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Replace invalid chars with underscores, then lowercase for a valid name.
+  const sanitized = nameWithoutExtension.replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
 
   // If the result is empty or contains only underscores, return an empty name,
   // dataset names cannot be changed, so we return an empty name.

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
+import { toError } from '@nemo/common/src/utils/logger';
 import { filesDownloadFile } from '@nemo/sdk/generated/platform/api';
-import { toError } from '@studio/util/logger';
 import axios from 'axios';
 
 export interface LargeFileWorkerMessage {

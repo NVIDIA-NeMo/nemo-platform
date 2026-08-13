@@ -17,5 +17,4 @@ build/
 .venv/
 node_modules/
 tests/
-src/nemo_studio_copilot/nemo-studio-copilot-eval.yml
 src/nemo_studio_copilot/nemo-studio-copilot-eval-data.json

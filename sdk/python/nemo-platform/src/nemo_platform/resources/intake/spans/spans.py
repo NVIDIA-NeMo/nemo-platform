@@ -145,9 +145,10 @@ class SpansResource(SyncAPIResource):
         List Spans
 
         Args:
-          filter: Filter spans by session_id, trace_id, parent_span_id, project, evaluation
-              context fields, source, kind, status, model, tool_name, provider, agent_id,
-              agent_name, prompt_name, prompt_version, and started_at.
+          filter: Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id,
+              test_case_id, source, kind, status, model, tool_name, provider, agent_id,
+              agent_name, and started_at. Every field takes one exact value, except
+              started_at, which takes gte and lte.
 
           mode: Response mode. summary omits payloads and raw attributes; preview includes input
               and output truncated to 300 characters; detailed returns full payloads and raw
@@ -280,9 +281,10 @@ class AsyncSpansResource(AsyncAPIResource):
         List Spans
 
         Args:
-          filter: Filter spans by session_id, trace_id, parent_span_id, project, evaluation
-              context fields, source, kind, status, model, tool_name, provider, agent_id,
-              agent_name, prompt_name, prompt_version, and started_at.
+          filter: Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id,
+              test_case_id, source, kind, status, model, tool_name, provider, agent_id,
+              agent_name, and started_at. Every field takes one exact value, except
+              started_at, which takes gte and lte.
 
           mode: Response mode. summary omits payloads and raw attributes; preview includes input
               and output truncated to 300 characters; detailed returns full payloads and raw

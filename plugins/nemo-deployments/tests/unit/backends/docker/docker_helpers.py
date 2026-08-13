@@ -7,7 +7,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from nemo_deployments_plugin.entities import Container, ContainerPort, DeploymentConfig, VolumeMount
+from nemo_deployments_plugin.entities import (
+    ConfigFile,
+    Container,
+    ContainerPort,
+    DeploymentConfig,
+    VolumeMount,
+)
 from nemo_deployments_plugin.types import RestartPolicy
 
 
@@ -23,6 +29,33 @@ def sample_config(*, restart_policy: RestartPolicy = "Always") -> DeploymentConf
                 args=["hello"],
             )
         ],
+        restart_policy=restart_policy,  # ty: ignore[unknown-argument]
+    )
+
+
+def config_files_config(
+    *,
+    path: str = "/tmp/nemo/config.yaml",
+    content: str = "workflow:\n  _type: react_agent\n",
+    restart_policy: RestartPolicy = "Always",
+) -> DeploymentConfig:
+    """Single-container config that declares a ``config_files`` entry.
+
+    Shaped like what the agents plugin emits: the server command reads the file
+    at *path* on startup, so delivery has to happen before the container starts.
+    """
+    return DeploymentConfig(
+        name="cfg1",
+        workspace="default",
+        containers=[
+            Container(
+                name="main",
+                image="alpine:latest",
+                command=["cat"],
+                args=[path],
+            )
+        ],
+        config_files=[ConfigFile(path=path, content=content)],  # ty: ignore[unknown-argument]
         restart_policy=restart_policy,  # ty: ignore[unknown-argument]
     )
 

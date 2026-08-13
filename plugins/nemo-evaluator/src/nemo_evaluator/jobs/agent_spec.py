@@ -19,13 +19,14 @@ from typing import Any, Literal, Self, TypeAlias
 import nemo_evaluator.shared.metric_bundles.cloudpickle  # noqa: F401
 import nemo_evaluator.shared.metric_bundles.inline  # noqa: F401
 from nemo_evaluator.api.schemas import MetricInline, TaskInputs, TaskMetadataList, TasksetRef
-from nemo_evaluator.intake.mapping import DEFAULT_AGENT_VERSION
 from nemo_evaluator.jobs.metric_resolution import to_runtime_bundle, unresolved_model_refs
+from nemo_evaluator.jobs.publication_spec import PublicationSpec
 from nemo_evaluator.metric_refs import MetricRefOrInline
 from nemo_evaluator.shared.metric_bundles.bundles import unbundle_metric
 from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values.agents import AgentBase
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -144,22 +145,79 @@ class HarborRunnerTarget(BaseModel):
     )
 
 
+class GymRunnerTarget(BaseModel):
+    """Generate trials by driving a NeMo Gym environment through the SDK's :class:`GymAgentTaskRunner`.
+
+    Gym runs locally in the job container (the ``gym`` CLI must be installed in the same environment
+    as this SDK). The environment dataset is recovered from the tasks at run time — the runner stamps
+    ``gym_dataset_path`` onto each task via ``discover_gym_tasks``, mirroring the Harbor pattern.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["gym"] = "gym"
+    agent: str = Field(description="Agent name to collect rollouts with, e.g. 'simple_agent'.")
+    agent_config: str = Field(
+        description="Repo-relative agent config passed to `gym env start` (--config).",
+    )
+    resources_server: str = Field(
+        description="Resources-server (environment) name, e.g. 'mcqa' (--resources-server).",
+    )
+    model_type: str = Field(
+        default="inference_provider",
+        description="Model-type config (--model-type). `inference_provider` speaks OpenAI-compatible chat; "
+        "`openai_model` uses the OpenAI Responses API.",
+    )
+    bind_resources_server: bool = Field(
+        default=True,
+        description="Auto-bind the agent's `resources_server.name` via a Hydra override. Set False for "
+        "self-contained agents that already bind their own resources-server.",
+    )
+    env_overrides: list[str] = Field(
+        default_factory=list,
+        description="Extra Hydra '+key=value' overrides for `gym env start` (applied after the auto-derived "
+        "resources-server binding).",
+    )
+    num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
+    concurrency: int = Field(
+        default=4,
+        ge=1,
+        description="Concurrent rollouts for `gym eval run`.",
+    )
+    startup_timeout_s: float = Field(default=240.0, gt=0, description="Max wait for `gym env start` readiness.")
+    collection_timeout_s: float | None = Field(
+        default=None,
+        gt=0,
+        description="Max wait for `gym eval run` collection; None = unbounded.",
+    )
+    shutdown_grace_s: float = Field(
+        default=30.0,
+        gt=0,
+        description="Grace period for the Gym subprocess group to exit on SIGTERM before escalating to SIGKILL.",
+    )
+    reward_key: str = Field(default="reward", description="Key read from each rollout record.")
+
+
 #: The agent-runner slot of the target union — the spec-side mirror of ``AgentTaskRunner``, resolved
 #: to a runtime at run time. ``kind``-discriminated; widen with more members as runners land.
-AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | HarborRunnerTarget
+AgentRunnerTarget: TypeAlias = CodexRunnerTarget | FabricRunnerTarget | GymRunnerTarget | HarborRunnerTarget
 
 #: What generates trials: a Model or Agent endpoint, or an agent runner. ``kind``-discriminated, and
 #: the spec-level analog of the SDK's runtime ``AgentEvalTarget`` (Model | Agent | AgentTaskRunner).
 Target: TypeAlias = ModelTarget | AgentTarget | AgentRunnerTarget
 
 
-def target_agent_identity(target: Target | None) -> tuple[str | None, str | None]:
+def target_agent_identity(target: Target | Model | AgentBase | None) -> tuple[str | None, str | None]:
     """``(agent_name, model_name)`` derivable from a target, for publishing to Intake.
 
     Only targets that carry a real name yield one — nothing here invents an identity, because a
     made-up agent name is worse than an explicit one the submitter had to supply. A ``ModelTarget``
     has a model but no agent; the runners other than Harbor name a harness, not an agent. Those
     cases return ``None`` and the spec must carry ``publication.intake.agent_name``.
+
+    Accepts both unions: agent-eval passes its ``Target`` spec wrappers, while the dataset-driven
+    eval's ``TargetSpec`` is the bare ``Model``/``Agent`` SDK value. Without the bare branches a row
+    target falls through to ``(None, None)`` and publishes under an empty agent name.
 
     Distinct from ``result_persistence._agent_target_fields``, which flattens the same targets to
     ``(kind, name, url)`` filter traits and folds runner *models* into its ``name`` slot.
@@ -168,59 +226,18 @@ def target_agent_identity(target: Target | None) -> tuple[str | None, str | None
         return target.agent.name, None
     if isinstance(target, HarborRunnerTarget):
         return target.agent_import_path or target.agent_name, target.agent_model_name
+    if isinstance(target, GymRunnerTarget):
+        return target.agent, None
     if isinstance(target, ModelTarget):
         return None, target.model.name
     if isinstance(target, CodexRunnerTarget | FabricRunnerTarget):
         return None, target.model
+    # Bare SDK values, as carried by the dataset-driven eval spec.
+    if isinstance(target, AgentBase):
+        return target.name, None
+    if isinstance(target, Model):
+        return None, target.name
     return None, None
-
-
-class IntakePublicationSpec(BaseModel):
-    """Publish this run's trials and scores to Intake, under an Evaluation that already exists.
-
-    ``evaluation_id`` is the *name* of a ``client.evaluations`` record. Intake stores that record as
-    its ``Experiment`` entity and the SDK's ``publish_to_intake`` calls the argument
-    ``experiment_id``, but the value is the same one either way — the parent ``client.experiments``
-    group is a different resource and is not what goes here. The job never creates the Evaluation: a
-    missing one is an error, because nothing in an eval spec can supply the dataset identity
-    ``evaluations.create`` requires.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    evaluation_id: str = Field(
-        min_length=1,
-        description="Name of the existing Evaluation to publish under. Must already exist; the job does not create it.",
-    )
-    agent_name: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Agent name recorded on each published trajectory. Derived from the target when "
-        "it names one; required otherwise.",
-    )
-    agent_version: str = Field(
-        default=DEFAULT_AGENT_VERSION,
-        min_length=1,
-        description="Agent version recorded on each published trajectory. Neither a Model nor an "
-        "Agent carries a version, so this defaults to 'unknown' unless the submitter supplies one.",
-    )
-    required: bool = Field(
-        default=True,
-        description="Fail the job when publication fails. Defaults to True so a run that asked to "
-        "publish does not report success with nothing in Experiments. The result bundle is saved "
-        "before publication runs, so a failed job still leaves the results intact to re-publish. "
-        "Set False to keep the job successful and report the failure in its output instead.",
-    )
-
-
-class PublicationSpec(BaseModel):
-    """Where a completed run publishes its results, beyond its own result bundle."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    intake: IntakePublicationSpec | None = Field(
-        default=None, description="Publish trials and scores to Intake. Omit to publish nowhere."
-    )
 
 
 class _AgentEvalTaskCommon(BaseModel):
