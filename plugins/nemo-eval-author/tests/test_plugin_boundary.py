@@ -29,7 +29,6 @@ _SHARED_LAYER_A = {
 # adding one needs a deliberate argument for why duplicating the helper is worse.
 #
 #   client                  -> make_client, the platform client factory
-#   ...components           -> the cache module, for run artifacts
 #   ...dataset_staging      -> stage_eval_author_inputs
 #   ...evaluator.base       -> EvaluatorType
 #   ...evaluator.factory    -> DatasetFactory
@@ -41,7 +40,6 @@ _SHARED_LAYER_A = {
 #   ...reporting            -> RunReporter (ASE-749: reuse Experimentalist narrator; do not duplicate)
 _BORROWED_BEHAVIOUR = {
     "nemo_experimentalist_plugin.client",
-    "nemo_experimentalist_plugin.experimentalist.components",
     "nemo_experimentalist_plugin.experimentalist.components.dataset_staging",
     "nemo_experimentalist_plugin.experimentalist.components.evaluator.base",
     "nemo_experimentalist_plugin.experimentalist.components.evaluator.factory",

@@ -18,8 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from conftest import SandboxRunner
+from experimentalist_smoke_test_types import SandboxRunner
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _FIXTURE = _REPO_ROOT / "plugins" / "nemo-experimentalist" / "examples" / "smoke-agent"

@@ -138,13 +138,13 @@ async def test_no_proposals_finalizes_evaluated_candidates(monkeypatch, tmp_path
     tree = EvolutionTree()
     tree.add(baseline)
     run = ExperimentRun(
-        id="run-1",
         workspace="default",
         agent="agent",
         config_snapshot={},
         status="running",
         rounds_completed=0,
     )
+    run._id = "run-1"
     evaluation = EvaluationResult(id="agent-0-validation", aggregate_metrics={"reward": 1.0})
     backend = SimpleNamespace(
         client=None,
