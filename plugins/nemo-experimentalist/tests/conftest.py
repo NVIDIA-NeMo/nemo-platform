@@ -241,7 +241,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     if sandboxes.returncode or sandbox not in sandboxes.stdout.splitlines():
         raise pytest.UsageError(
             f"sandbox {sandbox!r} does not exist. Create it before running E2E tests:\n"
-            "  sbx create --clone --profile external-only "
+            "  sbx create --clone "
             f'--name {sandbox} shell "$(git rev-parse --show-toplevel)"\n\n'
             "Then run:\n"
             f"  SANDBOX_VM_ID={sandbox} uv run --frozen pytest "

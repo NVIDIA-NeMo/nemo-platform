@@ -73,12 +73,11 @@ touching this directory.
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 
-sbx create --clone --profile external-only --name nemo-experimentalist shell "$repo"
+sbx create --clone --name nemo-experimentalist shell "$repo"
 ```
 
 `--clone` mounts your checkout read-only and gives the sandbox a private clone to
-work in, so a run cannot modify your working tree. This example uses the
-`external-only` profile.
+work in, so a run cannot modify your working tree.
 
 > **In a git worktree?** `--clone` refuses to run there, so bind-mount instead:
 >

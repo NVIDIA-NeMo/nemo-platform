@@ -70,6 +70,7 @@ explains those scenarios and task splits.
 
 Run model-authored work in a Docker Sandbox. Clone mode gives the sandbox a
 private writable checkout, so generated code cannot modify your working tree.
+
 ```bash
 repo="$(git rev-parse --show-toplevel)"
 smoke="plugins/nemo-experimentalist/examples/smoke-agent"
@@ -86,7 +87,7 @@ uv run --frozen nemo workspaces create "$workspace" \
   --description "Smoke-agent Experimentalist runs" \
   --exist-ok
 
-sbx create --clone  --name nemo-experimentalist shell "$repo"
+sbx create --clone --name nemo-experimentalist shell "$repo"
 sbx exec --user root nemo-experimentalist bash -lc \
   'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
@@ -97,7 +98,7 @@ sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
 `dataset/task-template/` into the task directories used by the run. Those
 rendered directories are disposable; edit the manifest or template instead.
 
-The fresh external-only sandbox does not include a C compiler or Python headers.
+The fresh sandbox does not include a C compiler or Python headers.
 They are needed once to build `nemo-fabric-runtime`, a dependency used by the
 Experimentalist.
 
@@ -213,7 +214,7 @@ the private repository. The explicit `--agent` flag takes precedence over the
 local `agent_source` in `optimizer.yaml`, so this run optimizes the Git baseline.
 
 ```bash
-sbx create --clone  --name nemo-experimentalist-git shell "$repo"
+sbx create --clone --name nemo-experimentalist-git shell "$repo"
 sbx exec --user root nemo-experimentalist-git bash -lc \
   'apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev'
 gh auth token | sbx exec -i --workdir "$repo" nemo-experimentalist-git \

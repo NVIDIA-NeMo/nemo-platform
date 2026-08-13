@@ -13,10 +13,9 @@
 # for role-scoped counts, which that fix does not reach. A healthy run therefore
 # *keeps the baseline*, the opposite of what the repair scenario asserts.
 #
-# This file exists because a config alone could not express that. Both scenario
-# configs are identical, and optimizer.yaml pins the datasets to g1-aggregation,
-# so pointing --config at generalization.yaml ran the repair scenario against
-# g1 and quietly answered the wrong question.
+# This profile exists because a config alone could not express that. Both
+# scenarios use configs/short.yaml; optimizer.yaml pins the repair datasets to
+# g1-aggregation, while this profile selects the generalization split.
 
 # Logical agent name. In insight mode it must match the Insight's agent; under
 # --no-insight it is only a label.
