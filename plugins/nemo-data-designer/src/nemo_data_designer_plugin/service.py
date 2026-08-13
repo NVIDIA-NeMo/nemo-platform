@@ -25,6 +25,7 @@ class DataDesignerService(NemoService):
 
     def get_routers(self) -> list[RouterSpec]:
         from nemo_data_designer_plugin.functions.preview import PreviewFunction
+        from nemo_data_designer_plugin.jobs.build_dataset import BuildDatasetJob
         from nemo_data_designer_plugin.jobs.create import CreateJob
         from nemo_platform_plugin.authz import AuthzScope
         from nemo_platform_plugin.functions.routes import add_function_routes
@@ -47,6 +48,16 @@ class DataDesignerService(NemoService):
                 prefix="/v2/workspaces/{workspace}",
                 tag="Data Designer",
                 description="Job endpoints",
+            ),
+            RouterSpec(
+                add_job_routes(
+                    BuildDatasetJob,
+                    service_name="nemo-data-designer.build-dataset",
+                    authz=scope,
+                ),
+                prefix="/v2/workspaces/{workspace}",
+                tag="Data Designer",
+                description="Build lineage-aware evaluation datasets from Intake traces or existing datasets.",
             ),
         ]
 

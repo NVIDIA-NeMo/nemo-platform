@@ -4890,7 +4890,7 @@ paths:
         schema:
           $ref: '#/components/schemas/TraceFilter'
         description: Filter root-span-backed traces by id, session_id, root status,
-          root span started_at, evaluation_id, and test_case_id.
+          root span started_at, agent_name, evaluation_id, and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -10404,6 +10404,73 @@ components:
       type: object
       title: CrowdStrikeAIDRRailConfig
       description: Configuration data for the CrowdStrike AIDR API
+    DatasetLineage:
+      properties:
+        producer:
+          type: string
+          title: Producer
+          description: Component and contract version that materialized the dataset.
+        sources:
+          items:
+            $ref: '#/components/schemas/DatasetLineageSource'
+          type: array
+          minItems: 1
+          title: Sources
+          description: Upstream trace selections or dataset snapshots used to build
+            this dataset.
+      additionalProperties: false
+      type: object
+      required:
+      - producer
+      - sources
+      title: DatasetLineage
+      description: Dataset-level provenance shared by Files, Data Designer, and evaluation
+        consumers.
+    DatasetLineageSource:
+      properties:
+        kind:
+          type: string
+          title: Kind
+          description: Source kind, for example intake-traces or dataset.
+        ref:
+          type: string
+          title: Ref
+          description: Stable source reference understood by the producer.
+        record_count:
+          title: Record Count
+          description: Rows contributed by this source.
+          type: integer
+          minimum: 0.0
+        digest:
+          title: Digest
+          description: Optional digest of the exact selected source identities.
+          type: string
+        attributes:
+          additionalProperties:
+            type: string
+          type: object
+          title: Attributes
+          description: Small producer-supplied source attributes; row-level provenance
+            belongs in the dataset.
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - ref
+      title: DatasetLineageSource
+      description: 'One upstream source used to materialize a dataset snapshot.
+
+
+        ``kind`` and ``ref`` deliberately stay open strings. Dataset producers can
+        add new source
+
+        systems without changing the Files API, while consumers still get a common
+        lineage envelope.
+
+        Exact row-level provenance belongs in the dataset rows; this object describes
+        the snapshot as
+
+        a whole and carries a digest for the selected source set.'
     DatasetMetadataContent:
       properties:
         schema:
@@ -10432,6 +10499,26 @@ components:
           title: Schemas By Path
           description: Optional per-file row schemas keyed by relative path within
             the fileset. Each value may be inline JSON Schema or a schema_defs key.
+        data_path:
+          title: Data Path
+          description: Canonical file within the fileset that contains dataset rows.
+          type: string
+        record_count:
+          title: Record Count
+          description: Number of rows in the dataset snapshot.
+          type: integer
+          minimum: 0.0
+        grader_refs:
+          items:
+            type: string
+          type: array
+          title: Grader Refs
+          description: Distinct Platform metric references bound to rows in this dataset.
+        lineage:
+          allOf:
+          - $ref: '#/components/schemas/DatasetLineage'
+          description: Dataset-level provenance. Exact per-row provenance is stored
+            in the dataset itself.
       type: object
       title: DatasetMetadataContent
       description: Content for dataset-type filesets.
@@ -18665,6 +18752,9 @@ components:
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
+        agent_name:
+          title: Agent Name
+          type: string
         started_at:
           type: string
           format: date-time
@@ -18744,6 +18834,10 @@ components:
         test_case_id:
           description: Filter by root-span evaluation test case id.
           title: Test Case Id
+          type: string
+        agent_name:
+          description: Filter by root-span agent application name.
+          title: Agent Name
           type: string
       title: TraceFilter
       type: object

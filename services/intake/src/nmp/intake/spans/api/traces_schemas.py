@@ -36,6 +36,7 @@ class TraceFilter(BaseModel):
     started_at: DatetimeFilter | None = Field(default=None, description="Filter by root span start timestamp.")
     evaluation_id: str | None = Field(default=None, description="Filter by root-span evaluation id.")
     test_case_id: str | None = Field(default=None, description="Filter by root-span evaluation test case id.")
+    agent_name: str | None = Field(default=None, description="Filter by root-span agent application name.")
 
 
 class Trace(BaseModel):
@@ -59,6 +60,7 @@ class Trace(BaseModel):
         ),
     )
     evaluation_context: EvaluationContext | None = None
+    agent_name: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None
@@ -84,6 +86,7 @@ class Trace(BaseModel):
             input=text_for_mode(trace.input, mode=mode),
             output=text_for_mode(trace.output, mode=mode),
             evaluation_context=_evaluation_context(trace),
+            agent_name=trace.agent_name,
             started_at=trace.started_at,
             ended_at=trace.ended_at,
             duration_ms=trace.duration_ms,

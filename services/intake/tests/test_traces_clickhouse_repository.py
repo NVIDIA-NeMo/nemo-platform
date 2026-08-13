@@ -257,6 +257,7 @@ async def test_list_traces_maps_detailed_row():
     assert trace.project == "project-a"
     assert trace.evaluation_id == "experiment-a"
     assert trace.test_case_id == "case-a"
+    assert trace.agent_name == "agent-a"
     assert trace.input_tokens == 420
     assert trace.output_tokens == 310
     assert trace.cached_tokens == 128
@@ -390,6 +391,7 @@ async def test_root_filters_use_trace_index_columns():
         filters=TraceListFilter(
             workspace="workspace-a",
             evaluation_id="experiment-a",
+            agent_name="agent-a",
         ),
         page=1,
         page_size=10,
@@ -400,6 +402,8 @@ async def test_root_filters_use_trace_index_columns():
     assert "trace_roots.evaluation_id = %(filter_evaluation_id)s" in client.queries[0]
     assert "candidate_spans" not in client.queries[0]
     assert client.parameters[0]["filter_evaluation_id"] == "experiment-a"
+    assert "trace_roots.agent_name = %(filter_agent_name)s" in client.queries[0]
+    assert client.parameters[0]["filter_agent_name"] == "agent-a"
 
 
 def _trace_row(
@@ -422,6 +426,7 @@ def _trace_row(
         "project": "project-a",
         "evaluation_id": "experiment-a",
         "test_case_id": "case-a",
+        "agent_name": "agent-a",
         "started_at": started_at,
         "ended_at": ended_at,
         "status": "error",
