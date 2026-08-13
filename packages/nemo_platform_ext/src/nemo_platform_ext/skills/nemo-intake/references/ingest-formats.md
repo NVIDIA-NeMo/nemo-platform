@@ -132,8 +132,7 @@ the root span:
 | Test case | **`nemo.test_case.id`** |
 
 > Set `nemo.evaluation.name` to the Evaluation's **name** (not its id), matching the `evaluation_id`
-> field used by the JSON `evaluation_context` on the other endpoints. The pre-rename key
-> `nemo.experiment.id` is still accepted on ingest, so existing exporters keep working.
+> field used by the JSON `evaluation_context` on the other endpoints.
 
 Cost/token/model attributes are read from standard GenAI / OpenInference keys (first match wins):
 

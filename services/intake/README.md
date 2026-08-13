@@ -34,8 +34,7 @@ The Experiments feature captures evaluation runs as leaderboard rows. The flow:
 3. Log traces + evaluator results to an ingest endpoint. The Evaluation must exist first. Attach
    evaluation identity per endpoint: **ATIF/Harbor** and **chat-completions** carry it in the JSON body
    as `evaluation_context = {evaluation_id, test_case_id}`; **OTLP** carries it as root-span attributes
-   `nemo.evaluation.name` (the Evaluation name; legacy `nemo.experiment.id` still accepted) and
-   `nemo.test_case.id`.
+   `nemo.evaluation.name` (the Evaluation name) and `nemo.test_case.id`.
 4. Read the rollups — `GET /evaluations/{name}` and `.../{name}/sessions` — or view them in Studio
    (behind the `VITE_FF_EXPERIMENT` flag).
 
@@ -45,8 +44,7 @@ mapping, and a troubleshooting table, see the **`nemo-experiments-upload`** agen
 
 > Naming note: the entity/API is mid-rename. The API surfaces "Evaluation" and "Experiment Group",
 > but the stored entity is still `Experiment`. The OTLP evaluation attribute key is
-> `nemo.evaluation.name` (the pre-rename `nemo.experiment.id` is still accepted on ingest). This doc
-> follows the current in-code naming.
+> `nemo.evaluation.name`. This doc follows the current in-code naming.
 
 ## Local Development
 

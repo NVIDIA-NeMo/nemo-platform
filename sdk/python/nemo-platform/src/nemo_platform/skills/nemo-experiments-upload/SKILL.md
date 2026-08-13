@@ -192,7 +192,7 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 
 - **Create before you log.** The Evaluation entity must exist before any ingest referencing it — otherwise `400`.
 - **`evaluation_id` is the Evaluation's `name`, not its entity id.** But **`experiment_ids` holds the Experiment's `id`.** Different identifiers; easy to swap.
-- **OTLP uses the attribute key `nemo.evaluation.name`** (and `nemo.test_case.id`) — set it to the Evaluation's **name** on your root span, matching the `evaluation_id` field the JSON `evaluation_context` carries on the other endpoints. The pre-rename key `nemo.experiment.id` is still accepted on ingest, so older exporters keep associating.
+- **OTLP uses the attribute key `nemo.evaluation.name`** (and `nemo.test_case.id`) — set it to the Evaluation's **name** on your root span, matching the `evaluation_id` field the JSON `evaluation_context` carries on the other endpoints.
 - **The parent lives at `/experiments`; `/experiment-groups` is a deprecated hidden alias.** Prefer `/experiments`. Evaluations are created and logged under `/evaluations`.
 - **`metadata` is `dict[str, str]`** — stringify non-string values or you'll get a `422`.
 - **ATIF and chat-completions are `extra="forbid"`** (unknown keys → 422); `evaluation_context` itself is lenient (`extra="ignore"`).
