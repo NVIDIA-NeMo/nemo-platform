@@ -63,6 +63,11 @@ Gym runtime whose deps are installed (each Gym env ships its own
 ``requirements.txt``), and for handing a *ready-to-run* dataset file (``--no-serve
 --input`` bypasses Gym's prompt-templating/materialization). Service-side
 provisioning (docker/k8s, Ray) is out of scope here — that is the plugin's job.
+
+A consequence of that bypass: an environment whose rows carry no rendered prompt
+(``responses_create_params.input == []``, the prompt supplied by data-prep or by the
+environment's own agent) is still supported — the row travels through this runtime intact
+and the task simply has no ``inputs['instruction']``. See :func:`discover_gym_tasks`.
 """
 
 from __future__ import annotations
@@ -321,15 +326,22 @@ def _content_text(content: Any) -> str:
     return ""
 
 
-def _render_instruction(responses_create_params: Any) -> str:
-    """Derive a non-empty instruction from a row's ``responses_create_params``.
+def _render_instruction(responses_create_params: Mapping[str, Any]) -> str:
+    """Derive a task instruction from a row's ``responses_create_params``, or ``""`` when it carries none.
 
     Uses ``instructions`` (system prompt, when present) + ``input`` (a plain string
-    or an OpenAI message list). ``instruction`` is required on every task, so a row
-    that cannot produce one fails loudly rather than yielding a task with no prompt.
+    or an OpenAI message list).
+
+    An empty result is *not* an error. A whole class of Gym environments ships
+    ``"responses_create_params": {"input": []}`` and keeps the task elsewhere — ``gdpval``
+    in a top-level ``prompt``, ``legal_agent_bench`` in an ``instance_id`` its own agent
+    resolves, ``aviary``/``toolsandbox`` in nothing but a ``task_idx``. Their prompt is
+    materialized by Gym's data-preparation step or by the environment's agent, neither of
+    which this runner drives (``--no-serve --input`` hands Gym a ready-to-run dataset by
+    design). Nothing here can reconstruct it, and no single row field generalizes across
+    them, so the honest answer is no instruction rather than a guess. See
+    :func:`discover_gym_tasks` for what that means downstream.
     """
-    if not isinstance(responses_create_params, Mapping):
-        raise ValueError("row has no 'responses_create_params' mapping to render an instruction from")
     parts: list[str] = []
     instructions = responses_create_params.get("instructions")
     if isinstance(instructions, str) and instructions.strip():
@@ -343,10 +355,7 @@ def _render_instruction(responses_create_params: Any) -> str:
                 text = _content_text(item.get("content"))
                 if text:
                     parts.append(text)
-    instruction = "\n\n".join(part for part in parts if part).strip()
-    if not instruction:
-        raise ValueError("could not derive a non-empty instruction from responses_create_params.input")
-    return instruction
+    return "\n\n".join(part for part in parts if part).strip()
 
 
 def _read_jsonl(path: str | Path, *, tolerant: bool = False) -> list[dict[str, Any]]:
@@ -479,8 +488,8 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     """Build one :class:`AgentEvalTask` per distinct row in a Gym dataset (jsonl).
 
     Each task's id is the content hash of the row; its ``instruction`` is rendered
-    from ``responses_create_params.input``; the raw params are stashed under
-    ``inputs['gym_row']`` for provenance; and it is scored by a
+    from ``responses_create_params.input`` *when the row carries one*; the raw params
+    are stashed under ``inputs['gym_row']`` for provenance; and it is scored by a
     :class:`GymRewardMetric`. The dataset path is stamped on
     ``metadata['gym_dataset_path']``, and every *other* row key (the verifier's
     ground-truth fields, ``agent_ref``, and so on) on ``metadata['gym_row_extras']``.
@@ -494,24 +503,51 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     so they are by definition the same task) and are reported as a warning: repeated
     attempts are a run-level concern — ``GymRuntimeConfig.num_repeats`` — not something
     a dataset expresses by repeating a row, so duplicates almost always mean bad data.
+
+    **A row need not carry a prompt.** A sweep of the 106 built-in environments shipping example
+    data found 5 — ``aviary``, ``gdpval``, ``legal_agent_bench``, ``scicode`` and ``toolsandbox``
+    — whose every row ships ``responses_create_params.input == []``, letting Gym's data-prep step
+    or the environment's own agent materialize the prompt instead (see
+    :func:`_render_instruction`). Such a row yields a task with **no** ``inputs['instruction']``
+    key rather than a fabricated one, and is counted in a summary log line. This costs the
+    Gym path nothing: the runner never reads ``instruction`` — it re-materializes the source
+    row from ``inputs['gym_row']`` + ``metadata['gym_row_extras']`` and hands *that* to Gym,
+    and ``intent`` is a dataset label either way. It stays absent (not ``""``) so that
+    :meth:`AgentEvalTask.agent_prompt` still fails loudly for the runners that *do* need a
+    prompt — an instruction-less task must not reach an agent as an empty one.
+
+    ``responses_create_params`` itself remains required: Gym indexes into it unconditionally
+    (``rollout_collection._preprocess_rows_from_config``), so a row without it is rejected here
+    rather than crashing Gym mid-collection.
     """
     dataset = Path(dataset)
     tasks: list[AgentEvalTask] = []
     seen: set[str] = set()
     duplicates = 0
-    for row in _read_jsonl(dataset):
+    promptless = 0
+    for position, row in enumerate(_read_jsonl(dataset), 1):
+        params = row.get("responses_create_params")
+        if not isinstance(params, Mapping):
+            raise ValueError(
+                f"row {position} of {dataset} has no 'responses_create_params' mapping; Gym requires that key "
+                "on every dataset row"
+            )
         task_id = _canonical_row_hash(row)
         if task_id in seen:
             duplicates += 1
             continue
         seen.add(task_id)
+        instruction = _render_instruction(params)
+        if not instruction:
+            promptless += 1
         tasks.append(
             AgentEvalTask(
                 id=task_id,
                 intent=f"Gym row from {dataset.name}",
                 inputs={
-                    "instruction": _render_instruction(row.get("responses_create_params")),
-                    "gym_row": row.get("responses_create_params"),
+                    # Absent, not empty, when the row carries no prompt — see the docstring.
+                    **({"instruction": instruction} if instruction else {}),
+                    "gym_row": params,
                 },
                 metrics=list(metrics) if metrics is not None else [GymRewardMetric()],
                 metadata={
@@ -533,6 +569,16 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
             duplicates,
             dataset,
             len(tasks),
+        )
+    if promptless:
+        logger.info(
+            "%d of %d task(s) in %s carry no prompt in responses_create_params and were discovered without an "
+            "inputs['instruction']. Expected for environments whose prompt is built by Gym's data-prep step or by "
+            "their own agent (e.g. aviary, gdpval, legal_agent_bench, scicode, toolsandbox); the Gym runner does "
+            "not read the instruction. A runner that hands the task straight to an agent will reject these tasks.",
+            promptless,
+            len(tasks),
+            dataset,
         )
     if not tasks:
         raise ValueError(f"no rows found in Gym dataset {dataset}")
