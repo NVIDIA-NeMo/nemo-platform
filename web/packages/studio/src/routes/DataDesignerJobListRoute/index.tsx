@@ -21,7 +21,7 @@ export const DataDesignerJobListRoute: FC = () => {
         <PageHeader
           className="p-0"
           slotHeading="Data Designer"
-          slotDescription="Create and manage data designer jobs to generate or transform datasets."
+          slotDescription="Create and manage data generation and dataset build jobs."
           slotActions={
             <Button asChild color="brand">
               <Link to={getNewDataDesignerJobRoute(workspace)}>New Job</Link>
