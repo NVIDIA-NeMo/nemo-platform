@@ -120,8 +120,21 @@ target = FabricRunnerTarget(
         "harness": {"adapter_id": "nvidia.fabric.codex"},
     },
     model="<provider>/<model>",
+    skills=[
+        {
+            "name": "lta-analysis",
+            "fileset": "default/lta-analysis-v1",
+            "path": ".",
+        }
+    ],
 )
 ```
+
+Each optional `skills` entry points to an agentskills.io bundle in a Platform
+Fileset. `path` is relative to the Fileset root and must contain `SKILL.md`.
+The job downloads the bundle at run time, injects it through Fabric, and records
+the effective bundle digest in trial Skill provenance. Use a versioned Fileset
+name when reproducibility matters. Omit `skills` for the baseline arm.
 
 Do not use profile overlays. Fold the complete configuration into `config`.
 

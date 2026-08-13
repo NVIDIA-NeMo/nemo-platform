@@ -28,6 +28,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    FabricSkillFileset,
     GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
@@ -71,6 +72,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfileConfig,
 )
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
+from nemo_platform_plugin.run_dependencies import LocalRunError
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pytest_mock import MockerFixture
 
@@ -253,6 +255,80 @@ def test_resolve_target_builds_fabric_runtime_from_runner_target(tmp_path: Path)
     # A runner shapes its own request, so it contributes no prompt template or inference params.
     assert prompt_template is None
     assert params is None
+
+
+def test_resolve_target_stages_fileset_skills_for_fabric_runtime(tmp_path: Path, mocker: MockerFixture) -> None:
+    ctx = _job_context(tmp_path)
+    sdk = mocker.MagicMock(spec=NeMoPlatform)
+
+    def _download(*, local_path: str, fileset: str, workspace: str) -> None:
+        assert fileset == "skill-bundles"
+        assert workspace == "shared"
+        skill_dir = Path(local_path) / "skills" / "lta-analysis"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: lta-analysis\ndescription: Analyze LTA failures.\n---\nAnalyze the supplied logs.\n"
+        )
+
+    sdk.files.download.side_effect = _download
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
+        skills=[
+            FabricSkillFileset(
+                name="lta-analysis",
+                fileset="shared/skill-bundles",
+                path="skills/lta-analysis",
+            )
+        ],
+    )
+
+    target, _, _ = AgentEvalJob._resolve_target(fabric_target, ctx, sdk=sdk)
+
+    assert isinstance(target, FabricAgentRuntime)
+    assert [skill.name for skill in target._skill_set.skills] == ["lta-analysis"]
+    assert target._skill_set.skills[0].directory.joinpath("SKILL.md").is_file()
+    sdk.files.download.assert_called_once()
+
+
+def test_resolve_target_requires_sdk_for_fileset_skills(tmp_path: Path) -> None:
+    ctx = _job_context(tmp_path)
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
+        skills=[FabricSkillFileset(name="lta-analysis", fileset="skill-bundles")],
+    )
+
+    with pytest.raises(LocalRunError, match="requires a 'sdk: NeMoPlatform'"):
+        AgentEvalJob._resolve_target(fabric_target, ctx)
+
+
+def test_resolve_target_rejects_fileset_without_skill_document(tmp_path: Path, mocker: MockerFixture) -> None:
+    ctx = _job_context(tmp_path)
+    sdk = mocker.MagicMock(spec=NeMoPlatform)
+    sdk.files.download.side_effect = lambda **_: None
+    fabric_target = FabricRunnerTarget(
+        config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
+        skills=[FabricSkillFileset(name="lta-analysis", fileset="skill-bundles")],
+    )
+
+    with pytest.raises(ValueError, match="has no SKILL.md"):
+        AgentEvalJob._resolve_target(fabric_target, ctx, sdk=sdk)
+
+
+@pytest.mark.parametrize("path", ["../escape", "/absolute", "nested\\windows"])
+def test_fabric_skill_fileset_rejects_unsafe_paths(path: str) -> None:
+    with pytest.raises(ValueError, match="skill path"):
+        FabricSkillFileset(name="lta-analysis", fileset="skill-bundles", path=path)
+
+
+def test_fabric_target_rejects_duplicate_skill_names() -> None:
+    with pytest.raises(ValueError, match="skill names must be unique"):
+        FabricRunnerTarget(
+            config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}},
+            skills=[
+                FabricSkillFileset(name="lta-analysis", fileset="skill-v1"),
+                FabricSkillFileset(name="lta-analysis", fileset="skill-v2"),
+            ],
+        )
 
 
 def test_resolve_target_builds_harbor_runtime_from_runner_target(tmp_path: Path) -> None:

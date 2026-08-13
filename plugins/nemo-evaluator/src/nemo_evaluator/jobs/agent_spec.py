@@ -27,7 +27,8 @@ from nemo_evaluator_sdk.agent_eval.tasks import SemanticView
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.agents import AgentBase
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from nemo_platform_plugin.refs import ENTITY_REF_PATTERN, FilesetRef
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ModelTarget(BaseModel):
@@ -78,6 +79,41 @@ class CodexRunnerTarget(BaseModel):
     timeout_s: int = Field(default=600, ge=1, description="Per-task timeout for the Codex CLI, in seconds.")
 
 
+class FabricSkillFileset(BaseModel):
+    """An agentskills.io bundle staged from a Platform Fileset for a Fabric run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$",
+        description="agentskills.io skill name used for runtime injection and trial provenance.",
+    )
+    fileset: FilesetRef = Field(
+        pattern=ENTITY_REF_PATTERN,
+        description="Platform Fileset containing the skill bundle, as 'name' or 'workspace/name'.",
+    )
+    path: str = Field(
+        default=".",
+        min_length=1,
+        description="Relative directory inside the Fileset whose root contains SKILL.md.",
+    )
+
+    @field_validator("path")
+    @classmethod
+    def _relative_bundle_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("skill path must not be empty")
+        if "\\" in normalized:
+            raise ValueError("skill path must use forward slashes")
+        parts = normalized.split("/")
+        if normalized.startswith("/") or ".." in parts:
+            raise ValueError("skill path must stay inside the downloaded Fileset")
+        return normalized
+
+
 class FabricRunnerTarget(BaseModel):
     """Generate trials by driving an agent harness through the NeMo Fabric runtime.
 
@@ -107,6 +143,18 @@ class FabricRunnerTarget(BaseModel):
         description="Capture the agent trajectory as ATIF via NeMo Relay and attach it to trial evidence. "
         "Requires the NeMo Relay gateway in the run environment.",
     )
+    skills: list[FabricSkillFileset] = Field(
+        default_factory=list,
+        description="agentskills.io bundles staged from Platform Filesets and injected into the Fabric harness.",
+    )
+
+    @model_validator(mode="after")
+    def _unique_skill_names(self) -> Self:
+        names = [skill.name for skill in self.skills]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"Fabric skill names must be unique; duplicates: {duplicates}")
+        return self
 
 
 class HarborRunnerTarget(BaseModel):

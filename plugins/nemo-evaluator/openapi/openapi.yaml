@@ -2099,7 +2099,7 @@ components:
           - $ref: '#/components/schemas/ModelTarget'
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
-          - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/FabricRunnerTargetInput'
           - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
@@ -2271,7 +2271,7 @@ components:
           - $ref: '#/components/schemas/ModelTarget'
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
-          - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/FabricRunnerTargetOutput'
           - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
@@ -3567,7 +3567,7 @@ components:
       - kind
       title: EvidenceDescriptor
       description: Descriptor for a candidate trace, source, or artifact.
-    FabricRunnerTarget:
+    FabricRunnerTargetInput:
       properties:
         kind:
           type: string
@@ -3598,11 +3598,18 @@ components:
           description: Capture the agent trajectory as ATIF via NeMo Relay and attach
             it to trial evidence. Requires the NeMo Relay gateway in the run environment.
           default: true
+        skills:
+          items:
+            $ref: '#/components/schemas/FabricSkillFilesetInput'
+          type: array
+          title: Skills
+          description: agentskills.io bundles staged from Platform Filesets and injected
+            into the Fabric harness.
       additionalProperties: false
       type: object
       required:
       - config
-      title: FabricRunnerTarget
+      title: FabricRunnerTargetInput
       description: "Generate trials by driving an agent harness through the NeMo Fabric\
         \ runtime.\n\nFabric is harness-agnostic: the harness (Codex, Hermes, ...)\
         \ is selected by the supplied\nconfig's ``harness.adapter_id`` and is never\
@@ -3610,6 +3617,115 @@ components:
         \ when given.\n\nA run is described by exactly one complete ``config``. Fabric\
         \ 0.1.0rc2 removed profile overlays,\nso the former ``profiles`` field is\
         \ gone \u2014 fold any overlay you were passing into ``config``."
+    FabricRunnerTargetOutput:
+      properties:
+        kind:
+          type: string
+          const: fabric
+          title: Kind
+          default: fabric
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: Inline NeMo Fabric agent config (an ``agent.yaml`` as a JSON-shaped
+            mapping). Its ``harness.adapter_id`` selects the harness, e.g. ``nvidia.fabric.codex``
+            for Codex.
+        model:
+          title: Model
+          description: Optional ``provider/model`` slug applied as the config's default
+            model; the harness default is used when omitted.
+          type: string
+        timeout_s:
+          type: integer
+          minimum: 1.0
+          title: Timeout S
+          description: Per-task timeout for the Fabric run, in seconds.
+          default: 600
+        capture_trajectory:
+          type: boolean
+          title: Capture Trajectory
+          description: Capture the agent trajectory as ATIF via NeMo Relay and attach
+            it to trial evidence. Requires the NeMo Relay gateway in the run environment.
+          default: true
+        skills:
+          items:
+            $ref: '#/components/schemas/FabricSkillFilesetOutput'
+          type: array
+          title: Skills
+          description: agentskills.io bundles staged from Platform Filesets and injected
+            into the Fabric harness.
+      additionalProperties: false
+      type: object
+      required:
+      - config
+      title: FabricRunnerTargetOutput
+      description: "Generate trials by driving an agent harness through the NeMo Fabric\
+        \ runtime.\n\nFabric is harness-agnostic: the harness (Codex, Hermes, ...)\
+        \ is selected by the supplied\nconfig's ``harness.adapter_id`` and is never\
+        \ inferred from ``model``. ``model`` is applied as the\nconfig's default model\
+        \ when given.\n\nA run is described by exactly one complete ``config``. Fabric\
+        \ 0.1.0rc2 removed profile overlays,\nso the former ``profiles`` field is\
+        \ gone \u2014 fold any overlay you were passing into ``config``."
+    FabricSkillFilesetInput:
+      properties:
+        name:
+          type: string
+          maxLength: 64
+          minLength: 1
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          title: Name
+          description: agentskills.io skill name used for runtime injection and trial
+            provenance.
+        fileset:
+          type: string
+          title: Fileset
+          description: Platform Fileset containing the skill bundle, as 'name' or
+            'workspace/name'.
+        path:
+          type: string
+          minLength: 1
+          title: Path
+          description: Relative directory inside the Fileset whose root contains SKILL.md.
+          default: .
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - fileset
+      title: FabricSkillFilesetInput
+      description: An agentskills.io bundle staged from a Platform Fileset for a Fabric
+        run.
+    FabricSkillFilesetOutput:
+      properties:
+        name:
+          type: string
+          maxLength: 64
+          minLength: 1
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          title: Name
+          description: agentskills.io skill name used for runtime injection and trial
+            provenance.
+        fileset:
+          type: string
+          pattern: ^[\w\-.]+(/[\w\-.]+)?$
+          title: Fileset
+          description: Platform Fileset containing the skill bundle, as 'name' or
+            'workspace/name'.
+        path:
+          type: string
+          minLength: 1
+          title: Path
+          description: Relative directory inside the Fileset whose root contains SKILL.md.
+          default: .
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - fileset
+      title: FabricSkillFilesetOutput
+      description: An agentskills.io bundle staged from a Platform Fileset for a Fabric
+        run.
     FieldMapping:
       properties:
         input:
