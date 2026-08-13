@@ -40,8 +40,9 @@ class AdapterCreateParams(TypedDict, total=False):
     name: Required[str]
     """Name of the adapter.
 
-    Name must be unique in the workspace. Allowed characters: letters (a-z, A-Z),
-    digits (0-9), underscores, hyphens, and dots.
+    Name must be unique in the workspace. Name must start with a lowercase letter,
+    be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+    consecutive hyphens, cannot end with a hyphen).
     """
 
     description: str

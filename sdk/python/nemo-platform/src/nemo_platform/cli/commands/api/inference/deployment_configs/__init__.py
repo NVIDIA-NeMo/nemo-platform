@@ -47,7 +47,7 @@ def create_deployment_configs(
     name: Annotated[
         str | None,
         typer.Argument(
-            help="Name of the deployment configuration. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots. (required)"
+            help="Name of the deployment configuration. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)"
         ),
     ] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
@@ -143,7 +143,7 @@ def create_deployment_configs(
             "engine": "Inference engine selecting the compiler path for a deployment.The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them. (required)",
             "executor_config": "Compute + container settings shared by the docker and k8s executors.Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string) (required)",
             "model_spec": "What model to serve and how -- independent of the executor it runs on.Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string) (required)",
-            "name": "Name of the deployment configuration. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots. (required)",
+            "name": "Name of the deployment configuration. Name must start with a lowercase letter, be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens, cannot end with a hyphen). (required)",
         },
     )
 
