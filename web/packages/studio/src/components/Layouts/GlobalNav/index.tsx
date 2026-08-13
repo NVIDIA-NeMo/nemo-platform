@@ -3,6 +3,7 @@
 
 import { AppBar, Button, Flex, Stack, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { Breadcrumbs } from '@studio/components/Breadcrumbs';
+import { DocumentationLink } from '@studio/components/Layouts/GlobalNav/DocumentationLink';
 import { UserPopover } from '@studio/components/UserPopover';
 import { TOUR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
@@ -88,6 +89,7 @@ const GlobalNavContent: FC<GlobalNavContentProps> = ({
             )}
             {shouldMountAssistantTopBarChat && <AssistantTopBarChat />}
             <ThemeSwitch />
+            <DocumentationLink />
             <span data-tour="nav-user">
               <UserPopover />
             </span>
