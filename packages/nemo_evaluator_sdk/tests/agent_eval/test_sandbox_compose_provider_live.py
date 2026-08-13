@@ -256,7 +256,7 @@ async def test_ordered_override_and_profile_activate_expected_topology(tmp_path:
         compose_files=(base, override),
         service_topology=_topology("agent", "worker"),
         profiles=("extra",),
-        pull_policy="never",
+        pull_policy="missing",
         startup_timeout_seconds=60,
         shutdown_timeout_seconds=_SHUTDOWN_TIMEOUT_SECONDS,
     )

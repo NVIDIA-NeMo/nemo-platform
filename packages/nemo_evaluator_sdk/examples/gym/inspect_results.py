@@ -128,7 +128,7 @@ def load_bundle(bundle: Path) -> AgentEvalSummary:
     try:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise BundleFormatError(f"{summary_path} is not readable JSON): {exc}") from exc
+        raise BundleFormatError(f"{summary_path} is not readable JSON: {exc}") from exc
     # Checked explicitly because `model_validate` would *not* catch this: the field defaults to an
     # empty dict, so an older bundle loads cleanly and simply shows no per-task section.
     if "task_metric_values" not in payload:
