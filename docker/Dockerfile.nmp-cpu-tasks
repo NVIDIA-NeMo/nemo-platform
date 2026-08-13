@@ -11,6 +11,10 @@ FROM ${NMP_PYTHON_BASE} AS builder
 COPY --from=nmp-workspace . .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --only-group cpu-tasks --no-editable
+# Fabric targets execute inside this image. Install the supported harness
+# adapters into the existing task venv without removing the other CPU tasks.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --inexact --package nemo-evaluator-sdk --extra fabric --no-editable
 ARG NMP_COLLECT_SOURCES=0
 ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
 RUN --mount=type=cache,target=/root/.cache/uv \
