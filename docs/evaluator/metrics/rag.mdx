@@ -79,7 +79,7 @@ client.secrets.create(
 )
 ```
 
-Reference secrets by name in your model configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+Reference secrets by name in your model configuration. For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -121,7 +121,7 @@ RAGAS metrics accept inline model definitions for `judge_model` and, where requi
 
 The metric examples below use these inline values:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -209,11 +209,11 @@ Measures the fraction of relevant content retrieved compared to the total releva
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = ContextRecallMetric(judge_model=judge_model)
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-job.wait_until_done()
-result = job.get_result()
+result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -287,11 +287,11 @@ Measures the proportion of relevant chunks in the retrieved contexts (precision@
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = ContextPrecisionMetric(judge_model=judge_model)
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-job.wait_until_done()
-result = job.get_result()
+result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -359,10 +359,12 @@ Measures how relevant the retrieved contexts are to the user input.
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = ContextRelevanceMetric(judge_model=judge_model)
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "user_input": "What is the capital of France?",
@@ -371,8 +373,6 @@ job = evaluator.submit(
     ],
     config=RunConfig(parallelism=8),
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -426,10 +426,12 @@ Measures how many important entities from the reference are present in the retri
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = ContextEntityRecallMetric(judge_model=judge_model)
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "retrieved_contexts": ["Paris is the capital and largest city of France."],
@@ -438,8 +440,6 @@ job = evaluator.submit(
     ],
     config=RunConfig(parallelism=8),
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -494,11 +494,11 @@ Measures factual consistency of the response with the retrieved context.
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = FaithfulnessMetric(judge_model=judge_model)
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-job.wait_until_done()
-result = job.get_result()
+result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -569,11 +569,11 @@ Evaluates whether the response is grounded in the retrieved context without hall
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = ResponseGroundednessMetric(judge_model=judge_model)
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-job.wait_until_done()
-result = job.get_result()
+result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -653,10 +653,12 @@ Noise Sensitivity uses RAGAS mode-qualified outputs internally. The SDK normaliz
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = NoiseSensitivityMetric(judge_model=judge_model)
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "user_input": "What is the capital of France?",
@@ -670,8 +672,6 @@ job = evaluator.submit(
     ],
     config=RunConfig(parallelism=8),
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -737,15 +737,15 @@ Measures how relevant a response is to the user input using generated questions 
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 metric = ResponseRelevancyMetric(
     judge_model=judge_model,
     embeddings_model=embeddings_model,
     strictness=1,
 )
 
-job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-job.wait_until_done()
-result = job.get_result()
+result = LocalEvaluator().run_sync(metrics=[metric], dataset=offline_rows, config=RunConfig(parallelism=8))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -897,7 +897,7 @@ client.secrets.create(name="judge-api-key", value="<your-judge-key>")
 client.secrets.create(name="embedding-api-key", value="<your-embedding-key>")
 ```
 
-Reference secrets by name in your metric configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+Reference secrets by name in your metric configuration. For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(

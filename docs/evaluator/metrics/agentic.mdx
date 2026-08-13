@@ -64,11 +64,11 @@ Agentic metrics evaluate different aspects of agent behavior:
 
 | Metric | Use Case | Requires Judge | Plugin SDK Execution |
 |--------|----------|----------------|----------------------|
-| [**Tool Call Accuracy**](#tool-call-accuracy) | Evaluates tool/function call correctness | No | `run` + `submit` |
-| [**Tool Calling** (template)](#tool-calling-template) | Evaluates tool/function call correctness using Jinja templates | No | `run` + `submit` |
-| [**Topic Adherence**](#topic-adherence) | Measures topic focus in multi-turn conversations | Yes | `run` + `submit` |
-| [**Agent Goal Accuracy**](#agent-goal-accuracy) | Assesses goal completion, with or without reference. | Yes | `run` + `submit` |
-| [**Answer Accuracy**](#answer-accuracy) | Checks factual correctness | Yes | `run` + `submit` |
+| [**Tool Call Accuracy**](#tool-call-accuracy) | Evaluates tool/function call correctness | No | `submit` |
+| [**Tool Calling** (template)](#tool-calling-template) | Evaluates tool/function call correctness using Jinja templates | No | `submit` |
+| [**Topic Adherence**](#topic-adherence) | Measures topic focus in multi-turn conversations | Yes | `submit` |
+| [**Agent Goal Accuracy**](#agent-goal-accuracy) | Assesses goal completion, with or without reference. | Yes | `submit` |
+| [**Answer Accuracy**](#answer-accuracy) | Checks factual correctness | Yes | `submit` |
 | [**Trajectory Evaluation**](#trajectory-evaluation) | Evaluates decision-making across action sequence | Yes | Not exposed as a typed plugin SDK metric |
 
 <Note>
@@ -82,7 +82,7 @@ Before running agentic evaluations:
 
 1. **Workspace**: Have a workspace created. All remote resources, including secrets and jobs, are scoped to a workspace.
 2. **Judge LLM endpoint** *(for most metrics)*: Have access to an LLM that will serve as your judge.
-3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](/documentation/get-started/core-concepts/manage-secrets) to store the API key. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](/documentation/get-started/core-concepts/manage-secrets) to store the API key. For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 4. **Initialize the SDK**:
 
 ```python
@@ -1232,7 +1232,7 @@ judge_model = Model(
 
 For more details on secret management, refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets).
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ---
 

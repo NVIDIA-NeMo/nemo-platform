@@ -73,6 +73,8 @@ BLEU (Bilingual Evaluation Understudy) measures the similarity between machine-g
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import BLEUMetric
 
 metric = BLEUMetric(
@@ -80,8 +82,8 @@ metric = BLEUMetric(
     candidate="{{item.model_output}}",
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "reference_1": "The cat sits on the mat.",
@@ -95,8 +97,6 @@ job = evaluator.submit(
         },
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -174,6 +174,8 @@ Exact Match compares the candidate text with the reference text for perfect equa
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import ExactMatchMetric
 
 metric = ExactMatchMetric(
@@ -182,16 +184,14 @@ metric = ExactMatchMetric(
     description="Exact match for question answering",
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"correct_answer": "Paris", "model_answer": "Paris"},
         {"correct_answer": "London", "model_answer": "london "},
         {"correct_answer": "Berlin", "model_answer": "Munich"},
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -256,6 +256,8 @@ F1 measures token-level overlap between candidate and reference text. It balance
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import F1Metric
 
 metric = F1Metric(
@@ -263,8 +265,8 @@ metric = F1Metric(
     candidate="{{item.answer}}",
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "reference": "the capital of France is Paris",
@@ -273,8 +275,6 @@ job = evaluator.submit(
         {"reference": "a red apple", "answer": "red apple"},
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -348,6 +348,8 @@ Number Check performs numerical comparisons and operations on extracted values. 
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import NumberCheckMetric
 
 metric = NumberCheckMetric(
@@ -358,16 +360,14 @@ metric = NumberCheckMetric(
     description="Check if values match within tolerance",
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"expected": "100", "predicted": "100"},
         {"expected": "42.5", "predicted": "42.3"},
         {"expected": "99", "predicted": "101"},
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -435,6 +435,8 @@ ROUGE (Recall-Oriented Understudy for Gisting Evaluation) measures overlap betwe
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import ROUGEMetric
 
 metric = ROUGEMetric(
@@ -442,8 +444,8 @@ metric = ROUGEMetric(
     candidate="{{item.model_summary}}",
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "reference_summary": "The cat sat on the mat and looked out the window.",
@@ -455,8 +457,6 @@ job = evaluator.submit(
         },
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -547,6 +547,8 @@ String Check performs various string operations and comparisons. Supports equali
 <Tab title="Local Evaluation">
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import StringCheckMetric
 
 metric = StringCheckMetric(
@@ -555,16 +557,14 @@ metric = StringCheckMetric(
     right_template="{{item.must_contain}}",
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"output": "The answer is: 42", "must_contain": "answer"},
         {"output": "Result: Success", "must_contain": "Success"},
         {"output": "Error occurred", "must_contain": "Success"},
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")

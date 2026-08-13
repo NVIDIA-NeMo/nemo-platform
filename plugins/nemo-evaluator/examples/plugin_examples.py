@@ -47,7 +47,7 @@ from nemo_platform_plugin.client.errors import NotFoundError as ClientNotFoundEr
 from nemo_platform_plugin.files.client import AsyncFilesClient, FilesClient
 from nemo_platform_plugin.files.storage_config import HuggingfaceStorageConfig
 from nemo_platform_plugin.files.types import CreateFilesetRequest
-from nemo_platform_plugin.secrets.client import AsyncSecretsClient
+from nemo_platform_plugin.secrets.client import AsyncSecretsClient, SecretsClient
 from nemo_platform_plugin.secrets.types import PlatformSecretCreateRequest
 from pydantic import SecretStr
 
@@ -284,6 +284,43 @@ async def model_with_valid_secret(
 ) -> Model:
     """Return a model carrying the API-key secret that a submitted platform job needs."""
     secret_name = await ensure_submit_evaluator_api_key_secret(workspace, client)
+    return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
+
+
+def ensure_submit_evaluator_api_key_secret_sync(workspace: str, client: NeMoPlatform) -> str:
+    """Sync mirror of :func:`ensure_submit_evaluator_api_key_secret`."""
+    secret_name = DEFAULT_API_KEY_SECRET.lower().replace("_", "-")
+    secrets = client_from_platform(client, SecretsClient)
+    try:
+        secrets.get_secret(name=secret_name, workspace=workspace)
+    except ClientNotFoundError:
+        api_key = os.getenv(DEFAULT_API_KEY_SECRET) or os.getenv("NVIDIA_API_KEY") or os.getenv("NVIDIA_BUILD_API_KEY")
+        if api_key is None:
+            raise RuntimeError(
+                f"Submit-mode online evaluation needs a platform secret named '{secret_name}' in workspace "
+                f"'{workspace}'. Set NVIDIA_BUILD_API_KEY or NVIDIA_API_KEY to let this "
+                "example create it, or create it manually with: "
+                f"nemo secrets create {secret_name} --value '<api-key>' --workspace {workspace}"
+            ) from None
+        try:
+            secrets.create_secret(
+                body=PlatformSecretCreateRequest(name=secret_name, value=SecretStr(api_key)),
+                workspace=workspace,
+            )
+            print("API key secret created for workspace")
+        except ClientConflictError:
+            pass
+    return secret_name
+
+
+def model_with_valid_secret_sync(*, workspace: str, client: NeMoPlatform) -> Model:
+    """Sync mirror of :func:`model_with_valid_secret`.
+
+    The module-level ``model`` names an environment variable, which was correct while the plugin
+    ran evaluations in-process. A submitted job resolves ``api_key_secret`` against platform
+    secrets instead, so the online sync example needs the same substitution the async paths do.
+    """
+    secret_name = ensure_submit_evaluator_api_key_secret_sync(workspace, client)
     return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
 
 
@@ -534,7 +571,10 @@ def run_nmp_online_metric_example_sync_client(
         if is_online:
             metric = _online_exact_match_metric()
             config = RunConfigOnlineModel(parallelism=4, limit_samples=limit_samples)
-            run_kwargs["target"] = model
+            run_kwargs["target"] = model_with_valid_secret_sync(
+                workspace=DEFAULT_WORKSPACE,
+                client=client,
+            )
             run_kwargs["prompt_template"] = ONLINE_CHAT_PROMPT_TEMPLATE
 
         job = evaluator_plugin_client.submit(

@@ -17,6 +17,8 @@ An `EvaluationResult` contains:
 
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 import os
 
 from nemo_evaluator.sdk import Evaluator
@@ -31,15 +33,13 @@ evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"expected": "Paris", "output": "Paris"},
         {"expected": "Berlin", "output": "Munich"},
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 ```
 
 

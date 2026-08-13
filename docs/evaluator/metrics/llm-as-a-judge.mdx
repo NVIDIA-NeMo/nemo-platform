@@ -60,6 +60,8 @@ Evaluate responses using numerical range scores, such as a 1-5 scale:
 
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import (
     InferenceParams,
     JSONScoreParser,
@@ -113,8 +115,8 @@ metric = LLMJudgeMetric(
 )
 
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "input": "What is the capital of France?",
@@ -126,8 +128,6 @@ job = evaluator.submit(
         },
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean:.2f}, count={score.count}")
@@ -223,8 +223,8 @@ metric = LLMJudgeMetric(
     },
 )
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "input": "Tell me a joke",
@@ -232,9 +232,8 @@ job = evaluator.submit(
         },
         {"input": "Explain quantum physics", "output": "I don't know."},
     ],
+    aggregate_fields=("rubric_distribution", "mode_category"),
 )
-job.wait_until_done()
-result = job.get_result(aggregate_fields=("rubric_distribution", "mode_category"))
 
 print(result.aggregate_scores.model_dump(exclude_none=True))
 ```
@@ -246,15 +245,14 @@ By default, aggregate scores include `count`, `mean`, `min`, and `max`. Request 
 
 
 ```python
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"input": "What is the capital of France?", "output": "Paris."},
         {"input": "What is 2 + 2?", "output": "4."},
     ],
+    aggregate_fields=("std_dev", "variance"),
 )
-job.wait_until_done()
-result = job.get_result(aggregate_fields=("std_dev", "variance"))
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}:")
@@ -594,7 +592,7 @@ metric = {
 
 If your judge model endpoint requires an API key, store it as a secret. The secret is automatically resolved from the same workspace as your evaluation.
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ### Create a Secret
 

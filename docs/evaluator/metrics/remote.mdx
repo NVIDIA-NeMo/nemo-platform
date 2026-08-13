@@ -62,6 +62,8 @@ Use a generic remote metric when you need full control over the request payload 
 
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import JSONScoreParser, RemoteScore, RemoteMetric
 
 metric = RemoteMetric(
@@ -84,15 +86,13 @@ metric = RemoteMetric(
 )
 
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"reference": "The capital is Paris", "output": "Paris is the capital"},
         {"reference": "2", "output": "2"},
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}, count={score.count}")
@@ -118,8 +118,8 @@ metric = NemoAgentToolkitRemoteMetric(
 )
 
 
-job = evaluator.submit(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "id": "item_1",
@@ -132,8 +132,6 @@ job = evaluator.submit(
         }
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
@@ -237,7 +235,7 @@ result = job.get_result()
 
 If your remote endpoint requires authentication, store the API key as a platform secret and reference it from your metric:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 
 ```python
