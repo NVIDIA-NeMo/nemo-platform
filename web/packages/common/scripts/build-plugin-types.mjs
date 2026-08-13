@@ -4,7 +4,14 @@
 import { build } from 'rolldown';
 import { dts } from 'rolldown-plugin-dts';
 
-const OUT_DIR = 'dist/plugin-types';
+// Committed, not gitignored: `web-plugin-types` in CI regenerates this and
+// fails on a diff, so a change to the surface can't land without the artifact
+// out-of-tree plugins type against moving with it.
+const OUT_DIR = 'plugin-types';
+
+const LICENSE_BANNER =
+  '// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n' +
+  '// SPDX-License-Identifier: Apache-2.0';
 
 // Out-of-tree plugin repos can't resolve @nemo/common's sources: the package is
 // unpublished and its imports resolve against this workspace's node_modules. So
@@ -19,7 +26,10 @@ await build({
   platform: 'browser',
   external: [/^@nemo\/sdk/, /^@assistant-ui\//],
   plugins: [dts({ emitDtsOnly: true, tsconfig: 'tsconfig.plugin-types.json' })],
-  output: { dir: OUT_DIR, format: 'esm' },
+  // The generator owns the header. Emitting it here means the pre-commit
+  // copyright hook is a no-op on the artifact, so it can't rewrite the file out
+  // of byte-equality with a fresh generation and break the CI drift check.
+  output: { dir: OUT_DIR, format: 'esm', banner: LICENSE_BANNER },
 });
 
 console.log(`Plugin surface types written to ${OUT_DIR}/plugin.d.ts`);

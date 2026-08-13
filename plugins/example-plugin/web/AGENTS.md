@@ -102,14 +102,19 @@ import { AssistantChat, StudioDataView, useStudioDataViewState } from '@nemo/com
   side-effect imports those sources carry.
 - **Out-of-tree plugins vendor a generated `.d.ts` instead.** A plugin living in
   its own repository can't use `paths` into these sources — resolving them needs
-  this workspace's `node_modules`, including the unpublished `@nemo/sdk`. Run
-  `pnpm --filter @nemo/common types:plugin` here to roll the whole surface into
-  one `packages/common/dist/plugin-types/plugin.d.ts`, commit that file in the
-  plugin repo, and point its `paths` at it. Two modules stay external and need a
-  short local stub: `@nemo/sdk/generated/platform/schema` (`PlatformJobLog`,
-  `PlatformJobStatus` — reached only through `LogViewer` and the job-status
-  constants) and `class-variance-authority`. Regenerate whenever `plugin.ts`
-  changes; a stale copy compiles happily against a surface that no longer exists.
+  this workspace's `node_modules`, including the unpublished `@nemo/sdk`. The
+  whole surface is rolled up into `packages/common/plugin-types/plugin.d.ts`,
+  which is committed here; a plugin repo copies that file in and points its
+  `paths` at it. Two modules stay external and need a short local stub:
+  `@nemo/sdk/generated/platform/schema` (`PlatformJobLog`, `PlatformJobStatus` —
+  reached only through `LogViewer` and the job-status constants) and
+  `class-variance-authority`.
+- **Regenerate with `pnpm --filter @nemo/common types:plugin` when you change
+  `plugin.ts`.** The `web-plugin-types` CI job regenerates and fails on a diff,
+  so the artifact can't drift from the surface it describes. It can still drift
+  from a plugin's *copy* — nothing in this repo knows about those — and a stale
+  copy compiles happily against a surface that no longer exists, so refresh it
+  deliberately when the surface moves.
 - **CSS is already loaded.** The vendor build stubs stylesheet imports because
   Studio bundles the same files through its own graph. A plugin adds no CSS.
 - **`useStudioDataViewState` syncs to URL search params** on Studio's shared
