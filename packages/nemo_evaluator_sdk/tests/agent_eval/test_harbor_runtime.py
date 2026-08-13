@@ -114,17 +114,18 @@ def _reward_details_from_summary(
 ) -> dict[str, dict[str, list[str]]]:
     """Rebuild ``reward_payload_from_result``'s ``reward_details`` from the summary alone.
 
-    Inverts ``{task_id: [attempt]}`` back into the legacy ``{output: {value_str: [task_id, ...]}}``.
-    A ``None`` attempt is skipped: it is a trial that died before scoring, and the adapter drops
-    those too (it skips ``FAILED`` scores), so both sides agree on what is groupable.
+    Inverts ``{task_id: [value]}`` back into the legacy ``{output: {value_str: [task_id, ...]}}``.
+    Only numeric values are groupable: a dead trial has no value, and a label is not a reward.
+    The adapter drops both too (it skips ``FAILED`` scores and non-numeric outputs), so the two sides
+    agree on what is groupable.
     """
     key = f"{metric_type}.{output_name}"
     details: dict[str, dict[str, list[str]]] = {}
-    for task_id, attempts_by_key in summary.task_metric_attempts.items():
-        for attempt in attempts_by_key.get(key, []):
-            if attempt.value is None:
+    for task_id, values_by_key in summary.task_metric_values.items():
+        for record in values_by_key.get(key, []):
+            if not isinstance(record.value, bool | int | float):
                 continue
-            details.setdefault(output_name, {}).setdefault(str(float(attempt.value)), []).append(task_id)
+            details.setdefault(output_name, {}).setdefault(str(float(record.value)), []).append(task_id)
     return details
 
 
@@ -138,28 +139,29 @@ def _reward_stats_from_summary(
 
     Harbor builds it as ``reward_stats.setdefault(value, []).append(trial_result.trial_name)``: keyed
     by the raw numeric value, listing trial names. ``_trial_from_harbor_result`` stamps Harbor's
-    ``trial_name`` straight onto ``AgentEvalTrial.id``, which is the ``trial_id`` each attempt now
+    ``trial_name`` straight onto ``AgentEvalTrial.id``, which is the ``trial_id`` each record now
     carries, so this reproduces Harbor's shape rather than approximating it.
 
-    A ``None`` attempt is a trial that died before the verifier ran. Harbor has no reward to file it
-    under either — it lands in ``exception_stats``/``n_errors`` instead — so it is skipped here.
+    A ``None`` value is a trial that died before the verifier ran. Harbor has no reward to file it
+    under either — it lands in ``exception_stats``/``n_errors`` instead — so it is skipped here, as
+    is any non-numeric value: Harbor keys ``reward_stats`` by the reward value itself.
     """
     key = f"{metric_type}.{output_name}"
     stats: dict[str, dict[float, list[str]]] = {}
-    for attempts_by_key in summary.task_metric_attempts.values():
-        for attempt in attempts_by_key.get(key, []):
-            if attempt.value is None:
+    for values_by_key in summary.task_metric_values.values():
+        for record in values_by_key.get(key, []):
+            if not isinstance(record.value, bool | int | float):
                 continue
-            stats.setdefault(output_name, {}).setdefault(attempt.value, []).append(attempt.trial_id)
+            stats.setdefault(output_name, {}).setdefault(float(record.value), []).append(record.trial_id)
     return stats
 
 
 @pytest.mark.asyncio
-async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_attempts(tmp_path: Path) -> None:
+async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_values(tmp_path: Path) -> None:
     """The summary alone reproduces Harbor's ``reward_stats``, which is what AALGO-310 exists to enable.
 
     Harbor groups rewards by ``trial_name`` and keys them by the raw ``float | int``. Both were out of
-    reach while attempts were bare numbers indexed by position; now that each attempt names its trial,
+    reach while values were bare numbers indexed by position; now that each record names its trial,
     AALGO-441 can rebuild the real shape without re-walking ``result.scores``. The legacy
     ``reward_details`` (task-keyed, stringified) stays derivable too, so the rewiring loses nothing.
 
@@ -168,7 +170,7 @@ async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_attempt
     """
     job_dir = tmp_path / "job"
     job_dir.mkdir()
-    # Two attempts each for alpha (flaky) and beta (solved); one for gamma, whose verifier emitted
+    # Two trials each for alpha (flaky) and beta (solved); one for gamma, whose verifier emitted
     # no reward at all -> PARTIAL trial that still scores 0.0.
     _write_trial(job_dir, "alpha__a", "alpha", reward=1.0)
     _write_trial(job_dir, "alpha__b", "alpha", reward=0.0)
@@ -183,11 +185,11 @@ async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_attempt
     runner = HarborAgentTaskRunner(job_dir=job_dir, run_job=lambda: _record([]))
     result = await AgentEvaluator().run(tasks=tasks, target=runner, config=AgentEvalRunConfig())
 
-    attempts = {
+    recorded = {
         task_id: {key: [(a.trial_id, a.value) for a in records] for key, records in by_key.items()}
-        for task_id, by_key in result.summary.task_metric_attempts.items()
+        for task_id, by_key in result.summary.task_metric_values.items()
     }
-    assert attempts == {
+    assert recorded == {
         "alpha": {"harbor_reward.reward": [("alpha__a", 1.0), ("alpha__b", 0.0)]},
         "beta": {"harbor_reward.reward": [("beta__a", 1.0), ("beta__b", 1.0)]},
         "gamma": {"harbor_reward.reward": [("gamma__a", 0.0)]},

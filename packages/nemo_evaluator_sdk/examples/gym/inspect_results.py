@@ -31,14 +31,23 @@ import argparse
 import json
 from pathlib import Path
 
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalAttemptValue, AgentEvalSummary, attempt_values
+from nemo_evaluator_sdk.agent_eval.results import (
+    AgentEvalSummary,
+    TrialMetricValue,
+    numeric_metric_values,
+)
 from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
 
-#: Value at which an attempt counts as a pass, matching the SDK's pass@k definition (full credit).
+#: Value at which a trial counts as a pass, matching the SDK's pass@k definition (full credit).
 PASS_VALUE = 1.0
 
 #: Namespace the Gym runner's own aggregations are imported under, so they never collide with ours.
 RUNNER_PREFIX = "runner.gym."
+
+
+class BundleFormatError(Exception):
+    """A run bundle this script cannot read (wrong directory, or written by an older SDK)."""
+
 
 # --------------------------------------------------------------------------------------------------
 # Accessors — lift these into your own code.
@@ -64,38 +73,41 @@ def per_task_outcomes(
     metric_type: str,
     output_name: str,
 ) -> dict[str, list[float | None]]:
-    """Read ordered attempt values from the summary for one metric output.
+    """Read ordered trial values from the summary for one metric output.
 
-    ``None`` is a failed trial and therefore a failed attempt. An empty list means the task had no
-    usable measurement because its metric failed or omitted the output.
+    ``None`` is a failed trial and therefore did not pass. An empty list means the task had no
+    usable measurement — its metric failed, omitted the output, produced no trial at all, or scored
+    only non-numeric labels.
 
-    Use :func:`per_task_attempts` when you need to know *which* trial produced a value.
+    Use :func:`per_task_trial_values` when you need to know *which* trial produced a value.
     """
     return {
-        task_id: attempt_values(attempts)
-        for task_id, attempts in per_task_attempts(summary, metric_type=metric_type, output_name=output_name).items()
+        task_id: numeric_metric_values(records)
+        for task_id, records in per_task_trial_values(summary, metric_type=metric_type, output_name=output_name).items()
     }
 
 
-def per_task_attempts(
+def per_task_trial_values(
     summary: AgentEvalSummary,
     *,
     metric_type: str,
     output_name: str,
-) -> dict[str, list[AgentEvalAttemptValue]]:
-    """The same attempts, each still naming the trial that produced it.
+) -> dict[str, list[TrialMetricValue]]:
+    """The same values, each still naming the trial that produced it.
 
-    An attempt whose metric failed is absent rather than null, so lists for two different outputs of
+    A trial whose metric failed is absent rather than null, so lists for two different outputs of
     one task need not be the same length — ``trial_id``, not position, is what lines them up. It is
-    also the join key out to ``trials.jsonl``, which is where a failed attempt's error lives.
+    also the lookup key into ``trials.jsonl``, which is where a failed trial's error lives.
     """
     key = f"{metric_type}.{output_name}"
     return {
-        task_id: list(metric_attempts[key])
-        for task_id, metric_attempts in summary.task_metric_attempts.items()
-        if key in metric_attempts
+        task_id: list(by_metric[key]) for task_id, by_metric in summary.task_metric_values.items() if key in by_metric
     }
 
+
+# The typed view over the same data lives in the SDK: `summary.task_outcomes()` returns
+# `list[PerTaskOutcomes]`, each naming its task and metric. Use it when you want an object to pass
+# around rather than a dict keyed by strings.
 
 # --------------------------------------------------------------------------------------------------
 # Bundle loading (see the run.json manifest for the full artifact list).
@@ -103,17 +115,25 @@ def per_task_attempts(
 
 
 def load_bundle(bundle: Path) -> AgentEvalSummary:
-    """Load the persisted summary, including native and runner aggregates and per-task attempts.
+    """Load the persisted summary, including native and runner aggregates and per-task values.
 
-    Rejects a bundle written before ``task_metric_attempts`` existed rather than reading one. The
+    Rejects a bundle written before ``task_metric_values`` existed rather than reading one. The
     field defaults to empty, so an older bundle would otherwise load cleanly and simply show no
     per-task section — the reader would conclude the run had no per-task outcomes rather than that
     this script cannot see them.
     """
-    payload = json.loads((bundle / "summary.json").read_text(encoding="utf-8"))
-    if "task_metric_attempts" not in payload:
-        raise SystemExit(
-            f"{bundle / 'summary.json'} predates summary.task_metric_attempts, which this script reads "
+    summary_path = bundle / "summary.json"
+    if not summary_path.exists():
+        raise BundleFormatError(f"{bundle} is not a run bundle (no summary.json). Run run_gym_eval.py first.")
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise BundleFormatError(f"{summary_path} is not readable JSON): {exc}") from exc
+    # Checked explicitly because `model_validate` would *not* catch this: the field defaults to an
+    # empty dict, so an older bundle loads cleanly and simply shows no per-task section.
+    if "task_metric_values" not in payload:
+        raise BundleFormatError(
+            f"{summary_path} predates summary.task_metric_values, which this script reads "
             "per-task outcomes from. Re-run the eval to produce a current bundle."
         )
     return AgentEvalSummary.model_validate(payload)
@@ -149,17 +169,17 @@ def show_aggregates(summary: AgentEvalSummary) -> None:
 def show_per_task(by_task: dict[str, list[float | None]]) -> None:
     """Per-task outcomes: which tasks were solved, and how consistently.
 
-    An attempt passes on full credit (``>= PASS_VALUE``), matching how the SDK computes pass@k. A
-    ``None`` is a trial that died: it counts as an attempt and never as a pass, so a task that passed
+    A trial passes on full credit (``>= PASS_VALUE``), matching how the SDK computes pass@k. A
+    ``None`` is a trial that died: it counts toward ``n`` and never as a pass, so a task that passed
     once and crashed once reads as flaky rather than solved.
     """
-    print("\nPer-task outcomes (attempt values; an attempt passes at full credit)")
+    print("\nPer-task outcomes (trial values; a trial passes at full credit)")
     solved = flaky = failed = unmeasured = 0
     for task_id, values in sorted(by_task.items()):
         if not values:
             verdict, marker = "unmeasured", "?"
             unmeasured += 1
-            attempts = ""
+            shown = ""
         else:
             passes = sum(1 for value in values if value is not None and value >= PASS_VALUE)
             if passes == len(values):
@@ -171,8 +191,8 @@ def show_per_task(by_task: dict[str, list[float | None]]) -> None:
             else:
                 verdict, marker = "failed", "-"
                 failed += 1
-            attempts = ", ".join("died" if value is None else f"{value:g}" for value in values)
-        print(f"  {marker} {task_id[:16]}…  [{attempts}]  {verdict}")
+            shown = ", ".join("died" if value is None else f"{value:g}" for value in values)
+        print(f"  {marker} {task_id[:16]}…  [{shown}]  {verdict}")
     print(f"\n  {solved} solved · {flaky} flaky · {failed} failed · {unmeasured} unmeasured")
 
 
@@ -216,10 +236,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    if not (args.bundle / "summary.json").exists():
-        raise SystemExit(f"{args.bundle} is not a run bundle (no summary.json). Run run_gym_eval.py first.")
-
-    summary = load_bundle(args.bundle)
+    # The CLI boundary is where a bad bundle becomes an exit code; the accessors above just raise.
+    try:
+        summary = load_bundle(args.bundle)
+    except BundleFormatError as exc:
+        raise SystemExit(str(exc)) from exc
 
     show_aggregates(summary)
     by_task = per_task_outcomes(summary, metric_type=args.metric_type, output_name=args.output_name)

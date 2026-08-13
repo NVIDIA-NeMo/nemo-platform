@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary, _pass_at_k, attempt_values
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary, _pass_at_k, metric_values
 from nemo_evaluator_sdk.agent_eval.scores import (
     TRIAL_STATUS_DETAIL,
     AgentEvalDiagnostic,
@@ -94,7 +94,7 @@ def test_pass_at_k_unbiased_estimator() -> None:
 
 
 def test_task_pass_at_k_gated_and_uniform_across_metric_types() -> None:
-    # Two tasks x 2 attempts, scored by two reward metric types (mimicking Gym + Harbor) plus a label
+    # Two tasks x 2 trials, scored by two reward metric types (mimicking Gym + Harbor) plus a label
     # metric. t1 rewards [1.0, 0.0] (1/2 pass); t2 [1.0, 1.0] (2/2). pass@1 = mean(0.5, 1.0) = 0.75.
     gym, harbor, label = _ScoreMetric("gym_reward"), _ScoreMetric("harbor_reward"), _LabelMetric()
     tasks = [_task("t1", gym, harbor, label), _task("t2", gym, harbor, label)]
@@ -111,13 +111,17 @@ def test_task_pass_at_k_gated_and_uniform_across_metric_types() -> None:
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {score.name: score for score in summary.scores.scores}
 
-    assert {key: attempt_values(a) for key, a in summary.task_metric_attempts["t1"].items()} == {
+    # The label is *recorded* -- it is per-trial evidence -- but stays out of pass@k. Those two facts
+    # together are the whole point of keeping _TASK_METRIC_VALUE_SCHEMAS wider than the pass@k set.
+    assert {key: metric_values(a) for key, a in summary.task_metric_values["t1"].items()} == {
         "gym_reward.reward": [1.0, 0.0],
         "harbor_reward.reward": [1.0, 0.0],
+        "verdict.category": ["good"],
     }
-    assert {key: attempt_values(a) for key, a in summary.task_metric_attempts["t2"].items()} == {
+    assert {key: metric_values(a) for key, a in summary.task_metric_values["t2"].items()} == {
         "gym_reward.reward": [1.0, 1.0],
         "harbor_reward.reward": [1.0, 1.0],
+        "verdict.category": [],  # t2 declares the label metric but no verdict was scored for it
     }
     for metric_type in ("gym_reward", "harbor_reward"):  # uniform across runners
         assert by_name[f"{metric_type}.reward.pass@1"].mean == pytest.approx(0.75)
@@ -126,7 +130,7 @@ def test_task_pass_at_k_gated_and_uniform_across_metric_types() -> None:
 
 
 def test_partial_credit_is_not_a_pass() -> None:
-    # pass@k answers "did the agent solve the task", so only full credit counts: of attempts 0.5 and
+    # pass@k answers "did the agent solve the task", so only full credit counts: of values 0.5 and
     # 1.0, exactly one is a pass.
     tasks = [_task("t1", _ScoreMetric("reward"))]
     scores = [_score("t1", "a0", "reward", "reward", 0.5), _score("t1", "a1", "reward", "reward", 1.0)]
@@ -134,7 +138,7 @@ def test_partial_credit_is_not_a_pass() -> None:
     by_name = {s.name: s for s in AgentEvalSummary.from_scores(scores, tasks=tasks).scores.scores}
 
     assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.5)
-    assert by_name["reward.reward.pass@2"].mean == pytest.approx(1.0)  # one of the two attempts passed
+    assert by_name["reward.reward.pass@2"].mean == pytest.approx(1.0)  # one of the two trials passed
 
 
 def test_population_and_sample_stats_are_both_reported() -> None:
@@ -166,9 +170,9 @@ def test_sample_stats_undefined_for_a_single_value() -> None:
     assert aggregate.sample_variance is None
 
 
-def test_a_failed_trial_is_a_failed_attempt_not_an_absent_one() -> None:
+def test_a_failed_trial_counts_as_not_passing_not_absent() -> None:
     # The agent solved the task once and its other rollout died. Dropping the dead one would report
-    # pass@1 = 1.0 ("solved it first try") and make pass@2 vanish along with the attempt that earned it.
+    # pass@1 = 1.0 ("solved it first try") and make pass@2 vanish along with the trial that earned it.
     tasks = [_task("t1", _ScoreMetric("reward"))]
     scores = [
         _score("t1", "a0", "reward", "reward", 1.0),
@@ -178,13 +182,13 @@ def test_a_failed_trial_is_a_failed_attempt_not_an_absent_one() -> None:
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {s.name: s for s in summary.scores.scores}
 
-    assert attempt_values(summary.task_metric_attempts["t1"]["reward.reward"]) == [1.0, None]
-    assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.5)  # 1 of 2 attempts, not 1 of 1
+    assert metric_values(summary.task_metric_values["t1"]["reward.reward"]) == [1.0, None]
+    assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.5)  # 1 of 2 trials, not 1 of 1
     assert by_name["reward.reward.pass@2"].mean == pytest.approx(1.0)
     assert by_name["reward.reward.pass@1"].nan_count == 0  # the task was measured, so nothing is missing
 
 
-def test_a_metric_that_raised_leaves_the_attempt_unmeasured_rather_than_failed() -> None:
+def test_a_metric_that_raised_leaves_the_trial_unmeasured_rather_than_failed() -> None:
     # The distinction the trial_status detail exists for: a judge that timed out tells us nothing about
     # whether the agent passed, so it must not be charged to the agent the way a dead rollout is.
     # t1: [1.0, metric raised] -> n=1, pass@1 = 1.0.  t2: [1.0, 0.0] -> n=2, pass@1 = 0.5, pass@2 = 1.0.
@@ -199,16 +203,16 @@ def test_a_metric_that_raised_leaves_the_attempt_unmeasured_rather_than_failed()
     summary = AgentEvalSummary.from_scores(scores, tasks=tasks)
     by_name = {s.name: s for s in summary.scores.scores}
 
-    assert attempt_values(summary.task_metric_attempts["t1"]["reward.reward"]) == [1.0]
+    assert metric_values(summary.task_metric_values["t1"]["reward.reward"]) == [1.0]
     assert by_name["reward.reward.pass@1"].mean == pytest.approx(0.75)  # mean(1.0, 0.5), not mean(0.5, 0.5)
-    # t1 drops out of pass@2 for having fewer than k attempts. That is the estimator working as defined,
+    # t1 drops out of pass@2 for having fewer than k trials. That is the estimator working as defined,
     # not missing data, so it is not counted as nan.
     assert by_name["reward.reward.pass@2"].count == 1
     assert by_name["reward.reward.pass@2"].nan_count == 0
 
 
-def test_a_task_with_no_usable_attempt_is_reported_as_nan_count_uniformly_across_k() -> None:
-    # Every attempt on t2 was unmeasurable, so it contributes to no estimate at any k. Silently
+def test_a_task_with_no_usable_value_is_reported_as_nan_count_uniformly_across_k() -> None:
+    # Every trial on t2 was unmeasurable, so it contributes to no estimate at any k. Silently
     # narrowing the denominator is what made a shrunken pass@k indistinguishable from a clean one.
     tasks = [_task("t1", _ScoreMetric("reward")), _task("t2", _ScoreMetric("reward"))]
     scores = [
@@ -245,7 +249,7 @@ def test_a_trial_status_detail_that_is_not_a_failure_does_not_make_one() -> None
 
     assert is_trial_failure(scores[1]) is False
     by_name = {s.name: s for s in AgentEvalSummary.from_scores(scores, tasks=tasks).scores.scores}
-    assert by_name["reward.reward.pass@1"].mean == pytest.approx(1.0)  # n=1, not charged the bad attempt
+    assert by_name["reward.reward.pass@1"].mean == pytest.approx(1.0)  # n=1, not charged the bad trial
 
 
 @pytest.mark.asyncio
@@ -276,5 +280,5 @@ async def test_is_trial_failure_matches_what_the_evaluator_actually_stamps() -> 
 
     assert by_task["t1"].status is AgentEvalScoreStatus.FAILED
     assert by_task["t2"].status is AgentEvalScoreStatus.FAILED
-    assert is_trial_failure(by_task["t1"]) is True  # the trial died -> a failed attempt
-    assert is_trial_failure(by_task["t2"]) is False  # the metric died -> an unmeasured attempt
+    assert is_trial_failure(by_task["t1"]) is True  # the trial died -> did not pass
+    assert is_trial_failure(by_task["t2"]) is False  # the metric died -> unmeasured

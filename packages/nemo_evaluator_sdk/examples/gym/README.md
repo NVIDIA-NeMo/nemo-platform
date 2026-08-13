@@ -58,13 +58,17 @@ Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/...
 ## Read the results
 
 `inspect_results.py` reads `summary.json` and shows each result layer: run aggregates from
-`summary.scores`, ordered per-task attempts from `summary.task_metric_attempts`, and runner-owned
-aggregates under `runner.gym.*`. Per-task keys use `<metric_type>.<output>`; a `null` attempt is a trial
+`summary.scores`, ordered per-task values from `summary.task_metric_values`, and runner-owned
+aggregates under `runner.gym.*`. Per-task keys use `<metric_type>.<output>`; a `null` value is a trial
 that failed before scoring, while an empty list means the metric produced no usable measurement.
 
-Each attempt names the trial that produced it, so `trial_id` — not list position — is what joins two
-outputs of the same task, or joins out to `trials.jsonl`. An attempt whose metric failed is absent
+Each record names the trial that produced it, so `trial_id` — not list position — is what joins two
+outputs of the same task, or looks up `trials.jsonl`. A trial whose metric failed is absent
 rather than `null`, so two lists for one task need not be the same length.
+
+Values keep the metric's own type (a count stays an int, a judge's verdict stays a label), and each
+carries a `value_type` of `number` / `label` / `missing`. Use `numeric_metric_values` before doing
+arithmetic — it drops labels and keeps a dead trial's `null`.
 
 No bundle is checked in; the run above produces one. Give it a stable `--output-dir` and point the reader at the same path:
 

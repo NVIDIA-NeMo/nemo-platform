@@ -9,6 +9,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,7 @@ from nemo_platform.beta.evaluator.agent_eval.trials import AgentEvalTrial, Runne
 from nemo_platform.beta.evaluator.metrics.aggregation import compute_percentiles
 from nemo_platform.beta.evaluator.metrics.protocol import MetricOutput
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
-from nemo_platform.beta.evaluator.values.protocol import BooleanValue, ContinuousScore, DiscreteScore
+from nemo_platform.beta.evaluator.values.protocol import BooleanValue, ContinuousScore, DiscreteScore, Label
 from nemo_platform.beta.evaluator.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
@@ -34,16 +35,18 @@ from nemo_platform.beta.evaluator.values.results import (
     serialize_value,
     summary_aggregate_record,
 )
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
-#: Metric-output value schemas retained in the ordered per-task attempt mapping.
-_TASK_METRIC_VALUE_SCHEMAS = (ContinuousScore, DiscreteScore, BooleanValue)
+#: Metric-output value schemas retained in the ordered per-task value mapping. Broader than
+#: :data:`_PASS_AT_K_VALUE_SCHEMAS` on purpose: a :class:`TrialMetricValue` is per-trial evidence, so a
+#: count or a judge's label is worth keeping even though neither is a "did it pass?" signal.
+_TASK_METRIC_VALUE_SCHEMAS = (ContinuousScore, DiscreteScore, BooleanValue, Label)
 
-#: Metric-output value schemas eligible for pass@k (a per-attempt "did it pass?" signal). Labels,
+#: Metric-output value schemas eligible for pass@k (a per-trial "did it pass?" signal). Labels,
 #: discrete/count outputs, and free models (e.g. token measurements) are excluded.
 _PASS_AT_K_VALUE_SCHEMAS = (ContinuousScore, BooleanValue)
 
-#: Score value at or above which an attempt counts as a pass for pass@k. Full credit — pass@k answers
+#: Score value at or above which a trial counts as a pass for pass@k. Full credit — pass@k answers
 #: "did the agent solve the task", so partial credit is not a pass. Deliberately not configurable:
 #: it's a reporting-time interpretation, and making it tunable would yield pass@k numbers that look
 #: comparable across runs but aren't.
@@ -61,8 +64,53 @@ class AgentEvalMetricOutputCoverage(BaseModel):
     missing: int = Field(default=0, description="Scores where the output was expected but absent.")
 
 
-class AgentEvalAttemptValue(BaseModel):
-    """One attempt at a task under one metric output: which trial made it, and what it measured.
+#: Tokens :class:`TrialMetricValue` escapes non-finite floats as, and the floats they decode to.
+#: Strict JSON has no literal for these, so they travel as strings -- which is the whole reason the
+#: record carries ``value_type``: without it, a label that happens to read "NaN" is the same three
+#: bytes as a real NaN.
+_SPECIAL_FLOAT_TOKENS_MAP: dict[str, float] = {
+    "NaN": float("nan"),
+    "Infinity": float("inf"),
+    "-Infinity": float("-inf"),
+}
+
+
+def _escape_special_float(value: float) -> str:
+    """The token :data:`_SPECIAL_FLOAT_TOKENS_MAP` decodes back to ``value``.
+
+    Looked up rather than spelled out a second time, so the encode and decode directions cannot
+    drift apart. NaN needs :func:`math.isnan` rather than equality: it is the one float that does
+    not equal itself, so a lookup keyed by value would miss it.
+    """
+    for token, decoded in _SPECIAL_FLOAT_TOKENS_MAP.items():
+        if decoded == value or (math.isnan(decoded) and math.isnan(value)):
+            return token
+    raise ValueError(f"{value!r} is a finite float and needs no escape")
+
+
+class TrialMetricValueType(str, Enum):
+    """What kind of value one trial recorded under one metric output.
+
+    Deliberately coarser than the declared value schemas: JSON already round-trips int, float and
+    bool distinctly, so a ``continuous``/``discrete``/``boolean`` split would restate what the payload
+    already says and give a reader two sources of truth for one fact. The only thing JSON cannot
+    carry is whether a string is a number's escape or a label, and that is exactly what this
+    discriminates.
+    """
+
+    NUMBER = "number"
+    LABEL = "label"
+    MISSING = "missing"
+
+
+class TrialMetricValue(BaseModel):
+    """One trial's measured value under one metric output: which trial made it, and what it measured.
+
+    Values keep the type the metric produced them in -- a count stays an int, a flag stays a bool, a
+    judge's verdict stays the string it was -- because this is one trial's measurement, not a mean or
+    other aggregate. Look up the matching trial by ``trial_id`` (in ``result.trials`` or
+    ``trials.jsonl``); do not assume list index lines up across metric outputs. Read it through
+    :func:`numeric_metric_values` when you intend to do arithmetic.
 
     Frozen because these records are handed out by reference from the summary: a consumer rescaling
     values in place (Gym reports reward on 0-100 where we use 0-1) would otherwise rewrite the run's
@@ -73,36 +121,136 @@ class AgentEvalAttemptValue(BaseModel):
 
     trial_id: str = Field(
         description=(
-            "Identifier of the trial that made this attempt. Joins to AgentEvalTrial.id "
+            "Identifier of the trial that produced this value. Joins to AgentEvalTrial.id "
             "(trials.jsonl) and AgentEvalTaskScore.trial_id (scores.jsonl)."
         )
     )
-    value: float | None = Field(
+    # The default is never observed: `_derive_value_type` runs before validation and always supplies
+    # one. It exists so callers can write TrialMetricValue(trial_id=..., value=...) without
+    # restating what the value already says -- the type checker reads the signature, not the validator.
+    value_type: TrialMetricValueType = Field(
+        default=TrialMetricValueType.MISSING,
         description=(
-            "What the metric output measured, or None when the trial failed before it could be "
-            "measured -- an attempt that did not pass. Required rather than defaulted: None is a "
-            "load-bearing signal pass@k counts as a failed attempt, so an omitted value must not "
-            "quietly become one."
+            "Which kind of value this record holds: 'number' (float, int or bool), 'label' (a "
+            "categorical string), or 'missing' (the trial failed before it could be measured). "
+            "Always present in serialized output, because non-finite floats are escaped as strings "
+            "-- without it a genuine label reading 'NaN' and a real NaN are the same three bytes. "
+            "Derived from 'value' when omitted, so hand-built records and bundles written before "
+            "this field existed both load."
+        ),
+    )
+    value: float | int | bool | str | None = Field(
+        description=(
+            "What the metric output measured, in the type the metric produced it in -- a number, a "
+            "label, or None when the trial failed before it could be measured: a trial that did "
+            "not pass. Required rather than defaulted: None is a load-bearing signal pass@k counts "
+            "as not passing, so an omitted value must not quietly become one. None never means "
+            "'no value of this kind'; that is what value_type is for."
         ),
     )
 
-    @field_serializer("value")
-    def serialize_nan(self, value: float | None) -> float | str | None:
-        """Emit NaN as the string ``"NaN"``, matching :class:`MetricOutput`.
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_value_type(cls, data: Any) -> Any:
+        """Fill in ``value_type`` when absent, and decode the escaped-float form when present.
 
-        A metric may legitimately score an attempt NaN, and this is the first summary field to carry
-        a raw metric value rather than a filtered aggregate. ``json.dumps`` would write it as a bare
-        ``NaN`` token, which is valid Python but not valid JSON, so any strict reader of
-        ``summary.json`` would reject the whole bundle. Pydantic coerces the string back to a float
-        on load, so the round trip is lossless.
+        Runs *before* the union so the escape is undone while the discriminator is still readable:
+        afterwards pydantic's smart mode has already committed ``"NaN"`` to ``str``, and the record
+        would be a label whatever the type said.
         """
-        if isinstance(value, float) and math.isnan(value):
-            return "NaN"
+        if not isinstance(data, Mapping):
+            return data
+        value = data.get("value")
+        declared = data.get("value_type")
+
+        if declared is None:
+            # No discriminator: a hand-built record, or a bundle written before this field existed.
+            # The old encoding gave a string exactly one meaning -- the escape -- so honour that
+            # rather than reading a pre-widening NaN as the label "NaN". A label that genuinely
+            # reads "NaN" must therefore name its value_type explicitly.
+            if isinstance(value, str):
+                if value in _SPECIAL_FLOAT_TOKENS_MAP:
+                    return {
+                        **data,
+                        "value_type": TrialMetricValueType.NUMBER,
+                        "value": _SPECIAL_FLOAT_TOKENS_MAP[value],
+                    }
+                return {**data, "value_type": TrialMetricValueType.LABEL}
+            return {
+                **data,
+                "value_type": TrialMetricValueType.MISSING if value is None else TrialMetricValueType.NUMBER,
+            }
+
+        if TrialMetricValueType(declared) is TrialMetricValueType.NUMBER and isinstance(value, str):
+            decoded = _SPECIAL_FLOAT_TOKENS_MAP.get(value)
+            if decoded is None:
+                raise ValueError(
+                    f"value_type='number' but value {value!r} is not one of the escaped-float tokens "
+                    f"{sorted(_SPECIAL_FLOAT_TOKENS_MAP)}; a categorical value must declare value_type='label'"
+                )
+            return {**data, "value": decoded}
+        return data
+
+    @model_validator(mode="after")
+    def _value_matches_its_type(self) -> TrialMetricValue:
+        """Re-narrow the union, so a record cannot claim one kind and carry another."""
+        if self.value_type is TrialMetricValueType.MISSING:
+            if self.value is not None:
+                raise ValueError("value_type='missing' requires value None (a trial that died before measurement)")
+        elif self.value_type is TrialMetricValueType.LABEL:
+            if not isinstance(self.value, str):
+                raise ValueError(f"value_type='label' requires a string value, got {type(self.value).__name__}")
+        elif not isinstance(self.value, bool | int | float):
+            raise ValueError(f"value_type='number' requires a numeric value, got {type(self.value).__name__}")
+        return self
+
+    @field_serializer("value")
+    def serialize_nan(self, value: float | int | bool | str | None) -> float | int | bool | str | None:
+        """Escape non-finite floats as strings, so ``summary.json`` stays strict JSON.
+
+        A metric may legitimately score a trial NaN, and this is the first summary field to carry
+        a raw metric value rather than a filtered aggregate. ``json.dumps`` would write a bare ``NaN``
+        or ``Infinity`` token, which is valid Python but not valid JSON, so any strict reader of
+        ``summary.json`` would reject the whole bundle. ``value_type`` says which of these strings is
+        an escape and which is a label, so the round trip is lossless in both directions.
+
+        This is deliberately *wider* than :meth:`MetricOutput.serialize_nan`, which escapes NaN only
+        and has no decoding validator -- an infinite value reaches ``scores.jsonl`` as ``null``.
+        Collapsing the SDK's several non-finite-float escapes into one pair belongs in ``values/``.
+        """
+        if isinstance(value, float) and not math.isfinite(value):
+            return _escape_special_float(value)
         return value
 
 
+#: One task's recorded values, keyed ``"<metric_type>.<output>"``. Named because the nesting is
+#: otherwise spelled out at every producer, consumer and local that touches it, and because the key
+#: format is the part a reader cannot infer from ``dict[str, ...]``.
+TrialValuesByMetric = dict[str, list[TrialMetricValue]]
+
+
+class PerTaskOutcome(BaseModel):
+    """Every trial's value at one task under one metric output."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    metric_name: str = Field(description="'<metric_type>.<output>', e.g. 'gym_reward.reward'.")
+    trials: list[TrialMetricValue] = Field(
+        description="Values in trial order. A value of None is a trial that died before scoring."
+    )
+
+
+class PerTaskOutcomes(BaseModel):
+    """One task's values across every metric output that measured it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(description="The task these outcomes belong to.")
+    outcomes: list[PerTaskOutcome] = Field(description="One entry per metric output, sorted by metric_name.")
+
+
 class AgentEvalSummary(BaseModel):
-    """Aggregated scores, coverage, per-task attempt values, and run counts for an agent-eval run."""
+    """Aggregated scores, coverage, per-task metric values, and run counts for an agent-eval run."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -193,49 +341,59 @@ class AgentEvalSummary(BaseModel):
             }
         ],
     )
-    task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]] = Field(
+    task_metric_values: dict[str, TrialValuesByMetric] = Field(
         default_factory=dict,
         description=(
-            "Per task, the attempts each '<metric_type>.<output>' measured, in trial order. Each "
-            "attempt names the trial that made it, so attempts join across keys -- and out to "
-            "trials.jsonl and scores.jsonl -- by trial_id. A failed trial has value None: an attempt "
-            "that did not pass. An unmeasured attempt (metric failed, output absent) has no entry at "
-            "all, so each key's list is independent: align by trial_id, never by position. An empty "
-            "list means nothing was measured, including a task that produced no trial."
+            "Per task, the values each '<metric_type>.<output>' measured, in trial order. Each "
+            "record names the trial that produced it, so values join across keys -- and out to "
+            "trials.jsonl and scores.jsonl -- by trial_id. Values keep the type the metric produced "
+            "them in: a count stays an int, a flag stays a bool, a judge's verdict stays a label -- "
+            "read them through numeric_metric_values() before doing arithmetic. A failed trial has "
+            "value None: a trial that did not pass. An unmeasured trial (metric failed, output "
+            "absent) has no entry at all, so each key's list is independent: align by trial_id, "
+            "never by position. An empty list means nothing was measured, including a task that "
+            "produced no trial."
         ),
         examples=[
             {
                 "contract-review-msa-indemnity": {
                     "harbor_reward.reward": [
-                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value": 1.0},
-                        {"trial_id": "contract-review-msa-indemnity__t7m2xb4", "value": 0.0},
-                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value": 1.0},
+                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value_type": "number", "value": 1.0},
+                        {"trial_id": "contract-review-msa-indemnity__t7m2xb4", "value_type": "number", "value": 0.0},
+                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value_type": "number", "value": 1.0},
                     ],
-                    # t7m2xb4 is absent here rather than null: its judge timed out, so that attempt
+                    # A count stays an int, and t7m2xb4's judge verdict is kept as a label -- neither
+                    # is pass@k-eligible, but both are per-trial evidence worth recording.
+                    "steps.count": [
+                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value_type": "number", "value": 14},
+                        {"trial_id": "contract-review-msa-indemnity__t7m2xb4", "value_type": "number", "value": 31},
+                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value_type": "number", "value": 12},
+                    ],
+                    # t7m2xb4 is absent here rather than null: its judge timed out, so that trial
                     # went unmeasured. Index 1 is therefore a different trial in each of these lists.
                     "rubric_judge.criteria_pass_rate": [
-                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value": 0.75},
-                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value": 1.0},
+                        {"trial_id": "contract-review-msa-indemnity__k3f9wq2", "value_type": "number", "value": 0.75},
+                        {"trial_id": "contract-review-msa-indemnity__9jr4vd1", "value_type": "number", "value": 1.0},
                     ],
                 },
                 "nda-scope-carveouts": {
-                    # p2hn8sc died in the sandbox, so it is null in every key: an attempt that
+                    # p2hn8sc died in the sandbox, so it is 'missing' in every key: a trial that
                     # happened and did not pass, as opposed to one that was never measured.
                     "harbor_reward.reward": [
-                        {"trial_id": "nda-scope-carveouts__p2hn8sc", "value": None},
-                        {"trial_id": "nda-scope-carveouts__w5db3qy", "value": 1.0},
-                        {"trial_id": "nda-scope-carveouts__z8kt1nf", "value": 0.0},
+                        {"trial_id": "nda-scope-carveouts__p2hn8sc", "value_type": "missing", "value": None},
+                        {"trial_id": "nda-scope-carveouts__w5db3qy", "value_type": "number", "value": 1.0},
+                        {"trial_id": "nda-scope-carveouts__z8kt1nf", "value_type": "number", "value": 0.0},
                     ],
-                    "rubric_judge.criteria_pass_rate": [
-                        {"trial_id": "nda-scope-carveouts__p2hn8sc", "value": None},
-                        {"trial_id": "nda-scope-carveouts__w5db3qy", "value": 0.6},
-                        {"trial_id": "nda-scope-carveouts__z8kt1nf", "value": 0.2},
+                    "rubric_judge.verdict": [
+                        {"trial_id": "nda-scope-carveouts__p2hn8sc", "value_type": "missing", "value": None},
+                        {"trial_id": "nda-scope-carveouts__w5db3qy", "value_type": "label", "value": "compliant"},
+                        {"trial_id": "nda-scope-carveouts__z8kt1nf", "value_type": "label", "value": "overbroad"},
                     ],
                 },
                 # Requested, but the runner returned no trial for it: keys declared, nothing measured.
                 "merger-hsr-filing-threshold": {
                     "harbor_reward.reward": [],
-                    "rubric_judge.criteria_pass_rate": [],
+                    "rubric_judge.verdict": [],
                 },
             }
         ],
@@ -257,6 +415,24 @@ class AgentEvalSummary(BaseModel):
         """
         return self.scores.score(name)
 
+    def task_outcomes(self) -> list[PerTaskOutcomes]:
+        """:attr:`task_metric_values` as models that name their own keys, sorted by task then metric.
+
+        A read-time *view*, not the wire format. The field itself stays a nested dict because it is
+        persisted per run: repeating "task_id"/"metric_name" on every row would grow ``summary.json``
+        for no new information, and lookup by task and metric stays O(1). Reach for this when you
+        want a typed object to pass around or to hand to a template.
+        """
+        return [
+            PerTaskOutcomes(
+                task_id=task_id,
+                outcomes=[
+                    PerTaskOutcome(metric_name=key, trials=list(records)) for key, records in sorted(by_key.items())
+                ],
+            )
+            for task_id, by_key in sorted(self.task_metric_values.items())
+        ]
+
     @staticmethod
     def from_scores(
         scores: Sequence[AgentEvalTaskScore],
@@ -270,16 +446,16 @@ class AgentEvalSummary(BaseModel):
         ``runner.<name>.``), merged in so a backend's own figures are addressable the same way as ours.
         """
         task_list = list(tasks) if tasks is not None else None
-        task_metric_attempts = _task_metric_attempts(scores, task_list)
+        task_metric_values = _task_metric_values(scores, task_list)
         return AgentEvalSummary(
             scores=_aggregate_scores(
                 scores,
                 task_list,
                 extra_scores,
-                task_metric_attempts=task_metric_attempts,
+                task_metric_values=task_metric_values,
             ),
             metric_coverage=_metric_coverage(scores, task_list),
-            task_metric_attempts=task_metric_attempts,
+            task_metric_values=task_metric_values,
             task_count=len(task_list) if task_list is not None else len({score.task_id for score in scores}),
             trial_count=len({score.trial_id for score in scores}),
             score_count=len(scores),
@@ -599,8 +775,8 @@ def _format_score_errors(
 ) -> list[str]:
     """Render the failed-score detail section, separating a failed trial from a failed metric.
 
-    Both arrive as ``FAILED``, but they mean different things to a reader: a failed trial is an
-    attempt the agent is answerable for, a failed metric is a measurement that never happened. The
+    Both arrive as ``FAILED``, but they mean different things to a reader: a failed trial is one
+    the agent is answerable for, a failed metric is a measurement that never happened. The
     dataset path has no equivalent distinction to make, so this section is agent-eval's own rather
     than a reuse of :func:`format_error_details`.
     """
@@ -628,7 +804,7 @@ def _aggregate_scores(
     tasks: Sequence[AgentEvalTask] | None,
     extra_scores: Sequence[AggregateScore] = (),
     *,
-    task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]] | None = None,
+    task_metric_values: dict[str, TrialValuesByMetric],
 ) -> AggregatedMetricResult:
     """Aggregate per-metric-output, per-semantic-view, and task-level pass@k values into range scores.
 
@@ -661,29 +837,55 @@ def _aggregate_scores(
     for view_name, (values, total) in sorted(_semantic_view_values(scores, tasks).items()):
         aggregated.append(_aggregate_range_score(f"view.{view_name}", values, total))
 
-    # if the caller already passed attempts → use them (no second scan of all scores)
-    # if not (None) → compute them inside _aggregate_scores (no need to pass them in)
-    attempts = task_metric_attempts if task_metric_attempts is not None else _task_metric_attempts(scores, tasks)
-    aggregated.extend(_task_pass_at_k_scores(attempts, tasks))
+    # Required rather than recomputed here: the summary needs the same mapping, and deriving it
+    # twice is what this rewiring exists to stop. The one caller builds it once and shares it.
+    aggregated.extend(_task_pass_at_k_scores(task_metric_values, tasks))
     aggregated.extend(extra_scores)
 
     return AggregatedMetricResult(scores=aggregated)
 
 
-def attempt_values(attempts: Sequence[AgentEvalAttemptValue]) -> list[float | None]:
-    """The bare per-attempt values, for consumers scoring attempts without caring which trial made them.
+def metric_values(records: Sequence[TrialMetricValue]) -> list[float | int | bool | str | None]:
+    """The bare per-trial values, for consumers reading records without caring which trial made them.
 
-    Preserves order, cardinality, and the None-versus-absent distinction exactly as recorded, so
-    anything counting attempts (pass@k above all) reads the same sequence it would have read before
-    attempts carried a trial id.
+    Preserves order, cardinality, type, and the None-versus-absent distinction exactly as recorded.
+    Reach for :func:`numeric_metric_values` before doing arithmetic: this list may hold labels, and
+    ``value >= 1.0`` raises on one.
     """
-    return [attempt.value for attempt in attempts]
+    return [record.value for record in records]
+
+
+def numeric_metric_values(records: Sequence[TrialMetricValue]) -> list[float | None]:
+    """The values that can be compared and averaged, as floats, for consumers doing arithmetic.
+
+    A number becomes a float (a bool becomes 1.0/0.0, matching how a pass/fail flag has always been
+    read). A dead trial stays ``None`` -- it is a trial that definitively did not pass, and
+    dropping it would let a crashed rollout flatter the agent.
+
+    A label is **dropped**, not zeroed. A categorical verdict says nothing about whether the agent
+    solved the task, so it is an unmeasured trial rather than a failed one -- the same reading this
+    module gives a metric that raised (see :func:`is_trial_failure`). Charging it as a failure would
+    misattribute a measurement problem to the agent, and counting it as a pass is not defined.
+
+    A label can land under a score-like key: :func:`validate_metric_result` coerces and discards, so
+    a metric declaring a continuous score may still return the string ``"0.9"``, and an output one
+    task never declared may be score-like on another. This is where that stops being arithmetic.
+    """
+    values: list[float | None] = []
+    for record in records:
+        value = record.value
+        if value is None:
+            values.append(None)
+        elif isinstance(value, bool | int | float):
+            # bool first: it is a subclass of int, and False must become 0.0 rather than be dropped.
+            values.append(float(value))
+    return values
 
 
 def _pass_at_k(n: int, c: int, k: int) -> float:
     """Unbiased pass@k estimator (Chen et al., 2021): ``1 - C(n-c, k) / C(n, k)``.
 
-    The probability that at least one of ``k`` samples drawn without replacement from ``n`` attempts
+    The probability that at least one of ``k`` samples drawn without replacement from ``n`` trials
     (``c`` of them passing) is a pass. Caller guarantees ``1 <= k <= n``.
     """
     if n - c < k:
@@ -697,7 +899,7 @@ def _pass_at_k(n: int, c: int, k: int) -> float:
 def _scorelike_outputs(tasks: Sequence[AgentEvalTask] | None) -> set[tuple[str, str]]:
     """``(metric_type, output_name)`` pairs whose declared value is a score (continuous or boolean).
 
-    pass@k is only meaningful for a per-attempt pass/fail signal, so labels, discrete/count outputs,
+    pass@k is only meaningful for a per-trial pass/fail signal, so labels, discrete/count outputs,
     and free models (e.g. token measurements) are excluded. Needs task metric specs; with no tasks
     the set is empty and pass@k is skipped.
     """
@@ -713,11 +915,11 @@ def _scorelike_outputs(tasks: Sequence[AgentEvalTask] | None) -> set[tuple[str, 
     return scorelike
 
 
-def _task_metric_attempts(
+def _task_metric_values(
     scores: Sequence[AgentEvalTaskScore],
     tasks: Sequence[AgentEvalTask] | None,
-) -> dict[str, dict[str, list[AgentEvalAttemptValue]]]:
-    """Ordered per-attempt records per task, keyed ``<metric_type>.<output>``.
+) -> dict[str, TrialValuesByMetric]:
+    """Ordered per-trial records per task, keyed ``<metric_type>.<output>``.
 
     ``task-a`` declares ``reward.score`` (continuous), ``steps.count`` (discrete) and
     ``usage.prompt_tokens`` (a free model) and runs four trials::
@@ -728,40 +930,42 @@ def _task_metric_attempts(
              t3  reward 0.0        steps 7  usage 1100
 
         out  {"task-a": {"reward.score": [(t0, 1.0), (t2, None), (t3, 0.0)],
-                         "steps.count":  [(t0, 5.0), (t1, 9.0), (t2, None), (t3, 7.0)]}}
+                         "steps.count":  [(t0, 5), (t1, 9), (t2, None), (t3, 7)]}}
 
-    (shown as ``(trial_id, value)`` pairs; each is an :class:`AgentEvalAttemptValue`)
+    (shown as ``(trial_id, value)`` pairs; each is an :class:`TrialMetricValue`)
 
     ``usage.prompt_tokens`` is absent because its declared schema is not in
     :data:`_TASK_METRIC_VALUE_SCHEMAS`; t1 is missing from ``reward.score`` but present in
-    ``steps.count``; t2 is ``None`` in both.
+    ``steps.count``; t2 is ``None`` in both. ``steps.count`` keeps its ints -- values are recorded in
+    the type the metric produced them in, not flattened to float.
 
     Which keys a task gets:
 
     - declared by its metric spec under :data:`_TASK_METRIC_VALUE_SCHEMAS` -> kept
     - declared under any other schema -> dropped, even when the emitted value is numeric, so a
       ``MetricOutputSpec.model("prompt_tokens", TokenCount)`` measurement never becomes a key
-    - undeclared, but some score emitted a numeric value for it -> kept
-    - ``tasks is None`` -> no specs to filter against, so every numeric output observed is kept
+    - undeclared, but some score emitted a recordable value for it -> kept
+    - ``tasks is None`` -> no specs to filter against, so every recordable output observed is kept
 
     What each score contributes to its key, in trial order:
 
-    - failed trial (:func:`is_trial_failure`) -> value ``None``, an attempt that did not pass
-    - failed metric, or the output absent -> no entry; the attempt is unmeasured, not unsuccessful
-    - otherwise -> the numeric value
+    - failed trial (:func:`is_trial_failure`) -> value ``None``, a trial that did not pass
+    - failed metric, or the output absent -> no entry; the trial is unmeasured, not unsuccessful
+    - a value a metric can emit (number, bool or label) -> that value, in its own type
+    - anything else (a dict, a list, a literal null) -> no entry; see :func:`_native_value`
 
     pass@k needs that asymmetry, and it is why a list is indexed by surviving measurement rather than
-    by attempt: above, index 1 is t2 under ``reward.score`` but t1 under ``steps.count``. Every entry
+    by trial: above, index 1 is t2 under ``reward.score`` but t1 under ``steps.count``. Every entry
     therefore names its trial, and ``trial_id`` — not position — is what joins two keys of one task,
     or joins out to ``trials.jsonl`` and ``scores.jsonl``. Ids are recorded as the runner reported
-    them and are never deduplicated: two attempts sharing an id stay two attempts, so a runner that
+    them and are never deduplicated: two records sharing an id stay two records, so a runner that
     reuses one costs pass@k nothing.
     """
     output_keys: dict[str, set[tuple[str, str]]] = {}
-    # Per task, the outputs it declared under a schema this mapping does not retain. Tracked so an
-    # emitted numeric value cannot add back what that task's spec filter just excluded -- and keyed by
-    # task because tasks in one run need not declare the same output under the same schema.
-    excluded: dict[str, set[tuple[str, str]]] = {}
+    # Outputs a task declared under a schema this mapping does not retain. Tracked so an emitted
+    # numeric value cannot add back what that task's spec filter just excluded, and carrying the task
+    # id because tasks in one run need not declare the same output under the same schema.
+    excluded: set[tuple[str, str, str]] = set()
     if tasks is not None:
         for task in tasks:
             task_keys = output_keys.setdefault(task.id, set())
@@ -771,62 +975,83 @@ def _task_metric_attempts(
                     if issubclass(spec.value_schema, _TASK_METRIC_VALUE_SCHEMAS):
                         task_keys.add((metric_type, spec.name))
                     else:
-                        excluded.setdefault(task.id, set()).add((metric_type, spec.name))
+                        excluded.add((task.id, metric_type, spec.name))
 
-    scores_by_task_metric: dict[tuple[str, str], list[AgentEvalTaskScore]] = {}
-    for score in scores:
-        scores_by_task_metric.setdefault((score.task_id, score.metric_type), []).append(score)
+    # Materialized once: the key set has to be settled before any record can be filed (a trial
+    # failure reaches every key of its metric, including keys only a later score reveals), and
+    # `scores` is walked exactly once so a one-shot sequence still works.
+    ordered = list(scores)
+    for score in ordered:
+        # setdefault, not add: a task whose every score failed still earns an entry, so it reads as
+        # measured-and-empty rather than absent.
         task_keys = output_keys.setdefault(score.task_id, set())
+        if score.status in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
+            for output in score.outputs:
+                if (score.task_id, score.metric_type, output.name) in excluded:
+                    continue
+                if _native_value(output) is not None:
+                    task_keys.add((score.metric_type, output.name))
+
+    # Key set settled, so the records fill in score order -- which is what puts each key's list in
+    # trial order.
+    outputs_by_task_metric: dict[tuple[str, str], list[str]] = {}
+    by_task: dict[str, TrialValuesByMetric] = {}
+    for task_id, keys in output_keys.items():
+        ordered_keys = sorted(keys)
+        by_task[task_id] = {f"{metric_type}.{name}": [] for metric_type, name in ordered_keys}
+        for metric_type, name in ordered_keys:
+            outputs_by_task_metric.setdefault((task_id, metric_type), []).append(name)
+
+    for score in ordered:
+        output_names = outputs_by_task_metric.get((score.task_id, score.metric_type))
+        if not output_names:
+            continue
+        task_values = by_task[score.task_id]
+        if is_trial_failure(score):
+            for name in output_names:
+                task_values[f"{score.metric_type}.{name}"].append(
+                    TrialMetricValue(trial_id=score.trial_id, value_type=TrialMetricValueType.MISSING, value=None)
+                )
+            continue
         if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
             continue
-        task_excluded = excluded.get(score.task_id, frozenset())
+        # Indexed once per score rather than rescanned per output, and first-wins on a duplicate name
+        # to match :func:`_score_output`.
+        outputs: dict[str, MetricOutput] = {}
         for output in score.outputs:
-            if (score.metric_type, output.name) in task_excluded:
-                continue
-            if _semantic_value(output) is not None:
-                task_keys.add((score.metric_type, output.name))
-
-    by_task: dict[str, dict[str, list[AgentEvalAttemptValue]]] = {}
-    for task_id, keys in output_keys.items():
-        task_values: dict[str, list[AgentEvalAttemptValue]] = {}
-        for metric_type, output_name in sorted(keys):
-            values: list[AgentEvalAttemptValue] = []
-            for score in scores_by_task_metric.get((task_id, metric_type), []):
-                if is_trial_failure(score):
-                    values.append(AgentEvalAttemptValue(trial_id=score.trial_id, value=None))
-                    continue
-                if score.status not in (AgentEvalScoreStatus.COMPLETED, AgentEvalScoreStatus.PARTIAL):
-                    continue
-                output = _score_output(score, output_name)
-                value = _semantic_value(output) if output is not None else None
-                if value is not None:
-                    values.append(AgentEvalAttemptValue(trial_id=score.trial_id, value=value))
-            task_values[f"{metric_type}.{output_name}"] = values
-        by_task[task_id] = task_values
+            outputs.setdefault(output.name, output)
+        for name in output_names:
+            output = outputs.get(name)
+            payload = _native_value(output) if output is not None else None
+            if payload is not None:
+                value_type, value = payload
+                task_values[f"{score.metric_type}.{name}"].append(
+                    TrialMetricValue(trial_id=score.trial_id, value_type=value_type, value=value)
+                )
     return by_task
 
 
 def _task_pass_at_k_scores(
-    task_metric_attempts: dict[str, dict[str, list[AgentEvalAttemptValue]]],
+    task_metric_values: dict[str, TrialValuesByMetric],
     tasks: Sequence[AgentEvalTask] | None,
 ) -> list[AggregateScore]:
     """Task-level pass@k over the R trials per task, aggregated across tasks (uniform for any runner).
 
-    For each score-like metric output, group trials by task, count attempts ``n`` and passes ``c``
+    For each score-like metric output, group trials by task, count trials ``n`` and passes ``c``
     (value ``>= _PASS_VALUE``), then emit ``<metric>.<output>.pass@k`` for ``k`` in ``1..max(n)`` as
-    the across-task mean of the unbiased per-task estimator (over tasks with at least ``k`` attempts).
+    the across-task mean of the unbiased per-task estimator (over tasks with at least ``k`` trials).
     ``pass@1`` equals the macro per-task pass rate, i.e. the task-level mean.
 
-    **A failed trial is a failed attempt.** It counts toward ``n`` and never toward ``c``: an agent that
+    **A failed trial did not pass.** It counts toward ``n`` and never toward ``c``: an agent that
     solved a task once and crashed once did not go one-for-one. A failed *metric* is different — it
-    leaves the attempt unmeasured rather than unsuccessful, so it stays out of ``n`` entirely rather
-    than being charged to the agent (see :func:`is_trial_failure`). Tasks left with no usable attempt at
+    leaves the trial unmeasured rather than unsuccessful, so it stays out of ``n`` entirely rather
+    than being charged to the agent (see :func:`is_trial_failure`). Tasks left with no usable value at
     all drop out of the estimate and are reported as ``nan_count``, uniform across ``k``, so a shrinking
     denominator is never silent. (Tasks excluded from a given ``k`` merely for having fewer than ``k``
-    attempts are *not* counted there — that is the estimator working as defined, not missing data.)
+    trials are *not* counted there — that is the estimator working as defined, not missing data.)
 
-    "No usable attempt" includes a task that was never scored at all: it declares the metric, holds an
-    empty attempt list, and lands in ``nan_count`` like any other unmeasured task. That is the same
+    "No usable value" includes a task that was never scored at all: it declares the metric, holds an
+    empty value list, and lands in ``nan_count`` like any other unmeasured task. That is the same
     missing coverage whether the trial died or was never produced, and excluding it would report
     pass@k over a denominator quietly smaller than the task set asked for.
 
@@ -841,24 +1066,23 @@ def _task_pass_at_k_scores(
     aggregated: list[AggregateScore] = []
     for metric_type, output_name in sorted(scorelike):
         key = f"{metric_type}.{output_name}"
-        values_by_task = [attempt_values(outputs[key]) for outputs in task_metric_attempts.values() if key in outputs]
+        values_by_task = [
+            numeric_metric_values(outputs[key]) for outputs in task_metric_values.values() if key in outputs
+        ]
         measured = [values for values in values_by_task if values]
         if not measured:
             continue
-        # Empty attempt lists stay in nan_count (via total); for each k, mean the unbiased
+        # Empty value lists stay in nan_count (via total); for each k, mean the unbiased
         # estimator over tasks with n >= k (None / < full credit do not count as passes).
         unmeasured = sum(not values for values in values_by_task)
-        max_n = max(len(values) for values in measured)
+        # (n, c) per task, counted once: neither depends on k, so counting inside the k loop would
+        # re-walk every task's values max_n times over.
+        counts = [
+            (len(values), sum(value is not None and value >= _PASS_VALUE for value in values)) for values in measured
+        ]
+        max_n = max(n for n, _ in counts)
         for k in range(1, max_n + 1):
-            per_task = [
-                _pass_at_k(
-                    len(values),
-                    sum(value is not None and value >= _PASS_VALUE for value in values),
-                    k,
-                )
-                for values in measured
-                if len(values) >= k
-            ]
+            per_task = [_pass_at_k(n, c, k) for n, c in counts if n >= k]
             if per_task:
                 aggregated.append(_aggregate_range_score(f"{key}.pass@{k}", per_task, len(per_task) + unmeasured))
     return aggregated
@@ -1042,15 +1266,42 @@ def _numeric_value(output: MetricOutput) -> float | None:
     return None
 
 
-def _semantic_value(output: MetricOutput) -> float | None:
+def _native_value(output: MetricOutput) -> tuple[TrialMetricValueType, float | int | bool | str] | None:
+    """The payload for one metric output, in the type the metric produced it in.
+
+    The *preserving* counterpart to :func:`_semantic_value`, which projects to a float because its
+    callers (aggregate stats, semantic views) do arithmetic. A :class:`TrialMetricValue` is not
+    arithmetic: it is the per-trial evidence a reader looks up by ``trial_id`` in ``result.trials``
+    or ``trials.jsonl``, so a count stays an int, a flag stays a bool, and a judge's verdict stays
+    the string it was.
+
+    Returns ``None`` -- "nothing a trial can record" -- rather than a value, so an output holding
+    a dict, a list, or a literal null stays *absent* from the value list. That is not the same as
+    the ``None`` a dead trial records, and conflating the two would charge pass@k a trial the
+    agent never made.
+    """
     value = output.value
-    if isinstance(value, bool):
-        return 1.0 if value else 0.0
     if isinstance(value, BaseModel):
-        root = getattr(value, "root", None)
-        if isinstance(root, bool):
-            return 1.0 if root else 0.0
-    return _numeric_value(output)
+        value = getattr(value, "root", None)
+    # bool first: it is a subclass of int, and it is a pass/fail signal rather than a measurement.
+    if isinstance(value, bool | int | float):
+        return (TrialMetricValueType.NUMBER, value)
+    if isinstance(value, str):
+        return (TrialMetricValueType.LABEL, value)
+    return None
+
+
+def _semantic_value(output: MetricOutput) -> float | None:
+    """:func:`_native_value` projected to a float, for the callers that do arithmetic.
+
+    The two answer different questions -- preserve versus interpret -- but they must agree on what a
+    metric value *is*, so the RootModel unwrap and the "what counts as numeric" rule live in
+    :func:`_native_value` alone. A label projects to ``None``: a view or aggregate cannot average it.
+    """
+    payload = _native_value(output)
+    if payload is None or payload[0] is not TrialMetricValueType.NUMBER:
+        return None
+    return float(payload[1])
 
 
 def mean_numeric(values: list[float]) -> float | None:
