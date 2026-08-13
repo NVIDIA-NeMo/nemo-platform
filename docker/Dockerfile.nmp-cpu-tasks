@@ -24,6 +24,14 @@ COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cac
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
 ENV PATH="/app/.venv/bin:$PATH"
 USER 0
+# Fabric trajectory capture launches the Relay gateway as an external process.
+# Authenticate the pinned installer before it verifies and installs the
+# release-matched binary on the task runtime PATH.
+RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/NeMo-Relay/40c5990361afc26ae8b901ff1f49c2b03ddd9ede/install.sh -o /tmp/install-nemo-relay.sh && \
+    echo "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb  /tmp/install-nemo-relay.sh" | sha256sum -c - && \
+    NEMO_RELAY_VERSION=0.6.0 sh /tmp/install-nemo-relay.sh --install-dir /usr/local/bin && \
+    rm /tmp/install-nemo-relay.sh && \
+    nemo-relay --version
 COPY docker/scripts/cve-cleanup.sh /bin/
 RUN bash /bin/cve-cleanup.sh
 ENTRYPOINT ["nemo-platform"]
