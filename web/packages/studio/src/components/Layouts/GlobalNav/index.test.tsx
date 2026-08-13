@@ -24,7 +24,7 @@ vi.mock('@studio/routes/agents/AssistantChatRoute/AssistantTopBarChat', () => ({
   AssistantTopBarChat: () => <div data-testid="assistant-top-bar-chat" />,
 }));
 
-vi.mock('@studio/components/Layouts/GlobalNav/DocumentationLink', () => ({
+vi.mock('@studio/routes/PageLayout/DocumentationLink', () => ({
   DocumentationLink: () => <div data-testid="documentation-link" />,
 }));
 
