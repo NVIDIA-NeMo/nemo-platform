@@ -23,7 +23,7 @@ const RunOriginBadge: FC<{ readonly run: RunRecord }> = ({ run }) => {
   if (run.is_draft) {
     return (
       <Badge color="yellow" kind="outline">
-        Unsaved draft
+        Draft
       </Badge>
     );
   }

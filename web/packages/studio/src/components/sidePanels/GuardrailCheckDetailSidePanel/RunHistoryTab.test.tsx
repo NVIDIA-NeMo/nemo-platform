@@ -17,13 +17,13 @@ describe('RunHistoryTab', () => {
     render(<RunHistoryTab runs={[run({ config_version: 3 })]} />);
 
     expect(screen.getByText('v3')).toBeInTheDocument();
-    expect(screen.queryByText('Unsaved draft')).not.toBeInTheDocument();
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
   });
 
   it('marks a draft run instead of showing a version', () => {
     render(<RunHistoryTab runs={[run({ is_draft: true })]} />);
 
-    expect(screen.getByText('Unsaved draft')).toBeInTheDocument();
+    expect(screen.getByText('Draft')).toBeInTheDocument();
     expect(screen.queryByText(/^v\d+$/)).not.toBeInTheDocument();
   });
 
@@ -31,7 +31,7 @@ describe('RunHistoryTab', () => {
   it('shows no origin badge for a record carrying neither field', () => {
     render(<RunHistoryTab runs={[run({ run_at: '2026-04-12T11:06:00.000Z' })]} />);
 
-    expect(screen.queryByText('Unsaved draft')).not.toBeInTheDocument();
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
     expect(screen.queryByText(/^v\d+$/)).not.toBeInTheDocument();
   });
 });
