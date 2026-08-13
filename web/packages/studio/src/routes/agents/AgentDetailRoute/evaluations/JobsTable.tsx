@@ -34,8 +34,6 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
   const navigate = useNavigate();
   const dataViewState = useStudioDataViewState();
 
-  // A finished run's results live in Intake; everything else only has its job record. The lookup
-  // fails while the evaluation is still unpublished or un-indexed, which correctly falls back.
   const destinationFor = useCallback(
     (row: EvalJobRow): string => {
       const published = row.evaluationName
@@ -50,28 +48,20 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
 
   const makeColumns: ComponentProps<typeof StudioDataView<EvalJobRow>>['makeColumns'] = useCallback(
     ({ accessor }) => [
-      // Explicit sizes, matching EvaluationsTable, so the three views line up rather than each
-      // sizing to its own content.
       accessor('name', {
         header: 'Job',
-        size: 240,
         cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
       }),
       accessor('kind', {
         header: 'Kind',
-        size: 140,
         cell: ({ row }) => <Text>{EVAL_JOB_KIND_LABEL[row.original.kind]}</Text>,
       }),
       accessor('status', {
         header: 'Status',
-        size: 130,
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
       }),
       accessor('evaluationName', {
         header: 'Evaluation',
-        size: 240,
-        // Written into the spec at submit, so it is known for every run that asked to publish —
-        // not only finished ones. Blank means the run publishes nowhere.
         cell: ({ row }) => (
           <Text title={row.original.evaluationName ?? undefined} color="secondary">
             {row.original.evaluationName ?? '—'}
@@ -80,7 +70,6 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
       }),
       accessor('created_at', {
         header: 'Created',
-        size: 140,
         cell: ({ row }) =>
           row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : '—',
       }),

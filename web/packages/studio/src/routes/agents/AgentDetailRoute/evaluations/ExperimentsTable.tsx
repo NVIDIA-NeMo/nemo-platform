@@ -1,15 +1,25 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import {
+  ROW_SELECTION_COLUMN_SIZE,
+  StudioDataView,
+} from '@nemo/common/src/components/DataView/StudioDataView';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { Text } from '@nvidia/foundations-react-core';
+import {
+  deleteExperiment,
+  getListEvaluationsQueryKey,
+  getListExperimentsQueryKey,
+} from '@nemo/sdk/generated/platform/api';
+import { Button, Text } from '@nvidia/foundations-react-core';
+import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
 import type { AgentExperimentRow } from '@studio/routes/agents/AgentDetailRoute/evaluations/groupByExperiment';
 import { getExperimentDetailRoute } from '@studio/routes/utils';
-import { FolderTree } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { FolderTree, Trash } from 'lucide-react';
+import { type ComponentProps, type FC, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 interface ExperimentsTableProps {
@@ -17,35 +27,51 @@ interface ExperimentsTableProps {
   experiments: AgentExperimentRow[];
 }
 
+/** Deleting an experiment cascades to the evaluations whose only membership was that group, so the
+ *  confirmation says how many go with it. */
+const deleteTitle = (rows: AgentExperimentRow[]): string => {
+  const evaluations = rows.reduce((total, row) => total + row.evaluationCount, 0);
+  const experiments = `${rows.length} Experiment${rows.length !== 1 ? 's' : ''}`;
+  return `Delete ${experiments} and ${evaluations} Evaluation${evaluations !== 1 ? 's' : ''}`;
+};
+
 /** The agent's evaluations rolled up by the experiment they belong to. Selecting one opens the
  *  experiment's own route, which already lists the evaluations under it. */
 export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experiments }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const dataViewState = useStudioDataViewState();
+  const [deleteRows, setDeleteRows] = useState<AgentExperimentRow[]>([]);
+
+  const handleDelete = useCallback(
+    async (rows: AgentExperimentRow[]) => {
+      await Promise.all(rows.map((row) => deleteExperiment(workspace, row.name)));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListExperimentsQueryKey(workspace) }),
+        queryClient.invalidateQueries({ queryKey: getListEvaluationsQueryKey(workspace) }),
+      ]);
+    },
+    [workspace, queryClient]
+  );
 
   const makeColumns: ComponentProps<typeof StudioDataView<AgentExperimentRow>>['makeColumns'] =
     useCallback(
-      // Explicit sizes, matching the sibling tables, so the three views line up rather than each
-      // sizing to its own content.
-      ({ accessor }) => [
+      ({ accessor }, { rowSelectionColumn }) => [
+        rowSelectionColumn({ size: ROW_SELECTION_COLUMN_SIZE }),
         accessor('name', {
           header: 'Experiment',
-          size: 240,
           cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
         }),
         accessor('evaluationCount', {
           header: 'Evaluations',
-          size: 130,
           cell: ({ row }) => <Text>{row.original.evaluationCount}</Text>,
         }),
         accessor('runCount', {
           header: 'Runs',
-          size: 90,
           cell: ({ row }) => <Text>{row.original.runCount}</Text>,
         }),
         accessor('latestCreatedAt', {
           header: 'Latest run',
-          size: 140,
           cell: ({ row }) =>
             row.original.latestCreatedAt ? (
               <RelativeTime datetime={row.original.latestCreatedAt} />
@@ -58,22 +84,44 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
     );
 
   return (
-    <StudioDataView<AgentExperimentRow>
-      dataViewState={dataViewState}
-      makeColumns={makeColumns}
-      onRowClick={(row) => navigate(getExperimentDetailRoute(workspace, row.name))}
-      attributes={{
-        DataViewRoot: { data: experiments },
-        DataViewTableContent: {
-          renderEmptyState: () => (
-            <TableEmptyState
-              icon={<FolderTree className="size-16" />}
-              header="No experiments yet"
-              emptyMessage="An experiment appears here once one of its evaluations publishes results for this agent."
-            />
-          ),
-        },
-      }}
-    />
+    <>
+      <StudioDataView<AgentExperimentRow>
+        dataViewState={dataViewState}
+        makeColumns={makeColumns}
+        onRowClick={(row) => navigate(getExperimentDetailRoute(workspace, row.name))}
+        renderBulkActions={({ selectedRows }) => (
+          <Button
+            kind="tertiary"
+            aria-label="Delete selected experiments"
+            onClick={() => setDeleteRows(selectedRows)}
+          >
+            <Trash /> Delete
+          </Button>
+        )}
+        attributes={{
+          DataViewRoot: { data: experiments },
+          DataViewTableContent: {
+            renderEmptyState: () => (
+              <TableEmptyState
+                icon={<FolderTree className="size-16" />}
+                header="No experiments yet"
+                emptyMessage="An experiment appears here once one of its evaluations publishes results for this agent."
+              />
+            ),
+          },
+        }}
+      />
+
+      <BulkDeleteModal
+        items={deleteRows}
+        open={deleteRows.length > 0}
+        onDelete={handleDelete}
+        title={() => deleteTitle(deleteRows)}
+        onClose={() => {
+          setDeleteRows([]);
+          dataViewState.rowSelection.set({});
+        }}
+      />
+    </>
   );
 };

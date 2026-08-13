@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
-import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
@@ -25,14 +24,7 @@ import {
   filesUploadFile,
   useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
-import {
-  Anchor,
-  Flex,
-  RadioGroupRoot,
-  SegmentedControl,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
@@ -59,12 +51,7 @@ import {
   MODE_EXPERIMENT,
   parseEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
-import { LINK_EVAL_DOCS_APPROACHES } from '@studio/constants/links';
-import {
-  DEFAULT_EVAL_CONFIG_KEY,
-  EVAL_CONFIG_SAMPLES,
-  getEvalConfigSample,
-} from '@studio/constants/sampleAgents';
+import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
 import {
   getAgentEvaluationDetailRoute,
@@ -86,6 +73,9 @@ const DATASET_FILENAME = 'dataset.jsonl';
 /** Backend caps page_size at 100; the picker shows the most recent page. */
 const EXPERIMENT_PAGE_SIZE = 100;
 const README_FILENAME = 'README.md';
+
+const NO_EXPERIMENTS_MESSAGE =
+  'No experiments yet. Run one from "Use Example" first — it creates the experiment and its eval config, which you can then re-run here.';
 
 const NO_DEPLOYMENT_MESSAGE = 'This agent has no active deployment.';
 const DEPLOYMENT_CHECK_FAILED_MESSAGE =
@@ -156,7 +146,7 @@ const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => {
     agent: agent ?? '',
     judgeModel: '',
     mode: MODE_DEFAULT,
-    exampleKey: DEFAULT_EVAL_CONFIG_KEY,
+    exampleKey: DATASET_EVAL_CONFIG_KEY,
     newName,
     filesetName: filesetNameForExperiment(newName),
     experimentName: '',
@@ -281,9 +271,6 @@ const loadPersistedSpec = async (
     }
     return spec;
   }
-  // Choose-experiment mode: read the saved spec out of the experiment's own fileset, as-is.
-  // The fileset is reached through the experiment, never picked directly, so there is no
-  // per-run file choice to make — the config lives at a known path by convention.
   if (!experimentFileset) throw new Error('The selected experiment has no eval config fileset');
   const blob = await filesDownloadFile(
     workspace,
@@ -325,6 +312,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   });
   const {
     control,
+    register,
     reset: resetForm,
     setValue,
     getValues,
@@ -361,8 +349,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const exampleKey = useWatch({ control, name: 'exampleKey' });
   const experimentName = useWatch({ control, name: 'experimentName' });
 
-  // Experiments to re-run. There is no "metadata key exists" filter, so the ones without a
-  // config fileset can only be excluded after the fact — see experimentConfigError below.
   const { data: experimentsResponse, isLoading: isExperimentsLoading } = useListExperiments(
     workspace,
     { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
@@ -370,9 +356,14 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   );
   const experiments = experimentsResponse?.data ?? [];
   const selectedExperiment = experiments.find((item) => item.name === experimentName);
+  const hasNoExperiments = mode === MODE_EXPERIMENT && !isExperimentsLoading && !experiments.length;
+  const latestExperimentName = experiments[0]?.name;
 
-  // Validate on selection rather than at submit: a bad pick should be obvious before the user
-  // commits, and the check is two cheap reads.
+  useEffect(() => {
+    if (mode !== MODE_EXPERIMENT || experimentName || !latestExperimentName) return;
+    setValue('experimentName', latestExperimentName, { shouldValidate: true });
+  }, [mode, experimentName, latestExperimentName, setValue]);
+
   const { data: experimentConfigIssue, isFetching: isValidatingExperiment } = useQuery({
     queryKey: ['experiment-eval-config', workspace, experimentName],
     queryFn: ({ signal }) =>
@@ -383,8 +374,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   const experimentFileset = selectedExperiment ? experimentFilesetName(selectedExperiment) : null;
   const experimentFieldError = errors.experimentName?.message ?? experimentConfigIssue ?? undefined;
 
-  // Hold submit while the pick is still being checked, so a bad experiment cannot slip through
-  // the gap between selecting it and the validation landing.
   const canRunSelectedExperiment =
     mode !== MODE_EXPERIMENT ||
     (!isValidatingExperiment && !!selectedExperiment && !experimentConfigIssue);
@@ -446,13 +435,9 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     mutationFn: async (formData: SubmitEvaluationFormData) => {
       const spec = await loadPersistedSpec(workspace, formData, experimentFileset);
 
-      // Order is forced by the backend: the fileset is seeded above, then the Experiment must
-      // exist before an Evaluation can reference it, and the Evaluation before the job can
-      // publish to it — the worker creates neither.
       const isNew = formData.mode === MODE_DEFAULT;
       const filesetName = isNew ? formData.filesetName.trim() : (experimentFileset ?? '');
 
-      // What this submit created, so a failure rolls back exactly that and nothing pre-existing.
       const seeded: { filesetName?: string; experimentName?: string } = isNew
         ? { filesetName }
         : {};
@@ -492,8 +477,6 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
         if (!created?.name) throw new Error('Submission did not return a job name');
         return { name: created.name, isDataset: isDatasetEvalSpec(spec) };
       } catch (err) {
-        // Re-running an existing experiment seeds nothing, so there is nothing to unwind: its
-        // fileset predates this submit and its Evaluation is reused by the retry.
         throw await discardSeeded(workspace, seeded, err);
       }
     },
@@ -599,41 +582,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
               {mode === MODE_DEFAULT ? (
                 <>
-                  <Stack gap="density-sm">
-                    <RadioGroupRoot
-                      name="eval-config-template"
-                      orientation="horizontal"
-                      className="w-full"
-                      aria-label="Eval config template"
-                      value={exampleKey}
-                      onValueChange={(key) => setValue('exampleKey', key, { shouldValidate: true })}
-                    >
-                      <Flex gap="density-md" className="w-full *:flex-1">
-                        {EVAL_CONFIG_SAMPLES.map((sample) => (
-                          <RadioCard
-                            key={sample.key}
-                            value={sample.key}
-                            label={sample.displayName}
-                            description={sample.description}
-                            showIndicator={false}
-                          />
-                        ))}
-                      </Flex>
-                    </RadioGroupRoot>
-                    <Text kind="body/regular/md" color="secondary">
-                      Learn more about{' '}
-                      <Anchor
-                        kind="inline"
-                        textKind="body/regular/md"
-                        href={LINK_EVAL_DOCS_APPROACHES}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Dataset-Driven vs Task-Driven evaluation
-                      </Anchor>
-                      .
-                    </Text>
-                  </Stack>
+                  <input type="hidden" {...register('exampleKey')} />
                   {isLlmJudge && (
                     <JudgeModelSelect<SubmitEvaluationFormData>
                       formFieldName="judgeModel"
@@ -661,19 +610,27 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                   />
                 </>
               ) : (
-                <ControlledSelect
-                  useControllerProps={{ control, name: 'experimentName' }}
-                  loading={isExperimentsLoading}
-                  items={experiments.flatMap((item) =>
-                    item.name ? [{ value: item.name, children: item.name }] : []
+                <>
+                  {hasNoExperiments ? (
+                    <Text kind="body/regular/md" color="secondary">
+                      {NO_EXPERIMENTS_MESSAGE}
+                    </Text>
+                  ) : (
+                    <ControlledSelect
+                      useControllerProps={{ control, name: 'experimentName' }}
+                      loading={isExperimentsLoading}
+                      items={experiments.flatMap((item) =>
+                        item.name ? [{ value: item.name, children: item.name }] : []
+                      )}
+                      formFieldProps={{
+                        slotLabel: 'Experiment',
+                        slotHelp: `Runs the ${EVAL_CONFIG_FILENAME} in the experiment's fileset.`,
+                        slotError: experimentFieldError,
+                        status: experimentFieldError ? 'error' : undefined,
+                      }}
+                    />
                   )}
-                  formFieldProps={{
-                    slotLabel: 'Experiment',
-                    slotHelp: `Runs the ${EVAL_CONFIG_FILENAME} in the experiment's fileset.`,
-                    slotError: experimentFieldError,
-                    status: experimentFieldError ? 'error' : undefined,
-                  }}
-                />
+                </>
               )}
             </Stack>
           ) : null}

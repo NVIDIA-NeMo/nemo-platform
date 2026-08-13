@@ -57,7 +57,6 @@ export const createRunEvaluation = async (
     signal?: AbortSignal;
   }
 ): Promise<string> => {
-  // Same normalisation as the job name, so the pair reads as one run.
   const name = buildEvalJobName(experimentName);
   await createEvaluation(
     workspace,

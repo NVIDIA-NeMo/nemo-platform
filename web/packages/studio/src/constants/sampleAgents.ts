@@ -91,6 +91,8 @@ export const EVAL_CONFIG_SAMPLES: EvalConfigSample[] = [
 
 export const DEFAULT_EVAL_CONFIG_KEY = EVAL_CONFIG_SAMPLES[0].key;
 
+export const DATASET_EVAL_CONFIG_KEY = 'dataset_driven';
+
 export const getEvalConfigSample = (key: string): EvalConfigSample =>
   EVAL_CONFIG_SAMPLES.find((sample) => sample.key === key) ?? EVAL_CONFIG_SAMPLES[0];
 

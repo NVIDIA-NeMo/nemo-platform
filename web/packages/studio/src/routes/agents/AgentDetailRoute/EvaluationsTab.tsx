@@ -14,8 +14,6 @@ const VIEW_EVALUATIONS = 'evaluations';
 const VIEW_EXPERIMENTS = 'experiments';
 const VIEW_JOBS = 'jobs';
 
-// Jobs first, and the default: a run is visible here the instant it is submitted, whereas the
-// other two views stay empty until it publishes.
 const VIEW_ITEMS = [
   { value: VIEW_JOBS, children: 'Active Jobs' },
   { value: VIEW_EVALUATIONS, children: 'Completed Evaluations' },
@@ -35,9 +33,8 @@ export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, jobs
   const [view, setView] = useState<string>(VIEW_JOBS);
   const experiments = useMemo(() => groupByExperiment(evals), [evals]);
 
-  // No panel wrapper: the tab is already labelled "Evaluations", so a titled card repeats it.
   return (
-    <Stack gap="density-lg">
+    <Stack gap="density-lg" className="w-full">
       <SegmentedControl
         className="w-fit"
         aria-label="Evaluation view"

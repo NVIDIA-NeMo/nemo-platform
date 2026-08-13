@@ -69,10 +69,6 @@ export const useAgentDetails = ({
   const agentsData = agentsResponse?.data;
   const deploymentsData = deploymentsResponse?.data;
 
-  // Recent evaluations for this agent, read from Intake rather than the job list: only Intake
-  // carries the telemetry rollups (latency, cost, tokens, evaluator scores) the panel shows, and
-  // ``filter[agent_name]`` scopes them server-side. An evaluation appears once its run publishes,
-  // so in-flight and failed runs are not here — they stay on the workspace-wide evaluations route.
   const { data: agentEvalsResponse } = useListEvaluations(
     workspace,
     {
@@ -83,11 +79,6 @@ export const useAgentDetails = ({
     { query: { enabled: !!agentName && !!workspace } }
   );
 
-  // Evaluator jobs for this agent. Intake cannot answer this until a run publishes — its
-  // ``agent_name`` facet is denormalized from ingested spans — so a just-submitted run is
-  // invisible there for the whole run plus the denormalizer interval. A job, by contrast, exists
-  // the moment it is created. The jobs filter has no agent field, hence the client-side match and
-  // the paging predicate.
   const { data: agentJobsData } = useQuery({
     queryKey: ['evaluator-jobs', workspace, 'agent-panel', agentName] as const,
     queryFn: ({ signal }) =>
@@ -96,7 +87,6 @@ export const useAgentDetails = ({
         return matched >= RECENT_EVAL_LIMIT;
       }),
     enabled: !!agentName && !!workspace,
-    // Follow a run to completion without a manual refresh; stop once nothing can change.
     refetchInterval: (query) => {
       const rows = (query.state.data ?? []).map(toEvalJobRow);
       const live = rows.some((row) => !TERMINAL_JOB_STATUSES.has(row.status ?? ''));
@@ -123,9 +113,6 @@ export const useAgentDetails = ({
     [deploymentsData, agentName]
   );
 
-  // The evaluation detail route is nested under an experiment, but an evaluation carries only
-  // ``experiment_ids``. One list call resolves them; the panel shows a handful of rows, so this
-  // is cheaper than a lookup per row.
   const { data: experimentsResponse } = useListExperiments(
     workspace,
     { page_size: EXPERIMENT_PAGE_SIZE },
@@ -139,9 +126,6 @@ export const useAgentDetails = ({
     );
     return (agentEvalsResponse?.data ?? []).map((evaluation) => ({
       ...evaluation,
-      // First id, mirroring the API's own deprecated ``experiment_group_id`` ("first of
-      // experiment_ids"). Null when the experiment is missing, which drops the row's link
-      // rather than routing somewhere broken.
       experimentName: namesById.get(evaluation.experiment_ids[0] ?? '') ?? null,
     }));
   }, [agentEvalsResponse, experimentsResponse, agentName]);
