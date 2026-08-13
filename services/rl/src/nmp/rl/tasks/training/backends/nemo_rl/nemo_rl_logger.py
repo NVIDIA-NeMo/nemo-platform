@@ -9,22 +9,25 @@
 # its affiliates is strictly prohibited.
 
 import logging
-import math
 from typing import Any, Mapping, Optional
 
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.callbacks import TrainingProgressCallback
+from nmp.customization_common.training.callbacks import TrainingProgressCallback, is_chartable
 from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
 
 
 def has_metric_value(metric: Any) -> bool:
-    """Check if a metric has a valid value."""
-    if metric is not None and not math.isnan(metric):
-        return True
-    return False
+    """Whether ``metric`` is a finite-enough scalar to forward to Jobs Service.
+
+    Delegates to the shared predicate so the wire filter and the series filter
+    cannot drift apart -- a metric this forwards must be one the callback can
+    chart. It also stops being a crash risk: ``math.isnan`` raises ``TypeError``
+    on the non-scalars a metric dict can carry, rather than returning False.
+    """
+    return is_chartable(metric)
 
 
 class NemoRLLogger(LoggerInterface):
