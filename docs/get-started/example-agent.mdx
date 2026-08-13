@@ -5,9 +5,8 @@ description: "Run the optimization loop from end to end on an example agent"
 
 This guide shows how to load agent traces into NeMo Platform, run the Analyst to
 find an issue, and launch the Experimentalist to repair it. It uses smoke-agent:
-a small, deterministic example with known failures. The default path uses the
-fast `g1-aggregation` scenario; later sections show optional dataset-driven and
-full-dataset runs.
+a small, predictable example with known failures. The guide starts with one
+failure, then shows how to try the same workflow with a broader set of failures.
 
 To optimize an agent you already have, follow the [agent onboarding guide](/documentation/get-started) instead.
 For component details, see the [Insights Analyst](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-insights/README.md),
@@ -32,6 +31,7 @@ make bootstrap
 
 ## 2. Start NeMo Platform
 
+This step installs the Platform and helps you connect the models it will use.
 Make sure Docker Desktop or the Docker daemon is running, then start setup:
 
 ```bash
@@ -61,12 +61,11 @@ The smoke agent makes no model calls. It reads a small records file with regular
 expressions, so its baseline failure is repeatable. The Analyst and
 Experimentalist do use the Model Entities configured above.
 
-The walkthrough starts with the first group, G1 (`g1-aggregation`): the agent can look up, list, and count records,
+The first problem is simple: the agent can look up, list, and count records,
 but cannot calculate total hours. Its validation tasks vary the scope from a
 department to all records or a role, so a narrow repair does not transfer. Later
-sections combine G1 with the name, long-input, dispatch-order, and edge-case
-weaknesses. The fixture's [detailed weakness rationale](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/plugins/nemo-experimentalist/examples/smoke-agent/README.md#deliberate-weaknesses)
-explains those scenarios and task splits.
+sections combine this problem with other weaknesses, including long inputs,
+dispatch order, and edge cases.
 
 Run model-authored work in a Docker Sandbox. Clone mode gives the sandbox a
 private writable checkout, so generated code cannot modify your working tree.
@@ -94,14 +93,6 @@ sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
   "cd $smoke && uv run --no-project scripts/build_image.py"
 ```
 
-`build_image.py` also renders `dataset/tasks.json` through
-`dataset/task-template/` into the task directories used by the run. Those
-rendered directories are disposable; edit the manifest or template instead.
-
-The fresh sandbox does not include a C compiler or Python headers.
-They are needed once to build `nemo-fabric-runtime`, a dependency used by the
-Experimentalist.
-
 <Warning>
 Clone mode protects the host checkout from writes, but it does not isolate
 credentials or host services from code in the sandbox. Use dedicated,
@@ -110,10 +101,8 @@ revocable credentials and expose only the model access this example needs.
 
 ## 4. Run the Analyst
 
-Now that the Platform is running, record failing smoke-agent traces. The
-`g1-aggregation` scenario contains five `insight-evidence` tasks. The command
-ingests their traces into the `smoke-agent` workspace and prints a task name and
-trace ID for every upload.
+Now that the Platform is running, record traces that show the example agent
+failing to calculate total hours.
 
 ```bash
 sbx exec --workdir "$repo" "${sandbox_env[@]}" \
@@ -165,9 +154,8 @@ insight_id="<the Platform Insight ID>"
 ## 5. Optimize performance with the Experimentalist
 
 The Experimentalist runs the evaluations, diagnoses the failure from the trace
-data, proposes a code change, and validates it. Eval Author uses the Insight’s
-trace references to create additional tasks; the committed `g1-aggregation`
-datasets remain as regression checks.
+data, proposes a code change, and validates it against new tasks and regression
+checks.
 
 The default G1 scenario typically takes tens of minutes; allow up to an hour.
 
@@ -182,10 +170,8 @@ a remote is only needed to publish a PR or MR.
 
 To optimize the example agent, create a private GitHub repository with the
 [GitHub CLI](https://cli.github.com/) and populate it with the smoke-agent
-source. The agent source and `AGENT-SPEC.md` are enough: datasets and optimizer
-configuration stay in this checkout. The copy excludes `.env` files, so local
-credentials are not added to the repository. Replace `your-github-user-or-org`
-with the GitHub account or organization that will own the repository.
+source. Replace `your-github-user-or-org` with the GitHub account or
+organization that will own the repository.
 
 ```bash
 gh auth login
@@ -205,13 +191,10 @@ git -C "$EXAMPLE_AGENT_REPO" push -u origin main
 export AGENT_REPO_URL="https://github.com/$GITHUB_OWNER/smoke-agent.git"
 ```
 
-Run the Experimentalist against the Git repository inside a Docker Sandbox. The
-`@main` suffix selects the source ref to optimize. It clones that baseline,
-pushes a validated winner to a new branch, and opens a draft PR or MR against
-`main`. To use a different target branch, set `storage.pr_base_branch` in the
-configuration. Authenticate GitHub inside the sandbox so it can clone and push
-the private repository. The explicit `--agent` flag takes precedence over the
-local `agent_source` in `optimizer.yaml`, so this run optimizes the Git baseline.
+Run the Experimentalist against the Git repository inside a Docker Sandbox. It
+clones the agent, validates an improvement, pushes the winning version to a new
+branch, and opens a draft PR or MR against `main`. Authenticate GitHub inside
+the sandbox so it can clone and push the private repository.
 
 ```bash
 sbx create --clone --name nemo-experimentalist-git shell "$repo"
