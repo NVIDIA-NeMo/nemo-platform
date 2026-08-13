@@ -142,7 +142,7 @@ class TestFilesetsUpload:
             f"files upload {test_file} nonexistent-fileset-12345 --workspace {random_workspace}",
         )
 
-        assert_exit_code(result, 1)
+        assert_exit_code(result, 3)
         assert "not found" in result.stderr.lower()
 
     @pytest.mark.parametrize(

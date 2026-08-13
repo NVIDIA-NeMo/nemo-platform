@@ -1451,7 +1451,12 @@ def _service_entities_client(url_resolver=None) -> tuple[EntityClient, AsyncMock
     typed = AsyncEntitiesClient(
         base_url="http://platform",
         workspace="default",
-        default_headers={"X-NMP-Principal-Id": "alice@example.com"},
+        default_headers={
+            "X-NMP-Principal-Id": "service:platform",
+            "X-NMP-Principal-On-Behalf-Of": "alice@example.com",
+            "X-NMP-Principal-On-Behalf-Of-Email": "alice@example.com",
+            "X-NMP-Principal-On-Behalf-Of-Groups": "team-ml",
+        },
         http_client=mock_http,
         url_resolver=url_resolver,
     )
@@ -1466,8 +1471,9 @@ def test_as_service_returns_new_client_without_mutating_the_original():
     assert elevated is not client
     assert isinstance(elevated, EntityClient)
     # The caller-scoped client must keep its original principal.
-    assert client._client._default_headers["X-NMP-Principal-Id"] == "alice@example.com"
+    assert client._client._default_headers["X-NMP-Principal-On-Behalf-Of"] == "alice@example.com"
     assert elevated._client._default_headers["X-NMP-Principal-Id"] == "service:models"
+    assert elevated._client._default_headers["X-NMP-Principal-On-Behalf-Of"] == ""
 
 
 def test_as_service_preserves_the_platform_url_resolver():
@@ -1506,6 +1512,7 @@ async def test_as_service_principal_header_reaches_the_wire():
 
     sent_headers = mock_http.request.call_args.kwargs["headers"]
     assert sent_headers["X-NMP-Principal-Id"] == "service:models"
+    assert sent_headers["X-NMP-Principal-On-Behalf-Of"] == ""
 
 
 @pytest.mark.asyncio

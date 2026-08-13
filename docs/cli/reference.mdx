@@ -276,11 +276,13 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 
 **Commands:**
 
-* `create`: Create a Scoped Access Key for the current authenticated...
+* `create`: Create a Scoped Access Key for the currently...
+* `list`: List Scoped Access Keys owned by the currently...
+* `revoke`: Revoke a Scoped Access Key owned by the currently...
 
 ##### nemo auth access-keys create
 
-Create a Scoped Access Key for the current authenticated user.
+Create a Scoped Access Key for the currently authenticated user.
 
 **Usage:**
 
@@ -291,7 +293,45 @@ nemo auth access-keys create [OPTIONS]
 **Options:**
 
 * `--name, -n`: Optional human-readable label for the Scoped Access Key.
+* `--description, -d`: Optional description for the Scoped Access Key.
 * `--expires-in`: Scoped Access Key lifetime in seconds. Use 'none' to request no expiration.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys list
+
+List Scoped Access Keys owned by the currently authenticated user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys list [OPTIONS]
+```
+
+**Options:**
+
+* `--page <INTEGER RANGE>`: Page number to retrieve. [default: 1]
+* `--page-size <INTEGER RANGE>`: Number of keys to retrieve per page. [default: 100]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys revoke
+
+Revoke a Scoped Access Key owned by the currently authenticated user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys revoke [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to revoke.
 
 **Help:**
 

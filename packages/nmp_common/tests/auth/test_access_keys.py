@@ -18,6 +18,7 @@ from nmp.common import http_clients
 from nmp.common.auth.access_keys import (
     ACCESS_KEY_TOKEN_TYPE,
     AccessKeyIssuerService,
+    AccessKeyValidationError,
     access_key_jwks_uri,
     clear_access_key_signing_key_cache,
     public_jwk_from_private_key_pem,
@@ -49,6 +50,38 @@ def test_access_key_jwks_uri_uses_canonical_auth_jwks_path() -> None:
 
     assert jwks_uri.endswith("/apis/auth/jwks")
     assert "/access-keys/" not in jwks_uri
+
+
+def test_access_key_candidate_rejects_any_pyjwt_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_invalid_token(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise jwt.InvalidTokenError("invalid token")
+
+    monkeypatch.setattr(jwt, "decode", raise_invalid_token)
+
+    assert access_keys_mod.is_access_key_token_candidate("invalid") is False
+
+
+@pytest.mark.parametrize(
+    ("token_type", "jti", "expected"),
+    [
+        (ACCESS_KEY_TOKEN_TYPE, "ak_" + "a" * 32, True),
+        (ACCESS_KEY_TOKEN_TYPE, None, False),
+        (ACCESS_KEY_TOKEN_TYPE, "ak_example", False),
+        (ACCESS_KEY_TOKEN_TYPE, "ak_" + "A" * 32, False),
+        ("oidc_access_token", "ak_" + "a" * 32, False),
+    ],
+)
+def test_access_key_candidate_requires_token_type_and_canonical_jti(
+    token_type: str,
+    jti: str | None,
+    expected: bool,
+) -> None:
+    payload = {"nmp_token_type": token_type}
+    if jti is not None:
+        payload["jti"] = jti
+    token = jwt.encode(payload, key="", algorithm="none")
+
+    assert access_keys_mod.is_access_key_token_candidate(token) is expected
 
 
 def test_token_signing_private_key_file_uses_auth_service_env_override(monkeypatch):
@@ -275,19 +308,30 @@ def test_access_key_issuer_service_stamps_current_principal(tmp_path):
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
 
-    created = issuer.create(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=600))
+    created = issuer.create(
+        AccessKeyCreateRequest(
+            name="ci-intake",
+            description="CI intake automation",
+            expires_in_seconds=600,
+        )
+    )
     unverified = jwt.decode(created.token, options={"verify_signature": False})
 
     assert created.jti.startswith("ak_")
-    assert created.name == "gtc-intake"
+    assert created.name == "ci-intake"
+    assert created.description == "CI intake automation"
     assert created.principal == "alice@example.com"
     assert created.expires_at == datetime.fromtimestamp(1785280600, tz=UTC)
     assert unverified["jti"] == created.jti
     assert unverified["sub"] == "alice@example.com"
     assert unverified["email"] == "alice@example.com"
     assert unverified["groups"] == "team-ml"
+    assert unverified["aud"] == "nemo-platform-access-key"
     assert unverified["nmp_token_type"] == ACCESS_KEY_TOKEN_TYPE
-    assert unverified["nmp_access_key"] == {"version": 1, "name": "gtc-intake"}
+    assert unverified["nmp_access_key"] == {
+        "version": 2,
+        "name": "ci-intake",
+    }
     assert unverified["exp"] == 1785280600
 
 
@@ -316,7 +360,7 @@ def test_access_key_issuer_service_allows_unnamed_tokens(tmp_path):
     assert created.jti.startswith("ak_")
     assert created.name is None
     assert unverified["jti"] == created.jti
-    assert unverified["nmp_access_key"] == {"version": 1}
+    assert unverified["nmp_access_key"] == {"version": 2}
     assert unverified["exp"] == 1785280600
 
 
@@ -343,7 +387,7 @@ def test_access_key_issuer_service_rejects_expiration_above_configured_max(tmp_p
         now=lambda: 1785280000,
     )
 
-    with pytest.raises(RuntimeError, match="max_expires_in_seconds"):
+    with pytest.raises(AccessKeyValidationError, match="max_expires_in_seconds"):
         issuer.create(AccessKeyCreateRequest(name="too-long", expires_in_seconds=61))
 
 
@@ -371,7 +415,7 @@ def test_access_key_issuer_service_rejects_explicit_null_expiration_when_max_con
         now=lambda: 1785280000,
     )
 
-    with pytest.raises(RuntimeError, match="expires_in_seconds=null requires"):
+    with pytest.raises(AccessKeyValidationError, match="expires_in_seconds=null requires"):
         issuer.create(AccessKeyCreateRequest(name="unlimited", expires_in_seconds=None))
 
 
@@ -427,7 +471,7 @@ def test_access_key_issuer_service_requires_expiration_when_default_disabled_and
         now=lambda: 1785280000,
     )
 
-    with pytest.raises(RuntimeError, match="expires_in_seconds is required"):
+    with pytest.raises(AccessKeyValidationError, match="expires_in_seconds is required"):
         issuer.create(AccessKeyCreateRequest(name="must-set-expiry"))
 
     created = issuer.create(AccessKeyCreateRequest(name="finite-expiry", expires_in_seconds=60))
@@ -471,7 +515,7 @@ async def test_validate_access_key_token_returns_token_claims(tmp_path):
     config = _access_key_config(tmp_path, max_expires_in_seconds=None)
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
 
     claims = await validate_access_key_token(config, created.token, jwks_override=jwks)
@@ -515,7 +559,7 @@ async def test_validate_access_key_token_fetches_remote_jwks_once_with_async_cli
     config = _access_key_config(tmp_path, max_expires_in_seconds=None)
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
     jwks_uri = f"https://auth.example.test/{id(jwks)}/jwks"
 
@@ -559,7 +603,7 @@ async def test_validate_access_key_token_propagates_remote_jwks_fetch_failure(tm
     config = _access_key_config(tmp_path, max_expires_in_seconds=None)
     principal = Principal(id="alice@example.com", email="alice@example.com", groups=["team-ml"])
     issuer = AccessKeyIssuerService(config=config, principal=principal, now=lambda: 1785280000)
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks_uri = "https://auth.example.test/jwks"
 
     class FakeResponse:
@@ -591,7 +635,7 @@ async def test_validate_access_key_token_rejects_wrong_audience(tmp_path):
         principal=Principal(id="alice@example.com", email="alice@example.com"),
         now=lambda: 1785280000,
     )
-    created = await issuer.create_async(AccessKeyCreateRequest(name="gtc-intake", expires_in_seconds=None))
+    created = await issuer.create_async(AccessKeyCreateRequest(name="ci-intake", expires_in_seconds=None))
     jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
 
     assert await validate_access_key_token(wrong_config, created.token, jwks_override=jwks) is None
@@ -601,7 +645,7 @@ async def test_validate_access_key_token_rejects_service_principal_subject(tmp_p
     config = _access_key_config(tmp_path)
     issuer = AccessKeyIssuerService(config=config, principal=Principal(id="service:jobs"), now=lambda: 1785280000)
 
-    with pytest.raises(RuntimeError, match="service principals"):
+    with pytest.raises(AccessKeyValidationError, match="service principals"):
         await issuer.create_async(AccessKeyCreateRequest(name="bad-service-key", expires_in_seconds=600))
 
 
@@ -617,3 +661,41 @@ async def test_validate_access_key_token_rejects_expired_key(tmp_path):
 
     assert created.expires_at == datetime.fromtimestamp(1785280060, tz=UTC)
     assert await validate_access_key_token(config, created.token, jwks_override=jwks, now=1785280061) is None
+
+
+@pytest.mark.asyncio
+async def test_validate_access_key_token_returns_none_when_feature_disabled() -> None:
+    disabled_config = AuthConfig(access_keys=AccessKeyConfig(enabled=False))
+
+    result = await validate_access_key_token(disabled_config, "not-a-token")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_validate_access_key_token_parses_list_scp_claim(tmp_path) -> None:
+    config = _access_key_config(tmp_path, max_expires_in_seconds=None)
+    now = 1_785_280_000
+    signing_key = await access_keys_mod._access_key_signing_key_async(config)
+    jwks = {"keys": [await public_jwk_from_private_key_pem_async(config)]}
+    token = jwt.encode(
+        {
+            "iss": access_keys_mod.access_key_issuer(config),
+            "aud": config.access_keys.audience,
+            "sub": "alice@example.com",
+            "iat": now,
+            "nbf": now,
+            "jti": "ak_" + "a" * 32,
+            "nmp_token_type": ACCESS_KEY_TOKEN_TYPE,
+            "nmp_access_key": {"version": 2},
+            "scp": ["read", "write"],
+        },
+        signing_key.private_key,
+        algorithm="RS256",
+        headers={"kid": config.token_signing.key_id},
+    )
+
+    claims = await validate_access_key_token(config, token, jwks_override=jwks)
+
+    assert claims is not None
+    assert claims.scopes == ["read", "write"]

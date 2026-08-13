@@ -15,7 +15,7 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List
+from typing import List, Optional
 
 from ..._models import BaseModel
 from .access_key_metadata_response import AccessKeyMetadataResponse
@@ -27,3 +27,6 @@ class AccessKeyListResponse(BaseModel):
     """List response for Scoped Access Key metadata."""
 
     data: List[AccessKeyMetadataResponse]
+
+    has_more: Optional[bool] = None
+    """True when another page of keys is available."""

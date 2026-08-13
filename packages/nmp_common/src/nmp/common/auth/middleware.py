@@ -15,6 +15,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from .access_key_lifecycle import (
+    AccessKeyLifecycleAuthenticator,
+    AccessKeyLifecycleUnavailableError,
+)
 from .bearer import MalformedBearerTokenError, parse_bearer_authorization_header
 from .client import AuthClient
 from .dependencies import auth_client_context
@@ -116,6 +120,7 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         service_name: Optional[str] = None,
         http_client: Optional[httpx.AsyncClient] = None,
+        access_key_lifecycle_http_client: Optional[httpx.AsyncClient] = None,
     ):
         """Initialize the authorization middleware.
 
@@ -125,11 +130,18 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             http_client: Optional HTTP client for PDP calls. If not provided,
                         one will be created lazily on first use. This is used for
                         testing with ASGI transport - see architecture/docs/http-client-injection.md.
+            access_key_lifecycle_http_client: Optional HTTP client for access-key
+                        lifecycle calls. If not provided, a client using the platform
+                        endpoint transport is created lazily.
         """
         super().__init__(app)
         self.config: AuthConfig = get_auth_config()
         self.service_name = service_name
         self._client: Optional[httpx.AsyncClient] = http_client
+        self._access_key_lifecycle = AccessKeyLifecycleAuthenticator(
+            self.config,
+            http_client=access_key_lifecycle_http_client,
+        )
         self._jwt_validator: Optional[Any] = None
 
         if self.config.allow_unsigned_jwt:
@@ -459,6 +471,15 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
 
     async def _handle_bearer_token_request(self, request: Request, call_next: Callable, token: str) -> Response:
         """Handle requests with Authorization: Bearer tokens through the shared resolver."""
+        if self.config.access_keys.enabled:
+            from .access_keys import is_access_key_token_candidate
+
+            if is_access_key_token_candidate(token):
+                resolved_or_error = await self._authenticate_access_key_lifecycle(token)
+                if isinstance(resolved_or_error, Response):
+                    return resolved_or_error
+                return await self._handle_resolved_bearer_token(request, call_next, resolved_or_error)
+
         jwt_validator = self._get_jwt_validator()
         if jwt_validator is None and not self.config.access_keys.enabled:
             logger.warning("Bearer token provided but bearer token authentication is not configured")
@@ -470,7 +491,12 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
         from .jwt import UnsignedJWTRejectedError
 
         try:
-            resolved = await resolve_bearer_token(self.config, token, jwt_validator=jwt_validator)
+            resolved = await resolve_bearer_token(
+                self.config,
+                token,
+                jwt_validator=jwt_validator,
+                skip_access_key_check=self.config.access_keys.enabled,
+            )
         except UnsignedJWTRejectedError as exc:
             return JSONResponse(
                 status_code=401,
@@ -478,12 +504,44 @@ class AuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
         if resolved is None:
+            if jwt_validator is None:
+                logger.warning(
+                    "Bearer token rejected: OIDC is not configured and the token did not pass "
+                    "the Scoped Access Key candidate check (service: %s)",
+                    self.service_name or "unknown",
+                )
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid or expired token"},
             )
 
         return await self._handle_resolved_bearer_token(request, call_next, resolved)
+
+    def _access_key_lifecycle_error_response(
+        self,
+        status_code: int,
+        detail: str,
+        *,
+        retry_after: int | None = None,
+    ) -> JSONResponse:
+        headers = {"Retry-After": str(retry_after)} if retry_after is not None else None
+        return JSONResponse(status_code=status_code, content={"detail": detail}, headers=headers)
+
+    async def _authenticate_access_key_lifecycle(
+        self,
+        token: str,
+    ) -> ResolvedBearerToken | Response:
+        try:
+            resolved = await self._access_key_lifecycle.authenticate(token)
+        except AccessKeyLifecycleUnavailableError as exc:
+            return self._access_key_lifecycle_error_response(
+                exc.status_code,
+                exc.detail,
+                retry_after=exc.retry_after,
+            )
+        if resolved is None:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
+        return resolved
 
     async def _handle_resolved_bearer_token(
         self,

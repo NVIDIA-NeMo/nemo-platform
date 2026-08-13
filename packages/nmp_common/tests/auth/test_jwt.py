@@ -12,7 +12,13 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 from nmp.common import http_clients
-from nmp.common.auth.jwt import JWTValidator, TokenClaims, UnsignedJWTRejectedError
+from nmp.common.auth.jwt import (
+    JWTValidator,
+    TokenClaims,
+    UnsignedJWTRejectedError,
+    groups_from_claim,
+    scopes_from_claim,
+)
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import OIDCConfig
 
@@ -78,6 +84,30 @@ class TestTokenClaims:
 
         assert claims.subject == "user123"
         assert claims.email is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (" admins, developers ,, ", ["admins", "developers"]),
+        ([" admins ", "", 42, "developers"], ["admins", "developers"]),
+        (None, []),
+    ],
+)
+def test_groups_from_claim_normalizes_supported_claim_shapes(value: object, expected: list[str]) -> None:
+    assert groups_from_claim(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("read  write", ["read", "write"]),
+        ([" read ", "", 42, "write"], ["read", "write"]),
+        (None, []),
+    ],
+)
+def test_scopes_from_claim_normalizes_supported_claim_shapes(value: object, expected: list[str]) -> None:
+    assert scopes_from_claim(value) == expected
 
 
 class TestOIDCConfigClaimDefaults:

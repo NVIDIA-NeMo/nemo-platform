@@ -15,42 +15,16 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List, Optional
-from datetime import datetime
-from typing_extensions import Literal
-
 from ..._models import BaseModel
 
-__all__ = ["AccessKeyCreateResponse"]
+__all__ = ["AccessKeyRevokeResponse"]
 
 
-class AccessKeyCreateResponse(BaseModel):
-    """Create response. The token value is returned only once."""
-
-    token: str
-
-    audiences: List[str]
-    """Audiences accepted for the Scoped Access Key JWT."""
-
-    created_at: datetime
-
-    issuer: str
-    """Issuer stamped into the Scoped Access Key JWT."""
+class AccessKeyRevokeResponse(BaseModel):
+    """Response returned after a Scoped Access Key revoke request."""
 
     jti: str
     """Stable JWT ID for this Scoped Access Key."""
 
-    principal: str
-    """Principal ID stamped into the token."""
-
-    status: Literal["ACTIVE", "EXPIRED", "REVOKED"]
-
-    token_type: Literal["Bearer"]
-
-    description: Optional[str] = None
-    """Human-readable description of the Scoped Access Key."""
-
-    expires_at: Optional[datetime] = None
-
-    name: Optional[str] = None
-    """Optional human-readable Scoped Access Key label."""
+    revoked: bool
+    """True when this request newly recorded the key's revocation."""
