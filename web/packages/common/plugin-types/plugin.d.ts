@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import * as React$2 from "react";
-import React$1, { CSSProperties, ChangeEvent, ComponentProps, ComponentPropsWithRef, ComponentPropsWithoutRef, ComponentType, FC, ForwardRefExoticComponent, JSX as JSX$1, JSXElementConstructor, MouseEventHandler, PropsWithChildren, ReactElement, ReactNode, RefAttributes, RefObject, SVGProps } from "react";
+import React$1, { CSSProperties, ChangeEvent, ComponentProps, ComponentPropsWithRef, ComponentPropsWithoutRef, ComponentType, ElementType, FC, ForwardRefExoticComponent, JSX as JSX$1, JSXElementConstructor, MouseEventHandler, PropsWithChildren, ReactElement, ReactNode, RefAttributes, RefObject, SVGProps } from "react";
+import { ThreadMessageLike, ThreadPrimitive } from "@assistant-ui/react";
+import { PlatformJobLog, PlatformJobStatus, PromptData } from "@nemo/sdk/generated/platform/schema";
 import { VariantProps } from "class-variance-authority";
-import { PlatformJobLog, PlatformJobStatus } from "@nemo/sdk/generated/platform/schema";
 //#endregion
 //#region src/components/AccessibleTitle/index.d.ts
 interface AccessibleTitleProps {
@@ -15,6 +16,749 @@ interface AccessibleTitleProps {
  * changes audible to screen readers.
  */
 export declare const AccessibleTitle: FC<PropsWithChildren<AccessibleTitleProps>>;
+//#endregion
+//#region ../../node_modules/.pnpm/@types+unist@3.0.3/node_modules/@types/unist/index.d.ts
+// ## Interfaces
+/**
+ * Info associated with nodes by the ecosystem.
+ *
+ * This space is guaranteed to never be specified by unist or specifications
+ * implementing unist.
+ * But you can use it in utilities and plugins to store data.
+ *
+ * This type can be augmented to register custom data.
+ * For example:
+ *
+ * ```ts
+ * declare module 'unist' {
+ *   interface Data {
+ *     // `someNode.data.myId` is typed as `number | undefined`
+ *     myId?: number | undefined
+ *   }
+ * }
+ * ```
+ */
+interface Data$1 {}
+/**
+ * One place in a source file.
+ */
+interface Point {
+  /**
+   * Line in a source file (1-indexed integer).
+   */
+  line: number;
+  /**
+   * Column in a source file (1-indexed integer).
+   */
+  column: number;
+  /**
+   * Character in a source file (0-indexed integer).
+   */
+  offset?: number | undefined;
+}
+/**
+ * Position of a node in a source document.
+ *
+ * A position is a range between two points.
+ */
+interface Position {
+  /**
+   * Place of the first character of the parsed source region.
+   */
+  start: Point;
+  /**
+   * Place of the first character after the parsed source region.
+   */
+  end: Point;
+}
+/**
+ * Abstract unist node.
+ *
+ * The syntactic unit in unist syntax trees are called nodes.
+ *
+ * This interface is supposed to be extended.
+ * If you can use {@link Literal} or {@link Parent}, you should.
+ * But for example in markdown, a `thematicBreak` (`***`), is neither literal
+ * nor parent, but still a node.
+ */
+interface Node$1 {
+  /**
+   * Node type.
+   */
+  type: string;
+  /**
+   * Info from the ecosystem.
+   */
+  data?: Data$1 | undefined;
+  /**
+   * Position of a node in a source document.
+   *
+   * Nodes that are generated (not in the original source document) must not
+   * have a position.
+   */
+  position?: Position | undefined;
+}
+//#endregion
+//#region ../../node_modules/.pnpm/@types+hast@3.0.4/node_modules/@types/hast/index.d.ts
+// ## Interfaces
+/**
+ * Info associated with hast nodes by the ecosystem.
+ *
+ * This space is guaranteed to never be specified by unist or hast.
+ * But you can use it in utilities and plugins to store data.
+ *
+ * This type can be augmented to register custom data.
+ * For example:
+ *
+ * ```ts
+ * declare module 'hast' {
+ *   interface Data {
+ *     // `someNode.data.myId` is typed as `number | undefined`
+ *     myId?: number | undefined
+ *   }
+ * }
+ * ```
+ */
+interface Data extends Data$1 {}
+/**
+ * Info associated with an element.
+ */
+interface Properties {
+  [PropertyName: string]: boolean | number | string | null | undefined | Array<string | number>;
+}
+// ## Content maps
+/**
+ * Union of registered hast nodes that can occur in {@link Element}.
+ *
+ * To register mote custom hast nodes, add them to {@link ElementContentMap}.
+ * They will be automatically added here.
+ */
+type ElementContent = ElementContentMap[keyof ElementContentMap];
+/**
+ * Registry of all hast nodes that can occur as children of {@link Element}.
+ *
+ * For a union of all {@link Element} children, see {@link ElementContent}.
+ */
+interface ElementContentMap {
+  comment: Comment;
+  element: Element$1;
+  text: Text$1;
+}
+/**
+ * Union of registered hast nodes that can occur in {@link Root}.
+ *
+ * To register custom hast nodes, add them to {@link RootContentMap}.
+ * They will be automatically added here.
+ */
+type RootContent = RootContentMap[keyof RootContentMap];
+/**
+ * Registry of all hast nodes that can occur as children of {@link Root}.
+ *
+ * > 👉 **Note**: {@link Root} does not need to be an entire document.
+ * > it can also be a fragment.
+ *
+ * For a union of all {@link Root} children, see {@link RootContent}.
+ */
+interface RootContentMap {
+  comment: Comment;
+  doctype: Doctype;
+  element: Element$1;
+  text: Text$1;
+}
+// ## Abstract nodes
+/**
+ * Abstract hast node.
+ *
+ * This interface is supposed to be extended.
+ * If you can use {@link Literal} or {@link Parent}, you should.
+ * But for example in HTML, a `Doctype` is neither literal nor parent, but
+ * still a node.
+ *
+ * To register custom hast nodes, add them to {@link RootContentMap} and other
+ * places where relevant (such as {@link ElementContentMap}).
+ *
+ * For a union of all registered hast nodes, see {@link Nodes}.
+ */
+interface Node extends Node$1 {
+  /**
+   * Info from the ecosystem.
+   */
+  data?: Data | undefined;
+}
+/**
+ * Abstract hast node that contains the smallest possible value.
+ *
+ * This interface is supposed to be extended if you make custom hast nodes.
+ *
+ * For a union of all registered hast literals, see {@link Literals}.
+ */
+interface Literal extends Node {
+  /**
+   * Plain-text value.
+   */
+  value: string;
+}
+/**
+ * Abstract hast node that contains other hast nodes (*children*).
+ *
+ * This interface is supposed to be extended if you make custom hast nodes.
+ *
+ * For a union of all registered hast parents, see {@link Parents}.
+ */
+interface Parent extends Node {
+  /**
+   * List of children.
+   */
+  children: RootContent[];
+}
+// ## Concrete nodes
+/**
+ * HTML comment.
+ */
+interface Comment extends Literal {
+  /**
+   * Node type of HTML comments in hast.
+   */
+  type: "comment";
+  /**
+   * Data associated with the comment.
+   */
+  data?: CommentData | undefined;
+}
+/**
+ * Info associated with hast comments by the ecosystem.
+ */
+interface CommentData extends Data {}
+/**
+ * HTML document type.
+ */
+interface Doctype extends Node$1 {
+  /**
+   * Node type of HTML document types in hast.
+   */
+  type: "doctype";
+  /**
+   * Data associated with the doctype.
+   */
+  data?: DoctypeData | undefined;
+}
+/**
+ * Info associated with hast doctypes by the ecosystem.
+ */
+interface DoctypeData extends Data {}
+/**
+ * HTML element.
+ */
+interface Element$1 extends Parent {
+  /**
+   * Node type of elements.
+   */
+  type: "element";
+  /**
+   * Tag name (such as `'body'`) of the element.
+   */
+  tagName: string;
+  /**
+   * Info associated with the element.
+   */
+  properties: Properties;
+  /**
+   * Children of element.
+   */
+  children: ElementContent[];
+  /**
+   * When the `tagName` field is `'template'`, a `content` field can be
+   * present.
+   */
+  content?: Root$1 | undefined;
+  /**
+   * Data associated with the element.
+   */
+  data?: ElementData | undefined;
+}
+/**
+ * Info associated with hast elements by the ecosystem.
+ */
+interface ElementData extends Data {}
+/**
+ * Document fragment or a whole document.
+ *
+ * Should be used as the root of a tree and must not be used as a child.
+ *
+ * Can also be used as the value for the content field on a `'template'` element.
+ */
+interface Root$1 extends Parent {
+  /**
+   * Node type of hast root.
+   */
+  type: "root";
+  /**
+   * Children of root.
+   */
+  children: RootContent[];
+  /**
+   * Data associated with the hast root.
+   */
+  data?: RootData | undefined;
+}
+/**
+ * Info associated with hast root nodes by the ecosystem.
+ */
+interface RootData extends Data {}
+/**
+ * HTML character data (plain text).
+ */
+interface Text$1 extends Literal {
+  /**
+   * Node type of HTML character data (plain text) in hast.
+   */
+  type: "text";
+  /**
+   * Data associated with the text.
+   */
+  data?: TextData | undefined;
+}
+/**
+ * Info associated with hast texts by the ecosystem.
+ */
+interface TextData extends Data {}
+//#endregion
+//#region ../../node_modules/.pnpm/mdast-util-to-hast@13.2.1/node_modules/mdast-util-to-hast/index.d.ts
+/**
+ * Raw string of HTML embedded into HTML AST.
+ */
+interface Raw extends Literal {
+  /**
+   * Node type of raw.
+   */
+  type: 'raw';
+  /**
+   * Data associated with the hast raw.
+   */
+  data?: RawData | undefined;
+}
+/**
+ * Info associated with hast raw nodes by the ecosystem.
+ */
+interface RawData extends Data {}
+// Register nodes in content.
+declare module 'hast' {
+  interface ElementData {
+    /**
+     * Custom info relating to the node, if `<code>` in `<pre>`.
+     *
+     * Defined by `mdast-util-to-hast` (`remark-rehype`).
+     */
+    meta?: string | null | undefined;
+  }
+  interface ElementContentMap {
+    /**
+     * Raw string of HTML embedded into HTML AST.
+     */
+    raw: Raw;
+  }
+  interface RootContentMap {
+    /**
+     * Raw string of HTML embedded into HTML AST.
+     */
+    raw: Raw;
+  }
+}
+// Register data on mdast.
+declare module 'mdast' {
+  interface Data {
+    /**
+     * Field supported by `mdast-util-to-hast` to signal that a node should
+     * result in something with these children.
+     *
+     * When this is defined, when a parent is created, these children will
+     * be used.
+     */
+    hChildren?: ElementContent[] | undefined;
+    /**
+     * Field supported by `mdast-util-to-hast` to signal that a node should
+     * result in a particular element, instead of its default behavior.
+     *
+     * When this is defined, an element with the given tag name is created.
+     * For example, when setting `hName` to `'b'`, a `<b>` element is created.
+     */
+    hName?: string | undefined;
+    /**
+     * Field supported by `mdast-util-to-hast` to signal that a node should
+     * result in an element with these properties.
+     *
+     * When this is defined, when an element is created, these properties will
+     * be used.
+     */
+    hProperties?: Properties | undefined;
+  }
+}
+//#endregion
+//#region ../../node_modules/.pnpm/react-markdown@9.1.0_@types+react@19.2.14_react@19.2.7/node_modules/react-markdown/lib/index.d.ts
+/**
+ * Extra fields we pass.
+ */
+type ExtraProps = {
+  /**
+   * passed when `passNode` is on.
+   */
+  node?: Element$1 | undefined;
+};
+/**
+ * Map tag names to components.
+ */
+type Components$1 = { [Key in Extract<ElementType, string>]?: ElementType<ComponentProps<Key> & ExtraProps>; };
+//#endregion
+//#region ../../node_modules/.pnpm/react-markdown@9.1.0_@types+react@19.2.14_react@19.2.7/node_modules/react-markdown/index.d.ts
+type Components = Components$1;
+//#endregion
+//#region src/components/Chat/MessageContent/types.d.ts
+interface MarkdownTableOptions {
+  expandableCells?: boolean;
+}
+interface MessageContentProps {
+  content?: string | null;
+  markdownLinkComponent?: Components['a'];
+  markdownTableOptions?: MarkdownTableOptions;
+  renderAsMarkdown?: boolean;
+}
+declare namespace shared_d_exports {
+  export { AllModels, ChatModel, ComparisonFilter, CompoundFilter, ErrorObject, FunctionDefinition, FunctionParameters, Metadata, Reasoning, ReasoningEffort, ResponseFormatJSONObject, ResponseFormatJSONSchema, ResponseFormatText, ResponsesModel };
+}
+type AllModels = (string & {}) | ChatModel | 'o1-pro' | 'o1-pro-2025-03-19' | 'computer-use-preview' | 'computer-use-preview-2025-03-11';
+type ChatModel = 'gpt-4.1' | 'gpt-4.1-mini' | 'gpt-4.1-nano' | 'gpt-4.1-2025-04-14' | 'gpt-4.1-mini-2025-04-14' | 'gpt-4.1-nano-2025-04-14' | 'o4-mini' | 'o4-mini-2025-04-16' | 'o3' | 'o3-2025-04-16' | 'o3-mini' | 'o3-mini-2025-01-31' | 'o1' | 'o1-2024-12-17' | 'o1-preview' | 'o1-preview-2024-09-12' | 'o1-mini' | 'o1-mini-2024-09-12' | 'gpt-4o' | 'gpt-4o-2024-11-20' | 'gpt-4o-2024-08-06' | 'gpt-4o-2024-05-13' | 'gpt-4o-audio-preview' | 'gpt-4o-audio-preview-2024-10-01' | 'gpt-4o-audio-preview-2024-12-17' | 'gpt-4o-mini-audio-preview' | 'gpt-4o-mini-audio-preview-2024-12-17' | 'gpt-4o-search-preview' | 'gpt-4o-mini-search-preview' | 'gpt-4o-search-preview-2025-03-11' | 'gpt-4o-mini-search-preview-2025-03-11' | 'chatgpt-4o-latest' | 'codex-mini-latest' | 'gpt-4o-mini' | 'gpt-4o-mini-2024-07-18' | 'gpt-4-turbo' | 'gpt-4-turbo-2024-04-09' | 'gpt-4-0125-preview' | 'gpt-4-turbo-preview' | 'gpt-4-1106-preview' | 'gpt-4-vision-preview' | 'gpt-4' | 'gpt-4-0314' | 'gpt-4-0613' | 'gpt-4-32k' | 'gpt-4-32k-0314' | 'gpt-4-32k-0613' | 'gpt-3.5-turbo' | 'gpt-3.5-turbo-16k' | 'gpt-3.5-turbo-0301' | 'gpt-3.5-turbo-0613' | 'gpt-3.5-turbo-1106' | 'gpt-3.5-turbo-0125' | 'gpt-3.5-turbo-16k-0613';
+/**
+ * A filter used to compare a specified attribute key to a given value using a
+ * defined comparison operation.
+ */
+interface ComparisonFilter {
+  /**
+   * The key to compare against the value.
+   */
+  key: string;
+  /**
+   * Specifies the comparison operator: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
+   *
+   * - `eq`: equals
+   * - `ne`: not equal
+   * - `gt`: greater than
+   * - `gte`: greater than or equal
+   * - `lt`: less than
+   * - `lte`: less than or equal
+   */
+  type: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
+  /**
+   * The value to compare against the attribute key; supports string, number, or
+   * boolean types.
+   */
+  value: string | number | boolean;
+}
+/**
+ * Combine multiple filters using `and` or `or`.
+ */
+interface CompoundFilter {
+  /**
+   * Array of filters to combine. Items can be `ComparisonFilter` or
+   * `CompoundFilter`.
+   */
+  filters: Array<ComparisonFilter | unknown>;
+  /**
+   * Type of operation: `and` or `or`.
+   */
+  type: 'and' | 'or';
+}
+interface ErrorObject {
+  code: string | null;
+  message: string;
+  param: string | null;
+  type: string;
+}
+interface FunctionDefinition {
+  /**
+   * The name of the function to be called. Must be a-z, A-Z, 0-9, or contain
+   * underscores and dashes, with a maximum length of 64.
+   */
+  name: string;
+  /**
+   * A description of what the function does, used by the model to choose when and
+   * how to call the function.
+   */
+  description?: string;
+  /**
+   * The parameters the functions accepts, described as a JSON Schema object. See the
+   * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+   * and the
+   * [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+   * documentation about the format.
+   *
+   * Omitting `parameters` defines a function with an empty parameter list.
+   */
+  parameters?: FunctionParameters;
+  /**
+   * Whether to enable strict schema adherence when generating the function call. If
+   * set to true, the model will follow the exact schema defined in the `parameters`
+   * field. Only a subset of JSON Schema is supported when `strict` is `true`. Learn
+   * more about Structured Outputs in the
+   * [function calling guide](docs/guides/function-calling).
+   */
+  strict?: boolean | null;
+}
+/**
+ * The parameters the functions accepts, described as a JSON Schema object. See the
+ * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+ * and the
+ * [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+ * documentation about the format.
+ *
+ * Omitting `parameters` defines a function with an empty parameter list.
+ */
+type FunctionParameters = Record<string, unknown>;
+/**
+ * Set of 16 key-value pairs that can be attached to an object. This can be useful
+ * for storing additional information about the object in a structured format, and
+ * querying for objects via API or the dashboard.
+ *
+ * Keys are strings with a maximum length of 64 characters. Values are strings with
+ * a maximum length of 512 characters.
+ */
+type Metadata = Record<string, string>;
+/**
+ * **o-series models only**
+ *
+ * Configuration options for
+ * [reasoning models](https://platform.openai.com/docs/guides/reasoning).
+ */
+interface Reasoning {
+  /**
+   * **o-series models only**
+   *
+   * Constrains effort on reasoning for
+   * [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
+   * supported values are `low`, `medium`, and `high`. Reducing reasoning effort can
+   * result in faster responses and fewer tokens used on reasoning in a response.
+   */
+  effort?: ReasoningEffort | null;
+  /**
+   * @deprecated **Deprecated:** use `summary` instead.
+   *
+   * A summary of the reasoning performed by the model. This can be useful for
+   * debugging and understanding the model's reasoning process. One of `auto`,
+   * `concise`, or `detailed`.
+   */
+  generate_summary?: 'auto' | 'concise' | 'detailed' | null;
+  /**
+   * A summary of the reasoning performed by the model. This can be useful for
+   * debugging and understanding the model's reasoning process. One of `auto`,
+   * `concise`, or `detailed`.
+   */
+  summary?: 'auto' | 'concise' | 'detailed' | null;
+}
+/**
+ * **o-series models only**
+ *
+ * Constrains effort on reasoning for
+ * [reasoning models](https://platform.openai.com/docs/guides/reasoning). Currently
+ * supported values are `low`, `medium`, and `high`. Reducing reasoning effort can
+ * result in faster responses and fewer tokens used on reasoning in a response.
+ */
+type ReasoningEffort = 'low' | 'medium' | 'high' | null;
+/**
+ * JSON object response format. An older method of generating JSON responses. Using
+ * `json_schema` is recommended for models that support it. Note that the model
+ * will not generate JSON without a system or user message instructing it to do so.
+ */
+interface ResponseFormatJSONObject {
+  /**
+   * The type of response format being defined. Always `json_object`.
+   */
+  type: 'json_object';
+}
+/**
+ * JSON Schema response format. Used to generate structured JSON responses. Learn
+ * more about
+ * [Structured Outputs](https://platform.openai.com/docs/guides/structured-outputs).
+ */
+interface ResponseFormatJSONSchema {
+  /**
+   * Structured Outputs configuration options, including a JSON Schema.
+   */
+  json_schema: ResponseFormatJSONSchema.JSONSchema;
+  /**
+   * The type of response format being defined. Always `json_schema`.
+   */
+  type: 'json_schema';
+}
+declare namespace ResponseFormatJSONSchema {
+  /**
+   * Structured Outputs configuration options, including a JSON Schema.
+   */
+  interface JSONSchema {
+    /**
+     * The name of the response format. Must be a-z, A-Z, 0-9, or contain underscores
+     * and dashes, with a maximum length of 64.
+     */
+    name: string;
+    /**
+     * A description of what the response format is for, used by the model to determine
+     * how to respond in the format.
+     */
+    description?: string;
+    /**
+     * The schema for the response format, described as a JSON Schema object. Learn how
+     * to build JSON schemas [here](https://json-schema.org/).
+     */
+    schema?: Record<string, unknown>;
+    /**
+     * Whether to enable strict schema adherence when generating the output. If set to
+     * true, the model will always follow the exact schema defined in the `schema`
+     * field. Only a subset of JSON Schema is supported when `strict` is `true`. To
+     * learn more, read the
+     * [Structured Outputs guide](https://platform.openai.com/docs/guides/structured-outputs).
+     */
+    strict?: boolean | null;
+  }
+}
+/**
+ * Default response format. Used to generate text responses.
+ */
+interface ResponseFormatText {
+  /**
+   * The type of response format being defined. Always `text`.
+   */
+  type: 'text';
+}
+type ResponsesModel = (string & {}) | ChatModel | 'o1-pro' | 'o1-pro-2025-03-19' | 'computer-use-preview' | 'computer-use-preview-2025-03-11';
+//#endregion
+//#region ../../node_modules/.pnpm/openai@4.104.0_ws@8.21.1_zod@3.25.76/node_modules/openai/resources/chat/completions/completions.d.ts
+interface ChatCompletionTool {
+  function: FunctionDefinition;
+  /**
+   * The type of the tool. Currently, only `function` is supported.
+   */
+  type: 'function';
+}
+//#endregion
+//#region src/components/AssistantChat/types.d.ts
+declare const ComposerMode: {
+  readonly PER_PANEL: 'per-panel';
+  readonly BROADCAST_ALL: 'broadcast-all';
+};
+type ComposerMode = (typeof ComposerMode)[keyof typeof ComposerMode];
+interface AssistantChatThreadAttributes {
+  ThreadViewport?: ComponentProps<typeof ThreadPrimitive.Viewport>;
+}
+type AssistantChatMessageContentProps = Pick<MessageContentProps, 'markdownLinkComponent'>;
+interface AssistantChatProps {
+  /**
+   * The model name to route through inference gateway.
+   */
+  model: string;
+  /**
+   * Workspace used to build the default inference gateway URL.
+   */
+  workspace?: string;
+  /**
+   * Explicit OpenAI-compatible chat completions base URL. When omitted, `useChatCompletion`
+   * resolves inference gateway routing from workspace and model.
+   */
+  baseURL?: string;
+  /**
+   * Optional prompt data used for system prompt and inference parameter defaults.
+   */
+  promptData?: PromptData;
+  /**
+   * Optional OpenAI-compatible tools for the request.
+   */
+  tools?: ChatCompletionTool[];
+  /**
+   * Display name used in the composer placeholder.
+   */
+  assistantName?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  showRunningIndicator?: boolean;
+  attributes?: AssistantChatThreadAttributes;
+  className?: string;
+  initialMessages?: readonly ThreadMessageLike[];
+  onError?: (error: Error) => void;
+  /**
+   * Called once per assistant message after the stream completes (or after
+   * the non-stream completion lands). Surfaces per-message timing so callers
+   * can render their own latency/throughput UI without owning the runtime.
+   * Not invoked on cancellation or error.
+   */
+  onMessageComplete?: (info: AssistantMessageCompletion) => void;
+  /**
+   * Fires whenever the runtime's "is currently streaming" state changes.
+   * Lets a parent (e.g. a page that hosts many AssistantChats) aggregate the
+   * running state across instances — used by the Chat route to drive a global
+   * Stop button in Compare mode.
+   */
+  onRunningChange?: (isRunning: boolean) => void;
+  /**
+   * Fires whenever the thread transitions between empty and non-empty. Lets a
+   * parent derive seed-chip visibility from whether any messages exist.
+   */
+  onEmptyChange?: (isEmpty: boolean) => void;
+  /**
+   * Controls whether the internal composer is shown and how input is driven.
+   * In `broadcast-all` mode the composer is suppressed; a page-level composer
+   * drives every AssistantChat in parallel.
+   * @default ComposerMode.PER_PANEL
+   */
+  composerMode?: ComposerMode;
+  /**
+   * External broadcast trigger. Whenever `seq` changes (excluding initial
+   * mount), the runtime appends `text` as a new user message and runs a
+   * completion — same code path as a user typing into the composer.
+   */
+  broadcast?: BroadcastSignal;
+  /**
+   * Monotonic counter — when it changes, the runtime aborts any in-flight
+   * stream. Lets a parent cancel many AssistantChats at once.
+   */
+  stopCount?: number;
+  /**
+   * Content rendered immediately above the composer, inside the same outer
+   * frame. Use for seed-prompt chips or any prefatory hint that should read
+   * as part of the composer affordance rather than a separate block.
+   */
+  slotComposerStart?: ReactNode;
+  emptyState?: {
+    slotHeading?: string;
+    slotSubheading?: string;
+  };
+  /** Overrides used when rendering Markdown inside chat messages. */
+  messageContentProps?: AssistantChatMessageContentProps;
+  composerOverride?: ReactNode;
+  /**
+   * @default true
+   */
+  enableImageAttachments?: boolean;
+}
+interface BroadcastSignal {
+  /** Monotonically increasing sequence — on change, runtime fires a send. */
+  seq: number;
+  /** Text to inject as the user's next message. */
+  text: string;
+}
+interface AssistantMessageCompletion {
+  assistantMessageId: string;
+  text: string;
+  /** ms from request start to first delta (0 if non-stream). */
+  ttftMs: number;
+  /** ms from request start to final delta. */
+  totalMs: number;
+  /** Number of delta chunks (1 for non-stream). */
+  chunkCount: number;
+  /** Approximate; chars/4 fallback when the API doesn't return a usage block. */
+  completionTokens: number;
+  /** Completion tokens per second of streaming wall-time (excludes TTFT). */
+  tokensPerSec: number;
+}
+//#endregion
+//#region src/components/AssistantChat/index.d.ts
+export declare const AssistantChat: FC<AssistantChatProps>;
 //#endregion
 //#region src/components/AccordionSection/index.d.ts
 interface AccordionSectionProps {
@@ -9941,4 +10685,4 @@ export declare const CJobLaunchableStatuses: PlatformJobStatus[];
 export declare const CJobTerminalStatuses: PlatformJobStatus[];
 export declare const PlatformJobTerminalStatuses: PlatformJobStatus[];
 //#endregion
-export { type AccordionSectionProps, type ApiFilter, type BadgeStatus, type CreateSecretFormData, type CreateSecretModalProps, index_d_exports as DataView, type FetchAllPagesOptions, type FileTagProps, type FileTagStatus, type FileUploadProps, type FilterOperators, type FormModalProps, type NotifyFn, type NotifyType, type PaginatedResponse, type QuickActionItem, type RadioCardProps, type RenderFileTagFn, type StatusConfigEntry, type StudioDataViewState, type StudioDataViewToolbarProps, type UseStudioDataViewStateOptions, type WithFilterOperators };
+export { type AccordionSectionProps, type ApiFilter, type AssistantChatMessageContentProps, type AssistantChatProps, type BadgeStatus, type CreateSecretFormData, type CreateSecretModalProps, index_d_exports as DataView, type FetchAllPagesOptions, type FileTagProps, type FileTagStatus, type FileUploadProps, type FilterOperators, type FormModalProps, type NotifyFn, type NotifyType, type PaginatedResponse, type QuickActionItem, type RadioCardProps, type RenderFileTagFn, type StatusConfigEntry, type StudioDataViewState, type StudioDataViewToolbarProps, type UseStudioDataViewStateOptions, type WithFilterOperators };
