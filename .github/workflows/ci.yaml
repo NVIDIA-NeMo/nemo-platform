@@ -1057,10 +1057,12 @@ jobs:
         with:
           username: ${{ vars.AIRE_DOCKERHUB_USERNAME }}
           password: ${{ secrets.AIRE_DOCKERHUB_ACCESS_TOKEN }}
-      - name: Pull mock base images
+      - name: Pull integration Docker images
         run: |
           docker pull nginx:1.29.4-alpine-slim
           docker pull alpine:3.23
+          clickhouse_version="$(tr -d '[:space:]' < services/intake/.clickhouse-version)"
+          docker pull "clickhouse/clickhouse-server:${clickhouse_version}"
         shell: bash
       - name: Run integration tests
         run: make test-integration-ci

@@ -36,6 +36,7 @@ MOCK_PROVIDER_PREFIX = "igw-mock-"
 MOCK_PROVIDER_PREFIX_ENVVAR = "NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX"
 CLICKHOUSE_XDIST_GROUP = "nmp_intake_clickhouse"
 CLICKHOUSE_XDIST_FIXTURE = "_clickhouse"
+CLICKHOUSE_TIMEOUT_SECONDS = 600
 
 #: Base URL (and therefore port) for the agent-eval subprocess-backend platform. Distinct from
 #: other integration platforms so both can run in the same session without a port clash.
@@ -87,6 +88,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if CLICKHOUSE_XDIST_FIXTURE in item.fixturenames:
             item.add_marker(pytest.mark.xdist_group(CLICKHOUSE_XDIST_GROUP))
+            item.add_marker(pytest.mark.timeout(CLICKHOUSE_TIMEOUT_SECONDS))
 
 
 @contextmanager

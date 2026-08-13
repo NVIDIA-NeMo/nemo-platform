@@ -91,9 +91,11 @@ def _wait_for_tcp(host: str, port: int, *, timeout: float) -> None:
     raise RuntimeError(f"{host}:{port} not reachable within {timeout}s")
 
 
-def _wait_for_ready(base_url: str, *, timeout: float) -> None:
+def _wait_for_ready(base_url: str, *, timeout: float, process: subprocess.Popen[bytes]) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"platform at {base_url} exited early (code {process.returncode}) before ready")
         try:
             with urllib.request.urlopen(f"{base_url}/health/ready", timeout=2) as response:  # noqa: S310
                 if response.status == 200:
@@ -102,6 +104,12 @@ def _wait_for_ready(base_url: str, *, timeout: float) -> None:
             pass
         time.sleep(2)
     raise RuntimeError(f"platform at {base_url} not ready within {timeout}s")
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1)
+        return sock.connect_ex((host, port)) == 0
 
 
 @pytest.fixture(scope="session")
@@ -136,7 +144,11 @@ def platform_base_url(_clickhouse: None) -> Iterator[str]:
     # NMP_BASE_URL is client-side only, so without this the suite silently requires 8080 to be free
     # and cannot run alongside a local dev platform. Mirrors the sibling fixtures in conftest, which
     # each take their own port for the same reason.
-    port = urlsplit(BASE_URL).port or 8080
+    split = urlsplit(BASE_URL)
+    host = split.hostname or "localhost"
+    port = split.port or 8080
+    if _port_in_use(host, port):
+        raise RuntimeError(f"{host}:{port} is already in use; stop other platform instances before running this test")
     process = subprocess.Popen(
         ["uv", "run", "nemo", "services", "run", "--services", "auth,entities,intake", "--port", str(port)],
         cwd=REPO_ROOT,
@@ -147,7 +159,7 @@ def platform_base_url(_clickhouse: None) -> Iterator[str]:
         },
     )
     try:
-        _wait_for_ready(BASE_URL, timeout=180)
+        _wait_for_ready(BASE_URL, timeout=180, process=process)
         yield BASE_URL
     finally:
         process.terminate()
