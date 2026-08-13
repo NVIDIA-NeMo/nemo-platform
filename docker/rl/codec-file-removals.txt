@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Codec cleanup for release image scans. Remove this file and its
+# Dockerfile call when the upstream image contents no longer need this workaround.
+/opt/uv_cache/archive-v0/TX3VFTh1tOX_1IKC/_soundfile_data/libsndfile_x86_64.so

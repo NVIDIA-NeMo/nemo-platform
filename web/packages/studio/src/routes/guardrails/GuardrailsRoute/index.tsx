@@ -81,6 +81,7 @@ export const GuardrailsRoute: FC = () => {
           }}
           onRequestDuplicate={setConfigToDuplicate}
           onRequestDelete={setConfigToDelete}
+          onCreate={() => setIsCreateOpen(true)}
         />
       </Stack>
 

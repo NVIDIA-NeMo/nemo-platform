@@ -55,6 +55,25 @@ RUN if find /tmp/fastembed_cache/models--qdrant--all-MiniLM-L6-v2-onnx/snapshots
         uv run --no-sync python -c 'import os, tempfile; from huggingface_hub import snapshot_download; snapshot_download(repo_id="qdrant/all-MiniLM-L6-v2-onnx", cache_dir=os.path.join(tempfile.gettempdir(), "fastembed_cache"))'; \
     fi
 
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-workspace-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-api && \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-python-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-api \
+        --lock-file /app/uv.lock \
+        --label app-venv && \
+    bash /usr/local/bin/collect-apt-sources.sh /app/.source-distributions/nmp-api/apt --installed && \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-cpython-source.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-api
+
 FROM ${NMP_API_RUNTIME_BASE} AS runtime
 WORKDIR /app
 
@@ -83,6 +102,7 @@ ENV USERNAME=nvs \
 # DuckDB extension cache (aws, httpfs) for S3 log storage
 COPY --chown=1000:1000 --from=builder /root/.duckdb /home/nvs/.duckdb
 COPY --chown=1000:1000 --from=builder /app/.venv /app/.venv
+COPY --chown=1000:1000 --from=builder /app/.source-distributions/nmp-api/ /usr/share/nemo-platform/source-distributions/nmp-api/
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/.venv/lib/python${PY_VERSION}/site-packages"
