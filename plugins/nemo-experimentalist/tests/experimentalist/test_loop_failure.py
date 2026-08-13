@@ -165,15 +165,23 @@ async def test_no_proposals_finalizes_evaluated_candidates(monkeypatch, tmp_path
         "DatasetFactory",
         lambda: SimpleNamespace(build_dataset=lambda *args, **kwargs: object()),
     )
-    monkeypatch.setattr(EvolutionaryOptimizer, "_init_structure", lambda self: (tmp_path / "agents", tmp_path / "analysis", tmp_path / "results"))
+    monkeypatch.setattr(
+        EvolutionaryOptimizer,
+        "_init_structure",
+        lambda self: (tmp_path / "agents", tmp_path / "analysis", tmp_path / "results"),
+    )
     monkeypatch.setattr(EvolutionaryOptimizer, "_detect_last_round", lambda self: None)
     monkeypatch.setattr(EvolutionaryOptimizer, "_create_experiment_run", AsyncMock(return_value=run))
     monkeypatch.setattr(EvolutionaryOptimizer, "_create_baseline_agent", AsyncMock(return_value=baseline))
     monkeypatch.setattr(EvolutionaryOptimizer, "_update_candidate", AsyncMock())
-    monkeypatch.setattr(EvolutionaryOptimizer, "_evaluate_validation_candidates", AsyncMock(return_value={"agent-0": evaluation}))
+    monkeypatch.setattr(
+        EvolutionaryOptimizer, "_evaluate_validation_candidates", AsyncMock(return_value={"agent-0": evaluation})
+    )
     monkeypatch.setattr(EvolutionaryOptimizer, "_generate_initial_goal_tree", AsyncMock())
     monkeypatch.setattr(EvolutionaryOptimizer, "_select_survivors", AsyncMock(return_value=[baseline]))
-    monkeypatch.setattr(EvolutionaryOptimizer, "_evaluate_train_candidates", AsyncMock(return_value={"agent-0": evaluation}))
+    monkeypatch.setattr(
+        EvolutionaryOptimizer, "_evaluate_train_candidates", AsyncMock(return_value={"agent-0": evaluation})
+    )
     monkeypatch.setattr(EvolutionaryOptimizer, "_analyze_round", AsyncMock(return_value="analysis"))
     monkeypatch.setattr(EvolutionaryOptimizer, "_update_goal_tree", AsyncMock())
     propose = AsyncMock(return_value=[])

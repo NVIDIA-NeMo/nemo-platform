@@ -76,6 +76,21 @@ _GRAMMAR = (
     re.compile(r"what is the total \w+ in the \w+ (?:department|role)", re.IGNORECASE),
 )
 
+
+def _render_tasks(dataset: Path) -> None:
+    """Render the compact task manifest into a disposable dataset copy."""
+    path = _FIXTURE / "scripts" / "render_tasks.py"
+    spec = importlib.util.spec_from_file_location("_smoke_render_tasks", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    module.render(dataset)
+
+
 # The Analyst is tested by the nemo-insights plugin.  This test instead supplies
 # a reviewed Insight with fresh, real trace ids so it isolates the Mode 1 loop:
 # trace recording, Eval Author, and the Experimentalist itself.
@@ -370,6 +385,7 @@ def test_insight_evidence_tasks_fail_on_the_baseline(group: str, tmp_path: Path)
     """Check that five Insight evidence tasks show the group's baseline failure."""
     local_fixture = tmp_path / "smoke-agent"
     shutil.copytree(_FIXTURE, local_fixture)
+    _render_tasks(local_fixture / "dataset")
     evidence = local_fixture / "dataset" / "groups" / group / "insight-evidence"
     tasks = [evidence / name for name in _INSIGHT_EVIDENCE_TASKS[group]]
     assert all(task.is_dir() for task in tasks), f"{group} did not create all Insight evidence tasks"
@@ -447,16 +463,16 @@ def _generated_trial_rewards(experiment: Path) -> list[dict[str, float]]:
     return generated
 
 
-def _check_insight_suite(experiment: Path) -> None:
+def _check_insight_suite(experiment: Path, dataset: Path) -> None:
     """Check that Mode 1 produced usable generated tasks and objective metrics."""
     declared = _template_placeholders()
     assert declared, f"{_TEMPLATE_DIR} declares no <PLACEHOLDER> tokens"
-    unmatched_committed = [
+    unmatched_curated = [
         path.parent.name
-        for path in sorted((_TEMPLATE_DIR.parent / "groups").rglob("instruction.md"))
+        for path in sorted((dataset / "groups").rglob("instruction.md"))
         if not any(pattern.search(path.read_text(encoding="utf-8")) for pattern in _GRAMMAR)
     ]
-    assert not unmatched_committed, "committed tasks fall outside the agent grammar: " + ", ".join(unmatched_committed)
+    assert not unmatched_curated, "curated tasks fall outside the agent grammar: " + ", ".join(unmatched_curated)
     suites = _suite_dirs(experiment)
     assert suites, "Eval Author did not materialize an Insight suite"
     tasks = [task for suite in suites for task in _materialized_tasks(suite)]
@@ -521,14 +537,14 @@ def _check_insight_suite(experiment: Path) -> None:
         )
 
 
-def _assert_committed_validation_passes(experiment: Path, group: str) -> None:
+def _assert_committed_validation_passes(experiment: Path, group: str, dataset: Path) -> None:
     """Check that the Mode 1 winner repairs every committed validation task."""
     winner = _winner_label(experiment)
     assert winner != "agent-0", f"{group} retained the baseline; nothing was repaired"
     assert _agent_source(experiment, winner) != _agent_source(experiment, "agent-0"), (
         f"{group} winner source is identical to the baseline"
     )
-    validation = _FIXTURE / "dataset" / "groups" / group / "validation"
+    validation = dataset / "groups" / group / "validation"
     tasks = [task for task in sorted(validation.iterdir()) if (task / "task.toml").is_file()]
     assert tasks, f"no validation tasks under {validation}; the fixture moved"
     failed = [task.name for task in tasks if not _replays_correctly(experiment, winner, task)]
@@ -692,12 +708,21 @@ def experiment(
     return _Experiment(case, path)
 
 
+@pytest.fixture(scope="session")
+def rendered_dataset(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Render curated tasks for host-side candidate checks."""
+    dataset = tmp_path_factory.mktemp("smoke-agent-dataset") / "dataset"
+    shutil.copytree(_FIXTURE / "dataset", dataset)
+    _render_tasks(dataset)
+    return dataset
+
+
 @pytest.mark.e2e
 @pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _EXPERIMENT_CASES, indirect=True)
-def test_insight_driven_loop_materializes_a_usable_suite(experiment: _Experiment) -> None:
+def test_insight_driven_loop_materializes_a_usable_suite(experiment: _Experiment, rendered_dataset: Path) -> None:
     """Check that each downloaded Mode 1 experiment has usable generated tasks and objectives."""
-    _check_insight_suite(experiment.path)
+    _check_insight_suite(experiment.path, rendered_dataset)
 
 
 @pytest.mark.e2e
@@ -719,9 +744,9 @@ def test_generated_only_mode_1_uses_only_generated_tasks(experiment: _Experiment
 @pytest.mark.e2e
 @pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _GENERATED_ONLY_CASES, indirect=True)
-def test_generated_only_mode_1_repairs_committed_holdout(experiment: _Experiment) -> None:
+def test_generated_only_mode_1_repairs_committed_holdout(experiment: _Experiment, rendered_dataset: Path) -> None:
     """Check that generated-only Mode 1 winners repair their untouched committed validation tasks."""
-    _assert_committed_validation_passes(experiment.path, experiment.case.group)
+    _assert_committed_validation_passes(experiment.path, experiment.case.group, rendered_dataset)
 
 
 @pytest.mark.e2e

@@ -26,8 +26,8 @@ checked for more than "it completed".
   Experimentalist itself. The `CompletionClient` in `agent.py` points at an
   unroutable address: an accidental model call fails loudly rather than quietly
   making the agent nondeterministic.
-- **Tasks are local and checked in.** No registry, no NeMo Platform for Mode 2,
-  no network inside the task container.
+- **Task definitions are local and checked in.** No registry, no NeMo Platform
+  for Mode 2, no network inside the task container.
 - **One prebuilt image serves every task**, referenced by
   `[environment].docker_image` rather than a per-task Dockerfile. Its tag is a
   content hash of the Dockerfile and the records file, so forgetting to rebuild
@@ -47,12 +47,13 @@ optimizer-generalization.yaml  profile: same agent, g4 datasets (see Scenarios)
 configs/short.yaml            loop settings shared by the per-group gate checks
 configs/full.yaml              loop settings for the multi-round scenario
 dataset/_shared/               canonical Dockerfile, records, verifier
-dataset/groups/<group>/        train/ and validation/ task sets
-dataset/groups/_all/           GENERATED, gitignored -- see build_all_group.py
-dataset/task-template/         insight mode only
+dataset/tasks.json             authored task values used to render every curated task
+dataset/task-template/         one Harbor task shape, also used by insight mode
+dataset/groups/                GENERATED Harbor task sets, gitignored
 dataset/insights/              insight mode only, frozen analyst output
-scripts/build_image.py         build the image, stamp its tag into every task
-scripts/sync_verifier.py       copy the canonical verifier into every task
+scripts/render_tasks.py        render every curated task from the template
+scripts/build_image.py         build the image and render/stamp every task
+scripts/sync_verifier.py       refresh the template verifier and records
 scripts/build_all_group.py     assemble the combined group the full scenario runs
 scripts/record_traces.py       evaluate a group and ingest its traces
 ```
@@ -88,6 +89,10 @@ pass `--profile external-only`.
 sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
   'cd plugins/nemo-experimentalist/examples/smoke-agent && uv run --no-project scripts/build_image.py'
 ```
+
+`build_image.py` first renders `dataset/groups/` from `dataset/tasks.json` and
+`dataset/task-template/`. Do not edit those generated directories; change the
+manifest or template and rerun the command instead.
 
 Then run a scenario. `--with ./plugins/nemo-agents` is required: the `agents`
 command group lives in a separate workspace package, and without it the CLI fails
@@ -186,12 +191,13 @@ sbx exec --workdir "$repo" nemo-experimentalist bash -lc \
 Rerun that after changing any group. Not every group is in the combined set —
 `build_all_group.py` says which are held out and why.
 
-## Why the task files carry no licence header
+## Why rendered task files carry no licence header
 
-`instruction.md` and `tests/expected.txt` under `dataset/groups/` are literal
-payloads, not source. `expected.txt` is compared byte-for-byte, so a header would
-become part of the expected answer and every task would fail; `instruction.md` is
-the prompt handed to the agent, so a header would become part of the question.
+`instruction.md` and `tests/expected.txt` under `dataset/groups/` are rendered
+literal payloads, not source. `expected.txt` is compared byte-for-byte, so a
+header would become part of the expected answer and every task would fail;
+`instruction.md` is the prompt handed to the agent, so a header would become part
+of the question.
 
 This matches the repository as it stands rather than carving out a new exception:
 the `copyright-fix` hook is scoped to `\.(py|ts)$`, and comparable fixtures

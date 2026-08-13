@@ -23,7 +23,6 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,

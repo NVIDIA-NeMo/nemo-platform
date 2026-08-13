@@ -88,6 +88,9 @@ def main() -> None:
         default=Path(__file__).resolve().parents[1] / "dataset",
     )
     args = parser.parse_args()
+    from render_tasks import render
+
+    render(args.dataset_dir)
     written = assemble(args.dataset_dir)
     for path in written:
         print(path.relative_to(args.dataset_dir))

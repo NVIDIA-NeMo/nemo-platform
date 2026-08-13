@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -227,7 +228,7 @@ def _normalize(text: str) -> str:
 
 
 def _replays_correctly(experiment: Path, label: str, task_dir: Path) -> bool:
-    """Check one committed task against a saved candidate."""
+    """Check one rendered task against a saved candidate."""
     instruction = (task_dir / "instruction.md").read_text(encoding="utf-8").strip()
     expected = (task_dir / "tests" / "expected.txt").read_text(encoding="utf-8")
     actual = _agent_class(experiment, label)().solve(instruction) + "\n"
@@ -242,14 +243,14 @@ def _winner_label(experiment: Path) -> str:
     return str(winner)
 
 
-def _assert_repair_group(experiment: Path, group: str) -> None:
+def _assert_repair_group(experiment: Path, group: str, dataset: Path) -> None:
     """Check that one repair group changed source and passes every held-out task."""
     winner = _winner_label(experiment)
     assert winner != "agent-0", f"{group} retained the baseline; nothing was repaired"
     assert _agent_source(experiment, winner) != _agent_source(experiment, "agent-0"), (
         f"{group} winner source is identical to the baseline"
     )
-    validation = _FIXTURE / "dataset" / "groups" / group / "validation"
+    validation = dataset / "groups" / group / "validation"
     tasks = [task for task in sorted(validation.iterdir()) if (task / "task.toml").is_file()]
     assert tasks, f"no validation tasks under {validation}; the fixture moved"
     failed = [task.name for task in tasks if not _replays_correctly(experiment, winner, task)]
@@ -326,12 +327,30 @@ def experiment(
     return _Experiment(case, path)
 
 
+@pytest.fixture(scope="session")
+def rendered_dataset(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Render curated tasks for host-side candidate checks."""
+    dataset = tmp_path_factory.mktemp("smoke-agent-dataset") / "dataset"
+    shutil.copytree(_FIXTURE / "dataset", dataset)
+    path = _FIXTURE / "scripts" / "render_tasks.py"
+    spec = importlib.util.spec_from_file_location("_smoke_render_tasks", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    module.render(dataset)
+    return dataset
+
+
 @pytest.mark.e2e
 @pytest.mark.timeout(3600)
 @pytest.mark.parametrize("experiment", _REPAIR_CASES, indirect=True)
-def test_repair_groups_improve_validation(experiment: _Experiment) -> None:
+def test_repair_groups_improve_validation(experiment: _Experiment, rendered_dataset: Path) -> None:
     """Check that every repair group improves validation from its downloaded experiment."""
-    _assert_repair_group(experiment.path, experiment.case.group)
+    _assert_repair_group(experiment.path, experiment.case.group, rendered_dataset)
 
 
 @pytest.mark.e2e
