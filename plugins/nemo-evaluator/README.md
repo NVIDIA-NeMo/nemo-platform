@@ -143,6 +143,10 @@ uv run nemo evaluator agent-evaluate submit \
 Ensure the job environment includes the Fabric Codex adapter, Codex CLI, and
 its provider credentials. Set
 `capture_trajectory` to `true` only when NeMo Relay is also available.
+To evaluate a Platform-managed Skill, add a `target.skills` entry with its
+agentskills.io name, Fileset reference, and the relative bundle directory that
+contains `SKILL.md`. The job stages the Fileset into its own runtime and Fabric
+records the injected Skill provenance on each trial.
 For repository setup, follow
 [Prepare Fabric in a repository checkout](../../skills/nemo-evaluator-plugin/SKILL.md#prepare-fabric-in-a-repository-checkout).
 

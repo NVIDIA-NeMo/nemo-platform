@@ -18,6 +18,7 @@ is written via :func:`~nemo_evaluator.jobs.result_persistence.persist_agent_eval
 from __future__ import annotations
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
@@ -27,7 +28,7 @@ import nemo_evaluator.agent_seeds  # noqa: F401 - registers the platform 'filese
 from filesets import FilesetPathError, parse_fileset_ref
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.config import get_config
-from nemo_evaluator.filesets import FilesetRef
+from nemo_evaluator.filesets import FilesetRef, download_dataset_sync
 from nemo_evaluator.jobs.agent_compiler import compile_agent_eval_job
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
@@ -35,6 +36,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentEvalTaskSpec,
     AgentTarget,
     FabricRunnerTarget,
+    FabricSkillFileset,
     GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
@@ -61,6 +63,7 @@ from nemo_evaluator.task_refs import resolve_agent_eval_tasks
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
 from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -90,6 +93,7 @@ from nemo_platform_plugin.jobs.execution_profiles import (
     VolcanoJobExecutionProfile,
 )
 from nemo_platform_plugin.jobs.spec import BaseExecutionProfile
+from nemo_platform_plugin.run_dependencies import LocalRunError
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -516,8 +520,58 @@ class AgentEvalJob(NemoJob):
         return AgentEvaluator(default_headers=identity_headers or None)
 
     @staticmethod
+    def _materialize_fabric_skills(
+        skills: list[FabricSkillFileset], *, ctx: JobContext, sdk: NeMoPlatform | None
+    ) -> list[AgentSkill]:
+        """Download Fileset-backed skill bundles into job-local storage."""
+        if not skills:
+            return []
+        if sdk is None:
+            raise LocalRunError(
+                "Staging Fabric skills from Filesets requires a 'sdk: NeMoPlatform', but no platform SDK was "
+                "available. Set NMP_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
+            )
+
+        stage_root = ctx.storage.ephemeral / "fabric-skills"
+        stage_root.mkdir(parents=True, exist_ok=True)
+        materialized: list[AgentSkill] = []
+        for index, skill_ref in enumerate(skills):
+            try:
+                fileset_workspace, fileset_name, file_path = parse_fileset_ref(
+                    skill_ref.fileset.root,
+                    workspace_fallback=ctx.workspace,
+                )
+            except FilesetPathError as exc:
+                raise ValueError(f"invalid Fabric skill Fileset reference: {skill_ref.fileset.root!r}") from exc
+            if file_path:
+                raise ValueError("Fabric skill Fileset references must not include a file fragment")
+            download_root = Path(
+                tempfile.mkdtemp(prefix=f"{index:02d}-{skill_ref.name}-", dir=str(stage_root))
+            ).resolve()
+            logger.info(
+                "Downloading Fabric skill %s from Fileset %s/%s into %s",
+                skill_ref.name,
+                fileset_workspace,
+                fileset_name,
+                download_root,
+            )
+            fileset_root = download_dataset_sync(
+                sdk,
+                FilesetRef(root=f"{fileset_workspace}/{fileset_name}"),
+                str(download_root),
+            )
+            skill_dir = (fileset_root / skill_ref.path).resolve()
+            if not skill_dir.is_relative_to(fileset_root):
+                raise ValueError(
+                    f"Fabric skill path {skill_ref.path!r} resolves outside Fileset "
+                    f"'{fileset_workspace}/{fileset_name}'"
+                )
+            materialized.append(AgentSkill.from_directory(skill_dir, name=skill_ref.name))
+        return materialized
+
+    @staticmethod
     def _resolve_target(
-        target: Target | None, ctx: JobContext
+        target: Target | None, ctx: JobContext, sdk: NeMoPlatform | None = None
     ) -> tuple[AgentEvalTarget | None, str | dict[str, Any] | None, RunConfigOnline | RunConfigOnlineModel | None]:
         """Resolve a target spec to ``(runtime target, prompt_template, params)`` for the SDK run config.
 
@@ -529,12 +583,14 @@ class AgentEvalJob(NemoJob):
         if isinstance(target, AgentTarget):
             return target.agent, None, target.params or RunConfigOnline()
         if isinstance(target, FabricRunnerTarget):
+            skills = AgentEvalJob._materialize_fabric_skills(target.skills, ctx=ctx, sdk=sdk)
             fabric_runtime = FabricAgentRuntime(
                 config=target.config,
                 model=target.model,
                 timeout_s=target.timeout_s,
                 capture_trajectory=target.capture_trajectory,
                 work_root=ctx.storage.persistent / "fabric",
+                skills=skills,
             )
             return fabric_runtime, None, None
         if isinstance(target, GymRunnerTarget):
@@ -624,7 +680,7 @@ class AgentEvalJob(NemoJob):
         """Run the agent evaluation locally and persist its result bundle as artifacts."""
         spec = AgentEvalSpec.model_validate(config)
         tasks = [_to_runtime_task(task) for task in spec.tasks]
-        target, prompt_template, params = self._resolve_target(spec.target, ctx)
+        target, prompt_template, params = self._resolve_target(spec.target, ctx, sdk=sdk)
         run_config = AgentEvalRunConfig(
             params=params,
             prompt_template=prompt_template,
