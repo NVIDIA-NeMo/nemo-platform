@@ -5,6 +5,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from doubles import FakeBackend, fake_client
@@ -24,8 +25,10 @@ class _StopAfterStaging:
     """
 
     supports_resume = True
+    seen_objectives: list[Any] = []
 
     async def run(self, ctx: object) -> None:
+        type(self).seen_objectives = list(getattr(ctx, "objective_metrics", []))
         raise RuntimeError("stop after eval_author")
 
 
@@ -119,3 +122,84 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
     }
     assert (train / "task-1" / "tests" / "test.sh").read_text(encoding="utf-8") == "train source"
     assert not (template.parent / "generated-task").exists()
+
+
+@pytest.mark.asyncio
+async def test_authored_metrics_and_suite_reach_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Mode 1's authored output must change what the run optimizes and evaluates.
+
+    The Eval Author writes verifiers that emit their own metric keys and a suite of
+    production-trace tasks. If the keys do not become the objective, selection keeps
+    ranking on `reward` — which those verifiers never emit, so nothing is eligible to
+    win. If the suite is not distributed into the splits the loop evaluates, the tasks
+    it authored are never run.
+    """
+    source = tmp_path / "source"
+    for name in ("train", "validation", "task-template"):
+        _write_tree(source / name, f"{name} source")
+    experiment = tmp_path / "experiment"
+    distributed: dict[str, Any] = {}
+
+    class Authored:
+        def __init__(self, train_dataset: SimpleNamespace, validation_dataset: SimpleNamespace) -> None:
+            self.train_dataset = train_dataset
+            self.validation_dataset = validation_dataset
+            self.insight_suite: Any = SimpleNamespace(id="insight-suite")
+            self.metric_keys = ("cites_source", "uses_required_tool")
+
+    class Factory:
+        def build_dataset(self, evaluator_type: str, ref: DatasetRef, **_options: object) -> SimpleNamespace:
+            return SimpleNamespace(ref=ref)
+
+        def build_task_template(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
+            return SimpleNamespace(uri=ref.uri)
+
+    class Author:
+        def __init__(self, **kwargs: object) -> None: ...
+
+        async def run(self, *, train_dataset, validation_dataset, **kwargs: object) -> Authored:  # noqa: ANN001
+            return Authored(train_dataset, validation_dataset)
+
+    monkeypatch.setattr(
+        runner_module, "EvaluatorFactory", lambda: SimpleNamespace(build_evaluator=lambda *a, **k: object())
+    )
+    monkeypatch.setattr(runner_module, "DatasetFactory", Factory)
+    monkeypatch.setattr("nemo_eval_author_plugin.eval_author.agent.EvalAuthor", Author)
+    monkeypatch.setattr(
+        runner_module,
+        "distribute_insight_suite_tasks",
+        lambda suite, train, validation: distributed.update(suite=suite, train=train, validation=validation),
+    )
+
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    runner = ExperimentRunner(
+        backend=FakeBackend(
+            client=fake_client(),
+            insight=Insight(workspace="default", agent=str(agent_dir), title="t", description="d"),
+        ),
+        strategy=_StopAfterStaging(),
+        config=EvolutionaryOptimizerConfig(),
+        workspace="default",
+        root=experiment,
+        agent=agent_dir,
+        insight="insight-1",
+        train_dataset=DatasetRef(uri=str(source / "train")),
+        validation_dataset=DatasetRef(uri=str(source / "validation")),
+        task_template=DatasetRef(uri=str(source / "task-template")),
+    )
+
+    with pytest.raises(RuntimeError, match="stop after eval_author"):
+        await runner.run()
+
+    assert [t.name for t in runner._config.objective_function] == ["cites_source", "uses_required_tool"]
+    assert [t.name for t in _StopAfterStaging.seen_objectives] == ["cites_source", "uses_required_tool"], (
+        "the strategy must receive the settled contract through the context"
+    )
+    assert [t.name for t in runner._config.regression_metrics] == ["reward"], "configured targets demote to guardrails"
+    assert cast(Any, distributed["suite"]).id == "insight-suite", (
+        "the authored suite must reach the splits the loop evaluates"
+    )

@@ -145,6 +145,7 @@ class ExperimentContext:
         resuming: bool = False,
         reporter: RunReporter | None = None,
         objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
     ) -> None:
         if PRIMARY_SPLIT not in datasets:
             raise ValueError(f"ExperimentContext requires a {PRIMARY_SPLIT!r} dataset; got {sorted(datasets)}")
@@ -153,6 +154,7 @@ class ExperimentContext:
         self._evaluator = evaluator
         self._reporter = reporter
         self._objective_metrics = objective_metrics or [MetricTarget(name="reward", direction="maximize")]
+        self._regression_metrics = regression_metrics or []
         self.workspace = workspace
         self.root = root
         self.agent_dir = agent_dir
@@ -502,6 +504,16 @@ class ExperimentContext:
             **kwargs,
         }
         return component(**_accepted(component.__init__, supplied))
+
+    @property
+    def objective_metrics(self) -> list[MetricTarget]:
+        """The run's effective objectives, after any Insight suite narrowed them."""
+        return list(self._objective_metrics)
+
+    @property
+    def regression_metrics(self) -> list[MetricTarget]:
+        """The run's effective guardrail metrics, alongside :attr:`objective_metrics`."""
+        return list(self._regression_metrics)
 
     def note(self, message: str) -> None:
         """Say what is happening, for a human watching the run.

@@ -671,3 +671,60 @@ async def test_the_scorer_is_told_the_round_its_analysis_describes(
     await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
 
     assert rounds == [0], f"scorer told round {rounds}, but it scored round 0's analysis"
+
+
+@pytest.mark.asyncio
+async def test_the_terminator_sees_eliminated_candidates_too(
+    tmp_path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Convergence reads the whole history, not this round's working set.
+
+    It counts distinct generations and compares an older Pareto front against the
+    current one. `candidates` inside the loop holds only survivors plus the previous
+    round's builds, so passing that hides every eliminated candidate: the generation
+    window can never fill, and an otherwise converged run pays for every remaining
+    round. Driven through the loop, because the call site is what was wrong.
+    """
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
+
+    seen: list[list[str]] = []
+
+    from nemo_experimentalist_plugin.experimentalist.components.terminator import TerminationDecision
+
+    class RecordingTerminator(Terminator):
+        name = "acme-recording-terminator"
+
+        def __init__(self, **kwargs: Any) -> None: ...
+
+        async def run(self, *, round_num: int, candidates: list[Any], prior_analysis: Any = None) -> Any:
+            seen.append([c.label for c in candidates])
+            return TerminationDecision(stop=False)
+
+    async def baseline_plus_an_eliminated_one(*, ctx: Any, config: Any) -> None:
+        """Two candidates, one already eliminated — the case the working set hides."""
+        for description in ("baseline", "killed in an earlier round"):
+            proposal = Proposal(ancestor=None, description=description, kind="import", payload={})
+            candidate = await ctx.component("builder", "import").build(ctx, proposal, generation=0)
+            if description != "baseline":
+                await ctx.update_candidate(candidate, killed_generation=0)
+
+    config = EvolutionaryOptimizerConfig(
+        max_rounds=1, analyzer=None, trajectory_scorer=None, terminator="acme-recording-terminator"
+    )
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    monkeypatch.setattr(loop, "_ensure_baseline", baseline_plus_an_eliminated_one)
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", _no_evaluations)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
+    monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    await loop._run(ctx)
+
+    committed = {c.label for c in await ctx.candidates(include_discarded=True)}
+    assert seen, "the terminator was never consulted"
+    assert set(seen[0]) == committed, (
+        f"terminator saw {seen[0]}, but the run has {sorted(committed)} — "
+        "eliminated candidates must still count toward convergence"
+    )

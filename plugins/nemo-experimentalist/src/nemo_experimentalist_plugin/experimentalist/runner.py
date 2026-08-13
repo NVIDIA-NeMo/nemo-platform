@@ -21,19 +21,25 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig, with_insight_objective
 from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
     DatasetRef,
     ExperimentRun,
 )
-from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import stage_eval_author_inputs
+from nemo_experimentalist_plugin.experimentalist.components.dataset_staging import (
+    distribute_insight_suite_tasks,
+    stage_eval_author_inputs,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import (
     DatasetFactory,
     EvaluatorFactory,
 )
-from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import restore_heldout_splits
+from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
+    ensure_heldout_hidden,
+    restore_heldout_splits,
+)
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
@@ -138,6 +144,8 @@ class ExperimentRunner:
             evaluator=evaluator,
             resuming=resuming,
             reporter=self._reporter,
+            objective_metrics=self._config.objective_function,
+            regression_metrics=self._config.regression_metrics,
         )
         if resuming:
             await self._seed_narration_baseline(ctx)
@@ -238,8 +246,22 @@ class ExperimentRunner:
             )
             datasets["train"] = authored.train_dataset
             datasets["validation"] = authored.validation_dataset
+
+            # The authored verifiers emit their own metric keys, so they become the
+            # run's objective and the configured targets demote to guardrails. Without
+            # this the run keeps optimizing `reward`, which those verifiers never emit,
+            # and no candidate is eligible to win.
+            self._config = with_insight_objective(self._config, authored.metric_keys)
+
+            # The suite is production-trace evidence: it belongs in the splits the loop
+            # actually evaluates, not parked beside them. Held-out splits are restored
+            # for the write and re-hidden afterwards, so the distribution can see them.
             if authored.insight_suite is not None:
-                datasets["insight"] = authored.insight_suite
+                restore_heldout_splits(self._root)
+                try:
+                    distribute_insight_suite_tasks(authored.insight_suite, datasets["train"], datasets["validation"])
+                finally:
+                    ensure_heldout_hidden(self._root)
 
         return PreparedInputs(
             agent_dir=agent_dir,

@@ -32,7 +32,6 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
 from nemo_experimentalist_plugin.experimentalist.components.importer import IMPORT, import_proposal
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
-    MetricTarget,
 )
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -53,28 +52,6 @@ from nooa.skill_registry import SkillRegistry
 from nooa.tools import Match
 
 logger = logging.getLogger(__name__)
-
-
-def _with_insight_objective(
-    config: EvolutionaryOptimizerConfig, metric_keys: tuple[str, ...]
-) -> EvolutionaryOptimizerConfig:
-    """Make insight metrics objectives and preserve all configured targets as guardrails."""
-    if not metric_keys:
-        return config
-    insight_metric_names = set(metric_keys)
-    objective = [MetricTarget(name=metric_key, direction="maximize") for metric_key in metric_keys]
-    regression_by_name = {
-        target.name: target
-        for target in [*config.objective_function, *config.regression_metrics]
-        if target.name not in insight_metric_names
-    }
-    return EvolutionaryOptimizerConfig.model_validate(
-        config.model_dump(mode="python")
-        | {
-            "objective_function": [target.model_dump(mode="python") for target in objective],
-            "regression_metrics": [target.model_dump(mode="python") for target in regression_by_name.values()],
-        }
-    )
 
 
 class AnalysisSkill(Skill):
@@ -289,7 +266,16 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             The winning Candidate, or None when no candidate was ever scored. The
             runner turns that into the run's terminal result.
         """
-        config = self.config
+        # The host may have narrowed the metric contract after authoring an Insight
+        # suite, and it settles that before the strategy starts. Take it from the
+        # context rather than the config captured at construction, so every component
+        # resolved below ranks on what the run is actually being scored against.
+        config = self.config.model_copy(
+            update={
+                "objective_function": ctx.objective_metrics,
+                "regression_metrics": ctx.regression_metrics,
+            }
+        )
         self._check_proposer_builder_pairing(config)
         agents_dir, analysis_dir, _ = self._init_structure()
         train_eval_dataset = ctx.datasets["train"]
@@ -337,18 +323,16 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             )
             # Selecting no terminator means no early stopping; the budget above still holds.
             if config.terminator is not None:
-                terminator = cast(
-                    "roles.Terminator",
-                    ctx.component(
-                        "terminator",
-                        config.terminator,
-                        config=config.terminator_config,
-                        objective_metrics=config.objective_function,
-                        regression_metrics=config.regression_metrics,
-                    ),
-                )
+                terminator = self._terminator(ctx, config)
+                # The whole history, not this round's working set: convergence counts distinct
+                # generations and compares an older Pareto front against the current one.
+                # `candidates` holds only survivors plus the previous round's builds, so
+                # eliminated candidates would be invisible and the generation window could
+                # never fill -- a converged run would then pay for every remaining round.
                 decision = await terminator.run(
-                    round_num=round_num, candidates=candidates, prior_analysis=prior_analysis
+                    round_num=round_num,
+                    candidates=[node.candidate for node in evolution_tree.nodes.values()],
+                    prior_analysis=prior_analysis,
                 )
                 if decision.stop:
                     logger.info(f"phase=terminate reason={decision.reason}")
@@ -455,12 +439,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             if config.trajectory_scorer is not None:
                 scorer = cast(
                     "roles.TrajectoryScorer",
-                    ctx.component(
-                        "trajectory-scorer",
-                        config.trajectory_scorer,
-                        config=config.trajectory_scorer_config,
-                        framework_skills_dirs=self._framework_skills_dirs,
-                    ),
+                    self._trajectory_scorer(ctx, config),
                 )
                 # round_num - 1: the counter has already advanced past the round this
                 # analysis describes, and the scorer names its state after that round.
@@ -967,6 +946,33 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 continue
             built.append(outcome)
         return built
+
+    def _terminator(self, ctx: StrategyContext, config: EvolutionaryOptimizerConfig) -> roles.Terminator:
+        """Resolve this run's terminator, with the run's own convergence window."""
+        return cast(
+            "roles.Terminator",
+            ctx.component(
+                "terminator",
+                config.terminator,
+                config=config.terminator_config,
+                min_rounds_before_stopping=config.min_rounds_before_stopping,
+                objective_metrics=config.objective_function,
+                regression_metrics=config.regression_metrics,
+            ),
+        )
+
+    def _trajectory_scorer(self, ctx: StrategyContext, config: EvolutionaryOptimizerConfig) -> roles.TrajectoryScorer:
+        """Resolve this run's trajectory scorer, with the run's own per-round task cap."""
+        return cast(
+            "roles.TrajectoryScorer",
+            ctx.component(
+                "trajectory-scorer",
+                config.trajectory_scorer,
+                config=config.trajectory_scorer_config,
+                max_trajectory_tasks=config.max_trajectory_tasks,
+                framework_skills_dirs=self._framework_skills_dirs,
+            ),
+        )
 
     def _selector(self, config: EvolutionaryOptimizerConfig) -> roles.Selector:
         """Resolve this run's selector."""

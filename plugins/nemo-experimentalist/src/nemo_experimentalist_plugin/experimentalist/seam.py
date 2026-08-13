@@ -24,6 +24,7 @@ from nemo_experimentalist_plugin.entities import (
     RewardRecord,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
+from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -90,6 +91,22 @@ class StrategyContext(BuilderContext, Protocol):
 
     #: Markdown description of the agent under test, when the run has one.
     agent_spec: Path | None
+
+    @property
+    def objective_metrics(self) -> list[MetricTarget]:
+        """The run's effective objectives.
+
+        Settled by the host before the strategy starts, because authoring an Insight
+        suite can narrow them: the authored verifiers emit their own metric keys, and
+        those become what the run is scored against. A strategy resolved before that
+        happens must read the contract from here rather than from its own config.
+        """
+        ...
+
+    @property
+    def regression_metrics(self) -> list[MetricTarget]:
+        """The run's effective guardrails, settled alongside :attr:`objective_metrics`."""
+        ...
 
     @property
     def outcome_evaluator(self) -> Evaluator:

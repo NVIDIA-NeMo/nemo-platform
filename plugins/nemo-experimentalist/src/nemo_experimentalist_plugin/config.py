@@ -231,3 +231,25 @@ class EvolutionaryOptimizerConfig(BaseModel):
             f"Do not regress these metric(s): {regressions}. "
             "Metric values, including aggregates, are produced by the evaluator; do not invent formulas or weights."
         )
+
+
+def with_insight_objective(
+    config: "EvolutionaryOptimizerConfig", metric_keys: tuple[str, ...]
+) -> "EvolutionaryOptimizerConfig":
+    """Make insight metrics objectives and preserve all configured targets as guardrails."""
+    if not metric_keys:
+        return config
+    insight_metric_names = set(metric_keys)
+    objective = [MetricTarget(name=metric_key, direction="maximize") for metric_key in metric_keys]
+    regression_by_name = {
+        target.name: target
+        for target in [*config.objective_function, *config.regression_metrics]
+        if target.name not in insight_metric_names
+    }
+    return EvolutionaryOptimizerConfig.model_validate(
+        config.model_dump(mode="python")
+        | {
+            "objective_function": [target.model_dump(mode="python") for target in objective],
+            "regression_metrics": [target.model_dump(mode="python") for target in regression_by_name.values()],
+        }
+    )

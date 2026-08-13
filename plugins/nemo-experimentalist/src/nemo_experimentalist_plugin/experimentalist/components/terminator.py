@@ -30,17 +30,19 @@ from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
 from nooa.agentdoc import doc
 from nooa.config import CodeActConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
 class TerminatorConfig(BaseModel):
-    """Tuning parameters for early stopping."""
+    """Tuning parameters for early stopping.
 
-    min_rounds_before_stopping: int = Field(
-        default=3, description="Scored rounds required before convergence can stop a run."
-    )
+    ``min_rounds_before_stopping`` is deliberately absent: it sits on the run config
+    beside ``max_rounds``, and reaches this component through the constructor, the same
+    way the objective and regression targets do. Two homes for one value is what made it
+    silently ignorable.
+    """
 
 
 class TerminationDecision(BaseModel):
@@ -64,12 +66,14 @@ class Terminator(Agent, roles.Terminator):
         self,
         *,
         config: TerminatorConfig | None = None,
+        min_rounds_before_stopping: int = 3,
         objective_metrics: list[MetricTarget] | None = None,
         regression_metrics: list[MetricTarget] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
         self._config = config or TerminatorConfig()
+        self._min_rounds_before_stopping = min_rounds_before_stopping
         self._objective_metrics = objective_metrics or [MetricTarget(name="reward", direction="maximize")]
         self._regression_metrics = regression_metrics or []
         self.terminator_skill = TextSkill(path=skills_dir() / "terminator")
@@ -151,7 +155,7 @@ class Terminator(Agent, roles.Terminator):
         converged = await self._has_converged(
             candidates=candidates,
             prior_analysis=prior_analysis,
-            min_rounds_before_stopping=self._config.min_rounds_before_stopping,
+            min_rounds_before_stopping=self._min_rounds_before_stopping,
             objective_metrics=self._objective_metrics,
             regression_metrics=self._regression_metrics,
         )

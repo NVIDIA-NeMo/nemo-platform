@@ -74,6 +74,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         client: AsyncNeMoPlatform | None = None,
         nmp_workspace: str | None = None,
         config: GoalTreeConfig | None = None,
+        max_trajectory_tasks: int | None = None,
         framework_skills_dirs: list[Path] | None = None,
         **kwargs: Any,
     ) -> None:
@@ -96,6 +97,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         self._nmp_workspace = nmp_workspace
         self.context["trace_explorer_documentation"] = doc(TraceExplorer)
         self._goal_config = config or GoalTreeConfig()
+        self._max_trajectory_tasks = max_trajectory_tasks
         self._framework_skills_dirs = framework_skills_dirs or []
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15, cell_timeout=120.0)))
@@ -326,7 +328,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
 
         task_names = sorted(traces_by_task)
         total_tasks = len(task_names)
-        max_tasks = self._goal_config.max_trajectory_tasks
+        max_tasks = self._max_trajectory_tasks
         if max_tasks and total_tasks > max_tasks:
             task_names = task_names[:max_tasks]
             traces_by_task = {t: traces_by_task[t] for t in task_names}
