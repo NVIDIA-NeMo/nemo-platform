@@ -7,7 +7,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, AsyncIterator, Union
+from typing import TYPE_CHECKING, Any, AsyncIterator, NoReturn, Union
 
 import aiohttp
 from aiohttp import ClientSession
@@ -50,9 +50,7 @@ if TYPE_CHECKING:
     from nmp.core.inference_gateway.api.model_cache import ModelCache
 
 ResponseResult = Union[dict[str, Any], AsyncIterator[dict[str, Any]]]
-"""Either a fully-buffered JSON response (``dict``) or a lazy SSE stream
-(``AsyncIterator[dict]``).  Mirrors the type defined in
-``nemo_platform_plugin.inference_middleware`` and used throughout the middleware chain."""
+"""Either a fully-buffered JSON response or lazy SSE stream."""
 
 logger = logging.getLogger(__name__)
 
@@ -309,38 +307,112 @@ def _close_response(response: aiohttp.ClientResponse | None):
 
 
 _MAX_ERROR_BODY_LEN = 2048
+_BODY_FRAMING_HEADERS_TO_STRIP = frozenset({"content-length", "content-encoding", "transfer-encoding"})
+_BACKEND_AUTH_ERROR_STATUSES = frozenset({401, 403})
+_ERROR_SOURCE_HEADER = "X-NeMo-Error-Source"
+_MODEL_PROVIDER_ERROR_SOURCE = "model-provider"
 
 
-async def _read_error_body(response: aiohttp.ClientResponse) -> str:
-    """Read a truncated text snippet from an error response for diagnostic logging."""
+async def _read_error_body(response: aiohttp.ClientResponse) -> tuple[bytes, str]:
+    """Read an error body while retaining the upstream status if reading fails."""
     try:
-        raw = await response.read()
-        return raw.decode("utf-8", errors="replace")[:_MAX_ERROR_BODY_LEN]
-    except Exception:
-        return ""
+        raw_body = await response.read()
+    except Exception as exc:
+        logger.warning("Failed to read backend error response body: %s", exc)
+        return b"", ""
+    return raw_body, raw_body.decode("utf-8", errors="replace")[:_MAX_ERROR_BODY_LEN]
 
 
-async def proxy_request(http_client: ClientSession, next_request_info: NextRequestInfo) -> StreamingResponse:
+def mark_model_provider_auth_error(response: Response) -> Response:
+    """Normalize and mark a 401/403 response originating from a ModelProvider."""
+    if response.status_code in _BACKEND_AUTH_ERROR_STATUSES:
+        # Mock responses can carry framing metadata that does not match their
+        # rendered body. Match the real-backend path by dropping it and deriving
+        # content-length from a buffered response body when one is available.
+        for header in _BODY_FRAMING_HEADERS_TO_STRIP:
+            del response.headers[header]
+        body = getattr(response, "body", None)
+        if isinstance(body, (bytes, bytearray, memoryview)):
+            response.headers["content-length"] = str(len(body))
+        response.headers[_ERROR_SOURCE_HEADER] = _MODEL_PROVIDER_ERROR_SOURCE
+    return response
+
+
+def _raw_response(
+    body: bytes | bytearray | memoryview | str,
+    status_code: int,
+    headers: CIMultiDict[str],
+) -> Response:
+    """Return a buffered body with upstream metadata and corrected framing headers."""
+    response = Response(content=body, status_code=status_code)
+    # Response(headers=...) accepts only a plain dict, which silently drops repeated
+    # header names such as Set-Cookie or WWW-Authenticate. Appending to raw_headers
+    # directly preserves every value from the upstream CIMultiDict.
+    response.raw_headers.extend(
+        (key.encode("latin-1"), value.encode("latin-1"))
+        for key, value in headers.items()
+        if key.lower() not in _BODY_FRAMING_HEADERS_TO_STRIP
+    )
+    return mark_model_provider_auth_error(response)
+
+
+def _raise_backend_error(status_code: int, error_body: str) -> NoReturn:
+    """Raise the gateway response for a non-authentication backend error."""
+    if status_code == 404:
+        detail = f"Backend returned {status_code}: {error_body}" if error_body else f"Backend returned {status_code}"
+        raise HTTPException(status_code=502, detail=detail)
+    raise HTTPException(status_code=status_code, detail=error_body or str(status_code))
+
+
+async def _handle_backend_error(
+    response: aiohttp.ClientResponse,
+    url: str,
+) -> tuple[bytes, CIMultiDict[str], int]:
+    """Return a preserved auth failure or raise for another failed backend response.
+
+    The returned headers belong only to a backend 401/403 response. Successful
+    response headers continue through the normal proxy path.
+    """
+    response_status = response.status
+    auth_response_headers = (
+        _filter_response_headers(response.headers) if response_status in _BACKEND_AUTH_ERROR_STATUSES else CIMultiDict()
+    )
+    raw_error_body, error_body = await _read_error_body(response)
+    _close_response(response)
+    logger.warning(
+        "Backend error %d from %s: %s",
+        response_status,
+        url,
+        error_body,
+    )
+    if response_status in _BACKEND_AUTH_ERROR_STATUSES:
+        return raw_error_body, auth_response_headers, response_status
+    _raise_backend_error(response_status, error_body)
+
+
+async def proxy_request(http_client: ClientSession, next_request_info: NextRequestInfo) -> Response:
     """Execute a proxied HTTP request and stream the response back to the client.
 
-    This function forwards the request to an upstream service and streams the response
-    back without buffering. It handles both regular and server-sent event responses.
+    This function forwards the request to an upstream service. Successful responses
+    are streamed without buffering; error responses are buffered for logging and
+    status handling.
 
-    Certain backend errors (401/403/404) are wrapped in 502 Bad Gateway with a clear
-    error message indicating the error came from the backend, not the gateway. Other
-    backend errors (429, 422, 5xx, etc.) are passed through with their original status.
-    In both cases the backend's error body is included in the detail for diagnostics.
+    Backend authentication errors (401/403) are returned unchanged so callers can
+    distinguish invalid credentials from transient gateway failures. Backend 404
+    responses are wrapped in 502 Bad Gateway; other backend errors retain their
+    original status.
 
     Args:
         http_client: The HTTP client session to use for the request
         next_request_info: Information about the request to proxy
 
     Returns:
-        StreamingResponse containing the proxied response
+        A buffered response for authentication errors or a streaming response
+        for successful upstream responses.
 
     Raises:
-        HTTPException: 502 for certain backend errors (401/403/404) or network errors,
-            original status for other backend errors, 500 for internal errors
+        HTTPException: 502 for backend 404 or network errors, original status for
+            other backend errors, 500 for internal errors
     """
     response: aiohttp.ClientResponse | None = None
     try:
@@ -354,24 +426,11 @@ async def proxy_request(http_client: ClientSession, next_request_info: NextReque
         )
 
         if response.status >= 400:
-            error_body = await _read_error_body(response)
-            _close_response(response)
-            logger.warning(
-                "Backend error %d from %s: %s",
-                response.status,
+            raw_error_body, auth_response_headers, response_status = await _handle_backend_error(
+                response,
                 next_request_info.url,
-                error_body,
             )
-            if response.status in (401, 403, 404):
-                detail = (
-                    f"Backend returned {response.status}: {error_body}"
-                    if error_body
-                    else f"Backend returned {response.status}"
-                )
-                raise HTTPException(status_code=502, detail=detail)
-            else:
-                detail = error_body if error_body else str(response.status)
-                raise HTTPException(status_code=response.status, detail=detail)
+            return _raw_response(raw_error_body, response_status, auth_response_headers)
 
         response_headers = _filter_response_headers(response.headers)
 
@@ -460,7 +519,7 @@ async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[d
 async def fetch_proxy_response(
     http_client: ClientSession,
     next_request_info: NextRequestInfo,
-) -> tuple[ResponseResult, CIMultiDict[str], int]:
+) -> tuple[ResponseResult | bytes, CIMultiDict[str], int]:
     """Execute a proxied HTTP request and return the response as a ``ResponseResult``.
 
     Unlike :func:`proxy_request`, this function does **not** stream the response
@@ -468,11 +527,12 @@ async def fetch_proxy_response(
     responsible for applying response middleware and then streaming via
     :func:`stream_response_result`.
 
-    For ``Content-Type: text/event-stream`` responses the result is an
+    Authentication failures return raw bytes so their body can bypass inference
+    middleware unchanged. For successful ``Content-Type: text/event-stream``
+    responses the result is an
     ``AsyncIterator[dict]`` backed by the live aiohttp response — the iterator
     **must** be fully consumed or the underlying connection will leak.  For all
-    other responses the body is buffered and parsed as JSON (falling back to an
-    empty dict for non-JSON bodies).
+    other successful responses the body is buffered and parsed as a JSON object.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -492,24 +552,7 @@ async def fetch_proxy_response(
         )
 
         if response.status >= 400:
-            error_body = await _read_error_body(response)
-            _close_response(response)
-            logger.warning(
-                "Backend error %d from %s: %s",
-                response.status,
-                next_request_info.url,
-                error_body,
-            )
-            if response.status in (401, 403, 404):
-                detail = (
-                    f"Backend returned {response.status}: {error_body}"
-                    if error_body
-                    else f"Backend returned {response.status}"
-                )
-                raise HTTPException(status_code=502, detail=detail)
-            else:
-                detail = error_body if error_body else str(response.status)
-                raise HTTPException(status_code=response.status, detail=detail)
+            return await _handle_backend_error(response, next_request_info.url)
 
         response_headers = _filter_response_headers(response.headers)
         status_code = response.status
@@ -552,7 +595,7 @@ async def fetch_proxy_response(
 # when stream_response_result re-serializes the payload.  Forwarding them after
 # body mutation produces truncated responses (wrong content-length), failed
 # decompression (stale content-encoding), and framing errors (transfer-encoding).
-_BODY_HEADERS_TO_STRIP = frozenset({"content-length", "content-encoding", "transfer-encoding", "content-type"})
+_BODY_HEADERS_TO_STRIP = _BODY_FRAMING_HEADERS_TO_STRIP | {"content-type"}
 
 
 def _rewrite_model_field(payload: Any, served_model_name: str, restored_model_id: str) -> None:
@@ -623,7 +666,7 @@ def _active_response_result(response_result: Any) -> Any:
 
 def _is_streaming_response_result(response_result: Any) -> bool:
     if isinstance(response_result, InferenceResponse):
-        return not isinstance(response_result.result, dict)
+        return not isinstance(response_result.result, dict | BaseModel)
     return not isinstance(response_result, dict | BaseModel)
 
 
@@ -682,9 +725,7 @@ async def stream_response_result(
 
     Body-framing headers (``content-length``, ``content-encoding``,
     ``transfer-encoding``, ``content-type``) are stripped from *headers* and
-    replaced with values that match the re-serialized payload.  Forwarding the
-    upstream values after body mutation would produce truncated or garbled
-    responses for the caller.
+    replaced with values that match the re-serialized payload.
     """
     safe_headers = _strip_body_headers(headers)
     response_payload = _serialization_response_result(response_result)
@@ -869,17 +910,12 @@ async def virtual_model_proxy(
                 default_extra_headers=resolved_model_provider_info.model_provider.default_extra_headers,
                 request_body=json_body,
             )
-            # Match fetch_proxy_response error semantics: 401/403/404 → 502, else passthrough.
+            # Match fetch_proxy_response error semantics: preserve auth failures,
+            # wrap backend 404 as 502, and pass through other statuses.
             if mock_response.status_code >= 400:
-                if mock_response.status_code in (401, 403, 404):
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Backend returned {mock_response.status_code}",
-                    )
-                raise HTTPException(
-                    status_code=mock_response.status_code,
-                    detail=str(mock_response.status_code),
-                )
+                if mock_response.status_code in _BACKEND_AUTH_ERROR_STATUSES:
+                    return mark_model_provider_auth_error(mock_response)
+                _raise_backend_error(mock_response.status_code, "")
             if isinstance(mock_response, StreamingResponse):
                 proxy_response_result = _parse_sse_chunks(mock_response.body_iterator)
                 response_headers = CIMultiDict(mock_response.headers)
@@ -944,6 +980,22 @@ async def virtual_model_proxy(
                 http_client, next_request_info
             )
             json_body["model"] = f"{modified_model_ref.workspace}/{modified_model_ref.name}"
+
+        # Authentication failures are transport-level responses, not inference
+        # payloads. Return them before rewriting the response body's model field
+        # or invoking response middleware.
+        if response_status in _BACKEND_AUTH_ERROR_STATUSES:
+            if not isinstance(proxy_response_result, bytes):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Backend authentication response was not returned as raw bytes.",
+                )
+            return _raw_response(proxy_response_result, response_status, response_headers)
+        if isinstance(proxy_response_result, bytes):
+            raise HTTPException(
+                status_code=500,
+                detail="Unexpected raw backend response for a successful inference request.",
+            )
 
         # Rewrite the served-model name back to the post-middleware model entity reference
         # in the response body so the user never sees the upstream's served_model_name. This
