@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
-import { COPILOT_STUDIO_ENABLED } from '@studio/constants/environment';
+import { COPILOT_STUDIO_ENABLED, DASHBOARD_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateCopilotStudioRoutes, gateDashboardRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import {
+  gateCopilotStudioRoutes,
+  gateDashboardRoutes,
+  getWorkspaceDashboardRoute,
+} from '@studio/routes/utils';
+import { LayoutDashboard } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -38,3 +44,15 @@ export const dashboardRoutes: RouteObject[] = gateDashboardRoutes([
     },
   ]),
 ]);
+
+export const getDashboardSideNavItems = (workspace: string) =>
+  DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED
+    ? [
+        {
+          id: 'dashboard',
+          slotIcon: <LayoutDashboard className={iconColorClass} />,
+          slotLabel: 'Dashboard',
+          href: getWorkspaceDashboardRoute(workspace),
+        },
+      ]
+    : [];

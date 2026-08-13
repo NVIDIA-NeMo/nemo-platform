@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { JOBS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateJobsRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import { gateJobsRoutes, getWorkspaceJobsRoute } from '@studio/routes/utils';
+import { ListChecks } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -30,3 +33,15 @@ export const jobRoutes: RouteObject[] = gateJobsRoutes([
     errorElement: <ErrorPanel title="Job Details" />,
   },
 ]);
+
+export const getJobSideNavItems = (workspace: string) =>
+  JOBS_ENABLED
+    ? [
+        {
+          id: 'jobs',
+          slotIcon: <ListChecks className={iconColorClass} />,
+          slotLabel: 'Jobs',
+          href: getWorkspaceJobsRoute(workspace),
+        },
+      ]
+    : [];
