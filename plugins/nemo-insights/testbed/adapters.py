@@ -200,7 +200,7 @@ class BenchmarkAdapter:
         try:
             for sim in sims:
                 task = tasks.get(str(sim.get("task_id")))
-                session_id = session_id_for(sim, experiment_id=run_id)
+                session_id = session_id_for(sim, evaluation_name=run_id)
                 trace_id = trace_id_for(session_id)
                 # Stamp spans at ingest time (Intake drops spans dated outside its
                 # retention window); one base shared by a sim's realistic + oracle twins.
@@ -211,7 +211,7 @@ class BenchmarkAdapter:
                     agent_name=agent,
                     agent_version=version,
                     session_id=session_id,
-                    experiment_id=run_id,
+                    evaluation_name=run_id,
                     task=task,
                     include_rewards=False,
                     agent_llm=agent_llm,
@@ -224,7 +224,7 @@ class BenchmarkAdapter:
                         agent_name=agent,
                         agent_version=version,
                         session_id=session_id,
-                        experiment_id=run_id,
+                        evaluation_name=run_id,
                         task=task,
                         include_rewards=True,
                         agent_llm=agent_llm,

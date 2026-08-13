@@ -41,18 +41,18 @@ def _slug(value: object) -> str:
     return _SLUG.sub("-", str(value))
 
 
-def session_id_for(sim: dict[str, Any], *, experiment_id: str) -> str:
-    """The per-run, per-sim session id: ``<experiment_id>-task<task_id>-t<trial>``.
+def session_id_for(sim: dict[str, Any], *, evaluation_name: str) -> str:
+    """The per-run, per-sim session id: ``<evaluation_name>-task<task_id>-t<trial>``.
 
-    Scoped by ``experiment_id`` (the run id) so every id derived from it — the span
+    Scoped by ``evaluation_name`` (the run id) so every id derived from it — the span
     id, trace id, and the evaluator-results id — is unique per run. Runs that
     re-cover the same task in a shared workspace no longer collide (which would
-    cross-link spans and overwrite one run's scores with another's). ``experiment_id``
+    cross-link spans and overwrite one run's scores with another's). ``evaluation_name``
     already carries the agent/base name as its prefix, so the agent stays visible,
     and the realistic + oracle twins of one sim in one run still share this id.
     """
     trial = sim.get("trial") or 0
-    return f"{_slug(experiment_id)}-task{_slug(sim.get('task_id', ''))}-t{trial}"
+    return f"{_slug(evaluation_name)}-task{_slug(sim.get('task_id', ''))}-t{trial}"
 
 
 def _span_id(session_id: str, index: int) -> str:
@@ -78,9 +78,7 @@ def sim_to_spans(
     agent_name: str,
     agent_version: str,
     session_id: str,
-    # TODO: rename experiment_id -> evaluation_name to match the ingested attribute
-    # (nemo.evaluation.name carries the Evaluation's name). Plumb the rename through callers.
-    experiment_id: str,
+    evaluation_name: str,
     task: dict[str, Any] | None = None,
     include_rewards: bool,
     agent_llm: str | None = None,
@@ -97,9 +95,9 @@ def sim_to_spans(
     task's ``evaluation_criteria`` only appear when it is set (the realistic twin
     withholds them so the eval is unaided).
 
-    ``experiment_id`` is stamped on every span as ``nemo.evaluation.name`` (with
+    ``evaluation_name`` is stamped on every span as ``nemo.evaluation.name`` (with
     the sim's task id as ``nemo.test_case.id``) so a run's spans are queryable
-    back via the spans filter ``{"evaluation_id": experiment_id}`` — the per-run
+    back via the spans filter ``{"evaluation_id": evaluation_name}`` — the per-run
     scope that lets many runs share one workspace.
 
     ``base_ns`` seeds the per-span monotonic clock; it must be near ingest time
@@ -115,7 +113,7 @@ def sim_to_spans(
         return {
             "gen_ai.conversation.id": session_id,
             "session.id": session_id,
-            "nemo.evaluation.name": experiment_id,
+            "nemo.evaluation.name": evaluation_name,
             "nemo.test_case.id": test_case_id,
         }
 

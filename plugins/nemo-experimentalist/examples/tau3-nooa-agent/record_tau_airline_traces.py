@@ -43,7 +43,7 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
-def _experiment_id() -> str:
+def _evaluation_name() -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return f"tau3-airline-{stamp}-{secrets.token_hex(2)}"
 
@@ -96,7 +96,7 @@ def _resolve_harbor_output_dir(path: Path) -> tuple[Path, Path]:
 def _write_upload_summary(
     run_dir: Path,
     *,
-    experiment_id: str,
+    evaluation_name: str,
     workspace: str,
     agent_name: str,
     agent_version: str,
@@ -108,7 +108,7 @@ def _write_upload_summary(
     summary_path.write_text(
         json.dumps(
             {
-                "experiment_id": experiment_id,
+                "evaluation_name": evaluation_name,
                 "workspace": workspace,
                 "agent_name": agent_name,
                 "agent_version": agent_version,
@@ -133,9 +133,7 @@ async def _upload_trials(
     trials: list[TrialResult],
     *,
     workspace: str,
-    # TODO: rename experiment_id -> evaluation_name to match the ingested attribute
-    # (nemo.evaluation.name carries the Evaluation's name). Plumb the rename through callers.
-    experiment_id: str,
+    evaluation_name: str,
     agent_name: str,
     agent_version: str,
     model: str,
@@ -151,7 +149,7 @@ async def _upload_trials(
             raise RuntimeError(f"Trace {trace_id} was produced by more than one trial")
 
         attrs = {
-            "nemo.evaluation.name": experiment_id,
+            "nemo.evaluation.name": evaluation_name,
             "nemo.test_case.id": trial.task_id,
             "nemo.trial.id": trial.id,
             "gen_ai.agent.name": agent_name,
@@ -222,7 +220,7 @@ async def run(args: argparse.Namespace) -> Path:
         if not uploadable_trials:
             raise RuntimeError(f"No completed Harbor trials with trace artifacts found in {job_dir}")
 
-        experiment_id = args.experiment_id or run_dir.name
+        evaluation_name = args.evaluation_name or run_dir.name
         client = make_client(args.base_url)
         try:
             await client.workspaces.create(
@@ -234,7 +232,7 @@ async def run(args: argparse.Namespace) -> Path:
                 client,
                 uploadable_trials,
                 workspace=args.workspace,
-                experiment_id=experiment_id,
+                evaluation_name=evaluation_name,
                 agent_name=args.agent_name,
                 agent_version=args.agent_version,
                 model=args.model,
@@ -245,7 +243,7 @@ async def run(args: argparse.Namespace) -> Path:
 
         summary_path = _write_upload_summary(
             run_dir,
-            experiment_id=experiment_id,
+            evaluation_name=evaluation_name,
             workspace=args.workspace,
             agent_name=args.agent_name,
             agent_version=args.agent_version,
@@ -257,8 +255,8 @@ async def run(args: argparse.Namespace) -> Path:
         print(summary_path)
         return summary_path
 
-    experiment_id = args.experiment_id or _experiment_id()
-    run_dir = args.output.expanduser().resolve() / experiment_id
+    evaluation_name = args.evaluation_name or _evaluation_name()
+    run_dir = args.output.expanduser().resolve() / evaluation_name
     if run_dir.exists():
         raise FileExistsError(f"Output directory already exists: {run_dir}")
 
@@ -296,7 +294,7 @@ async def run(args: argparse.Namespace) -> Path:
             client,
             trials,
             workspace=args.workspace,
-            experiment_id=experiment_id,
+            evaluation_name=evaluation_name,
             agent_name=args.agent_name,
             agent_version=args.agent_version,
             model=args.model,
@@ -307,7 +305,7 @@ async def run(args: argparse.Namespace) -> Path:
 
     summary_path = _write_upload_summary(
         run_dir,
-        experiment_id=experiment_id,
+        evaluation_name=evaluation_name,
         workspace=args.workspace,
         agent_name=args.agent_name,
         agent_version=args.agent_version,
@@ -340,7 +338,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user-model", default=os.environ.get("TAU2_USER_MODEL", DEFAULT_MODEL))
     parser.add_argument("--agent-name", default=DEFAULT_AGENT_NAME)
     parser.add_argument("--agent-version", default=DEFAULT_AGENT_VERSION)
-    parser.add_argument("--experiment-id")
+    parser.add_argument("--evaluation-name")
     parser.add_argument("--expected-task-count", type=_positive_int, default=20)
     parser.add_argument(
         "--task-id",

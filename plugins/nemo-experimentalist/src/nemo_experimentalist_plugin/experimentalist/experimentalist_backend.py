@@ -58,9 +58,7 @@ async def _upload_trace_otlp(
     workspace: str,
     ref: ResourceRef,
     *,
-    # TODO: rename experiment_id -> evaluation_name to match the ingested attribute
-    # (nemo.evaluation.name carries the Evaluation's name). Plumb the rename through callers.
-    experiment_id: str,
+    evaluation_name: str,
     trial_id: str,
     task_id: str,
     extra_attrs: dict[str, str] | None = None,
@@ -69,7 +67,7 @@ async def _upload_trace_otlp(
 
     path = Path(urlparse(ref.uri).path)
     attrs: dict[str, str] = {
-        "nemo.evaluation.name": experiment_id,
+        "nemo.evaluation.name": evaluation_name,
         "nemo.test_case.id": task_id,
         "nemo.trial.id": trial_id,
         **(extra_attrs or {}),
@@ -89,7 +87,7 @@ async def _upload_trace_atif(
     workspace: str,
     ref: ResourceRef,
     *,
-    experiment_id: str,
+    evaluation_name: str,
     task_id: str,
     extra_attrs: dict[str, str] | None = None,
 ) -> None:
@@ -102,7 +100,7 @@ async def _upload_trace_atif(
 
     payload = build_ingest_payload(
         ref,
-        experiment_id=experiment_id,
+        evaluation_name=evaluation_name,
         task_id=task_id,
         agent_attrs=extra_attrs or {},
     )
@@ -208,16 +206,16 @@ class ExperimentalistBackend(ABC):
     ) -> None:
         """Persist traces and metrics for a completed evaluation.
 
-        Derives experiment_id internally from candidate × split, ensuring the
-        Experiment entity exists before stamping traces.
+        Derives the Evaluation name internally from candidate × split, ensuring
+        the Evaluation exists before stamping traces.
         """
         ...
 
     @abstractmethod
-    async def get_experiment_id(self, *, workspace: str, candidate: Candidate, split: str) -> str:
-        """Best-effort native Experiment id for *candidate* × *split* in *workspace*.
+    async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
+        """Best-effort Evaluation name for *candidate* × *split* in *workspace*.
 
-        Returns "" when there is no projection (offline) or it fails — the id only
+        Returns "" when there is no projection (offline) or it fails — the name only
         tags Intake resource attributes, so a run must not break on it.
         """
         ...
@@ -632,9 +630,9 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if self.client is None:
             return  # pure-offline run: traces stay on local disk
 
-        # Derive experiment_id internally (ensures entity exists, returns deterministic name)
-        experiment_id = await self.get_experiment_id(workspace=workspace, candidate=candidate, split=split)
-        if not experiment_id:
+        # Derive the Evaluation name internally (ensures the entity exists and returns a deterministic name).
+        evaluation_name = await self.get_evaluation_name(workspace=workspace, candidate=candidate, split=split)
+        if not evaluation_name:
             return  # projection failed (shouldn't happen, but defensive)
 
         agent_attrs = {
@@ -651,13 +649,13 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                 continue
             try:
                 await self._persist_trial(
-                    trial, workspace=workspace, experiment_id=experiment_id, agent_attrs=agent_attrs
+                    trial, workspace=workspace, evaluation_name=evaluation_name, agent_attrs=agent_attrs
                 )
             except Exception as exc:  # noqa: BLE001 - Intake persistence is best-effort
                 logger.warning(f"[INTAKE] persist_evaluation failed for trial {trial.id}: {exc}")
 
     async def _persist_trial(
-        self, trial: TrialResult, *, workspace: str, experiment_id: str, agent_attrs: dict[str, str]
+        self, trial: TrialResult, *, workspace: str, evaluation_name: str, agent_attrs: dict[str, str]
     ) -> None:
         assert trial.trace is not None
         assert self.client is not None
@@ -666,7 +664,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             trace_id = uri.removeprefix("intake://traces/")
             trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
             ctx = getattr(trace, "evaluation_context", None)
-            if ctx is None or getattr(ctx, "evaluation_id", None) != experiment_id:
+            if ctx is None or getattr(ctx, "evaluation_id", None) != evaluation_name:
                 rows: list[dict] = []
                 async for span in self.client.intake.spans.list(
                     workspace=workspace,
@@ -676,7 +674,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                 ):
                     rows.append(span.model_dump(mode="json", exclude_none=True))
                 attrs = {
-                    "nemo.evaluation.name": experiment_id,
+                    "nemo.evaluation.name": evaluation_name,
                     "nemo.test_case.id": trial.task_id,
                     "nemo.trial.id": trial.id,
                     **agent_attrs,
@@ -704,7 +702,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     self.client,
                     workspace,
                     trial.trace,
-                    experiment_id=experiment_id,
+                    evaluation_name=evaluation_name,
                     task_id=trial.task_id,
                     extra_attrs=agent_attrs,
                 )
@@ -713,7 +711,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     self.client,
                     workspace,
                     trial.trace,
-                    experiment_id=experiment_id,
+                    evaluation_name=evaluation_name,
                     trial_id=trial.id,
                     task_id=trial.task_id,
                     extra_attrs=agent_attrs,
@@ -757,7 +755,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     delay *= 2  # Exponential backoff
         raise last_exc
 
-    async def get_experiment_id(self, *, workspace: str, candidate: Candidate, split: str) -> str:
+    async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
         if self.client is None:
             return ""
         mirror = self._mirrors.get(workspace)
