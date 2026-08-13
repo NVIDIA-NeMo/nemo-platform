@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
+import { resetGuardrailMocks } from '@studio/mocks/handlers/guardrails';
+import { server } from '@studio/mocks/node';
 import { GuardrailsRoute } from '@studio/routes/guardrails/GuardrailsRoute';
 import { getGuardrailDetailRoute, getGuardrailsRoute } from '@studio/routes/utils';
-import { PLATFORM_BASE_URL } from '@studio/constants/environment';
-import { server } from '@studio/mocks/node';
-import { resetGuardrailMocks } from '@studio/mocks/handlers/guardrails';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
