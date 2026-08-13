@@ -32,7 +32,16 @@ export function useRangeBand({
     return [
       <Area
         key="rb-legend"
-        dataKey={upperKey}
+        dataKey={(d: Record<string, unknown>) => {
+          const lo = d[lowerKey];
+          const hi = d[upperKey];
+          return typeof lo === 'number' &&
+            Number.isFinite(lo) &&
+            typeof hi === 'number' &&
+            Number.isFinite(hi)
+            ? [lo, hi]
+            : undefined;
+        }}
         stroke="none"
         fill={fill}
         fillOpacity={0}
@@ -41,6 +50,7 @@ export function useRangeBand({
         name={name}
         isAnimationActive={false}
         activeDot={false}
+        tooltipType="none"
       />,
       <Customized
         key="rb-renderer"

@@ -40,18 +40,38 @@ describe('useRangeBand', () => {
     expect(legend.type).toBe(Area);
   });
 
-  it('Area uses upperKey as dataKey and is invisible', () => {
+  it('Area has a function dataKey and is invisible', () => {
     const { result } = renderHook(() =>
       useRangeBand({ name: 'Band', upperKey: 'p75', fill: '#ff0000' })
     );
     const [legend] = result.current as El[];
-    expect(legend.props.dataKey).toBe('p75');
+    expect(typeof legend.props.dataKey).toBe('function');
     expect(legend.props.name).toBe('Band');
     expect(legend.props.fill).toBe('#ff0000');
     expect(legend.props.fillOpacity).toBe(0);
     expect(legend.props.strokeOpacity).toBe(0);
     expect(legend.props.legendType).toBe('square');
     expect(legend.props.activeDot).toBe(false);
+    expect(legend.props.tooltipType).toBe('none');
+  });
+
+  it('Area dataKey returns [lower, upper] for valid points, undefined otherwise', () => {
+    const { result } = renderHook(() =>
+      useRangeBand({ name: 'Band', lowerKey: 'lo', upperKey: 'hi' })
+    );
+    const [legend] = result.current as El[];
+    const fn = legend.props.dataKey as (d: Record<string, unknown>) => unknown;
+    expect(fn({ lo: -0.5, hi: 0.8 })).toEqual([-0.5, 0.8]);
+    expect(fn({ lo: NaN, hi: 0.8 })).toBeUndefined();
+    expect(fn({ lo: -0.5, hi: Infinity })).toBeUndefined();
+    expect(fn({ lo: null, hi: 0.8 })).toBeUndefined();
+  });
+
+  it('Area dataKey includes a lower bound that falls below any other series', () => {
+    const { result } = renderHook(() => useRangeBand({ name: 'Band' }));
+    const [legend] = result.current as El[];
+    const fn = legend.props.dataKey as (d: Record<string, unknown>) => unknown;
+    expect(fn({ step: 0, lower: -0.25, upper: 0.1 })).toEqual([-0.25, 0.1]);
   });
 
   it('second element is a Customized renderer', () => {
@@ -82,7 +102,7 @@ describe('useRangeBand', () => {
   it('applies default keys and fill when options are omitted', () => {
     const { result } = renderHook(() => useRangeBand({ name: 'Band' }));
     const [legend, renderer] = result.current as El[];
-    expect(legend.props.dataKey).toBe('upper');
+    expect(typeof legend.props.dataKey).toBe('function');
     expect(renderer.props.lowerKey).toBe('lower');
     expect(renderer.props.upperKey).toBe('upper');
     expect(renderer.props.xKey).toBe('step');
