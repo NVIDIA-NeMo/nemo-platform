@@ -17,6 +17,7 @@ from typing import (
     Self,
 )
 
+from nemo_platform_plugin.config import nmp_user_data_dir
 from nemo_platform_plugin.schema import SecretRef
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -91,7 +92,16 @@ class LocalStorageConfig(BaseStorageConfig):
         This allows the config to pass in absolute paths, ``~``-prefixed
         paths (expanded against the running user's home dir), or relative
         paths like ``./files_storage`` (joined against cwd).
+
+        An **empty** path means the platform's user-data directory, so blobs follow
+        ``NMP_DATA_DIR`` alongside the entity-store database.
+
+        Resolved here rather than as a field default because a machine-dependent default is
+        rendered into the committed config reference — the same reason the SQLite path is
+        computed in ``get_database_url``.
         """
+        if not v:
+            return str(nmp_user_data_dir() / "files")
         return str(Path.cwd() / Path(v).expanduser())
 
     @property
