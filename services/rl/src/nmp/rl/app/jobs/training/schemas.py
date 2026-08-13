@@ -126,6 +126,7 @@ class TrainingStepConfig(BaseModel):
         sandboxed: bool = True
         gym_runtime_image: str | None = None
         allow_internet: bool = False
+        public_dns_allow: list[str] = Field(default_factory=list)
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1
