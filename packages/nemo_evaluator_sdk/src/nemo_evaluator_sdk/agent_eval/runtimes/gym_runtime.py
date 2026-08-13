@@ -109,6 +109,16 @@ _GYM_CLI = "gym"
 _VALIDATE_TIMEOUT_S = 120.0
 #: Where Gym's Hydra run directories are redirected, relative to the run's work dir.
 _HYDRA_SUBDIR = "gym_hydra"
+#: `gym env start`'s combined output, under the run's work dir. Named here because a *collection*
+#: failure often has to point at it: the eval logs show the symptom, this shows the cause.
+_ENV_LOG_NAME = "gym_env.log"
+#: Token-count keys read to decide whether a model was called at all. Both vocabularies, because
+#: Gym's model servers report in either depending on the adapter: the Responses API spells them
+#: `input_tokens`/`output_tokens`, Chat Completions `prompt_tokens`/`completion_tokens`.
+_TOKEN_USAGE_KEYS = ("total_tokens", "input_tokens", "output_tokens", "prompt_tokens", "completion_tokens")
+#: The subset that proves a call happened. A model call always consumes input tokens, so zero on any
+#: of these is evidence the model was never reached; zero output tokens only means an empty answer.
+_INPUT_TOKEN_KEYS = ("total_tokens", "input_tokens", "prompt_tokens")
 #: Gym's index fields on each rollout record. ``_ng_task_index`` is the only join back to the input
 #: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and
 #: copies only a fixed allowlist of row keys onto the result, so no field we invent comes back. Gym
@@ -728,7 +738,7 @@ class GymAgentTaskRunner:
         """Start the Gym servers, collect against them with ``--no-serve``, then tear them down."""
         cfg = self._config
         gym = _gym_executable()
-        env_log = work_dir / "gym_env.log"
+        env_log = work_dir / _ENV_LOG_NAME
 
         # Gym launches each server from its own subdir with its own .venv. Ray (>=2.56) otherwise
         # detects a `uv run` ancestor and tries to replicate that uv project onto its workers,
@@ -791,6 +801,10 @@ class GymAgentTaskRunner:
             str(cfg.num_repeats),
             "--concurrency",
             str(cfg.concurrency),
+            # `gym eval run` is a Hydra app too, and unlike validate/start it does not go through
+            # _selection_args — so without this it writes `outputs/<date>/<time>/` into the caller's
+            # cwd on every single collection.
+            f"hydra.run.dir={work_dir / _HYDRA_SUBDIR}",
         ]
         stdout_log = work_dir / "gym_eval.stdout.log"
         stderr_log = work_dir / "gym_eval.stderr.log"
@@ -823,8 +837,17 @@ class GymAgentTaskRunner:
             await _drain_pumps(pumps, grace_s=cfg.shutdown_grace_s, what="gym eval run")
         if eval_proc.returncode != 0:
             tail = "\n".join(tails.get("stderr") or tails.get("stdout") or [])
+            # A collection failure is frequently *server*-side: the resources-server raises, the
+            # agent surfaces it as a bare HTTP 500, and the traceback that explains it is only in
+            # gym_env.log. Naming the two eval logs alone sends the reader to the one place the
+            # cause is not. (Observed on wmt_translation: a 500 here, `PermissionError: /opt/Gym`
+            # there.)
+            env_log = work_dir / _ENV_LOG_NAME
             raise RuntimeError(
-                f"`gym eval run` failed (rc={eval_proc.returncode}). Full output: {stdout_log} and {stderr_log}\n"
+                f"`gym eval run` failed (rc={eval_proc.returncode}). Collection output: {stdout_log} "
+                f"and {stderr_log}\n"
+                f"If the tail below is an HTTP error from a Gym server, the cause is server-side: "
+                f"see {env_log}, whose lines are prefixed with the server that emitted them.\n"
                 f"--- last {_LOG_TAIL_LINES} line(s) ---\n{tail}"
             )
 
@@ -839,6 +862,7 @@ class GymAgentTaskRunner:
         loop = asyncio.get_running_loop()
         ready = re.compile(r"All \d+ / \d+ servers ready")
         deadline = loop.time() + cfg.startup_timeout_s
+        text = ""
         while loop.time() < deadline:
             if env_proc.returncode is not None:
                 raise RuntimeError(f"`gym env start` exited early (rc={env_proc.returncode}); see {env_log}")
@@ -848,7 +872,129 @@ class GymAgentTaskRunner:
             if ready.search(text):
                 return
             await asyncio.sleep(2)
-        raise TimeoutError(f"Gym servers not ready within {cfg.startup_timeout_s}s; see {env_log}")
+        raise TimeoutError(self._startup_timeout_message(text, env_log))
+
+    def _startup_timeout_message(self, env_log_text: str, env_log: Path) -> str:
+        """Explain a startup timeout in terms of *which* server did not come up.
+
+        The bare "servers not ready" message sends you to a log that is mostly noise from the servers
+        that started fine. Gym polls and prints the outstanding set every time, so naming it costs
+        nothing and is usually the whole diagnosis: one server out of four means that environment's
+        own startup, not the platform.
+
+        The timeout is also a plausible *cause* rather than a symptom — a Docker-backed environment
+        builds its image on first run, which routinely exceeds the 240s default — so the message says
+        how to extend it instead of leaving the reader to find the knob.
+        """
+        cfg = self._config
+        pending = _pending_servers(env_log_text)
+        if pending is None:
+            detail = (
+                "Gym never reported server readiness, so it likely failed before starting them "
+                "(config composition or dependency installation)."
+            )
+        elif not pending[2]:
+            # Gym printed a readiness line but named no outstanding server. Saying "waiting on:
+            # unknown" would contradict the counts in the same sentence, so report only what is known.
+            ready_count, total, _ = pending
+            detail = (
+                f"{ready_count} of {total} server(s) started; Gym did not name which remained "
+                f"outstanding. The per-server output in {env_log.name} is prefixed with the server "
+                "that emitted each line."
+            )
+        else:
+            ready_count, total, names = pending
+            detail = (
+                f"{ready_count} of {total} server(s) started; still waiting on: {', '.join(names)}. "
+                f"Search {env_log.name} for '({names[0]})' — each line is prefixed with the server "
+                "that emitted it."
+            )
+        return (
+            f"Gym servers for resources-server {cfg.resources_server!r} were not ready within "
+            f"startup_timeout_s={cfg.startup_timeout_s}s. {detail}\n"
+            f"Full startup output: {env_log}\n"
+            "If the environment installs heavy dependencies or builds a container image on first run, "
+            "this timeout is expected on a cold cache — raise GymRuntimeConfig.startup_timeout_s and "
+            "re-run; the second run reuses what the first installed."
+        )
+
+
+#: Gym's per-poll readiness line, e.g.
+#: ``3 / 4 servers ready. Waiting for servers to spin up: ['legal_agent_bench']``.
+#: Gym knows exactly which servers are outstanding; without this we discard that and report only
+#: that *something* timed out.
+_PENDING_SERVERS_RE = re.compile(r"(\d+)\s*/\s*(\d+) servers ready\. Waiting for servers to spin up: \[([^\]]*)\]")
+
+
+def _pending_servers(text: str) -> tuple[int, int, tuple[str, ...]] | None:
+    """Recover ``(ready, total, still-pending)`` from the *last* readiness line Gym logged.
+
+    The last line is the one that matters: earlier polls list servers that have since come up.
+    Returns ``None`` when Gym never got as far as printing one (it died during composition, say),
+    which the caller must treat as "no detail available" rather than "nothing pending".
+
+    Never raises — this only ever decorates an error that is already being reported, and a parsing
+    failure here must not replace the real one. Gym's log format is not contractual.
+    """
+    matches = _PENDING_SERVERS_RE.findall(text)
+    if not matches:
+        return None
+    ready, total, names = matches[-1]
+    try:
+        return int(ready), int(total), tuple(re.findall(r"['\"]([^'\"]+)['\"]", names))
+    except ValueError:  # pragma: no cover - the regex only matches digits
+        return None
+
+
+def _agent_never_ran(record: Mapping[str, Any]) -> bool:
+    """True when a result record shows the agent produced nothing *and* never called the model.
+
+    A verifier-scored runner reports whatever score the environment computed, so an agent that
+    silently failed to start is indistinguishable from one that tried and scored 0.0 — the record
+    looks normal, no failure is reported alongside it, and the run succeeds. Observed on
+    ``legal_agent_bench``, whose agent died locating its task tree and returned an empty response:
+    two "completed" trials scoring 0.0, no model call, no failure recorded.
+
+    Deliberately conservative — **both** conditions must hold:
+
+    * no output, and
+    * a stated zero on the input side of token usage.
+
+    An empty answer alone is a legitimate result (a model can return nothing and earn 0.0), so it is
+    not sufficient. Zero *input* tokens is what says the model was never called: a call always sends
+    a prompt, whereas zero output tokens only describes an empty answer. A record carrying no
+    ``response`` key at all is left alone — some runners populate it differently, and this must not
+    reclassify trials it does not understand.
+    """
+    response = record.get("response")
+    if not isinstance(response, Mapping):
+        return False
+    if "output" not in response:
+        # Nothing to judge: some runners shape `response` differently, and absence is not emptiness.
+        return False
+    # Any non-empty value counts as output, whatever its shape. Checking `len(...) > 0` on a list
+    # alone would treat a plain string answer — or a single mapping — as "produced nothing" and fail
+    # a trial that ran perfectly well.
+    if response["output"]:
+        return False
+    usage = response.get("usage")
+    if not isinstance(usage, Mapping):
+        # No usage block to corroborate with; an empty output on its own is not enough to judge.
+        return False
+    # Zero usage has to be *stated*, not inferred from a key being absent. Two vocabularies are in
+    # play — the Responses API's `input_tokens`/`output_tokens` and Chat Completions'
+    # `prompt_tokens`/`completion_tokens` — and Gym's model servers speak both depending on the
+    # adapter. Reading only one set would make a real call reported in the other read as zero.
+    reported = [usage[key] for key in _TOKEN_USAGE_KEYS if isinstance(usage.get(key), (int, float))]
+    if any(value > 0 for value in reported):
+        return False
+    # The discriminating evidence is *input*-side, and only input-side. Calling a model always sends
+    # a prompt, so zero input tokens cannot describe a call that happened; zero **output** tokens
+    # merely describes an empty answer, which is a legitimate result. Requiring an input-side count
+    # rules out a whole class of false positives — a provider reporting only `output_tokens: 0`, or
+    # only `completion_tokens: 0` — rather than excluding those shapes one at a time.
+    input_side = [usage[key] for key in _INPUT_TOKEN_KEYS if isinstance(usage.get(key), (int, float))]
+    return bool(input_side) and all(value == 0 for value in input_side)
 
 
 def _source_datasets(tasks: Sequence[AgentEvalTask]) -> str:
@@ -1261,6 +1407,10 @@ def _trials_from_rollouts(
         descriptors={"rollouts": EvidenceDescriptor(kind="filesystem", format="file", ref=str(rollouts_path))}
     )
     unattributed_successes = 0
+    empty_output_count = 0
+    #: Tasks with at least one trial where the agent never ran. Tracked separately from trial
+    #: status, since the failures sidecar also produces FAILED trials for unrelated reasons.
+    empty_output_task_ids: set[str] = set()
     for record in _read_jsonl(rollouts_path):
         task_id = _resolve_task_id(record, index_to_task_id)
         if task_id is None:
@@ -1271,18 +1421,36 @@ def _trials_from_rollouts(
             continue
         raw_rollout_index = record.get(NG_ROLLOUT_INDEX)
         reward = _coerce_reward(record.get(reward_key))
+        # An agent that never ran did not earn its reward — reporting 0.0 as a completed trial would
+        # let a broken environment read as a poorly-performing one.
+        never_ran = _agent_never_ran(record)
+        if never_ran:
+            empty_output_count += 1
+            empty_output_task_ids.add(task_id)
+            status = AgentEvalTrialStatus.FAILED
+        elif reward is not None:
+            status = AgentEvalTrialStatus.COMPLETED
+        else:
+            status = AgentEvalTrialStatus.PARTIAL
+        metadata: dict[str, Any] = {
+            "reward": None if never_ran else reward,
+            NG_TASK_INDEX: record.get(NG_TASK_INDEX),
+            NG_ROLLOUT_INDEX: raw_rollout_index,
+        }
+        if never_ran:
+            # Kept alongside the reward Gym reported, so the discarded value is still auditable.
+            metadata["gym_failure"] = (
+                "the agent produced no output and consumed no tokens, so the model was never called; "
+                f"the reported score of {reward!r} is not a measurement of this agent"
+            )
         trials.append(
             AgentEvalTrial(
                 id=_rollout_trial_id(task_id, raw_rollout_index, synth_seq, missing_label="noidx"),
                 task_id=task_id,
-                status=AgentEvalTrialStatus.COMPLETED if reward is not None else AgentEvalTrialStatus.PARTIAL,
+                status=status,
                 output=AgentOutput(response=record.get("response"), metadata={"agent_ref": record.get("agent_ref")}),
                 evidence=success_evidence,
-                metadata={
-                    "reward": reward,
-                    NG_TASK_INDEX: record.get(NG_TASK_INDEX),
-                    NG_ROLLOUT_INDEX: raw_rollout_index,
-                },
+                metadata=metadata,
             )
         )
 
@@ -1321,6 +1489,40 @@ def _trials_from_rollouts(
                     },
                 )
             )
+    if empty_output_count:
+        # Every trial empty is a configuration failure, not a result: nothing was measured, so there
+        # is no score to report and letting the run "succeed" would publish zeros as findings. A
+        # partial count is left as failed trials — a flaky environment is still worth the attempts
+        # that did run.
+        #
+        # Measured against *every* trial, including those the failures sidecar contributed. A run
+        # that also recorded real failures is not the uniform "nothing ran" picture this raise is
+        # for: those trials carry their own diagnosis (a verifier timeout, say, from an attempt that
+        # did reach the model), and raising would discard it for a less specific message. Likewise
+        # `unattributed_successes` never became trials and so are invisible to `len(trials)`, but
+        # each is a result the environment produced and one may have run perfectly well — claiming
+        # nothing was measured while such a record exists would be false.
+        if empty_output_count == len(trials) and not unattributed_successes:
+            affected_tasks = {trial.task_id for trial in trials}
+            raise RuntimeError(
+                f"No agent ran: all {empty_output_count} trial(s) across all {len(affected_tasks)} "
+                "task(s) produced no output and consumed no tokens, so the model was never called "
+                "and nothing was measured. The scores reported for them describe an agent that did "
+                "not run.\n"
+                "This is normally the environment failing to start its agent rather than a bad "
+                f"model: check the per-server startup output in {rollouts_path.parent / _ENV_LOG_NAME} "
+                "for a traceback from the environment's own agent server.\n"
+                f"Results as collected: {rollouts_path}"
+            )
+        logger.warning(
+            "%d of %d trial(s), across %d of %d task(s), produced no agent output and consumed no "
+            "tokens; those are marked FAILED rather than scored, since the model was never called "
+            "for them.",
+            empty_output_count,
+            len(trials),
+            len(empty_output_task_ids),
+            len({trial.task_id for trial in trials}),
+        )
     if unattributed_successes:
         logger.warning(
             "%d Gym rollout record(s) in %s carried no usable %s and could not be attributed to a task; "
