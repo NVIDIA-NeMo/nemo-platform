@@ -127,7 +127,7 @@ export const ROUTES = {
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,
     agentsList: `/workspaces/:${P.workspace}/agents`,
-    copilotChat: `/workspaces/:${P.workspace}/dashboard/copilot`,
+    assistantChat: `/workspaces/:${P.workspace}/dashboard/assistant`,
     agentDetail: `/workspaces/:${P.workspace}/agents/:${P.agentName}`,
     agentDeploymentsList: `/workspaces/:${P.workspace}/agent-deployments`,
     agentDeploymentDetail: `/workspaces/:${P.workspace}/agent-deployments/:${P.agentDeploymentName}`,

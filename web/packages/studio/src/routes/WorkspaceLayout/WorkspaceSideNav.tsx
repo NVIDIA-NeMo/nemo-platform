@@ -1,28 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
+import { logger } from '@nemo/common/src/utils/logger';
 import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
-import { DataDesignerIconFc } from '@studio/constants/constants';
-import {
-  ANONYMIZER_ENABLED,
-  BASE_MODELS_ENABLED,
-  COPILOT_STUDIO_ENABLED,
-  CUSTOMIZER_ENABLED,
-  DASHBOARD_ENABLED,
-  DATA_DESIGNER_ENABLED,
-  DATASETS_ENABLED,
-  DEPLOYMENTS_ENABLED,
-  EVALUATOR_ENABLED,
-  EXPERIMENT_ENABLED,
-  GUARDRAILS_ENABLED,
-  INTAKE_ENABLED,
-  JOBS_ENABLED,
-  MODEL_COMPARE_ENABLED,
-  OPTIMIZER_ENABLED,
-  SAFE_SYNTHESIZER_ENABLED,
-  SETTINGS_ENABLED,
-} from '@studio/constants/environment';
+import type {
+  NavInputItem,
+  NavItem as NavItemData,
+} from '@studio/components/Layouts/NavigationDrawer/types';
+import { isGroup } from '@studio/components/Layouts/NavigationDrawer/utils';
+import { BASE_MODELS_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getPluginIcon } from '@studio/plugins/iconMap';
 import {
@@ -32,48 +18,70 @@ import {
   usePluginsLoaded,
 } from '@studio/plugins/PluginContext';
 import { iconColorClass } from '@studio/routes/constants';
-import { getAgentSideNavItems } from '@studio/routes/groups/agentRoutes';
 import {
-  getWorkspaceAnonymizerRoute,
-  getDataDesignerJobListRoute,
-  getEvaluationResultsRoute,
-  getExperimentRoute,
-  getGuardrailsRoute,
-  getIntakeTracesRoute,
-  getModelCompareRoute,
-  getOptimizerRoute,
-  getWorkspaceBaseModelsRoute,
-  getWorkspaceCustomizationJobListRoute,
-  getWorkspaceDashboardRoute,
-  getWorkspaceFilesetsRoute,
-  getWorkspaceDeploymentsRoute,
-  getWorkspaceJobsRoute,
-  getWorkspaceSafeSynthesizerRoute,
-  getWorkspaceSettingsRoute,
-  getWorkspaceVirtualModelsRoute,
-} from '@studio/routes/utils';
-import { logger } from '@studio/util/logger';
-import {
-  Beaker,
-  Boxes,
-  ChartBar,
-  Database,
-  ListChecks,
-  Home,
-  ShieldCheck,
-  Sliders,
-  Activity,
-  Cog,
-  Columns3,
-  Rocket,
-  VenetianMask,
-  Gauge,
-  Waypoints,
-} from 'lucide-react';
+  getAgentSideNavItems,
+  getAnonymizerSideNavItems,
+  getCustomizationSideNavItems,
+  getDashboardSideNavItems,
+  getDataDesignerSideNavItems,
+  getDeploymentSideNavItems,
+  getEvaluationSideNavItems,
+  getExperimentSideNavItems,
+  getFilesetSideNavItems,
+  getGuardrailsSideNavItems,
+  getIntakeSideNavItems,
+  getJobSideNavItems,
+  getModelCompareSideNavItems,
+  getOptimizerSideNavItems,
+  getSafeSynthesizerSideNavItems,
+  getSettingsSideNavItems,
+  getVirtualModelsSideNavItems,
+} from '@studio/routes/groups';
+import { getAgentsListRoute, getWorkspaceBaseModelsRoute } from '@studio/routes/utils';
+import { Bot, Boxes, Database } from 'lucide-react';
 import { useMemo } from 'react';
+import { useLocation } from 'react-router';
+
+/** Whether the path is on, or nested under, one of these items. */
+const isUnder = (pathname: string, items: { href?: string }[]) =>
+  items.some(
+    (item) =>
+      item.href !== undefined && (pathname === item.href || pathname.startsWith(`${item.href}/`))
+  );
+
+const eachItem = (entries: NavInputItem[]): NavItemData[] =>
+  entries.flatMap((entry) => (isGroup(entry) ? entry.items : [entry]));
+
+/** A parent starts expanded when the current page is its own landing page or one of its children. */
+const ownsCurrentPage = (item: NavItemData, pathname: string) =>
+  isUnder(pathname, [{ href: item.href }, ...(item.subItems ?? [])]);
+
+/**
+ * The ids of every expanded parent, joined into one string. Navigating deeper inside a section
+ * leaves this untouched, which is what lets `withDefaultOpen` hand back the identical tree.
+ */
+const openParentKey = (entries: NavInputItem[], pathname: string): string =>
+  eachItem(entries)
+    .filter((item) => item.subItems !== undefined && ownsCurrentPage(item, pathname))
+    .map((item) => item.id)
+    .join('|');
+
+/**
+ * Stamp `defaultOpen` onto the parents named by `openIds`. Kept apart from building the tree so a
+ * navigation rewrites a few parent objects instead of rebuilding every leaf and icon.
+ */
+const withDefaultOpen = (entries: NavInputItem[], openIds: string): NavInputItem[] => {
+  const open = new Set(openIds.split('|'));
+  const stamp = (item: NavItemData): NavItemData =>
+    item.subItems === undefined ? item : { ...item, defaultOpen: open.has(item.id) };
+  return entries.map((entry) =>
+    isGroup(entry) ? { ...entry, items: entry.items.map(stamp) } : stamp(entry)
+  );
+};
 
 export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
+  const { pathname } = useLocation();
   const plugins = usePlugins();
   const agentsInstalled = usePluginInstalled('agents');
   const pluginsLoaded = usePluginsLoaded();
@@ -81,232 +89,98 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const manifestResolved = pluginsLoaded && !pluginsError;
   const showAgents = agentsInstalled || !manifestResolved;
 
-  const items = useMemo(() => {
-    const dashboardNav =
-      DASHBOARD_ENABLED || COPILOT_STUDIO_ENABLED
+  const baseItems = useMemo<NavInputItem[]>(() => {
+    const dashboardNav = getDashboardSideNavItems(workspace);
+    const customizerNav = getCustomizationSideNavItems(workspace);
+    const evalNav = getEvaluationSideNavItems(workspace);
+    const tracesNav = getIntakeSideNavItems(workspace);
+    const experimentNav = getExperimentSideNavItems(workspace);
+    const safeSynthesizerNav = getSafeSynthesizerSideNavItems(workspace);
+    const dataDesignerNav = getDataDesignerSideNavItems(workspace);
+    const anonymizerNav = getAnonymizerSideNavItems(workspace);
+    const agentItems = showAgents ? getAgentSideNavItems(workspace) : [];
+    const optimizerNav = getOptimizerSideNavItems(workspace);
+    const virtualModelsNav = getVirtualModelsSideNavItems(workspace);
+    const modelCompareNav = getModelCompareSideNavItems(workspace);
+    const deploymentsNav = getDeploymentSideNavItems(workspace);
+
+    const observabilityItems = [...optimizerNav, ...tracesNav];
+
+    const modelSubItems = [
+      ...deploymentsNav,
+      ...customizerNav,
+      ...evalNav,
+      ...modelCompareNav,
+      ...virtualModelsNav,
+    ];
+    const datasetSubItems = [...anonymizerNav, ...dataDesignerNav, ...safeSynthesizerNav];
+
+    // Agents and Models link to their own entity list page; the chevron expands the rest.
+    const agentsHref = agentItems.length > 0 ? getAgentsListRoute(workspace) : undefined;
+    const modelsHref = BASE_MODELS_ENABLED ? getWorkspaceBaseModelsRoute(workspace) : undefined;
+
+    const componentItems = [
+      ...(agentsHref !== undefined
         ? [
             {
-              id: 'dashboard',
-              slotIcon: <Home className={iconColorClass} />,
-              slotLabel: 'Dashboard',
-              href: getWorkspaceDashboardRoute(workspace),
+              id: 'agents-group',
+              slotIcon: <Bot className={iconColorClass} />,
+              slotLabel: 'Agents',
+              href: agentsHref,
+              subItems: agentItems,
+            },
+          ]
+        : []),
+      ...(modelsHref !== undefined || modelSubItems.length > 0
+        ? [
+            {
+              id: 'models-group',
+              slotIcon: <Boxes className={iconColorClass} />,
+              slotLabel: 'Models',
+              href: modelsHref,
+              subItems: modelSubItems,
+            },
+          ]
+        : []),
+    ];
+
+    const dataItems =
+      datasetSubItems.length > 0
+        ? [
+            {
+              id: 'datasets-group',
+              slotIcon: <Database className={iconColorClass} />,
+              slotLabel: 'Datasets',
+              subItems: datasetSubItems,
             },
           ]
         : [];
-    const jobsNav = JOBS_ENABLED
-      ? [
-          {
-            id: 'jobs',
-            slotIcon: <ListChecks className={iconColorClass} />,
-            slotLabel: 'Jobs',
-            href: getWorkspaceJobsRoute(workspace),
-          },
-        ]
-      : [];
-    const customizerNav = CUSTOMIZER_ENABLED
-      ? [
-          {
-            id: 'custom-models',
-            slotIcon: <Sliders className={iconColorClass} />,
-            slotLabel: 'Custom Models',
-            href: getWorkspaceCustomizationJobListRoute(workspace),
-          },
-        ]
-      : [];
 
-    const evalNav = EVALUATOR_ENABLED
-      ? [
-          {
-            id: 'evaluation-results',
-            slotIcon: <ChartBar className={iconColorClass} />,
-            slotLabel: 'Evaluations',
-            href: getEvaluationResultsRoute(workspace),
-          },
-        ]
-      : [];
-
-    const tracesNav = INTAKE_ENABLED
-      ? [
-          {
-            id: 'traces',
-            slotIcon: <Activity className={iconColorClass} />,
-            slotLabel: 'Traces',
-            href: getIntakeTracesRoute(workspace),
-          },
-        ]
-      : [];
-
-    const experimentNav = EXPERIMENT_ENABLED
-      ? [
-          {
-            id: 'experiment',
-            slotIcon: <Beaker className={iconColorClass} />,
-            slotLabel: 'Experiments',
-            href: getExperimentRoute(workspace),
-          },
-        ]
-      : [];
-
-    const safeSynthesizerNav = SAFE_SYNTHESIZER_ENABLED
-      ? [
-          {
-            id: 'safeSynthesizer',
-            slotIcon: <SafeSynthesizerLogo className={iconColorClass} />,
-            slotLabel: 'Safe Synthesizer',
-            href: getWorkspaceSafeSynthesizerRoute(workspace),
-          },
-        ]
-      : [];
-
-    const dataDesignerNav = DATA_DESIGNER_ENABLED
-      ? [
-          {
-            id: 'data-designer',
-            slotIcon: <DataDesignerIconFc className={iconColorClass} />,
-            slotLabel: 'Data Designer',
-            href: getDataDesignerJobListRoute(workspace),
-          },
-        ]
-      : [];
-
-    const anonymizerNav = ANONYMIZER_ENABLED
-      ? [
-          {
-            id: 'anonymizer',
-            slotIcon: <VenetianMask className={iconColorClass} />,
-            slotLabel: 'Anonymizer',
-            href: getWorkspaceAnonymizerRoute(workspace),
-          },
-        ]
-      : [];
-
-    const agentItems = showAgents ? getAgentSideNavItems(workspace) : [];
-
-    const optimizerNav = OPTIMIZER_ENABLED
-      ? [
-          {
-            id: 'optimizer',
-            slotIcon: <Gauge className={iconColorClass} />,
-            slotLabel: 'Insights',
-            href: getOptimizerRoute(workspace),
-          },
-        ]
-      : [];
-    const virtualModelsNav = [
-      {
-        id: 'virtual-models',
-        slotIcon: <Waypoints className={iconColorClass} />,
-        slotLabel: 'Virtual Models',
-        href: getWorkspaceVirtualModelsRoute(workspace),
-      },
-    ];
-
-    const modelCompareNav = MODEL_COMPARE_ENABLED
-      ? [
-          {
-            id: 'playground',
-            slotIcon: <Columns3 className={iconColorClass} />,
-            slotLabel: 'Playground',
-            href: getModelCompareRoute(workspace),
-          },
-        ]
-      : [];
-
-    const dataItems = [
-      ...(DATASETS_ENABLED
-        ? [
-            {
-              id: 'datasets',
-              slotIcon: <Database className={iconColorClass} />,
-              slotLabel: 'Filesets',
-              href: getWorkspaceFilesetsRoute(workspace),
-            },
-          ]
-        : []),
-      ...safeSynthesizerNav,
-      ...dataDesignerNav,
-      ...anonymizerNav,
-    ];
-    const evaluateItems = [...evalNav, ...tracesNav, ...experimentNav];
-
-    const safetyItems = GUARDRAILS_ENABLED
-      ? [
-          {
-            id: 'guardrails',
-            slotIcon: <ShieldCheck className={iconColorClass} />,
-            slotLabel: 'Guardrails',
-            href: getGuardrailsRoute(workspace),
-          },
-        ]
-      : [];
+    const governanceItems = getGuardrailsSideNavItems(workspace);
 
     return [
       ...dashboardNav,
-      ...modelCompareNav,
-      ...(agentItems.length > 0 || optimizerNav.length > 0
-        ? [
-            {
-              group: 'Agents',
-              items: [...agentItems, ...optimizerNav],
-            },
-          ]
+      ...(observabilityItems.length > 0
+        ? [{ group: 'Observability', items: observabilityItems }]
         : []),
-      ...(jobsNav.length > 0
-        ? [
-            {
-              group: 'Jobs',
-              items: jobsNav,
-            },
-          ]
-        : []),
-      {
-        group: 'Models',
-        items: [
-          ...(BASE_MODELS_ENABLED
-            ? [
-                {
-                  id: 'models',
-                  slotIcon: <Boxes className={iconColorClass} />,
-                  slotLabel: 'Base Models',
-                  href: getWorkspaceBaseModelsRoute(workspace),
-                },
-              ]
-            : []),
-          ...customizerNav,
-          ...(DEPLOYMENTS_ENABLED
-            ? [
-                {
-                  id: 'deployments',
-                  slotIcon: <Rocket className={iconColorClass} />,
-                  slotLabel: 'Deployments',
-                  href: getWorkspaceDeploymentsRoute(workspace),
-                },
-              ]
-            : []),
-          ...virtualModelsNav,
-        ],
-      },
+      ...(componentItems.length > 0 ? [{ group: 'Components', items: componentItems }] : []),
+      ...(experimentNav.length > 0 ? [{ group: 'Evaluations', items: experimentNav }] : []),
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
-      ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
-      ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),
+      ...(governanceItems.length > 0 ? [{ group: 'Governance', items: governanceItems }] : []),
     ];
   }, [workspace, showAgents]);
 
-  const bottomItems = useMemo(
-    () => [
-      ...(SETTINGS_ENABLED
-        ? [
-            {
-              id: 'settings',
-              slotIcon: <Cog className={iconColorClass} />,
-              slotLabel: 'Settings',
-              href: getWorkspaceSettingsRoute(workspace),
-            },
-          ]
-        : []),
-    ],
-    [workspace]
-  );
+  const openIds = useMemo(() => openParentKey(baseItems, pathname), [baseItems, pathname]);
+  const items = useMemo(() => withDefaultOpen(baseItems, openIds), [baseItems, openIds]);
+
+  const systemNavGroup = useMemo(() => {
+    const systemItems = [
+      ...getFilesetSideNavItems(workspace),
+      ...getJobSideNavItems(workspace),
+      ...getSettingsSideNavItems(workspace),
+    ];
+    return systemItems.length > 0 ? [{ group: 'System', items: systemItems }] : [];
+  }, [workspace]);
 
   const pluginNavGroups = useMemo(
     () =>
@@ -317,7 +191,9 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             items: group.items.map((item) => {
               const Icon = getPluginIcon(item.iconName);
               return {
-                id: item.id,
+                // Namespaced: ids are React keys and accordion-state keys, and
+                // merging puts plugin items in the same array as core ones.
+                id: `${plugin.name}:${item.id}`,
                 slotIcon: Icon ? <Icon className={iconColorClass} /> : undefined,
                 slotLabel: item.label,
                 href: item.href,
@@ -332,11 +208,27 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     [plugins, workspace]
   );
 
-  return (
-    <NavigationDrawer
-      items={[...items, ...pluginNavGroups]}
-      bottomItems={bottomItems}
-      collapsed={collapsed}
-    />
-  );
+  // A plugin naming an existing group joins it rather than rendering a second
+  // header with the same label. Unmatched groups append in plugin order.
+  const allItems = useMemo<NavInputItem[]>(() => {
+    const pending = new Map<string, NavItemData[]>();
+    for (const { group, items: groupItems } of pluginNavGroups) {
+      pending.set(group, [...(pending.get(group) ?? []), ...groupItems]);
+    }
+
+    const merged: NavInputItem[] = items.map((entry) => {
+      if (!isGroup(entry) || entry.group === undefined) return entry;
+      const extra = pending.get(entry.group);
+      if (!extra) return entry;
+      pending.delete(entry.group);
+      return { ...entry, items: [...entry.items, ...extra] };
+    });
+
+    for (const [group, groupItems] of pending) {
+      merged.push({ group, items: groupItems });
+    }
+    return [...merged, ...systemNavGroup];
+  }, [items, pluginNavGroups, systemNavGroup]);
+
+  return <NavigationDrawer items={allItems} collapsed={collapsed} />;
 };

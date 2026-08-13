@@ -1,30 +1,23 @@
 # syntax=docker/dockerfile:1
 # nmp-rl base - NeMo-RL + NeMo-Gym built FROM SOURCE on cuda-dl-base (Python 3.13, CUDA 13).
 #
-# Mirrors the build in NeMo-RL's own docker/Dockerfile (base + hermetic + release stages),
-# stripped to the extras nemo-platform needs (fsdp, vllm, modelopt, nemo_gym). Building from source
-# - rather than basing on the prebuilt NGC nemo-rl image - lets us pin ANY RL commit via build-arg
-# (NEMO_RL_REF); Gym follows as RL's submodule pin.
+# Mirrors NeMo-RL's own docker/Dockerfile, stripped to the extras nemo-platform needs. Building
+# from source (rather than the prebuilt NGC nemo-rl image) lets us pin any RL commit via
+# NEMO_RL_REF; Gym follows as RL's submodule pin.
 #
-# Deliberately NOT built: mcore and automodel (alternative training backends the customizer does not
-# use, and the only source of Transformer-Engine - the longest CUDA compile), plus sglang and trtllm.
-# DPO trains on `fsdp`; GRPO trains on `fsdp` and generates on `vllm`. See README.md.
+# DPO trains on `fsdp`; GRPO trains on `fsdp` and generates on `vllm`. mcore, automodel, sglang
+# and trtllm are deliberately not built.
 #
-# NOTE (venvs): NeMo-RL does not run its workers in the base venv - each Ray actor launches with its
-# own per-node venv under /opt/ray_venvs. The `uv sync --extra` calls below only warm the uv CACHE;
-# the venvs training actually uses are materialized by the prefetch steps further down. See README.md
-# ("How NeMo-RL runs: the base venv is not where training happens").
-#
-# NOTE (publish stage): it inherits the builder filesystem (like RL's release stage) rather than
-# COPY-ing /opt/nemo_rl_venv onto a fresh base. cuda-dl-base has NO system Python, so `uv venv`
-# symlinks the venv's python to uv's managed interpreter (which lives OUTSIDE the venv); a bare
-# COPY-venv-to-fresh-base would leave a broken python symlink. The image is slimmed by pruning
-# build-only tooling in the publish stage; the CUDA devel toolkit (nvcc) and gcc/build-essential
-# stay because deep_ep JIT and native-v1 env installs need them at runtime.
+# Two things drive most of what follows, both covered in README.md:
+#   - Workers do not run in the base venv. The `uv sync --extra` calls only warm the uv cache; the
+#     venvs training uses are materialized by the prefetch steps further down.
+#   - The publish stage inherits the builder filesystem rather than COPY-ing the venv onto a fresh
+#     base - cuda-dl-base has no system Python, so the venv's python symlinks to uv's managed
+#     interpreter outside the venv and a bare COPY would break it.
 
 # Kept in lockstep with the pinned NEMO_RL_REF: RL's own Dockerfile builds on this tag, and its lock
 # overrides nvidia-nccl-cu13 to the version that ships here. Bump both together.
-ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.05-cuda13.2-devel-ubuntu24.04
+ARG BASE_IMAGE=nvcr.io/nvidia/cuda-dl-base:26.07-cuda13.3-devel-ubuntu24.04
 
 # Source. Default clones the soluwalana/RL fork at the given ref; override with a local checkout via
 # `--build-context nemo-rl=<path>` or point elsewhere via the NEMO_RL_{REPO,REF} build-args. Gym is
@@ -54,6 +47,7 @@ ADD ${NEMO_RL_REPO}#${NEMO_RL_REF} /
 FROM ${BASE_IMAGE} AS base
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
+RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages.txt
 
 # openssl is the only dpkg package here with an out-of-SLA CVE. Upgraded explicitly rather than via
 # a blanket `apt-get upgrade`, which would also pull newer CUDA packages from the NVIDIA repos.
@@ -92,24 +86,18 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
     cp /root/.local/bin/uv /usr/local/bin/uv && \
     uv python install "${PYTHON_VERSION}"
+COPY docker/scripts/collect-apt-sources.sh \
+    docker/scripts/collect-python-sdists.py \
+    /usr/local/bin/
 
 # Ray / NeMo-RL runtime behavior (affects the running container, not the build):
-#   RAY_USAGE_STATS_ENABLED=0        - disable Ray's anonymous usage telemetry (no phone-home).
-#   RAY_ENABLE_UV_RUN_RUNTIME_ENV=0  - Ray >=2.47 auto-builds a uv venv PER TASK for `uv run`
-#       executables; with RL's huge, sometimes-compiled deps that causes severe contention, so we
-#       disable it and let NeMo-RL build worker venvs ONCE PER NODE (nemo_rl/utils/venv.py).
-#   NEMO_RL_VENV_DIR=/opt/ray_venvs  - dir where RL materializes those per-node Ray worker venvs.
-#   NEMO_GYM_VENV_DIR=/opt/gym_venvs - dir where Gym materializes per-ENVIRONMENT venvs at runtime;
-#       an environment's own deps (rdkit, spacy, numpy 2.x, ...) install here, isolated from the
-#       training venv so they can't clobber RL's pinned stack (e.g. numpy 1.X vs 2.x).
-#   NRL_CONTAINER=1 - marks this as a NeMo-RL container. REQUIRED, not cosmetic: NeMo-RL gates
-#       `get_nemo_gym_uv_cache_dir()` on it (nemo_rl/environments/nemo_gym.py), and without it the
-#       function returns None, so NeMo-Gym silently falls back to its own default cache inside the
-#       source tree (3rdparty/Gym-workspace/Gym/cache/uv) - a multi-GB duplicate of the shared uv
-#       cache. Note the venv-dir helper is NOT gated the same way, which is why venvs land correctly
-#       while the cache would not. It also enables the frozen-environment wrapper scripts in
-#       prefetch_venvs.py and the container fingerprint check (a warning-only no-op when the
-#       fingerprint file is absent). RL's own Dockerfile sets this in its base stage.
+#   RAY_USAGE_STATS_ENABLED=0        - no telemetry phone-home.
+#   RAY_ENABLE_UV_RUN_RUNTIME_ENV=0  - Ray >=2.47 builds a uv venv PER TASK for `uv run`; with RL's
+#       deps that means severe contention, so let NeMo-RL build worker venvs once per node instead.
+#   NEMO_RL_VENV_DIR / NEMO_GYM_VENV_DIR - where the per-actor and per-Gym-environment venvs land.
+#       Gym environments stay isolated so their deps cannot clobber RL's pinned stack.
+#   NRL_CONTAINER=1 - REQUIRED, not cosmetic: without it NeMo-Gym falls back to a cache inside its
+#       own source tree, a multi-GB duplicate. See README.md, "Why NRL_CONTAINER=1 is required".
 ENV RAY_USAGE_STATS_ENABLED=0 \
     RAY_ENABLE_UV_RUN_RUNTIME_ENV=0 \
     NRL_CONTAINER=1 \
@@ -117,28 +105,19 @@ ENV RAY_USAGE_STATS_ENABLED=0 \
     NEMO_GYM_VENV_DIR=/opt/gym_venvs
 
 # ---- builder: uv sync RL + Gym with the extras we use ----
-# Only fsdp (DPO/GRPO policy training), vllm (GRPO generation), nemo_gym and modelopt are built.
-# The mcore and automodel extras are deliberately EXCLUDED: they are alternative training backends
-# the customizer does not use, and they are the only source of Transformer-Engine (the longest CUDA
-# compile in this image). See README.md, "Excluded on purpose: the automodel and mcore backends".
+# Only fsdp (DPO/GRPO training), vllm (GRPO generation), nemo_gym and modelopt are built. The mcore
+# and automodel extras are deliberately EXCLUDED: alternative training backends the customizer does
+# not use, and the only source of Transformer-Engine (the longest CUDA compile).
 FROM base AS builder
 WORKDIR /opt/nemo-rl
 
-# Arch knobs + cuDNN wiring (mirrors RL's own hermetic stage). NVTE_CUDA_ARCHS /
-# TORCH_CUDA_ARCH_LIST control which GPU archs the SOURCE-compiled kernels (mamba-ssm,
-# causal-conv1d, deep_ep, deep_gemm; TE too when built) target — these are the ONLY packages the
-# arch flags touch. The big prebuilt wheels (torch, vllm, flash-attn, flashinfer) already ship "fat"
-# binaries covering many archs; nvcc is never re-run for them, so the arch flags neither narrow nor
-# widen the GPUs they support.
+# Arch knobs + cuDNN wiring (mirrors RL's own hermetic stage). The arch flags only affect the
+# SOURCE-compiled kernels (mamba-ssm, causal-conv1d, deep_ep, deep_gemm, TE); prebuilt wheels
+# (torch, vllm, flash-attn, flashinfer) ship fat binaries and are unaffected.
 #
-# BUILD ARCH MUST BE >= 9.0. deep_ep / deep_gemm (pulled by the `vllm` extra, i.e. GRPO generation)
-# use Hopper-class features and will NOT compile for SM80/86/89 - building with 8.0 fails the nvcc
-# step. This is a BUILD-time constraint only: nvcc cross-compiles, RL upstream pins the same "9.0 10.0".
-#
-# It does NOT make the whole image Hopper-only at RUNTIME. What a workload needs depends on which
-# kernels it launches: DPO trains on the `fsdp` extra (flash-attn / mamba / causal-conv1d - no
-# deep_ep) and is expected to run on A100 and up, while GRPO generation uses deep_ep/deep_gemm and
-# needs Hopper/Blackwell. See README.md for more details.
+# BUILD ARCH MUST BE >= 9.0: deep_ep / deep_gemm use Hopper-class features and fail nvcc at 8.0.
+# This is a BUILD-time constraint only and does NOT make the image Hopper-only at runtime - see
+# README.md, "Hardware: which GPUs run what".
 #
 # Keep at 90 (H100/H200) and/or 100 (B200/GB200); narrow to one for a faster dev build, e.g.
 #   --build-arg NVTE_CUDA_ARCHS=90 --build-arg TORCH_CUDA_ARCH_LIST="9.0"
@@ -147,36 +126,21 @@ ARG NVTE_BUILD_THREADS_PER_JOB=2
 ARG NVTE_CUDA_ARCHS=90;100
 ARG NVTE_FRAMEWORK=pytorch
 ARG TORCH_CUDA_ARCH_LIST="9.0 10.0"
-# Path / toolchain wiring for the source compiles above and for runtime JIT:
-#   CUDA_HOME            - where the build (and DeepEP's runtime JIT) find nvcc and CUDA libs.
-#   CPLUS_INCLUDE_PATH   - CUDA 13 relocated its C++ standard-library headers (<cuda/std/...>)
-#                          under $CUDA_HOME/include/cccl. deep_gemm #includes them, so this dir
-#                          must be on the C++ include path or its compile fails with a
-#                          missing-header error.
-#   CUDNN_HOME/CUDNN_PATH - point Transformer-Engine's Python at the pip-installed cuDNN wheel
-#                          instead of the base image's system cuDNN. The two can differ, and TE
-#                          prioritizes the system copy by default -> version-mismatch crash at
-#                          runtime.
-#   LD_LIBRARY_PATH      - prepend that same pip cuDNN lib dir so the dynamic linker (ld.so)
-#                          resolves libcudnn*.so from pip when loading libtransformer_engine.so.
-# This mirrors the cuDNN/arch wiring in NeMo-RL's own docker/Dockerfile (hermetic stage).
+# Path / toolchain wiring for the source compiles and for runtime JIT (mirrors RL's own
+# docker/Dockerfile):
+#   CUDA_HOME            - where the build and DeepEP's runtime JIT find nvcc and CUDA libs.
+#   CPLUS_INCLUDE_PATH   - CUDA 13 moved <cuda/std/...> under $CUDA_HOME/include/cccl; deep_gemm
+#                          includes them, so this dir must be on the C++ include path.
+#   CUDNN_HOME/CUDNN_PATH - point Transformer-Engine at the pip cuDNN wheel, not the base image's
+#                          system cuDNN, which TE prefers by default -> version-mismatch crash.
+#   LD_LIBRARY_PATH      - same pip cuDNN lib dir, so ld.so resolves libcudnn*.so when loading
+#                          libtransformer_engine.so.
 #
-# UV_CACHE_DIR + UV_LINK_MODE work as a PAIR and must not be changed independently:
-#   UV_LINK_MODE=symlink - set PER-COMMAND on the venv-creating steps below, NOT as a persistent
-#       ENV: uv rejects symlink installs combined with `--no-cache` whenever it has to build a PEP
-#       517 build environment, and downstream images (the training image's editable glue install)
-#       do exactly that. Scoping it per-command keeps it out of anything we do not control.
-#       Symlinking means venv files point INTO the uv cache instead of being copies. This image
-#       materializes ~30 venvs (5 per-worker Ray venvs + the bundled Gym environment venvs), and the
-#       two vLLM-tier worker venvs alone would otherwise be full duplicates of the same multi-GB
-#       stack. Symlinking means the image carries ONE copy of each package (in the cache) plus
-#       near-free symlinks. NeMo-RL's own release stage does the same.
-#   UV_CACHE_DIR=/opt/uv_cache - because those symlinks resolve at RUNTIME, the cache must ship
-#       INSIDE the image and stay readable by the non-root user (the training image runs as UID
-#       1000). uv's default ~/.cache/uv is under /root, which is mode 700 and unreadable to that
-#       user - the same reason the managed Python lives under /opt. It also cannot be a BuildKit
-#       `--mount=type=cache`, since those never enter the image and every symlink would dangle.
-# Consequence: NEVER delete /opt/uv_cache after the venvs are built - it would break every venv.
+# UV_CACHE_DIR + UV_LINK_MODE are a PAIR - see README.md, "Link mode". In short: venvs symlink into
+# the cache instead of copying, so the cache must ship inside the image and stay world-readable, and
+# deleting /opt/uv_cache breaks every venv. UV_LINK_MODE is set PER-COMMAND, not as an ENV: uv
+# rejects symlink installs combined with `--no-cache` when it builds a PEP 517 environment, which
+# downstream images do.
 ENV NVTE_BUILD_MAX_JOBS=${NVTE_BUILD_MAX_JOBS} \
     NVTE_BUILD_THREADS_PER_JOB=${NVTE_BUILD_THREADS_PER_JOB} \
     NVTE_CUDA_ARCHS=${NVTE_CUDA_ARCHS} \
@@ -190,13 +154,13 @@ ENV NVTE_BUILD_MAX_JOBS=${NVTE_BUILD_MAX_JOBS} \
     CUDNN_PATH=/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn \
     LD_LIBRARY_PATH="/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
 
-# CI-cache layering: copy ONLY the resolver inputs before the heavy uv sync, so the expensive
-# compile layer's cache key depends on the DEPENDENCY GRAPH, not on every RL source file. A
-# source-only RL bump (nemo_rl/*.py changed, deps unchanged) then reuses the compiled layer instead
-# of recompiling TE/deep_ep/... These inputs are: the lock + project metadata; the workspace-member
-# trees under 3rdparty (Gym, Automodel, Megatron-Bridge + nested Megatron-LM) and research/; and the
-# top-level nemo_rl package stub (its __version__ is read when building workspace metadata).
-# TensorRT-LLM is excluded (we never build the trtllm extra). Full source is copied after the sync.
+# CI-cache layering: copy ONLY the resolver inputs before the heavy uv sync, so the compile
+# layer's cache key depends on the dependency graph, not on every RL source file. See README.md,
+# "Layering for fast CI rebuilds".
+#
+# TensorRT-LLM is excluded (we never build the trtllm extra). Megatron-Bridge must stay, even though
+# the mcore extra is not built: `uv run` validates the lock, which needs metadata for every path
+# source, so removing it fails the prefetch step below.
 COPY --from=nemo-rl pyproject.toml uv.lock ./
 COPY --from=nemo-rl nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
 COPY --from=nemo-rl --exclude=TensorRT-LLM-workspace --exclude=TensorRT-LLM-workspace/** \
@@ -207,20 +171,15 @@ COPY --from=nemo-rl research/ ./research/
 # RL's uv.lock. Set to "" to relock if you bump RL to a commit whose lock has drifted.
 ARG UV_SYNC_MODE=--frozen
 
-# Warm the uv CACHE with every backend's dependencies, one extra at a time (they can conflict),
-# then a final default sync. This is where the one-time heavy compiles happen (mamba-ssm,
-# causal-conv1d, deep_ep, deep_gemm) - the resulting wheels land in the uv cache so the per-worker
-# venv prefetch below can materialize each venv without recompiling anything.
+# Warm the uv CACHE, one extra at a time (they conflict). This is where the heavy compiles happen
+# (mamba-ssm, causal-conv1d, deep_ep, deep_gemm); the wheels
+# land in the cache so the prefetch below materializes each venv without recompiling.
 #
-# NOTE: `uv sync` is EXACT - each --extra run prunes the previous one's packages from the venv. So
-# these calls do NOT accumulate; the base venv ends up with default deps + groups only. Their real
-# product is the populated uv cache. (Transformer-Engine is not compiled at all: it only ships in
-# the mcore/automodel extras, which we do not build.)
+# `uv sync` is EXACT, so these do NOT accumulate - each --extra prunes the previous one and the base
+# venv ends up with default deps + groups only. The populated cache is the real product.
 #
-# --no-install-project = resolve and install all DEPENDENCIES, but do NOT build/install the root
-# project package (nemo-rl) itself. This lets the expensive dependency compiles happen exactly once
-# here; the root package is then installed editable in a cheap step afterwards (the `uv pip install
-# -e /opt/nemo-rl` below), so `import nemo_rl` works without recompiling anything.
+# --no-install-project installs dependencies but not nemo-rl itself; the root package is added
+# editable in a cheap step after the full-source COPY.
 RUN <<"EOF" bash -exu
 # Symlink the base venv into the uv cache (see UV_CACHE_DIR/UV_LINK_MODE note above). Scoped to
 # this command rather than the image ENV so downstream `--no-cache` installs are unaffected.
@@ -258,15 +217,11 @@ find "${UV_CACHE_DIR}" -type d \
     \( -name PyNvVideoCodec -o -name 'pynvvideocodec-*.data' \) -exec rm -rf {} + || true
 EOF
 
-# Full RL source including submodules (Automodel, Megatron-Bridge + nested Megatron-LM, Gym). Copied
-# AFTER the heavy uv sync so a source-only RL bump (nemo_rl/*.py changed but uv.lock / pyproject /
-# 3rdparty unchanged) is a CACHE HIT on the compile layer above, and only the cheap steps below
-# re-run. This is the main lever for fast CI rebuilds.
+# Full RL source (Automodel + Gym). Copied AFTER the heavy uv sync so a source-only RL bump is a
+# cache hit on the compile layer above.
 #
-# --exclude=**/.git: omitting --keep-git-dir on the ADD drops only the TOP-LEVEL repository's .git;
-# BuildKit still checks out each submodule (Gym, Automodel, Megatron-Bridge, Megatron-LM) with its
-# own .git. Excluding here keeps them out of this layer entirely - deleting them in a later layer
-# would leave them intact in this one and still extractable from the published image.
+# --exclude=**/.git: the ADD drops only the top-level .git, so each submodule still carries its own.
+# Excluding here keeps them out of this layer - removing them later would leave them extractable.
 COPY --from=nemo-rl --exclude=**/.git . /opt/nemo-rl
 
 # Install the workspace ROOT (nemo-rl) editable. --no-install-project above installed every
@@ -275,43 +230,23 @@ COPY --from=nemo-rl --exclude=**/.git . /opt/nemo-rl
 RUN uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps -e /opt/nemo-rl
 
 # ---- Per-worker Ray venvs (the venvs training actually runs in) ----
-# NeMo-RL does NOT run its workers in the base venv. Each Ray actor is mapped to a py_executable in
-# nemo_rl/distributed/ray_actor_environment_registry.py; the uv-based ones ("uv run --extra <X>")
-# are materialized as SEPARATE per-node venvs under NEMO_RL_VENV_DIR (/opt/ray_venvs) by
-# nemo_rl/utils/venvs.py. Only "system Python" actors use the base venv.
+# Workers do not run in the base venv - each Ray actor gets its own venv under /opt/ray_venvs.
+# Prefetching bakes them in; otherwise they are built on the node at first run against a cold
+# cache. See README.md, "Prefetching the per-worker venvs".
 #
-# Without this step those venvs are built on the NODE at first run - re-resolving and recompiling
-# deep_ep / mamba-ssm / causal-conv1d on every job, with a cold uv cache. Prefetching bakes them in
-# (same approach as NeMo-RL's own release stage).
+# Filters are SUBSTRING matches on actor FQNs, and one venv is built PER ACTOR, so actors sharing
+# an extra still need their own filter. Six filters -> seven venvs:
+#   dtensor_policy_worker.DTensorPolicyWorker      -> fsdp      (DPO/GRPO training)
+#   vllm.vllm_worker                               -> vllm      (GRPO generation) - matches both the
+#       sync and async workers, which is wanted: NeMo-Gym forces async rollouts.
+#   sync_rollout_actor.SyncRolloutActor            -> vllm      (GRPO rollout driver)
+#   nemo_gym.NemoGym                               -> nemo_gym  (Gym environment actor, mode A)
+#   nemo_gym_actor.SandboxedGymActor               -> nemo_gym  (mode B proxy actor)
+#   broker_actor.SandboxEpisodeBrokerActor         -> nemo_gym  (per-episode sandbox broker)
+# Kept specific on purpose: a bare "vllm" would also match modelopt's vllm_quant_worker.
 #
-# Prefetched (filters are SUBSTRING matches against ACTOR FQNs, not extra names). One venv is built
-# PER ACTOR, not per extra - prefetch_venvs.py passes the actor FQN as the venv name - so actors
-# sharing an extra still need their own filter. The six filters below resolve to SEVEN venvs,
-# exactly what DPO + GRPO + sandboxed Gym need:
-#   dtensor_policy_worker.DTensorPolicyWorker -> --extra fsdp     (DPO/GRPO policy training)
-#   vllm.vllm_worker                          -> --extra vllm     (GRPO generation) - matches BOTH
-#       VllmGenerationWorker and VllmAsyncGenerationWorker, which is wanted: NeMo-Gym forces async
-#       rollouts, so the async engine is on the GRPO+Gym path.
-#   sync_rollout_actor.SyncRolloutActor       -> --extra vllm     (GRPO rollout driver, sync path)
-#   nemo_gym.NemoGym                          -> --extra nemo_gym (Gym environment actor, mode A)
-#   nemo_gym_actor.SandboxedGymActor          -> --extra nemo_gym (trusted proxy actor, mode B - the
-#       Gym stack itself runs in the job sandbox; this actor never imports user environment code)
-#   broker_actor.SandboxEpisodeBrokerActor    -> --extra nemo_gym (trusted episode broker: creates
-#       per-episode sandboxes on the agent's behalf so the untrusted job sandbox never holds the
-#       OpenSandbox credential)
-# The filters are intentionally specific: a bare "vllm" would also match nemo_rl.modelopt's
-# vllm_quant_worker and drag in the modelopt+vllm combination, and a bare "nemo_gym" would not
-# distinguish the three nemo_gym-extra actors (it would match all three, which is fine, but naming
-# them keeps this list readable against ray_actor_environment_registry.py).
-#
-# The opensandbox / tenacity SDKs the sandbox path needs arrive through the extra itself: RL
-# declares `nemo_gym = ["nemo_gym[sandbox]"]`, and Gym's `sandbox` extra pins opensandbox>=0.1.9 and
-# tenacity>=9.1.4.
-#
-# NOT prefetched: automodel / mcore (unused by our DPO+GRPO path - see README), sglang, trtllm,
-# modelopt-quant, and the async-GRPO bookkeeping actors AsyncTrajectoryCollector / ReplayBuffer
-# (nemo_rl.algorithms.async_utils - they use the vllm extra but match none of the filters above);
-# those build on the node if a config selects them.
+# NOT prefetched: automodel, mcore, sglang, trtllm, modelopt-quant
+# and the async-GRPO bookkeeping actors; those build on the node if a config selects them.
 RUN <<"EOF" bash -exu
 export UV_LINK_MODE=symlink
 uv run nemo_rl/utils/prefetch_venvs.py \
@@ -343,14 +278,12 @@ done
 EOF
 
 # ---- Bundled NeMo-Gym environment venvs (GRPO only; OFF by default, opt in below) ----
-# SECOND, separate venv layer from /opt/ray_venvs above: NeMo-Gym gives every environment server its
-# own venv under NEMO_GYM_VENV_DIR (/opt/gym_venvs), built from that server's own pyproject.toml /
-# requirements.txt. The isolation is required - env deps (rdkit, spacy, numpy 2.x) would otherwise
-# clobber RL's pinned stack.
+# A SECOND venv layer, separate from /opt/ray_venvs: one venv per Gym environment server, built
+# from that server's own pyproject/requirements, so env deps cannot clobber RL's pinned stack.
+# See README.md, "NeMo-Gym environments: a second, separate venv layer".
 #
-# Nothing is prefetched: every environment installs into /opt/gym_venvs at first use on the node.
-# To bake a set in, pass a space-separated list of Gym config paths - e.g. NeMo-RL's curated
-# examples/nemo_gym/prefetch_super_all_envs.yaml.
+# Nothing is prefetched by default - environments install on the node at first use. Pass a
+# space-separated list of Gym config paths to bake a set in.
 ARG NEMO_GYM_PREFETCH_CONFIGS=""
 # Gym's model servers pin a plain `vllm==0.20.0`, which resolves to the CUDA 12 wheel on PyPI -
 # it would fail to load CUDA libraries inside this CUDA 13 image. Override it to vLLM's prebuilt
@@ -410,20 +343,29 @@ RUN /opt/nemo_rl_venv/bin/python tools/generate_fingerprint.py \
 # ---- publish base (inherits builder FS; keeps the uv-managed python valid - see header NOTE) ----
 FROM builder AS nmp-rl-base
 
+# setuptools CVEs (GHSA-58pv-8j8x-9vj2, GHSA-8rrh-rw8j-w5fx, in its vendored jaraco.context/wheel):
+# Megatron-Bridge pins `setuptools<80.0.0` for its build, and PEP 517 build environments resolve
+# their own dependencies, so RL's `setuptools>=80.10.2` override cannot reach them. The result is an
+# older setuptools left in the shipped cache that no venv uses. Runs here, after every venv exists,
+# and only drops archives nothing symlinks into.
+RUN <<"EOF" bash -exu
+for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
+    ls "${d}"setuptools-*.dist-info >/dev/null 2>&1 || continue
+    find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
+    rm -rf "${d}"
+done
+EOF
+
 # Prune build-only tooling to shrink the image. KEPT on purpose (needed at runtime): CUDA devel
 # toolkit / nvcc (deep_ep JIT-compiles kernels at runtime), gcc/build-essential + libibverbs-dev
 # (JIT + native-v1 env-dep compiles), git + curl (git+https env deps, downloads).
 #
-# /opt/uv_cache is NOT pruned and must never be: the per-worker venvs under /opt/ray_venvs are
-# symlinked into it (UV_LINK_MODE=symlink), so deleting it breaks every one of them - as it would
-# any /opt/gym_venvs environment baked in via NEMO_GYM_PREFETCH_CONFIGS. It also doubles as a warm
-# cache for everything installed at runtime (Gym environments, user FileSets, non-prefetched
-# actors), making those installs faster.
+# /opt/uv_cache is NOT pruned and must never be: every venv symlinks into it, so deleting it breaks
+# all of them.
 #
-# Nsight Systems / Nsight Compute come in with cuda-dl-base and carry Go stdlib CVEs (3 Critical, 25
-# High). They are profilers - nothing on the DPO/GRPO path runs nsys/ncu. This clears them from the
-# flattened rootfs the scanner walks; it does NOT shrink the pulled image, since they live in an
-# ancestor layer and this stage inherits the builder filesystem (see header NOTE).
+# Nsight Systems / Nsight Compute arrive with cuda-dl-base and carry Go stdlib CVEs. They are
+# profilers, unused here. Removing them clears the flattened rootfs the scanner walks; it does not
+# shrink the pulled image, since they live in an ancestor layer.
 RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
     apt-get autoremove -y >/dev/null 2>&1 || true; \
     rm -rf \
@@ -435,7 +377,6 @@ RUN apt-get purge -y ccache vim vim-common less >/dev/null 2>&1 || true; \
         /opt/nvidia/nsight-systems-cli /opt/nvidia/nsight-compute \
         /usr/local/bin/nsys /usr/local/bin/nsys-ui /usr/local/bin/ncu /usr/local/bin/ncu-ui \
     || true
-
 # NO_VCS_VERSION=1: with no .git present, nemo_rl/package_info.py's `git rev-parse` would fail on every
 # `import nemo_rl` (harmlessly, but it forks a subprocess each time, and this image starts many
 # worker processes). The flag is package_info.py's own opt-out, so the lookup is skipped entirely.
@@ -455,14 +396,9 @@ RUN chmod -R a+rX /opt/uv /opt/uv_cache /opt/nemo_rl_venv /opt/nemo-rl /opt/gym_
 # directories must be writable by the non-root runtime user. Only the top-level directories are
 # chowned - NOT -R - so the layer stays tiny and the prefetched venvs underneath stay root-owned.
 #
-# /opt/uv_cache is deliberately left read-only. Every prefetched venv symlinks its package files
-# into it (UV_LINK_MODE=symlink), so it holds the actual code the trainer executes; making it
-# writable would let any code running in this container rewrite the training stack's own Python
-# packages. That matters because this container also runs user-authored environment code: NeMo-Gym
-# environments execute here, and a `native-v1` environment FileSet is user-supplied source. The
-# sandboxed-Gym design does not remove this: its `sandboxed` mode is opt-in (colocated is the
-# default), and its per-episode sandbox targets model-generated code, not the environment itself.
-# Downstream images point uv at a writable per-user cache instead (see Dockerfile.nmp-rl-training).
+# /opt/uv_cache is deliberately left read-only: it holds the actual code the trainer executes, and
+# this container also runs user-authored Gym environment code, which must not be able to rewrite
+# it. Downstream images point uv at a writable per-user cache (see Dockerfile.nmp-rl-training).
 ARG RUNTIME_UID=1000
 ARG RUNTIME_GID=1000
 RUN chown ${RUNTIME_UID}:${RUNTIME_GID} /opt/ray_venvs /opt/gym_venvs
@@ -491,6 +427,30 @@ if [ "${privatized}" -eq 0 ]; then
     exit 1
 fi
 echo "privatized vllm/ in ${privatized} venv(s)"
+EOF
+
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv <<'EOF' bash -eu
+source_dir=/usr/share/nemo-platform/source-distributions/nmp-rl-base
+bash /usr/local/bin/collect-apt-sources.sh "${source_dir}/apt" \
+    --changed-from /tmp/base-dpkg-packages.txt
+uv run --no-project --python /opt/nemo_rl_venv/bin/python \
+    /usr/local/bin/collect-python-sdists.py \
+    --python /opt/nemo_rl_venv/bin/python \
+    --output "${source_dir}" \
+    --lock-file /opt/nemo-rl/uv.lock \
+    --label nemo-rl-venv
+for python_path in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
+    [ -x "${python_path}" ] || continue
+    label="$(printf '%s' "${python_path%/bin/python}" | sed -E 's#^/opt/##; s#[^A-Za-z0-9_.-]+#-#g')"
+    uv run --no-project --python "${python_path}" \
+        /usr/local/bin/collect-python-sdists.py \
+        --python "${python_path}" \
+        --output "${source_dir}" \
+        --lock-file /opt/nemo-rl/uv.lock \
+        --label "${label}"
+done
 EOF
 
 # Gym falls back to this in-tree cache when a process does not inherit NRL_CONTAINER / UV_CACHE_DIR

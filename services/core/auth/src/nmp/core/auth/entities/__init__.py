@@ -3,6 +3,6 @@
 
 """Auth service entities."""
 
-from .entities import RoleBindingEntity
+from .entities import AccessKeyEntity, RoleBindingEntity
 
-__all__ = ["RoleBindingEntity"]
+__all__ = ["AccessKeyEntity", "RoleBindingEntity"]

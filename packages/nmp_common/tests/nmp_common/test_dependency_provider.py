@@ -5,24 +5,73 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from nemo_platform_plugin.entities.client import AsyncEntitiesClient
+from nmp.common.config import Configuration
 from nmp.common.service import DependencyProvider
 from nmp.common.service.dependencies import get_entity_client, get_platform_config, get_sdk_client
 
 
-def test_get_http_client_caches_default_client() -> None:
+def test_get_http_client_caches_endpoint_client() -> None:
     provider = DependencyProvider()
     client = MagicMock()
 
-    with patch("nmp.common.service.base.DefaultAsyncHttpxClient", return_value=client) as factory:
+    with patch(
+        "nmp.common.service.base.resolve_platform_endpoint",
+    ) as resolve:
+        resolve.return_value.async_sdk_http_client.return_value = client
         first = provider.get_http_client()
         second = provider.get_http_client()
 
     assert first is client
     assert second is client
-    factory.assert_called_once_with()
+    resolve.assert_called_once_with()
+    resolve.return_value.async_sdk_http_client.assert_called_once_with()
+
+
+def _uds_of(client: httpx.AsyncClient) -> str | None:
+    """Socket path bound to the client's transport pool, or None for TCP."""
+    return getattr(client._transport._pool, "_uds", None)
+
+
+def test_get_http_client_binds_uds_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Under a unix:// endpoint the provider-owned client must be socket-bound.
+
+    Regression: the provider used to build a plain TCP DefaultAsyncHttpxClient
+    and inject it into the SDK/NemoClient factories, which then skipped their
+    own UDS selection, so service-to-service calls went to http://nemo-platform
+    .local over TCP (_uds=None) and failed.
+    """
+    monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+    Configuration.clear_cache()
+    try:
+        provider = DependencyProvider()
+        assert _uds_of(provider.get_http_client()) == "/tmp/nemo-platform.sock"
+    finally:
+        Configuration.clear_cache()
+
+
+def test_request_scoped_nemo_client_binds_uds_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_BASE_URL", "unix:///tmp/nemo-platform.sock")
+    Configuration.clear_cache()
+    try:
+        provider = DependencyProvider()
+        client = provider.get_request_scoped_nemo_client()
+        assert _uds_of(client._http) == "/tmp/nemo-platform.sock"
+    finally:
+        Configuration.clear_cache()
+
+
+def test_tcp_endpoint_client_is_not_socket_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NMP_BASE_URL", "http://platform:8080")
+    Configuration.clear_cache()
+    try:
+        provider = DependencyProvider()
+        assert _uds_of(provider.get_http_client()) is None
+    finally:
+        Configuration.clear_cache()
 
 
 def test_get_sdk_client_caches_request_sdk_and_creates_fresh_service_sdk() -> None:
@@ -35,11 +84,13 @@ def test_get_sdk_client_caches_request_sdk_and_creates_fresh_service_sdk() -> No
         assert provider.get_sdk_client() is request_sdk
         assert provider.get_sdk_client(as_service="jobs") is service_sdk
 
-    assert factory.call_args_list[0].kwargs == {"http_client": None}
+    # The provider now shares its pooled HTTP client with every SDK it builds.
+    http_client = provider.get_http_client()
+    assert factory.call_args_list[0].kwargs == {"http_client": http_client}
     assert factory.call_args_list[1].kwargs == {
         "as_service": "jobs",
         "internal": True,
-        "http_client": None,
+        "http_client": http_client,
     }
 
 
@@ -68,8 +119,10 @@ async def test_close_closes_managed_clients_and_clears_references() -> None:
 
     await provider.close()
 
+    # close() owns and closes the shared HTTP transport; the SDK borrows that
+    # transport, so it is dropped without a separate sdk.close().
     http_client.aclose.assert_awaited_once_with()
-    sdk.close.assert_awaited_once_with()
+    sdk.close.assert_not_awaited()
     assert provider._http_client is None
     assert provider._sdk_client is None
 

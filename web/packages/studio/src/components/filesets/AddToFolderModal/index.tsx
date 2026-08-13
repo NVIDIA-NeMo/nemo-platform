@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { logger } from '@nemo/common/src/utils/logger';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import {
   Button,
@@ -28,7 +29,6 @@ import { FileSystemNode } from '@studio/components/FilesTable/utils';
 import { useDatasetNavigator } from '@studio/hooks/useDatasetNavigator';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
-import { logger } from '@studio/util/logger';
 import { FolderOpen, Info } from 'lucide-react';
 import { type FC, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';

@@ -3,21 +3,31 @@
 
 """Unit tests for authorization middleware."""
 
+import asyncio
 import time
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import jwt
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+from nmp.common.auth.access_key_lifecycle import ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
 from nmp.common.auth.client import AuthClient
 from nmp.common.auth.dependencies import get_auth_client
 from nmp.common.auth.jwt import TokenClaims, UnsignedJWTRejectedError
-from nmp.common.auth.middleware import BYPASS_PREFIXES, HEALTH_ENDPOINTS, PUBLIC_GET_PATHS, AuthorizationMiddleware
+from nmp.common.auth.middleware import (
+    BYPASS_PREFIXES,
+    HEALTH_ENDPOINTS,
+    PUBLIC_GET_PATHS,
+    AuthorizationMiddleware,
+)
 from nmp.common.auth.models import Principal
 from nmp.common.auth.token_resolver import ResolvedBearerToken
-from nmp.common.config import AuthConfig, Configuration
+from nmp.common.config import AuthConfig, Configuration, PlatformConfig
 from nmp.common.config.base import OIDCConfig
+from starlette.responses import Response
 
 
 @pytest.fixture(autouse=True)
@@ -64,6 +74,32 @@ def auth_config_oidc_disabled():
         policy_decision_point_base_url="http://localhost:8181",
         oidc=OIDCConfig(enabled=False),
     )
+
+
+@pytest.fixture
+def access_key_lifecycle_middleware(auth_config_oidc_disabled, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("NMP_AUTH_URL", raising=False)
+
+    @asynccontextmanager
+    async def make(handler, base_url: str = "http://platform.example.com"):
+        config = auth_config_oidc_disabled.model_copy(
+            update={"access_keys": auth_config_oidc_disabled.access_keys.model_copy(update={"enabled": True})}
+        )
+        Configuration.set_override(config)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            middleware = AuthorizationMiddleware(
+                FastAPI(),
+                service_name="test-service",
+                http_client=http_client,
+                access_key_lifecycle_http_client=http_client,
+            )
+            with patch(
+                "nmp.common.sdk_factory.Configuration.get_platform_config",
+                return_value=PlatformConfig(base_url=base_url, services=""),
+            ):
+                yield middleware
+
+    return make
 
 
 def create_test_app(auth_config: AuthConfig) -> FastAPI:
@@ -473,15 +509,22 @@ class TestBearerTokenAuth:
             scopes=[],
             raw_claims={"nmp_token_type": "access_key"},
         )
+        resolved = ResolvedBearerToken(claims=valid_claims, token_kind="access_key")
 
-        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_validate:
-            mock_validate.return_value = valid_claims
-            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
-                mock_authorize.return_value = MagicMock(allowed=True)
+        with patch("nmp.common.auth.access_keys.is_access_key_token_candidate", return_value=True):
+            with patch.object(
+                AuthorizationMiddleware,
+                "_authenticate_access_key_lifecycle",
+                new_callable=AsyncMock,
+                return_value=resolved,
+            ) as mock_lifecycle:
+                with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                    mock_authorize.return_value = MagicMock(allowed=True)
 
-                response = client.get("/test", headers={"Authorization": "Bearer scoped-access-key"})
+                    response = client.get("/test", headers={"Authorization": "Bearer scoped-access-key"})
 
         assert response.status_code == 200
+        mock_lifecycle.assert_called_once()
         mock_authorize.assert_called_once()
 
     def test_bearer_token_scoped_access_key_invalid_falls_back_to_oidc(self, auth_config_enabled):
@@ -499,17 +542,16 @@ class TestBearerTokenAuth:
             raw_claims={},
         )
 
-        with patch("nmp.common.auth.access_keys.validate_access_key_token") as mock_access_key_validate:
-            mock_access_key_validate.return_value = None
-            with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_oidc_validate:
-                mock_oidc_validate.return_value = oidc_claims
-                with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
-                    mock_authorize.return_value = MagicMock(allowed=True)
+        # Non-access-key tokens skip validate_access_key_token entirely (is_access_key_token_candidate
+        # returns False for OIDC tokens) and fall straight through to OIDC validation.
+        with patch("nmp.common.auth.jwt.JWTValidator.validate_token") as mock_oidc_validate:
+            mock_oidc_validate.return_value = oidc_claims
+            with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
+                mock_authorize.return_value = MagicMock(allowed=True)
 
-                    response = client.get("/test", headers={"Authorization": "Bearer oidc-token"})
+                response = client.get("/test", headers={"Authorization": "Bearer oidc-token"})
 
         assert response.status_code == 200
-        mock_access_key_validate.assert_called_once()
         mock_oidc_validate.assert_called_once()
 
     def test_scoped_access_key_middleware_mapping_is_skipped_when_access_keys_are_disabled(
@@ -525,6 +567,235 @@ class TestBearerTokenAuth:
         assert response.status_code == 401
         assert response.json()["detail"] == "Bearer token authentication not configured"
         mock_validate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_sdk_uses_auth_service_discovery(
+        self,
+        auth_config_oidc_disabled,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.delenv("NMP_AUTH_URL", raising=False)
+        Configuration.set_override(auth_config_oidc_disabled)
+        platform_config = PlatformConfig(
+            base_url="http://platform.example.com",
+            service_discovery={"auth": "http://auth.internal:8080"},
+            services="",
+        )
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "principal": "alice@example.com",
+                    "groups": [],
+                    "scopes": [],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            middleware = AuthorizationMiddleware(
+                FastAPI(),
+                service_name="test-service",
+                access_key_lifecycle_http_client=http_client,
+            )
+            with patch.object(Configuration, "get_platform_config", return_value=platform_config):
+                response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, ResolvedBearerToken)
+        assert requests[0].url == httpx.URL("http://auth.internal:8080/apis/auth/authenticate")
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_callout_allows_active_token(self, access_key_lifecycle_middleware):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "principal": "alice@example.com",
+                    "email": "alice@example.com",
+                    "groups": ["team-ml"],
+                    "scopes": [],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, ResolvedBearerToken)
+        assert response.claims.subject == "alice@example.com"
+        assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
+        assert requests[0].headers["authorization"] == "Bearer scoped-access-key"
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_callout_does_not_use_pdp_transport(self, auth_config_oidc_disabled):
+        config = auth_config_oidc_disabled.model_copy(
+            update={"access_keys": auth_config_oidc_disabled.access_keys.model_copy(update={"enabled": True})}
+        )
+        Configuration.set_override(config)
+
+        def reject_pdp_request(request: httpx.Request) -> httpx.Response:
+            raise AssertionError(f"lifecycle request used PDP transport: {request.url}")
+
+        def authenticate_access_key(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "principal": "alice@example.com",
+                    "groups": [],
+                    "scopes": [],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        async with (
+            httpx.AsyncClient(transport=httpx.MockTransport(reject_pdp_request)) as pdp_client,
+            httpx.AsyncClient(transport=httpx.MockTransport(authenticate_access_key)) as lifecycle_client,
+        ):
+            middleware = AuthorizationMiddleware(
+                FastAPI(),
+                service_name="test-service",
+                http_client=pdp_client,
+                access_key_lifecycle_http_client=lifecycle_client,
+            )
+            with patch(
+                "nmp.common.sdk_factory.Configuration.get_platform_config",
+                return_value=PlatformConfig(base_url="unix:///tmp/nemo-platform.sock", services=""),
+            ):
+                response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, ResolvedBearerToken)
+        assert response.claims.subject == "alice@example.com"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("callout_status", "expected_status", "expected_detail"),
+        [
+            (401, 401, "Invalid or expired token"),
+            (500, 503, "Access-key lifecycle validation unavailable"),
+        ],
+    )
+    async def test_access_key_lifecycle_callout_rejects_token_or_unexpected_status(
+        self,
+        access_key_lifecycle_middleware,
+        callout_status,
+        expected_status,
+        expected_detail,
+    ):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(callout_status)
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, Response)
+        assert response.status_code == expected_status
+        assert response.body == f'{{"detail":"{expected_detail}"}}'.encode()
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_callout_timeout_returns_504(self, access_key_lifecycle_middleware):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, Response)
+        assert response.status_code == 504
+        assert response.body == b'{"detail":"Access-key lifecycle validation timeout"}'
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_callout_opens_circuit_after_repeated_failures(
+        self,
+        access_key_lifecycle_middleware,
+    ):
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            raise httpx.ConnectError("down", request=request)
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = None
+            for _ in range(ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD):
+                response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+            assert isinstance(response, Response)
+            assert response.status_code == 503
+            assert "retry-after" in response.headers
+
+            circuit_response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert calls == ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
+        assert circuit_response is not None
+        assert circuit_response.status_code == 503
+        assert "retry-after" in circuit_response.headers
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_malformed_success_opens_circuit(
+        self,
+        access_key_lifecycle_middleware,
+    ):
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            return httpx.Response(
+                200,
+                json={
+                    "token_kind": "access_key",
+                    "principal": "alice@example.com",
+                },
+            )
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = None
+            for _ in range(ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD):
+                response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+            assert isinstance(response, Response)
+            assert response.status_code == 503
+            assert "retry-after" in response.headers
+
+            circuit_response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert calls == ACCESS_KEY_LIFECYCLE_CIRCUIT_FAILURE_THRESHOLD
+        assert circuit_response.status_code == 503
+        assert "retry-after" in circuit_response.headers
+
+    @pytest.mark.asyncio
+    async def test_access_key_lifecycle_rejects_wrong_typed_sdk_response(
+        self,
+        access_key_lifecycle_middleware,
+    ):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "principal": 123,
+                    "groups": [],
+                    "scopes": [],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        async with access_key_lifecycle_middleware(handler) as middleware:
+            response = await middleware._authenticate_access_key_lifecycle("scoped-access-key")
+
+        assert isinstance(response, Response)
+        assert response.status_code == 503
+        assert response.body == b'{"detail":"Access-key lifecycle validation unavailable"}'
 
     def test_bearer_token_request_uses_shared_resolver(self, auth_config_enabled):
         app = create_test_app(auth_config_enabled)
@@ -550,6 +821,82 @@ class TestBearerTokenAuth:
         resolver.assert_awaited_once()
         mock_authorize.assert_called_once()
 
+    def test_access_key_bearer_uses_authenticate_callout_without_local_resolver(self, auth_config_oidc_disabled):
+        app = FastAPI()
+
+        @app.get("/whoami")
+        async def whoami(auth_client: AuthClient = Depends(get_auth_client)):
+            return {
+                "principal": auth_client.principal.id,
+                "email": auth_client.principal.email,
+                "groups": auth_client.principal.groups,
+            }
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(
+                200,
+                json={
+                    "principal": "alice@example.com",
+                    "email": "alice@example.com",
+                    "groups": ["team-ml"],
+                    "scopes": ["models:read"],
+                    "jti": "ak_example",
+                    "token_kind": "access_key",
+                },
+            )
+
+        config = auth_config_oidc_disabled.model_copy(
+            update={"access_keys": auth_config_oidc_disabled.access_keys.model_copy(update={"enabled": True})}
+        )
+        Configuration.set_override(config)
+        http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        app.add_middleware(
+            AuthorizationMiddleware,
+            service_name="test-service",
+            http_client=http_client,
+            access_key_lifecycle_http_client=http_client,
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        token = jwt.encode(
+            {
+                "sub": "alice@example.com",
+                "iat": int(time.time()),
+                "nbf": int(time.time()),
+                "jti": "ak_" + "a" * 32,
+                "nmp_token_type": "access_key",
+            },
+            key="",
+            algorithm="none",
+        )
+
+        try:
+            with (
+                patch(
+                    "nmp.common.sdk_factory.Configuration.get_platform_config",
+                    return_value=PlatformConfig(base_url="http://platform.example.com", services=""),
+                ),
+                patch("nmp.common.auth.middleware.resolve_bearer_token", new=AsyncMock()) as resolver,
+                patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize,
+            ):
+                mock_authorize.return_value = MagicMock(allowed=True)
+                response = client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+
+            assert response.status_code == 200
+            assert response.json() == {
+                "principal": "alice@example.com",
+                "email": "alice@example.com",
+                "groups": ["team-ml"],
+            }
+            assert requests[0].url == httpx.URL("http://platform.example.com/apis/auth/authenticate")
+            assert requests[0].headers["authorization"] == f"Bearer {token}"
+            resolver.assert_not_awaited()
+            mock_authorize.assert_called_once()
+        finally:
+            asyncio.run(http_client.aclose())
+
     def test_bearer_token_sets_auth_client_context_for_service_handler(self, auth_config_enabled):
         app = FastAPI()
 
@@ -574,13 +921,15 @@ class TestBearerTokenAuth:
         )
         resolved = ResolvedBearerToken(claims=claims, token_kind="access_key")
 
-        with patch(
-            "nmp.common.auth.middleware.resolve_bearer_token",
-            new=AsyncMock(return_value=resolved),
-        ) as resolver:
-            with patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize:
-                mock_authorize.return_value = MagicMock(allowed=True)
-                response = client.get("/whoami", headers={"Authorization": "Bearer scoped-access-key"})
+        with (
+            patch(
+                "nmp.common.auth.middleware.resolve_bearer_token",
+                new=AsyncMock(return_value=resolved),
+            ) as resolver,
+            patch.object(AuthClient, "authorize_request", autospec=True) as mock_authorize,
+        ):
+            mock_authorize.return_value = MagicMock(allowed=True)
+            response = client.get("/whoami", headers={"Authorization": "Bearer scoped-access-key"})
 
         assert response.status_code == 200
         assert response.json() == {

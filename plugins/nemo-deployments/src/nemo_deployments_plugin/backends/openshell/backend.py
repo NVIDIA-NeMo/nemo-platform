@@ -56,7 +56,7 @@ from nemo_deployments_plugin.backends.openshell.policy import (
     normalize_loaded_policy,
 )
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
-from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig
+from nemo_deployments_plugin.entities import ConfigFile, Container, DeploymentConfig, OpenShellDeploymentConfig
 from nemo_deployments_plugin.secrets import SecretResolutionError, resolve_deployment_config_secrets
 from nemo_deployments_plugin.types import DeploymentStatus, Endpoint
 from nemo_platform_plugin.client.adapter import client_from_platform
@@ -138,24 +138,9 @@ _LOG_TAIL_LINES = 20
 # readinessProbe uses its own timeout_seconds instead.
 _DEFAULT_READINESS_TIMEOUT_SECONDS = 3
 
-# Headroom added to a network probe's own timeout when bounding the ExecSandbox RPC, so
-# the RPC outlives the in-sandbox python timeout and captures its (non-zero) exit rather
-# than being cut off first.
 _READINESS_EXEC_TIMEOUT_MARGIN_SECONDS = 5
 
-# Loopback readiness probe programs, run by the sandbox's python. urlopen raises on a
-# refused connection or an HTTP status >= 400 (so a still-starting 503 reads as not
-# ready); create_connection raises until the socket is actually bound. The HTTP probe
-# uses an unverified TLS context so an https readinessProbe against a loopback/self-signed
-# cert is not rejected on verification (matching Kubernetes httpGet HTTPS probe semantics);
-# the context is ignored for plain http, so one program covers both schemes.
-_HTTP_PROBE_PROGRAM = (
-    "import sys, ssl, urllib.request; "
-    "urllib.request.urlopen(sys.argv[1], timeout=float(sys.argv[2]), context=ssl._create_unverified_context())"
-)
-_TCP_PROBE_PROGRAM = (
-    "import sys, socket; socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=float(sys.argv[3])).close()"
-)
+_CURL_ABS = "/usr/bin/curl"
 
 # Cached on first status read; needs the proto enums so it cannot be built at import
 # time (see _ensure_openshell). None until built.
@@ -246,6 +231,37 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             inject_platform_egress(policy_dict, egress)
         return build_sandbox_policy(policy_dict)
 
+    def _build_deployment_policy(self, policy_path_override: str | None) -> Any:
+        """Return the effective policy for a single deployment.
+
+        Uses the per-deployment ``policy_path`` if set; otherwise falls back to
+        the executor-level default built at init time (``self._policy``).
+        The executor's egress rule is always re-injected so the deployment can
+        never lose its path back to the platform, even with a hand-written policy.
+        """
+        if not policy_path_override:
+            return self._policy
+        cfg = self._executor_config.platform_egress
+        egress = (
+            PlatformEgress(
+                host=cfg.host,
+                port=cfg.port,
+                protocol=cfg.protocol,
+                tls=cfg.tls,
+                access=cfg.access,
+                binaries=tuple(cfg.binaries) or DEFAULT_EGRESS_BINARIES,
+            )
+            if cfg is not None
+            else None
+        )
+        compat = self._executor_config.landlock_compatibility
+        policy_dict = normalize_loaded_policy(load_policy_dict(policy_path_override), landlock_compatibility=compat)
+
+        if egress is not None:
+            inject_platform_egress(policy_dict, egress)
+
+        return build_sandbox_policy(policy_dict)
+
     def _create_channel(self) -> grpc.Channel:
         target = self._executor_config.grpc_target()
         if self._executor_config.use_insecure():
@@ -280,7 +296,7 @@ class OpenShellDeploymentBackend(DeploymentBackend):
         labels: dict[str, str],
         backend_config: dict[str, Any],
     ) -> BackendStatusUpdate:
-        del backend_config  # per-deployment openshell overrides: needs entity field + SDK regen (follow-up)
+        openshell_cfg = OpenShellDeploymentConfig.model_validate(backend_config.get("openshell") or {})
         sandbox_nm = _sandbox_name(workspace, name)
 
         existing = await self._try_get_sandbox(sandbox_nm)
@@ -341,6 +357,8 @@ class OpenShellDeploymentBackend(DeploymentBackend):
                     "backend and secret references must resolve to a value."
                 ),
             )
+        if "PATH" not in env:
+            env["PATH"] = self._executor_config.serve_path
         all_labels = {
             **labels,
             **config.labels,
@@ -353,8 +371,9 @@ class OpenShellDeploymentBackend(DeploymentBackend):
             ),
         }
 
+        policy = self._build_deployment_policy(openshell_cfg.policy_path)
         template = pb.SandboxTemplate(image=container.image, environment=env, labels=all_labels)
-        spec = pb.SandboxSpec(template=template, environment=env, policy=self._policy)
+        spec = pb.SandboxSpec(template=template, environment=env, policy=policy)
         request = pb.CreateSandboxRequest(spec=spec, name=sandbox_nm, labels=all_labels)
 
         try:
@@ -840,21 +859,16 @@ def _default_probe_port(container: Container) -> int | None:
     return None
 
 
-def _loopback_probe_script(program: str, *args: str) -> str:
-    """Wrap a python probe *program* so it runs against the sandbox's own python.
-
-    Selects ``python3`` then ``python`` off PATH and runs *program* with *args*, exiting
-    0 when the probe connects and nonzero when it does not. If neither interpreter is on
-    PATH the probe cannot run, so it exits 0 to preserve the prior expose-on-alive
-    behaviour rather than wedging a workload in STARTING until the progress deadline.
-    """
-    quoted_args = " ".join(shlex.quote(arg) for arg in args)
-    return (
-        "if command -v python3 >/dev/null 2>&1; then _py=python3; "
-        "elif command -v python >/dev/null 2>&1; then _py=python; "
-        "else exit 0; fi; "
-        f'"$_py" -c {shlex.quote(program)} {quoted_args}'
+def _curl_probe_script(curl_args: str, *, tcp_connect: bool = False) -> str:
+    preamble = (
+        f"if [ -x {_CURL_ABS} ]; then _curl={_CURL_ABS}; "
+        "elif command -v curl >/dev/null 2>&1; then _curl=curl; "
+        "else exit 1; fi; "
     )
+    invocation = f'"$_curl" {curl_args}'
+    if tcp_connect:
+        return f'{preamble}{invocation}; _rc=$?; [ "$_rc" -eq 7 ] && exit 1; exit 0'
+    return preamble + invocation
 
 
 def _readiness_probe_command(container: Container) -> tuple[list[str], str, int] | None:
@@ -868,7 +882,7 @@ def _readiness_probe_command(container: Container) -> tuple[list[str], str, int]
 
     ``exec_timeout_seconds`` bounds the ExecSandbox RPC so a hung probe cannot stall the
     serial reconcile loop: an exec probe is bounded by its own ``timeoutSeconds``; a
-    network probe self-times in python, so the RPC is given that timeout plus headroom.
+    network probe self-times in curl, so the RPC is given that timeout plus headroom.
     """
     probe = container.readiness_probe
     timeout = probe.timeout_seconds if probe is not None else _DEFAULT_READINESS_TIMEOUT_SECONDS
@@ -886,8 +900,11 @@ def _readiness_probe_command(container: Container) -> tuple[list[str], str, int]
             return None
         path = probe.http_get.path if probe.http_get.path.startswith("/") else f"/{probe.http_get.path}"
         url = f"{probe.http_get.scheme.lower()}://127.0.0.1:{port}{path}"
-        script = _loopback_probe_script(_HTTP_PROBE_PROGRAM, url, str(timeout))
-        return ["/bin/sh", "-c", script], f"httpGet {url}", network_exec_timeout
+        args = (
+            f"--fail --silent --show-error --insecure --noproxy '*' "
+            f"--max-time {shlex.quote(str(timeout))} --output /dev/null {shlex.quote(url)}"
+        )
+        return ["/bin/sh", "-c", _curl_probe_script(args)], f"httpGet {url}", network_exec_timeout
 
     if probe is not None and probe.tcp_socket is not None:
         port = _resolve_probe_port(probe.tcp_socket.port, container) or _default_probe_port(container)
@@ -895,7 +912,9 @@ def _readiness_probe_command(container: Container) -> tuple[list[str], str, int]
         port = _default_probe_port(container)
     if port is None:
         return None
-    script = _loopback_probe_script(_TCP_PROBE_PROGRAM, "127.0.0.1", str(port), str(timeout))
+    url = f"http://127.0.0.1:{port}/"
+    args = f"--silent --output /dev/null --noproxy '*' --max-time {shlex.quote(str(timeout))} {shlex.quote(url)}"
+    script = _curl_probe_script(args, tcp_connect=True)
     return ["/bin/sh", "-c", script], f"tcp 127.0.0.1:{port}", network_exec_timeout
 
 

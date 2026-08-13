@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { LogViewer } from '@nemo/common/src/components/LogViewer';
 import {
   useAnonymizerGetRunJob,
@@ -8,7 +9,6 @@ import {
   useAnonymizerListRunJobResults,
 } from '@nemo/sdk/generated/anonymizer/api';
 import { Banner, Grid, PageHeader, Panel, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { AnonymizerJobActionsMenu } from '@studio/components/AnonymizerJobActionsMenu';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';

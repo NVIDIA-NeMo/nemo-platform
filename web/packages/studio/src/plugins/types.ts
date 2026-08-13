@@ -10,6 +10,7 @@ import type { ComponentType, ReactNode } from 'react';
  */
 export interface PluginSdk {
   platform: typeof import('@nemo/sdk/generated/platform/api');
+  agents: typeof import('@nemo/sdk/generated/agents/api');
 }
 
 /** Navigate Studio's shared router; paths are absolute Studio routes. */
@@ -20,9 +21,29 @@ export interface PluginNavigation {
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
+export interface NotificationOptions {
+  /** ms before auto-dismiss; `false` keeps the toast until dismissed. Defaults per type. */
+  durationMs?: number | false;
+}
+
 /** Fire a toast into Studio's shared toaster; defaults to `info`. */
 export interface PluginNotifications {
-  notify: (message: string, type?: NotificationType) => void;
+  notify: (message: string, type?: NotificationType, options?: NotificationOptions) => void;
+}
+
+export interface PluginBreadcrumb {
+  label: string;
+  /** Absolute Studio path; omit for the trailing (current) crumb. */
+  href?: string;
+}
+
+/**
+ * Write into Studio's breadcrumb bar, which renders in GlobalNav — outside the
+ * plugin's own subtree, so a plugin cannot render it itself. Studio clears the
+ * trail when the plugin unmounts.
+ */
+export interface PluginBreadcrumbs {
+  set: (trail: PluginBreadcrumb[]) => void;
 }
 
 /** Structured logging to Studio's OTEL pipeline, auto-scoped to the plugin. */
@@ -36,6 +57,13 @@ export interface PluginTelemetry {
 /** The host handle Studio injects into every plugin; extend it to add capabilities. */
 export interface PluginHost {
   workspaceId: string;
+  /**
+   * Origin the platform API is served from; empty when same-origin. A plugin
+   * that calls its own service needs this: Studio's dev-server `/apis` proxy is
+   * opt-in, so a relative request would otherwise hit the dev server whenever
+   * VITE_PLATFORM_BASE_URL is set.
+   */
+  apiBaseUrl: string;
   // Access tokens only — refresh tokens must not cross the boundary.
   auth: {
     accessToken: string;
@@ -45,6 +73,7 @@ export interface PluginHost {
   navigation: PluginNavigation;
   notifications: PluginNotifications;
   telemetry: PluginTelemetry;
+  breadcrumbs: PluginBreadcrumbs;
 }
 
 export interface PluginRootProps {

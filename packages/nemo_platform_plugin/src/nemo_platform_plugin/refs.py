@@ -93,6 +93,14 @@ class LocalDir(StrRef):
     __cli_metavar__: ClassVar[str | None] = "PATH"
 
 
+#: Regex form of the shape :func:`parse_entity_ref` accepts: ``name`` or ``workspace/name``, each
+#: segment using the platform name charset.  Pydantic fields that hold a reference declare
+#: ``pattern=ENTITY_REF_PATTERN`` so a malformed ref is rejected at validation rather than surfacing
+#: as a confusing failure during parsing; :func:`parse_entity_ref` then only has to split.  Kept
+#: beside the parser so the two cannot drift apart.
+ENTITY_REF_PATTERN = r"^[\w\-.]+(/[\w\-.]+)?$"
+
+
 class FilesetRef(StrRef):
     """A NeMo Platform fileset reference (``"name"`` or ``"workspace/name"``).
 
@@ -102,6 +110,14 @@ class FilesetRef(StrRef):
     """
 
     __cli_metavar__: ClassVar[str | None] = "FILESET_REF"
+
+
+#: A reference to a *file inside* a fileset: ``workspace/fileset#path/inside.ext``.  Unlike
+#: :data:`ENTITY_REF_PATTERN` the workspace is mandatory (a stored reference must be unambiguous
+#: wherever it is later read from), and the ``#`` fragment is a file path, so it admits ``/`` and
+#: ``.``.  Declared as a field pattern so a malformed reference is rejected when it is stored rather
+#: than surfacing as a download failure mid-run.
+FILESET_REF_PATTERN = r"^[\w\-.]+/[\w\-.]+#[\w\-./]+$"
 
 
 # Documentary union alias — the wire shape is still ``str``.  The
@@ -182,6 +198,8 @@ def parse_entity_ref(identifier: str, default_workspace: str | None = None) -> P
 
 
 __all__ = [
+    "ENTITY_REF_PATTERN",
+    "FILESET_REF_PATTERN",
     "EndpointURL",
     "FilesetRef",
     "LocalDir",

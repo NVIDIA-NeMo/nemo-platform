@@ -3,16 +3,17 @@
 
 import {
   DETECTION_ROLES,
+  GLINER_ROLE,
   MAX_PREVIEW_ROWS,
   REPLACE_ROLE,
   REWRITE_ROLES,
   ROLE_LABELS,
 } from '@studio/routes/AnonymizerBuilderRoute/constants';
 import {
-  AnonymizerFormData,
   anonymizerFormSchema,
   buildAnonymizerJobRequest,
   getAnonymizerFormDefaults,
+  type AnonymizerFormData,
 } from '@studio/routes/AnonymizerBuilderRoute/schema';
 
 const ALL_ROLES = [...DETECTION_ROLES, REPLACE_ROLE, ...REWRITE_ROLES];
@@ -24,7 +25,7 @@ const roleModels = (model: string, provider: string): AnonymizerFormData['roleMo
 const form = (overrides: Partial<AnonymizerFormData> = {}): AnonymizerFormData => ({
   ...getAnonymizerFormDefaults(),
   source: 'https://example.com/data.csv',
-  roleModels: roleModels('openai/gpt-oss-120b', 'default/nvidia'),
+  roleModels: roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia'),
   ...overrides,
 });
 
@@ -131,20 +132,40 @@ describe('buildAnonymizerJobRequest', () => {
     expect(req.spec.data.data_summary).toBeUndefined();
   });
 
-  it('deduplicates identical role models into a single model_config with a default timeout', () => {
+  it('deduplicates identical role models into a single model_config per param set', () => {
     const req = buildAnonymizerJobRequest(form({ strategy: 'substitute' }));
     expect(req.spec.model_configs).toEqual([
       {
         alias: 'model-1',
-        model: 'openai/gpt-oss-120b',
+        model: 'nvidia/nemotron-3-nano-30b-a3b',
         provider: 'default/nvidia',
-        inference_parameters: { timeout: 500, max_tokens: 16384 },
+        inference_parameters: { timeout: 500 },
+      },
+      {
+        alias: 'model-2',
+        model: 'nvidia/nemotron-3-nano-30b-a3b',
+        provider: 'default/nvidia',
+        inference_parameters: { timeout: 500, max_tokens: 16384, temperature: 0.3, top_p: 0.95 },
       },
     ]);
   });
 
+  it('sends no sampling params to the GLiNER detector, even when the form holds them', () => {
+    const models = roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia');
+    models[GLINER_ROLE] = {
+      modelId: 'gliner',
+      model: 'nvidia/gliner-pii',
+      provider: 'default/nvidia',
+      params: { temperature: 0.9, top_p: 0.5, max_tokens: 2048, max_parallel_requests: 1 },
+    };
+    const req = buildAnonymizerJobRequest(form({ strategy: 'substitute', roleModels: models }));
+    const detectorAlias = req.spec.selected_models?.detection?.[GLINER_ROLE];
+    const detector = req.spec.model_configs?.find((config) => config.alias === detectorAlias);
+    expect(detector?.inference_parameters).toEqual({ timeout: 500, max_parallel_requests: 1 });
+  });
+
   it('emits one model_config per unique model+provider', () => {
-    const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
+    const models = roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia');
     models[DETECTION_ROLES[0]] = {
       modelId: 'gliner',
       model: 'nvidia/gliner-pii',
@@ -160,17 +181,17 @@ describe('buildAnonymizerJobRequest', () => {
   it('maps detection + replace roles for substitute, detection + rewrite for rewrite', () => {
     const sub = buildAnonymizerJobRequest(form({ strategy: 'substitute' })).spec.selected_models;
     expect(sub?.detection?.entity_detector).toBe('model-1');
-    expect(sub?.replace?.replacement_generator).toBe('model-1');
+    expect(sub?.replace?.replacement_generator).toBe('model-2');
     expect(sub?.rewrite).toBeUndefined();
 
     const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
     expect(rew?.detection?.entity_detector).toBe('model-1');
-    expect(rew?.rewrite?.rewriter).toBe('model-1');
+    expect(rew?.rewrite?.rewriter).toBe('model-2');
   });
 
   it('maps the replacement generator for rewrite so the backend alias check passes', () => {
     const rew = buildAnonymizerJobRequest(form({ strategy: 'rewrite' })).spec.selected_models;
-    expect(rew?.replace?.[REPLACE_ROLE]).toBe('model-1');
+    expect(rew?.replace?.[REPLACE_ROLE]).toBe('model-2');
   });
 
   it('maps only detection roles for redact/annotate/hash', () => {
@@ -241,22 +262,22 @@ describe('buildAnonymizerJobRequest', () => {
   });
 
   it('attaches inference_parameters and splits configs when params differ', () => {
-    const models = roleModels('openai/gpt-oss-120b', 'default/nvidia');
-    models[DETECTION_ROLES[0]] = {
-      modelId: 'gpt',
-      model: 'openai/gpt-oss-120b',
+    const models = roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia');
+    models['entity_validator'] = {
+      modelId: 'nemotron',
+      model: 'nvidia/nemotron-3-nano-30b-a3b',
       provider: 'default/nvidia',
       params: { temperature: 0.1 },
     };
     const req = buildAnonymizerJobRequest(form({ strategy: 'substitute', roleModels: models }));
-    expect(req.spec.model_configs).toHaveLength(2);
-    const withTemp = req.spec.model_configs?.find(
-      (c) => (c.inference_parameters as { temperature?: number })?.temperature != null
-    );
-    expect(withTemp?.inference_parameters).toEqual({
+    expect(req.spec.model_configs).toHaveLength(3);
+    const validatorAlias = req.spec.selected_models?.detection?.['entity_validator'];
+    const validator = req.spec.model_configs?.find((config) => config.alias === validatorAlias);
+    expect(validator?.inference_parameters).toEqual({
       timeout: 500,
       max_tokens: 16384,
       temperature: 0.1,
+      top_p: 0.95,
     });
   });
 });
@@ -266,7 +287,7 @@ describe('anonymizerFormSchema', () => {
     anonymizerFormSchema.safeParse({
       ...getAnonymizerFormDefaults(),
       source: 'https://example.com/data.csv',
-      roleModels: roleModels('openai/gpt-oss-120b', 'default/nvidia'),
+      roleModels: roleModels('nvidia/nemotron-3-nano-30b-a3b', 'default/nvidia'),
       ...overrides,
     });
 

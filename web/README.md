@@ -4,30 +4,25 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
 
 ## Getting Started
 
-1. Get Node.js and pnpm satisfying the `engines` in `package.json` onto your PATH. Either let [mise](https://mise.jdx.dev/) manage them from the versions pinned in `mise.toml` at the repo root:
+1. For first setup, install Flox from the repository root and run `make bootstrap-studio`; it provides the pinned Node.js and pnpm versions without requiring global installation. For interactive web work, activate Flox:
 
    ```bash
-   make verify-mise   # from the repo root, installs mise + the pinned versions
+   flox -q activate   # from the repository root
    ```
 
-   mise installs to `~/.local/bin`, so make sure that's on your PATH, then add the matching line for your shell to its startup file:
+   Or install the Node.js and pnpm versions printed by `make toolchain-versions`, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
 
-   ```bash
-   export PATH="$HOME/.local/bin:$PATH"
-
-   eval "$(mise activate bash)"   # ~/.bashrc
-   eval "$(mise activate zsh)"    # ~/.zshrc
-   ```
-
-   or install Node.js and pnpm yourself. `make bootstrap-studio` and the other `make` targets use the mise-managed versions by default, whatever you pick here — pass `NMP_SKIP_MISE=1` to make them use your PATH instead.
-
-2. Install workspace deps and copy `.env` files, from `web/`:
+2. Copy `.env` files from `web/`. `make bootstrap-studio` already installs the
+   workspace dependencies. In an activated Flox environment, Corepack provides
+   the repository-pinned pnpm:
 
    ```bash
    pnpm install
    cp packages/studio/env/.env.dev.local.sample packages/studio/env/.env.dev.local && \
      cp packages/studio/env/.env.e2e packages/studio/env/.env.e2e.local
    ```
+
+   `pnpm install` also syncs the KUI `kaizen-ui` agent skill from the `@nvidia/foundations-react-core` design system package into `web/.agents/skills/` (via the root `sync-skills` script). The synced skill is gitignored; re-run `pnpm sync-skills` from `web/` to refresh it after upgrading the package.
 
 ## Running Studio Locally
 
@@ -55,7 +50,7 @@ pnpm add <pkg> --filter <workspace>
 
 ### eslint / prettier
 
-We use `eslint` and `prettier` for linting and formatting. `pnpm install` will download those for you, and you can run them with the `pnpm` scripts found in `package.json`.
+We use `eslint` and `prettier` for linting and formatting. `pnpm install` will download those for you, and you can run the `pnpm` scripts found in `package.json` directly.
 
 It's highly recommend you set up your IDE to run these tools on save, so you don't have to worry about manually formatting/linting, and failing CI because your code isn't formatted/linted.
 

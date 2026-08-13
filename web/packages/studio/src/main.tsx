@@ -3,9 +3,9 @@
 
 import '@studio/index.css';
 
+import { logger } from '@nemo/common/src/utils/logger';
 import { App } from '@studio/App';
 import { UI_THEME } from '@studio/util/localStorage';
-import { logger } from '@studio/util/logger';
 import ReactDOM from 'react-dom/client';
 
 // OpenTelemetry patches fetch/XHR globally, so this must settle before React

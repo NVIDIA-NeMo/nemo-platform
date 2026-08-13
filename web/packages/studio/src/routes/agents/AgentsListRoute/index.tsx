@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import { Button, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { AgentsTable, type AgentTableRow } from '@studio/components/dataViews/AgentsDataView';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import {

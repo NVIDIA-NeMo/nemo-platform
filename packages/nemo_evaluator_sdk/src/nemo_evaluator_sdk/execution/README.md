@@ -22,7 +22,7 @@ The execution package exposes a single public entrypoint:
 # Local SDK execution
 evaluator = Evaluator()
 result = await evaluator.run(
-    metrics=ExactMatchMetric(reference="{{item.reference}}"),
+    metrics=[ExactMatchMetric(reference="{{item.reference}}")],
     dataset=[{"reference": "Paris", "output_text": "Paris"}],
 )
 ```

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { AccordionPanel } from '@nemo/common/src/components/AccordionPanel';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { KVPair } from '@nemo/common/src/components/KVPair';
@@ -34,7 +35,6 @@ import {
   joinBundleByTask,
   parseBundleRef,
 } from '@studio/api/evaluation/agent-evaluations';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { AgentEvalTaskResultsPanel } from '@studio/components/evaluation/AgentEvalTaskResultsPanel';
 import { EvalAggregateScoresTable } from '@studio/components/evaluation/EvalAggregateScoresTable';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
@@ -154,7 +154,9 @@ export const AgentEvaluationDetailRoute: FC = () => {
     typeof job.status_details?.message === 'string' ? job.status_details.message : null;
   const errorMessage =
     typeof job.error_details?.message === 'string' ? job.error_details.message : null;
-  const scores = aggregateScoresOf(result ?? null);
+  const allScores = aggregateScoresOf(result ?? null);
+  const nativeScores = allScores.filter((s) => !s.name.startsWith('runner.'));
+  const runnerScores = allScores.filter((s) => s.name.startsWith('runner.'));
   const taskDetails = joinBundleByTask(bundle ?? null);
   const artifactsFileset = result?.bundle_ref
     ? (parseBundleRef(result.bundle_ref)?.fileset ?? null)
@@ -284,12 +286,25 @@ export const AgentEvaluationDetailRoute: FC = () => {
               </Flex>
             )}
             {isJobTerminal && !isLoadingResult && (
-              <EvalAggregateScoresTable
-                scores={[
-                  ...scores.filter((s) => s.name.startsWith('view.')),
-                  ...scores.filter((s) => !s.name.startsWith('view.')),
-                ]}
-              />
+              <Stack gap="density-lg">
+                <EvalAggregateScoresTable
+                  scores={[
+                    ...nativeScores.filter((s) => s.name.startsWith('view.')),
+                    ...nativeScores.filter((s) => !s.name.startsWith('view.')),
+                  ]}
+                  emptyMessage={
+                    runnerScores.length > 0
+                      ? 'No native scores recorded for this evaluation.'
+                      : undefined
+                  }
+                />
+                {runnerScores.length > 0 && (
+                  <Stack gap="density-sm">
+                    <Text kind="body/semibold/md">Runner Scores</Text>
+                    <EvalAggregateScoresTable scores={runnerScores} disableScoreColoring />
+                  </Stack>
+                )}
+              </Stack>
             )}
           </Panel>
         </Grid>

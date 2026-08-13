@@ -7,9 +7,13 @@ pnpm-lock.yaml
 # Build output
 dist/
 packages/*/dist/
+packages/studio/public/vendor/
 packages/**/.test-reports/
 packages/**/test-results/
 packages/**/playwright-report/
 
 # Ignore generated style
 packages/studio/src/generated/*
+
+# Rolled-up plugin surface types; formatting it breaks the CI drift check
+packages/common/plugin-types/

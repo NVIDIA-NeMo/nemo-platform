@@ -10,8 +10,10 @@
  * its affiliates is strictly prohibited.
  */
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -23,8 +25,6 @@ import {
   ModelDeploymentStatus,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { CUSTOMIZER_ENABLED } from '@studio/constants/environment';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Rocket, Trash2 } from 'lucide-react';

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from collections import Counter, deque
 from pathlib import Path
 
@@ -22,17 +23,23 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
     _LOG_TAIL_LINES,
     NG_ROLLOUT_INDEX,
     NG_TASK_INDEX,
+    GymAgentTaskRunner,
     GymRewardMetric,
+    GymRuntimeConfig,
     _aggregate_metrics_path_for,
     _canonical_row_hash,
     _content_text,
     _drain_pumps,
     _ensure_fresh_output,
+    _flatten_overrides,
+    _gym_executable,
+    _hydra_scalar,
     _materialize_dataset,
     _pump_stream,
     _read_run_aggregations,
     _render_instruction,
     _require_full_coverage,
+    _selection_args,
     _source_datasets,
     _trials_from_rollouts,
     discover_gym_tasks,
@@ -74,11 +81,92 @@ def test_render_instruction_from_string_messages_and_parts() -> None:
     assert _render_instruction(parts) == "part"
 
 
-def test_render_instruction_fails_loudly_when_empty() -> None:
-    with pytest.raises(ValueError):
-        _render_instruction({"input": ""})
-    with pytest.raises(ValueError):
-        _render_instruction({})
+def test_render_instruction_is_empty_rather_than_fatal_when_the_row_carries_no_prompt() -> None:
+    # A whole class of Gym environments ships `{"input": []}` and materializes the prompt elsewhere.
+    # Rendering must report "no prompt", not fail the dataset.
+    assert _render_instruction({"input": ""}) == ""
+    assert _render_instruction({"input": []}) == ""
+    assert _render_instruction({}) == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "row"),
+    [
+        # Shapes taken verbatim from the five affected environments' data/example.jsonl.
+        ("gdpval", {"responses_create_params": {"input": []}, "task_id": "83d10b06", "prompt": "You are an auditor…"}),
+        (
+            "legal_agent_bench",
+            {
+                "agent_ref": {"name": "legal_agent_bench_harbor_agent", "type": "responses_api_agents"},
+                "instance_id": "legal_agent_bench::corporate-ma__analyze-tsa-markup",
+                "responses_create_params": {"input": [], "temperature": 1.0, "top_p": 0.95},
+            },
+        ),
+        ("aviary", {"task_idx": 0, "responses_create_params": {"input": []}, "agent_ref": {"name": "gsm8k_aviary"}}),
+        ("scicode", {"responses_create_params": {"input": []}, "problem_id": "10", "sub_steps": [{"step": "10.1"}]}),
+        ("toolsandbox", {"task_idx": 0, "responses_create_params": {"input": []}}),
+    ],
+)
+def test_discover_gym_tasks_ingests_rows_with_no_prompt(name: str, row: dict, tmp_path: Path) -> None:
+    # AALGO-498: these environments could not be ingested at all — discovery raised before a run began.
+    dataset = tmp_path / f"{name}.jsonl"
+    dataset.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    (task,) = discover_gym_tasks(dataset)
+
+    # No instruction is *absent*, not empty: agent_prompt() must still refuse to run an agent on nothing.
+    assert "instruction" not in task.inputs
+    with pytest.raises(ValueError, match="has no instruction"):
+        task.agent_prompt()
+    # ...but everything the Gym path actually needs survives: the row round-trips whole.
+    assert task.inputs["gym_row"] == row["responses_create_params"]
+    assert task.metadata["gym_row_extras"] == {k: v for k, v in row.items() if k != "responses_create_params"}
+
+
+def test_promptless_rows_still_hash_distinctly(tmp_path: Path) -> None:
+    # Identity is the whole row, so rows differing only in a field the runner ignores (`task_idx` for
+    # aviary/toolsandbox, `instance_id` for legal_agent_bench) must remain distinct tasks — otherwise a
+    # promptless dataset would collapse into a single task.
+    dataset = tmp_path / "toolsandbox.jsonl"
+    dataset.write_text(
+        "\n".join(json.dumps({"task_idx": idx, "responses_create_params": {"input": []}}) for idx in range(5)) + "\n",
+        encoding="utf-8",
+    )
+    tasks = discover_gym_tasks(dataset)
+    assert len({task.id for task in tasks}) == 5
+    # and they re-materialize into the five rows Gym will read, each with its own index
+    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    rows = _rows(tmp_path / "gym_input.jsonl")
+    assert [row["task_idx"] for row in rows] == [0, 1, 2, 3, 4]
+    assert index_map == {index: task.id for index, task in enumerate(tasks)}
+
+
+def test_discover_gym_tasks_reports_how_many_rows_had_no_prompt(tmp_path: Path, caplog) -> None:
+    dataset = tmp_path / "mixed.jsonl"
+    dataset.write_text(
+        json.dumps({"responses_create_params": {"input": "answer me"}})
+        + "\n"
+        + json.dumps({"task_idx": 0, "responses_create_params": {"input": []}})
+        + "\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.INFO):
+        tasks = discover_gym_tasks(dataset)
+    assert [("instruction" in task.inputs) for task in tasks] == [True, False]
+    assert "1 of 2 task(s)" in caplog.text
+    assert "carry no prompt" in caplog.text
+
+
+@pytest.mark.parametrize("row", [{"task_idx": 0}, {"responses_create_params": None}, {"responses_create_params": []}])
+def test_discover_gym_tasks_still_requires_responses_create_params(row: dict, tmp_path: Path) -> None:
+    # Gym indexes into this key unconditionally, so a row without a usable one must be rejected at
+    # discovery rather than crashing `gym eval run` after the servers are up. All three non-mapping
+    # shapes are covered deliberately: a check of `params is None` alone would pass the missing-key
+    # case while letting a list through to fail deep inside Gym.
+    dataset = tmp_path / "bad_params.jsonl"
+    dataset.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="row 1 .* has no 'responses_create_params' mapping"):
+        discover_gym_tasks(dataset)
 
 
 def test_discover_gym_tasks_from_example_fixture() -> None:
@@ -578,3 +666,162 @@ def test_aggregate_metrics_sidecar_with_invalid_utf8_is_skipped_not_raised(tmp_p
     _aggregate_metrics_path_for(rollouts_path).write_bytes(b'[{"agent_ref": {"name": "a"}, "x": \xff}]')
 
     assert _read_run_aggregations(rollouts_path) is None
+
+
+# ---------------------------------------------------------------------------
+# Config pre-flight: override serialization, selection args, `gym env validate`
+# ---------------------------------------------------------------------------
+
+
+def test_hydra_scalars_use_hydra_spellings_not_python_ones() -> None:
+    # `str(None)` is "None" and `str(True)` is "True" — both of which Hydra reads back as *strings*,
+    # silently setting the literal text instead of a null or a boolean.
+    assert _hydra_scalar(None) == "null"
+    assert _hydra_scalar(True) == "true"
+    assert _hydra_scalar(False) == "false"
+    assert _hydra_scalar([1, None]) == "[1,null]"
+    assert _hydra_scalar(0.7) == "0.7"
+
+
+def test_hydra_strings_are_quoted_so_the_grammar_cannot_retype_them() -> None:
+    # Hydra's grammar is typed: unquoted, "true" parses as a bool, "null" as None, "1.5" as a float,
+    # and "a,b" as a *sweep* — so a string override would silently become something else.
+    assert _hydra_scalar("true") == "'true'"
+    assert _hydra_scalar("null") == "'null'"
+    assert _hydra_scalar("1.5") == "'1.5'"
+    assert _hydra_scalar("a,b") == "'a,b'"
+    assert _hydra_scalar("A[B") == "'A[B'"  # unquoted this does not parse at all
+    assert _hydra_scalar("") == "''"
+    # Only the quote is escaped: Hydra does not decode `\\` inside a quoted value, so escaping
+    # backslashes would double them.
+    assert _hydra_scalar("he'llo") == "'he\\'llo'"
+    assert _hydra_scalar("back\\slash") == "'back\\slash'"
+    # Interpolation survives quoting — the override sets the text, OmegaConf resolves it on read.
+    assert _hydra_scalar("${policy_base_url}") == "'${policy_base_url}'"
+
+
+def test_hydra_rejects_a_value_it_cannot_express() -> None:
+    # A trailing backslash escapes the closing quote and leaves the value unterminated; there is no
+    # spelling that avoids it, so say so rather than emit something unparseable.
+    with pytest.raises(ValueError, match="ends with a backslash"):
+        _hydra_scalar("ends\\")
+
+
+def test_hydra_dicts_nested_in_a_list_use_the_grammars_bare_keys() -> None:
+    # A mapping reached through a list has no dotted path to flatten onto, so it has to be spelled
+    # inline. `str()` would emit Python's repr — `{'b': 1}` — whose quoted keys Hydra's `dictKey`
+    # rule has no form for and rejects outright.
+    assert _hydra_scalar({"b": 1}) == "{b:1}"
+    assert _hydra_scalar([{"b": 1}, {"c": "true"}]) == "[{b:1},{c:'true'}]"
+    # The typed spellings hold at depth: values recurse through the same function.
+    assert _hydra_scalar({"b": None, "c": True, "d": "a,b"}) == "{b:null,c:true,d:'a,b'}"
+    assert _hydra_scalar({"b": {"c": [1, "x"]}}) == "{b:{c:[1,'x']}}"
+    assert _hydra_scalar({}) == "{}"
+
+
+@pytest.mark.parametrize("key", ["true", "NULL", "1.5", "inf", "b:c", "b,c", "b}c", "b'c", "", 1])
+def test_hydra_rejects_dict_keys_it_would_retype_or_fail_to_parse(key: object) -> None:
+    # Keys are emitted bare because the grammar has no quoted form, which leaves them at the mercy
+    # of the lexer: `{true:1}` keys on the boolean True and `{b:c:1}` does not parse. Neither is what
+    # the caller wrote, and the second is not even loud, so refuse both.
+    with pytest.raises(ValueError, match="dict key"):
+        _hydra_scalar([{key: 1}])
+
+
+def test_flatten_overrides_produces_forcing_dotted_paths() -> None:
+    flattened = _flatten_overrides({"a": {"b": {"c": 1}}, "d": "x"})
+    # `++` not `+`: a bare `+` fails on a key the merged config already defines, which is precisely
+    # the case an override exists for.
+    assert flattened == ["++a.b.c=1", "++d='x'"]
+    assert _flatten_overrides({}) == []
+
+
+def test_flatten_overrides_keeps_an_empty_mapping_instead_of_dropping_it() -> None:
+    # An empty mapping has no leaves to descend to, so recursing emits nothing and the override
+    # vanishes — the caller asked to clear `a` and the run would silently keep the config's value.
+    assert _flatten_overrides({"a": {}}) == ["++a={}"]
+
+
+def test_flatten_overrides_serializes_a_list_of_dicts() -> None:
+    assert _flatten_overrides({"a": {"b": [{"c": 1}]}}) == ["++a.b=[{c:1}]"]
+
+
+def _config(**kwargs: object) -> GymRuntimeConfig:
+    return GymRuntimeConfig(agent="simple_agent", agent_config="cfg.yaml", resources_server="mcqa", **kwargs)  # type: ignore[arg-type]
+
+
+def test_selection_binds_the_resources_server_by_default(tmp_path: Path) -> None:
+    selection = _selection_args(_config(), tmp_path)
+    assert "--resources-server" in selection and "mcqa" in selection
+    assert "+simple_agent.responses_api_agents.simple_agent.resources_server.name=mcqa" in selection
+
+
+def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_path: Path) -> None:
+    # gdpval registers its server as `gdpval_resources_server`, so the automatic binding is wrong for
+    # it and the caller supplies their own. Emitting both would leave the config ambiguous.
+    selection = _selection_args(
+        _config(
+            bind_resources_server=False,
+            env_overrides={
+                "simple_agent": {"responses_api_agents": {"simple_agent": {"resources_server": {"name": "other"}}}}
+            },
+        ),
+        tmp_path,
+    )
+    assert not [arg for arg in selection if arg.startswith("+simple_agent.")]
+    assert "++simple_agent.responses_api_agents.simple_agent.resources_server.name='other'" in selection
+
+
+def test_selection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
+    # Gym writes `outputs/<date>/<time>/` relative to cwd, and the subprocesses inherit ours so Gym
+    # can find env.yaml — so without this every run litters the caller's directory.
+    selection = _selection_args(_config(), tmp_path)
+    assert f"hydra.run.dir={tmp_path / 'gym_hydra'}" in selection
+
+
+def _stub_gym(tmp_path: Path, *, exit_code: int, message: str) -> str:
+    """A stand-in for the `gym` CLI that records its argv and exits how the test wants."""
+    script = tmp_path / "stub-gym"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(tmp_path / 'argv.txt')!r}).write_text('\\n'.join(sys.argv[1:]))\n"
+        f"print({message!r})\n"
+        f"sys.exit({exit_code})\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+@pytest.mark.asyncio
+async def test_validate_config_passes_the_selection_and_logs_the_report(tmp_path: Path) -> None:
+    runner = GymAgentTaskRunner(config=_config())
+    gym = _stub_gym(tmp_path, exit_code=0, message="Config is valid.")
+
+    await runner._validate_config(gym, ["--resources-server", "mcqa"], {}, tmp_path)
+
+    assert (tmp_path / "argv.txt").read_text().splitlines() == ["env", "validate", "--resources-server", "mcqa"]
+    # Kept next to the run's other logs so a passing pre-flight is still auditable afterwards.
+    assert (tmp_path / "gym_validate.log").read_text().strip() == "Config is valid."
+
+
+@pytest.mark.asyncio
+async def test_validate_config_raises_with_gyms_own_report(tmp_path: Path) -> None:
+    # The whole point of the pre-flight: surface Gym's diagnosis before a Ray cluster and several
+    # uvicorn servers start, rather than as a readiness timeout that says nothing about the cause.
+    complaint = "Error: references resources_servers/'gdpval', which is not defined"
+    runner = GymAgentTaskRunner(config=_config())
+    gym = _stub_gym(tmp_path, exit_code=1, message=complaint)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner._validate_config(gym, [], {}, tmp_path)
+
+    assert complaint in str(excinfo.value)
+    assert "mcqa" in str(excinfo.value)
+
+
+def test_gym_executable_reports_how_to_install_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    with pytest.raises(RuntimeError, match="own environment"):
+        _gym_executable()

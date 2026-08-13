@@ -58,7 +58,7 @@ async def _poll_until_ready(backend, *, attempts: int = 60, delay: float = 2.0):
 def _make_backend():
     mock_entities = AsyncMock()
     with (
-        patch("nemo_deployments_plugin.backends.openshell.backend.AsyncEntitiesResource"),
+        patch("nemo_deployments_plugin.backends.openshell.backend.client_from_platform"),
         patch("nemo_deployments_plugin.backends.openshell.backend.NemoEntitiesClient", return_value=mock_entities),
     ):
         from nemo_deployments_plugin.backends.openshell.backend import OpenShellDeploymentBackend
@@ -116,4 +116,55 @@ async def test_openshell_roundtrip_serves_http() -> None:
         assert "itest/rt" in await backend.list_managed_deployment_names()
     finally:
         await backend.delete_deployment("itest", "rt")
+        backend.shutdown()
+
+
+async def test_openshell_readiness_holds_until_bind() -> None:
+    # The workload sleeps before it binds, so READY must not be published until the curl
+    # readiness probe can actually reach :8000. Regression guard for AIRCORE-998 (READY
+    # published ahead of bind) that also exercises the real in-sandbox curl probe.
+    backend, mock_entities = _make_backend()
+    bind_delay = 15
+    mock_entities.get.return_value = DeploymentConfig(
+        name="slow-cfg",
+        workspace="itest",
+        containers=[
+            Container(
+                name="web",
+                image=IMAGE,
+                command=["/bin/sh", "-c"],
+                args=[f"sleep {bind_delay}; exec python3 -m http.server 8000 --bind 0.0.0.0"],
+                ports=[ContainerPort(containerPort=8000, name="http")],
+            )
+        ],
+    )
+
+    try:
+        created = await backend.create_deployment(
+            workspace="itest",
+            name="slow",
+            config_name="slow-cfg",
+            labels={"managed-by": MANAGED_BY_LABEL},
+            backend_config={},
+        )
+        assert created.status == "STARTING", created.status_message
+
+        start = time.monotonic()
+        saw_starting = False
+        status = None
+        for _ in range(90):
+            status = await backend.read_status(workspace="itest", name="slow")
+            if status.status != "STARTING":
+                break
+            saw_starting = True
+            await asyncio.sleep(1.0)
+
+        assert status is not None and status.status == "READY", status.status_message if status else "no status"
+        assert saw_starting, "expected STARTING before READY"
+        # Serve only starts once provisioning completes, so time-to-READY strictly exceeds the
+        # sleep. A probe that failed open would publish READY during the sleep window.
+        assert time.monotonic() - start >= bind_delay - 3, "READY published before the workload bound its port"
+        assert status.endpoints, "expected an exposed endpoint"
+    finally:
+        await backend.delete_deployment("itest", "slow")
         backend.shutdown()

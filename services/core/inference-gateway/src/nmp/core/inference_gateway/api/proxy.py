@@ -446,9 +446,10 @@ async def _parse_sse_chunks(
 async def _parse_sse_stream(response: aiohttp.ClientResponse) -> AsyncIterator[dict[str, Any]]:
     """Yield parsed JSON objects from an SSE (text/event-stream) response.
 
-    Each ``data:`` line is decoded and yielded as a dict.  ``data: [DONE]``
-    terminates the stream.  Malformed or non-JSON data lines are silently skipped.
-    The underlying aiohttp response is always closed when the generator exits.
+    Each ``data:`` line is decoded and yielded as a dict. ``data: [DONE]``
+    terminates the stream. Malformed or non-JSON data lines are silently skipped.
+    aiohttp decodes compressed response chunks before they reach this parser.
+    The underlying response is always closed when the generator exits.
     """
     try:
         async for parsed in _parse_sse_chunks(response.content.iter_any()):
@@ -468,11 +469,10 @@ async def fetch_proxy_response(
     responsible for applying response middleware and then streaming via
     :func:`stream_response_result`.
 
-    For ``Content-Type: text/event-stream`` responses the result is an
-    ``AsyncIterator[dict]`` backed by the live aiohttp response — the iterator
-    **must** be fully consumed or the underlying connection will leak.  For all
-    other responses the body is buffered and parsed as JSON (falling back to an
-    empty dict for non-JSON bodies).
+    aiohttp decodes the upstream ``Content-Encoding`` for this middleware-aware
+    path. ``Content-Type: text/event-stream`` responses remain backed by the live
+    response, so the iterator **must** be fully consumed or the connection will
+    leak. Other responses are buffered and parsed as JSON.
 
     Returns:
         A ``(response_result, headers, status_code)`` tuple.
@@ -489,6 +489,7 @@ async def fetch_proxy_response(
             params=next_request_info.query_params,
             data=next_request_info.body,
             timeout=None,
+            auto_decompress=True,
         )
 
         if response.status >= 400:
@@ -516,30 +517,52 @@ async def fetch_proxy_response(
         content_type = response.headers.get("content-type", "")
 
         if "text/event-stream" in content_type:
-            # Streaming — return a live async generator; ownership of the
-            # aiohttp response is transferred to the generator.
+            # Ownership of the live aiohttp response is transferred to the
+            # generator for streaming responses.
             result: ResponseResult = _parse_sse_stream(response)
         else:
-            # Non-streaming — buffer the full body and parse as a JSON object.
+            # aiohttp has already decoded Content-Encoding for this request.
             raw = await response.read()
             _close_response(response)
             try:
                 result = json.loads(raw)
             except (json.JSONDecodeError, ValueError) as exc:
+                logger.warning(
+                    "Inference Gateway could not parse upstream response from %s as JSON",
+                    next_request_info.url,
+                    exc_info=exc,
+                )
                 raise HTTPException(
                     status_code=502,
-                    detail="Inference middleware requires JSON upstream responses; backend returned non-JSON.",
+                    detail=(
+                        "Inference Gateway could not parse the upstream response as JSON "
+                        "for inference middleware processing."
+                    ),
                 ) from exc
             if not isinstance(result, dict):
                 raise HTTPException(
                     status_code=502,
-                    detail="Inference middleware requires JSON object upstream responses; backend returned a non-object.",
+                    detail=(
+                        "Inference Gateway received an upstream JSON response that is not an object, "
+                        "which inference middleware cannot process."
+                    ),
                 )
 
         return result, response_headers, status_code
 
     except HTTPException:
         raise
+    except aiohttp.ClientPayloadError as exc:
+        _close_response(response)
+        logger.warning(
+            "Inference Gateway could not decode upstream response from %s",
+            next_request_info.url,
+            exc_info=exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Inference Gateway could not decode the upstream response body.",
+        ) from exc
     except aiohttp.ClientError as exc:
         _close_response(response)
         raise HTTPException(status_code=502, detail=f"Backend networking error: {exc}")

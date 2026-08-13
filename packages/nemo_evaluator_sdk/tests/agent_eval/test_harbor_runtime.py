@@ -15,6 +15,7 @@ from types import ModuleType
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.results import AgentEvalSummary
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     HarborAgentTaskRunner,
     HarborRewardMetric,
@@ -103,6 +104,106 @@ async def test_harbor_runner_scores_through_agent_evaluator_and_adapts_legacy_pa
 
 async def _record(calls: list[str]) -> None:
     calls.append("ran")
+
+
+def _reward_details_from_summary(
+    summary: AgentEvalSummary,
+    *,
+    metric_type: str = "harbor_reward",
+    output_name: str = "reward",
+) -> dict[str, dict[str, list[str]]]:
+    """Rebuild ``reward_payload_from_result``'s ``reward_details`` from the summary alone.
+
+    Inverts ``{task_id: [value]}`` back into the legacy ``{output: {value_str: [task_id, ...]}}``.
+    Only numeric values are groupable: a dead trial has no value, and a label is not a reward.
+    The adapter drops both too (it skips ``FAILED`` scores and non-numeric outputs), so the two sides
+    agree on what is groupable.
+    """
+    key = f"{metric_type}.{output_name}"
+    details: dict[str, dict[str, list[str]]] = {}
+    for task_id, values_by_key in summary.task_metric_values.items():
+        for record in values_by_key.get(key, []):
+            if not isinstance(record.value, bool | int | float):
+                continue
+            details.setdefault(output_name, {}).setdefault(str(float(record.value)), []).append(task_id)
+    return details
+
+
+def _reward_stats_from_summary(
+    summary: AgentEvalSummary,
+    *,
+    metric_type: str = "harbor_reward",
+    output_name: str = "reward",
+) -> dict[str, dict[float, list[str]]]:
+    """Rebuild Harbor's *own* ``reward_stats`` — ``{reward_key: {value: [trial_name, ...]}}``.
+
+    Harbor builds it as ``reward_stats.setdefault(value, []).append(trial_result.trial_name)``: keyed
+    by the raw numeric value, listing trial names. ``_trial_from_harbor_result`` stamps Harbor's
+    ``trial_name`` straight onto ``AgentEvalTrial.id``, which is the ``trial_id`` each record now
+    carries, so this reproduces Harbor's shape rather than approximating it.
+
+    A ``None`` value is a trial that died before the verifier ran. Harbor has no reward to file it
+    under either — it lands in ``exception_stats``/``n_errors`` instead — so it is skipped here, as
+    is any non-numeric value: Harbor keys ``reward_stats`` by the reward value itself.
+    """
+    key = f"{metric_type}.{output_name}"
+    stats: dict[str, dict[float, list[str]]] = {}
+    for values_by_key in summary.task_metric_values.values():
+        for record in values_by_key.get(key, []):
+            if not isinstance(record.value, bool | int | float):
+                continue
+            stats.setdefault(output_name, {}).setdefault(float(record.value), []).append(record.trial_id)
+    return stats
+
+
+@pytest.mark.asyncio
+async def test_harbor_reward_stats_is_derivable_from_summary_task_metric_values(tmp_path: Path) -> None:
+    """The summary alone reproduces Harbor's ``reward_stats``, which is what AALGO-310 exists to enable.
+
+    Harbor groups rewards by ``trial_name`` and keys them by the raw ``float | int``. Both were out of
+    reach while values were bare numbers indexed by position; now that each record names its trial,
+    AALGO-441 can rebuild the real shape without re-walking ``result.scores``. The legacy
+    ``reward_details`` (task-keyed, stringified) stays derivable too, so the rewiring loses nothing.
+
+    Still out of scope here: ``exception_stats``, which needs the exception type per dead trial —
+    AALGO-428. The ``trial_id`` below is the join key that makes it a lookup against ``trials.jsonl``.
+    """
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    # Two trials each for alpha (flaky) and beta (solved); one for gamma, whose verifier emitted
+    # no reward at all -> PARTIAL trial that still scores 0.0.
+    _write_trial(job_dir, "alpha__a", "alpha", reward=1.0)
+    _write_trial(job_dir, "alpha__b", "alpha", reward=0.0)
+    _write_trial(job_dir, "beta__a", "beta", reward=1.0)
+    _write_trial(job_dir, "beta__b", "beta", reward=1.0)
+    _write_trial(job_dir, "gamma__a", "gamma", reward=None)
+
+    tasks = [
+        AgentEvalTask(id=task_id, intent="x", inputs={"instruction": "p"}, metrics=[HarborRewardMetric()])
+        for task_id in ("alpha", "beta", "gamma")
+    ]
+    runner = HarborAgentTaskRunner(job_dir=job_dir, run_job=lambda: _record([]))
+    result = await AgentEvaluator().run(tasks=tasks, target=runner, config=AgentEvalRunConfig())
+
+    recorded = {
+        task_id: {key: [(a.trial_id, a.value) for a in records] for key, records in by_key.items()}
+        for task_id, by_key in result.summary.task_metric_values.items()
+    }
+    assert recorded == {
+        "alpha": {"harbor_reward.reward": [("alpha__a", 1.0), ("alpha__b", 0.0)]},
+        "beta": {"harbor_reward.reward": [("beta__a", 1.0), ("beta__b", 1.0)]},
+        "gamma": {"harbor_reward.reward": [("gamma__a", 0.0)]},
+    }
+
+    # Harbor's own shape: raw float keys, trial names in the lists.
+    assert _reward_stats_from_summary(result.summary) == {
+        "reward": {1.0: ["alpha__a", "beta__a", "beta__b"], 0.0: ["alpha__b", "gamma__a"]}
+    }
+
+    # ...and the legacy task-keyed, stringified payload the current adapter emits stays derivable.
+    payload = reward_payload_from_result(result)
+    assert payload["reward_details"] == {"reward": {"1.0": ["alpha", "beta", "beta"], "0.0": ["alpha", "gamma"]}}
+    assert _reward_details_from_summary(result.summary) == payload["reward_details"]
 
 
 def test_reward_with_no_matching_reward_key_is_partial_and_warns(tmp_path: Path, caplog) -> None:

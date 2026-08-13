@@ -105,6 +105,17 @@ export const ENTITY_MODE_OPTIONS: { value: EntityMode; children: string }[] = [
   { value: ENTITY_MODE_AUTO, children: 'Auto-detect' },
 ];
 
+/** The count comes from the entity-labels endpoint, so it is unknown until that call lands. */
+export const defaultEntitiesLabel = (count: number): string =>
+  count ? `all ${count} default entities` : 'all default entities';
+
+export const ENTITY_MODE_DESCRIPTIONS: Record<EntityMode, (defaults: string) => string> = {
+  [ENTITY_MODE_AUTO]: (defaults) =>
+    `Auto-detect includes ${defaults} and lets the augmenter add more labels it finds. To restrict the output to a defined list, use Custom.`,
+  [ENTITY_MODE_CUSTOM]: () =>
+    'Custom mode only outputs the labels selected below. Auto-detect cannot be combined with custom labels.',
+};
+
 export type EntityTagColor = NonNullable<ComponentProps<typeof Tag>['color']>;
 
 interface EntityCategory {
@@ -240,6 +251,17 @@ export const MAX_COLUMN_INTROSPECTION_BYTES = 50 * 1024 * 1024;
 export const DEFAULT_MODEL_TIMEOUT_SECONDS = 500;
 
 export const DEFAULT_MODEL_MAX_TOKENS = 16384;
+export const MAX_MODEL_MAX_TOKENS = 32768;
+
+/** Mirrors the LLM entries in the Anonymizer library's default `models.yaml`. */
+export const DEFAULT_MODEL_TEMPERATURE = 0.3;
+export const DEFAULT_MODEL_TOP_P = 0.95;
+
+export const ANONYMIZER_PARAM_METADATA = {
+  temperature: { default: DEFAULT_MODEL_TEMPERATURE },
+  top_p: { default: DEFAULT_MODEL_TOP_P },
+  max_tokens: { default: DEFAULT_MODEL_MAX_TOKENS, max: MAX_MODEL_MAX_TOKENS },
+} as const;
 
 export const DETECTION_ROLES = [
   'entity_detector',
@@ -274,6 +296,9 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const GLINER_ROLE = 'entity_detector';
+
+/** GLiNER is a token-classification NIM: it takes labels and a threshold, not sampling params. */
+export const supportsSamplingParams = (role: string): boolean => role !== GLINER_ROLE;
 
 export const activeRolesForStrategy = (strategy: Strategy): string[] => {
   // rewrite reuses the replacement generator, so the backend validates that role too

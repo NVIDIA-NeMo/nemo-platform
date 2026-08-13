@@ -36,7 +36,7 @@ model = Model(
     url="https://integrate.api.nvidia.com/v1",
     name="meta/llama-3.1-70b-instruct",
     format="nim",
-    api_key_secret="NVIDIA_API_KEY",
+    api_key_secret="nvidia-api-key",
 )
 ```
 
@@ -53,7 +53,7 @@ model = Model(
 
 `api_key_secret` is an optional property on the `Model` object. Omit it when the endpoint does not require API-key authentication.
 
-For local `evaluator.run(...)` calls, `api_key_secret` must name an environment variable available to the local Python process. For example, `api_key_secret="NVIDIA_API_KEY"` reads `os.environ["NVIDIA_API_KEY"]`.
+For `nemo_evaluator_sdk.Evaluator` runs, `api_key_secret` names an environment variable available to the local Python process. For example, `api_key_secret="NVIDIA_API_KEY"` reads `os.environ["NVIDIA_API_KEY"]`.
 
 For remote `evaluator.submit(...)` jobs, `api_key_secret` must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
 
@@ -83,12 +83,12 @@ model = Model(
     url="https://integrate.api.nvidia.com/v1",
     name="meta/llama-3.1-70b-instruct",
     format="nim",
-    api_key_secret="NVIDIA_API_KEY",
+    api_key_secret="nvidia-api-key",
 )
 
 metric = ExactMatchMetric(reference="{{item.expected_answer}}")
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"question": "What is the capital of France?", "expected_answer": "Paris"},
@@ -100,6 +100,8 @@ result = evaluator.run(
     target=model,
     prompt_template="Answer this question concisely: {{item.question}}",
 )
+job.wait_until_done()
+result = job.get_result()
 ```
 
 
@@ -117,7 +119,7 @@ judge_model = Model(
     url="https://integrate.api.nvidia.com/v1",
     name="meta/llama-3.1-70b-instruct",
     format="nim",
-    api_key_secret="NVIDIA_API_KEY",
+    api_key_secret="nvidia-api-key",
 )
 metric = LLMJudgeMetric(
     model=judge_model,
@@ -143,7 +145,7 @@ metric = LLMJudgeMetric(
     },
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -153,6 +155,8 @@ result = evaluator.run(
         },
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 ```
 
 
@@ -183,23 +187,30 @@ Use plain `RunConfig` for offline evaluations where the dataset already contains
 
 ## Model References
 
-You can supply the evaluation target two ways. Which one is valid depends on whether you run the evaluation locally or submit it as a durable platform job.
+You can supply the evaluation target two ways. Which one is valid depends on whether you submit the evaluation as a durable platform job or run it locally with `nemo_evaluator_sdk.Evaluator`.
 
-### Inline `Model` (required for `evaluator.run(...)`)
+### Inline `Model`
 
-`evaluator.run(...)` executes in your local Python process, so it needs the resolved endpoint details inline. Always pass an inline `Model` as the `target` (or as a judge/embeddings field on the metric). If your deployment stores platform model entities, resolve the entity into endpoint details before constructing the `Model`:
+An inline `Model` carries the resolved endpoint details. Always pass an inline `Model` as the `target` (or as a judge/embeddings field on the metric). If your deployment stores platform model entities, resolve the entity into endpoint details before constructing the `Model`:
 
 ```python
-from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk import Model, RunConfigOnlineModel
 
 model_entity = client.models.retrieve("my-model", workspace="default")
 model = Model(
     url=client.models.get_model_entity_route_openai_url(model_entity),
     name="my-model",
-    api_key_secret="NVIDIA_API_KEY",
+    api_key_secret="nvidia-api-key",
 )
 
-result = evaluator.run(metric=metric, dataset=dataset, target=model)
+job = evaluator.submit(
+    metric=metric,
+    dataset=dataset,
+    config=RunConfigOnlineModel(parallelism=4),
+    target=model,
+)
+job.wait_until_done()
+result = job.get_result()
 ```
 
 ### `ModelRef` (supported by `evaluator.submit(...)`)
@@ -217,7 +228,7 @@ job = evaluator.submit(
 )
 ```
 
-`ModelRef` is **not** valid for `evaluator.run(...)`; the local runtime cannot resolve a platform entity. Pass an inline `Model` for local runs and either a `Model` or a `ModelRef` for remote submits. See the [Define and Run Custom Python Metrics](/documentation/evaluate-models/tutorials/define-and-run-custom-python-metrics) tutorial for an end-to-end `ModelRef` + `FilesetRef` submit example.
+`evaluator.submit(...)` accepts either a `Model` or a `ModelRef`. `nemo_evaluator_sdk.Evaluator` resolves no platform entities, so pass it an inline `Model`. See the [Define and Run Custom Python Metrics](/documentation/evaluate-models/tutorials/define-and-run-custom-python-metrics) tutorial for an end-to-end `ModelRef` + `FilesetRef` submit example.
 
 <Note>
 

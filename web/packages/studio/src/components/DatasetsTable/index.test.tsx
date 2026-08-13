@@ -52,7 +52,7 @@ vi.mock('@studio/components/BulkDeleteModal', () => ({
   ),
 }));
 
-vi.mock('@studio/components/DeleteConfirmationModal', () => ({
+vi.mock('@nemo/common/src/components/DeleteConfirmationModal', () => ({
   DeleteConfirmationModal: vi.fn(
     ({
       open,

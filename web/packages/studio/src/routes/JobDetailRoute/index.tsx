@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
+import { CancelJobButton } from '@nemo/common/src/components/CancelJobButton';
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { LogViewer } from '@nemo/common/src/components/LogViewer';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -9,8 +11,6 @@ import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { getJobRefetchInterval } from '@nemo/common/src/utils/query';
 import { useJobsGetJob, useJobsListJobResults } from '@nemo/sdk/generated/platform/api';
 import { Flex, Grid, PageHeader, Panel, Spinner, Stack } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
-import { CancelJobButton } from '@studio/components/CancelJobButton';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -62,7 +62,7 @@ export const JobDetailRoute: FC = () => {
           slotHeading={jobName}
           slotActions={
             <Flex gap="density-md" align="center">
-              <CancelJobButton jobName={jobName} jobStatus={job?.status} />
+              <CancelJobButton workspace={workspace} jobName={jobName} jobStatus={job?.status} />
             </Flex>
           }
         />

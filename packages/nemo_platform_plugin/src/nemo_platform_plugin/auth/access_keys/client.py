@@ -13,6 +13,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
     AccessKeyListResponse,
+    AccessKeyRevokeResponse,
 )
 from nemo_platform_plugin.client.client import AsyncNemoClient, NemoClient
 from nemo_platform_plugin.client.errors import NemoHTTPError
@@ -46,16 +47,16 @@ class AccessKeyIssuerClient(AccessKeyIssuer):
             _raise_domain_error_from_http(exc)
             raise
 
-    def list(self) -> AccessKeyListResponse:
+    def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:
         try:
-            return self._client.list_access_keys().data()
+            return self._client.list_access_keys(query_params={"page": page, "page_size": page_size}).data()
         except NemoHTTPError as exc:
             _raise_domain_error_from_http(exc)
             raise
 
-    def revoke(self, jti: str) -> None:
+    def revoke(self, jti: str) -> AccessKeyRevokeResponse:
         try:
-            self._client.revoke_access_key(jti=jti).data()
+            return self._client.revoke_access_key(jti=jti).data()
         except NemoHTTPError as exc:
             _raise_domain_error_from_http(exc)
             raise
@@ -64,5 +65,8 @@ class AccessKeyIssuerClient(AccessKeyIssuer):
 def _raise_domain_error_from_http(exc: NemoHTTPError) -> None:
     if exc.status_code == 501:
         raise AccessKeyOperationNotImplementedError(exc.detail) from exc
-    if exc.status_code == 404 and "not enabled" in exc.detail and "Scoped Access Keys" in exc.detail:
-        raise AccessKeyFeatureDisabledError(exc.detail) from exc
+    if exc.status_code == 404:
+        disabled_code = isinstance(exc.body, dict) and exc.body.get("code") == "access_keys_disabled"
+        legacy_disabled_detail = exc.detail == "Scoped Access Keys are not enabled"
+        if disabled_code or legacy_disabled_detail:
+            raise AccessKeyFeatureDisabledError(exc.detail) from exc

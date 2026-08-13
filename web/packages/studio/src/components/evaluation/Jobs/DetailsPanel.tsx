@@ -14,6 +14,7 @@ import {
   getDifferenceInMilliseconds,
   utcToLocalDate,
 } from '@nemo/common/src/utils/date';
+import { logger } from '@nemo/common/src/utils/logger';
 import {
   getEvaluatorGetEvaluateJobQueryKey,
   useEvaluatorCancelEvaluateJob,
@@ -23,7 +24,6 @@ import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundat
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getFilesetRoute } from '@studio/routes/utils';
-import { logger } from '@studio/util/logger';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChartBar, CircleX } from 'lucide-react';
 import { useState } from 'react';

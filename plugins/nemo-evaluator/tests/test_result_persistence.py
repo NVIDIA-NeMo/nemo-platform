@@ -19,6 +19,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
 )
@@ -40,9 +41,22 @@ from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from pytest_mock import MockerFixture
 
+
 # An opaque stand-in for the async task SDK: every test that reaches the save path patches
 # `_entity_client`, so the value is never used as a real client — only its presence matters.
-_ASYNC_SDK = cast(AsyncNeMoPlatform, object())
+# ``copy`` returns self so ``run_with_isolated_async_sdk`` can isolate a throwaway httpx client.
+class _FakeAsyncSdk:
+    def __init__(self) -> None:
+        self.copy_calls = 0
+
+    def copy(self, **kwargs: object) -> _FakeAsyncSdk:
+        del kwargs
+        self.copy_calls += 1
+        return self
+
+
+_ASYNC_SDK_FAKE = _FakeAsyncSdk()
+_ASYNC_SDK = cast(AsyncNeMoPlatform, _ASYNC_SDK_FAKE)
 
 
 def test_entity_client_adapts_async_sdk(mocker: MockerFixture) -> None:
@@ -82,6 +96,10 @@ def _agent() -> Agent:
         (
             FabricRunnerTarget(config={"metadata": {"name": "a"}}, model="openai/gpt-5.4"),
             ("fabric", "openai/gpt-5.4", None),
+        ),
+        (
+            GymRunnerTarget(agent="simple_agent", agent_config="conf/agent.yaml", resources_server="mcqa"),
+            ("gym", "simple_agent", None),
         ),
         (HarborRunnerTarget(agent_name="oracle"), ("harbor", "oracle", None)),
         (HarborRunnerTarget(agent_import_path="wrapper:Agent"), ("harbor", "wrapper:Agent", None)),
@@ -165,6 +183,7 @@ def _eval_result() -> EvaluationResult:
 def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocker: MockerFixture) -> None:
     client = _FakeClient()
     mocker.patch.object(result_persistence, "_entity_client", return_value=client)
+    _ASYNC_SDK_FAKE.copy_calls = 0
 
     persist_agent_eval_result(
         _agent_result(),
@@ -174,6 +193,7 @@ def test_persist_agent_eval_result_builds_entity_and_saves(tmp_path: Path, mocke
         async_sdk=_ASYNC_SDK,
     )
 
+    assert _ASYNC_SDK_FAKE.copy_calls == 1
     (entity,) = client.saved
     assert isinstance(entity, AgentEvalResultEntity)
     assert entity.name == "job-1"

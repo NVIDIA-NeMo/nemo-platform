@@ -28,8 +28,24 @@ variable "USE_PREBUILT_BASES" {
   default = ""
 }
 
+variable "NMP_COLLECT_SOURCES" {
+  default = "0"
+}
+
 variable "NMP_PYTHON_IMAGE" {
   default = "python:3.13.14-slim-trixie"
+}
+
+variable "DISTROLESS_BASE_3_13" {
+  default = "nvcr.io/nvidia/distroless/python:3.13-v4.0.9"
+}
+
+variable "NMP_API_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
+}
+
+variable "NMP_CORE_RUNTIME_BASE" {
+  default = "root-distroless-base-3-13"
 }
 
 variable "AUTOMODEL_BASE_CONTEXT" {
@@ -49,10 +65,6 @@ variable "MAMBA_SSM_WHEEL_CONTEXT" {
 }
 
 variable "FFMPEG_VLM_WHEEL_CONTEXT" {
-  default = ""
-}
-
-variable "TRANSFORMER_ENGINE_WHEEL_CONTEXT" {
   default = ""
 }
 
@@ -171,11 +183,6 @@ function "get_ffmpeg_vlm_wheel_image" {
   result = "${WHEELS_REGISTRY}/ffmpeg-vlm-wheel:${WHEELS_TAG}"
 }
 
-function "get_transformer_engine_wheel_image" {
-  params = []
-  result = "${WHEELS_REGISTRY}/transformer-engine-wheel:${WHEELS_TAG}"
-}
-
 function "get_arch_tag" {
   params = []
   result = BUILD_ARCH == "linux/arm64" ? "linux-arm64" : "linux-amd64"
@@ -211,11 +218,6 @@ function "mamba_ssm_wheel_context" {
 function "ffmpeg_vlm_wheel_context" {
   params = []
   result = notequal(FFMPEG_VLM_WHEEL_CONTEXT, "") ? FFMPEG_VLM_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:ffmpeg-vlm-wheel" : "docker-image://${get_ffmpeg_vlm_wheel_image()}"
-}
-
-function "transformer_engine_wheel_context" {
-  params = []
-  result = notequal(TRANSFORMER_ENGINE_WHEEL_CONTEXT, "") ? TRANSFORMER_ENGINE_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:transformer-engine-wheel" : "docker-image://${get_transformer_engine_wheel_image()}"
 }
 
 function "wheel_tags" {
@@ -389,6 +391,9 @@ target "nmp-customizer-tasks" {
     causal-conv1d-wheel-src  = causal_conv1d_wheel_context()
     mamba-ssm-wheel-src      = mamba_ssm_wheel_context()
   }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   cache-to   = maybe_registry_cache_to("nmp-customizer-tasks")
   cache-from = maybe_registry_cache_from("nmp-customizer-tasks")
   tags       = sha_and_maybe_latest_tags("nmp-customizer-tasks")
@@ -406,7 +411,8 @@ target "nmp-customizer-tasks-smoke-test" {
     mamba-ssm-wheel-src      = mamba_ssm_wheel_context()
   }
   args = {
-    SMOKE_MARKER = "smoke_nmp_customizer_tasks"
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    SMOKE_MARKER         = "smoke_nmp_customizer_tasks"
   }
   cache-from = maybe_registry_cache_from("nmp-customizer-tasks")
   output     = ["type=cacheonly"]
@@ -430,8 +436,9 @@ target "nmp-rl-base-builder" {
   context    = "."
   dockerfile = "docker/rl/Dockerfile.nmp-rl-base"
   args = {
-    NEMO_RL_REPO = NEMO_RL_REPO
-    NEMO_RL_REF  = NEMO_RL_REF
+    NEMO_RL_REPO        = NEMO_RL_REPO
+    NEMO_RL_REF         = NEMO_RL_REF
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-rl-base")
   cache-from = maybe_registry_cache_from("nmp-rl-base")
@@ -450,6 +457,9 @@ target "nmp-rl-training" {
     platform-workspace = "target:rl-platform-workspace"
     nmp-rl-base        = rl_base_context()
   }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   cache-to   = maybe_registry_cache_to("nmp-rl-training")
   cache-from = maybe_registry_cache_from("nmp-rl-training")
   tags       = sha_and_maybe_latest_tags("nmp-rl-training")
@@ -467,7 +477,8 @@ target "nmp-rl-training-smoke-test" {
     nmp-rl-base        = rl_base_context()
   }
   args = {
-    SMOKE_MARKER = "smoke_nmp_rl_training"
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    SMOKE_MARKER         = "smoke_nmp_rl_training"
   }
   cache-from = maybe_registry_cache_from("nmp-rl-training")
   output     = ["type=cacheonly"]
@@ -611,11 +622,15 @@ target "nmp-api-docker" {
     nmp-jobs-launcher         = "target:nmp-jobs-launcher"
     nmp-studio-ui             = "target:nmp-studio-ui"
     policy-wasm-artifacts     = "target:root-policy-wasm-artifacts"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
     fastembed-cache           = FASTEMBED_CACHE_CONTEXT
   }
   args = {
     NMP_PLATFORM_VERSION = notequal(BAKE_TAG, "") ? BAKE_TAG : "dev"
-    NMP_CODE_REVISION   = notequal(CI_COMMIT_SHA, "") ? CI_COMMIT_SHA : "dev"
+    NMP_CODE_REVISION    = notequal(CI_COMMIT_SHA, "") ? CI_COMMIT_SHA : "dev"
+    NMP_API_RUNTIME_BASE = NMP_API_RUNTIME_BASE
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-api")
   cache-from = maybe_registry_cache_from("nmp-api")
@@ -634,6 +649,12 @@ target "nmp-core-docker" {
     nmp-workspace             = "target:nmp-workspace"
     nmp-jobs-launcher         = "target:nmp-jobs-launcher"
     policy-wasm-artifacts     = "target:root-policy-wasm-artifacts"
+    root-busybox              = "target:root-busybox"
+    root-distroless-base-3-13 = "target:root-distroless-base-3-13"
+  }
+  args = {
+    NMP_CORE_RUNTIME_BASE = NMP_CORE_RUNTIME_BASE
+    NMP_COLLECT_SOURCES   = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-core")
   cache-from = maybe_registry_cache_from("nmp-core")
@@ -650,6 +671,9 @@ target "nmp-cpu-tasks-docker" {
   contexts = {
     nmp-python-base           = "target:nmp-python-base"
     nmp-workspace             = "target:nmp-workspace"
+  }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-cpu-tasks")
   cache-from = maybe_registry_cache_from("nmp-cpu-tasks")
@@ -704,36 +728,13 @@ target "ffmpeg-vlm-wheel" {
   platforms  = get_platforms()
 }
 
-# transformer-engine wheel (cp313 / cu130), pinned to NeMo-RL's TE ref (release_v2.15, from RL's
-# override-dependencies) and arch (90;100, matching RL).
-#
-# NOT consumed by any image today, and deliberately not in a build group: Transformer-Engine only
-# ships in the `automodel` and `mcore` extras, and the customizer's DPO + GRPO path uses neither
-# (DPO -> fsdp, GRPO generation -> vllm). Kept because it builds cleanly and is the drop-in for
-# nmp-rl-base if a Megatron/automodel backend is ever adopted. Build on demand:
-#   docker buildx bake transformer-engine-wheel
-target "transformer-engine-wheel" {
-  target     = "transformer-engine-wheel"
-  context    = "."
-  dockerfile = "docker/base/Dockerfile.python-wheels"
-  cache-to   = maybe_registry_cache_to("transformer-engine-wheel")
-  cache-from = maybe_registry_cache_from("transformer-engine-wheel")
-  tags       = wheel_tags("transformer-engine-wheel")
-  output     = image_output()
-  args = {
-    TE_REF          = "release_v2.15"
-    NVTE_CUDA_ARCHS = "90;100"
-  }
-  platforms  = get_platforms()
-}
-
-
 target "safe-synthesizer-tasks-docker" {
   target     = "runtime"
   context    = "."
   dockerfile = "docker/Dockerfile.safe-synthesizer-tasks"
   args = {
-    CONTAINER_VARIANT = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    CONTAINER_VARIANT    = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("safe-synthesizer-tasks")
   cache-from = maybe_registry_cache_from("safe-synthesizer-tasks")
@@ -750,7 +751,8 @@ target "safe-synthesizer-tasks-smoke-test" {
   context    = "."
   dockerfile = "docker/Dockerfile.safe-synthesizer-tasks"
   args = {
-    CONTAINER_VARIANT = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    CONTAINER_VARIANT    = "${SAFE_SYNTHESIZER_CONTAINER_VARIANT}"
+    NMP_COLLECT_SOURCES  = NMP_COLLECT_SOURCES
   }
   cache-from = maybe_registry_cache_from("safe-synthesizer-tasks")
   output     = ["type=cacheonly"]
@@ -777,6 +779,16 @@ target "root-distroless-base-3-11" {
   platforms  = get_platforms()
   args = {
     DISTROLESS_BASE = DISTROLESS_BASE
+  }
+}
+
+target "root-distroless-base-3-13" {
+  target     = "root-distroless-base-3-13"
+  context    = "."
+  dockerfile = "docker/Dockerfile.bake"
+  platforms  = get_platforms()
+  args = {
+    DISTROLESS_BASE_3_13 = DISTROLESS_BASE_3_13
   }
 }
 
@@ -899,6 +911,9 @@ target "nmp-automodel-base-builder" {
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
   }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   platforms = get_platforms()
 }
 
@@ -909,6 +924,9 @@ target "nmp-automodel-training-docker" {
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = automodel_base_context()
+  }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-automodel-training")
   cache-from = maybe_registry_cache_from("nmp-automodel-training")
@@ -926,7 +944,8 @@ target "nmp-automodel-training-smoke-test" {
     nmp-automodel-base = automodel_base_context()
   }
   args = {
-    SMOKE_MARKER       = "smoke_nmp_automodel_training"
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+    SMOKE_MARKER         = "smoke_nmp_automodel_training"
   }
   cache-from = maybe_registry_cache_from("nmp-automodel-training")
   output     = ["type=cacheonly"]
@@ -949,6 +968,9 @@ target "nmp-unsloth-training" {
     platform-workspace        = "target:unsloth-platform-workspace"
     causal-conv1d-wheel-image = causal_conv1d_wheel_context()
     mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+  }
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
   }
   cache-to   = maybe_registry_cache_to("nmp-unsloth-training")
   cache-from = maybe_registry_cache_from("nmp-unsloth-training")
@@ -1007,6 +1029,9 @@ target "auditor-tasks-docker" {
     root-busybox              = "target:root-busybox"
   }
   dockerfile = "docker/Dockerfile.auditor-tasks"
+  args = {
+    NMP_COLLECT_SOURCES = NMP_COLLECT_SOURCES
+  }
   cache-to   = maybe_registry_cache_to("auditor-tasks")
   cache-from = maybe_registry_cache_from("auditor-tasks")
   tags       = sha_and_maybe_latest_tags("auditor-tasks")

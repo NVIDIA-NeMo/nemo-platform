@@ -32,8 +32,9 @@ from typing import Protocol, TypeVar
 from nemo_evaluator.api.schemas import LATEST_TAG, REF_FRAGMENT_CHARSET
 from nemo_evaluator.content_hash import DIGEST_PATTERN, content_hash
 from nemo_evaluator.entities import (
+    REVISION_POINTER_EXCLUDE,
     REVISION_POINTER_FIELDS,
-    REVISION_SELF_FIELDS,
+    REVISION_SELF_EXCLUDE,
     TaskEntity,
     TaskRevisionEntity,
     TasksetEntity,
@@ -117,7 +118,7 @@ def head_digest(head: EntityBase) -> str:
     The exclusion is what makes this comparable to a revision's own digest: pointers describe
     *which* content is current, not what the content is.
     """
-    return content_hash(head, exclude=REVISION_POINTER_FIELDS)
+    return content_hash(head, exclude=REVISION_POINTER_EXCLUDE)
 
 
 def validate_tag_name(tag: str) -> str:
@@ -293,7 +294,7 @@ def _verify_content(head: TaskEntity | TasksetEntity, revision: TaskRevisionEnti
     write to one. This turns that convention into something detectable rather than something the
     reader has to assume.
     """
-    actual = content_hash(revision, exclude=REVISION_SELF_FIELDS)
+    actual = content_hash(revision, exclude=REVISION_SELF_EXCLUDE)
     if actual != revision.content_hash:
         raise RevisionContentMismatchError(
             f"revision {revision.revision} of '{head.workspace}/{head.name}' does not match its "
@@ -394,6 +395,8 @@ async def publish_revision(
             return current, head, False
 
         ordinal = head.latest_revision + 1
+        # Copy *all* content, including fields the digest excludes: a revision stores the full
+        # published spec, and only its hash ignores the derived parts.
         content = head.model_dump(exclude=set(REVISION_POINTER_FIELDS) | set(head.__base_fields__), mode="json")
         revision = revision_type(
             name=revision_name(ordinal),

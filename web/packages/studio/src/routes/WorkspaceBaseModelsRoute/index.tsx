@@ -15,6 +15,7 @@ import {
   type ModelEntityFilterInput,
 } from '@nemo/common/src/api/entity-store/useBaseModels';
 import { usePromptTunableBaseModelIds } from '@nemo/common/src/api/entity-store/usePromptTunableBaseModelIds';
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import * as DataView from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
@@ -35,7 +36,6 @@ import {
   Text,
   Tooltip,
 } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { BaseModelCard } from '@studio/components/BaseModelCard';
 import { CustomizeModelButton } from '@studio/components/dataViews/CustomModelsDataView/CustomizeModelButton';
 import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';

@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { SAFE_SYNTHESIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateSafeSynthesizerRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import { gateSafeSynthesizerRoutes, getWorkspaceSafeSynthesizerRoute } from '@studio/routes/utils';
+import { DatabaseCheck } from 'lucide-react';
 import { FC, lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -59,3 +61,15 @@ export const safeSynthesizerRoutes: RouteObject[] = gateSafeSynthesizerRoutes([
     errorElement: <ErrorPanel title="Safe Synthesizer" />,
   },
 ]);
+
+export const getSafeSynthesizerSideNavItems = (workspace: string) =>
+  SAFE_SYNTHESIZER_ENABLED
+    ? [
+        {
+          id: 'safeSynthesizer',
+          slotIcon: <DatabaseCheck className={iconColorClass} />,
+          slotLabel: 'Safe Synthesizer',
+          href: getWorkspaceSafeSynthesizerRoute(workspace),
+        },
+      ]
+    : [];

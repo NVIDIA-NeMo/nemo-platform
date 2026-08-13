@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
 import { Button, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
-import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { writeStoredActiveSessionId } from '@studio/routes/agents/CopilotChatRoute/activeSessionStorage';
-import { CopilotLayout } from '@studio/routes/agents/CopilotChatRoute/CopilotLayout';
-import type { CopilotChatRouteState } from '@studio/routes/agents/CopilotChatRoute/types';
-import { getCopilotChatRoute } from '@studio/routes/utils';
+import { writeStoredActiveSessionId } from '@studio/routes/agents/AssistantChatRoute/activeSessionStorage';
+import { AssistantLayout } from '@studio/routes/agents/AssistantChatRoute/AssistantLayout';
+import type { AssistantChatRouteState } from '@studio/routes/agents/AssistantChatRoute/types';
+import { getAssistantChatRoute } from '@studio/routes/utils';
 import { Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
@@ -57,10 +57,10 @@ const LandingComposer = ({
       data-tour="dashboard-get-started"
     >
       <TextArea
-        aria-label="Message NeMo Copilot"
+        aria-label="Message NeMo Assistant"
         value={input}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value)}
-        placeholder="Message NeMo Copilot"
+        placeholder="Message NeMo Assistant"
         rows={3}
         resizeable="auto"
         className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:outline-none focus-within:ring-0 [&:has(:focus-visible)]:outline-none [&:has(:focus-visible)]:ring-0"
@@ -75,7 +75,7 @@ const LandingComposer = ({
       <Flex className="flex items-center justify-between gap-3 px-1 pt-2">
         <Flex className="flex items-center gap-2 text-secondary">
           <Terminal size={16} />
-          <Text kind="body/regular/sm">NeMo Copilot</Text>
+          <Text kind="body/regular/sm">NeMo Assistant</Text>
         </Flex>
         <Tooltip slotContent="Send">
           <Button
@@ -105,14 +105,14 @@ export const DashboardLandingRoute: FC = () => {
   const handleSubmit = useCallback(
     (prompt: string) => {
       writeStoredActiveSessionId(workspace, null);
-      const state: CopilotChatRouteState = { initialPrompt: prompt };
-      navigate(getCopilotChatRoute(workspace), { state });
+      const state: AssistantChatRouteState = { initialPrompt: prompt };
+      navigate(getAssistantChatRoute(workspace), { state });
     },
     [navigate, workspace]
   );
 
   return (
-    <CopilotLayout hideArtifacts>
+    <AssistantLayout hideArtifacts>
       <AccessibleTitle title="Dashboard">
         <GradientBackground className="h-full w-full">
           <main className="relative flex h-full w-full items-center justify-center px-4 py-10 text-primary">
@@ -128,6 +128,6 @@ export const DashboardLandingRoute: FC = () => {
           </main>
         </GradientBackground>
       </AccessibleTitle>
-    </CopilotLayout>
+    </AssistantLayout>
   );
 };

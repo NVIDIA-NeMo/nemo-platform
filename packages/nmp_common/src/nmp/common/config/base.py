@@ -10,6 +10,7 @@ dependencies (sqlalchemy, etc.) or internal platform logic.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
 from nemo_platform_plugin.config import LOOPBACK_ADDRESSES as LOOPBACK_ADDRESSES
@@ -446,7 +447,27 @@ class AuthConfig(create_service_config_class("auth")):  # ty: ignore[unsupported
                 "auth.oidc.workload_token_key_id or auth.token_signing.key_id must be configured "
                 "when auth.oidc.workload_token_exchange_enabled is true"
             )
+        workload_private_key_file = self._normalized_private_key_file(self.oidc.workload_token_private_key_file)
+        access_key_private_key_file = self._normalized_private_key_file(self.token_signing.private_key_file)
+        if (
+            self.access_keys.enabled
+            and workload_private_key_file
+            and access_key_private_key_file
+            and workload_private_key_file != access_key_private_key_file
+            and key_id.strip() == self.token_signing.key_id.strip()
+        ):
+            raise ValueError(
+                "auth.oidc.workload_token_key_id must be distinct from auth.token_signing.key_id "
+                "when auth.oidc.workload_token_private_key_file differs from "
+                "auth.token_signing.private_key_file and Scoped Access Keys are enabled"
+            )
         return self
+
+    @staticmethod
+    def _normalized_private_key_file(value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return str(Path(value).expanduser().resolve(strict=False))
 
     def get_pdp_url(self, entrypoint: str) -> str:
         # Import lazily to avoid a module cycle: platform_endpoint imports

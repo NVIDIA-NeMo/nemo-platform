@@ -28,6 +28,7 @@ from nemo_platform.cli.core.errors import (
     _format_api_error,
     handle_exception,
 )
+from nemo_platform_plugin.client import errors as plugin_errors
 from typer.testing import CliRunner
 
 DOCUMENTED_REMOTE_ERROR_EXIT_CODE = 3
@@ -58,6 +59,17 @@ def test_format_api_error_fallback_to_str():
     error.message = None
     error.__str__ = Mock(return_value="String representation of error")
     assert _format_api_error(error) == "String representation of error"
+
+
+def test_format_api_error_ignores_non_string_message():
+    class APIErrorLike:
+        body = None
+        message = 404
+
+        def __str__(self) -> str:
+            return "String representation of error"
+
+    assert _format_api_error(APIErrorLike()) == "String representation of error"
 
 
 @pytest.mark.parametrize(
@@ -98,6 +110,62 @@ def test_handle_api_connection_error(capsys):
     captured = capsys.readouterr()
     assert "Connection error:" in captured.err
     assert "base-url" in captured.err
+
+
+def test_handle_plugin_transport_error_as_connection_error(capsys):
+    request = httpx.Request("GET", "http://test/apis/auth/v2/access-keys")
+    error = plugin_errors.NemoTransportError(httpx.ConnectError("Could not connect", request=request))
+
+    with pytest.raises(typer.Exit) as exc_info:
+        handle_exception(error)
+
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
+    captured = capsys.readouterr()
+    assert "Connection error:" in captured.err
+    assert "Request: GET http://test/apis/auth/v2/access-keys" in captured.err
+    assert "base-url" in captured.err
+
+
+def test_handle_plugin_timeout_as_timeout_error(capsys):
+    request = httpx.Request("GET", "http://test/apis/auth/v2/access-keys")
+    error = plugin_errors.NemoTransportError(httpx.ReadTimeout("timed out", request=request))
+
+    with pytest.raises(typer.Exit) as exc_info:
+        handle_exception(error)
+
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
+    captured = capsys.readouterr()
+    assert "Timeout error:" in captured.err
+    assert "Request: GET http://test/apis/auth/v2/access-keys" in captured.err
+    assert "request timed out" in captured.err
+
+
+def test_handle_plugin_response_validation_error(capsys):
+    request = httpx.Request("GET", "http://test/apis/auth/v2/access-keys")
+    response = httpx.Response(200, request=request, json={"unexpected": True})
+    error = plugin_errors.NemoResponseValidationError(response, ValueError("invalid response"))
+
+    with pytest.raises(typer.Exit) as exc_info:
+        handle_exception(error)
+
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
+    captured = capsys.readouterr()
+    assert "API response error:" in captured.err
+    assert "Request: GET http://test/apis/auth/v2/access-keys" in captured.err
+
+
+def test_handle_plugin_unprocessable_entity_error(capsys):
+    request = httpx.Request("POST", "http://test/apis/auth/v2/access-keys")
+    response = httpx.Response(422, request=request, json={"detail": "Invalid key description"})
+    error = plugin_errors.UnprocessableEntityError(response)
+
+    with pytest.raises(typer.Exit) as exc_info:
+        handle_exception(error)
+
+    assert exc_info.value.exit_code == DOCUMENTED_REMOTE_ERROR_EXIT_CODE
+    captured = capsys.readouterr()
+    assert "Invalid input: (422) Invalid key description" in captured.err
+    assert "Check your input values" in captured.err
 
 
 def test_handle_api_timeout_error(capsys):

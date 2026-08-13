@@ -47,7 +47,14 @@ class EntityClient(_PluginEntityClient):
         """
         from nmp.common.observability import MARK_INTERNAL_REQUEST_HEADERS
 
-        headers: dict[str, str] = {"X-NMP-Principal-Id": f"service:{service_name}"}
+        headers: dict[str, str] = {
+            "X-NMP-Principal-Id": f"service:{service_name}",
+            # ``with_options`` merges defaults. Explicitly clear any delegation
+            # inherited from a request-scoped client so this is true elevation.
+            "X-NMP-Principal-On-Behalf-Of": "",
+            "X-NMP-Principal-On-Behalf-Of-Email": "",
+            "X-NMP-Principal-On-Behalf-Of-Groups": "",
+        }
         if internal:
             headers.update(MARK_INTERNAL_REQUEST_HEADERS)
         # with_options merges headers into the client's defaults and shares the

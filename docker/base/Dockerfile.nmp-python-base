@@ -11,6 +11,12 @@
 ARG NMP_PYTHON_IMAGE=python:3.13.14-slim-trixie
 FROM ${NMP_PYTHON_IMAGE} AS nmp-python-base-builder
 
+COPY docker/scripts/collect-apt-sources.sh \
+    docker/scripts/collect-cpython-source.py \
+    docker/scripts/collect-python-sdists.py \
+    docker/scripts/collect-workspace-sdists.py \
+    /usr/local/bin/
+
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
@@ -28,9 +34,9 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/* \
     && pip uninstall --yes setuptools wheel
 
-WORKDIR /app
-
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+
+WORKDIR /app
 
 RUN uv venv --seed --python=3.13 /app/.venv
 

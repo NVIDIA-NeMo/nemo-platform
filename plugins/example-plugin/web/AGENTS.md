@@ -30,19 +30,24 @@ Runtime contract: `../../../web/packages/studio/src/plugins/types.ts`.
 | Deps | externalize the shared set in `vite.config.ts`; bundle the rest | bundle react / react-dom / react-router / foundations |
 
 Studio injects everything a plugin needs through a **single `host` prop**
-(`host.workspaceId`, `host.auth`, `host.sdk`, `host.navigation`,
-`host.notifications`, `host.telemetry`) — grouped so new capabilities extend the
+(`host.workspaceId`, `host.apiBaseUrl`, `host.auth`, `host.sdk`, `host.navigation`,
+`host.notifications`, `host.telemetry`, `host.breadcrumbs`) — grouped so new capabilities extend the
 handle without changing `Root`'s signature. Destructure what you use. All are
 backed by Studio's own singletons: `notifications` fires into Studio's shared
 toaster, `telemetry` logs to Studio's OTEL pipeline (auto-scoped to the plugin),
-`navigation` drives Studio's shared router.
+`navigation` drives Studio's shared router, and `breadcrumbs` writes Studio's
+breadcrumb bar — which lives in GlobalNav, *outside* the plugin's subtree, so a
+plugin cannot render it itself. Studio clears the trail when the plugin
+unmounts, but **not between pages within the plugin**: return a cleanup that
+clears it, or the trail follows you to the next page. See `src/SharedUiPage.tsx`.
 
 `@tanstack/react-query` **is** shared — call `useQuery`/`useMutation` and it reads
 Studio's `QueryClientProvider` (one cache across Studio and every plugin). Put the
 `host.auth.getAccessToken()` Bearer token in your `queryFn`.
 
-Studio's **SDK** arrives on `host.sdk`, not via an import. `host.sdk.platform` is
-the platform service's generated hooks; call them at the top level like any hook
+Studio's **SDK** arrives on `host.sdk`, not via an import. `host.sdk.platform` and
+`host.sdk.agents` are those services' generated hooks and functions; call the hooks
+at the top level like any hook
 (e.g. `host.sdk.platform.useEntitiesListWorkspaces({ page: 1, page_size: 100 })`,
 see `src/Root.tsx`). They run on Studio's one configured axios instance (base URL +
 OIDC interceptor) and the shared QueryClient — a plugin never bundles or
@@ -52,6 +57,12 @@ a private, unpublished package, so it is **not** a dependency here: `src/types.t
 declares a minimal structural `PluginSdk` covering only the hooks this example
 calls. A real plugin either mirrors the calls it needs the same way or, if it can
 resolve the SDK's types, types `host.sdk` as Studio does.
+
+`host.sdk` covers **platform** services only. A plugin that calls *its own*
+service ships its own client, and must prefix every request with
+`host.apiBaseUrl` — Studio's dev-server `/apis` proxy is opt-in, so a bare
+`/apis/...` request hits the dev server rather than the platform whenever
+`VITE_PLATFORM_BASE_URL` is set.
 
 ## Shared UI (`@nemo/common`)
 
@@ -63,7 +74,7 @@ instance Studio renders — same behavior, same styles, no second copy in the
 bundle. See `src/SharedUiPage.tsx`.
 
 ```ts
-import { StudioDataView, useStudioDataViewState } from '@nemo/common';
+import { AssistantChat, StudioDataView, useStudioDataViewState } from '@nemo/common';
 ```
 
 - **Bare specifier only.** A deep `@nemo/common/src/...` import is not
@@ -74,13 +85,54 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
   export is already a tsc error, so `pnpm typecheck` covers that half.
 - **`plugin.ts` is the API.** Need something Studio has but the barrel doesn't
   export? Add it there — additions are cheap, removals are breaking.
+- **Nothing in the barrel may call the API.** The vendor build resolves
+  `@nemo/sdk` to source rather than externalizing it, and defines only
+  `process.env.NODE_ENV` — so a bundled fetcher would read an undefined
+  `import.meta.env` for its base URL and OIDC keys. Type-only SDK imports are
+  fine (they erase). A shared component that needs data takes it as a prop or
+  callback and the caller supplies it from `host.sdk`; `CreateSecretModal`'s
+  `onCreate` and `fetchAllPages`' page fetcher are the pattern.
+- **`AssistantChat` is shared.** A plugin can point it at an authenticated,
+  OpenAI-compatible `baseURL`; Studio supplies its current access token and
+  chat runtime. Use `messageContentProps.markdownLinkComponent` when a plugin
+  owns trusted, in-app citation targets. The plugin should still own the panel,
+  prompts, endpoint, and citation behavior specific to its feature.
 - **Types come from source**, via `paths` in `tsconfig.json`; `@nemo/common` is
   unpublished, so there is nothing to install. `src/env.d.ts` declares the `*.css`
   side-effect imports those sources carry.
+- **Out-of-tree plugins vendor a generated `.d.ts` instead.** A plugin living in
+  its own repository can't use `paths` into these sources — resolving them needs
+  this workspace's `node_modules`, including the unpublished `@nemo/sdk`. The
+  whole surface is rolled up into `packages/common/plugin-types/plugin.d.ts`,
+  which is committed here; a plugin repo copies that file in and points its
+  `paths` at it. Whatever the rolled-up file still imports, the consumer has to
+  resolve — check the `import` lines at the top of it rather than assuming this
+  list is current. Published packages (`class-variance-authority`,
+  `@assistant-ui/react` once the chat surface lands) are plain type-only
+  devDependencies. Only `@nemo/sdk/generated/platform/schema` needs a local stub,
+  because it is unpublished; it contributes `PlatformJobLog` and
+  `PlatformJobStatus`, reached solely through `LogViewer` and the job-status
+  constants, so a dozen structural lines cover it.
+- **Regenerate with `pnpm --filter @nemo/common types:plugin` when you change
+  `plugin.ts`.** The `web-plugin-types` CI job regenerates and fails on a diff,
+  so the artifact can't drift from the surface it describes. It can still drift
+  from a plugin's *copy* — nothing in this repo knows about those — and a stale
+  copy compiles happily against a surface that no longer exists, so refresh it
+  deliberately when the surface moves.
 - **CSS is already loaded.** The vendor build stubs stylesheet imports because
   Studio bundles the same files through its own graph. A plugin adds no CSS.
 - **`useStudioDataViewState` syncs to URL search params** on Studio's shared
   router — two DataViews on one route will fight over them.
+- **Toasts need `onNotify`.** `ToastProvider` is *not* shared: Studio mounts it
+  by deep import, so this bundle carries its own `ToastContext` with nothing in
+  it. `ConfirmationModal`, `DeleteConfirmationModal`, `CreateSecretModal` and
+  `LogViewer` therefore take an `onNotify` prop — pass `host.notifications.notify`
+  and the message lands in Studio's toaster. Omit it and the message is dropped
+  with a `logger.warn`; nothing throws, so the miss is silent in the UI.
+
+  ```tsx
+  <DeleteConfirmationModal onNotify={host.notifications.notify} ... />
+  ```
 
 ## Contract
 
@@ -89,11 +141,22 @@ import { StudioDataView, useStudioDataViewState } from '@nemo/common';
 {
   host: {
     workspaceId: string;
+    apiBaseUrl: string;
     auth: { accessToken: string; getAccessToken: () => string };
-    sdk: { platform: /* @nemo/sdk platform hooks */ };
+    sdk: {
+      platform: /* @nemo/sdk platform hooks */;
+      agents: /* @nemo/sdk agents hooks and functions */;
+    };
     navigation: { navigate: (to: string) => void; back: () => void };
-    notifications: { notify: (message: string, type?: 'success'|'error'|'info'|'warning') => void };
+    notifications: {
+      notify: (
+        message: string,
+        type?: 'success'|'error'|'info'|'warning',
+        options?: { durationMs?: number | false },
+      ) => void;
+    };
     telemetry: { info; warn; error: (m, cause?) => void; event: (name, attrs?) => void };
+    breadcrumbs: { set: (trail: { label: string; href?: string }[]) => void };
   };
 }
 ```

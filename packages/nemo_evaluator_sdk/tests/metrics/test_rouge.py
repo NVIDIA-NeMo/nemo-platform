@@ -179,7 +179,7 @@ class TestROUGEMetric:
 
         metric = ROUGEMetric(reference="{{item.reference}}", candidate="{{item.prediction}}")
         result = Evaluator().run_sync(
-            metrics=metric,
+            metrics=[metric],
             dataset=[{"reference": "the cat sat", "prediction": "the cat sat"}],
         )
         assert len(result.row_scores) == 1

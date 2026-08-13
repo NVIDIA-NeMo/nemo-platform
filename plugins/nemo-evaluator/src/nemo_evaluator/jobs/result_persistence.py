@@ -24,12 +24,13 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
     Target,
 )
+from nemo_evaluator.jobs.utils import run_with_isolated_async_sdk
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
-from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.values import Agent, AgentBase, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
@@ -92,6 +93,8 @@ def _agent_target_fields(target: Target | None) -> tuple[str | None, str | None,
         return "codex", target.model, None
     if isinstance(target, FabricRunnerTarget):
         return "fabric", target.model, None
+    if isinstance(target, GymRunnerTarget):
+        return "gym", target.agent, None
     if isinstance(target, HarborRunnerTarget):
         return "harbor", target.agent_import_path or target.agent_name, None
     return None, None, None
@@ -107,15 +110,20 @@ def _row_target_fields(target: Model | Agent | None) -> tuple[str | None, str | 
 
 
 def _persist(entity: EntityBase, *, async_sdk: AsyncNeMoPlatform | None) -> None:
-    client = _entity_client(async_sdk)
-    if client is None:
+    if async_sdk is None:
         logger.info("No async task SDK injected; skipping result-entity persistence (platformless local run).")
         return
     # Best-effort: the eval has already succeeded and the full bundle is saved, so a transient
     # entity-store error must not fail the job — the record is re-derivable from the bundle. Log
     # loudly and move on. (`save` is create-or-update, so a re-run of the same job id is idempotent.)
     try:
-        run_sync(lambda: client.save(entity))
+
+        async def _save(sdk: AsyncNeMoPlatform) -> EntityBase:
+            client = _entity_client(sdk)
+            assert client is not None
+            return await client.save(entity)
+
+        run_with_isolated_async_sdk(async_sdk, _save)
     except Exception:
         logger.exception(
             "Failed to persist result entity %r in workspace %r; the result bundle is still saved",

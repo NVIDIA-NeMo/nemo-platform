@@ -5,7 +5,7 @@
 """Contract checks for the Evaluator SDK patterns used in these docs.
 
 The Evaluator docs are written against the ``nemo_evaluator`` plugin SDK
-(``evaluator.run(...)`` / ``evaluator.submit(...)``), not the old
+(``evaluator.submit(...)``), not the old
 ``/v2/.../evaluation/metrics/jobs`` REST endpoints. This module validates the
 import paths and call contract that every runnable doc snippet relies on, so the
 docs cannot silently drift from the SDK again.
@@ -92,14 +92,18 @@ def _evaluator() -> Evaluator:
     return client.evaluator
 
 
-def test_packager_param_is_submit_only() -> None:
-    """``submit`` takes ``metric_bundle_packager``; ``run`` (local, in-process) does not."""
+def test_packager_param_is_on_submit() -> None:
+    """``submit`` takes ``metric_bundle_packager``.
+
+    This used to contrast ``submit`` against the local, in-process ``run``, which took no
+    packager because it never crossed a process boundary. That path is gone, so the surviving
+    half of the contract is that the packager rides on ``submit`` — and that ``run`` stays gone.
+    """
     from nemo_evaluator.sdk import Evaluator
 
     submit_params = inspect.signature(Evaluator.submit).parameters
-    run_params = inspect.signature(Evaluator.run).parameters
     assert "metric_bundle_packager" in submit_params
-    assert "metric_bundle_packager" not in run_params
+    assert not hasattr(Evaluator, "run")
 
 
 def test_builtin_submit_does_not_require_a_packager() -> None:
@@ -131,29 +135,6 @@ def test_custom_submit_requires_an_explicit_packager() -> None:
 
     with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
         evaluator.submit(metric=_CustomMetric(), dataset=dataset)
-
-
-def test_run_does_not_require_metric_bundle_packager() -> None:
-    """``run()`` must not impose the submit-only packager requirement.
-
-    ``run`` executes in-process; reaching the executor (which then needs a live
-    service) proves the packager guard did not fire. We only assert the failure
-    is NOT the packager ValueError.
-    """
-    from nemo_evaluator_sdk import ExactMatchMetric
-
-    evaluator = _evaluator()
-    metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
-    dataset = [{"expected": "Paris", "output": "Paris"}]
-
-    try:
-        evaluator.run(metric=metric, dataset=dataset)
-    except ValueError as error:  # pragma: no cover - defensive
-        assert "metric_bundle_packager is required" not in str(error)
-    except Exception:
-        # Any non-ValueError (e.g. connection error to the local runtime) is fine;
-        # it means we got past argument validation.
-        pass
 
 
 def main() -> None:

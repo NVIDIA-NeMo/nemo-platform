@@ -89,8 +89,8 @@ class _RecordingTraceAnalyzer:
         rationale: Any = None,
         insight: Any = None,
         selection_reason: str = "",
-        objective_metrics: list[dict[str, str]] | None = None,
-        regression_metrics: list[dict[str, str]] | None = None,
+        objective_metrics: list[dict[str, Any]] | None = None,
+        regression_metrics: list[dict[str, Any]] | None = None,
         client: Any = None,
         workspace: Any = None,
     ) -> Diagnostic:
@@ -127,8 +127,8 @@ class _SelectTrials:
         agent_id: str,
         dataset: Any,
         evaluation: Any,
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> list[TrialSelection]:
         return [
             TrialSelection(trial_id=trial.id, reason=f"Analyze {trial.id} for this test.") for trial in self._trials
@@ -141,8 +141,8 @@ class _ClassifyFailures:
         agent_id: str,
         diagnoses: Any,
         trials: Any,
-        objective_metrics: list[dict[str, str]],
-        regression_metrics: list[dict[str, str]],
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
     ) -> FailureClassification:
         return FailureClassification(systematic=[], mechanical=[])
 
@@ -154,8 +154,8 @@ class _CompareWithPeers:
         evaluation: Any,
         diagnoses: Any,
         peer_evaluations: Any = None,
-        objective_metrics: list[dict[str, str]] | None = None,
-        regression_metrics: list[dict[str, str]] | None = None,
+        objective_metrics: list[dict[str, Any]] | None = None,
+        regression_metrics: list[dict[str, Any]] | None = None,
     ) -> PeerComparison:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
@@ -204,8 +204,10 @@ def test_peer_comparison_respects_minimize_metric_directions(tmp_path: Path) -> 
         [{"name": "quality", "direction": "maximize"}, {"name": "tokens", "direction": "minimize"}], []
     )
 
-    pairs = analyzer._select_divergent_pairs("focal", focal, {"peer": peer}, directions)
-    complementary = analyzer._find_complementary_failures("focal", focal, {"peer": peer}, directions)
+    pairs = analyzer._select_divergent_pairs("focal", cast(Any, focal), cast(Any, {"peer": peer}), directions)
+    complementary = analyzer._find_complementary_failures(
+        "focal", cast(Any, focal), cast(Any, {"peer": peer}), directions
+    )
 
     assert pairs[0]["winner"] == "peer"
     assert complementary["task-1"]["quality"]["leaders"] == ["focal"]
@@ -277,6 +279,28 @@ async def test_run_threads_metric_contract_into_trace_analyzer(tmp_path: Path, m
 
     assert calls[0]["objective_metrics"] == objective_metrics
     assert calls[0]["regression_metrics"] == regression_metrics
+
+
+@pytest.mark.asyncio
+async def test_run_threads_numeric_objective_targets_into_trace_analyzer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Check that trace analysis receives a numeric objective target."""
+    calls: list[dict[str, Any]] = []
+    _install_fakes(monkeypatch, calls)
+    trial, dataset, evaluation = _fixtures()
+    analyzer = _make_analyzer(tmp_path, [trial])
+    objective_metrics = [{"name": "reward", "direction": "maximize", "target": 1.0}]
+
+    await analyzer.run(
+        agent="agent-a",
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round=0,
+        objective_metrics=objective_metrics,
+    )
+
+    assert calls[0]["objective_metrics"] == objective_metrics
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@
     "test:ci": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:once": "vitest --run",
+    "types:plugin": "tsx scripts/build-plugin-types.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -35,9 +36,11 @@
     "react-dom": "catalog:",
     "react-oidc-context": "catalog:",
     "react-router": "catalog:",
+    "recharts": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@hookform/resolvers": "^4.1.3",
     "@nemo/testing": "workspace:*",
     "@storybook/react": "catalog:",
     "@testing-library/dom": "catalog:",
@@ -53,7 +56,10 @@
     "happy-dom": "catalog:",
     "msw": "catalog:",
     "p-limit": "catalog:",
+    "react-dropzone": "catalog:",
     "react-hook-form": "catalog:",
+    "rolldown": "^1.2.2",
+    "rolldown-plugin-dts": "^0.28.2",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -77,6 +83,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@opentelemetry/api-logs": "^0.219.0",
     "@tanstack/match-sorter-utils": "^8.19.4",
     "@tanstack/react-table": "8.20.5",
     "@tanstack/react-virtual": "3.13.6",

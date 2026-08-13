@@ -1,9 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { EVALUATOR_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateEvaluationBenchmarksRoutes, gateEvaluationRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import {
+  gateEvaluationBenchmarksRoutes,
+  gateEvaluationRoutes,
+  getEvaluationResultsRoute,
+} from '@studio/routes/utils';
+import { ChartBar } from 'lucide-react';
 import { lazy } from 'react';
 import { Navigate, type RouteObject } from 'react-router';
 
@@ -58,3 +65,16 @@ export const evaluationRoutes: RouteObject[] = gateEvaluationRoutes([
     ],
   },
 ]);
+
+export const getEvaluationSideNavItems = (workspace: string) =>
+  EVALUATOR_ENABLED
+    ? [
+        {
+          id: 'evaluation-results',
+          slotIcon: <ChartBar className={iconColorClass} />,
+          // Qualified: the rail hoists this out of Models, next to the agent evaluations link.
+          slotLabel: 'Model Evaluations',
+          href: getEvaluationResultsRoute(workspace),
+        },
+      ]
+    : [];

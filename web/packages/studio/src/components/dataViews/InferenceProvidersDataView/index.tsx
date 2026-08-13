@@ -10,11 +10,14 @@
  * its affiliates is strictly prohibited.
  */
 
+import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
+import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -32,9 +35,6 @@ import {
   ModelProviderSort,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
-import { getErrorMessage } from '@studio/api/common/utils';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { LINK_DOCS_INFERENCE_PROVIDERS } from '@studio/constants/links';
 import { EditInferenceProviderModal } from '@studio/routes/InferenceProvidersListRoute/EditInferenceProviderModal';
 import { InferenceProviderDetailsSidePanel } from '@studio/routes/InferenceProvidersListRoute/InferenceProviderDetailsSidePanel';

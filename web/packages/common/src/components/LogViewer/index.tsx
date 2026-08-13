@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useStickToBottom } from '@nemo/common/src/hooks/useStickToBottom';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import type { NotifyFn } from '@nemo/common/src/providers/toast/types';
+import { useNotify } from '@nemo/common/src/providers/toast/useNotify';
 import { triggerDownload } from '@nemo/common/src/utils/file';
 import { formatLogs } from '@nemo/common/src/utils/logs';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
@@ -27,6 +28,8 @@ interface LogViewerProps {
   downloadFilename?: string;
   rows?: number;
   emptyMessage?: string;
+  /** Where the copy confirmation goes. Defaults to the surrounding ToastProvider; plugins pass `host.notifications.notify`. */
+  onNotify?: NotifyFn;
 }
 
 export const LogViewer: FC<LogViewerProps> = ({
@@ -35,6 +38,7 @@ export const LogViewer: FC<LogViewerProps> = ({
   downloadFilename,
   rows = DEFAULT_ROW_COUNT,
   emptyMessage = 'No logs available yet',
+  onNotify,
 }) => {
   const [showAllLogs, setShowAllLogs] = useState(false);
   const [wrapLines, setWrapLines] = useState(false);
@@ -45,7 +49,7 @@ export const LogViewer: FC<LogViewerProps> = ({
 
   const isShowingLogs = useMemo(() => logs.length > 0 && !isLoading, [logs.length, isLoading]);
 
-  const { success } = useToast();
+  const notify = useNotify(onNotify);
 
   const { ref: codeScrollRef, scrollToBottom } = useStickToBottom<HTMLDivElement>({
     enabled: isShowingLogs,
@@ -87,7 +91,7 @@ export const LogViewer: FC<LogViewerProps> = ({
         kind="block"
         collapsible={false}
         rows={rows}
-        onCopySuccess={() => success('Copied to clipboard!', { durationMs: 3000 })}
+        onCopySuccess={() => notify('Copied to clipboard!', 'success', { durationMs: 3000 })}
         className="min-h-auto h-full"
         attributes={{
           CodeSnippetCode: {

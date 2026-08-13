@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 import {
   getModelsListModelsQueryKey,
   getProviderProxyGetQueryKey,
@@ -19,7 +20,6 @@ import {
   SidePanel,
   Stack,
 } from '@nvidia/foundations-react-core';
-import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { Empty } from '@studio/components/Empty';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ModelChat } from '@studio/components/ModelChat';

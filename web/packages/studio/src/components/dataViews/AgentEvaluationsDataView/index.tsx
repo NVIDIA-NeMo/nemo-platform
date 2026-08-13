@@ -7,6 +7,7 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -26,7 +27,6 @@ import {
 import { Button } from '@nvidia/foundations-react-core';
 import { agentNameForJob, evalConfigName } from '@studio/api/evaluation/agent-evaluations';
 import { BulkDeleteModal } from '@studio/components/BulkDeleteModal';
-import { QuickActionsMenuRoot } from '@studio/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { STATUS_FILTER_OPTIONS } from '@studio/constants/platformJobs';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getAgentEvaluationDetailRoute, getFilesetRoute } from '@studio/routes/utils';

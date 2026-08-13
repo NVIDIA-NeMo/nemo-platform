@@ -2100,6 +2100,7 @@ components:
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -2271,6 +2272,7 @@ components:
           - $ref: '#/components/schemas/AgentTarget'
           - $ref: '#/components/schemas/CodexRunnerTarget'
           - $ref: '#/components/schemas/FabricRunnerTarget'
+          - $ref: '#/components/schemas/GymRunnerTarget'
           - $ref: '#/components/schemas/HarborRunnerTarget'
           title: Target
           description: 'What generates trials online: a Model or Agent endpoint, or
@@ -3113,6 +3115,11 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/RowPublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result artifacts. Omit to publish nowhere.
         metrics:
           items:
             anyOf:
@@ -3444,6 +3451,11 @@ components:
           - $ref: '#/components/schemas/FieldMapping'
           description: Optional mapping from canonical evaluator fields to dataset
             columns.
+        publication:
+          allOf:
+          - $ref: '#/components/schemas/RowPublicationSpec'
+          description: Where the completed run publishes its results, beyond its own
+            result artifacts. Omit to publish nowhere.
         metrics:
           items:
             $ref: '#/components/schemas/MetricInline'
@@ -3459,6 +3471,64 @@ components:
       title: EvaluateSpec
       description: Canonical SDK evaluation spec with platform model and metric references
         resolved.
+    EvaluatorTaskDefinition:
+      properties:
+        kind:
+          type: string
+          const: evaluator
+          title: Kind
+          description: Task kind discriminator.
+        intent:
+          type: string
+          title: Intent
+          description: Human-readable description of the desired agent behavior.
+        inputs:
+          allOf:
+          - $ref: '#/components/schemas/TaskInputs'
+          description: The task's recognized input fields.
+        metrics:
+          items:
+            anyOf:
+            - $ref: '#/components/schemas/MetricInline'
+            - $ref: '#/components/schemas/MetricRef'
+          type: array
+          title: Metrics
+          description: "Metrics that score this task \u2014 stored-metric references,\
+            \ and inline bundles on create (normalized to derived stored metrics before\
+            \ the task is persisted)."
+        reference:
+          additionalProperties: true
+          type: object
+          title: Reference
+          description: 'Grader-only ground truth (held-out tests, expected outputs,
+            rubric data). Surfaced to metrics but never seeded into the agent''s workspace
+            or shown to the agent, so a metric can grade against artifacts the agent
+            cannot influence. Held out from the *agent*, not from the API: anyone
+            who can read the task can read this.'
+        views:
+          additionalProperties:
+            $ref: '#/components/schemas/SemanticView'
+          type: object
+          title: Views
+          description: Optional reporting views mapping metric outputs into named
+            semantic scores.
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - intent
+      title: EvaluatorTaskDefinition
+      description: "What the agent should do, and how the platform scores it.\n\n\
+        ``metrics`` accepts inline bundles on the way in and holds references once\
+        \ stored: the service\noffloads an inline metric to a content-addressed *derived*\
+        \ metric on create, so a persisted task\nonly ever names metrics it does not\
+        \ own. That narrowing is a service invariant rather than a\ntype-level one\
+        \ \u2014 a single model keeps the API surface small, at the cost of this field\
+        \ being\nwider than what a stored task actually contains.\n\nEvery field here\
+        \ is covered by the revision digest, ``reference`` included: it decides what\
+        \ a\nmetric grades against, so two revisions that score differently must not\
+        \ share a digest. Pinning\na revision therefore fixes the grading, not just\
+        \ the prompt."
     EvidenceDescriptor:
       anyOf:
       - required:
@@ -3676,6 +3746,93 @@ components:
       - format
       title: GenericAgent
       description: Configurable HTTP agent with optional JSON SSE response handling.
+    GymRunnerTarget:
+      properties:
+        kind:
+          type: string
+          const: gym
+          title: Kind
+          default: gym
+        agent:
+          type: string
+          title: Agent
+          description: Agent name to collect rollouts with, e.g. 'simple_agent'.
+        agent_config:
+          type: string
+          title: Agent Config
+          description: Repo-relative agent config passed to `gym env start` (--config).
+        resources_server:
+          type: string
+          title: Resources Server
+          description: Resources-server (environment) name, e.g. 'mcqa' (--resources-server).
+        model_type:
+          type: string
+          title: Model Type
+          description: Model-type config (--model-type). `inference_provider` speaks
+            OpenAI-compatible chat; `openai_model` uses the OpenAI Responses API.
+          default: inference_provider
+        bind_resources_server:
+          type: boolean
+          title: Bind Resources Server
+          description: Auto-bind the agent's `resources_server.name` via a Hydra override.
+            Set False for self-contained agents that already bind their own resources-server.
+          default: true
+        env_overrides:
+          additionalProperties: true
+          type: object
+          title: Env Overrides
+          description: "Extra config overrides for `gym env start`, as nested data\
+            \ \u2014 {'model': {'temperature': 0.7}} rather than pre-serialized Hydra\
+            \ strings \u2014 so a spec survives being sent as JSON. Flattened to Hydra's\
+            \ grammar at invocation, after the auto-derived resources-server binding."
+        num_repeats:
+          type: integer
+          minimum: 1.0
+          title: Num Repeats
+          description: Attempts per row; each attempt becomes one trial.
+          default: 1
+        concurrency:
+          type: integer
+          minimum: 1.0
+          title: Concurrency
+          description: Concurrent rollouts for `gym eval run`.
+          default: 4
+        startup_timeout_s:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Startup Timeout S
+          description: Max wait for `gym env start` readiness.
+          default: 240.0
+        collection_timeout_s:
+          title: Collection Timeout S
+          description: Max wait for `gym eval run` collection; None = unbounded.
+          type: number
+          exclusiveMinimum: 0.0
+        shutdown_grace_s:
+          type: number
+          exclusiveMinimum: 0.0
+          title: Shutdown Grace S
+          description: Grace period for the Gym subprocess group to exit on SIGTERM
+            before escalating to SIGKILL.
+          default: 30.0
+        reward_key:
+          type: string
+          title: Reward Key
+          description: Key read from each rollout record.
+          default: reward
+      additionalProperties: false
+      type: object
+      required:
+      - agent
+      - agent_config
+      - resources_server
+      title: GymRunnerTarget
+      description: "Generate trials by driving a NeMo Gym environment through the\
+        \ SDK's :class:`GymAgentTaskRunner`.\n\nGym runs locally in the job container\
+        \ (the ``gym`` CLI must be installed in the same environment\nas this SDK).\
+        \ The environment dataset is recovered from the tasks at run time \u2014 the\
+        \ runner stamps\n``gym_dataset_path`` onto each task via ``discover_gym_tasks``,\
+        \ mirroring the Harbor pattern."
     HTTPValidationError:
       properties:
         detail:
@@ -3762,6 +3919,60 @@ components:
 
         injected from the job''s storage at run time; only the harness-selection and
         run knobs live here.'
+    HarborTaskDefinition:
+      properties:
+        kind:
+          type: string
+          const: harbor
+          title: Kind
+          description: Task kind discriminator.
+        archive_ref:
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
+          title: Archive Ref
+          description: 'Files reference to the task''s packaged directory (format:
+            workspace/fileset#path).'
+        archive_digest:
+          type: string
+          maxLength: 64
+          minLength: 64
+          pattern: ^[0-9a-f]{64}$
+          title: Archive Digest
+          description: "Content hash Harbor computed over the task directory. This\
+            \ is the authoritative identity of a Harbor task's content \u2014 every\
+            \ file, including task.toml."
+        instruction:
+          title: Instruction
+          description: The task's instruction text, when it has one (multi-step tasks
+            may not).
+          type: string
+        config:
+          additionalProperties: true
+          type: object
+          title: Config
+          description: "Harbor's own task configuration (verifier, agent, environment,\
+            \ steps), as published. A queryable projection of task.toml \u2014 inspect\
+            \ a task's verifier without downloading the archive. Opaque here: Harbor\
+            \ owns this schema."
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - archive_ref
+      - archive_digest
+      title: HarborTaskDefinition
+      description: "A reference to the task's packaged files, plus a projection of\
+        \ Harbor's own config.\n\nHarbor identifies a task by a *directory* \u2014\
+        \ ``task.toml``, an instruction, an environment \u2014 so\nwhat is stored\
+        \ is a reference to that directory's archive in the Files service, not the\
+        \ files\nthemselves. One fileset per task, so a task shared by several tasksets\
+        \ is stored once. The\narchive is materialized back into ``<dir>/<task-name>/``\
+        \ at run time, which is the layout\nHarbor's own discovery expects.\n\nWhich\
+        \ agent runs the task is *not* stored here. That comes from the run's target\n\
+        (``HarborRunnerTarget``), so the same stored task can be evaluated against\
+        \ different agents.\nHarbor's own ``[agent]`` block \u2014 carried inside\
+        \ ``config`` \u2014 configures how the agent *phase*\nruns (timeout, user,\
+        \ network policy), not which agent it is."
     HelloResponse:
       properties:
         message:
@@ -4684,8 +4895,7 @@ components:
       additionalProperties: false
       type: object
       title: PublicationSpec
-      description: Where a completed run publishes its results, beyond its own result
-        bundle.
+      description: Where a completed agent-evaluation run publishes its results.
     ReasoningParams:
       properties:
         end_token:
@@ -4801,6 +5011,65 @@ components:
       required:
       - data
       title: RevisionsPage
+    RowIntakePublicationSpec:
+      properties:
+        evaluation_id:
+          type: string
+          minLength: 1
+          title: Evaluation Id
+          description: Name of the existing Evaluation to publish under. Must already
+            exist; the job does not create it.
+        agent_name:
+          title: Agent Name
+          description: Agent name recorded on each published trajectory. Derived from
+            the target when it names one; required otherwise.
+          type: string
+          minLength: 1
+        agent_version:
+          type: string
+          minLength: 1
+          title: Agent Version
+          description: Agent version recorded on each published trajectory. Neither
+            a Model nor an Agent carries a version, so this defaults to 'unknown'
+            unless the submitter supplies one.
+          default: unknown
+        required:
+          type: boolean
+          title: Required
+          description: Fail the job when publication fails. Defaults to True so a
+            run that asked to publish does not report success with nothing in Experiments.
+            The result bundle is saved before publication runs, so a failed job still
+            leaves the results intact to re-publish. Set False to keep the job successful
+            and report the failure in its output instead.
+          default: true
+        test_case_id_field:
+          title: Test Case Id Field
+          description: "Dataset column identifying each row, recorded as the published\
+            \ test case id. Defaults to a hash of the row's content, which keeps a\
+            \ row's id stable across dataset reorderings and revisions so the same\
+            \ test case can be compared run over run; editing a row makes it a new\
+            \ test case. Name a column here when the dataset has a real identifier\
+            \ \u2014 it reads better and survives content edits. Values must be unique\
+            \ per row; the run is rejected if they are not."
+          type: string
+          minLength: 1
+      additionalProperties: false
+      type: object
+      required:
+      - evaluation_id
+      title: RowIntakePublicationSpec
+      description: Intake publication for a dataset-driven evaluation, where a trial
+        is a dataset row.
+    RowPublicationSpec:
+      properties:
+        intake:
+          allOf:
+          - $ref: '#/components/schemas/RowIntakePublicationSpec'
+          description: Publish scored rows to Intake. Omit to publish nowhere.
+      additionalProperties: false
+      type: object
+      title: RowPublicationSpec
+      description: Where a completed dataset-driven evaluation publishes its results.
     RubricScoreStat:
       properties:
         label:
@@ -5024,29 +5293,18 @@ components:
           title: Project
           description: The project associated with this task.
           type: string
-        intent:
-          type: string
-          title: Intent
-          description: Human-readable description of the desired agent behavior.
-        inputs:
-          allOf:
-          - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
-        metrics:
-          items:
-            $ref: '#/components/schemas/MetricRef'
-          type: array
-          title: Metrics
-          description: References to the metrics that score this task; inline metrics
-            submitted on create are normalized to (derived) stored metrics, so a stored
-            task holds refs only.
-        views:
-          additionalProperties:
-            $ref: '#/components/schemas/SemanticView'
-          type: object
-          title: Views
-          description: Optional reporting views mapping metric outputs into named
-            semantic scores.
+        spec:
+          oneOf:
+          - $ref: '#/components/schemas/EvaluatorTaskDefinition'
+          - $ref: '#/components/schemas/HarborTaskDefinition'
+          title: Spec
+          description: The task's content, discriminated by which runner executes
+            it.
+          discriminator:
+            propertyName: kind
+            mapping:
+              evaluator: '#/components/schemas/EvaluatorTaskDefinition'
+              harbor: '#/components/schemas/HarborTaskDefinition'
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5083,7 +5341,7 @@ components:
       - id
       - name
       - workspace
-      - intent
+      - spec
       - revision
       - created_at
       - updated_at
@@ -5118,30 +5376,18 @@ components:
       type: object
     TaskInput:
       properties:
-        intent:
-          type: string
-          title: Intent
-          description: Human-readable description of the desired agent behavior.
-        inputs:
-          allOf:
-          - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
-        metrics:
-          items:
-            anyOf:
-            - $ref: '#/components/schemas/MetricInline'
-            - $ref: '#/components/schemas/MetricRef'
-          type: array
-          title: Metrics
-          description: "Metrics that score this task \u2014 inline bundles and/or\
-            \ stored-metric refs."
-        views:
-          additionalProperties:
-            $ref: '#/components/schemas/SemanticView'
-          type: object
-          title: Views
-          description: Optional reporting views mapping metric outputs into named
-            semantic scores.
+        spec:
+          oneOf:
+          - $ref: '#/components/schemas/EvaluatorTaskDefinition'
+          - $ref: '#/components/schemas/HarborTaskDefinition'
+          title: Spec
+          description: The task's content, discriminated by which runner executes
+            it.
+          discriminator:
+            propertyName: kind
+            mapping:
+              evaluator: '#/components/schemas/EvaluatorTaskDefinition'
+              harbor: '#/components/schemas/HarborTaskDefinition'
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5158,7 +5404,7 @@ components:
       additionalProperties: false
       type: object
       required:
-      - intent
+      - spec
       title: TaskInput
       description: "Create/replace body for a stored task (the name comes from the\
         \ path).\n\nThe authorable subset of :class:`Task` \u2014 the SDK ``AgentEvalTask``\

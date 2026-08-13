@@ -20,8 +20,8 @@ vi.mock('@studio/routes/PageLayout/ThemeSwitch', () => ({
   ThemeSwitch: () => <div data-testid="theme-switch" />,
 }));
 
-vi.mock('@studio/routes/agents/CopilotChatRoute/CopilotTopBarChat', () => ({
-  CopilotTopBarChat: () => <div data-testid="copilot-top-bar-chat" />,
+vi.mock('@studio/routes/agents/AssistantChatRoute/AssistantTopBarChat', () => ({
+  AssistantTopBarChat: () => <div data-testid="assistant-top-bar-chat" />,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {
@@ -89,30 +89,30 @@ describe('GlobalNav', () => {
       expect(screen.getByText('NeMo Studio')).toBeInTheDocument();
     });
 
-    it('starts collapsed on the NeMo Copilot route when no preference is saved', async () => {
+    it('starts collapsed on the NeMo Assistant route when no preference is saved', async () => {
       createMatchMediaMock(true);
 
       await renderGlobalNav(
-        generatePath(ROUTES.workspace.copilotChat, { workspace: 'test-workspace' })
+        generatePath(ROUTES.workspace.assistantChat, { workspace: 'test-workspace' })
       );
 
       expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
       expect(screen.queryByText('NeMo Studio')).not.toBeInTheDocument();
     });
 
-    it('respects a saved expanded preference on the NeMo Copilot route', async () => {
+    it('respects a saved expanded preference on the NeMo Assistant route', async () => {
       localStorage.setItem(SIDE_NAV_OPEN_KEY, JSON.stringify('true'));
       createMatchMediaMock(true);
 
       await renderGlobalNav(
-        generatePath(ROUTES.workspace.copilotChat, { workspace: 'test-workspace' })
+        generatePath(ROUTES.workspace.assistantChat, { workspace: 'test-workspace' })
       );
 
       expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument();
       expect(screen.getByText('NeMo Studio')).toBeInTheDocument();
     });
 
-    it('uses the NeMo Copilot default during in-app navigation', async () => {
+    it('uses the NeMo Assistant default during in-app navigation', async () => {
       createMatchMediaMock(true);
       const { GlobalNav } = await import('@studio/components/Layouts/GlobalNav/index');
       const router = createMemoryRouter(
@@ -132,7 +132,7 @@ describe('GlobalNav', () => {
 
       await act(async () => {
         await router.navigate(
-          generatePath(ROUTES.workspace.copilotChat, { workspace: 'test-workspace' })
+          generatePath(ROUTES.workspace.assistantChat, { workspace: 'test-workspace' })
         );
       });
 
@@ -234,13 +234,13 @@ describe('GlobalNav', () => {
     });
   });
 
-  describe('NeMo Copilot top bar chat', () => {
-    it('mounts outside the dashboard and full NeMo Copilot routes', async () => {
+  describe('NeMo Assistant top bar chat', () => {
+    it('mounts outside the dashboard and full NeMo Assistant routes', async () => {
       createMatchMediaMock(true);
 
       await renderGlobalNav('/workspaces/test-workspace/jobs');
 
-      expect(screen.getByTestId('copilot-top-bar-chat')).toBeInTheDocument();
+      expect(screen.getByTestId('assistant-top-bar-chat')).toBeInTheDocument();
     });
 
     it('does not mount on the dashboard route', async () => {
@@ -250,17 +250,17 @@ describe('GlobalNav', () => {
         generatePath(ROUTES.workspace.dashboard, { workspace: 'test-workspace' })
       );
 
-      expect(screen.queryByTestId('copilot-top-bar-chat')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('assistant-top-bar-chat')).not.toBeInTheDocument();
     });
 
-    it('does not mount on the full NeMo Copilot route', async () => {
+    it('does not mount on the full NeMo Assistant route', async () => {
       createMatchMediaMock(true);
 
       await renderGlobalNav(
-        generatePath(ROUTES.workspace.copilotChat, { workspace: 'test-workspace' })
+        generatePath(ROUTES.workspace.assistantChat, { workspace: 'test-workspace' })
       );
 
-      expect(screen.queryByTestId('copilot-top-bar-chat')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('assistant-top-bar-chat')).not.toBeInTheDocument();
     });
   });
 });

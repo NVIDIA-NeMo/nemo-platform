@@ -9,9 +9,11 @@ before beginning insight-driven optimization.
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from nemo_eval_author_plugin import traces
 from nemo_eval_author_plugin.eval_author.materialization import InsightSuite, validate_metric_contracts
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig, EvalAuthorResult, MetricAuthoringResult
 from nemo_experimentalist_plugin.entities import (
@@ -21,7 +23,6 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
 )
-from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (
     Diagnostic,
@@ -76,6 +77,10 @@ class EvalAuthor(Agent):
         self._config = config or EvalAuthorConfig()
         self._reporter = reporter
         self.experiment_dir = experiment_dir
+        # Set by the standalone entry point before it queries production traces. The
+        # Experimentalist path leaves both unset and passes a client to ``run`` instead.
+        self.client: AsyncNeMoPlatform | None = None
+        self.workspace: str | None = None
         self.shell = GuardedShellTools(cwd=experiment_dir)
         self.todos = TodoManager()
         self.context["trace_documentation"] = doc(
@@ -91,6 +96,107 @@ class EvalAuthor(Agent):
             llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
+
+    def _intake(self) -> tuple[AsyncNeMoPlatform, str]:
+        """Return the client and workspace for Intake reads, or name what is missing."""
+        if self.client is None or self.workspace is None:
+            raise traces.TraceQueryError(
+                "Production trace tools need a platform client and a workspace. Set "
+                "EvalAuthor.client and EvalAuthor.workspace before you call them."
+            )
+        return self.client, self.workspace
+
+    async def query_spans(
+        self,
+        filter: dict[str, Any] | None = None,
+        group_by: str | None = None,
+        sort: str | None = None,
+        mode: str = "summary",
+        limit: int = traces.DEFAULT_ROW_LIMIT,
+    ) -> dict[str, Any]:
+        """Query production spans from Intake, flat or rolled up into groups.
+
+        Use this to find which traces are worth opening, not to read what happened in
+        them. A span is one step of a trajectory, so on its own it hides what led to it
+        and what followed: a slow call may be waiting on the retry before it, and an
+        error may be one the next span handles. Every row carries ``trace_ref``, so open
+        the trace with ``read_trace`` before you quote a span, treat it as evidence, or
+        turn it into a test case.
+
+        Write your own filter. The server does the narrowing, which is exact, so
+        prefer one precise filter over counting a wide result yourself. Group by
+        ``trace_id`` to turn any filter into the set of traces that match it, newest
+        first, then pass those ids to ``query_traces``. Grouped rows also sort by
+        ``-span_count`` when you want the busiest traces instead of the newest.
+
+        See ``nemo_eval_author_plugin.traces.query_spans`` for the filter vocabulary.
+        """
+        client, workspace = self._intake()
+        return await traces.query_spans(
+            client,
+            workspace=workspace,
+            filter=filter,
+            group_by=group_by,
+            sort=sort,
+            mode=mode,
+            limit=limit,
+        )
+
+    async def query_traces(
+        self,
+        filter: dict[str, Any] | None = None,
+        sort: str | None = None,
+        mode: str = "preview",
+        limit: int = traces.DEFAULT_ROW_LIMIT,
+    ) -> dict[str, Any]:
+        """Query whole traces, with the rollups that the server computes.
+
+        A trace row carries the exact ``span_count`` and ``error_count`` of the whole
+        trace, which a capped span query cannot give you. There is no ``agent_name``
+        filter here, because only spans carry it; use ``find_agent_traces`` instead.
+
+        See ``nemo_eval_author_plugin.traces.query_traces`` for the filter vocabulary.
+        """
+        client, workspace = self._intake()
+        return await traces.query_traces(client, workspace=workspace, filter=filter, sort=sort, mode=mode, limit=limit)
+
+    async def find_agent_traces(
+        self,
+        agent: str,
+        since: datetime | None = None,
+        limit: int = traces.DEFAULT_TRACE_LIMIT,
+    ) -> dict[str, Any]:
+        """Find the most recent production traces of one agent, newest first.
+
+        Start here when you need real traces and hold no trace refs. No single
+        endpoint answers this, so it groups spans by trace to find the recent ones
+        and then reads their summaries. Open the ones worth reading with
+        ``read_trace``.
+
+        Args:
+            agent: Value that the agent reports to Intake as ``agent_name``.
+            since: Optional lower bound on span start time.
+            limit: Maximum number of traces to return.
+
+        Returns:
+            ``{"traces": [...], "count": int, "truncated": bool}``. Each trace carries
+            ``trace_ref``, ``trace_id``, ``started_at``, ``status``, ``span_count``,
+            ``error_count``, ``duration_ms``, and ``name``.
+        """
+        client, workspace = self._intake()
+        return await traces.find_agent_traces(client, agent=agent, workspace=workspace, since=since, limit=limit)
+
+    async def read_trace(self, ref: str) -> TraceExplorer:
+        """Read one production trace in full.
+
+        Args:
+            ref: A ``trace_ref`` from ``find_agent_traces``, or one from an Insight.
+
+        Returns:
+            A ``TraceExplorer`` over the trace. See the trace documentation in context.
+        """
+        client, workspace = self._intake()
+        return await traces.read_trace(client, ref, workspace=workspace)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=15, cell_timeout=60.0)))
     async def discover_runner(self, dataset: Dataset) -> str:
@@ -379,7 +485,6 @@ class EvalAuthor(Agent):
                     reporter.note(f"trace analysis failed for {ref}: {result}")
                 analysis_statuses[task.id] = ("failed", str(result))
                 continue
-            cache.store(self.experiment_dir, cache.task_hash(f"eval_author:{ref}"), result)
             diagnostics.append((ref, result))
             analysis_statuses[task.id] = ("completed", None)
         insight_suite.record_analysis(analysis_statuses)

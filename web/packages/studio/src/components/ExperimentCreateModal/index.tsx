@@ -13,6 +13,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import { getListExperimentsQueryKey, useCreateExperiment } from '@nemo/sdk/generated/platform/api';
 import {
   CodeSnippet,
@@ -32,7 +33,6 @@ import {
   experimentCreateSchema,
   type ExperimentCreateFormFields,
 } from '@studio/components/ExperimentCreateModal/constants';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { AxiosError } from 'axios';
 import { useState, type FC } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
@@ -137,7 +137,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
       <TabsRoot defaultValue="create" className="w-full min-w-0">
         <TabsList>
           <TabsTrigger value="create">Create experiment</TabsTrigger>
-          <TabsTrigger value="copilot">NeMo Copilot</TabsTrigger>
+          <TabsTrigger value="assistant">NeMo Assistant</TabsTrigger>
           <TabsTrigger value="cli">CLI command</TabsTrigger>
         </TabsList>
 
@@ -180,7 +180,7 @@ export const ExperimentCreateModal: FC<ExperimentCreateModalProps> = ({
           </Stack>
         </TabsContent>
 
-        <TabsContent value="copilot" className="px-0 w-full">
+        <TabsContent value="assistant" className="px-0 w-full">
           <CodeSnippet
             className="min-w-full"
             value="To be determined"

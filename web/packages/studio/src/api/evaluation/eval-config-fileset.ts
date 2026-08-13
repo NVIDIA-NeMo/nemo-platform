@@ -26,6 +26,9 @@ const isCanceledError = (err: unknown): boolean => {
   return e?.name === 'AbortError' || e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED';
 };
 
+/** Fileset name for an agent's eval bundle. */
+export const evalFilesetForAgent = (agentName: string): string => `${agentName}-eval`;
+
 export const SAMPLE_EVAL_CONFIG_PATH = 'react-eval.yml';
 export const SAMPLE_EVAL_DATA_PATH = 'react-eval-data.json';
 

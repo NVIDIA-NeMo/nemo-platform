@@ -13,6 +13,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';
 import {
   getEntitiesListWorkspacesQueryKey,
   useEntitiesCreateWorkspace,
@@ -21,7 +22,6 @@ import { FormField, Stack, TextArea, TextInput } from '@nvidia/foundations-react
 import { queryClient } from '@studio/api/queryClient';
 import { workspaceCreateSchema } from '@studio/constants/zod';
 import { getWorkspaceDetailsDefaultRoute } from '@studio/routes/utils';
-import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { AxiosError } from 'axios';
 import { FC } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
