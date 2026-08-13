@@ -74,11 +74,92 @@ def test_render_instruction_from_string_messages_and_parts() -> None:
     assert _render_instruction(parts) == "part"
 
 
-def test_render_instruction_fails_loudly_when_empty() -> None:
-    with pytest.raises(ValueError):
-        _render_instruction({"input": ""})
-    with pytest.raises(ValueError):
-        _render_instruction({})
+def test_render_instruction_is_empty_rather_than_fatal_when_the_row_carries_no_prompt() -> None:
+    # A whole class of Gym environments ships `{"input": []}` and materializes the prompt elsewhere.
+    # Rendering must report "no prompt", not fail the dataset.
+    assert _render_instruction({"input": ""}) == ""
+    assert _render_instruction({"input": []}) == ""
+    assert _render_instruction({}) == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "row"),
+    [
+        # Shapes taken verbatim from the five affected environments' data/example.jsonl.
+        ("gdpval", {"responses_create_params": {"input": []}, "task_id": "83d10b06", "prompt": "You are an auditor…"}),
+        (
+            "legal_agent_bench",
+            {
+                "agent_ref": {"name": "legal_agent_bench_harbor_agent", "type": "responses_api_agents"},
+                "instance_id": "legal_agent_bench::corporate-ma__analyze-tsa-markup",
+                "responses_create_params": {"input": [], "temperature": 1.0, "top_p": 0.95},
+            },
+        ),
+        ("aviary", {"task_idx": 0, "responses_create_params": {"input": []}, "agent_ref": {"name": "gsm8k_aviary"}}),
+        ("scicode", {"responses_create_params": {"input": []}, "problem_id": "10", "sub_steps": [{"step": "10.1"}]}),
+        ("toolsandbox", {"task_idx": 0, "responses_create_params": {"input": []}}),
+    ],
+)
+def test_discover_gym_tasks_ingests_rows_with_no_prompt(name: str, row: dict, tmp_path: Path) -> None:
+    # AALGO-498: these environments could not be ingested at all — discovery raised before a run began.
+    dataset = tmp_path / f"{name}.jsonl"
+    dataset.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    (task,) = discover_gym_tasks(dataset)
+
+    # No instruction is *absent*, not empty: agent_prompt() must still refuse to run an agent on nothing.
+    assert "instruction" not in task.inputs
+    with pytest.raises(ValueError, match="has no instruction"):
+        task.agent_prompt()
+    # ...but everything the Gym path actually needs survives: the row round-trips whole.
+    assert task.inputs["gym_row"] == row["responses_create_params"]
+    assert task.metadata["gym_row_extras"] == {k: v for k, v in row.items() if k != "responses_create_params"}
+
+
+def test_promptless_rows_still_hash_distinctly(tmp_path: Path) -> None:
+    # Identity is the whole row, so rows differing only in a field the runner ignores (`task_idx` for
+    # aviary/toolsandbox, `instance_id` for legal_agent_bench) must remain distinct tasks — otherwise a
+    # promptless dataset would collapse into a single task.
+    dataset = tmp_path / "toolsandbox.jsonl"
+    dataset.write_text(
+        "\n".join(json.dumps({"task_idx": idx, "responses_create_params": {"input": []}}) for idx in range(5)) + "\n",
+        encoding="utf-8",
+    )
+    tasks = discover_gym_tasks(dataset)
+    assert len({task.id for task in tasks}) == 5
+    # and they re-materialize into the five rows Gym will read, each with its own index
+    index_map = _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+    rows = _rows(tmp_path / "gym_input.jsonl")
+    assert [row["task_idx"] for row in rows] == [0, 1, 2, 3, 4]
+    assert index_map == {index: task.id for index, task in enumerate(tasks)}
+
+
+def test_discover_gym_tasks_reports_how_many_rows_had_no_prompt(tmp_path: Path, caplog) -> None:
+    dataset = tmp_path / "mixed.jsonl"
+    dataset.write_text(
+        json.dumps({"responses_create_params": {"input": "answer me"}})
+        + "\n"
+        + json.dumps({"task_idx": 0, "responses_create_params": {"input": []}})
+        + "\n",
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.INFO):
+        tasks = discover_gym_tasks(dataset)
+    assert [("instruction" in task.inputs) for task in tasks] == [True, False]
+    assert "1 of 2 task(s)" in caplog.text
+    assert "carry no prompt" in caplog.text
+
+
+@pytest.mark.parametrize("row", [{"task_idx": 0}, {"responses_create_params": None}, {"responses_create_params": []}])
+def test_discover_gym_tasks_still_requires_responses_create_params(row: dict, tmp_path: Path) -> None:
+    # Gym indexes into this key unconditionally, so a row without a usable one must be rejected at
+    # discovery rather than crashing `gym eval run` after the servers are up. All three non-mapping
+    # shapes are covered deliberately: a check of `params is None` alone would pass the missing-key
+    # case while letting a list through to fail deep inside Gym.
+    dataset = tmp_path / "bad_params.jsonl"
+    dataset.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="row 1 .* has no 'responses_create_params' mapping"):
+        discover_gym_tasks(dataset)
 
 
 def test_discover_gym_tasks_from_example_fixture() -> None:
