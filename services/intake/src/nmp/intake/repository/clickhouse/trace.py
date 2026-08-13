@@ -46,6 +46,7 @@ TRACE_COLUMNS = [
     "project",
     "evaluation_id",
     "test_case_id",
+    "agent_name",
     "started_at",
     "ended_at",
     "status",
@@ -338,6 +339,7 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
         "traces.project AS project",
         "traces.evaluation_id AS evaluation_id",
         "traces.test_case_id AS test_case_id",
+        "traces.agent_name AS agent_name",
         "traces.started_at AS started_at",
         "traces.ended_at AS ended_at",
         "traces.status AS status",
@@ -383,6 +385,7 @@ def _trace_index_select_columns(*, mode: TraceMode) -> tuple[str, dict[str, Any]
         "nullIf(trace_roots.project, '') AS project",
         "nullIf(trace_roots.evaluation_id, '') AS evaluation_id",
         "nullIf(trace_roots.test_case_id, '') AS test_case_id",
+        "nullIf(trace_roots.agent_name, '') AS agent_name",
         "trace_roots.root_started_at AS started_at",
         "trace_roots.root_ended_at AS ended_at",
         "trace_roots.root_status AS status",
@@ -462,6 +465,7 @@ def _reconcile_hydrated_page(
 
 # Maps API/filter field names to their physical trace_index columns.
 _TRACE_INDEX_FILTER_COLUMNS = {
+    "agent_name": "agent_name",
     "evaluation_id": "evaluation_id",
     "test_case_id": "test_case_id",
 }
@@ -561,6 +565,7 @@ def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:
         project=row.get("project") or None,
         evaluation_id=row.get("evaluation_id") or None,
         test_case_id=row.get("test_case_id") or None,
+        agent_name=row.get("agent_name") or None,
         started_at=row["started_at"],
         ended_at=ended_at,
         duration_ms=_duration_ms(row["started_at"], ended_at),

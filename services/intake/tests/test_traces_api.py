@@ -25,6 +25,7 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
                 "started_at": {"$gte": started_at.isoformat()},
                 "evaluation_id": "experiment-a",
                 "test_case_id": "case-a",
+                "agent_name": "agent-a",
             }
         ),
     )
@@ -36,6 +37,7 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
     assert filters.started_at_gte == started_at
     assert filters.evaluation_id == "experiment-a"
     assert filters.test_case_id == "case-a"
+    assert filters.agent_name == "agent-a"
 
 
 def test_trace_filter_accepts_evaluation_id():
@@ -55,6 +57,7 @@ def test_trace_filter_schema_exposes_evaluation_id():
     assert "experiment_id" not in properties
     assert properties["test_case_id"]["description"] == "Filter by root-span evaluation test case id."
     assert "deprecated" not in properties["test_case_id"]
+    assert properties["agent_name"]["description"] == "Filter by root-span agent application name."
 
 
 def test_trace_filter_applies_no_implicit_time_bound():

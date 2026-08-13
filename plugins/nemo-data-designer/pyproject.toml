@@ -26,6 +26,7 @@ data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resou
 
 [project.entry-points."nemo.jobs"]
 "data-designer.create" = "nemo_data_designer_plugin.jobs.create:CreateJob"
+"data-designer.build-dataset" = "nemo_data_designer_plugin.jobs.build_dataset:BuildDatasetJob"
 
 [project.entry-points."nemo.functions"]
 "data-designer.preview" = "nemo_data_designer_plugin.functions.preview:PreviewFunction"

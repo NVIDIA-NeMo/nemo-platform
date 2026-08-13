@@ -28,6 +28,9 @@ def test_data_designer_authz_derivation_has_no_problems() -> None:
     assert contrib.endpoints[jobs]["post"].permissions == ["data-designer.create"]
     assert contrib.endpoints[jobs]["get"].permissions == ["data-designer.list"]
     assert contrib.endpoints[f"{jobs}/{{name}}"]["delete"].permissions == ["data-designer.delete"]
+    build_dataset_jobs = "/apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset"
+    assert contrib.endpoints[build_dataset_jobs]["post"].permissions == ["data-designer.create"]
+    assert contrib.endpoints[build_dataset_jobs]["get"].permissions == ["data-designer.list"]
     preview = "/apis/data-designer/v2/workspaces/{workspace}/preview"
     assert contrib.endpoints[preview]["post"].permissions == ["data-designer.preview"]
 

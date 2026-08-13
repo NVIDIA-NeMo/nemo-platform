@@ -252,6 +252,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
     client.command(f"DROP TABLE IF EXISTS {table}")
 
     project_key = spec_for_field(SpanAttributeField.PROJECT).bag_key
+    agent_name_key = spec_for_field(SpanAttributeField.AGENT_NAME).bag_key
     evaluation_key = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
     test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key
 
@@ -273,6 +274,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             project String DEFAULT '',
             evaluation_id String DEFAULT '',
             test_case_id String DEFAULT '',
+            agent_name String DEFAULT '',
 
             root_started_at DateTime64(6) CODEC(Delta(8), ZSTD(1)),
             root_ended_at Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
@@ -285,6 +287,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             INDEX idx_session_id session_id TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_evaluation_id evaluation_id TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_test_case_id test_case_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_agent_name agent_name TYPE bloom_filter(0.01) GRANULARITY 1,
             INDEX idx_root_status root_status TYPE set(4) GRANULARITY 4,
             INDEX idx_source_format source_format TYPE set(8) GRANULARITY 4
         )
@@ -312,6 +315,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             attributes_string['{project_key}'] AS project,
             attributes_string['{evaluation_key}'] AS evaluation_id,
             attributes_string['{test_case_key}'] AS test_case_id,
+            attributes_string['{agent_name_key}'] AS agent_name,
             start_time AS root_started_at,
             nullIf(end_time, toDateTime64(0, 6)) AS root_ended_at,
             if(end_time = toDateTime64(0, 6), NULL, dateDiff('millisecond', start_time, end_time)) AS latency_ms,
@@ -354,6 +358,9 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     # re-run the rebuild under a new key. The function drops and recreates trace_index with the new
     # column and backfills losslessly from ``spans`` (the durable source of truth).
     ("ch_trace_index_0005_evaluation_id", _create_trace_index_schema),
+    # Root-agent identity is a first-class trace selector. Rebuild from the durable spans table so
+    # existing ATIF traces become queryable without re-ingestion.
+    ("ch_trace_index_0006_agent_name", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

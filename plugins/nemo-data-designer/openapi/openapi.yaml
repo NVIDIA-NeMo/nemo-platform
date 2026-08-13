@@ -3,6 +3,380 @@ info:
   title: data-designer (plugin)
   version: 0.0.0
 paths:
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset:
+    post:
+      tags:
+      - Data Designer
+      summary: Create Job
+      operationId: create_job_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildDatasetJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDatasetJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Data Designer
+      summary: List Jobs
+      operationId: list_jobs_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/BuildDatasetJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/BuildDatasetJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDatasetJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{job}/results/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Result
+      operationId: get_job_result_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{job}/results/{name}/download:
+    get:
+      tags:
+      - Data Designer
+      summary: Download Job Result
+      operationId: download_job_result_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{name}:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job
+      operationId: get_job_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDatasetJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Data Designer
+      summary: Delete Job
+      operationId: delete_job_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{name}/cancel:
+    post:
+      tags:
+      - Data Designer
+      summary: Cancel Job
+      operationId: cancel_job_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildDatasetJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{name}/logs:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{name}/results:
+    get:
+      tags:
+      - Data Designer
+      summary: List Job Results
+      operationId: list_job_results_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/data-designer/v2/workspaces/{workspace}/jobs/build-dataset/{name}/status:
+    get:
+      tags:
+      - Data Designer
+      summary: Get Job Status
+      operationId: get_job_status_apis_data_designer_v2_workspaces__workspace__jobs_build_dataset__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/data-designer/v2/workspaces/{workspace}/jobs/create:
     post:
       tags:
@@ -600,6 +974,169 @@ components:
         \nAttributes:\n    n (required): Number of independent trials. Must be a positive\
         \ integer.\n    p (required): Probability of success on each trial. Must be\
         \ between 0.0 and 1.0 (inclusive)."
+    BuildDatasetConfig:
+      properties:
+        destination:
+          $ref: '#/components/schemas/DatasetDestination'
+        source:
+          oneOf:
+          - $ref: '#/components/schemas/IntakeTraceSelection'
+          - $ref: '#/components/schemas/DatasetComposition'
+          title: Source
+          discriminator:
+            propertyName: kind
+            mapping:
+              datasets: '#/components/schemas/DatasetComposition'
+              intake-traces: '#/components/schemas/IntakeTraceSelection'
+      additionalProperties: false
+      type: object
+      required:
+      - destination
+      - source
+      title: BuildDatasetConfig
+      description: User-facing and canonical config for a dataset materialization
+        job.
+    BuildDatasetJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/BuildDatasetConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: BuildDatasetJob
+    BuildDatasetJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/BuildDatasetConfig'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+        output_location:
+          title: Output Location
+          type: string
+      type: object
+      required:
+      - spec
+      title: BuildDatasetJobRequest
+    BuildDatasetJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
+          description: Name of the job.
+          title: Name
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: BuildDatasetJobsListFilter
+      type: object
+    BuildDatasetJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/BuildDatasetJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: BuildDatasetJobsPage
+    BuildDatasetJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: BuildDatasetJobsSortField
     CategorySamplerParams:
       properties:
         values:
@@ -1087,6 +1624,47 @@ components:
           default: df
       type: object
       title: DataFrameSeedSource
+    DatasetComposition:
+      properties:
+        kind:
+          type: string
+          const: datasets
+          title: Kind
+          default: datasets
+        datasets:
+          items:
+            type: string
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Datasets
+          description: Dataset Fileset references (workspace/name or name in the job
+            workspace).
+      additionalProperties: false
+      type: object
+      required:
+      - datasets
+      title: DatasetComposition
+      description: A catalog-level union of already-materialized agent datasets.
+    DatasetDestination:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Name of the destination dataset Fileset.
+        description:
+          title: Description
+          type: string
+          maxLength: 255
+        project:
+          title: Project
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: DatasetDestination
+      description: The immutable Fileset snapshot produced by a build-dataset job.
     DatetimeFilter:
       additionalProperties: false
       properties:
@@ -1652,6 +2230,39 @@ components:
       - gt
       - ge
       title: InequalityOperator
+    IntakeTraceSelection:
+      properties:
+        kind:
+          type: string
+          const: intake-traces
+          title: Kind
+          default: intake-traces
+        agent_name:
+          type: string
+          minLength: 1
+          title: Agent Name
+          description: Expected agent identity for every selected root trace.
+        trace_ids:
+          items:
+            type: string
+          type: array
+          maxItems: 10000
+          minItems: 1
+          title: Trace Ids
+        grader_refs:
+          items:
+            type: string
+          type: array
+          title: Grader Refs
+          description: Platform metric references to bind to every generated dataset
+            row.
+      additionalProperties: false
+      type: object
+      required:
+      - agent_name
+      - trace_ids
+      title: IntakeTraceSelection
+      description: A user-selected set of normalized Intake traces for one agent.
     JudgeScoreProfilerConfig:
       properties:
         model_alias:

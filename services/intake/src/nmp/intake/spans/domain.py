@@ -98,6 +98,7 @@ class TraceListFilter(BaseModel):
     started_at_lte: datetime | None = None
     evaluation_id: str | None = None
     test_case_id: str | None = None
+    agent_name: str | None = None
 
 
 IntakeResponseMode = Literal["summary", "preview", "detailed"]
@@ -117,6 +118,7 @@ class IntakeTrace(BaseModel):
     project: str | None = None
     evaluation_id: str | None = None
     test_case_id: str | None = None
+    agent_name: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None
