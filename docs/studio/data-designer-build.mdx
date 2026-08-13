@@ -53,19 +53,19 @@ Click **New Job** on the jobs list to open the **Create a fileset** start screen
 
 **Continue** stays disabled until the chosen option has everything it needs — a selected recipe card for a template, a validated draft for AI — and the reason is shown next to the button.
 
-A fourth path skips this screen entirely: **Clone** on any existing job (from the jobs list or the job details page) opens the builder pre-filled with that job's name, row count, columns, and models. See [Clone an existing job](#clone-an-existing-job).
+A fourth path skips this screen entirely: **Clone** on any existing job (from the jobs list or the job details page) opens the builder pre-filled with that job's row count, columns, and models. See [Clone an existing job](#clone-an-existing-job).
 
 ### Describe with AI
 
 The **Describe with AI** panel has two halves: the prompt on the left, and the verdict on the draft on the right.
 
 - **Model** — the model that drafts the config. It must support tool calling, since the config comes back as a tool call. The same model is also written into every model config in the draft, so the LLM columns generate with a model that is known to exist in your workspace.
-- **What do you want to generate?** — a plain-language description of the dataset (row count, columns, labels, sampling, and so on).
+- **What do you want to generate?** — a plain-language description of the dataset (row count, columns, labels, sampling, and so on). While the field is empty it offers a few example prompts (phishing email triage, support ticket routing, refund policy Q&A) as pills; picking one fills the field with a complete, generation-ready description you can edit.
 - **Generate** — sends the request. Once you have a draft, the button becomes **Regenerate**.
 
 Every draft is checked against the builder's own rules before it can be loaded, so a broken config never reaches the canvas. The result panel shows one of:
 
-- **Valid job config** — plus a summary of the fileset name, record count, and each generated column with its type. **Continue** is now enabled.
+- **Valid job config** — plus a summary of the fileset name, record count, column and model counts, and each generated column with its type. **Continue** is now enabled.
 - **Errors** — the draft can't be loaded (for example, no columns the builder can edit, or an LLM column pointing at a `model_alias` no model defines). **Fix these errors** sends the draft and the error list back to the same model for a repair pass.
 - **Warnings** — the draft is loadable but something was adjusted: a model was substituted, a column type the builder can't edit was skipped, or a non-positive record count was defaulted to 100. **Fix these warnings** runs the same repair pass.
 
@@ -93,7 +93,7 @@ Selecting **Start from a template** shows the recipe cards. Each card carries a 
 
 ### Clone an existing job
 
-Choose **Clone** from any job's quick-actions menu. The builder opens with the source job's columns, models, and row count already loaded, under the name `Clone of <job name>`. Edit anything you like and create it as a new job — the source job is untouched.
+Choose **Clone** from any job's quick-actions menu. The builder opens with the source job's columns, models, and row count already loaded, under the name `<job name>-copy`. Edit anything you like and create it as a new job — the source job is untouched.
 
 ---
 
@@ -123,7 +123,7 @@ Both views open the same config pane when a column is selected. All edits made i
 
 ### The toolbar
 
-- **Name** — the fileset name. Click the pencil icon to rename it (defaults to `untitled-dataset`, the template id when starting from a template, or `Clone of …` when cloning). A name is required to create the job.
+- **Name** — the fileset name. Click the pencil icon to rename it (defaults to `untitled-dataset`, the template id when starting from a template, or `<job name>-copy` when cloning). A name is required to create the job.
 - **Column count** — a live count of columns in the recipe.
 - **View toggle** — switches between the list and canvas views (see [View modes](#view-modes)).
 - **Rows** — the number of records the full run generates. Must be a whole number of at least 1.
