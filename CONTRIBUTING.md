@@ -34,7 +34,7 @@ make bootstrap
 
 `make bootstrap` activates Flox as needed, installs the pinned Python and Node.js
 toolchains, synchronizes Python dependencies, installs pnpm workspace
-dependencies, and builds Studio assets. Run `flox activate` afterward when you
+dependencies, and builds Studio assets. Run `flox -q activate` afterward when you
 want to use `uv`, `node`, or `pnpm` directly. Flox supplies Node.js and Corepack
 installs the repository-pinned pnpm into the environment cache. Interactive
 activation installs the repository's pre-commit hook when needed; leave the
@@ -66,7 +66,7 @@ For complete Studio setup instructions, see the [Getting Started section in the 
 1. **Flox**: Activate the repository environment, which provides the pinned Node.js and pnpm versions:
 
 ```bash
-flox activate
+flox -q activate
 ```
 
 #### Initialize the Repository
@@ -134,7 +134,7 @@ Then start the platform from the repository root:
 
 ```bash
 # From an activated Flox environment
-flox activate
+flox -q activate
 nemo services run
 
 # Or run everything with quickstart config (builds OPA policy first)
@@ -150,7 +150,7 @@ NMP_CONFIG_FILE_PATH=packages/nmp_platform/config/local.yaml \
 
 Visit `http://localhost:8080/studio/` to access the Studio UI.
 
-After the first interactive `flox activate`, pre-commit is installed
+After the first interactive `flox -q activate`, pre-commit is installed
 automatically. System-toolchain contributors can install it explicitly with
 `uv run pre-commit install`.
 

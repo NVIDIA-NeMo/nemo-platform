@@ -223,11 +223,12 @@ bootstrap-python: verify-python-version verify-compiler ## Bootstrap Python depe
 
 TOOLCHAIN ?= flox
 FLOX ?= flox
+FLOX_QUIET ?= $(FLOX) -q
 ifeq ($(TOOLCHAIN),flox)
 ifeq ($(FLOX_ENV_PROJECT),$(CURDIR))
 FLOX_EXEC :=
 else
-FLOX_EXEC := $(FLOX) activate --dir "$(CURDIR)" --
+FLOX_EXEC := $(FLOX_QUIET) activate --dir "$(CURDIR)" --
 endif
 else ifeq ($(TOOLCHAIN),system)
 FLOX_EXEC :=
@@ -236,7 +237,8 @@ $(error TOOLCHAIN must be either flox or system)
 endif
 UV := $(FLOX_EXEC) uv
 ifeq ($(TOOLCHAIN),flox)
-PNPM := $(FLOX_EXEC) bash -c 'corepack "pnpm@$(PNPM_VERSION)" "$$@"' --
+FLOX_NODE_EXEC := $(FLOX_QUIET) activate --dir "$(CURDIR)/tools/nodejs" --
+PNPM := $(FLOX_NODE_EXEC) pnpm
 else
 PNPM := $(FLOX_EXEC) pnpm
 endif

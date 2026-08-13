@@ -34,7 +34,7 @@ The `kaizen-ui` skill is not committed — it is synced from the `@nvidia/founda
 
 - Use **pnpm** exclusively — never npm or yarn
 - Run frontend commands from `web/`, not from repo root
-- Node.js and pnpm come from the root Flox environment. Run `flox activate` for interactive work; Corepack provides the repository-pinned pnpm.
+- Node.js and pnpm come from the root Flox environment. Run `flox -q activate` for interactive work; Corepack provides the repository-pinned pnpm.
 - Install dependencies: `pnpm add <package>`
 - Run scripts: `pnpm <script-name>`
 
