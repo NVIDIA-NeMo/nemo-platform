@@ -30,6 +30,7 @@ data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resou
 
 [project.entry-points."nemo.jobs"]
 "data-designer.create" = "nemo_data_designer_plugin.jobs.create:CreateJob"
+"data-designer.build-dataset" = "nemo_data_designer_plugin.jobs.build_dataset:BuildDatasetJob"
 "data-designer.retrieval-generate" = "nemo_data_designer_plugin.jobs.retrieval_generate:RetrievalGenerateJob"
 "data-designer.retrieval-prepare" = "nemo_data_designer_plugin.jobs.retrieval_prepare:RetrievalPrepareJob"
 "data-designer.retrieval-run" = "nemo_data_designer_plugin.jobs.retrieval_run:RetrievalRunJob"

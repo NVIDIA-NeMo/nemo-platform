@@ -27,6 +27,7 @@ class DataDesignerService(NemoService):
         from nemo_data_designer_plugin.config import get_config
         from nemo_data_designer_plugin.functions.preview import PreviewFunction
         from nemo_data_designer_plugin.functions.retrieval_preview import RetrievalPreviewFunction
+        from nemo_data_designer_plugin.jobs.build_dataset import BuildDatasetJob
         from nemo_data_designer_plugin.jobs.create import CreateJob
         from nemo_data_designer_plugin.jobs.retrieval_generate import RetrievalGenerateJob
         from nemo_data_designer_plugin.jobs.retrieval_prepare import RetrievalPrepareJob
@@ -64,6 +65,16 @@ class DataDesignerService(NemoService):
                 prefix=prefix,
                 tag="Data Designer",
                 description="Job endpoints",
+            ),
+            RouterSpec(
+                add_job_routes(
+                    BuildDatasetJob,
+                    service_name="nemo-data-designer.build-dataset",
+                    authz=scope,
+                ),
+                prefix=prefix,
+                tag="Data Designer",
+                description="Build lineage-aware evaluation datasets from Intake traces or existing datasets.",
             ),
             RouterSpec(
                 add_job_routes(RetrievalGenerateJob, default_profile=job_profile, authz=scope),
