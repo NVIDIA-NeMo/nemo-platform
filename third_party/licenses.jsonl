@@ -30,7 +30,7 @@
 {"name": "bracex", "license": "MIT", "compatible": true}
 {"name": "cachetools", "license": "MIT", "compatible": true}
 {"name": "caio", "license": "APACHE-2.0", "compatible": true}
-{"name": "certifi", "license": "LGPL", "compatible": true}
+{"name": "certifi", "license": "MPL-2.0", "compatible": true}
 {"name": "cffi", "license": "MIT", "compatible": true}
 {"name": "chardet", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "charset-normalizer", "license": "MIT", "compatible": true}
@@ -141,7 +141,7 @@
 {"name": "google.golang.org/protobuf", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "gopkg.in/yaml.v3", "license": "MIT", "compatible": true}
-{"name": "greenlet", "license": "MIT", "compatible": true}
+{"name": "greenlet", "license": "MIT AND PSF-2.0", "compatible": true}
 {"name": "griffelib", "license": "ISC", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
 {"name": "gunicorn", "license": "MIT", "compatible": true}
@@ -196,7 +196,7 @@
 {"name": "langchain-mcp-adapters", "license": "MIT", "compatible": true}
 {"name": "langchain-milvus", "license": "MIT", "compatible": true}
 {"name": "langchain-nvidia-ai-endpoints", "license": "MIT", "compatible": true}
-{"name": "langchain-oci", "license": "MIT", "compatible": true}
+{"name": "langchain-oci", "license": "UPL-1.0", "compatible": true}
 {"name": "langchain-openai", "license": "MIT", "compatible": true}
 {"name": "langchain-protocol", "license": "MIT", "compatible": true}
 {"name": "langchain-text-splitters", "license": "MIT", "compatible": true}
@@ -281,7 +281,7 @@
 {"name": "packaging", "license": "APACHE-2.0", "compatible": true}
 {"name": "pandas", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pathable", "license": "APACHE-2.0", "compatible": true}
-{"name": "pathspec", "license": "LGPL", "compatible": true}
+{"name": "pathspec", "license": "MPL-2.0", "compatible": true}
 {"name": "pillow", "license": "MIT-CMU", "compatible": true}
 {"name": "pip", "license": "MIT", "compatible": true}
 {"name": "pkce", "license": "MIT", "compatible": true}
@@ -298,7 +298,7 @@
 {"name": "propcache", "license": "APACHE-2.0", "compatible": true}
 {"name": "protobuf", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "psutil", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "psycopg2-binary", "license": "LGPL", "compatible": true}
+{"name": "psycopg2-binary", "license": "LGPL-3.0-OR-LATER WITH OPENVPN-OPENSSL-EXCEPTION", "compatible": true}
 {"name": "py-key-value-aio", "license": "APACHE-2.0", "compatible": true}
 {"name": "py-rust-stemmers", "license": "MIT", "compatible": true}
 {"name": "pyarrow", "license": "APACHE-2.0", "compatible": true}
@@ -325,7 +325,7 @@
 {"name": "ragas", "license": "APACHE-2.0", "compatible": true}
 {"name": "realtime", "license": "MIT", "compatible": true}
 {"name": "referencing", "license": "MIT", "compatible": true}
-{"name": "regex", "license": "APACHE-2.0", "compatible": true}
+{"name": "regex", "license": "APACHE-2.0 AND CNRI-PYTHON", "compatible": true}
 {"name": "requests", "license": "APACHE-2.0", "compatible": true}
 {"name": "requests-oauthlib", "license": "ISC", "compatible": true}
 {"name": "requests-toolbelt", "license": "APACHE-2.0", "compatible": true}
@@ -379,7 +379,7 @@
 {"name": "tomli-w", "license": "MIT", "compatible": true}
 {"name": "tomlkit", "license": "MIT", "compatible": true}
 {"name": "tornado", "license": "APACHE-2.0", "compatible": true}
-{"name": "tqdm", "license": "MIT", "compatible": true}
+{"name": "tqdm", "license": "MIT AND MPL-2.0", "compatible": true}
 {"name": "transformers", "license": "APACHE-2.0", "compatible": true}
 {"name": "typer", "license": "MIT", "compatible": true}
 {"name": "types-aioboto3", "license": "MIT", "compatible": true}
