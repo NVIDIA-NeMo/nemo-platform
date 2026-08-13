@@ -18,6 +18,7 @@ is written via :func:`~nemo_evaluator.jobs.result_persistence.persist_agent_eval
 from __future__ import annotations
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
@@ -33,6 +34,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    FabricSkillFileset,
     GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
@@ -47,6 +49,7 @@ from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import CodexCliAgentRuntime
 from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
+from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import AgentSkill
 from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
@@ -63,6 +66,8 @@ from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, SubprocessExe
 from nemo_platform_plugin.jobs.client import AsyncJobsClient
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError, PlatformJobDependencyUnavailableError
 from nemo_platform_plugin.jobs.execution_profiles import SubprocessJobExecutionProfile
+from nemo_platform_plugin.refs import parse_entity_ref
+from nemo_platform_plugin.run_dependencies import LocalRunError
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -324,8 +329,49 @@ class AgentEvalJob(NemoJob):
         return AgentEvaluator(default_headers=identity_headers or None)
 
     @staticmethod
+    def _materialize_fabric_skills(
+        skills: list[FabricSkillFileset], *, ctx: JobContext, sdk: NeMoPlatform | None
+    ) -> list[AgentSkill]:
+        """Download Fileset-backed skill bundles into job-local storage."""
+        if not skills:
+            return []
+        if sdk is None:
+            raise LocalRunError(
+                "Staging Fabric skills from Filesets requires a 'sdk: NeMoPlatform', but no platform SDK was "
+                "available. Set NMP_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
+            )
+
+        stage_root = ctx.storage.ephemeral / "fabric-skills"
+        stage_root.mkdir(parents=True, exist_ok=True)
+        materialized: list[AgentSkill] = []
+        for index, skill_ref in enumerate(skills):
+            parsed = parse_entity_ref(str(skill_ref.fileset), default_workspace=ctx.workspace)
+            download_root = Path(
+                tempfile.mkdtemp(prefix=f"{index:02d}-{skill_ref.name}-", dir=str(stage_root))
+            ).resolve()
+            logger.info(
+                "Downloading Fabric skill %s from Fileset %s/%s into %s",
+                skill_ref.name,
+                parsed.workspace,
+                parsed.name,
+                download_root,
+            )
+            sdk.files.download(
+                local_path=str(download_root),
+                fileset=parsed.name,
+                workspace=parsed.workspace,
+            )
+            skill_dir = (download_root / skill_ref.path).resolve()
+            if not skill_dir.is_relative_to(download_root):
+                raise ValueError(
+                    f"Fabric skill path {skill_ref.path!r} resolves outside Fileset '{parsed.workspace}/{parsed.name}'"
+                )
+            materialized.append(AgentSkill.from_directory(skill_dir, name=skill_ref.name))
+        return materialized
+
+    @staticmethod
     def _resolve_target(
-        target: Target | None, ctx: JobContext
+        target: Target | None, ctx: JobContext, sdk: NeMoPlatform | None = None
     ) -> tuple[AgentEvalTarget | None, str | dict[str, Any] | None, RunConfigOnline | RunConfigOnlineModel | None]:
         """Resolve a target spec to ``(runtime target, prompt_template, params)`` for the SDK run config.
 
@@ -344,12 +390,14 @@ class AgentEvalJob(NemoJob):
             )
             return runtime, None, None
         if isinstance(target, FabricRunnerTarget):
+            skills = AgentEvalJob._materialize_fabric_skills(target.skills, ctx=ctx, sdk=sdk)
             fabric_runtime = FabricAgentRuntime(
                 config=target.config,
                 model=target.model,
                 timeout_s=target.timeout_s,
                 capture_trajectory=target.capture_trajectory,
                 work_root=ctx.storage.persistent / "fabric",
+                skills=skills,
             )
             return fabric_runtime, None, None
         if isinstance(target, GymRunnerTarget):
@@ -408,7 +456,7 @@ class AgentEvalJob(NemoJob):
         """Run the agent evaluation locally and persist its result bundle as artifacts."""
         spec = AgentEvalSpec.model_validate(config)
         tasks = [_to_runtime_task(task) for task in spec.tasks]
-        target, prompt_template, params = self._resolve_target(spec.target, ctx)
+        target, prompt_template, params = self._resolve_target(spec.target, ctx, sdk=sdk)
         run_config = AgentEvalRunConfig(
             params=params,
             prompt_template=prompt_template,
