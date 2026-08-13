@@ -6,7 +6,7 @@ Two images for the **nmp-automodel** customization backend, plus the shared **`n
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
-| `nmp-automodel-base` | `docker/automodel/Dockerfile.nmp-automodel-base` | PyTorch 26.05 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
+| `nmp-automodel-base` | `docker/automodel/Dockerfile.nmp-automodel-base` | PyTorch 26.07 + Automodel + `mamba-ssm` / `causal-conv1d` wheels |
 | `nmp-customizer-tasks` | `docker/Dockerfile.nmp-customizer-tasks` | Shared CPU tasks (`file_io`, `model_entity`, `model_spec`, LoRA sidecar) |
 | `nmp-automodel-training` | `docker/automodel/Dockerfile.nmp-automodel-training` | Training step (`nmp.automodel.tasks.training`) |
 
@@ -79,7 +79,7 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 
 ## Tasks / training runtime (platform glue)
 
-**Base (`nmp-automodel-base`):** NGC PyTorch 26.05, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
+**Base (`nmp-automodel-base`):** NGC PyTorch 26.07, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
 
 **Automodel cherry-picks:** Platform-specific patches under `docker/automodel/cherry-picks/` are applied after `update_pyproject_pytorch.sh` and before `uv sync`. Re-pin or drop patches when upstream `r0.x.y` absorbs the same changes.
 

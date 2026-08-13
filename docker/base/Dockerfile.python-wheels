@@ -100,8 +100,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /usr/local/bin/uv
 
-# special builder for 13.2 cuda (automodel on NGC 26.05)
-FROM nvcr.io/nvidia/pytorch:26.05-py3 AS mamba-wheel-base-py312-cu13.2
+# special builder for 13.2 cuda (Automodel/Customizer on the current NGC PyTorch base)
+FROM nvcr.io/nvidia/pytorch:26.07-py3 AS mamba-wheel-base-py312-cu13.2
 
 ENV DEBIAN_FRONTEND=noninteractive
 
