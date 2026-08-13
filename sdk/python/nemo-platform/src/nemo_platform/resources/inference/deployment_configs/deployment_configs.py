@@ -119,8 +119,9 @@ class DeploymentConfigsResource(SyncAPIResource):
               Executor-invariant facts about the model. The compiler resolves the weight
               source per engine; serving fields override the model entity spec when set.
 
-          name: Name of the deployment configuration. Allowed characters: letters (a-z, A-Z),
-              digits (0-9), underscores, hyphens, and dots.
+          name: Name of the deployment configuration. Name must start with a lowercase letter,
+              be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+              consecutive hyphens, cannot end with a hyphen).
 
           description: Optional description of the deployment configuration
 
@@ -459,8 +460,9 @@ class AsyncDeploymentConfigsResource(AsyncAPIResource):
               Executor-invariant facts about the model. The compiler resolves the weight
               source per engine; serving fields override the model entity spec when set.
 
-          name: Name of the deployment configuration. Allowed characters: letters (a-z, A-Z),
-              digits (0-9), underscores, hyphens, and dots.
+          name: Name of the deployment configuration. Name must start with a lowercase letter,
+              be 2-63 characters, and use lowercase letters, digits, hyphens, and dots (no
+              consecutive hyphens, cannot end with a hyphen).
 
           description: Optional description of the deployment configuration
 

@@ -960,6 +960,7 @@ resources:
       access_key_list_response: AccessKeyListResponse
       access_key_metadata_response: AccessKeyMetadataResponse
       access_key_not_implemented_error_response: AccessKeyNotImplementedErrorResponse
+      access_key_revoke_response: AccessKeyRevokeResponse
     methods:
       list: get /apis/auth/v2/access-keys
       create: post /apis/auth/v2/access-keys

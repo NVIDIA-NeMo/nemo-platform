@@ -4,20 +4,22 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Annotated, Any
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from nmp.common.auth.bearer import MalformedBearerTokenError, parse_bearer_authorization_header
-from nmp.common.auth.jwt import TokenClaims
+from nmp.common.auth.jwt import TokenClaims, groups_from_claim, scopes_from_claim
 from nmp.common.auth.token_resolver import ResolvedBearerToken, ResolvedTokenKind, resolve_bearer_token
 from nmp.common.config import AuthConfig, get_auth_config
 from nmp.core.auth.api.v2.workload_token_exchange import (
     WorkloadTokenExchangeService,
-    _allowed_audiences,
-    _workload_token_issuer,
+    allowed_audiences,
     get_workload_token_exchange_service,
+    workload_token_issuer,
 )
+from nmp.core.auth.app.access_keys import AccessKeyRegistry, get_access_key_registry
 from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["Authentication"])
@@ -53,6 +55,25 @@ _AUTHENTICATE_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+@dataclass(frozen=True)
+class AuthenticateDependencies:
+    workload_token_exchange_service: WorkloadTokenExchangeService
+    access_key_registry: AccessKeyRegistry
+
+
+def get_authenticate_dependencies(
+    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    access_key_registry: AccessKeyRegistry = Depends(get_access_key_registry),
+) -> AuthenticateDependencies:
+    return AuthenticateDependencies(
+        workload_token_exchange_service=workload_token_exchange_service,
+        access_key_registry=access_key_registry,
+    )
+
+
+AuthenticateDependency = Annotated[AuthenticateDependencies, Depends(get_authenticate_dependencies)]
+
+
 def _bearer_token_from_request(request: Request) -> str:
     try:
         token = parse_bearer_authorization_header(request.headers.get("authorization"))
@@ -63,21 +84,8 @@ def _bearer_token_from_request(request: Request) -> str:
     return token
 
 
-def _groups_from_claim(groups_claim: object) -> list[str]:
-    if isinstance(groups_claim, str):
-        return [group.strip() for group in groups_claim.split(",") if group.strip()]
-    if isinstance(groups_claim, list):
-        return [group for group in groups_claim if isinstance(group, str)]
-    return []
-
-
 def _scopes_from_claims(claims: dict[str, object]) -> list[str]:
-    scope_claim = claims.get("scope") or claims.get("scp")
-    if isinstance(scope_claim, str):
-        return scope_claim.split()
-    if isinstance(scope_claim, list):
-        return [scope for scope in scope_claim if isinstance(scope, str)]
-    return []
+    return scopes_from_claim(claims.get("scope") or claims.get("scp"))
 
 
 def _stamp_principal_headers(response: Response, resolved: ResolvedBearerToken) -> None:
@@ -124,8 +132,8 @@ async def _validate_workload_access_token(
             token,
             public_key,
             algorithms=["RS256"],
-            audience=list(_allowed_audiences(config)),
-            issuer=_workload_token_issuer(config, request),
+            audience=list(allowed_audiences(config)),
+            issuer=workload_token_issuer(config, request),
             options={"require": ["sub", "iat", "nbf", "exp"]},
             leeway=30,
         )
@@ -135,7 +143,7 @@ async def _validate_workload_access_token(
         return TokenClaims(
             subject=subject,
             email=claims.get("email") if isinstance(claims.get("email"), str) else None,
-            groups=_groups_from_claim(claims.get("groups", [])),
+            groups=groups_from_claim(claims.get("groups", [])),
             scopes=_scopes_from_claims(claims),
             raw_claims=claims,
         )
@@ -176,7 +184,7 @@ async def _resolve_workload_subject_token(
     token_claims = TokenClaims(
         subject=subject,
         email=email if isinstance(email, str) else None,
-        groups=_groups_from_claim(claims.get(config.oidc.groups_claim, claims.get("groups", []))),
+        groups=groups_from_claim(claims.get(config.oidc.groups_claim, claims.get("groups", []))),
         scopes=_scopes_from_claims(claims),
         raw_claims=claims,
     )
@@ -187,6 +195,7 @@ async def _authenticate_bearer_token(
     request: Request,
     response: Response,
     workload_token_exchange_service: WorkloadTokenExchangeService,
+    access_key_registry: AccessKeyRegistry,
 ) -> AuthenticateResponse:
     token = _bearer_token_from_request(request)
     config = get_auth_config()
@@ -205,6 +214,13 @@ async def _authenticate_bearer_token(
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
 
+    if resolved.token_kind == "access_key":
+        jti = resolved.claims.raw_claims.get("jti")
+        if not isinstance(jti, str) or not jti:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
+        if not await access_key_registry.is_active(jti, resolved.claims.subject, claims=resolved.claims):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
+
     _stamp_principal_headers(response, resolved)
     return _response_from_claims(resolved.claims, resolved.token_kind)
 
@@ -218,9 +234,14 @@ async def _authenticate_bearer_token(
 async def authenticate_bearer_token_get(
     request: Request,
     response: Response,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
 
 
 @router.post(
@@ -232,9 +253,14 @@ async def authenticate_bearer_token_get(
 async def authenticate_bearer_token_post(
     request: Request,
     response: Response,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
 
 
 @router.api_route(
@@ -246,9 +272,14 @@ async def authenticate_bearer_token_post(
 async def authenticate_bearer_token_callout_methods(
     request: Request,
     response: Response,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
 
 
 @router.api_route(
@@ -261,7 +292,12 @@ async def authenticate_bearer_token_prefixed_callout(
     request: Request,
     response: Response,
     original_path: str,
-    workload_token_exchange_service: WorkloadTokenExchangeService = Depends(get_workload_token_exchange_service),
+    dependencies: AuthenticateDependency,
 ) -> AuthenticateResponse:
     _ = original_path
-    return await _authenticate_bearer_token(request, response, workload_token_exchange_service)
+    return await _authenticate_bearer_token(
+        request,
+        response,
+        dependencies.workload_token_exchange_service,
+        dependencies.access_key_registry,
+    )
