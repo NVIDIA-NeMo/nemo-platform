@@ -85,6 +85,7 @@ class SpanListFilter(BaseModel):
 class SpanGroup(BaseModel):
     group: dict[str, str]
     span_count: int = Field(ge=0)
+    started_at: datetime
 
 
 class TraceListFilter(BaseModel):

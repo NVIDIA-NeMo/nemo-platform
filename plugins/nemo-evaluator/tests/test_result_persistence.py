@@ -19,6 +19,7 @@ from nemo_evaluator.jobs.agent_spec import (
     AgentTarget,
     CodexRunnerTarget,
     FabricRunnerTarget,
+    GymRunnerTarget,
     HarborRunnerTarget,
     ModelTarget,
 )
@@ -95,6 +96,10 @@ def _agent() -> Agent:
         (
             FabricRunnerTarget(config={"metadata": {"name": "a"}}, model="openai/gpt-5.4"),
             ("fabric", "openai/gpt-5.4", None),
+        ),
+        (
+            GymRunnerTarget(agent="simple_agent", agent_config="conf/agent.yaml", resources_server="mcqa"),
+            ("gym", "simple_agent", None),
         ),
         (HarborRunnerTarget(agent_name="oracle"), ("harbor", "oracle", None)),
         (HarborRunnerTarget(agent_import_path="wrapper:Agent"), ("harbor", "wrapper:Agent", None)),

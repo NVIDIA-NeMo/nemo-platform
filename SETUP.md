@@ -90,7 +90,7 @@ This section is the **source checkout** path: use it to work on NeMo Platform it
 
 The steps below cover prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot. Prefer them over the manual sections further down whenever the task fits:
 
-Before running `make bootstrap`, install Flox from the [Flox installation guide](https://flox.dev/docs/install-flox/install). Flox is the recommended source-development toolchain and does not need to be activated first. Contributors using a preinstalled host toolchain instead need uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler; they must use `make TOOLCHAIN=system bootstrap`.
+Before running `make bootstrap`, install Flox from the [Flox installation guide](https://flox.dev/docs/install-flox/install). Flox is the recommended source-development toolchain and does not need to be activated first. Contributors using a preinstalled host toolchain instead need the versions printed by `make toolchain-versions` and a C compiler; they must use `make TOOLCHAIN=system bootstrap`.
 
 === "Interactive"
 
@@ -135,7 +135,7 @@ That covers the `make` targets only. To run `uv` or `pnpm` directly, activate Fl
 flox activate
 ```
 
-Without Flox, install uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.
+Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.
 
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 

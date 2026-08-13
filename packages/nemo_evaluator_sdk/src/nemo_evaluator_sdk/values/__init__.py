@@ -81,6 +81,7 @@ if TYPE_CHECKING:
         TunableRagEvaluator,
     )
     from nemo_evaluator_sdk.values.models import Model, ModelRef, ReasoningParams
+    from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
     from nemo_evaluator_sdk.values.params import (
         InferenceParams,
         RunConfig,
@@ -193,6 +194,7 @@ _LAZY_ATTRS: dict[str, str] = {
     "Model": ".models",
     "ModelRef": ".models",
     "ReasoningParams": ".models",
+    "BenchmarkEvaluationResult": ".multi_metric_results",
     "InferenceParams": ".params",
     "RunConfig": ".params",
     "RunConfigOnline": ".params",
@@ -249,6 +251,7 @@ __all__ = [
     "AggregateRubricScore",
     "AggregateScore",
     "AggregateScoreBase",
+    "BenchmarkEvaluationResult",
     "BooleanValue",
     "CandidateEvidence",
     "CandidateOutput",

@@ -9,6 +9,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
     AccessKeyListResponse,
+    AccessKeyRevokeResponse,
 )
 
 
@@ -25,6 +26,6 @@ class AccessKeyIssuer(Protocol):
 
     def create(self, request: AccessKeyCreateRequest) -> AccessKeyCreateResponse: ...
 
-    def list(self) -> AccessKeyListResponse: ...
+    def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse: ...
 
-    def revoke(self, jti: str) -> None: ...
+    def revoke(self, jti: str) -> AccessKeyRevokeResponse: ...

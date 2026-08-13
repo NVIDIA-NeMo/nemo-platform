@@ -106,17 +106,23 @@ export interface SubmitSelections {
 export const bareName = (value: string): string =>
   value.includes('/') ? (value.split('/').pop() ?? value) : value;
 
-/** The generic agent target: the deployed agent's non-streaming ``/generate``. */
-export const buildAgentTarget = (workspace: string, agent: string) => ({
-  kind: 'agent' as const,
-  agent: {
-    format: 'generic' as const,
-    url: `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(bareName(agent))}/-/generate`,
-    name: bareName(agent),
-    body: { input_message: '{{ instruction }}' },
-    response_path: '$.value',
+/** Chat completions is the one endpoint both config formats serve, so this needs no branch. */
+const agentEndpoint = (workspace: string, agent: string, promptVar: string) => ({
+  format: 'generic' as const,
+  url: `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(bareName(agent))}/-/v1/chat/completions`,
+  name: bareName(agent),
+  body: {
+    model: bareName(agent),
+    messages: [{ role: 'user', content: `{{ ${promptVar} }}` }],
     stream: false,
   },
+  response_path: '$.choices[0].message.content',
+  stream: false,
+});
+
+export const buildAgentTarget = (workspace: string, agent: string) => ({
+  kind: 'agent' as const,
+  agent: agentEndpoint(workspace, agent, 'instruction'),
   params: AGENT_RUN_PARAMS,
 });
 
@@ -178,14 +184,8 @@ export const buildAgentEvalRequestBody = (
  *  this is NOT wrapped in {kind, agent}: EvaluateInputSpec forbids extra keys and
  *  takes the agent object directly. The body renders the row-based ``prompt``
  *  rather than a task ``instruction``. */
-export const buildDatasetAgentTarget = (workspace: string, agent: string) => ({
-  format: 'generic' as const,
-  url: `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${encodeURIComponent(workspace)}/agents/${encodeURIComponent(bareName(agent))}/-/generate`,
-  name: bareName(agent),
-  body: { input_message: '{{ prompt }}' },
-  response_path: '$.value',
-  stream: false,
-});
+export const buildDatasetAgentTarget = (workspace: string, agent: string) =>
+  agentEndpoint(workspace, agent, 'prompt');
 
 /** Build the ``evaluate/jobs`` POST body from a dataset-driven config. ``params``
  *  must be exactly RunConfigOnline for an agent target, and ``prompt_template``

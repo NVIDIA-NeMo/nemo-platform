@@ -6,6 +6,8 @@ set -euo pipefail
 
 node_version="$(yq '.install.nodejs.version' tools/nodejs/.flox/env/manifest.toml)"
 pnpm_version="$(yq -r '.vars.PNPM_VERSION' tools/nodejs/.flox/env/manifest.toml)"
+make_node_version="$(sed -n 's/^NODE_VERSION[[:space:]]*:=[[:space:]]*\([^[:space:]#]*\).*/\1/p' Makefile)"
+make_pnpm_version="$(sed -n 's/^PNPM_VERSION[[:space:]]*:=[[:space:]]*\([^[:space:]#]*\).*/\1/p' Makefile)"
 nvmrc_version="$(tr -d '[:space:]' < .nvmrc)"
 package_manager="$(yq -r '.packageManager' web/package.json)"
 
@@ -14,8 +16,18 @@ if [[ "${node_version}" != "${nvmrc_version}" ]]; then
   exit 1
 fi
 
+if [[ -z "${make_node_version}" || "${node_version}" != "${make_node_version}" ]]; then
+  echo "Makefile Node.js version ${make_node_version:-missing} does not match Flox Node.js version ${node_version}." >&2
+  exit 1
+fi
+
 if [[ "${package_manager}" != "pnpm@${pnpm_version}" ]]; then
   echo "Corepack pnpm version ${pnpm_version} does not match web/package.json ${package_manager}." >&2
+  exit 1
+fi
+
+if [[ -z "${make_pnpm_version}" || "${pnpm_version}" != "${make_pnpm_version}" ]]; then
+  echo "Makefile pnpm version ${make_pnpm_version:-missing} does not match Flox Corepack pnpm version ${pnpm_version}." >&2
   exit 1
 fi
 

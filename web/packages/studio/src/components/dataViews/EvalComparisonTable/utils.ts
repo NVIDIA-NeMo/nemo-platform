@@ -40,7 +40,7 @@ export const comparisonsForEvalConfig = (
   });
 
 const aggregateScoreValue = (score: AgentEvalAggregateScore): number | null => {
-  const value = score.score_type === 'scalar' ? score.value : score.mean;
+  const value = score.mean;
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 };
 

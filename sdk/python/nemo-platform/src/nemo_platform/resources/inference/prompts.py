@@ -92,8 +92,9 @@ class PromptsResource(SyncAPIResource):
         Args:
           name: Name of the prompt.
 
-        Allowed characters: letters (a-z, A-Z), digits (0-9),
-              underscores, hyphens, and dots.
+        Name must start with a lowercase letter, be 2-63 characters,
+              and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+              cannot end with a hyphen).
 
           inference_params: Parameters for model inference. Extra fields can be supplied for additional
               options applied to the inference request directly. Fields not supported by the
@@ -399,8 +400,9 @@ class AsyncPromptsResource(AsyncAPIResource):
         Args:
           name: Name of the prompt.
 
-        Allowed characters: letters (a-z, A-Z), digits (0-9),
-              underscores, hyphens, and dots.
+        Name must start with a lowercase letter, be 2-63 characters,
+              and use lowercase letters, digits, hyphens, and dots (no consecutive hyphens,
+              cannot end with a hyphen).
 
           inference_params: Parameters for model inference. Extra fields can be supplied for additional
               options applied to the inference request directly. Fields not supported by the

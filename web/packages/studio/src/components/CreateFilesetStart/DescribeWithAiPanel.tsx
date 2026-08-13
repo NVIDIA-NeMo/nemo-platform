@@ -7,15 +7,17 @@ import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { ModelSelectV2 } from '@nemo/common/src/components/ModelSelectV2/ModelSelectV2';
 import type { ModelSelection } from '@nemo/common/src/components/ModelSelectV2/types';
 import { Flex, FormField, Stack } from '@nvidia/foundations-react-core';
+import { PROMPT_SUGGESTIONS } from '@studio/components/CreateFilesetStart/constants';
 import { GeneratedConfigResult } from '@studio/components/CreateFilesetStart/GeneratedConfigResult';
 import type { DescribeWithAiPanelProps } from '@studio/components/CreateFilesetStart/types';
 import { useDescribeWithAi } from '@studio/components/CreateFilesetStart/useDescribeWithAi';
+import { PromptSuggestionTags } from '@studio/components/PromptSuggestionTags';
 import { providerForSelection } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import type { FC } from 'react';
 import { useController } from 'react-hook-form';
 
 const PROMPT_PLACEHOLDER =
-  '100 customer support emails, each labelled as phishing or legitimate, with a short reason for the label and the sender domain. Sampled across categories (billing, returns, tech support) with subcategories per category (billing: overcharge, failed payment; returns: damaged item, wrong size)';
+  'Describe the rows you want: how many, what each column holds, and how the data should vary. Or start from an example below.';
 
 const MODEL_HELP = 'Needs tool-calling support. This model will be used in LLM columns.';
 
@@ -35,6 +37,8 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
     name: 'model',
   });
   const modelValue: ModelSelection | null = modelField.value ? { model: modelField.value } : null;
+
+  const showSuggestions = form.watch('prompt').trim().length === 0 && !isBusy;
 
   return (
     <form onSubmit={generate} noValidate>
@@ -66,13 +70,24 @@ export const DescribeWithAiPanel: FC<DescribeWithAiPanelProps> = ({ workspace, o
           </FormField>
 
           <ControlledTextArea
+            useControllerProps={{ control: form.control, name: 'prompt' }}
             label="What do you want to generate?"
-            required
+            formFieldProps={{ required: true }}
             rows={8}
-            className="w-full resize-y"
+            className="w-full"
             placeholder={PROMPT_PLACEHOLDER}
             disabled={isBusy}
-            useControllerProps={{ name: 'prompt', control: form.control }}
+            layout="vertical"
+            slotEnd={
+              showSuggestions ? (
+                <PromptSuggestionTags
+                  suggestions={PROMPT_SUGGESTIONS}
+                  onSelect={(prompt) =>
+                    form.setValue('prompt', prompt, { shouldValidate: true, shouldDirty: true })
+                  }
+                />
+              ) : undefined
+            }
           />
 
           <Flex justify="start">

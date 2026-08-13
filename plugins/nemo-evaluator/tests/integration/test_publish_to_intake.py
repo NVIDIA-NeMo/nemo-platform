@@ -34,10 +34,12 @@ from urllib.parse import urlsplit
 
 import pytest
 from nemo_evaluator.intake.publish import PublishReport, publish_to_intake
+from nemo_evaluator.intake.row_adapter import row_result_to_agent_eval_result
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus, AgentEvalTaskScore
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput
+from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult, RowScore
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.intake.trace_filter_param import TraceFilterParam
 
@@ -53,6 +55,8 @@ NAN_EXPERIMENT_NAME = "intake-it-nan-exp"
 NAN_RUN_ID = "intake-it-nan-run"
 IDEMPOTENCY_EXPERIMENT_NAME = "intake-it-idempotency-exp"
 IDEMPOTENCY_RUN_ID = "intake-it-idempotency-run"
+ROW_EXPERIMENT_NAME = "intake-it-row-exp"
+ROW_RUN_ID = "intake-it-row-run"
 #: Recent, not fixed: a trajectory's start_time is a real timestamp, and Intake's trace queries
 #: only look back a bounded window — a hardcoded past date ingests fine but reads back empty.
 STARTED_AT = datetime.now(UTC) - timedelta(minutes=5)
@@ -415,3 +419,67 @@ async def test_republishing_the_same_result_is_idempotent(platform_base_url: str
 
         rows = await client.intake.spans.evaluator_results.list(second.published_trials[0].span_id, workspace=WORKSPACE)
         assert [row.name for row in rows] == ["accuracy.score"]
+
+
+def _row_result() -> EvaluationResult:
+    """One scored row — the smallest dataset-driven result exercising both write paths."""
+    return EvaluationResult(
+        row_scores=[
+            RowScore(
+                row_index=0,
+                item={"question": "capital of France?", "qid": "q-1"},
+                sample={"output_text": "Paris", "response": {}},
+                metrics={"exact_match": [MetricOutput(name="score", value=1.0)]},
+                requests=[],
+            )
+        ],
+        aggregate_scores=AggregatedMetricResult(scores=[]),
+    )
+
+
+async def test_row_result_publishes_and_is_idempotent(platform_base_url: str) -> None:
+    # The dataset-driven path adapts rows into the publisher's shape rather than using a second
+    # mapping, so it inherits the same idempotency guarantee: re-publishing replaces rather than
+    # duplicating. Row identity comes from the configured column, not the row's position.
+    async with AsyncNeMoPlatform(base_url=platform_base_url, max_retries=2) as client:
+        group = await client.experiments.create(workspace=WORKSPACE, name=GROUP_NAME, exist_ok=True)
+        await client.evaluations.create(
+            workspace=WORKSPACE,
+            name=ROW_EXPERIMENT_NAME,
+            experiment_ids=[group.id],
+            dataset_name="intake-it-row-dataset",
+            dataset_version="v1",
+            exist_ok=True,
+        )
+
+        async def publish() -> PublishReport:
+            adapted = row_result_to_agent_eval_result(
+                _row_result(),
+                run_id=ROW_RUN_ID,
+                started_at=STARTED_AT,
+                test_case_id_field="qid",
+            )
+            return await publish_to_intake(
+                adapted,
+                platform=client,
+                experiment_id=ROW_EXPERIMENT_NAME,
+                workspace=WORKSPACE,
+                agent_name="intake-it-row-agent",
+            )
+
+        first = await publish()
+        second = await publish()
+
+        assert first.trial_count == second.trial_count == 1
+        session_id = second.published_trials[0].session_id
+        assert session_id == f"{ROW_RUN_ID}:q-1"
+        assert first.published_trials[0].span_id == second.published_trials[0].span_id
+
+        trace_filter: TraceFilterParam = {"session_id": session_id}
+        traces = [trace async for trace in client.intake.traces.list(workspace=WORKSPACE, filter=trace_filter)]
+        assert len(traces) == 1, "re-publish duplicated the row instead of replacing it"
+        assert traces[0].evaluation_context is not None
+        assert traces[0].evaluation_context.test_case_id == "q-1"
+
+        rows = await client.intake.spans.evaluator_results.list(second.published_trials[0].span_id, workspace=WORKSPACE)
+        assert [row.name for row in rows] == ["exact_match.score"]

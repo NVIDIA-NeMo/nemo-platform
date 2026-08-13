@@ -6,9 +6,16 @@
 
 export { AccessibleTitle } from '@nemo/common/src/components/AccessibleTitle';
 export { AccordionSection } from '@nemo/common/src/components/AccordionSection';
+// CancelJobButton is deliberately NOT exported
 export { ConfirmationModal } from '@nemo/common/src/components/ConfirmationModal';
+export { CreateSecretModal } from '@nemo/common/src/components/CreateSecretModal';
+export type {
+  CreateSecretFormData,
+  CreateSecretModalProps,
+} from '@nemo/common/src/components/CreateSecretModal';
 export { DeleteConfirmationModal } from '@nemo/common/src/components/DeleteConfirmationModal';
 export type { AccordionSectionProps } from '@nemo/common/src/components/AccordionSection';
+// ErrorPanel is deliberately NOT exported
 export { ExpandableMessage } from '@nemo/common/src/components/ExpandableMessage';
 export { FileTag } from '@nemo/common/src/components/FileTag';
 export type { FileTagProps, FileTagStatus } from '@nemo/common/src/components/FileTag';
@@ -41,6 +48,7 @@ export type { BadgeStatus, StatusConfigEntry } from '@nemo/common/src/components
 export { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 
 export { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
+export { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 export { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 
 export { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
@@ -53,12 +61,17 @@ export type {
 export { withOperators } from '@nemo/common/src/api/filterOperators';
 export type { FilterOperators, WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 
+export { fetchAllPages } from '@nemo/common/src/api/fetchAllPages';
+export type { FetchAllPagesOptions, PaginatedResponse } from '@nemo/common/src/api/fetchAllPages';
+
 export {
   getJobRefetchInterval,
   getSortParam,
   getSortParamWithWhitelist,
 } from '@nemo/common/src/utils/query';
 export { triggerDownload } from '@nemo/common/src/utils/file';
+
+export { ENTITY_NAME_HELP, entityNameSchema } from '@nemo/common/src/utils/entityName';
 
 export { getErrorMessage } from '@nemo/common/src/utils/error';
 export { handleFormErrorsGeneric } from '@nemo/common/src/utils/forms/error';

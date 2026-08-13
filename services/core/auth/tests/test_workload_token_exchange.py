@@ -415,6 +415,23 @@ def test_workload_exchange_accepts_workload_key_id_when_shared_key_id_unset() ->
     assert config.oidc.workload_token_key_id == "workload-signing"
 
 
+def test_workload_exchange_requires_distinct_key_id_for_distinct_access_key_jwks_file(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="workload_token_key_id must be distinct"):
+        AuthConfig(
+            enabled=True,
+            token_signing=TokenSigningConfig(
+                key_id="nemo-platform-signing",
+                private_key_file=str(tmp_path / "access-key.pem"),
+            ),
+            oidc=OIDCConfig(
+                enabled=True,
+                workload_token_exchange_enabled=True,
+                workload_token_private_key_file=str(tmp_path / "workload-token.pem"),
+            ),
+            access_keys=AccessKeyConfig(enabled=True),
+        )
+
+
 def test_workload_signing_key_specific_override_wins_over_shared_token_signing(
     workload_signing_key: rsa.RSAPrivateKey,
     tmp_path,

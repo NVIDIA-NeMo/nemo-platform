@@ -1149,7 +1149,7 @@ class TestEvaluateJobRun:
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         evaluator_cls.assert_called_once_with()
         call_kwargs = evaluator.run_sync.call_args.kwargs
-        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
         assert call_kwargs["dataset"] == expected_spec.dataset
         assert call_kwargs["config"] == expected_config
         assert call_kwargs["target"] == expected_spec.target
@@ -1224,7 +1224,7 @@ class TestEvaluateJobRun:
         )
         download_dataset_sync.assert_not_called()
         call_kwargs = evaluator.run_sync.call_args.kwargs
-        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
         assert call_kwargs["dataset"] == downloaded_path
         assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
         assert call_kwargs["target"] is None
@@ -1260,7 +1260,7 @@ class TestEvaluateJobRun:
             destination=str(ctx.storage.persistent / "dataset"),
         )
         call_kwargs = evaluator.run_sync.call_args.kwargs
-        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        assert [type(metric) for metric in call_kwargs["metrics"]] == [ExactMatchMetric]
         assert call_kwargs["dataset"] == downloaded_path
         assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
         assert call_kwargs["target"] is None

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -21,16 +23,25 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateRequest,
     AccessKeyCreateResponse,
     AccessKeyListResponse,
+    AccessKeyRevokeResponse,
+    AccessKeyStatus,
 )
 from nmp.common.config import AuthConfig, get_platform_config
 
 from .jwks import DEFAULT_JWKS_CACHE_LIFESPAN, AsyncJWKSClient, signing_jwk_from_jwks
-from .jwt import TokenClaims
+from .jwt import TokenClaims, groups_from_claim, scopes_from_claim
 from .models import Principal
 from .signing_keys import RSASigningKey, RSASigningKeyCache
 
 ACCESS_KEY_TOKEN_TYPE = "access_key"
 ACCESS_KEY_JWKS_PATH = "/apis/auth/jwks"
+ACCESS_KEY_METADATA_VERSION = 2
+LEGACY_ACCESS_KEY_METADATA_VERSION = 1
+ACCESS_KEY_JTI_PATTERN = r"^ak_[0-9a-f]{32}$"
+_ACCESS_KEY_JTI_RE = re.compile(ACCESS_KEY_JTI_PATTERN)
+_NEWLY_CREATED_STATUS: AccessKeyStatus = "ACTIVE"
+
+logger = logging.getLogger(__name__)
 
 
 def platform_token_issuer(config: AuthConfig) -> str:
@@ -56,12 +67,19 @@ _ACCESS_KEY_JWKS_CLIENTS: dict[str, AsyncJWKSClient] = {}
 _EXPIRES_IN_SECONDS_FIELD = "expires_in_seconds"
 
 
+class AccessKeyValidationError(ValueError):
+    """Raised when a Scoped Access Key request conflicts with platform policy."""
+
+
 @dataclass(frozen=True)
 class _AccessKeyTokenPayload:
     claims: dict[str, Any]
     jti: str
     name: str | None
+    description: str | None
     principal: str
+    issuer: str
+    audiences: list[str]
     created_at: datetime
     expires_at: datetime | None
 
@@ -76,12 +94,25 @@ def _groups_claim_for_gateway_header(groups: list[str]) -> str | None:
     return groups_claim or None
 
 
-def _groups_from_claim(groups_claim: Any) -> list[str]:
-    if isinstance(groups_claim, str):
-        return [group.strip() for group in groups_claim.split(",") if group.strip()]
-    if isinstance(groups_claim, list):
-        return [group for group in groups_claim if isinstance(group, str)]
-    return []
+def is_access_key_token_candidate(token: str) -> bool:
+    """Return True when an untrusted token claims to be a Scoped Access Key."""
+    try:
+        unverified = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_nbf": False,
+                "verify_aud": False,
+            },
+        )
+    except jwt.PyJWTError:
+        return False
+    if unverified.get("nmp_token_type") != ACCESS_KEY_TOKEN_TYPE:
+        return False
+    jti = unverified.get("jti", "")
+    return isinstance(jti, str) and bool(_ACCESS_KEY_JTI_RE.match(jti))
 
 
 def _access_key_signing_key(config: AuthConfig) -> RSASigningKey:
@@ -139,17 +170,17 @@ def _resolve_expires_in_seconds(config: AuthConfig, request: AccessKeyCreateRequ
     if expires_in_seconds is None:
         if max_expires_in_seconds is not None:
             if expires_in_seconds_was_set:
-                raise RuntimeError(
+                raise AccessKeyValidationError(
                     "expires_in_seconds=null requires auth.access_keys.max_expires_in_seconds to be disabled"
                 )
-            raise RuntimeError(
+            raise AccessKeyValidationError(
                 "expires_in_seconds is required when auth.access_keys.default_expires_in_seconds is null "
                 "and auth.access_keys.max_expires_in_seconds is finite"
             )
         return None
 
     if max_expires_in_seconds is not None and expires_in_seconds > max_expires_in_seconds:
-        raise RuntimeError(
+        raise AccessKeyValidationError(
             "expires_in_seconds must be less than or equal to "
             f"auth.access_keys.max_expires_in_seconds ({max_expires_in_seconds})"
         )
@@ -181,6 +212,7 @@ class AccessKeyIssuerService(AccessKeyIssuer):
             self._config,
             principal=self._principal,
             name=request.name,
+            description=request.description,
             expires_in_seconds=expires_in_seconds,
             now=self._now(),
         )
@@ -192,15 +224,16 @@ class AccessKeyIssuerService(AccessKeyIssuer):
             self._config,
             principal=self._principal,
             name=request.name,
+            description=request.description,
             expires_in_seconds=expires_in_seconds,
             now=self._now(),
         )
 
-    def list(self) -> AccessKeyListResponse:
+    def list(self, *, page: int = 1, page_size: int = 100) -> AccessKeyListResponse:  # noqa: ARG002
         self._ensure_enabled()
         raise AccessKeyOperationNotImplementedError("Scoped Access Key listing is not implemented.")
 
-    def revoke(self, jti: str) -> None:
+    def revoke(self, jti: str) -> AccessKeyRevokeResponse:
         self._ensure_enabled()
         raise AccessKeyOperationNotImplementedError(f"Scoped Access Key revocation for {jti} is not implemented.")
 
@@ -210,6 +243,7 @@ def _create_access_key_token(
     *,
     principal: Principal,
     name: str | None = None,
+    description: str | None = None,
     expires_in_seconds: int | None = None,
     now: int,
 ) -> AccessKeyCreateResponse:
@@ -217,6 +251,7 @@ def _create_access_key_token(
         config,
         principal=principal,
         name=name,
+        description=description,
         expires_in_seconds=expires_in_seconds,
         now=now,
     )
@@ -228,6 +263,7 @@ async def _create_access_key_token_async(
     *,
     principal: Principal,
     name: str | None = None,
+    description: str | None = None,
     expires_in_seconds: int | None = None,
     now: int,
 ) -> AccessKeyCreateResponse:
@@ -235,6 +271,7 @@ async def _create_access_key_token_async(
         config,
         principal=principal,
         name=name,
+        description=description,
         expires_in_seconds=expires_in_seconds,
         now=now,
     )
@@ -247,21 +284,24 @@ def _build_access_key_token_payload(
     *,
     principal: Principal,
     name: str | None,
+    description: str | None,
     expires_in_seconds: int | None,
     now: int,
 ) -> _AccessKeyTokenPayload:
     if not config.access_keys.enabled:
         raise AccessKeyFeatureDisabledError("Scoped Access Keys are not enabled")
     if principal.id.startswith("service:"):
-        raise RuntimeError("Scoped Access Keys cannot be created for service principals")
+        raise AccessKeyValidationError("Scoped Access Keys cannot be created for service principals")
 
     issued_at = now
     jti = f"ak_{uuid.uuid4().hex}"
-    access_key_metadata: dict[str, Any] = {"version": 1}
+    access_key_metadata: dict[str, Any] = {"version": ACCESS_KEY_METADATA_VERSION}
     if name is not None:
         access_key_metadata["name"] = name
+    issuer = access_key_issuer(config)
+    audiences = [config.access_keys.audience]
     claims: dict[str, Any] = {
-        "iss": access_key_issuer(config),
+        "iss": issuer,
         "aud": config.access_keys.audience,
         "sub": principal.id,
         "iat": issued_at,
@@ -286,7 +326,10 @@ def _build_access_key_token_payload(
         claims=claims,
         jti=jti,
         name=name,
+        description=description,
         principal=principal.id,
+        issuer=issuer,
+        audiences=audiences,
         created_at=datetime.fromtimestamp(issued_at, tz=UTC),
         expires_at=expires_at,
     )
@@ -305,9 +348,13 @@ def _access_key_response_from_payload(
     return AccessKeyCreateResponse(
         jti=payload.jti,
         name=payload.name,
+        description=payload.description,
         token=token,
         token_type="Bearer",
         principal=payload.principal,
+        status=_NEWLY_CREATED_STATUS,
+        issuer=payload.issuer,
+        audiences=payload.audiences,
         created_at=payload.created_at,
         expires_at=payload.expires_at,
     )
@@ -326,7 +373,16 @@ async def validate_access_key_token(
         return None
 
     try:
-        unverified = jwt.decode(token, options={"verify_signature": False})
+        unverified = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_nbf": False,
+                "verify_aud": False,
+            },
+        )
         if unverified.get("nmp_token_type") != ACCESS_KEY_TOKEN_TYPE:
             return None
 
@@ -351,17 +407,17 @@ async def validate_access_key_token(
         if not isinstance(subject, str) or not subject or subject.startswith("service:"):
             return None
 
-        groups = _groups_from_claim(claims.get("groups", []))
+        groups = groups_from_claim(claims.get("groups", []))
         scope_claim = claims.get("scope") or claims.get("scp")
-        scopes = scope_claim.split() if isinstance(scope_claim, str) else []
         return TokenClaims(
             subject=subject,
             email=claims.get("email") if isinstance(claims.get("email"), str) else None,
-            groups=[group for group in groups if isinstance(group, str)],
-            scopes=scopes,
+            groups=groups,
+            scopes=scopes_from_claim(scope_claim),
             raw_claims=claims,
         )
     except httpx.HTTPError:
         raise
-    except Exception:
+    except Exception as exc:
+        logger.warning("Access key token validation failed: %s", exc, exc_info=True)
         return None

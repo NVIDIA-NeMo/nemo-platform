@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import Any, cast
+
 import pytest
 from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
@@ -68,7 +70,7 @@ class TestStringCheckMetric:
             left_template="{{item.expected}}",
             right_template="{{item.actual}}",
         )
-        result = Evaluator().run_sync(metrics=metric, dataset=[{"expected": "x", "actual": "x"}])
+        result = Evaluator().run_sync(metrics=[metric], dataset=[{"expected": "x", "actual": "x"}])
         assert len(result.row_scores) == 1
 
     def test_init_valid_params(self):
@@ -332,8 +334,9 @@ class TestStringCheckMetric:
             left_template="{{item.expected}}",
             right_template="{{sample.output_text}}",
         )
-        # Manually override operation to test error handling
-        metric.operation = "unsupported"
+        # Manually override operation to test error handling; the literal type forbids it,
+        # which is exactly the runtime case under test.
+        metric.operation = cast(Any, "unsupported")
 
         item = {"expected": "hello"}
         sample = {"output_text": "hello"}

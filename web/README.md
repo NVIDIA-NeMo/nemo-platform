@@ -10,7 +10,7 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
    flox activate      # from the repository root
    ```
 
-   Or install Node.js `22.23.2` and pnpm `10.34.5` yourself, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
+   Or install the Node.js and pnpm versions printed by `make toolchain-versions`, then use `TOOLCHAIN=system make bootstrap-studio` from the repository root.
 
 2. Copy `.env` files from `web/`. `make bootstrap-studio` already installs the
    workspace dependencies. In an activated Flox environment, Corepack provides
@@ -21,6 +21,8 @@ NeMo Studio is a UI built on the NeMo Platform, which is aimed at improving agen
    cp packages/studio/env/.env.dev.local.sample packages/studio/env/.env.dev.local && \
      cp packages/studio/env/.env.e2e packages/studio/env/.env.e2e.local
    ```
+
+   `pnpm install` also syncs the KUI `kaizen-ui` agent skill from the `@nvidia/foundations-react-core` design system package into `web/.agents/skills/` (via the root `sync-skills` script). The synced skill is gitignored; re-run `pnpm sync-skills` from `web/` to refresh it after upgrading the package.
 
 ## Running Studio Locally
 

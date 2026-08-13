@@ -105,9 +105,13 @@ describe('PluginRenderer', () => {
     expect(capturedProps?.host.auth.accessToken).toBe('test-token');
     expect(capturedProps?.host.auth.getAccessToken()).toBe('test-token');
     expect(typeof capturedProps?.host.sdk.platform.useEntitiesListWorkspaces).toBe('function');
+    expect(typeof capturedProps?.host.sdk.agents.agentsListAgents).toBe('function');
     expect(typeof capturedProps?.host.navigation.navigate).toBe('function');
     expect(typeof capturedProps?.host.notifications.notify).toBe('function');
     expect(typeof capturedProps?.host.telemetry.event).toBe('function');
+    // A plugin calling its own service prefixes requests with this; it must be a
+    // string even when unset, so `${apiBaseUrl}${path}` never yields "undefined/...".
+    expect(typeof capturedProps?.host.apiBaseUrl).toBe('string');
   });
 
   it('does not remount on token renewal and getAccessToken returns the new token', () => {

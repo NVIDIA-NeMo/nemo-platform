@@ -40,6 +40,7 @@ from nemo_platform.auth.helpers import (
 from nemo_platform.auth.token_provider import OIDCTokenProvider, TokenSet
 from nemo_platform.cli.core.context import CLIContext
 from nemo_platform.cli.core.errors import handle_errors
+from nemo_platform.cli.core.formatters import Column, format_output
 from nemo_platform.cli.core.help_formatter import create_typer_app
 from nemo_platform.config.config import Config
 from nemo_platform.config.models import ConfigParams, Context
@@ -838,6 +839,10 @@ def create_access_key(
         str | None,
         typer.Option("--name", "-n", help="Optional human-readable label for the Scoped Access Key."),
     ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", "-d", help="Optional description for the Scoped Access Key."),
+    ] = None,
     expires_in: Annotated[
         str | None,
         typer.Option(
@@ -846,12 +851,13 @@ def create_access_key(
         ),
     ] = None,
 ) -> None:
-    """Create a Scoped Access Key for the current authenticated user."""
+    """Create a Scoped Access Key for the currently authenticated user."""
     expires_in_was_set, parsed_expires_in = _parse_access_key_expires_in(expires_in)
-    if expires_in_was_set:
-        request = AccessKeyCreateRequest(name=name, expires_in_seconds=parsed_expires_in)
-    else:
-        request = AccessKeyCreateRequest(name=name)
+    request = AccessKeyCreateRequest(
+        name=name,
+        description=description,
+        **({"expires_in_seconds": parsed_expires_in} if expires_in_was_set else {}),
+    )
     try:
         created = _access_key_issuer(ctx).create(request)
     except AccessKeyFeatureDisabledError as exc:
@@ -859,6 +865,64 @@ def create_access_key(
     except AccessKeyOperationNotImplementedError as exc:
         _raise_access_key_not_implemented(exc)
     typer.echo(created.token)
+
+
+@access_keys_app.command("list")
+@handle_errors
+def list_access_keys(
+    ctx: typer.Context,
+    page: Annotated[int, typer.Option("--page", min=1, help="Page number to retrieve.")] = 1,
+    page_size: Annotated[
+        int,
+        typer.Option("--page-size", min=1, max=100, help="Number of keys to retrieve per page."),
+    ] = 100,
+) -> None:
+    """List Scoped Access Keys owned by the currently authenticated user."""
+    try:
+        listed = _access_key_issuer(ctx).list(page=page, page_size=page_size)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+
+    state: CLIContext = ctx.obj
+    format_output(
+        listed.data,
+        is_list=True,
+        output_format=state.get_output_format(),
+        output_columns=[
+            Column("jti", None),
+            Column("name", None),
+            Column("description", None),
+            Column("status", None),
+            Column("issuer", None),
+            Column("audiences", None),
+            Column("created_at", None),
+            Column("expires_at", None),
+        ],
+        timestamp_format=state.get_timestamp_format(),
+    )
+    if listed.has_more:
+        typer.echo(f"More Scoped Access Keys are available; use --page {page + 1} to retrieve them.", err=True)
+
+
+@access_keys_app.command("revoke")
+@handle_errors
+def revoke_access_key(
+    ctx: typer.Context,
+    jti: Annotated[str, typer.Argument(help="Stable ID of the Scoped Access Key to revoke.")],
+) -> None:
+    """Revoke a Scoped Access Key owned by the currently authenticated user."""
+    try:
+        result = _access_key_issuer(ctx).revoke(jti)
+    except AccessKeyFeatureDisabledError as exc:
+        _raise_access_key_disabled(exc)
+    except AccessKeyOperationNotImplementedError as exc:
+        _raise_access_key_not_implemented(exc)
+    if result.revoked:
+        typer.echo(f"Revoked Scoped Access Key {jti}.")
+    else:
+        typer.echo(f"Scoped Access Key {jti} was already revoked.")
 
 
 @app.command("status")

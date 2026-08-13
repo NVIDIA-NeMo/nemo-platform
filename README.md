@@ -13,7 +13,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ## Get started
 
-**Prerequisites:** Python 3.12-3.13, `uv>=0.9.14`, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). Source development needs Git, GNU Make, a C compiler, and either Flox (recommended) or the pinned system Node.js/pnpm toolchain. Docker is required when starting local services.
+**Prerequisites:** Python 3.12-3.13, uv, and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance). Source development needs Git, GNU Make, a C compiler, and either Flox (recommended) or a system toolchain matching `make toolchain-versions`. Docker is required when starting local services.
 
 Quick install from PyPI:
 
@@ -40,7 +40,7 @@ flox activate
 nemo setup
 ```
 
-`make bootstrap` uses the Flox-pinned uv, Node.js, and pnpm toolchain; it does not require a prior `flox activate`. Activate Flox after bootstrap to continue development in the managed environment. Without Flox, install uv `>=0.9.14`, Node.js `22.23.2`, pnpm `10.34.5`, and a C compiler, then run `make TOOLCHAIN=system bootstrap` followed by `source .venv/bin/activate`. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
+`make bootstrap` uses the Flox-pinned uv, Node.js, and pnpm toolchain; it does not require a prior `flox activate`. Activate Flox after bootstrap to continue development in the managed environment. Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap` followed by `source .venv/bin/activate`. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, selects default and fast agent models, installs agent skills, and deploys a sample agent (see more below).
 
@@ -86,7 +86,7 @@ nemo services run
 <details>
 <summary>Studio (web UI) bootstrap troubleshooting</summary>
 
-If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Ensure Flox is installed, or provide system Node.js `22.23.2` and pnpm `10.34.5` with `TOOLCHAIN=system`, then run `make bootstrap-studio` from the repository root.
+If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Ensure Flox is installed, or provide the versions printed by `make toolchain-versions` with `TOOLCHAIN=system`, then run `make bootstrap-studio` from the repository root.
 
 </details>
 

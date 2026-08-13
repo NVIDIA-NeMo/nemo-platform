@@ -17,13 +17,17 @@
 
 from __future__ import annotations
 
+from typing import Optional
 from typing_extensions import TypedDict
 
 __all__ = ["AccessKeyCreateParams"]
 
 
 class AccessKeyCreateParams(TypedDict, total=False):
-    expires_in_seconds: int
+    description: Optional[str]
+    """Optional human-readable description of the Scoped Access Key."""
+
+    expires_in_seconds: Optional[int]
     """Scoped Access Key lifetime in seconds.
 
     Omit to use auth.access_keys.default_expires_in_seconds. Send explicit null to
@@ -31,7 +35,7 @@ class AccessKeyCreateParams(TypedDict, total=False):
     auth.access_keys.max_expires_in_seconds to be disabled.
     """
 
-    name: str
+    name: Optional[str]
     """Optional human-readable Scoped Access Key label.
 
     The token jti remains the stable identifier.

@@ -18,6 +18,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
+import { MONITOR_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -163,10 +164,12 @@ export const AgentDetailRoute: FC = () => {
           }
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
-              <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
-                <Activity className="size-4" aria-hidden />
-                Open traces
-              </Button>
+              {MONITOR_ENABLED && (
+                <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
+                  <Activity className="size-4" aria-hidden />
+                  Open traces
+                </Button>
+              )}
               <Button
                 kind="secondary"
                 onClick={() => setSubmitEvalOpen(true)}

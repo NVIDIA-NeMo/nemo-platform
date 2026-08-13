@@ -322,7 +322,7 @@ class _SpanGroups:
     async def list(self, **kwargs: object) -> SimpleNamespace:
         self.calls.append(kwargs)
         return SimpleNamespace(
-            data=[SpanGroup(group={"session_id": "session-1"}, span_count=3)],
+            data=[SpanGroup(group={"session_id": "session-1"}, span_count=3, started_at=_STAMP)],
             pagination=SimpleNamespace(total_results=7),
         )
 
@@ -371,8 +371,8 @@ class _SpanGroupsPaged:
         self.calls.append(kwargs)
         return SimpleNamespace(
             data=[
-                SpanGroup(group={"session_id": "session-1"}, span_count=12),
-                SpanGroup(group={"session_id": "session-2"}, span_count=5),
+                SpanGroup(group={"session_id": "session-1"}, span_count=12, started_at=_STAMP),
+                SpanGroup(group={"session_id": "session-2"}, span_count=5, started_at=_STAMP),
             ],
             pagination=SimpleNamespace(total_results=37),
         )
@@ -397,10 +397,11 @@ async def test_list_span_groups_fans_out_over_sessions() -> None:
         since=since,
     )
 
+    stamp = _STAMP.isoformat().replace("+00:00", "Z")
     assert result == {
         "groups": [
-            {"group": {"session_id": "session-1"}, "span_count": 12},
-            {"group": {"session_id": "session-2"}, "span_count": 5},
+            {"group": {"session_id": "session-1"}, "span_count": 12, "started_at": stamp},
+            {"group": {"session_id": "session-2"}, "span_count": 5, "started_at": stamp},
         ],
         "grouped_by": "session_id",
         "count": 2,
