@@ -169,6 +169,7 @@ export const ModelChat: FC<ModelChatProps> = ({
       <SeedQuestions
         questions={showChatSeeds ? seedQuestions : []}
         onSelect={seedComposer}
+        disabled={resolvedDisabled}
         slotStart={
           metricsInComposer && latestMetrics ? <StatsBadge metrics={latestMetrics} /> : undefined
         }
