@@ -23,7 +23,7 @@ export function useRangeBand({
   lowerKey = 'lower',
   upperKey = 'upper',
   xKey = 'step',
-  fill = '#3d8a1e',
+  fill = 'var(--text-color-accent-green)',
   fillOpacity = 0.5,
   enabled = true,
 }: UseRangeBandOptions): ReactNode {

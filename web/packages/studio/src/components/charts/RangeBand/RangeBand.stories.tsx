@@ -53,9 +53,11 @@ function DemoTooltip({ active, payload, label }: TooltipProps<number, string>) {
   return (
     <div className="bg-component-tooltip border border-component-tooltip shadow-sm rounded-lg p-3 text-sm min-w-36">
       <p className="font-semibold mb-1">Step {label}</p>
-      {pt?.mean !== undefined && <p className="text-[#7fe040]">Mean: {pt.mean.toFixed(4)}</p>}
+      {pt?.mean !== undefined && (
+        <p className="text-[var(--text-color-accent-green)]">Mean: {pt.mean.toFixed(4)}</p>
+      )}
       {pt?.lower !== undefined && pt?.upper !== undefined && (
-        <p className="text-[#4a8a20]">
+        <p className="text-[var(--text-color-accent-green)] opacity-70">
           Range: {pt.lower.toFixed(3)} – {pt.upper.toFixed(3)}
         </p>
       )}
@@ -72,7 +74,7 @@ interface DemoProps {
 
 function RangeBandDemo({
   showLine = true,
-  fill = '#3d8a1e',
+  fill = 'var(--text-color-accent-green)',
   fillOpacity = 0.5,
   height = 300,
 }: DemoProps) {
@@ -108,7 +110,7 @@ function RangeBandDemo({
           <Line
             type="monotone"
             dataKey="mean"
-            stroke="#7fe040"
+            stroke="var(--text-color-accent-green)"
             strokeWidth={2}
             dot={false}
             name="Mean"
@@ -135,15 +137,15 @@ type Story = StoryObj<typeof RangeBandDemo>;
 
 export const WithLine: Story = {
   name: 'Band + mean line',
-  args: { showLine: true, fill: '#3d8a1e', fillOpacity: 0.5, height: 300 },
+  args: { showLine: true, fill: 'var(--text-color-accent-green)', fillOpacity: 0.5, height: 300 },
 };
 
 export const BandOnly: Story = {
   name: 'Band only (no line)',
-  args: { showLine: false, fill: '#3d8a1e', fillOpacity: 0.5, height: 300 },
+  args: { showLine: false, fill: 'var(--text-color-accent-green)', fillOpacity: 0.5, height: 300 },
 };
 
 export const CustomColor: Story = {
   name: 'Custom color (blue)',
-  args: { showLine: true, fill: '#1a6fa8', fillOpacity: 0.45, height: 300 },
+  args: { showLine: true, fill: 'var(--text-color-accent-blue)', fillOpacity: 0.45, height: 300 },
 };

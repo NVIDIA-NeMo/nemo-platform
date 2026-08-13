@@ -106,7 +106,7 @@ describe('useRangeBand', () => {
     expect(renderer.props.lowerKey).toBe('lower');
     expect(renderer.props.upperKey).toBe('upper');
     expect(renderer.props.xKey).toBe('step');
-    expect(renderer.props.fill).toBe('#3d8a1e');
+    expect(renderer.props.fill).toBe('var(--text-color-accent-green)');
     expect(renderer.props.fillOpacity).toBe(0.5);
   });
 });
@@ -194,7 +194,7 @@ describe('BandRenderer', () => {
       </svg>
     );
     const path = screen.getByTestId('range-band-path');
-    expect(path.getAttribute('fill')).toBe('#3d8a1e');
+    expect(path.getAttribute('fill')).toBe('var(--text-color-accent-green)');
     expect(path.getAttribute('fill-opacity')).toBe('0.5');
   });
 

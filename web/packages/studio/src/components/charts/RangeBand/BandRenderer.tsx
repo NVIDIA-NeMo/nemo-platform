@@ -26,7 +26,7 @@ export function BandRenderer({
   xKey = 'step',
   lowerKey = 'lower',
   upperKey = 'upper',
-  fill = '#3d8a1e',
+  fill = 'var(--text-color-accent-green)',
   fillOpacity = 0.5,
 }: BandRendererProps) {
   const clipId = useId();
