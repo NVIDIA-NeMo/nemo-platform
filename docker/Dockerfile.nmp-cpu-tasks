@@ -11,6 +11,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # upstream cpu-tasks group includes nemo-evaluator-plugin directly.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --inexact --package nemo-evaluator-plugin --no-editable
+# Fabric targets execute inside this image. Install the SDK's supported harness
+# adapters into the image's venv so Fabric can discover their descriptors.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --inexact --package nemo-evaluator-sdk --extra fabric --no-editable
 
 FROM ${NMP_PYTHON_BASE} AS runtime
 ENV USERNAME=nvs \
