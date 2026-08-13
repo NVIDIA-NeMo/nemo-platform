@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as DataView from '@nemo/common/src/components/DataView/internal';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { formatFileSize } from '@nemo/common/src/components/UploadModal/utils';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useFilesRetrieveFileset as useGetDataset } from '@nemo/sdk/generated/platform/api';
@@ -132,13 +132,7 @@ export const CustomizationFilesetDetailsPanel = ({ filesetUri }: Props) => {
           >
             <DataView.TableContent
               className="studio-data-view-table"
-              renderEmptyState={() => (
-                <TableEmptyState
-                  className="py-4"
-                  header="No Dataset Details Found"
-                  emptyMessage="No dataset details available."
-                />
-              )}
+              renderEmptyState={() => <EntityEmptyState entity="filesetFiles" variant="first-use" />}
             />
             <DataView.Pagination />
           </DataView.Root>
