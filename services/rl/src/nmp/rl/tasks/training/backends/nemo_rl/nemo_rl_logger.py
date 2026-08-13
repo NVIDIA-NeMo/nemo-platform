@@ -39,16 +39,32 @@ _TRAIN_METRIC_KEYS = (
     "preference_loss",
     "rewards_chosen_mean",
     "rewards_rejected_mean",
-    # GRPO: reward and advantages — the signal that says whether RL is working
+    # GRPO: reward and advantages — the signal that says whether RL is working.
+    # The total_reward spread is what a reward-distribution band is drawn from;
+    # `calculate_single_metric` emits the whole set (a /histogram rides along too,
+    # but it is a Histogram object and is dropped as non-scalar).
     "reward",
     "total_reward/mean",
+    "total_reward/median",
+    "total_reward/min",
+    "total_reward/max",
+    "total_reward/stddev",
     "advantages/mean",
     "advantages/min",
     "advantages/max",
-    # GRPO: policy-optimization health
+    # GRPO: policy-optimization health. These are the diagnostics that predict a
+    # failing run -- entropy collapse, and the logprob-error family that says the
+    # trainer and the generation engine have drifted apart. All are returned
+    # unconditionally by ClippedPGLossFn and normalized via its
+    # `metric_normalizations` map, so the per-microbatch sum NeMo-RL applies is
+    # already the correct global value.
     "kl_penalty",
     "approx_entropy",
     "token_mult_prob_error",
+    "gen_kl_error",
+    "policy_kl_error",
+    "js_divergence_error",
+    "sampling_importance_ratio",
     # GRPO: rollout shape
     "truncation_rate",
     "natural_termination_rate",
