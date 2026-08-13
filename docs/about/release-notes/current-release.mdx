@@ -205,6 +205,12 @@ workflows against the upgraded checkout.
 - **Python support.** Python 3.11 is no longer part of the supported source
   checkout or `nemo-platform` distribution matrix.
 
+## Known issues
+
+- **Deep Agents trials can be scored as failures.** Agent-eval trials run
+  through the NeMo Fabric Deep Agents adapter can be recorded as failures even
+  when the agent completed successfully. This will be fixed in the next release.
+
 ## Links
 
 - Repository: [https://github.com/NVIDIA-NeMo/nemo-platform](https://github.com/NVIDIA-NeMo/nemo-platform)
