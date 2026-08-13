@@ -38,18 +38,18 @@ describe('EntityEmptyState', () => {
       expect(screen.getByText(descriptor.subheading)).toBeInTheDocument();
     });
 
-    it('toggles between the NeMo CLI command and the agent prompt', async () => {
+    it('toggles between the agent prompt and the NeMo CLI command', async () => {
       const user = userEvent.setup();
       wrap(<Guardrails onCreate={vi.fn()} />);
 
       const help = screen.getByTestId('entity-empty-state-help');
-      // CLI is the default selection.
-      expect(help).toHaveTextContent(descriptor.cliCommand as string);
-      expect(help).not.toHaveTextContent(descriptor.skillPrompt as string);
-
-      await user.click(screen.getByRole('radio', { name: 'Ask an agent' }));
+      // Ask an agent is the default selection.
       expect(help).toHaveTextContent(descriptor.skillPrompt as string);
       expect(help).not.toHaveTextContent(descriptor.cliCommand as string);
+
+      await user.click(screen.getByRole('radio', { name: 'CLI' }));
+      expect(help).toHaveTextContent(descriptor.cliCommand as string);
+      expect(help).not.toHaveTextContent(descriptor.skillPrompt as string);
     });
 
     it('invokes onCreate from the primary CTA', async () => {

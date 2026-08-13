@@ -135,7 +135,7 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   skillPrompt,
 }) => {
   const toast = useToast();
-  const [kind, setKind] = useState<HelpKind>(cliCommand ? 'cli' : 'agent');
+  const [kind, setKind] = useState<HelpKind>(skillPrompt ? 'agent' : 'cli');
 
   const items: { value: HelpKind; children: React.ReactNode }[] = [];
   if (skillPrompt)
