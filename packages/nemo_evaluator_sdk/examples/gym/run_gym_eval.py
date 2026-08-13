@@ -46,6 +46,14 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig
 
 
+def _non_negative_int(raw: str) -> int:
+    """argparse type for ``--limit``: a negative value would silently slice tasks off the END."""
+    value = int(raw)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be non-negative, got {value}")
+    return value
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
@@ -68,6 +76,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="`inference_provider` speaks OpenAI-compatible chat; `openai_model` uses the Responses API.",
     )
     parser.add_argument("--num-repeats", type=int, default=2, help="Attempts per task (each becomes a trial).")
+    parser.add_argument(
+        "--limit", type=_non_negative_int, default=None, help="Run only the first N tasks (handy for smoke runs)."
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -115,6 +126,10 @@ async def _main(args: argparse.Namespace) -> int:
     dataset = args.dataset or _packaged_dataset(args.resources_server)
     tasks = discover_gym_tasks(dataset)
     print(f"discovered {len(tasks)} tasks from {dataset}")
+    if args.limit is not None:
+        # The runner materializes Gym's input from these tasks, so this bounds the rollout too.
+        tasks = tasks[: args.limit]
+        print(f"limited to {len(tasks)} task(s)")
 
     runner = GymAgentTaskRunner(
         config=GymRuntimeConfig(

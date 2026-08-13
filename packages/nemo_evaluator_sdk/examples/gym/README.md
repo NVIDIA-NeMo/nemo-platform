@@ -57,7 +57,20 @@ Run bundle (run.json, trials.jsonl, scores.jsonl, report.html): /var/folders/...
 
 ## Read the results
 
-`inspect_results.py` is the companion to the above: it reads a bundle and shows how to reach each kind of result — headline aggregates, `pass@k`, per-task outcomes, and the runner's own imported numbers. Its accessors (`aggregate`, `per_task_outcomes`) are written to be lifted into your own code, and everything it shows also works on the in-memory `AgentEvalResult` that `AgentEvaluator().run(...)` returns — reading a bundle just makes it runnable without a live run.
+`inspect_results.py` reads `summary.json` and shows each result layer: run aggregates from
+`summary.scores`, ordered per-task values from `summary.task_outcomes("<metric_type>.<output>")`, and
+runner-owned aggregates under `runner.gym.*`. That accessor returns models rather than nested dicts —
+each row names its own `task_id` and `metric_name` — so the example needs no per-task accessor of its
+own. A `null` value is a trial that failed before scoring, while an empty `trials` list means the
+metric produced no usable measurement; a task the metric never measured is not returned at all.
+
+Each record names the trial that produced it, so `trial_id` — not list position — is what joins two
+outputs of the same task, or looks up `trials.jsonl`. A trial whose metric failed is absent
+rather than `null`, so two lists for one task need not be the same length.
+
+Values keep the metric's own type (a count stays an int, a judge's verdict stays a label), and each
+carries a `value_type` of `number` / `label` / `missing`. Use `numeric_metric_values` before doing
+arithmetic — it drops labels and keeps a dead trial's `null`.
 
 No bundle is checked in; the run above produces one. Give it a stable `--output-dir` and point the reader at the same path:
 
