@@ -38,6 +38,18 @@ max_survivors: 3
 # often does in later rounds; only an empty proposal is fatal.
 max_candidates: 3
 
+# Both metrics have a known ceiling in this deterministic fixture. This lets the
+# loop stop once a surviving candidate passes every task and keeps the required
+# output shape. `full.yaml` does not inherit `short.yaml`, so it declares the
+# same contract explicitly.
+objective_function:
+  - name: reward
+    direction: maximize
+    target: 1.0
+  - name: shape_ok
+    direction: maximize
+    target: 1.0
+
 # Whole split. Six failing tasks and three that already pass, so there is a
 # gradient to climb and a cost to breaking something that worked.
 max_train_batch_tasks: null
