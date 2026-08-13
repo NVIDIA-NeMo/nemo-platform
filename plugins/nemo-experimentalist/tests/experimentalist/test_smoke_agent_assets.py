@@ -212,7 +212,7 @@ def test_task_template_carries_the_current_verifier() -> None:
     """Check that the template uses the canonical verifier."""
     canonical = (_SHARED / "test.sh").read_bytes()
     actual = (_template_toml().parent / "tests" / "test.sh").read_bytes()
-    assert actual == canonical, "task template verifier is stale; run scripts/sync_verifier.py"
+    assert actual == canonical, "task template verifier is stale; copy dataset/_shared/test.sh into the template"
 
 
 def test_the_task_template_carries_the_current_records() -> None:
@@ -224,13 +224,13 @@ def test_the_task_template_carries_the_current_records() -> None:
     the answer derivable.
 
     A second copy, so it needs a second guard: a drifted one would have Eval Author
-    compute answers from records the container does not have. Run scripts/sync_verifier.py.
+    compute answers from records the container does not have.
     """
     template_records = _EXAMPLE_DIR / "dataset" / "task-template" / "records.json"
     if not template_records.is_file():
         return  # optional; only insight mode needs it
     assert template_records.read_bytes() == (_SHARED / "records.json").read_bytes(), (
-        f"{template_records} has drifted from the canonical records; run scripts/sync_verifier.py"
+        f"{template_records} has drifted from the canonical records; copy dataset/_shared/records.json into the template"
     )
 
 

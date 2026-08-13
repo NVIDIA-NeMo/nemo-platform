@@ -15,8 +15,8 @@ checked for more than "it completed".
 > useful. `AGENT-SPEC.md` reaches the LLM components by a separate route and is
 > held to the same rule as `agent/`.
 >
-> Why a baseline must not change, and the per-group detail, live in
-> `plugins/nemo-experimentalist/docs/`.
+> The [deliberate weaknesses](#deliberate-weaknesses) section explains why the
+> baseline must not change and how each scenario is constructed.
 
 ## Prerequisites
 
@@ -59,7 +59,6 @@ dataset/groups/                GENERATED Harbor task sets, gitignored
 dataset/insights/              insight mode only, frozen analyst output
 scripts/render_tasks.py        render every curated task from the template
 scripts/build_image.py         build the image and render/stamp every task
-scripts/sync_verifier.py       refresh the template verifier and records
 scripts/build_all_group.py     assemble the combined group the full scenario runs
 scripts/record_traces.py       evaluate a group and ingest its traces
 ```
@@ -201,7 +200,82 @@ of the question.
 The repository's `.copyrightignore` explicitly exempts these task payloads from
 SPDX headers. Every source file in this fixture retains the standard header.
 
-## Groups
+## Deliberate weaknesses
+
+smoke-agent is **wrong on purpose**. Five known weaknesses, each paired with a
+Harbor task group, let an Experimentalist run prove that it repaired something
+rather than merely completed.
+
+**Do not fix them in the baseline agent.** A well-meaning cleanup destroys what
+the fixture measures: the baseline passes, the Analyzer gets no failing trace,
+and a run that does nothing looks healthy.
+
+Tasks are authored in `dataset/tasks.json` and rendered into `dataset/groups/`
+by `scripts/render_tasks.py`, which `scripts/build_image.py` runs. The rendered
+tree is gitignored, so edit the manifest rather than its output. Every group has
+train and validation splits; every group except `g4-dispatch-order` also has five
+`insight-evidence` tasks for the Analyst and Mode 1 loop.
+
+### G1 — no aggregation capability
+
+Nothing sums or averages a numeric field. `solve` dispatches only to
+`handle_lookup`, `handle_list`, and `handle_count`, so a total-hours question
+falls through to `FALLBACK`. This is the only missing capability; G2–G5 are
+flawed existing paths, so G1 exercises the Proposer more than the Coder.
+
+`g1-aggregation` includes department and role sums in both splits. Train covers
+research (`total=29`) and engineer (`total=20`); validation covers analyst
+(`total=9`) and ops (`total=13`). A repair must read the requested scope rather
+than hardcode it. A correct repair adds a scoped aggregation handler to dispatch.
+
+### G2 — name pattern too narrow
+
+`LOOKUP_RE` uses `([A-Za-z ]+)`, so apostrophes, hyphens, and non-ASCII names
+fall through to `FALLBACK`. `g2-name-patterns` covers O'Brien, Zoë Washington,
+and Ann-Marie Cruz while retaining plain-ASCII controls. A correct repair widens
+the pattern; `str.isalpha()` is not equivalent because it accepts Unicode names
+that the original ASCII regular expression rejects.
+
+### G3 — instruction clipped before dispatch
+
+`solve` truncates instructions to `MAX_INSTRUCTION_CHARS = 240`, so a long
+preamble can remove the question before any handler sees it. `g3-long-inputs`
+uses a roughly 320-character preamble and a roughly 650-character variant, so a
+small limit increase is insufficient. The `trailing-prose` control puts the
+question first and catches a bad repair that reads only a clipped tail. A correct
+repair raises or removes the limit.
+
+### G4 — dispatch order shadows the count handler
+
+`LIST_RE` accepts `how many` and runs before `COUNT_RE`, so counting questions
+produce a list of names. This is the only wrong-shaped answer rather than a
+fallback, producing `reward 0` with `shape_ok 1.0`. `g4-dispatch-order` trains
+on department counts and validates role-scoped counts: reordering alone is not
+enough because the count pattern must widen too. Its healthy outcome retains the
+baseline after the train-only fix fails validation.
+
+### G5 — missing and empty data not handled
+
+`handle_lookup` raises for an absent name, while an empty stored value produces
+an empty answer instead of `unknown`. The top-level catch returns `FALLBACK` so
+Harbor records a scored failure rather than a harness error. `g5-edge-cases`
+covers absent names and Karl Jung's empty `role`; correct repairs explicitly
+handle absent records and empty fields.
+
+### Keep the groups orthogonal
+
+Each group must evidence only its own weakness. The shared records file is a
+coupling surface: Ada Lovelace and Grace Hopper are non-empty controls; Zoë,
+O'Brien, and Ann-Marie serve G2; Karl Jung has an empty `role` but integer hours.
+His hours stay `0`, not empty, because an empty value in the `ops` department
+would force G1 aggregation to handle G5 robustness. Check this separation when
+adding a task or record.
+
+The baseline guards pin agent behavior and the records table, but they do not
+pin individual split assignment. Check `dataset/tasks.json` after changing the
+manifest.
+
+## Scenario matrix
 
 Every group is a self-contained train/validation pair of six tasks — per split,
 two that fail at baseline and one that already passes. That control is the point:
@@ -242,8 +316,8 @@ combined scenario wants several at once rather than more tasks from one:
   to find, so a run that stalls later still shows the machinery working; the
   harder ones keep the ceiling out of reach of a shallow fix.
 
-What any individual group measures, and why its baseline must not change, is
-documented outside this directory — see the note at the top of this file.
+The deliberate-weaknesses section above explains the baseline and split
+constraints behind each scenario.
 
 ## Checking a run
 
@@ -260,8 +334,8 @@ uv run pytest plugins/nemo-experimentalist/tests/experimentalist/ -k smoke -q
 
 It pins this fixture's baseline behaviour. A failure there means the fixture
 itself changed, which makes every later run meaningless while still looking
-healthy. Do not "fix" the agent to make it pass; read the documents referenced at
-the top first.
+healthy. Do not "fix" the agent to make it pass; read the deliberate-weaknesses
+section first.
 
 ## Timings
 
@@ -278,6 +352,6 @@ candidate — which is the part under test and cannot be optimized away here.
 
 ## Next steps
 
-- Read the [weakness rationale](../../docs/smoke-agent-weaknesses.md) before changing the baseline.
+- Read [Deliberate weaknesses](#deliberate-weaknesses) before changing the baseline.
 - Run the [asset guards](../../tests/experimentalist/test_smoke_agent_assets.py) after changing the image, task template, or manifest.
 - Use `optimizer-full.yaml` with `configs/full.yaml` to exercise the combined scenario.

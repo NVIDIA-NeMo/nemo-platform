@@ -8,7 +8,7 @@ weaknesses. A well-meaning edit that closes one silently destroys what an
 Experimentalist run is asserted against, so the expected baseline is pinned
 here. These tests need no Docker and no network.
 
-See plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md before changing
+See plugins/nemo-experimentalist/examples/smoke-agent/README.md before changing
 either the agent or this file.
 """
 
@@ -89,7 +89,7 @@ def test_g2_names_carry_no_other_weakness() -> None:
     for record in tricky:
         assert record["role"] != "", (
             f"{record['name']} now carries a second group's weakness — see "
-            "docs/smoke-agent-weaknesses.md before changing this record"
+            "examples/smoke-agent/README.md before changing this record"
         )
         assert isinstance(record["hours"], int), f"{record['name']} would break another group"
 
@@ -108,7 +108,7 @@ _EXPECTED_BASELINE: dict[tuple[str, str, str], float] = {
     # general filter mechanism is the obvious fix. Validation holds new instances
     # of those same two kinds, which a general fix reaches and a hardcoded one
     # does not. This is what makes G1 a repair scenario rather than a
-    # generalization one; see docs/smoke-agent-weaknesses.md.
+    # generalization one; see examples/smoke-agent/README.md.
     ("g1-aggregation", "train", "total-hours-research"): 0.0,
     ("g1-aggregation", "train", "total-hours-engineers"): 0.0,
     ("g1-aggregation", "train", "lookup-ada"): 1.0,
@@ -190,7 +190,7 @@ def test_baseline_rewards_are_pinned(rendered_dataset: Path, key: tuple[str, str
     """Check that every task has its expected baseline reward."""
     assert _reward_for(rendered_dataset, *key) == expected, (
         f"{key} no longer scores {expected} at baseline. The agent ships with deliberate "
-        "weaknesses; see plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md before "
+        "weaknesses; see plugins/nemo-experimentalist/examples/smoke-agent/README.md before "
         "changing agent.py."
     )
 

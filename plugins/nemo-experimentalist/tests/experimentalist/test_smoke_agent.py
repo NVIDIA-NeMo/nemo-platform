@@ -5,7 +5,7 @@
 
 Each test pins one documented behaviour of the baseline agent. A failure here
 usually means someone "fixed" the agent; see
-plugins/nemo-experimentalist/docs/smoke-agent-weaknesses.md first.
+plugins/nemo-experimentalist/examples/smoke-agent/README.md first.
 """
 
 from __future__ import annotations
