@@ -5,8 +5,8 @@
 
 ## Prerequisites
 
-- The records file is available at `/app/data/records.json`.
-- The task runner can write `/app/artifacts/` and `/app/traces/`.
+The task container ships Python, the standard library, and NOOA. It has no
+network access and no API key, so anything that needs either fails outright.
 
 ## Job
 
@@ -72,4 +72,4 @@ where `total=99` is expected, even though the number is right.
 
 ## Next steps
 
-Run the requested task and preserve this contract in any implementation change.
+Any implementation change must still satisfy every constraint above.

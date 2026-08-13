@@ -8,20 +8,20 @@ weaknesses, each paired with a group of Harbor tasks that surfaces it, so an
 Experimentalist run can be asserted to have *repaired* something rather than
 merely completed.
 
-## Where the tasks live
-
 > **Explanation.** This document describes the fixture for maintainers. It is
 > deliberately outside the agent source and specification so the Coder must
 > infer failures from evaluation evidence.
+
+**Do not repair the five weaknesses in the agent.** A well-meaning cleanup
+silently destroys what the fixture measures: with the weakness gone, the baseline
+passes, the Analyst gets no failing trace, and a run that does nothing looks
+identical to a run that works.
 
 ## Prerequisites
 
 Read this alongside the smoke-agent README and its baseline guard tests.
 
-**Do not fix them in the agent.** A well-meaning cleanup silently destroys what
-the fixture measures: with the weakness gone, the baseline passes, the Analyzer
-gets no failing trace, and a run that does nothing looks identical to a run that
-works.
+## Where the tasks live
 
 Tasks are authored in `examples/smoke-agent/dataset/tasks.json` and rendered into
 Harbor task directories under `dataset/groups/` by `scripts/render_tasks.py`,
@@ -123,7 +123,7 @@ validation; the count pattern has to widen too.
 
 **Why the catch exists.** Without it the process exits non-zero, the wrapper
 raises, and Harbor records a *harness error* rather than a scored 0 — which
-leaves the Analyzer nothing to read. Verified: G5 trials complete with
+leaves the Analyst nothing to read. Verified: G5 trials complete with
 `status=completed` and reward 0. The catch controls the exit code, not the trace;
 NOOA already records the exception on the failing handler's span.
 
@@ -168,5 +168,4 @@ against `dataset/tasks.json` whenever you edit the manifest.
 ## Next steps
 
 After changing a scenario, run the smoke-agent asset and baseline tests before
-running an Experimentalist loop. Check split assignments against `dataset/tasks.json`
-whenever you edit the manifest.
+running an Experimentalist loop.
