@@ -242,7 +242,7 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 - Debug mode: `make test-debug`
 - Re-run failed tests: `make test-failed`
 
-**Note:** E2E tests are currently disabled. Use `make test-unit` iteratively, then `make test-integration` for comprehensive verification.
+**Note:** E2E tests are not disabled — `make test-e2e` runs them (spinning up services automatically), and `.github/workflows/ci.yaml` runs them on every PR (`python-e2e-test`, `kind-cpu-e2e`, plus GPU-gated suites triggered externally via Platform-Deploy). They're heavier than unit/integration tests, though, so for fast local iteration use `make test-unit`, then `make test-integration`, and reach for `make test-e2e` for comprehensive verification before relying on CI.
 
 ## Cursor Cloud specific instructions
 
