@@ -28,25 +28,37 @@ If you previously installed the `nemo-microservices` package, uninstall it first
 pip uninstall nemo-microservices
 ```
 
-### Install in a Virtual Environment
+### Install
 
-Install the PyPI `nemo-platform` wrapper package in a Python 3.12-3.13 virtual environment. If you are working from a source checkout, run `make bootstrap` from the repository root instead; the generated SDK package under `sdk/python/nemo-platform/pyproject.toml` does not define the wrapper extras.
+Install the PyPI `nemo-platform` wrapper package. From a source checkout, run `make bootstrap` from the repository root instead; the generated SDK package under `sdk/python/nemo-platform/pyproject.toml` does not define the wrapper extras.
+
+<Tabs>
+
+<Tab title="uv tool (recommended)">
+
+One command, `nemo` available everywhere, nothing to activate.
 
 ```bash
-pip install "nemo-platform[all]"
+uv tool install "nemo-platform[all]"
 ```
 
-Or with uv:
+</Tab>
+
+<Tab title="Virtual environment">
+
+Use when you also import the SDK from your own code. `nemo` works only while the environment is active.
 
 ```bash
+uv venv
+source .venv/bin/activate
 uv pip install "nemo-platform[all]"
 ```
 
-<Warning>
+Plain `pip install "nemo-platform[all]"` works in an environment you manage yourself.
 
-When installed in a virtual environment, the `nemo` command is only available when the environment is activated.
+</Tab>
 
-</Warning>
+</Tabs>
 
 ### Verify Installation
 

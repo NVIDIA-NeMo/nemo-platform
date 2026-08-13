@@ -246,10 +246,12 @@ class TestFormatLicenses:
             normalize_package_name(row["name"]): row["license"]
             for row in (json.loads(line) for line in inventory_file.read_text(encoding="utf-8").splitlines())
         }
+        # Only packages the workspace still resolves belong here: the inventory
+        # lists what we ship, so a name that leaves the dependency set (such as
+        # langchain-oci, dropped with the move to NAT 1.9) has no row to check.
         expected_licenses = {
             "certifi": "MPL-2.0",
             "greenlet": "MIT AND Python-2.0",
-            "langchain-oci": "UPL-1.0",
             "pathspec": "MPL-2.0",
             "psycopg2-binary": "LGPL-3.0-or-later WITH openvpn-openssl-exception",
             "regex": "Apache-2.0 AND CNRI-Python",

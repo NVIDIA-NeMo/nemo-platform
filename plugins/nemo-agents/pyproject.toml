@@ -10,8 +10,19 @@ dependencies = [
     "nemo-agents-example-calculator",
     "nemo-agents-example-email-phishing",
     "nemo-agents-example-email-security",
-    "nvidia-nat-core>=1.8.0,<1.9",
-    "nvidia-nat-langchain>=1.8.0,<1.9",
+    # NAT 1.9 is the first line whose cryptography cap (>=48,<49) overlaps
+    # data-designer's, so it is what makes the published nemo-platform[all]
+    # wheel resolvable at all; 1.8.0 caps cryptography at <47. That line ships
+    # only pre-releases today, and uv accepts a pre-release solely when a
+    # requirement it reads names one, so every NAT distribution in the closure
+    # is listed here rather than only the two this package imports. Collapse
+    # back to core + langchain on >=1.9.0 once it is released.
+    "nvidia-nat-core>=1.9.0a20260811,<1.10",
+    "nvidia-nat-langchain>=1.9.0a20260811,<1.10",
+    "nvidia-nat-atif>=1.9.0a20260811,<1.10",
+    "nvidia-nat-config-optimizer>=1.9.0a20260811,<1.10",
+    "nvidia-nat-eval>=1.9.0a20260811,<1.10",
+    "nvidia-nat-opentelemetry>=1.9.0a20260811,<1.10",
     # ASTD-164: tight pins avoid pip ResolutionTooDeep via aioboto3/langchain-aws.
     "langchain-aws==1.1.0",
     "boto3>=1.40.46,<1.40.62",

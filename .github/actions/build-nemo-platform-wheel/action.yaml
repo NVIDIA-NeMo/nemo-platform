@@ -43,9 +43,9 @@ inputs:
     required: false
     default: "19700101000000"
   python-version:
-    description: Python version for setup-uv.
+    description: Python version for setup-uv. Must be within the wheel's supported range.
     required: false
-    default: "3.11"
+    default: "3.12"
   source-root:
     description: >
       Path to the checked-out repository. release-bundle.yaml uses `source`;
