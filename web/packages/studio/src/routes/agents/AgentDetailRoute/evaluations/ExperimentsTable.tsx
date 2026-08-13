@@ -25,21 +25,27 @@ export const ExperimentsTable: FC<ExperimentsTableProps> = ({ workspace, experim
 
   const makeColumns: ComponentProps<typeof StudioDataView<AgentExperimentRow>>['makeColumns'] =
     useCallback(
+      // Explicit sizes, matching the sibling tables, so the three views line up rather than each
+      // sizing to its own content.
       ({ accessor }) => [
         accessor('name', {
           header: 'Experiment',
+          size: 240,
           cell: ({ row }) => <Text title={row.original.name}>{row.original.name}</Text>,
         }),
         accessor('evaluationCount', {
           header: 'Evaluations',
+          size: 130,
           cell: ({ row }) => <Text>{row.original.evaluationCount}</Text>,
         }),
         accessor('runCount', {
           header: 'Runs',
+          size: 90,
           cell: ({ row }) => <Text>{row.original.runCount}</Text>,
         }),
         accessor('latestCreatedAt', {
           header: 'Latest run',
+          size: 140,
           cell: ({ row }) =>
             row.original.latestCreatedAt ? (
               <RelativeTime datetime={row.original.latestCreatedAt} />

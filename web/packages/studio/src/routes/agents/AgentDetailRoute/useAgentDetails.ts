@@ -11,12 +11,17 @@ import {
 } from '@nemo/sdk/generated/agents/api';
 import { useListEvaluations, useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type { EvaluationResponse } from '@nemo/sdk/generated/platform/schema';
+import { fetchEvaluatorJobs } from '@studio/api/evaluation/evaluator-jobs';
+import { type EvalJobRow, targetNameForEvalJob, toEvalJobRow } from '@studio/api/evaluation/utils';
 import { RECENT_EVAL_LIMIT } from '@studio/routes/agents/AgentDetailRoute/constants';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 /** Backend caps page_size at 100. Enough to name the experiments behind a panel's worth of rows. */
 const EXPERIMENT_PAGE_SIZE = 100;
+
+/** Statuses that will not change again, so polling can stop. */
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'error', 'cancelled']);
 
 /** A published evaluation plus the experiment name its detail route is nested under. */
 export type AgentEvaluationRow = EvaluationResponse & { experimentName: string | null };
@@ -78,6 +83,27 @@ export const useAgentDetails = ({
     { query: { enabled: !!agentName && !!workspace } }
   );
 
+  // Evaluator jobs for this agent. Intake cannot answer this until a run publishes — its
+  // ``agent_name`` facet is denormalized from ingested spans — so a just-submitted run is
+  // invisible there for the whole run plus the denormalizer interval. A job, by contrast, exists
+  // the moment it is created. The jobs filter has no agent field, hence the client-side match and
+  // the paging predicate.
+  const { data: agentJobsData } = useQuery({
+    queryKey: ['evaluator-jobs', workspace, 'agent-panel', agentName] as const,
+    queryFn: ({ signal }) =>
+      fetchEvaluatorJobs(workspace, signal, (all) => {
+        const matched = all.filter((job) => targetNameForEvalJob(job) === agentName).length;
+        return matched >= RECENT_EVAL_LIMIT;
+      }),
+    enabled: !!agentName && !!workspace,
+    // Follow a run to completion without a manual refresh; stop once nothing can change.
+    refetchInterval: (query) => {
+      const rows = (query.state.data ?? []).map(toEvalJobRow);
+      const live = rows.some((row) => !TERMINAL_JOB_STATUSES.has(row.status ?? ''));
+      return live ? JOB_POLLING_INTERVAL_MS : false;
+    },
+  });
+
   const deleteDeploymentMutation = useAgentsDeleteDeployment({
     mutation: {
       onSuccess: () => {
@@ -120,6 +146,14 @@ export const useAgentDetails = ({
     }));
   }, [agentEvalsResponse, experimentsResponse, agentName]);
 
+  const agentJobs: EvalJobRow[] = useMemo(() => {
+    if (!agentName) return [];
+    return (agentJobsData ?? [])
+      .filter((job) => targetNameForEvalJob(job) === agentName)
+      .slice(0, RECENT_EVAL_LIMIT)
+      .map(toEvalJobRow);
+  }, [agentJobsData, agentName]);
+
   const healthyDeployments = useMemo(
     () => agentDeployments.filter((d) => d.status === 'running'),
     [agentDeployments]
@@ -142,6 +176,7 @@ export const useAgentDetails = ({
     agent,
     agentDeployments,
     agentEvals,
+    agentJobs,
     healthyDeployments,
     isDeploying,
     chatDeployment,
