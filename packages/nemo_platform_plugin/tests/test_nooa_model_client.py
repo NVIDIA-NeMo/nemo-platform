@@ -41,8 +41,6 @@ def test_configured_model_refs_requires_default(monkeypatch):
     with pytest.raises(ValueError, match="No default model"):
         configured_model_refs()
 
-
-
 async def test_resolve_model_clients_deduplicates_same_model(monkeypatch):
     model_entity = SimpleNamespace(
         workspace="default",
@@ -172,7 +170,6 @@ async def test_resolve_model_clients_uses_provider_served_name(monkeypatch):
         "openai/gpt-5.6-sol",
         api_base="http://platform/model/gpt-5-6-sol/-/v1",
         api_key="not-needed",
-        timeout=60.0,
         base_model="openai/gpt-5.6-sol",
         extra_headers={"accept-encoding": "identity"},
         drop_params=True,

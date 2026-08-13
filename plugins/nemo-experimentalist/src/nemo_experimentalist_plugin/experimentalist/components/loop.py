@@ -810,6 +810,9 @@ class EvolutionaryOptimizer(Agent):
                     phase=phase,
                     config=config,
                 )
+                if not improvements:
+                    logger.info("[TERMINATOR] no improvements proposed; finalizing evaluated candidates")
+                    break
                 new_candidates = [
                     self._create_agent(
                         agents_dir=agents_dir,
