@@ -431,7 +431,7 @@ class AgentEvalSummary(BaseModel):
 
         A task the named metric never measured is **dropped**, not returned empty: it was scored by
         a different metric, so reporting it as unmeasured would invent missing coverage. A task that
-        declared the metric but produced no usable value is different -- it keeps its entry with an
+        declared the metric but produced no usable value is different - it keeps its entry with an
         empty ``trials`` list, because there the coverage really is missing. That is the same
         distinction :attr:`task_metric_values` draws by having a key at all.
         """

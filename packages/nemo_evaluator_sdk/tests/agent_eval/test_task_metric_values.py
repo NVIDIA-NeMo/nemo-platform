@@ -611,6 +611,36 @@ def test_gym_example_rejects_a_bundle_written_before_task_metric_values(tmp_path
         load_bundle(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("label", "raw"),
+    [
+        # A root that is not a container: `"task_metric_values" not in 1` raises TypeError.
+        ("null root", "null"),
+        ("number root", "1"),
+        ("bool root", "true"),
+        # A root that *is* a container, so the membership test passes and validation is reached --
+        # a bare string matches by substring, which is the sharpest edge of the three.
+        ("array root", '["task_metric_values"]'),
+        ("string root", '"task_metric_values"'),
+        # A well-formed object whose field types are wrong, or that carries an extra key
+        # (`AgentEvalSummary` is extra="forbid").
+        ("wrong field type", '{"task_metric_values": []}'),
+        ("unknown field", '{"task_metric_values": {}, "bogus": 1}'),
+        ("bad nested record", '{"task_metric_values": {"t": {"m": [{"trial_id": 5, "value": 1.0}]}}}'),
+    ],
+)
+def test_gym_example_reports_a_malformed_bundle_as_a_bundle_format_error(tmp_path: Path, label: str, raw: str) -> None:
+    # main() turns BundleFormatError into an exit code and lets everything else become a traceback,
+    # so every unreadable shape has to arrive as that one type -- not TypeError from the membership
+    # test, and not a raw pydantic ValidationError.
+    from packages.nemo_evaluator_sdk.examples.gym.inspect_results import BundleFormatError, load_bundle
+
+    (tmp_path / "summary.json").write_text(raw, encoding="utf-8")
+
+    with pytest.raises(BundleFormatError):
+        load_bundle(tmp_path)
+
+
 def test_summary_task_outcomes_name_their_own_keys() -> None:
     # task_outcomes() lifts the nested dicts into models whose fields are named, for callers that
     # want a typed object to pass around. It is a read-time view: the summary keeps the dict shape.

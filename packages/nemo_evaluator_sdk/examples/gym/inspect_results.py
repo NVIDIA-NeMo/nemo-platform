@@ -38,6 +38,7 @@ from nemo_evaluator_sdk.agent_eval.results import (
     numeric_metric_values,
 )
 from nemo_evaluator_sdk.values.results import AggregateScalarScore, AggregateScore
+from pydantic import ValidationError
 
 #: Value at which a trial counts as a pass, matching the SDK's pass@k definition (full credit).
 PASS_VALUE = 1.0
@@ -67,6 +68,7 @@ def aggregate(summary: AgentEvalSummary, name: str) -> AggregateScore:
     available = ", ".join(sorted(score.name for score in summary.scores.scores))
     raise KeyError(f"no aggregate named {name!r}; available: {available}")
 
+
 # --------------------------------------------------------------------------------------------------
 # Bundle loading (see the run.json manifest for the full artifact list).
 # --------------------------------------------------------------------------------------------------
@@ -75,7 +77,9 @@ def aggregate(summary: AgentEvalSummary, name: str) -> AggregateScore:
 def load_bundle(bundle: Path) -> AgentEvalSummary:
     """Load the persisted summary, including native and runner aggregates and per-task values.
 
-    Rejects a bundle written before ``task_metric_values`` existed rather than reading one. The
+    Every way a bundle can be unreadable raises :class:`BundleFormatError` and nothing else, so
+    :func:`main` turns all of them into an exit code rather than a traceback. In particular it
+    rejects a bundle written before ``task_metric_values`` existed rather than reading one: the
     field defaults to empty, so an older bundle would otherwise load cleanly and simply show no
     per-task section — the reader would conclude the run had no per-task outcomes rather than that
     this script cannot see them.
@@ -87,6 +91,10 @@ def load_bundle(bundle: Path) -> AgentEvalSummary:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise BundleFormatError(f"{summary_path} is not readable JSON: {exc}") from exc
+    # Before the membership test below, which raises TypeError on a root that is not a container and
+    # matches a substring on a bare JSON string.
+    if not isinstance(payload, dict):
+        raise BundleFormatError(f"{summary_path} is not a JSON object (found {type(payload).__name__}).")
     # Checked explicitly because `model_validate` would *not* catch this: the field defaults to an
     # empty dict, so an older bundle loads cleanly and simply shows no per-task section.
     if "task_metric_values" not in payload:
@@ -94,7 +102,10 @@ def load_bundle(bundle: Path) -> AgentEvalSummary:
             f"{summary_path} predates summary.task_metric_values, which this script reads "
             "per-task outcomes from. Re-run the eval to produce a current bundle."
         )
-    return AgentEvalSummary.model_validate(payload)
+    try:
+        return AgentEvalSummary.model_validate(payload)
+    except ValidationError as exc:
+        raise BundleFormatError(f"{summary_path} is not a valid run summary: {exc}") from exc
 
 
 # --------------------------------------------------------------------------------------------------
