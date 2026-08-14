@@ -40,10 +40,10 @@ class CoderConfig(BaseModel):
         default=2,
         description="Max LLM repair iterations inside integration_check before giving up on a candidate.",
     )
-    architecture_doc_max_iterations: int = Field(
+    max_architecture_doc_iterations: int = Field(
         default=100,
         gt=0,
-        description="Max CodeAct steps allowed to write architecture.md. Raise it for agents with many source files.",
+        description="Max CodeAct iterations allowed to write architecture.md. Raise it for agents with many source files.",
     )
     model_catalog_path: Path | None = Field(
         default=None,
@@ -1019,9 +1019,9 @@ class Coder(Agent):
             entrypoint: File the evaluation harness invokes, relative to the agent directory.
 
         """
-        # A @strategy config is fixed when the class is defined, but how many steps
+        # A @strategy config is fixed when the class is defined, but how many iterations
         # documenting an agent takes scales with the source this Coder was handed.
-        codeact = _architecture_doc_codeact(self._config.architecture_doc_max_iterations)
+        codeact = _architecture_doc_codeact(self._config.max_architecture_doc_iterations)
         await self._create_architecture_doc(
             agent_id,
             source_path=source_path,
@@ -1030,7 +1030,7 @@ class Coder(Agent):
         )
 
     @strategy(
-        CodeActStrategy(config=_architecture_doc_codeact(CoderConfig().architecture_doc_max_iterations)),
+        CodeActStrategy(config=_architecture_doc_codeact(CoderConfig().max_architecture_doc_iterations)),
         llm=lambda self: self._architecture_model,
     )
     async def _create_architecture_doc(

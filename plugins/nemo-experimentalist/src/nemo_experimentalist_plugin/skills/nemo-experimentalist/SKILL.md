@@ -283,10 +283,10 @@ eval_author:
   max_traces: 3
 ```
 
-`coder.architecture_doc_max_iterations` is not a cost setting. It is the number
-of steps the Coder can use to write `architecture.md`, and it defaults to `100`.
-Increase it if a run stops because the Coder cannot complete that file. An agent
-that has many source files needs more steps.
+`coder.max_architecture_doc_iterations` is not a cost setting. It is how many
+iterations the Coder can use to write `architecture.md`, and it defaults to
+`100`. Increase it when a run stops with `Generation failed after 100 iterations
+(max_iterations=100)`. An agent that has many source files needs more iterations.
 
 ### Create a low-cost smoke dataset
 
