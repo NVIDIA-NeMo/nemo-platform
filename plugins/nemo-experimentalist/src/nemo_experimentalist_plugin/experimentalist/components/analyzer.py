@@ -228,8 +228,6 @@ class AgentAnalysis(BaseModel):
         """
         metrics = ", ".join(f"{name}: {value:.3f}" for name, value in self.aggregate_metrics.items()) or "no metrics"
         sections = [f"# Agent Analysis: {self.agent_id} ({metrics})"]
-        if self.notes:
-            sections.append("## Incomplete Analysis\n" + "\n".join(f"- {note}" for note in self.notes))
         sections.append("## Per-Trial Traces\n" + "\n\n".join(repr(t) for t in self.trial_analyses))
         sections.append(repr(self.failure_classification))
         sections.append(repr(self.peer_comparison))
@@ -663,40 +661,44 @@ class AgentAnalyzer(Agent):
         Trials that did not complete cleanly come first, then the weakest
         objective metrics, then trials whose trace is missing. Regression metrics
         are guardrails, so they do not order the selection.
+
+        Evaluator metrics are not required to share a scale, so a trial's standing
+        on each objective is its position among the other trials, and those
+        positions are averaged. Averaging the values themselves would let whichever
+        metric has the widest range decide the order on its own.
         """
         directions = self._metric_directions(objective_metrics, [])
+        positions: dict[str, list[int]] = defaultdict(list)
+        for name, direction in directions.items():
+            reported = [trial for trial in evaluation.trials if name in trial.metrics]
+            weakest_first = sorted(
+                reported,
+                key=lambda trial: float(trial.metrics[name].value) * (1.0 if direction == "maximize" else -1.0),
+            )
+            for position, trial in enumerate(weakest_first):
+                positions[trial.id].append(position)
 
         def unclean(trial: TrialResult) -> bool:
             return trial.status != "completed" or trial.error is not None
 
         def weakness(trial: TrialResult) -> tuple[int, float, int, str]:
-            values = [
-                float(metric.value) * (1.0 if directions[name] == "maximize" else -1.0)
-                for name, metric in trial.metrics.items()
-                if name in directions
-            ]
+            standing = positions[trial.id]
             return (
                 0 if unclean(trial) else 1,
-                sum(values) / len(values) if values else 0.0,
+                # A trial reporting no objective metric at all is the weakest signal there is.
+                sum(standing) / len(standing) if standing else -1.0,
                 1 if trial.trace is not None else 0,
                 trial.id,
             )
 
+        def reason(trial: TrialResult) -> str:
+            if not unclean(trial):
+                return "Selected without model triage, because it is among the lowest ranked on the objective metrics."
+            reported = f"status {trial.status!r}" + (" with an error" if trial.error is not None else "")
+            return f"Selected without model triage, because the evaluator reported {reported}."
+
         ranked = sorted(evaluation.trials, key=weakness)[: self._config.max_trials]
-        return [
-            TrialSelection(
-                trial_id=trial.id,
-                reason=(
-                    "Selected without model triage, because "
-                    + (
-                        f"the evaluator reported status {trial.status!r}."
-                        if unclean(trial)
-                        else "it ranks among the lowest of this evaluation on the objective metrics."
-                    )
-                ),
-            )
-            for trial in ranked
-        ]
+        return [TrialSelection(trial_id=trial.id, reason=reason(trial)) for trial in ranked]
 
     async def run(
         self,
@@ -751,9 +753,8 @@ class AgentAnalyzer(Agent):
 
         # The evaluation being analyzed is already paid for, so a model that cannot
         # satisfy a step's return contract costs this analysis that step, not the
-        # round. Every such loss is recorded in ``notes`` and keeps the result out
-        # of the cache. Anything other than a GenerationError is a real fault and
-        # still fails the run.
+        # round. Any other failure is a fault rather than a model that cannot
+        # comply, and still ends the run.
         notes: list[str] = []
         try:
             selections = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
@@ -909,8 +910,8 @@ class AgentAnalyzer(Agent):
             notes=notes,
         )
         # An incomplete analysis is degraded in the same sense as a trace-starved
-        # one: keep it out of the cache so a later run whose model can satisfy
-        # these steps does not replay it.
+        # one. When the round fails before its markdown is written, the rerun has
+        # to recompute these steps rather than replay them from cache.
         if not notes:
             cache.store(self._workspace_path, cache_key, analysis_out)
         return analysis_out

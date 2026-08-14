@@ -1,13 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for AgentAnalyzer client/workspace plumbing.
+"""Regression tests for AgentAnalyzer plumbing and degraded analyses.
 
 The Experimentalist round-N analysis path used to silently skip every
 ``intake://`` trial trace because ``AgentAnalyzer`` never received (and never
 forwarded) a platform ``client`` or the Intake ``workspace`` name. These tests
 pin the plumbing: ``AgentAnalyzer.run`` must accept ``client`` / ``nmp_workspace``
 and thread them into ``TraceAnalyzer.run``.
+
+They also pin what happens when a model cannot satisfy a step's return contract:
+the analysis loses that step and says so, rather than ending the round.
 
 ``AgentAnalyzer`` is built via ``object.__new__`` to skip its LLM-heavy
 ``__init__``, and the LLM-driven strategy methods (``select_trials``,
@@ -342,10 +345,11 @@ async def test_failed_trial_selection_ranks_trials_without_the_model(
     _install_fakes(monkeypatch, [])
     healthy = _FakeTrial("trial-healthy", "task-1", object(), {"reward": _FakeMetric(1.0)})
     weakest = _FakeTrial("trial-weakest", "task-2", object(), {"reward": _FakeMetric(0.1)})
-    errored = _FakeTrial("trial-errored", "task-3", object(), {"reward": _FakeMetric(1.0)}, status="failed")
+    errored = _FakeTrial("trial-errored", "task-3", None, {"reward": _FakeMetric(1.0)}, status="failed")
     dataset = _FakeDataset(tasks=[_FakeTask(id="task-1"), _FakeTask(id="task-2"), _FakeTask(id="task-3")])
     evaluation = _FakeEvaluation(trials=[healthy, weakest, errored])
     cache_entries = tmp_path / "eval-and-optimize" / "cache"
+    metrics = [{"name": "reward", "direction": "maximize"}]
 
     analyzer = _make_analyzer(tmp_path, [], select_trials=_FailingSelectTrials())
     analyzer._config = AnalyzerConfig(max_trials=2)
@@ -354,13 +358,13 @@ async def test_failed_trial_selection_ranks_trials_without_the_model(
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
         round=0,
-        objective_metrics=[{"name": "reward", "direction": "maximize"}],
+        objective_metrics=metrics,
     )
 
-    # Ranked by status first, then by the weakest objective metric, and capped at max_trials.
+    # Ranked by status first, then by objective standing, and capped at max_trials.
     assert [analysis.trial_id for analysis in result.trial_analyses] == ["trial-errored", "trial-weakest"]
     assert "status 'failed'" in result.trial_analyses[0].selection_reason
-    assert "lowest of this evaluation" in result.trial_analyses[1].selection_reason
+    assert "lowest ranked" in result.trial_analyses[1].selection_reason
     assert not list(cache_entries.glob("agent-*.json"))
 
     # Same agent, evaluation, and metric contract: a working triage step recomputes and caches.
@@ -370,10 +374,31 @@ async def test_failed_trial_selection_ranks_trials_without_the_model(
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
         round=0,
-        objective_metrics=[{"name": "reward", "direction": "maximize"}],
+        objective_metrics=metrics,
     )
 
     assert len(list(cache_entries.glob("agent-*.json"))) == 1
+
+
+def test_fallback_ranking_is_not_decided_by_the_widest_metric_scale(tmp_path: Path) -> None:
+    """Objectives rank per metric, so token counts cannot outvote a reward difference."""
+    analyzer = _make_analyzer(tmp_path, [])
+    evaluation = _FakeEvaluation(
+        trials=[
+            _FakeTrial("trial-healthy", "t1", object(), {"reward": _FakeMetric(1.0), "tokens": _FakeMetric(1100.0)}),
+            _FakeTrial("trial-weakest", "t2", object(), {"reward": _FakeMetric(0.0), "tokens": _FakeMetric(1000.0)}),
+            _FakeTrial("trial-middling", "t3", object(), {"reward": _FakeMetric(0.4), "tokens": _FakeMetric(1000.0)}),
+        ]
+    )
+
+    selections = analyzer._fallback_selections(
+        cast(Any, evaluation),
+        [{"name": "reward", "direction": "maximize"}, {"name": "tokens", "direction": "minimize"}],
+    )
+
+    # Averaging raw values would rank trial-healthy weakest: its token count outweighs
+    # every reward difference by three orders of magnitude.
+    assert selections[0].trial_id == "trial-weakest"
 
 
 @pytest.mark.asyncio
@@ -393,7 +418,6 @@ async def test_failed_failure_classification_leaves_the_analysis_incomplete(
 
     assert result.failure_classification == FailureClassification(systematic=[], mechanical=[])
     assert any("Failures were not classified" in note for note in result.notes)
-    assert "## Incomplete Analysis" in repr(result)
     assert not list((tmp_path / "eval-and-optimize" / "cache").glob("agent-*.json"))
 
 

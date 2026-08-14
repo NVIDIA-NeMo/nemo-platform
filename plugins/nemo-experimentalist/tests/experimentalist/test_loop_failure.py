@@ -14,7 +14,6 @@ from nemo_experimentalist_plugin.experimentalist.components.loop import Evolutio
 from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree
 from nemo_experimentalist_plugin.experimentalist.components.terminator import TerminationDecision
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import LocalExperimentalistBackend
-from nooa import GenerationError
 
 
 @pytest.mark.asyncio
@@ -132,7 +131,7 @@ async def test_a_cancelled_coder_does_not_pass_as_a_built_candidate(monkeypatch,
         )
 
 
-def _analyzer_failing_for(labels: set[str]):
+def _analyzer_failing_for(labels: set[str], error: type[BaseException] = RuntimeError):
     """Return an AgentAnalyzer stand-in whose run() fails for the given agent labels."""
 
     class _Analyzer:
@@ -141,7 +140,7 @@ def _analyzer_failing_for(labels: set[str]):
 
         async def run(self, *, agent, **kwargs):
             if agent in labels:
-                raise GenerationError(f"return_result validation failed for {agent}")
+                raise error(f"analysis failed for {agent}")
             return f"analysis for {agent}"
 
     return _Analyzer
@@ -185,9 +184,17 @@ async def test_analysis_of_one_survivor_failing_does_not_discard_the_round(monke
 
 
 @pytest.mark.asyncio
-async def test_analysis_failing_for_every_survivor_fails_the_round(monkeypatch, tmp_path):
-    """With nothing analyzed there is nothing for the proposer to read, so the round fails."""
-    monkeypatch.setattr(loop_module, "AgentAnalyzer", _analyzer_failing_for({"agent-1", "agent-2"}))
+@pytest.mark.parametrize(
+    ("failing", "error"),
+    [
+        # Nothing analyzed leaves the proposer nothing to read, so the round fails.
+        ({"agent-1", "agent-2"}, RuntimeError),
+        # Cancellation must unwind the round even though the other survivor completed.
+        ({"agent-1"}, asyncio.CancelledError),
+    ],
+)
+async def test_analyze_round_still_fails_when_it_must(monkeypatch, tmp_path, failing, error):
+    monkeypatch.setattr(loop_module, "AgentAnalyzer", _analyzer_failing_for(failing, error))
     survivors, evaluations = _round_inputs(["agent-1", "agent-2"])
 
     optimizer = object.__new__(EvolutionaryOptimizer)
@@ -195,7 +202,7 @@ async def test_analysis_failing_for_every_survivor_fails_the_round(monkeypatch, 
     optimizer._framework_skills_dirs = []
     optimizer.merge_analysis = AsyncMock(return_value="merged analysis")
 
-    with pytest.raises(GenerationError):
+    with pytest.raises(error):
         await optimizer._analyze_round(
             analysis_dir=tmp_path / "analysis",
             dataset=object(),

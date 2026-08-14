@@ -1639,7 +1639,8 @@ class EvolutionaryOptimizer(Agent):
         failure: BaseException | None = None
         for survivor, result in zip(survivors, results, strict=True):
             if isinstance(result, BaseException):
-                if isinstance(result, asyncio.CancelledError):
+                # Cancellation and interpreter shutdown are not one survivor's failure.
+                if not isinstance(result, Exception):
                     raise result
                 logger.warning("[ANALYSIS] round %s: dropping %s: %s", round_num, survivor.label, result)
                 failure = failure or result
