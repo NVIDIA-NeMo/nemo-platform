@@ -1,17 +1,30 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 from pathlib import Path
 from typing import cast
 
+import pytest
 from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import BLOCKED_MESSAGE
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients, ConfiguredModelRefs, activate_model_clients
-from nooa import CodeActStrategy
 from nooa.agentdoc import pformat
+from nooa.errors import GenerationError
 from nooa.tools import ShellResult
-from nooa.unifiedllm import CompletionClient, FakeLLMClient
+from nooa.unifiedllm import CompletionClient, FakeLLMClient, LLMResponse, ToolCall
+
+
+def _exec_response(code: str) -> LLMResponse:
+    """A scripted LLM turn that drives CodeAct's ``execute_python`` tool with ``code``."""
+    return LLMResponse(
+        raw_response=None,
+        content="",
+        finish_reason="tool_calls",
+        assistant_message={"role": "assistant", "content": ""},
+        tool_calls=[ToolCall(id="call_exec", name="execute_python", arguments=json.dumps({"code": code}))],
+    )
 
 
 async def test_guarded_shell_tools_runs_allowed_commands(tmp_path):
@@ -66,28 +79,18 @@ def test_coder_uses_default_model_for_architecture_docs(tmp_path: Path) -> None:
     assert coder._architecture_model is default
 
 
-async def test_architecture_doc_step_budget_comes_from_config(tmp_path: Path, monkeypatch) -> None:
-    """The architecture-doc step must run under the configured budget, default included."""
-    budgets: list[int | None] = []
+async def test_architecture_doc_stops_at_the_configured_step_budget(tmp_path: Path) -> None:
+    """The configured budget, not the one fixed on the @strategy decorator, must bound the run."""
+    assert CoderConfig().architecture_doc_max_iterations == 100, "the documented default"
 
-    async def capture(
-        self: Coder,
-        agent_id: str,
-        source_path: str | None = None,
-        entrypoint: str | None = None,
-        _strategy: CodeActStrategy | None = None,
-    ) -> None:
-        assert _strategy is not None
-        budgets.append(_strategy.config.max_iterations)
+    # Each scripted turn runs a no-op cell instead of returning a result, so the only way
+    # out is exhausting the budget. A turn past the budget would report a larger count.
+    never_finishes = FakeLLMClient(scripted_responses=[_exec_response("x = 1") for _ in range(4)])
+    coder = Coder(workspace=tmp_path, config=CoderConfig(architecture_doc_max_iterations=3))
+    coder._architecture_model = never_finishes
 
-    monkeypatch.setattr(Coder, "_write_architecture_doc", capture)
-
-    await Coder(workspace=tmp_path).create_architecture_doc("agent-1")
-    await Coder(workspace=tmp_path, config=CoderConfig(architecture_doc_max_iterations=250)).create_architecture_doc(
-        "agent-1"
-    )
-
-    assert budgets == [100, 250]
+    with pytest.raises(GenerationError, match=r"after 3 iterations \(max_iterations=3\)"):
+        await coder.create_architecture_doc("agent-1")
 
 
 async def test_coder_lists_agent_mutation_models_from_catalog(tmp_path: Path) -> None:

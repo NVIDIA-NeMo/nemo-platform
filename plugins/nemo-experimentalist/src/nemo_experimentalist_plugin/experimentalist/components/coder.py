@@ -572,6 +572,11 @@ class ArchitectureSkill(Skill):
     """
 
 
+def _architecture_doc_codeact(max_iterations: int) -> CodeActConfig:
+    """Bound one architecture-doc generation, which reads source through slow shell work."""
+    return CodeActConfig(max_iterations=max_iterations, cell_timeout=3600.0)
+
+
 class Coder(Agent):
     """Create and modify agent source code as part of the optimization loop."""
 
@@ -1006,7 +1011,7 @@ class Coder(Agent):
     async def create_architecture_doc(
         self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:
-        """Document the agent, allowing ``architecture_doc_max_iterations`` steps.
+        """Update (or, only if absent, create) architecture.md for the given agent.
 
         Args:
             agent_id: The agent directory under eval-and-optimize/agents/ to document.
@@ -1014,22 +1019,21 @@ class Coder(Agent):
             entrypoint: File the evaluation harness invokes, relative to the agent directory.
 
         """
-        # How many steps documenting an agent takes scales with the source the Coder is
-        # handed, so the CodeAct config is built here rather than on the @strategy
-        # decorator below, where it would be fixed when the class is defined.
-        config = CodeActConfig(
-            max_iterations=self._config.architecture_doc_max_iterations,
-            cell_timeout=3600.0,
-        )
-        await self._write_architecture_doc(
+        # A @strategy config is fixed when the class is defined, but how many steps
+        # documenting an agent takes scales with the source this Coder was handed.
+        codeact = _architecture_doc_codeact(self._config.architecture_doc_max_iterations)
+        await self._create_architecture_doc(
             agent_id,
             source_path=source_path,
             entrypoint=entrypoint,
-            _strategy=CodeActStrategy(config=config),  # ty: ignore[unknown-argument]
+            _strategy=CodeActStrategy(config=codeact),  # ty: ignore[unknown-argument]
         )
 
-    @strategy(CodeActStrategy(), llm=lambda self: self._architecture_model)
-    async def _write_architecture_doc(
+    @strategy(
+        CodeActStrategy(config=_architecture_doc_codeact(CoderConfig().architecture_doc_max_iterations)),
+        llm=lambda self: self._architecture_model,
+    )
+    async def _create_architecture_doc(
         self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:
         """Update (or, only if absent, create) architecture.md for the given agent.

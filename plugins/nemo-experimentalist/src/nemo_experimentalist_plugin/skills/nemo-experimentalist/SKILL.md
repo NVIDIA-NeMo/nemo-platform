@@ -261,10 +261,6 @@ to select the winner.
 | `evaluator.n_attempts` | `1` | `1`; increase only when task results are noisy | Repeats each evaluation trial. |
 | `eval_author.max_traces` | `3` | `10` | Representative Insight traces deeply analyzed in Insight-driven mode. |
 
-Increase `coder.architecture_doc_max_iterations` if a run stops because the
-Coder cannot complete `architecture.md`. An agent that has many source files
-needs more steps than the default of `100`.
-
 A small explicit smoke configuration looks like this:
 
 ```yaml
@@ -286,6 +282,11 @@ evaluator:
 eval_author:
   max_traces: 3
 ```
+
+`coder.architecture_doc_max_iterations` is not a cost setting. It is the number
+of steps the Coder can use to write `architecture.md`, and it defaults to `100`.
+Increase it if a run stops because the Coder cannot complete that file. An agent
+that has many source files needs more steps.
 
 ### Create a low-cost smoke dataset
 
