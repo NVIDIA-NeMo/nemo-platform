@@ -12,7 +12,7 @@ record of what ran. It is therefore a plain ``BaseModel`` with no environment bi
 The optimizer's own default/fast model pair is selected by ``nemo setup`` and
 stored in the active Platform CLI context.
 
-Component-owned slices (``CoderConfig``, ``AnalyzerConfig``, ...) are imported from the
+Component-owned slices (``LLMCodeEditorConfig``, ``AnalyzerConfig``, ...) are imported from the
 components that consume them rather than redeclared here.
 """
 
@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Any, Self
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
+from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditorConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
 from nemo_experimentalist_plugin.experimentalist.components.models import (  # noqa: F401 - re-exported
-    MetricTarget,
     has_metric_dimensions,
     pareto_objectives,
 )
@@ -115,6 +115,12 @@ class EvolutionaryOptimizerConfig(BaseModel):
             raise ValueError(
                 "'models' is no longer a run-config key. Run `nemo setup` to select the default and fast agent models."
             )
+
+        # Renamed component *values*. Left alone, a stale value fails later as an
+        # unresolvable component, which reports the registry rather than the fix.
+        for key, removed, replacement in (("analyzer", "agent-trace", "trace"),):
+            if data.get(key) == removed:
+                raise ValueError(f"{key}: {removed!r} was renamed to {replacement!r}; update the configuration")
         return data
 
     strategy: str = Field(
@@ -129,7 +135,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     # A null means "no such step": turning a step off is the degenerate case of choosing a
     # different implementation, which is why there are no disable_* booleans.
     analyzer: str | None = Field(
-        default="agent-trace",
+        default="trace",
         description="Registered 'root-cause-analyzer'. Null skips diagnosis and the train eval feeding it.",
     )
     outcome_evaluator: str = Field(
@@ -194,7 +200,9 @@ class EvolutionaryOptimizerConfig(BaseModel):
     trajectory_scorer_config: GoalTreeConfig = Field(
         default_factory=GoalTreeConfig, description="Tuning for the trajectory scorer."
     )
-    builder_config: CoderConfig = Field(default_factory=CoderConfig, description="Tuning for the builder.")
+    builder_config: LLMCodeEditorConfig = Field(
+        default_factory=LLMCodeEditorConfig, description="Tuning for the builder."
+    )
     analyzer_config: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
     proposer_config: ProposerConfig = Field(default_factory=ProposerConfig)
     outcome_evaluator_config: dict[str, Any] = Field(

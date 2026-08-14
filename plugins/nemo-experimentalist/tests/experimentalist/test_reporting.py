@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from doubles import make_context
-from nemo_experimentalist_plugin.config import MetricTarget
+from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.reporting import (
     RunReporter,
     Verbosity,

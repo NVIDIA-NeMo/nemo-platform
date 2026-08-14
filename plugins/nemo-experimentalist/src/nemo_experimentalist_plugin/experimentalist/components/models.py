@@ -13,8 +13,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Literal, TypeVar
 
-from nemo_experimentalist_plugin.entities import Candidate
-from pydantic import BaseModel, Field
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
+from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
 # Pareto utilities
@@ -316,35 +316,6 @@ class EvolutionTree:
         for i, child_id in enumerate(sorted(children)):
             lines.extend(self._build_tree_lines(child_id, child_prefix, i == len(children) - 1))
         return lines
-
-
-class MetricTarget(BaseModel):
-    """One evaluator-produced metric and the desired direction of change."""
-
-    name: str = Field(min_length=1, description="Exact metric name emitted by the evaluator.")
-    direction: Literal["maximize", "minimize"] = Field(
-        description="Whether higher or lower values are better for this target."
-    )
-    target: float | None = Field(
-        default=None,
-        description=(
-            "Value at which this objective counts as satisfied, in the metric's own "
-            "units. When every targeted objective is met the run stops, so a solved "
-            "problem stops paying for rounds. Unset means no such stop: metrics are not "
-            "required to be normalized, so there is no value that means 'as good as "
-            "possible' for an arbitrary one."
-        ),
-    )
-
-    def is_satisfied_by(self, value: float | None) -> bool:
-        """Whether *value* meets this target. False when either side is absent.
-
-        A missing measurement is not evidence of success, and a target that was never
-        configured must not end a run.
-        """
-        if value is None or self.target is None:
-            return False
-        return value >= self.target if self.direction == "maximize" else value <= self.target
 
 
 def pareto_objectives(metrics: dict[str, float], objective_function: list[MetricTarget]) -> dict[str, float]:

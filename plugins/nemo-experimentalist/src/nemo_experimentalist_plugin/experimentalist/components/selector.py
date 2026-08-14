@@ -5,10 +5,9 @@
 
 from typing import Any
 
-from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
-    MetricTarget,
     has_metric_dimensions,
     pareto_front,
     pareto_objectives,

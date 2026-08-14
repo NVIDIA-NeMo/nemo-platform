@@ -14,13 +14,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from nemo_experimentalist_plugin.entities import Candidate
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
 from nemo_experimentalist_plugin.experimentalist import roles
 
 # Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
 # this module, so going through it would be circular.
 from nemo_experimentalist_plugin.experimentalist.components.models import (
-    MetricTarget,
     has_metric_dimensions,
     pareto_front,
     pareto_objectives,

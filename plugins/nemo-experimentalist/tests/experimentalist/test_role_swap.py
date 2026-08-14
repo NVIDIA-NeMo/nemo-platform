@@ -346,7 +346,7 @@ def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_regis
 
 
 def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isolated_registry: None) -> None:
-    """The out-of-tree example builds through `ctx.component`, and a Coder without an
+    """The out-of-tree example builds through `ctx.component`, and a LLMCodeEditor without an
     evaluator or a dataset raises on its first build rather than at construction."""
     from doubles import FakeBackend, make_context
 
@@ -363,7 +363,7 @@ def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isola
 @pytest.mark.asyncio
 async def test_a_swapped_builder_runs_through_the_context(tmp_path, isolated_registry: None) -> None:
     """The narrowest end-to-end check of the seam: config names it, the context builds
-    it, and it produces a Candidate through the same verbs the built-in Coder uses."""
+    it, and it produces a Candidate through the same verbs the built-in LLMCodeEditor uses."""
     from doubles import FakeBackend, make_context
 
     class StubBuilder(Builder):
@@ -483,7 +483,7 @@ async def test_naming_a_trajectory_scorer_reaches_it(
 
 @pytest.mark.asyncio
 async def test_the_architecture_doc_comes_from_the_configured_builder(tmp_path, isolated_registry: None) -> None:
-    """Not from the Coder: a builder that writes no architecture doc must not have one
+    """Not from the LLMCodeEditor: a builder that writes no architecture doc must not have one
     written for it by a component the config never named."""
     from doubles import FakeBackend, make_context
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy

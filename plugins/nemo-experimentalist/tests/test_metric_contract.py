@@ -4,11 +4,11 @@
 import pytest
 from nemo_experimentalist_plugin.config import (
     EvolutionaryOptimizerConfig,
-    MetricTarget,
     has_metric_dimensions,
     pareto_objectives,
     with_insight_objective,
 )
+from nemo_experimentalist_plugin.entities import MetricTarget
 
 
 def test_metric_contract_supports_multiple_objective_metrics() -> None:

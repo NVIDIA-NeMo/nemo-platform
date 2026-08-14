@@ -15,8 +15,7 @@ that could win, stop. Absent targets, nothing changes.
 from __future__ import annotations
 
 import pytest
-from nemo_experimentalist_plugin.entities import Candidate, Proposal, ResourceRef, RewardRecord
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, Proposal, ResourceRef, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
 
 SOLVED = [MetricTarget(name="reward", direction="maximize", target=1.0)]

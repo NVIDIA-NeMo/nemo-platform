@@ -20,11 +20,11 @@ from nemo_experimentalist_plugin.entities import (
     Dataset,
     DataValue,
     EvaluationResult,
+    MetricTarget,
     Proposal,
     RewardRecord,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel, ConfigDict, Field
 

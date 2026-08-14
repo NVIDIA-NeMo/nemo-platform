@@ -36,13 +36,13 @@ from nemo_experimentalist_plugin.entities import (
     DataValue,
     EvaluationResult,
     ExperimentRun,
+    MetricTarget,
     Proposal,
     ResourceRef,
     RewardRecord,
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
@@ -173,7 +173,7 @@ class ExperimentContext:
     def outcome_evaluator(self) -> Evaluator:
         """The evaluation component this run was configured with.
 
-        Exposed so a composite strategy can hand it to a component it owns — the Coder
+        Exposed so a composite strategy can hand it to a component it owns — the LLMCodeEditor
         runs smoke evals of its own, against work that is not yet a Candidate.
         """
         return self._evaluator

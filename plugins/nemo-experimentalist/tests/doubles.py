@@ -26,13 +26,13 @@ from nemo_experimentalist_plugin.entities import (
     Dataset,
     EvaluationResult,
     ExperimentRun,
+    MetricTarget,
     Proposal,
     ResourceRef,
     RewardRecord,
     TrialResult,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import Evaluator, EvaluatorConfig
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.repository import AgentSource
 from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import ExperimentalistBackend

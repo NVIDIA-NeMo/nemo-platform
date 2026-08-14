@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TextIO
 
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
+from nemo_experimentalist_plugin.entities import MetricTarget
 
 _RULE = "═" * 62
 _THIN = "─" * 62

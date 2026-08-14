@@ -22,8 +22,7 @@ front, so the age preference only ever decides ties.
 from __future__ import annotations
 
 import pytest
-from nemo_experimentalist_plugin.entities import Candidate, Proposal, ResourceRef, RewardRecord
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, Proposal, ResourceRef, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector
 
 MAXIMIZE = [MetricTarget(name="reward", direction="maximize")]

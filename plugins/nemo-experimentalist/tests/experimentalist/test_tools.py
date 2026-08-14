@@ -4,7 +4,7 @@
 from pathlib import Path
 from typing import cast
 
-from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, CoderConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor, LLMCodeEditorConfig
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import BLOCKED_MESSAGE
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients, ConfiguredModelRefs, activate_model_clients
@@ -41,7 +41,7 @@ async def test_guarded_shell_tools_returns_failure_for_blocked_paths(tmp_path):
 
 def test_coder_hides_skill_registry_that_can_replace_guarded_shell(tmp_path):
     nooa_skill = Path(__file__).resolve().parents[2] / "framework-skills" / "nooa"
-    coder = Coder(workspace=tmp_path, framework_skills_dirs=[nooa_skill])
+    coder = LLMCodeEditor(workspace=tmp_path, framework_skills_dirs=[nooa_skill])
 
     rendered = pformat(coder)
 
@@ -60,7 +60,7 @@ def test_coder_uses_default_model_for_architecture_docs(tmp_path: Path) -> None:
     )
 
     with activate_model_clients(clients):
-        coder = Coder(workspace=tmp_path)
+        coder = LLMCodeEditor(workspace=tmp_path)
 
     assert coder._architecture_model is default
 
@@ -84,6 +84,6 @@ models:
 """,
         encoding="utf-8",
     )
-    coder = Coder(workspace=tmp_path, config=CoderConfig(model_catalog_path=catalog))
+    coder = LLMCodeEditor(workspace=tmp_path, config=LLMCodeEditorConfig(model_catalog_path=catalog))
 
     assert await coder.list_available_models() == ["provider/quality", "provider/fast"]

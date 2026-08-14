@@ -77,17 +77,10 @@ contract.
 
 `EvolutionaryOptimizer` is now `EvolutionaryStrategy`, in
 `experimentalist/strategies/evolutionary.py`, and is resolved by name like any other
-component (`strategy: evolutionary`). Role names describe the role and class names the
-implementation, so a class filling the `strategy` role says so. `EvolutionaryOptimizerConfig`
-keeps its name: it configures the algorithm, not the role.
+component (`strategy: evolutionary`).
 
 Run `nemo agents experimentalist components` to see everything this install can resolve,
 including components registered by a separately installed package.
-
-At the time of this rename the command group was top-level (`nemo
-experimentalist`), because the platform's `nemo.cli` entry-point group was flat
-and nesting under `nemo agents` needed a Platform-side change first. That change
-has since landed — see the `nemo agents` entry above for the current path.
 
 ### 2026-07-21: Curator renamed to Eval Author
 

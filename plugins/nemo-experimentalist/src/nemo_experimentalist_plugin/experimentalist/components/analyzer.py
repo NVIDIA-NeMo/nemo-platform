@@ -15,12 +15,12 @@ from nemo_experimentalist_plugin.entities import (
     Candidate,
     Dataset,
     EvaluationResult,
+    MetricTarget,
     Task,
     TrialResult,
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,
@@ -237,7 +237,7 @@ class AgentAnalysis(BaseModel):
 class AgentAnalyzer(Agent, roles.Analyzer):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
 
-    name = "agent-trace"
+    name = "trace"
 
     def __init__(
         self,

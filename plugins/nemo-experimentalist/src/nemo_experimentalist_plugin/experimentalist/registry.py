@@ -69,8 +69,8 @@ class Component:
         # keywords, so a component that is both an Agent and a Component registers only
         # because both links in the chain call up.
         super().__init_subclass__(**kwargs)
-        # `role` is inherited on purpose — Coder gets "builder" from Builder. `name` is
-        # read from this class alone: inheriting it would make `class MyCoder(Coder)`
+        # `role` is inherited on purpose — LLMCodeEditor gets "builder" from Builder. `name` is
+        # read from this class alone: inheriting it would make `class MyCoder(LLMCodeEditor)`
         # look like a second claim on "llm-code-edit" and raise at import, which is the most
         # obvious way someone customises a built-in Builder. A subclass registers by
         # naming itself, or not at all.

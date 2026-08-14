@@ -5,10 +5,9 @@ import logging
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast, get_args
 
-from nemo_experimentalist_plugin.entities import Candidate, Proposal, local_path_from_uri
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, Proposal, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
-    MetricTarget,
     OptimizationType,
 )
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
@@ -27,13 +26,13 @@ from .util import load_framework_skills
 logger = logging.getLogger(__name__)
 
 
-#: What this Proposer produces and the built-in Coder accepts. An opaque
+#: What this Proposer produces and the built-in LLMCodeEditor accepts. An opaque
 #: discriminator, not a global enumeration — it only has to match a Builder.
 CODE_CHANGE = "code-change"
 
 
 class CodeChange(BaseModel):
-    """The ``code-change`` payload schema, owned by this Proposer and the Coder.
+    """The ``code-change`` payload schema, owned by this Proposer and the LLMCodeEditor.
 
     Nothing here belongs on ``Candidate``: it is what the Builder was *asked* to
     produce, which the committed Candidate keeps as ``generated_from`` provenance

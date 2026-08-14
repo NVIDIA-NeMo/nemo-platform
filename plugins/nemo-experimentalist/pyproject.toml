@@ -37,7 +37,7 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 "selector.pareto-llm-diversity" = "nemo_experimentalist_plugin.experimentalist.components.selector"
 "proposer.code-change" = "nemo_experimentalist_plugin.experimentalist.components.proposer"
 "terminator.convergence" = "nemo_experimentalist_plugin.experimentalist.components.terminator"
-"root-cause-analyzer.agent-trace" = "nemo_experimentalist_plugin.experimentalist.components.analyzer"
+"root-cause-analyzer.trace" = "nemo_experimentalist_plugin.experimentalist.components.analyzer"
 "trajectory-scorer.goal-tree" = "nemo_experimentalist_plugin.experimentalist.components.trace_scorer"
 "outcome-evaluator.harbor" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor"
 

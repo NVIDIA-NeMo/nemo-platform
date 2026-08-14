@@ -221,7 +221,7 @@ async def test_a_fork_does_not_inherit_the_ancestors_architecture_doc(tmp_path: 
 
     `architecture.md` describes the ancestor, not the candidate. Inheriting it makes that
     statement false at the moment the Builder reads it, and hands a code-writing agent a
-    description that no longer matches what it is about to change. The Coder re-seeds it
+    description that no longer matches what it is about to change. The LLMCodeEditor re-seeds it
     from ``Fork.upstream`` afterwards, to edit in place against the finished source.
     """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
@@ -431,15 +431,15 @@ async def test_a_slim_copy_cannot_be_persisted(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_a_builder_documents_the_candidates_it_builds(tmp_path: Path) -> None:
-    """`describe` is a Builder verb so a subclass can replace it. The Coder called
+    """`describe` is a Builder verb so a subclass can replace it. The LLMCodeEditor called
     `create_architecture_doc` directly, which honoured an override for the baseline and
     bypassed it for every candidate built after.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
 
     described: list[Path] = []
 
-    class QuietCoder(Coder):
+    class QuietEditor(LLMCodeEditor):
         """Create and modify agent source code as part of the optimization loop."""
 
         async def describe(self, artifact: Path) -> None:
@@ -469,7 +469,7 @@ async def test_a_builder_documents_the_candidates_it_builds(tmp_path: Path) -> N
         payload={"root_cause": "none", "optimization_type": "edit_config", "task_ids": []},
     )
 
-    builder = QuietCoder(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=ctx.datasets["train"])
+    builder = QuietEditor(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=ctx.datasets["train"])
     candidate = await builder.build(ctx, proposal, generation=1)
 
     assert described == [ctx.candidate_dir(candidate)]
@@ -483,11 +483,11 @@ async def test_the_smoke_check_evaluates_the_tasks_the_change_claims_to_fix(tmp_
     Observed: a candidate adding an aggregation handler was smoke-checked against a
     lookup control it does not touch, passed, and shipped with both targeted tasks at 0.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
 
     seen: list[list[str]] = []
 
-    class RecordingCoder(Coder):
+    class RecordingEditor(LLMCodeEditor):
         """Create and modify agent source code as part of the optimization loop."""
 
         async def run_smoke_eval(self, workdir, tasks, dataset, evaluator):  # type: ignore[no-untyped-def]
@@ -499,7 +499,7 @@ async def test_the_smoke_check_evaluates_the_tasks_the_change_claims_to_fix(tmp_
 
     dataset = Dataset(id="train", tasks=[Task(id="targeted-a"), Task(id="targeted-b"), Task(id="control")])
     ctx = make_context(root=tmp_path, backend=FakeBackend(), datasets={"train": dataset, "validation": dataset})
-    coder = RecordingCoder(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=dataset)
+    coder = RecordingEditor(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=dataset)
     wanted = ["targeted-a", "targeted-b"]
 
     assert await coder.integration_check(tmp_path, dataset, ctx.outcome_evaluator, task_ids=wanted)
@@ -510,11 +510,11 @@ async def test_the_smoke_check_evaluates_the_tasks_the_change_claims_to_fix(tmp_
 @pytest.mark.asyncio
 async def test_the_smoke_check_still_runs_when_a_proposal_names_no_tasks(tmp_path: Path) -> None:
     """A Proposal with no task_ids keeps the old "does it run at all" check."""
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
 
     seen: list[list[str]] = []
 
-    class RecordingCoder(Coder):
+    class RecordingEditor(LLMCodeEditor):
         """Create and modify agent source code as part of the optimization loop."""
 
         async def run_smoke_eval(self, workdir, tasks, dataset, evaluator):  # type: ignore[no-untyped-def]
@@ -526,7 +526,7 @@ async def test_the_smoke_check_still_runs_when_a_proposal_names_no_tasks(tmp_pat
 
     dataset = Dataset(id="train", tasks=[Task(id="a"), Task(id="b"), Task(id="c")])
     ctx = make_context(root=tmp_path, backend=FakeBackend(), datasets={"train": dataset, "validation": dataset})
-    coder = RecordingCoder(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=dataset)
+    coder = RecordingEditor(workspace=tmp_path, evaluator=ctx.outcome_evaluator, dataset=dataset)
 
     assert await coder.integration_check(tmp_path, dataset, ctx.outcome_evaluator, task_ids=None)
 

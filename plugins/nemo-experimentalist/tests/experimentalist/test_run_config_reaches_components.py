@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from doubles import FakeBackend, make_context
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig, with_insight_objective
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
+from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 

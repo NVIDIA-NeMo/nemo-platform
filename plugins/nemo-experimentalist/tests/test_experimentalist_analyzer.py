@@ -22,6 +22,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 from doubles import make_candidate
+from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
@@ -31,7 +32,6 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
     PeerComparison,
     TrialSelection,
 )
-from nemo_experimentalist_plugin.experimentalist.components.models import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 

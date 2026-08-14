@@ -68,28 +68,28 @@ def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
     sides of the message naming the same class.
 
     Built by hand rather than with ``importlib.reload`` on the real module: reloading
-    rebinds every class in it, so the config tree's ``CoderConfig`` would stop being the
+    rebinds every class in it, so the config tree's ``LLMCodeEditorConfig`` would stop being the
     same object as the freshly imported one and unrelated tests would fail.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
 
     def _same_identity(namespace: dict[str, object]) -> None:
         namespace["name"] = "llm-code-edit"
-        namespace["__module__"] = Coder.__module__
-        namespace["__qualname__"] = Coder.__qualname__
+        namespace["__module__"] = LLMCodeEditor.__module__
+        namespace["__qualname__"] = LLMCodeEditor.__qualname__
 
     try:
-        stand_in = types.new_class("Coder", (Builder,), exec_body=_same_identity)  # must not raise
+        stand_in = types.new_class("LLMCodeEditor", (Builder,), exec_body=_same_identity)  # must not raise
 
         # It really did re-register: the entry now points at the stand-in, not the real
-        # Coder. Asserting the qualname instead would only re-read what was just written.
+        # LLMCodeEditor. Asserting the qualname instead would only re-read what was just written.
         assert resolve("builder", "llm-code-edit") is stand_in
-        assert stand_in is not Coder
+        assert stand_in is not LLMCodeEditor
     finally:
         # Restore, or every later resolution of the builder gets a class with no build().
-        Component._registry[("builder", "llm-code-edit")] = Coder
+        Component._registry[("builder", "llm-code-edit")] = LLMCodeEditor
 
-    assert resolve("builder", "llm-code-edit") is Coder
+    assert resolve("builder", "llm-code-edit") is LLMCodeEditor
 
 
 def test_a_broken_third_party_package_does_not_break_unrelated_runs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,11 +137,11 @@ def test_get_constructs_with_the_arguments_the_resolver_was_given() -> None:
 
 def test_a_builder_declares_which_proposal_kinds_it_accepts() -> None:
     """Routing by ``Proposal.kind`` is what lets one run mix candidate kinds later."""
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
     from nemo_experimentalist_plugin.experimentalist.components.proposer import CODE_CHANGE
 
-    assert CODE_CHANGE in Coder.accepts
-    assert "parameters" not in Coder.accepts
+    assert CODE_CHANGE in LLMCodeEditor.accepts
+    assert "parameters" not in LLMCodeEditor.accepts
 
 
 @pytest.mark.asyncio
@@ -177,7 +177,7 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
     belong in comments above the class.
     """
     from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
     from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
     from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector
     from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
@@ -185,7 +185,7 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
     agents = (
-        Coder,
+        LLMCodeEditor,
         EvolutionaryStrategy,
         Proposer,
         Terminator,
@@ -208,26 +208,26 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
 
 
 def test_subclassing_a_registered_component_is_allowed() -> None:
-    """Extending the built-in Coder is the most obvious way to customise a builder.
+    """Extending the built-in LLMCodeEditor is the most obvious way to customise a builder.
 
-    `name` must come from the subclass alone. Inheriting it made `class MyCoder(Coder)`
+    `name` must come from the subclass alone. Inheriting it made `class MyCoder(LLMCodeEditor)`
     look like a second claim on "llm-code-edit" and raise at class-definition time — and because
     `load_plugins` swallows entry-point import errors, the author's whole package would
     have been recorded as a load failure with every component in it unresolvable.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import Coder
+    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
 
-    class UnnamedSubclass(Coder):  # must not raise
+    class UnnamedSubclass(LLMCodeEditor):  # must not raise
         pass
 
     assert ("builder", "llm-code-edit") not in {
         (role, name) for (role, name), cls in Component._registry.items() if cls is UnnamedSubclass
     }
-    assert resolve("builder", "llm-code-edit") is Coder, "the subclass must not have taken over the name"
+    assert resolve("builder", "llm-code-edit") is LLMCodeEditor, "the subclass must not have taken over the name"
 
     try:
 
-        class NamedSubclass(Coder):
+        class NamedSubclass(LLMCodeEditor):
             name = "coder-plus"
 
         assert resolve("builder", "coder-plus") is NamedSubclass

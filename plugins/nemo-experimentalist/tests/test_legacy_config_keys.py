@@ -34,7 +34,7 @@ def test_a_config_block_under_a_role_key_names_the_config_key(key: str, replacem
         EvolutionaryOptimizerConfig.model_validate({key: {"some": "setting"}})
 
 
-@pytest.mark.parametrize(("key", "value"), [("analyzer", "agent-trace"), ("proposer", "code-change")])
+@pytest.mark.parametrize(("key", "value"), [("analyzer", "trace"), ("proposer", "code-change")])
 def test_a_component_name_under_the_same_key_is_still_valid(key: str, value: str) -> None:
     """The whole point of the move: the bare key now selects the component."""
     config = EvolutionaryOptimizerConfig.model_validate({key: value})
@@ -128,3 +128,25 @@ def test_the_skill_documents_only_live_config_keys() -> None:
         EvolutionaryOptimizerConfig.model_validate(data)
 
     assert checked, "found no run-config example in SKILL.md; the block matcher is wrong"
+
+
+def test_the_old_analyzer_component_value_is_rejected_by_name() -> None:
+    """`agent-trace` named the evidence twice over and read as a noun pair rather than
+    "analyzes traces". A config carrying it would otherwise fail deep in resolution,
+    reporting an unknown component instead of the one-word fix."""
+    with pytest.raises(ValueError, match="'agent-trace' was renamed to 'trace'"):
+        EvolutionaryOptimizerConfig.model_validate({"analyzer": "agent-trace"})
+
+
+def test_the_current_analyzer_value_is_accepted() -> None:
+    """The rejection must not fire on the spelling it steers people towards."""
+    assert EvolutionaryOptimizerConfig.model_validate({"analyzer": "trace"}).analyzer == "trace"
+
+
+def test_the_default_analyzer_resolves() -> None:
+    """A default that names a component nothing registers is a run that dies at round 0."""
+    from nemo_experimentalist_plugin.experimentalist.registry import resolve
+
+    default = EvolutionaryOptimizerConfig().analyzer
+    assert default == "trace"
+    assert resolve("root-cause-analyzer", default) is not None

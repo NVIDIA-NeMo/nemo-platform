@@ -287,7 +287,7 @@ class ExperimentalistBackend(ABC):
 def load_candidate(path: Path) -> Candidate:
     """Deserialize one stored candidate record into a :class:`Candidate`.
 
-    Free function rather than a backend method: read-only callers (the Coder's
+    Free function rather than a backend method: read-only callers (the LLMCodeEditor's
     workspace tool) need the deserialization without constructing a backend,
     which would create directories and projection state as a side effect.
     """

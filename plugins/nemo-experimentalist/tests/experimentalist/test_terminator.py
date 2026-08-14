@@ -12,8 +12,7 @@ constructed with an injected ``FakeLLMClient`` so the tests need no
 import json
 
 from doubles import make_candidate, seed_reward
-from nemo_experimentalist_plugin.config import MetricTarget
-from nemo_experimentalist_plugin.entities import Candidate, RewardRecord
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.terminator import (
     TerminationDecision,
     Terminator,
