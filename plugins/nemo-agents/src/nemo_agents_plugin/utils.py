@@ -316,6 +316,23 @@ def rebind_intake_ingest_workspace(config: dict[str, Any], workspace: str) -> di
     return config
 
 
+def bind_atif_agent_name(config: dict[str, Any], agent_name: str) -> dict[str, Any]:
+    """Stamp ATIF trajectories with the deployed agent's name.
+
+    Mutates *config* in place and returns it. Without this the Fabric translator
+    falls back to the config's own ``name``, which is shared by every deployment
+    built from that config and so cannot identify one agent entity.
+    """
+    telemetry = config.get("telemetry")
+    if not isinstance(telemetry, dict):
+        return config
+    atif = telemetry.get("atif")
+    if not isinstance(atif, dict):
+        return config
+    atif["agent_name"] = agent_name
+    return config
+
+
 def inject_nemo_trace_fields(
     config: dict[str, Any],
     workspace: str,

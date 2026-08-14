@@ -275,6 +275,18 @@ class TestTranslateAgentConfig:
             },
         }
 
+    def test_relay_telemetry_keeps_a_deployment_supplied_agent_name(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["telemetry"]["enabled"] = True
+        payload["telemetry"]["atif"]["agent_name"] = "example-agent-6p05fw"
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config)
+
+        atif = fabric_config.relay.observability.model_dump(exclude_none=True)["atif"]
+        assert atif["agent_name"] == "example-agent-6p05fw"
+        assert config.name == "example-agent"
+
     def test_relay_atof_endpoint_sinks_translate_to_stream_sinks(self) -> None:
         payload = copy.deepcopy(_example_yaml_config())
         payload["telemetry"]["enabled"] = True

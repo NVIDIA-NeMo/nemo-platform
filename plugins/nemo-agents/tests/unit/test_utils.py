@@ -27,6 +27,7 @@ import yaml
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob, EvaluateAgentSpec
 from nemo_agents_plugin.refs import AgentRef
 from nemo_agents_plugin.utils import (
+    bind_atif_agent_name,
     get_internal_base_url,
     inject_default_model,
     inject_fabric_gateway_url,
@@ -309,6 +310,36 @@ class TestRebindIntakeIngestWorkspace:
         config = {"telemetry": telemetry}
 
         assert rebind_intake_ingest_workspace(config, "test-workspace") is config
+
+
+class TestBindAtifAgentName:
+    def test_stamps_the_deployment_name(self) -> None:
+        config = {"name": "email-security-triage", "telemetry": {"atif": {"enabled": True}}}
+
+        bind_atif_agent_name(config, "email-security-triage-6p05fw")
+
+        assert config["telemetry"]["atif"]["agent_name"] == "email-security-triage-6p05fw"
+        assert config["name"] == "email-security-triage"
+
+    def test_overrides_a_config_supplied_agent_name(self) -> None:
+        config = {"telemetry": {"atif": {"agent_name": "stale-name"}}}
+
+        bind_atif_agent_name(config, "email-security-triage-6p05fw")
+
+        assert config["telemetry"]["atif"]["agent_name"] == "email-security-triage-6p05fw"
+
+    @pytest.mark.parametrize("telemetry", [{}, {"atif": None}, {"atif": "not-a-dict"}])
+    def test_tolerates_absent_or_malformed_atif(self, telemetry: dict[str, Any]) -> None:
+        config: dict[str, Any] = {"telemetry": telemetry}
+
+        assert bind_atif_agent_name(config, "agent-1") is config
+        assert "agent_name" not in (config["telemetry"].get("atif") or {})
+
+    def test_tolerates_absent_telemetry(self) -> None:
+        config: dict[str, Any] = {"name": "x"}
+
+        assert bind_atif_agent_name(config, "agent-1") is config
+        assert "telemetry" not in config
 
 
 class TestGetInternalBaseUrl:

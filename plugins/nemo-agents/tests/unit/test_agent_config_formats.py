@@ -109,3 +109,21 @@ def test_nemo_agents_deployment_resolution_injects_gateway_and_normalizes(
     assert resolved["environment"]["provider"] == "local"
     assert "workflow" not in resolved
     assert calls == ["test-workspace"]
+
+
+def test_nemo_agents_deployment_resolution_binds_atif_agent_name() -> None:
+    config = _nemo_agents_config()
+    config["telemetry"] = {"enabled": True, "provider": "relay", "atif": {"enabled": True}}
+
+    resolved = resolve_agent_config_for_deployment(
+        NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+        config,
+        workspace="test-workspace",
+        agent_name="test-agent-6p05fw",
+    )
+
+    # The translator falls back to the config's own ``name``, which every
+    # deployment of this config shares; the deployment name identifies one agent.
+    assert resolved["telemetry"]["atif"]["agent_name"] == "test-agent-6p05fw"
+    assert resolved["name"] == "test-agent"
+    assert config["telemetry"]["atif"] == {"enabled": True}
