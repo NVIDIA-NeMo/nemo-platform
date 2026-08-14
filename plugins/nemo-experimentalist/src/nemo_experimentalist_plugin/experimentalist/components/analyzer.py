@@ -27,7 +27,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer impor
     TraceAnalyzerConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.seam import TraceLoader
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -244,8 +244,7 @@ class AgentAnalyzer(Agent, roles.Analyzer):
         workspace: Path,
         config: AnalyzerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
-        client: AsyncNeMoPlatform | None = None,
-        nmp_workspace: str | None = None,
+        load_trace: TraceLoader | None = None,
         objective_metrics: list[MetricTarget] | None = None,
         regression_metrics: list[MetricTarget] | None = None,
         **kwargs: Any,
@@ -257,17 +256,15 @@ class AgentAnalyzer(Agent, roles.Analyzer):
             config: Tuning parameters; defaults to ``AnalyzerConfig()`` if ``None``.
             framework_skills_dirs: Optional list of directories containing framework skills to load.
             models: Resolved model tiers; falls back to this install's settings.
-            client: Platform client for loading ``intake://`` traces; taken here rather
-                than per call, so the role's own signature names no platform types.
-            nmp_workspace: Platform workspace name for those lookups.
+            load_trace: Resolves a trace reference to a TraceExplorer. Taken from the
+                context so this signature names no platform type.
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or AnalyzerConfig()
         self._workspace_path = workspace
-        self._client = client
-        self._nmp_workspace = nmp_workspace
+        self._load_trace = load_trace
         self._objective_metrics = objective_metrics or []
         self._regression_metrics = regression_metrics or []
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
@@ -690,7 +687,7 @@ class AgentAnalyzer(Agent, roles.Analyzer):
         # supplied, intake:// trial traces are skipped and the analysis is
         # trace-starved. Keying on availability prevents such a degraded result
         # from being replayed on a later run that *can* load those traces.
-        intake_key = ":intake:1" if self._client is not None and self._nmp_workspace is not None else ":intake:0"
+        intake_key = ":intake:1" if self._load_trace is not None else ":intake:0"
         # The objectives are part of the question asked, so a change of objective must not
         # replay an analysis produced under the old one.
         cache_key = cache.agent_hash(
@@ -768,8 +765,7 @@ class AgentAnalyzer(Agent, roles.Analyzer):
                     selection_reason=selection_reason,
                     objective_metrics=objectives,
                     regression_metrics=regressions,
-                    client=self._client,
-                    workspace=self._nmp_workspace,
+                    load_trace=self._load_trace,
                 )
                 for trial, task, selection_reason in trial_tasks
             ],

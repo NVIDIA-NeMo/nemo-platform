@@ -562,7 +562,7 @@ async def test_the_loop_carries_full_candidates_forward_not_the_selectors_slim_c
 
 
 @pytest.mark.asyncio
-async def test_the_analyzer_is_built_with_the_runs_platform_handles(tmp_path, isolated_registry: None) -> None:
+async def test_the_analyzer_is_built_with_the_runs_trace_loader(tmp_path, isolated_registry: None) -> None:
     """Without them the analyzer cannot load `intake://` traces, and a trace-starved
     diagnosis reads as a finding about the agent rather than about the analyzer.
 
@@ -596,13 +596,12 @@ async def test_the_analyzer_is_built_with_the_runs_platform_handles(tmp_path, is
             survivors=[baseline],
             round_num=0,
             config=config,
-            client=ctx.platform_client,
-            nmp_workspace=ctx.workspace,
+            load_trace=ctx.load_trace,
             agent_spec_path=None,
         )
 
-    assert "client" in seen, "analyzer built without a platform client; intake traces are unreadable"
-    assert seen["nmp_workspace"] == ctx.workspace
+    assert "load_trace" in seen, "analyzer built without a trace loader; intake traces are unreadable"
+    assert seen["load_trace"] == ctx.load_trace
 
 
 async def _one(ctx: Any) -> Any:
@@ -728,3 +727,53 @@ async def test_the_terminator_sees_eliminated_candidates_too(
         f"terminator saw {seen[0]}, but the run has {sorted(committed)} — "
         "eliminated candidates must still count toward convergence"
     )
+
+
+def test_no_component_constructor_names_a_platform_type(isolated_registry: None) -> None:
+    """A component must be constructible by anyone holding a context, and nothing else.
+
+    Trace readers used to take an `AsyncNeMoPlatform` client plus a workspace name, which
+    put a platform type in the public signature of a role a third party is meant to
+    implement: to write one you had to obtain a platform client, and the host had to hand
+    its client to a component. They take `load_trace` from the context instead.
+
+    The check is over the registry rather than a list of files, so a component added later
+    is covered without anyone remembering to add it here.
+    """
+    import inspect
+
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, load_plugins
+
+    load_plugins()
+    assert Component._registry, "nothing registered; the check would pass vacuously"
+
+    offenders = {
+        f"{role}:{name}": [
+            parameter
+            for parameter, value in inspect.signature(cls.__init__).parameters.items()
+            if "NeMoPlatform" in str(value.annotation)
+        ]
+        for (role, name), cls in Component._registry.items()
+    }
+    named = {key: value for key, value in offenders.items() if value}
+
+    assert not named, f"components naming a platform type in their constructor: {named}"
+
+
+async def test_the_context_loads_a_trace_by_reference(tmp_path, isolated_registry: None) -> None:
+    """The verb that replaced the client: a `file://` ref resolves without a platform."""
+    import json
+
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.entities import ResourceRef
+
+    span = {"spanId": "abc", "traceId": "def", "name": "llm", "attributes": {"openinference.span.kind": "LLM"}}
+    trace = tmp_path / "trace.jsonl"
+    trace.write_text(json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": [span]}]}]}) + "\n", encoding="utf-8")
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    explorer = await ctx.load_trace(
+        ResourceRef(uri=f"file://{trace}", description="", metadata={"trace_format": "otlp"})
+    )
+
+    assert explorer is not None

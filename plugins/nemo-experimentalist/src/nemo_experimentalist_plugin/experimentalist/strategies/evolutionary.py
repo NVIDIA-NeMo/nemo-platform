@@ -39,8 +39,7 @@ from nemo_experimentalist_plugin.experimentalist.components.tools import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.util import load_framework_skills
 from nemo_experimentalist_plugin.experimentalist.registry import get_component, resolve
-from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext, TraceLoader
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -387,14 +386,13 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                         result=train_candidate_results[survivor.label],
                     )
             analysis = await self._analyze_round(
+                load_trace=ctx.load_trace,
                 analysis_dir=analysis_dir,
                 dataset=train_eval_dataset,
                 evaluations=train_candidate_results,
                 survivors=[c.slim() for c in survivors],
                 round_num=round_num,
                 config=config,
-                client=ctx.platform_client,
-                nmp_workspace=ctx.workspace,
                 agent_spec_path=agent_spec_path,
             )
             proposals = await self._propose_improvements(
@@ -809,14 +807,10 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         survivors: list[Candidate],
         round_num: int,
         config: EvolutionaryOptimizerConfig,
-        client: AsyncNeMoPlatform | None = None,
-        nmp_workspace: str | None = None,
+        load_trace: TraceLoader | None = None,
         agent_spec_path: Path | None = None,
     ) -> str:
         """Run AgentAnalyzer per survivor, merge analyses, persist to disk.
-
-        ``client`` and ``nmp_workspace`` are threaded into each ``AgentAnalyzer``
-        so its ``TraceAnalyzer`` can load ``intake://`` trial traces; when
         ``None`` those traces are skipped (local ``file://`` traces still load).
 
         Returns the merged analysis markdown string.
@@ -841,8 +835,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     workspace=self.working_dir,
                     config=config.analyzer_config,
                     framework_skills_dirs=self._framework_skills_dirs,
-                    client=client,
-                    nmp_workspace=nmp_workspace,
+                    load_trace=load_trace,
                 ).run(
                     candidate=s,
                     dataset=dataset,

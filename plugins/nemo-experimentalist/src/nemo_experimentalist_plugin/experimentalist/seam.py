@@ -11,7 +11,7 @@ out-of-tree strategy type its own ``run`` without importing our internals.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -22,10 +22,11 @@ from nemo_experimentalist_plugin.entities import (
     EvaluationResult,
     MetricTarget,
     Proposal,
+    ResourceRef,
     RewardRecord,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 from pydantic import BaseModel, ConfigDict, Field
 
 #: The split a candidate's headline reward is measured on, and the winner chosen by.
@@ -43,6 +44,15 @@ class Fork(BaseModel):
     upstream: Path | None = Field(
         default=None, description="The pristine parent, read-only; None when forked from the agent under test."
     )
+
+
+TraceLoader = Callable[[ResourceRef], Awaitable[TraceExplorer]]
+"""Resolves a trace reference to a loaded trace, wherever it is stored.
+
+The context supplies one to any component whose constructor names ``load_trace``, so a
+component that reads traces never names a platform type and one shipped by another
+package can read them too.
+"""
 
 
 @runtime_checkable
@@ -113,10 +123,8 @@ class StrategyContext(BuilderContext, Protocol):
         """The run's configured evaluation component."""
         ...
 
-    @property
-    def platform_client(self) -> AsyncNeMoPlatform | None:
-        """Platform client, for reading ``intake://`` traces. Transitional; see the
-        implementation."""
+    async def load_trace(self, ref: ResourceRef) -> TraceExplorer:
+        """The trace *ref* names, wherever this run stores traces."""
         ...
 
     async def candidates(self) -> list[Candidate]:

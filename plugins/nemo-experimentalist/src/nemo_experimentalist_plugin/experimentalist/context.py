@@ -43,13 +43,13 @@ from nemo_experimentalist_plugin.entities import (
     local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
+from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
 from nemo_experimentalist_plugin.experimentalist.registry import resolve
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, Fork
-from nemo_platform import AsyncNeMoPlatform
 
 logger = logging.getLogger(__name__)
 
@@ -178,15 +178,18 @@ class ExperimentContext:
         """
         return self._evaluator
 
-    @property
-    def platform_client(self) -> AsyncNeMoPlatform | None:
-        """Platform client, for reading ``intake://`` traces. Transitional.
+    async def load_trace(self, ref: ResourceRef) -> TraceExplorer:
+        """The trace *ref* names, wherever it is stored.
 
-        The last piece of backend still reaching a component: trace readers resolve
-        ``intake://`` refs themselves, so they need a client. A ``ctx`` verb that loads a
-        trace by reference would close it.
+        A ``file://`` ref is read from disk and an ``intake://`` one from the platform.
+        Which of those a run produces is the host's business, so this is the seam: a
+        component that reads traces asks for ``load_trace`` and never names a platform
+        type, which is what lets one shipped by another package read traces at all.
+
+        Raises:
+            ValueError: if the reference names a scheme this run cannot resolve.
         """
-        return self._backend.client
+        return await TraceExplorer.from_ref(ref, self._backend.client, self.workspace)
 
     # -- Candidates ----------------------------------------------------------
 
@@ -498,6 +501,9 @@ class ExperimentContext:
             "workspace": self.root,
             "working_dir": self.root,
             "evaluator": self._evaluator,
+            # A trace reader takes this rather than a platform client, so no component
+            # signature names a platform type and storage can move without touching one.
+            "load_trace": self.load_trace,
             # Train, not the primary split: a Builder runs bounded repair loops against
             # whatever it is handed, and `validation` is held out for scoring.
             "dataset": self.datasets.get("train", self.datasets[PRIMARY_SPLIT]),

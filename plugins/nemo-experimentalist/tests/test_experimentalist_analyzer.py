@@ -1,13 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for AgentAnalyzer client/workspace plumbing.
+"""Regression tests for AgentAnalyzer trace-loading plumbing.
 
-The Experimentalist round-N analysis path used to silently skip every
-``intake://`` trial trace because ``AgentAnalyzer`` never received (and never
-forwarded) a platform ``client`` or the Intake ``workspace`` name. These tests
-pin the plumbing: ``AgentAnalyzer.run`` must accept ``client`` / ``nmp_workspace``
-and thread them into ``TraceAnalyzer.run``.
+The round-N analysis path silently skips every ``intake://`` trial trace if the
+analyzer cannot load one, and a skipped trace is invisible: the round still
+produces a diagnosis, just one blind to the trajectory. These tests pin the
+plumbing: ``AgentAnalyzer`` takes a ``load_trace`` from the context and threads it
+into ``TraceAnalyzer.run``.
+
+It takes a loader rather than a platform client so no component signature names a
+platform type -- an analyzer shipped by another package reads traces through the
+same seam.
 
 ``AgentAnalyzer`` is built via ``object.__new__`` to skip its LLM-heavy
 ``__init__``, and the LLM-driven strategy methods (``select_trials``,
@@ -100,12 +104,12 @@ class _RecordingTraceAnalyzer:
         selection_reason: str = "",
         objective_metrics: list[dict[str, Any]] | None = None,
         regression_metrics: list[dict[str, Any]] | None = None,
-        client: Any = None,
+        load_trace: Any = None,
         workspace: Any = None,
     ) -> Diagnostic:
         type(self).calls.append(
             {
-                "client": client,
+                "load_trace": load_trace,
                 "workspace": workspace,
                 "selection_reason": selection_reason,
                 "objective_metrics": objective_metrics,
@@ -176,14 +180,20 @@ class _CompareWithPeers:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
 
-def _make_analyzer(
-    tmp_path: Path, trials: list[Any], *, client: Any = None, nmp_workspace: str | None = None
-) -> AgentAnalyzer:
+def _a_loader() -> Any:
+    """A distinct loader object; identity is what these tests assert on."""
+
+    async def _load(ref: Any) -> Any:  # pragma: no cover - never awaited here
+        raise AssertionError("not expected to load in this test")
+
+    return _load
+
+
+def _make_analyzer(tmp_path: Path, trials: list[Any], *, load_trace: Any = None) -> AgentAnalyzer:
     """Build an AgentAnalyzer without the LLM-heavy __init__ and stub its strategies."""
     analyzer = object.__new__(AgentAnalyzer)
     analyzer._workspace_path = tmp_path
-    analyzer._client = client
-    analyzer._nmp_workspace = nmp_workspace
+    analyzer._load_trace = load_trace
     analyzer._objective_metrics = []
     analyzer._regression_metrics = []
     analyzer._config = AnalyzerConfig()
@@ -238,7 +248,7 @@ def test_peer_comparison_respects_minimize_metric_directions(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_run_threads_client_and_workspace_into_trace_analyzer(
+async def test_run_threads_the_trace_loader_into_trace_analyzer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The platform handles the analyzer was built with reach TraceAnalyzer.run.
@@ -249,8 +259,8 @@ async def test_run_threads_client_and_workspace_into_trace_analyzer(
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
-    sentinel_client = object()
-    analyzer = _make_analyzer(tmp_path, [trial], client=sentinel_client, nmp_workspace="tau2-airline-ws")
+    sentinel_loader = _a_loader()
+    analyzer = _make_analyzer(tmp_path, [trial], load_trace=sentinel_loader)
 
     result = await analyzer.run(
         candidate=make_candidate(label="agent-a"),
@@ -261,16 +271,15 @@ async def test_run_threads_client_and_workspace_into_trace_analyzer(
 
     assert result.agent_id == "agent-a"
     assert len(calls) == 1
-    assert calls[0]["client"] is sentinel_client
-    assert calls[0]["workspace"] == "tau2-airline-ws"
+    assert calls[0]["load_trace"] is sentinel_loader
     assert calls[0]["selection_reason"] == "Analyze trial-1 for this test."
     assert calls[0]["objective_metrics"] == []
     assert calls[0]["regression_metrics"] == []
 
 
 @pytest.mark.asyncio
-async def test_run_defaults_client_and_workspace_to_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Omitting client/nmp_workspace still runs and forwards None (backward compat)."""
+async def test_run_defaults_the_trace_loader_to_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Omitting the loader still runs and forwards None, so a run without traces works."""
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
@@ -284,7 +293,7 @@ async def test_run_defaults_client_and_workspace_to_none(tmp_path: Path, monkeyp
     )
 
     assert len(calls) == 1
-    assert calls[0]["client"] is None
+    assert calls[0]["load_trace"] is None
     assert calls[0]["workspace"] is None
 
 
@@ -336,22 +345,22 @@ async def test_run_threads_numeric_objective_targets_into_trace_analyzer(
 
 @pytest.mark.asyncio
 async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A trace-skipped (no client) result must not be replayed once a client is available."""
+    """A trace-skipped result must not be replayed once a loader is available."""
     calls: list[dict[str, Any]] = []
     _install_fakes(monkeypatch, calls)
     trial, dataset, evaluation = _fixtures()
 
     # Same workspace/tmp_path across both runs, so the on-disk cache persists.
-    analyzer_no_client = _make_analyzer(tmp_path, [trial])
-    await analyzer_no_client.run(
+    analyzer_without_loader = _make_analyzer(tmp_path, [trial])
+    await analyzer_without_loader.run(
         candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
         round_num=0,
     )
 
-    analyzer_with_client = _make_analyzer(tmp_path, [trial], client=object(), nmp_workspace="ws-1")
-    await analyzer_with_client.run(
+    analyzer_with_loader = _make_analyzer(tmp_path, [trial], load_trace=_a_loader())
+    await analyzer_with_loader.run(
         candidate=make_candidate(label="agent-a"),
         dataset=cast(Any, dataset),
         evaluation=cast(Any, evaluation),
@@ -361,5 +370,5 @@ async def test_intake_availability_is_part_of_cache_key(tmp_path: Path, monkeypa
     # The second (intake-available) run must recompute rather than reuse the
     # trace-skipped cache entry from the first run.
     assert len(calls) == 2
-    assert calls[0]["client"] is None
-    assert calls[1]["client"] is not None
+    assert calls[0]["load_trace"] is None
+    assert calls[1]["load_trace"] is not None

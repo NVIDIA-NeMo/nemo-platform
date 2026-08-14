@@ -10,8 +10,7 @@ from typing import Any
 from nemo_experimentalist_plugin.entities import Candidate, Dataset, RewardRecord, TrialResult
 from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
-from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, StrategyContext
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, StrategyContext, TraceLoader
 from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc
@@ -71,8 +70,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         self,
         workspace: Path,
         llm: Any | None = None,
-        client: AsyncNeMoPlatform | None = None,
-        nmp_workspace: str | None = None,
+        load_trace: TraceLoader | None = None,
         config: GoalTreeConfig | None = None,
         max_trajectory_tasks: int | None = None,
         framework_skills_dirs: list[Path] | None = None,
@@ -83,8 +81,8 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         Args:
             workspace: Path to the workspace directory.
             llm: Language model instance; defaults to the configured fast model.
-            client: NeMo Platform client; required to load ``intake://`` traces.
-            nmp_workspace: NeMo Platform workspace name; required to load ``intake://`` traces.
+            load_trace: Resolves a trace reference to a TraceExplorer. Supplied by the
+                context; ``run`` takes the run's own if none was given here.
             **kwargs: Additional arguments passed to parent Agent class.
 
         Raises:
@@ -93,8 +91,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         """
         super().__init__(llm=llm or get_fast_model(), **kwargs)
         self.workspace = workspace
-        self._client = client
-        self._nmp_workspace = nmp_workspace
+        self._load_trace = load_trace
         self.context["trace_explorer_documentation"] = doc(TraceExplorer)
         self._goal_config = config or GoalTreeConfig()
         self._max_trajectory_tasks = max_trajectory_tasks
@@ -120,7 +117,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         ## Loading traces
 
         Load each trace with
-        `await TraceExplorer.from_ref(trial.trace, self._client, self._nmp_workspace)`.
+        `await self._load_trace(trial.trace)`.
         If the trace is not available, skip the trial.
 
         Use TraceExplorer to inspect the full span hierarchy: sessions, turns, LLM messages, tool
@@ -174,10 +171,15 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
             score, a reason citing specific trace evidence, and the span IDs that ground the reason.
         """
         explorers: dict[str, TraceExplorer] = {}
+        if self._load_trace is None:
+            raise ValueError(
+                "No trace loader was supplied, so no trajectory can be read. `run` takes the "
+                "run's own from the context; a direct caller must pass `load_trace`."
+            )
         for agent_id, trial in trials.items():
             if not trial.trace:
                 continue
-            explorer = await TraceExplorer.from_ref(trial.trace, self._client, self._nmp_workspace)
+            explorer = await self._load_trace(trial.trace)
             explorers[agent_id] = explorer
             print(f"Agent {agent_id} trace overview:")
             print(await explorer.get_overview())
@@ -199,7 +201,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
         analysis directory. A scorer that models something else keeps whatever state it
         needs here instead, which is why none of it is the strategy's business.
         """
-        self._client, self._nmp_workspace = ctx.platform_client, ctx.workspace
+        self._load_trace = ctx.load_trace
         await self._ensure_goal_tree(ctx.datasets["train"], ctx.agent_spec)
         if analysis is not None:
             await self._update_goal_tree(
