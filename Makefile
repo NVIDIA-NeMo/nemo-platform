@@ -380,9 +380,11 @@ PYTEST_VERBOSITY := $(if $(filter true,$(CI)),-q,-v)
 PYTEST_WORKERS ?= auto
 PYTEST_MAX_WORKERS ?= 16
 PYTEST_DIST ?= loadscope
+PYTEST_MAX_WORKER_RESTART ?= 2
 PYTEST_CMD = env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" $(UV) run --frozen \
 	pytest \
-	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) --max-worker-restart=2 \
+	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) \
+	--max-worker-restart=$(PYTEST_MAX_WORKER_RESTART) \
 	--dist $(PYTEST_DIST) --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
 
 PYTEST_CI_OPTS := --cov=src --cov=packages \
@@ -405,6 +407,10 @@ PYTEST_CI_CMD = timeout --kill-after=60s $(PYTEST_CI_TIMEOUT)s $(PYTEST_CMD)
 # CI integration runs therefore use ``loadgroup`` while unit runs keep
 # ``loadscope``.
 test-integration test-integration-ci: PYTEST_DIST := loadgroup
+
+# A killed integration worker never tears down its containers and ports, so replacing it re-runs
+# the group against resources the dead worker still holds. Unit workers own nothing external.
+test-integration test-integration-ci: PYTEST_MAX_WORKER_RESTART := 0
 
 .PHONY: test-unit
 test-unit: ## Run Python unit tests across all packages and services
