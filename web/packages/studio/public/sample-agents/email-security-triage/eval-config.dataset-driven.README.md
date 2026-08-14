@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Dataset-Driven evaluation — Email Security Triage
 
 Every row of `dataset.jsonl` is scored by the same metric set. Use this shape when the inputs are
