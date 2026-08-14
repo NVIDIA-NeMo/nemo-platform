@@ -209,6 +209,11 @@ def _build_nemo_gym_env_config(
                     egress_allow=assemble_master_egress_allow(),
                     public_dns_allow=tuple(gym.public_dns_allow),
                 ),
+                # Only emitted when the operator declared it, so an unset value leaves
+                # NeMo-RL's own default in place rather than this compiler asserting one.
+                host_provider_options=(
+                    {"connection": {"protocol": gym.sandbox_server_protocol}} if gym.sandbox_server_protocol else {}
+                ),
                 environment_pvc_claim=mounts.environment_pvc_claim,
                 environment_sub_path=mounts.environment_sub_path,
                 dataset_pvc_claim=mounts.dataset_pvc_claim,

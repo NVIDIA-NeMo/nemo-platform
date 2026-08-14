@@ -5,6 +5,9 @@
 
 from __future__ import annotations
 
+import logging
+import re
+from collections import defaultdict
 from pathlib import Path
 
 import yaml
@@ -17,9 +20,27 @@ from nmp.rl.schemas.environment import (
 )
 from nmp.rl.tasks.environment.allowlist import IMAGE_ADAPTER_ALLOWLIST
 
+logger = logging.getLogger(__name__)
+
 
 class EnvironmentPackageValidationError(ValueError):
     """Raised when an environment package fails validation."""
+
+
+def duplicate_wheel_distributions(wheels_dir: Path) -> dict[str, list[str]]:
+    """Return ``{normalized distribution: [versions]}`` for anything vendored twice.
+
+    A ``--find-links`` directory carrying several versions of one project is legal, so
+    this is not an error -- but it means the package no longer pins what gets installed,
+    and a consumer that pins every file outright cannot satisfy it at all.
+    """
+    versions: dict[str, list[str]] = defaultdict(list)
+    for wheel in sorted(wheels_dir.glob("*.whl")):
+        parts = wheel.name.split("-")
+        if len(parts) < 5:
+            continue
+        versions[re.sub(r"[-_.]+", "-", parts[0]).lower()].append(parts[1])
+    return {name: found for name, found in versions.items() if len(found) > 1}
 
 
 def load_manifest(env_root: Path) -> EnvironmentManifest:
@@ -64,6 +85,19 @@ def validate_package_layout(env_root: Path, manifest: EnvironmentManifest) -> No
         for whl in wheels:
             if whl.suffix != ".whl":
                 raise EnvironmentPackageValidationError(f"Non-wheel file in wheels/: {whl.name}")
+        # Warn, not raise: several versions of a project in a find-links pool is legal, and
+        # rejecting here would invalidate packages already uploaded. But it means the
+        # package does not pin what gets installed, so say so where it can still be fixed
+        # rather than leaving it to surface as a resolver failure mid-job.
+        for name, versions in duplicate_wheel_distributions(wheels_dir).items():
+            logger.warning(
+                "wheels/ vendors %d versions of %s (%s). The installed version is then "
+                "whatever the resolver picks. Regenerate the package so it vendors a "
+                "single resolved closure.",
+                len(versions),
+                name,
+                ", ".join(sorted(versions)),
+            )
 
     if isinstance(manifest, AdapterWheelsV1Manifest):
         if manifest.adapter.agent not in IMAGE_ADAPTER_ALLOWLIST:

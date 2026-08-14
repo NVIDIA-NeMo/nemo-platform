@@ -473,3 +473,26 @@ def test_compiled_config_survives_the_yaml_round_trip(
     assert "!!python/" not in text
     loaded = yaml.safe_load(text)
     assert loaded["env"]["nemo_gym"]["sandbox"]["network_policy"]["public_dns_allow"] == ["hub.primeintellect.ai"]
+
+
+def test_sandbox_server_protocol_reaches_the_host_provider(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The scheme must be declarable, because NeMo-RL cannot know it.
+
+    NeMo-RL defaults the health/rollout proxy URLs to https. Against a plain-HTTP
+    in-cluster OpenSandbox server every poll then stalls in the TLS handshake and the job
+    dies after ready_timeout_s with a bare `<urlopen error timed out>`. The same key also
+    feeds the SDK connection used by create_host, so create and health cannot disagree.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+
+    # Unset leaves NeMo-RL's default in place rather than asserting one here.
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["host_provider_options"] == {}
+
+    step.gym.sandbox_server_protocol = "http"
+    sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
+    assert sandbox["host_provider_options"] == {"connection": {"protocol": "http"}}
