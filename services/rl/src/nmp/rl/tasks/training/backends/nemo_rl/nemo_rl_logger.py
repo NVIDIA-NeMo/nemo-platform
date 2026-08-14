@@ -187,7 +187,12 @@ class NemoRLLogger(LoggerInterface):
         # epoch 1, hence the clamp rather than a bare `step - 1`.
         epoch = (max(step - 1, 0) // self._steps_per_epoch) + 1
 
-        # Handle training loss
+        # `loss` gates the train branch as a discriminator, not as a requirement.
+        # GRPO and PPO log twice under `prefix="train"` at one step -- rollout
+        # stats first, then the training metrics, both at `total_steps + 1`
+        # (grpo.py) -- and only the second carries a loss. Keying on it is what
+        # keeps one step from producing two reports, and what keeps the rollout
+        # log from displacing a pending report that has the loss in it.
         if prefix == "train" and is_chartable(metrics.get("loss")):
             report = {"step": step, "epoch": epoch, "metrics": dict(metrics)}
             # Throttled to log_interval to reduce output. A withheld step is held as
@@ -198,15 +203,21 @@ class NemoRLLogger(LoggerInterface):
             else:
                 self._pending_train_report = report
 
-        # Handle validation metrics
+        # Validation reports whatever the pass produced. There is one validation
+        # log per pass and no rollout twin to tell apart, so requiring a `loss`
+        # here bought nothing and cost whole passes: GRPO validates on
+        # `accuracy` and `avg_length` and reports no loss at all, so every
+        # validation it ran went unrecorded. The gate is only against a hollow
+        # report -- a pass whose metrics are all histograms says nothing.
         elif prefix and prefix.startswith("validation"):
-            if is_chartable(metrics.get("loss")):
-                val_loss = metrics["loss"]
+            if any(is_chartable(value) for value in metrics.values()):
                 self._callback.report_validation(step=step, epoch=epoch, metrics=dict(metrics))
-                # Track best validation loss
-                if val_loss < self._best_metric_value:
-                    self._best_metric_value = val_loss
-                    self._best_epoch = epoch
+                # Track best validation loss, when the algorithm reports one.
+                if is_chartable(metrics.get("loss")):
+                    val_loss = float(metrics["loss"])
+                    if val_loss < self._best_metric_value:
+                        self._best_metric_value = val_loss
+                        self._best_epoch = epoch
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
 

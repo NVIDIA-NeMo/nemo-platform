@@ -127,6 +127,18 @@ TRAIN_METRICS: dict[str, Any] = {
 
 VALIDATION_METRICS: dict[str, Any] = {"loss": 0.25, "num_valid_samples": 8}
 
+# GRPO/PPO log this under `prefix="train"` at the same step as TRAIN_METRICS,
+# from the rollout rather than the training step. Generation stats only: no loss.
+ROLLOUT_METRICS: dict[str, Any] = {
+    "total_turns": 64,
+    "avg_turns_per_sample": 1.0,
+    "mean_gen_tokens_per_sample": 412.5,
+    "truncation_rate": 0.02,
+}
+
+# What GRPO's validate() returns. It scores on rewards, so there is no loss in it.
+REWARD_VALIDATION_METRICS: dict[str, Any] = {"accuracy": 0.61, "avg_length": 412.5}
+
 
 # --------------------------------------------------------------------------- #
 # Module stub hygiene
@@ -177,6 +189,22 @@ def test_train_call_without_a_loss_is_ignored(callback: _RecordingCallback) -> N
     _make_logger().log_metrics(rollout_only, step=0, prefix="train")
 
     assert callback.train_steps == []
+
+
+def test_the_rollout_log_does_not_produce_a_second_train_report(callback: _RecordingCallback) -> None:
+    """GRPO and PPO log twice under `prefix="train"` at one step.
+
+    grpo.py logs `rollout_metrics` and then the training `metrics`, both at
+    `total_steps + 1`. Only the second has a loss, which is why the branch keys
+    on one: without it the step reports twice -- each resending every series --
+    and a throttled step ends up pending as the rollout half, losing the loss.
+    """
+    logger = _make_logger()
+    logger.log_metrics(ROLLOUT_METRICS, step=1, prefix="train")
+    logger.log_metrics(TRAIN_METRICS, step=1, prefix="train")
+
+    assert len(callback.train_steps) == 1
+    assert callback.train_steps[0]["metrics"]["loss"] == 0.5
 
 
 def test_every_train_scalar_is_forwarded(callback: _RecordingCallback) -> None:
@@ -430,6 +458,29 @@ def test_validation_with_nothing_usable_is_not_reported(callback: _RecordingCall
     _make_logger().log_metrics({"histogram/x": _Histogram()}, step=9, prefix="validation")
 
     assert callback.validations == []
+
+
+def test_a_validation_pass_without_a_loss_is_still_reported(callback: _RecordingCallback) -> None:
+    """No metric is privileged, so a loss is not what makes a pass worth recording.
+
+    GRPO scores validation on rewards: its validate() returns `accuracy` and
+    `avg_length` and no loss at all. Gating on one dropped every validation pass
+    it ran -- not the loss curve, the whole pass.
+    """
+    _make_logger().log_metrics(REWARD_VALIDATION_METRICS, step=10, prefix="validation")
+
+    assert callback.validations[0]["metrics"] == REWARD_VALIDATION_METRICS
+
+
+def test_a_loss_free_validation_leaves_the_best_metric_alone(callback: _RecordingCallback) -> None:
+    """Best-so-far tracks the validation loss, so a pass without one says nothing."""
+    logger = _make_logger()
+    logger.log_metrics({"loss": 0.4}, step=10, prefix="validation")
+    logger.log_metrics(REWARD_VALIDATION_METRICS, step=20, prefix="validation")
+
+    assert len(callback.validations) == 2
+    assert logger._best_metric_value == 0.4
+    assert logger._best_epoch == 1
 
 
 def test_best_validation_loss_tracks_minimum(callback: _RecordingCallback) -> None:
