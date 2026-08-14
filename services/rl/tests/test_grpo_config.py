@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.rl.app.jobs.training.schemas import (
     GRPOConfig,
@@ -435,9 +436,40 @@ def test_public_dns_allow_reaches_the_sandbox_network_policy(
     assert step.gym is not None
 
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
-    assert sandbox["network_policy"]["public_dns_allow"] == ()
+    assert sandbox["network_policy"]["public_dns_allow"] == []
 
     step.gym.allow_internet = True
     step.gym.public_dns_allow = ["hub.primeintellect.ai"]
     sandbox = compile_grpo_config(step, job_ctx)["env"]["nemo_gym"]["sandbox"]
-    assert sandbox["network_policy"]["public_dns_allow"] == ("hub.primeintellect.ai",)
+    assert sandbox["network_policy"]["public_dns_allow"] == ["hub.primeintellect.ai"]
+
+
+def test_compiled_config_survives_the_yaml_round_trip(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The compiled dict must round-trip through the writer/reader pair the job uses.
+
+    ``TrainingRunner._compile_library_config`` writes it with ``yaml.dump`` and the driver
+    reads it back with ``OmegaConf.load``, whose loader is SafeLoader-based. ``yaml.dump``
+    happily emits ``!!python/tuple`` for a tuple, which that loader then refuses -- so a
+    tuple anywhere in the config kills the job at driver start with an opaque
+    ``ConstructorError`` pointing at a line number, minutes after compile succeeded.
+    ``yaml.safe_load`` stands in for OmegaConf's loader here (omegaconf is a NeMo-RL image
+    dependency, not a platform one) and rejects the same tags. Asserting on the round trip
+    rather than on any one field catches the next non-plain value here, not on a cluster.
+    """
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    assert step.gym is not None
+    step.gym.allow_internet = True
+    step.gym.public_dns_allow = ["hub.primeintellect.ai"]
+
+    cfg = compile_grpo_config(step, job_ctx)
+    config_path = tmp_path / "nemo_rl_config.yaml"
+    with config_path.open("w", encoding="utf-8") as handle:
+        yaml.dump(cfg, handle, default_flow_style=False)
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "!!python/" not in text
+    loaded = yaml.safe_load(text)
+    assert loaded["env"]["nemo_gym"]["sandbox"]["network_policy"]["public_dns_allow"] == ["hub.primeintellect.ai"]

@@ -217,7 +217,13 @@ def _build_nemo_gym_env_config(
                 workspace_sub_path=mounts.workspace_sub_path,
             ),
         )
-        nemo_gym.update(sandbox_cfg.model_dump(mode="python", exclude_none=True))
+        # mode="json", not "python": this dict is written straight to YAML with yaml.dump
+        # and read back by OmegaConf's SafeLoader. "python" mode keeps
+        # network_policy.public_dns_allow a tuple, which yaml.dump emits as
+        # !!python/tuple and that loader refuses -- the job then dies at driver start,
+        # long after compile reported success. "json" mode lowers tuples to lists, and
+        # NeMo-RL's own tuple[str, ...] field coerces them back on validation.
+        nemo_gym.update(sandbox_cfg.model_dump(mode="json", exclude_none=True))
 
         work_path = resolve_ephemeral_work_path(job_ctx.job_id)
         bootstrap = bootstrap_env_from_job(
