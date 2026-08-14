@@ -261,6 +261,10 @@ to select the winner.
 | `evaluator.n_attempts` | `1` | `1`; increase only when task results are noisy | Repeats each evaluation trial. |
 | `eval_author.max_traces` | `3` | `10` | Representative Insight traces deeply analyzed in Insight-driven mode. |
 
+Increase `coder.architecture_doc_max_iterations` if a run stops because the
+Coder cannot complete `architecture.md`. An agent that has many source files
+needs more steps than the default of `100`.
+
 A small explicit smoke configuration looks like this:
 
 ```yaml

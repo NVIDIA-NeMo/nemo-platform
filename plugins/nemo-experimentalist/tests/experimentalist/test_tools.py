@@ -8,6 +8,7 @@ from nemo_experimentalist_plugin.experimentalist.components.coder import Coder, 
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import BLOCKED_MESSAGE
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients, ConfiguredModelRefs, activate_model_clients
+from nooa import CodeActStrategy
 from nooa.agentdoc import pformat
 from nooa.tools import ShellResult
 from nooa.unifiedllm import CompletionClient, FakeLLMClient
@@ -63,6 +64,30 @@ def test_coder_uses_default_model_for_architecture_docs(tmp_path: Path) -> None:
         coder = Coder(workspace=tmp_path)
 
     assert coder._architecture_model is default
+
+
+async def test_architecture_doc_step_budget_comes_from_config(tmp_path: Path, monkeypatch) -> None:
+    """The architecture-doc step must run under the configured budget, default included."""
+    budgets: list[int | None] = []
+
+    async def capture(
+        self: Coder,
+        agent_id: str,
+        source_path: str | None = None,
+        entrypoint: str | None = None,
+        _strategy: CodeActStrategy | None = None,
+    ) -> None:
+        assert _strategy is not None
+        budgets.append(_strategy.config.max_iterations)
+
+    monkeypatch.setattr(Coder, "_write_architecture_doc", capture)
+
+    await Coder(workspace=tmp_path).create_architecture_doc("agent-1")
+    await Coder(workspace=tmp_path, config=CoderConfig(architecture_doc_max_iterations=250)).create_architecture_doc(
+        "agent-1"
+    )
+
+    assert budgets == [100, 250]
 
 
 async def test_coder_lists_agent_mutation_models_from_catalog(tmp_path: Path) -> None:

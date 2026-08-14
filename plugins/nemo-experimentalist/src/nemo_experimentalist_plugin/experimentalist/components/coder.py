@@ -40,6 +40,11 @@ class CoderConfig(BaseModel):
         default=2,
         description="Max LLM repair iterations inside integration_check before giving up on a candidate.",
     )
+    architecture_doc_max_iterations: int = Field(
+        default=100,
+        gt=0,
+        description="Max CodeAct steps allowed to write architecture.md. Raise it for agents with many source files.",
+    )
     model_catalog_path: Path | None = Field(
         default=None,
         description="Optional YAML model catalog path overriding the packaged assets/models.yaml.",
@@ -998,11 +1003,33 @@ class Coder(Agent):
             options=smoke_options,
         )
 
-    @strategy(
-        CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)),
-        llm=lambda self: self._architecture_model,
-    )
     async def create_architecture_doc(
+        self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
+    ) -> None:
+        """Document the agent, allowing ``architecture_doc_max_iterations`` steps.
+
+        Args:
+            agent_id: The agent directory under eval-and-optimize/agents/ to document.
+            source_path: Directory holding the agent source, relative to the agent directory.
+            entrypoint: File the evaluation harness invokes, relative to the agent directory.
+
+        """
+        # How many steps documenting an agent takes scales with the source the Coder is
+        # handed, so the CodeAct config is built here rather than on the @strategy
+        # decorator below, where it would be fixed when the class is defined.
+        config = CodeActConfig(
+            max_iterations=self._config.architecture_doc_max_iterations,
+            cell_timeout=3600.0,
+        )
+        await self._write_architecture_doc(
+            agent_id,
+            source_path=source_path,
+            entrypoint=entrypoint,
+            _strategy=CodeActStrategy(config=config),  # ty: ignore[unknown-argument]
+        )
+
+    @strategy(CodeActStrategy(), llm=lambda self: self._architecture_model)
+    async def _write_architecture_doc(
         self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:
         """Update (or, only if absent, create) architecture.md for the given agent.
