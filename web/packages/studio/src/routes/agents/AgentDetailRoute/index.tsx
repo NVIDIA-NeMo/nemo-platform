@@ -18,7 +18,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { SubmitEvaluationModal } from '@studio/components/evaluation/SubmitEvaluationModal';
-import { MONITOR_ENABLED } from '@studio/constants/environment';
+import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -35,8 +35,8 @@ import {
   clearAgentWalkthroughPending,
   isAgentWalkthroughPending,
 } from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
-import { getAgentMonitorRoute, getAgentsListRoute } from '@studio/routes/utils';
-import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
+import { getAgentsListRoute, getIntakeTracesRoute } from '@studio/routes/utils';
+import { ClipboardCheck, Dot, ListTree, Rocket } from 'lucide-react';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
@@ -164,9 +164,9 @@ export const AgentDetailRoute: FC = () => {
           }
           slotActions={
             <Flex gap="2" wrap="wrap" justify="end">
-              {MONITOR_ENABLED && (
-                <Button kind="secondary" onClick={() => navigate(getAgentMonitorRoute(workspace))}>
-                  <Activity className="size-4" aria-hidden />
+              {INTAKE_ENABLED && (
+                <Button kind="secondary" onClick={() => navigate(getIntakeTracesRoute(workspace))}>
+                  <ListTree className="size-4" aria-hidden />
                   Open traces
                 </Button>
               )}
