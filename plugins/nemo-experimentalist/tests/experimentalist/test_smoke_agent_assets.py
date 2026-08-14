@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
 _HASHED = ("Dockerfile", "records.json")
-_RENDERED_TASK_TREE_SHA256 = "3fabb557da0cd6f4cda6c713b261e591bf52ed5ad936f2d3ee7bd6b12431099a"
+_RENDERED_TASK_TREE_SHA256 = "d8d4face3d4aa0f5697faaea2bd6146a73573290910c216146a3753ced4b7906"
 
 
 def _root_nooa_rev() -> str:
