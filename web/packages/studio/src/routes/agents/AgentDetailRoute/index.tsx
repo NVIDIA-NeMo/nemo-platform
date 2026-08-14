@@ -36,7 +36,7 @@ import {
   isAgentWalkthroughPending,
 } from '@studio/routes/agents/AgentDetailRoute/walkthroughStorage';
 import { getAgentsListRoute, getIntakeTracesRoute } from '@studio/routes/utils';
-import { Activity, ClipboardCheck, Dot, Rocket } from 'lucide-react';
+import { ClipboardCheck, Dot, ListTree, Rocket } from 'lucide-react';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 
@@ -166,7 +166,7 @@ export const AgentDetailRoute: FC = () => {
             <Flex gap="2" wrap="wrap" justify="end">
               {INTAKE_ENABLED && (
                 <Button kind="secondary" onClick={() => navigate(getIntakeTracesRoute(workspace))}>
-                  <Activity className="size-4" aria-hidden />
+                  <ListTree className="size-4" aria-hidden />
                   Open traces
                 </Button>
               )}
