@@ -1601,13 +1601,16 @@ class EvolutionaryOptimizer(Agent):
         so its ``TraceAnalyzer`` can load ``intake://`` trial traces; when
         ``None`` those traces are skipped (local ``file://`` traces still load).
 
+        A survivor whose analysis fails is dropped with a warning; the round
+        fails only when no survivor could be analyzed at all.
+
         Returns the merged analysis markdown string.
         """
         analysis_path = analysis_dir / f"round-{round_num}.md"
         if analysis_path.exists():
             return analysis_path.read_text()
 
-        per_agent = await asyncio.gather(
+        results = await asyncio.gather(
             *[
                 AgentAnalyzer(
                     workspace=self.working_dir,
@@ -1626,12 +1629,28 @@ class EvolutionaryOptimizer(Agent):
                     regression_metrics=[target.model_dump() for target in config.regression_metrics],
                 )
                 for s in survivors
-            ]
+            ],
+            return_exceptions=True,
         )
+        # The evaluation these analyses describe is already paid for, so merge the
+        # survivors that completed. Only an empty result is fatal, because the
+        # proposer then has nothing to read.
+        analyzed: list[tuple[Candidate, str]] = []
+        failure: BaseException | None = None
+        for survivor, result in zip(survivors, results, strict=True):
+            if isinstance(result, BaseException):
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
+                logger.warning("[ANALYSIS] round %s: dropping %s: %s", round_num, survivor.label, result)
+                failure = failure or result
+                continue
+            analyzed.append((survivor, str(result)))
+        if not analyzed and failure is not None:
+            raise failure
         analysis = await self.merge_analysis(
-            survivors,
+            [survivor for survivor, _ in analyzed],
             round_num,
-            [str(a) for a in per_agent],
+            [text for _, text in analyzed],
             config.objective_function,
             config.regression_metrics,
         )
