@@ -83,7 +83,7 @@ def test_a_config_using_the_current_keys_is_accepted() -> None:
             "trajectory_scorer": None,
             "outcome_evaluator": "harbor",
             "outcome_evaluator_config": {"n_attempts": 1},
-            "builder": "llm-code-edit",
+            "builder": "code-edit",
             "analyzer_config": {},
             "proposer_config": {},
         }
@@ -130,23 +130,25 @@ def test_the_skill_documents_only_live_config_keys() -> None:
     assert checked, "found no run-config example in SKILL.md; the block matcher is wrong"
 
 
-def test_the_old_analyzer_component_value_is_rejected_by_name() -> None:
-    """`agent-trace` named the evidence twice over and read as a noun pair rather than
-    "analyzes traces". A config carrying it would otherwise fail deep in resolution,
-    reporting an unknown component instead of the one-word fix."""
-    with pytest.raises(ValueError, match="'agent-trace' was renamed to 'trace'"):
-        EvolutionaryOptimizerConfig.model_validate({"analyzer": "agent-trace"})
+def test_every_default_component_resolves() -> None:
+    """A default naming a component nothing registers is a run that dies at round 0.
 
-
-def test_the_current_analyzer_value_is_accepted() -> None:
-    """The rejection must not fire on the spelling it steers people towards."""
-    assert EvolutionaryOptimizerConfig.model_validate({"analyzer": "trace"}).analyzer == "trace"
-
-
-def test_the_default_analyzer_resolves() -> None:
-    """A default that names a component nothing registers is a run that dies at round 0."""
+    Checked over the config's own defaults rather than a hardcoded list, so a role added
+    later is covered without anyone remembering to extend this.
+    """
     from nemo_experimentalist_plugin.experimentalist.registry import resolve
 
-    default = EvolutionaryOptimizerConfig().analyzer
-    assert default == "trace"
-    assert resolve("root-cause-analyzer", default) is not None
+    config = EvolutionaryOptimizerConfig()
+    roles = {
+        "strategy": config.strategy,
+        "builder": config.builder,
+        "proposer": config.proposer,
+        "outcome-evaluator": config.outcome_evaluator,
+        "selector": config.selector,
+        "root-cause-analyzer": config.analyzer,
+        "terminator": config.terminator,
+        "trajectory-scorer": config.trajectory_scorer,
+    }
+    unresolvable = {role: name for role, name in roles.items() if name is not None and resolve(role, name) is None}
+
+    assert not unresolvable, f"defaults naming components nothing registers: {unresolvable}"

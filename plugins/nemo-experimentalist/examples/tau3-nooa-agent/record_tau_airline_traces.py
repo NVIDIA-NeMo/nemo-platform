@@ -20,8 +20,8 @@ from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import TrialResult, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
@@ -214,7 +214,7 @@ async def run(args: argparse.Namespace) -> Path:
 
     if args.upload_dir is not None:
         job_dir, run_dir = _resolve_harbor_output_dir(args.upload_dir)
-        evaluator = HarborEvaluator(experiment_dir=run_dir)
+        evaluator = HarborOutcomeEvaluator(experiment_dir=run_dir)
         trials = list(await evaluator._trials_from_dir(job_dir, dataset.tasks))
         uploadable_trials = [trial for trial in trials if trial.status == "completed" and trial.trace is not None]
         if not uploadable_trials:
@@ -279,7 +279,7 @@ async def run(args: argparse.Namespace) -> Path:
             agent_setup_timeout_multiplier=2.0,
             environment_build_timeout_multiplier=3.0,
         )
-        result = await HarborEvaluator(experiment_dir=run_dir).run(
+        result = await HarborOutcomeEvaluator(experiment_dir=run_dir).run(
             agent=agent_path,
             dataset=dataset,
             options=options,

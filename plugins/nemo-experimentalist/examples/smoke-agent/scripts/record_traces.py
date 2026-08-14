@@ -22,8 +22,8 @@ from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import TrialResult, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.otlp import jsonl_to_protobuf, read_trace_id
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
@@ -121,7 +121,7 @@ async def run(args: argparse.Namespace) -> dict[str, str]:
             n_concurrent_trials=args.concurrency,
             quiet=True,
         )
-        result = await HarborEvaluator(experiment_dir=run_dir).run(
+        result = await HarborOutcomeEvaluator(experiment_dir=run_dir).run(
             agent=agent_path,
             dataset=dataset,
             options=options,

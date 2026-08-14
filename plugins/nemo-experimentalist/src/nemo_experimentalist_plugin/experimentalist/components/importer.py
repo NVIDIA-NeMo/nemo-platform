@@ -19,7 +19,7 @@ def import_proposal(description: str = "the agent under test, unchanged") -> Pro
     return Proposal(ancestor=None, description=description, kind=IMPORT, payload={})
 
 
-class Importer(roles.Builder):
+class ImportBuilder(roles.Builder):
     """Commit a candidate that is the agent under test, unchanged.
 
     An ordinary build of an ordinary Proposal, so ``commit_candidate`` stays the only way

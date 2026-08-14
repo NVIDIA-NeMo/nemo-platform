@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyzerConfig(BaseModel):
-    """Configure tuning parameters for AgentAnalyzer."""
+    """Configure tuning parameters for TraceRootCauseAnalyzer."""
 
     max_summary_tokens: int = Field(
         default=80_000,
@@ -234,7 +234,7 @@ class AgentAnalysis(BaseModel):
         return "\n\n".join(sections)
 
 
-class AgentAnalyzer(Agent, roles.Analyzer):
+class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
 
     name = "trace"

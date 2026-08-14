@@ -1130,7 +1130,7 @@ class OptimizeModelCapability(Skill):
     Candidate agents should use only model IDs listed in `assets/models.yaml`;
     do not invent provider/model IDs outside that catalog.
 
-    To inspect the catalog from the optimizer LLMCodeEditor, run:
+    To inspect the catalog from the optimizer CodeEditBuilder, run:
 
     ```python
     catalog = self.optimize.optimize_model_capability.read_model_catalog()

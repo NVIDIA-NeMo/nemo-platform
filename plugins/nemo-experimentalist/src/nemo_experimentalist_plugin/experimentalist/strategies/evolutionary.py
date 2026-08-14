@@ -24,7 +24,7 @@ from nemo_experimentalist_plugin.entities import (
     Proposal,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditorConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilderConfig
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
     ensure_heldout_hidden,
     restore_heldout_splits,
@@ -236,7 +236,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         )
 
     @staticmethod
-    def _coder_config(config: EvolutionaryOptimizerConfig) -> LLMCodeEditorConfig:
+    def _coder_config(config: EvolutionaryOptimizerConfig) -> CodeEditBuilderConfig:
         if config.model_catalog_path is None or config.builder_config.model_catalog_path is not None:
             return config.builder_config
         return config.builder_config.model_copy(update={"model_catalog_path": config.model_catalog_path})
@@ -708,7 +708,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
     ) -> None:
         """Ask the run's Builder to document *agent_dir*, unless it already is.
 
-        The configured Builder, not the LLMCodeEditor: a Builder that writes no architecture doc
+        The configured Builder, not the CodeEditBuilder: a Builder that writes no architecture doc
         must not have one written for it by a component the config did not name.
         """
         if (agent_dir / "architecture.md").exists():
@@ -812,7 +812,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         load_trace: TraceLoader | None = None,
         agent_spec_path: Path | None = None,
     ) -> str:
-        """Run AgentAnalyzer per survivor, merge analyses, persist to disk.
+        """Run TraceRootCauseAnalyzer per survivor, merge analyses, persist to disk.
         ``None`` those traces are skipped (local ``file://`` traces still load).
 
         Returns the merged analysis markdown string.
@@ -890,7 +890,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         generation: int,
         config: EvolutionaryOptimizerConfig,
     ) -> list[Candidate]:
-        """Build each proposal with the LLMCodeEditor and commit the ones that succeed.
+        """Build each proposal with the CodeEditBuilder and commit the ones that succeed.
 
         A failed build produces no Candidate at all: the proposal is discarded and its
         forked directory is left behind as scratch. That is the point of committing only
@@ -990,7 +990,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
     ) -> roles.Builder:
         """Resolve and construct this run's Builder, one per build.
 
-        One instance per build because a Builder is stateful — the LLMCodeEditor holds a shell
+        One instance per build because a Builder is stateful — the CodeEditBuilder holds a shell
         session and a todo list — and builds run concurrently.
 
         """

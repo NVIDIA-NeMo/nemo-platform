@@ -97,7 +97,7 @@ def _outcome_from_eval_passed(eval_passed: bool | None) -> Literal["SUCCESS", "F
 class TraceAnalyzer(Agent):
     """Perform deep trace analysis for a single task.
 
-    Spawned by AgentAnalyzer.run in parallel — one instance per task.
+    Spawned by TraceRootCauseAnalyzer.run in parallel — one instance per task.
     Never call this sequentially; always use asyncio.gather.
 
     When using TraceExplorer return types, prefer attribute access. If you
@@ -353,7 +353,7 @@ class TraceAnalyzer(Agent):
             )
 
         # The cache key intentionally omits the insight lens. Within the optimization
-        # loop the Eval Author (insight-conditioned) and the AgentAnalyzer (no insight)
+        # loop the Eval Author (insight-conditioned) and the TraceRootCauseAnalyzer (no insight)
         # analyze disjoint trace sets in a single experiment_dir, so a given trace is
         # only ever diagnosed through one lens and cannot collide here. If a future
         # caller analyzes the same trace under different insights in one experiment_dir,

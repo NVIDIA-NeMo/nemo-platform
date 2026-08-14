@@ -61,7 +61,7 @@ class GroupLeafScore(BaseModel):
     )
 
 
-class GroupLeafScorer(Agent, roles.TrajectoryScorer):
+class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
     """Score a group of agent traces against a goal-tree leaf node."""
 
     name = "goal-tree"

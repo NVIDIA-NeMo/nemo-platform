@@ -39,9 +39,9 @@ def _proposal(ancestor: str | None = "agent-0") -> Proposal:
 
 async def _import_baseline(ctx, description: str = "baseline") -> Candidate:
     """Build the baseline the way a strategy does: an import Proposal through its Builder."""
-    from nemo_experimentalist_plugin.experimentalist.components.importer import Importer, import_proposal
+    from nemo_experimentalist_plugin.experimentalist.components.importer import ImportBuilder, import_proposal
 
-    return await Importer().build(ctx, import_proposal(description))
+    return await ImportBuilder().build(ctx, import_proposal(description))
 
 
 @pytest.mark.asyncio
@@ -221,7 +221,7 @@ async def test_a_fork_does_not_inherit_the_ancestors_architecture_doc(tmp_path: 
 
     `architecture.md` describes the ancestor, not the candidate. Inheriting it makes that
     statement false at the moment the Builder reads it, and hands a code-writing agent a
-    description that no longer matches what it is about to change. The LLMCodeEditor re-seeds it
+    description that no longer matches what it is about to change. The CodeEditBuilder re-seeds it
     from ``Fork.upstream`` afterwards, to edit in place against the finished source.
     """
     ctx = make_context(root=tmp_path, backend=FakeBackend())
@@ -431,15 +431,15 @@ async def test_a_slim_copy_cannot_be_persisted(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_a_builder_documents_the_candidates_it_builds(tmp_path: Path) -> None:
-    """`describe` is a Builder verb so a subclass can replace it. The LLMCodeEditor called
+    """`describe` is a Builder verb so a subclass can replace it. The CodeEditBuilder called
     `create_architecture_doc` directly, which honoured an override for the baseline and
     bypassed it for every candidate built after.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
 
     described: list[Path] = []
 
-    class QuietEditor(LLMCodeEditor):
+    class QuietEditor(CodeEditBuilder):
         """Create and modify agent source code as part of the optimization loop."""
 
         async def describe(self, artifact: Path) -> None:
@@ -483,11 +483,11 @@ async def test_the_smoke_check_evaluates_the_tasks_the_change_claims_to_fix(tmp_
     Observed: a candidate adding an aggregation handler was smoke-checked against a
     lookup control it does not touch, passed, and shipped with both targeted tasks at 0.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
 
     seen: list[list[str]] = []
 
-    class RecordingEditor(LLMCodeEditor):
+    class RecordingEditor(CodeEditBuilder):
         """Create and modify agent source code as part of the optimization loop."""
 
         async def run_smoke_eval(self, workdir, tasks, dataset, evaluator):  # type: ignore[no-untyped-def]
@@ -510,11 +510,11 @@ async def test_the_smoke_check_evaluates_the_tasks_the_change_claims_to_fix(tmp_
 @pytest.mark.asyncio
 async def test_the_smoke_check_still_runs_when_a_proposal_names_no_tasks(tmp_path: Path) -> None:
     """A Proposal with no task_ids keeps the old "does it run at all" check."""
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
 
     seen: list[list[str]] = []
 
-    class RecordingEditor(LLMCodeEditor):
+    class RecordingEditor(CodeEditBuilder):
         """Create and modify agent source code as part of the optimization loop."""
 
         async def run_smoke_eval(self, workdir, tasks, dataset, evaluator):  # type: ignore[no-untyped-def]

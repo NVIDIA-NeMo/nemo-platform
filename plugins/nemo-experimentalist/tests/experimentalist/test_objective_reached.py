@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, Proposal, ResourceRef, RewardRecord
-from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
+from nemo_experimentalist_plugin.experimentalist.components.terminator import ConvergenceTerminator
 
 SOLVED = [MetricTarget(name="reward", direction="maximize", target=1.0)]
 UNTARGETED = [MetricTarget(name="reward", direction="maximize")]
@@ -44,7 +44,7 @@ def _tree(*candidates: Candidate) -> list[Candidate]:
 
 def _assess(candidates: list[Candidate], objectives: list[MetricTarget], **_overrides: object):
     """Objectives reach the Terminator at construction, not through the role's signature."""
-    return Terminator(objective_metrics=objectives).assess_objective_reached(candidates)
+    return ConvergenceTerminator(objective_metrics=objectives).assess_objective_reached(candidates)
 
 
 def test_a_solved_objective_stops_the_run() -> None:

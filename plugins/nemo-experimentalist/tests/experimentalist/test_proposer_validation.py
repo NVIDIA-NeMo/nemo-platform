@@ -10,7 +10,7 @@ fork that resolves it happens outside the per-proposal error handling.
 """
 
 import pytest
-from nemo_experimentalist_plugin.experimentalist.components.proposer import Improvement, Proposer
+from nemo_experimentalist_plugin.experimentalist.components.proposer import CodeChangeProposer, Improvement
 
 
 def _improvement(ancestor: str, optimization_type: str = "add_method") -> Improvement:
@@ -30,7 +30,7 @@ def test_an_ancestor_that_is_not_a_survivor_id_is_dropped_not_fatal() -> None:
     the strategy and fails a run that may have spent hours. The survivors carry both `id`
     and `label`, so "agent-2" is exactly what a model returns.
     """
-    usable = Proposer._usable_improvements(
+    usable = CodeChangeProposer._usable_improvements(
         [_improvement("agent-2"), _improvement("id-agent-2", optimization_type="add_tool")],
         known_ancestors={"id-agent-2"},
         allowed_types={"add_method", "add_tool"},
@@ -40,18 +40,18 @@ def test_an_ancestor_that_is_not_a_survivor_id_is_dropped_not_fatal() -> None:
 
 
 def test_a_real_survivor_id_passes() -> None:
-    usable = Proposer._usable_improvements(
+    usable = CodeChangeProposer._usable_improvements(
         [_improvement("id-agent-2")], known_ancestors={"id-agent-2"}, allowed_types={"add_method"}
     )
 
     assert len(usable) == 1
-    Proposer._validate_improvements(improvements=usable, max_candidates=3)
+    CodeChangeProposer._validate_improvements(improvements=usable, max_candidates=3)
 
 
 def test_a_batch_where_every_ancestor_is_unknown_still_fails_loudly() -> None:
     """Dropping them all would leave the round silently proposing nothing."""
     with pytest.raises(ValueError, match="None of the Proposer's 1 improvements were usable"):
-        Proposer._usable_improvements(
+        CodeChangeProposer._usable_improvements(
             [_improvement("agent-2")], known_ancestors={"id-agent-2"}, allowed_types={"add_method"}
         )
 
@@ -62,7 +62,7 @@ def test_a_near_miss_optimization_type_is_dropped_not_fatal() -> None:
     There are twenty valid types, so a near miss is as likely as a wrong ancestor, and
     this check runs after the CodeAct loop where raising buys no retry.
     """
-    usable = Proposer._usable_improvements(
+    usable = CodeChangeProposer._usable_improvements(
         [_improvement("id-a", optimization_type="edit_method"), _improvement("id-a", optimization_type="add_method")],
         known_ancestors={"id-a"},
         allowed_types={"add_method", "edit_concrete_method"},
@@ -80,7 +80,7 @@ def test_two_improvements_may_share_an_optimization_type() -> None:
     generalization run, where the Proposer returned two distinct fixes both typed
     `edit_concrete_method`.
     """
-    kept = Proposer._validate_improvements(
+    kept = CodeChangeProposer._validate_improvements(
         improvements=[
             _improvement("id-agent-0", optimization_type="edit_concrete_method"),
             Improvement(
@@ -102,7 +102,7 @@ def test_two_improvements_may_share_an_optimization_type() -> None:
 
 def test_the_same_optimization_text_twice_is_dropped_to_one() -> None:
     """Identical text is a real duplicate: building it twice buys nothing."""
-    kept = Proposer._validate_improvements(
+    kept = CodeChangeProposer._validate_improvements(
         improvements=[_improvement("id-agent-0"), _improvement("id-agent-0", optimization_type="add_tool")],
         max_candidates=2,
     )
@@ -121,7 +121,7 @@ def test_a_type_used_in_an_earlier_round_may_be_used_again() -> None:
     """
     all_types = {"add_method", "edit_concrete_method"}
 
-    usable = Proposer._usable_improvements(
+    usable = CodeChangeProposer._usable_improvements(
         [_improvement("id-agent-0", optimization_type="edit_concrete_method")],
         known_ancestors={"id-agent-0"},
         allowed_types=all_types,  # the full vocabulary, not the untried remainder

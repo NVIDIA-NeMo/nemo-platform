@@ -32,9 +32,9 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 # One entry per module, not per component: importing the module registers every class in it.
 [project.entry-points."nemo.experimentalist.components"]
 "strategy.evolutionary" = "nemo_experimentalist_plugin.experimentalist.strategies.evolutionary"
-"builder.llm-code-edit" = "nemo_experimentalist_plugin.experimentalist.components.coder"
+"builder.code-edit" = "nemo_experimentalist_plugin.experimentalist.components.coder"
 "builder.import" = "nemo_experimentalist_plugin.experimentalist.components.importer"
-"selector.pareto-llm-diversity" = "nemo_experimentalist_plugin.experimentalist.components.selector"
+"selector.pareto-diversity" = "nemo_experimentalist_plugin.experimentalist.components.selector"
 "proposer.code-change" = "nemo_experimentalist_plugin.experimentalist.components.proposer"
 "terminator.convergence" = "nemo_experimentalist_plugin.experimentalist.components.terminator"
 "root-cause-analyzer.trace" = "nemo_experimentalist_plugin.experimentalist.components.analyzer"

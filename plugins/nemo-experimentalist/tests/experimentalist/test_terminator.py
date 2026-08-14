@@ -14,8 +14,8 @@ import json
 from doubles import make_candidate, seed_reward
 from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, RewardRecord
 from nemo_experimentalist_plugin.experimentalist.components.terminator import (
+    ConvergenceTerminator,
     TerminationDecision,
-    Terminator,
 )
 from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
@@ -43,7 +43,9 @@ def _exec_response(code: str) -> LLMResponse:
     )
 
 
-def _terminator(*, stop_verdict: bool | None = None, objectives: list[MetricTarget] | None = None) -> Terminator:
+def _terminator(
+    *, stop_verdict: bool | None = None, objectives: list[MetricTarget] | None = None
+) -> ConvergenceTerminator:
     """Build a Terminator with an injected fake LLM.
 
     When ``stop_verdict`` is None the fake makes no scripted response (used by tests
@@ -51,9 +53,9 @@ def _terminator(*, stop_verdict: bool | None = None, objectives: list[MetricTarg
     strategy resolves to that boolean via a scripted ``return_result``.
     """
     if stop_verdict is None:
-        return Terminator(llm=FakeLLMClient(), objective_metrics=objectives)
+        return ConvergenceTerminator(llm=FakeLLMClient(), objective_metrics=objectives)
     fake = FakeLLMClient(scripted_responses=[_exec_response(f"return_result(result={stop_verdict})")])
-    return Terminator(llm=fake, objective_metrics=objectives)
+    return ConvergenceTerminator(llm=fake, objective_metrics=objectives)
 
 
 async def test_run_stops_on_convergence_when_budget_not_hit() -> None:

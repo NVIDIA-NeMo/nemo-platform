@@ -40,8 +40,8 @@ from .tools import GuardedShellTools
 from .util import load_framework_skills
 
 
-class LLMCodeEditorConfig(BaseModel):
-    """Store tuning parameters for LLMCodeEditor optimization."""
+class CodeEditBuilderConfig(BaseModel):
+    """Store tuning parameters for CodeEditBuilder optimization."""
 
     max_summary_tokens: int = Field(
         default=80_000,
@@ -582,16 +582,16 @@ class ArchitectureSkill(Skill):
 # artifact that is deliberately not yet a Candidate, and ctx.evaluate exists to associate a
 # result with one. An internal check has nothing to associate and must not be recorded
 # against the run.
-class LLMCodeEditor(Agent, roles.Builder):
+class CodeEditBuilder(Agent, roles.Builder):
     """Create and modify agent source code as part of the optimization loop."""
 
-    name = "llm-code-edit"
+    name = "code-edit"
     accepts = frozenset({CODE_CHANGE})
 
     def __init__(
         self,
         workspace: Path,
-        config: LLMCodeEditorConfig | None = None,
+        config: CodeEditBuilderConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
         *,
         evaluator: Evaluator | None = None,
@@ -609,7 +609,7 @@ class LLMCodeEditor(Agent, roles.Builder):
         self._source_path = source_path
         self._entrypoint = entrypoint
         self._architecture_model = get_default_model()
-        self._config = config or LLMCodeEditorConfig()
+        self._config = config or CodeEditBuilderConfig()
         self._workspace_path = workspace.resolve()
         self.shell = GuardedShellTools(cwd=self._workspace_path)
         self.todos = TodoManager()
@@ -621,7 +621,7 @@ class LLMCodeEditor(Agent, roles.Builder):
         self.skills.register("ext.architecture_skill", ArchitectureSkill())
         # Attach the optimization-card index so apply_change / wire_up_change
         # can consult the card matching change.optimization_type. Without
-        # this, the LLMCodeEditor only sees the proposer's prose and the framework
+        # this, the CodeEditBuilder only sees the proposer's prose and the framework
         # skill -- the optimize cards never reach it (gitlab #148).
         self.optimize = Optimize(model_catalog_path=self._config.model_catalog_path)
         self.skills.register("ext.optimize", self.optimize)
@@ -659,14 +659,14 @@ class LLMCodeEditor(Agent, roles.Builder):
             nothing at all, because it raises.
 
         Raises:
-            RuntimeError: if the LLMCodeEditor was constructed without an evaluator or dataset,
+            RuntimeError: if the CodeEditBuilder was constructed without an evaluator or dataset,
                 or if no tasks are available for the integration check.
             IntegrationCheckFailed: if the build cannot pass a smoke eval after the
                 bounded number of fix attempts.
 
         """
         if self._evaluator is None or self._dataset is None:
-            raise RuntimeError("LLMCodeEditor needs an evaluator and a dataset to verify a build; none were injected")
+            raise RuntimeError("CodeEditBuilder needs an evaluator and a dataset to verify a build; none were injected")
         change = CodeChange.model_validate(proposal.payload)
         fork = await ctx.fork(proposal)
 

@@ -31,7 +31,7 @@ def test_our_own_components_are_discovered_through_the_entry_point_group() -> No
     the point of registering ours the same way rather than importing them directly.
     """
     assert "evolutionary" in registered("strategy")
-    assert "llm-code-edit" in registered("builder")
+    assert "code-edit" in registered("builder")
 
 
 def test_resolving_an_unknown_name_raises_and_says_what_is_known() -> None:
@@ -55,10 +55,10 @@ def test_a_role_base_class_does_not_register_itself() -> None:
 
 def test_two_different_classes_claiming_one_name_is_an_error() -> None:
     """Last-win is the wrong semantics for a named component that must exist."""
-    with pytest.raises(RuntimeError, match="duplicate component builder.llm-code-edit"):
+    with pytest.raises(RuntimeError, match="duplicate component builder.code-edit"):
 
         class Clashing(Builder):
-            name = "llm-code-edit"
+            name = "code-edit"
 
 
 def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
@@ -68,28 +68,28 @@ def test_re_executing_a_component_module_is_not_a_duplicate() -> None:
     sides of the message naming the same class.
 
     Built by hand rather than with ``importlib.reload`` on the real module: reloading
-    rebinds every class in it, so the config tree's ``LLMCodeEditorConfig`` would stop being the
+    rebinds every class in it, so the config tree's ``CodeEditBuilderConfig`` would stop being the
     same object as the freshly imported one and unrelated tests would fail.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
 
     def _same_identity(namespace: dict[str, object]) -> None:
-        namespace["name"] = "llm-code-edit"
-        namespace["__module__"] = LLMCodeEditor.__module__
-        namespace["__qualname__"] = LLMCodeEditor.__qualname__
+        namespace["name"] = "code-edit"
+        namespace["__module__"] = CodeEditBuilder.__module__
+        namespace["__qualname__"] = CodeEditBuilder.__qualname__
 
     try:
-        stand_in = types.new_class("LLMCodeEditor", (Builder,), exec_body=_same_identity)  # must not raise
+        stand_in = types.new_class("CodeEditBuilder", (Builder,), exec_body=_same_identity)  # must not raise
 
         # It really did re-register: the entry now points at the stand-in, not the real
-        # LLMCodeEditor. Asserting the qualname instead would only re-read what was just written.
-        assert resolve("builder", "llm-code-edit") is stand_in
-        assert stand_in is not LLMCodeEditor
+        # CodeEditBuilder. Asserting the qualname instead would only re-read what was just written.
+        assert resolve("builder", "code-edit") is stand_in
+        assert stand_in is not CodeEditBuilder
     finally:
         # Restore, or every later resolution of the builder gets a class with no build().
-        Component._registry[("builder", "llm-code-edit")] = LLMCodeEditor
+        Component._registry[("builder", "code-edit")] = CodeEditBuilder
 
-    assert resolve("builder", "llm-code-edit") is LLMCodeEditor
+    assert resolve("builder", "code-edit") is CodeEditBuilder
 
 
 def test_a_broken_third_party_package_does_not_break_unrelated_runs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,11 +137,11 @@ def test_get_constructs_with_the_arguments_the_resolver_was_given() -> None:
 
 def test_a_builder_declares_which_proposal_kinds_it_accepts() -> None:
     """Routing by ``Proposal.kind`` is what lets one run mix candidate kinds later."""
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
     from nemo_experimentalist_plugin.experimentalist.components.proposer import CODE_CHANGE
 
-    assert CODE_CHANGE in LLMCodeEditor.accepts
-    assert "parameters" not in LLMCodeEditor.accepts
+    assert CODE_CHANGE in CodeEditBuilder.accepts
+    assert "parameters" not in CodeEditBuilder.accepts
 
 
 @pytest.mark.asyncio
@@ -176,21 +176,21 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
     vocabulary it cannot act on, and nothing else in the suite would notice. Design notes
     belong in comments above the class.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AgentAnalyzer
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
-    from nemo_experimentalist_plugin.experimentalist.components.proposer import Proposer
+    from nemo_experimentalist_plugin.experimentalist.components.analyzer import TraceRootCauseAnalyzer
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
+    from nemo_experimentalist_plugin.experimentalist.components.proposer import CodeChangeProposer
     from nemo_experimentalist_plugin.experimentalist.components.selector import ParetoDiversitySelector
-    from nemo_experimentalist_plugin.experimentalist.components.terminator import Terminator
-    from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import GroupLeafScorer
+    from nemo_experimentalist_plugin.experimentalist.components.terminator import ConvergenceTerminator
+    from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import GoalTreeTrajectoryScorer
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
     agents = (
-        LLMCodeEditor,
+        CodeEditBuilder,
         EvolutionaryStrategy,
-        Proposer,
-        Terminator,
-        AgentAnalyzer,
-        GroupLeafScorer,
+        CodeChangeProposer,
+        ConvergenceTerminator,
+        TraceRootCauseAnalyzer,
+        GoalTreeTrajectoryScorer,
         ParetoDiversitySelector,
     )
     for agent in agents:
@@ -208,26 +208,26 @@ def test_agent_class_docstrings_stay_prompt_shaped() -> None:
 
 
 def test_subclassing_a_registered_component_is_allowed() -> None:
-    """Extending the built-in LLMCodeEditor is the most obvious way to customise a builder.
+    """Extending the built-in CodeEditBuilder is the most obvious way to customise a builder.
 
-    `name` must come from the subclass alone. Inheriting it made `class MyCoder(LLMCodeEditor)`
-    look like a second claim on "llm-code-edit" and raise at class-definition time — and because
+    `name` must come from the subclass alone. Inheriting it made `class MyCoder(CodeEditBuilder)`
+    look like a second claim on "code-edit" and raise at class-definition time — and because
     `load_plugins` swallows entry-point import errors, the author's whole package would
     have been recorded as a load failure with every component in it unresolvable.
     """
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditor
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder
 
-    class UnnamedSubclass(LLMCodeEditor):  # must not raise
+    class UnnamedSubclass(CodeEditBuilder):  # must not raise
         pass
 
-    assert ("builder", "llm-code-edit") not in {
+    assert ("builder", "code-edit") not in {
         (role, name) for (role, name), cls in Component._registry.items() if cls is UnnamedSubclass
     }
-    assert resolve("builder", "llm-code-edit") is LLMCodeEditor, "the subclass must not have taken over the name"
+    assert resolve("builder", "code-edit") is CodeEditBuilder, "the subclass must not have taken over the name"
 
     try:
 
-        class NamedSubclass(LLMCodeEditor):
+        class NamedSubclass(CodeEditBuilder):
             name = "coder-plus"
 
         assert resolve("builder", "coder-plus") is NamedSubclass
@@ -269,3 +269,42 @@ def test_repeated_metadata_lookups_do_not_re_read_the_whole_store(tmp_path) -> N
             tool.get_metadata(f"agent-{index}")
 
     assert loads == 5, f"one pass over the store, not one per lookup; got {loads} reads for 5 lookups"
+
+
+def test_a_components_class_name_is_its_component_name_plus_its_role() -> None:
+    """`<Component><Role>` — `code-edit` + `builder` is `CodeEditBuilder`.
+
+    Derived rather than listed, so a component added later is covered without anyone
+    remembering to extend this. The rule earns its strictness twice over:
+
+    * It is reversible. A reader holding `builder: code-edit` from a config file can name
+      the class without grepping, and someone reading a traceback can name the config
+      value that selected it.
+    * It keeps role and implementation apart. The component classes were called
+      `Proposer` and `Terminator` -- the same names as `roles.Proposer` and
+      `roles.Terminator`, distinguishable only by import path, which reads as though each
+      role has exactly one possible implementation. That is the opposite of what this
+      registry is for.
+
+    Shortening is what makes a convention decorative, so there are no exceptions:
+    `harbor` + `outcome-evaluator` is `HarborOutcomeEvaluator`, not `HarborEvaluator`.
+    """
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, load_plugins
+
+    load_plugins()
+    assert Component._registry, "nothing registered; the check would pass vacuously"
+
+    def expected(component: str, role: str) -> str:
+        parts = component.split("-") + role.split("-")
+        return "".join(part[:1].upper() + part[1:] for part in parts)
+
+    # Shipped components only. The registry is global and other tests register doubles
+    # into it, so an unfiltered sweep fails on whichever of those ran first.
+    wrong = {
+        f"{role}:{name}": f"{cls.__name__} (expected {expected(name, role)})"
+        for (role, name), cls in Component._registry.items()
+        if cls.__module__.startswith("nemo_experimentalist_plugin.") and cls.__name__ != expected(name, role)
+    }
+    assert len(Component._registry) >= 9, "fewer components than this package ships; the filter is too tight"
+
+    assert not wrong, f"class names that do not follow <Component><Role>: {wrong}"

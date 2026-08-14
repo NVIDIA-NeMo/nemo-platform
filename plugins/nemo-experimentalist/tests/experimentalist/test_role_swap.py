@@ -362,13 +362,13 @@ def test_the_context_supplies_every_run_scoped_argument(tmp_path, isolated_regis
 
 
 def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isolated_registry: None) -> None:
-    """The out-of-tree example builds through `ctx.component`, and a LLMCodeEditor without an
+    """The out-of-tree example builds through `ctx.component`, and a CodeEditBuilder without an
     evaluator or a dataset raises on its first build rather than at construction."""
     from doubles import FakeBackend, make_context
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
 
-    coder = ctx.component("builder", "llm-code-edit")
+    coder = ctx.component("builder", "code-edit")
 
     assert coder._evaluator is ctx.outcome_evaluator
     # Train, never validation: a Builder repairs against what it is handed, and the
@@ -379,7 +379,7 @@ def test_the_built_in_coder_gets_what_it_needs_to_verify_a_build(tmp_path, isola
 @pytest.mark.asyncio
 async def test_a_swapped_builder_runs_through_the_context(tmp_path, isolated_registry: None) -> None:
     """The narrowest end-to-end check of the seam: config names it, the context builds
-    it, and it produces a Candidate through the same verbs the built-in LLMCodeEditor uses."""
+    it, and it produces a Candidate through the same verbs the built-in CodeEditBuilder uses."""
     from doubles import FakeBackend, make_context
 
     class StubBuilder(Builder):
@@ -432,7 +432,7 @@ async def test_a_proposer_and_builder_that_cannot_work_together_fail_before_the_
         name = "acme-hpo-only"
         produces: ClassVar[frozenset[str]] = frozenset({"parameters"})
 
-    config = EvolutionaryOptimizerConfig(proposer="acme-hpo-only", builder="llm-code-edit")
+    config = EvolutionaryOptimizerConfig(proposer="acme-hpo-only", builder="code-edit")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
 
     with pytest.raises(ValueError, match="no proposal could be built"):
@@ -445,7 +445,7 @@ async def test_a_proposal_no_builder_accepts_is_dropped_not_raised(tmp_path, iso
     from doubles import FakeBackend, make_context
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
 
-    config = EvolutionaryOptimizerConfig(builder="llm-code-edit")
+    config = EvolutionaryOptimizerConfig(builder="code-edit")
     loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     unbuildable = Proposal(ancestor=None, description="tune a knob", kind="parameters", payload={})
@@ -500,7 +500,7 @@ async def test_naming_a_trajectory_scorer_reaches_it(
 
 @pytest.mark.asyncio
 async def test_the_architecture_doc_comes_from_the_configured_builder(tmp_path, isolated_registry: None) -> None:
-    """Not from the LLMCodeEditor: a builder that writes no architecture doc must not have one
+    """Not from the CodeEditBuilder: a builder that writes no architecture doc must not have one
     written for it by a component the config never named."""
     from doubles import FakeBackend, make_context
     from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
@@ -634,11 +634,11 @@ async def test_the_builtin_scorer_returns_records_keyed_by_candidate_id(
     """`Candidate` is a pydantic model and unhashable, so a dict keyed by one raises at
     the moment of return — after the round has already paid for the scoring."""
     from doubles import FakeBackend, make_context
-    from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import GroupLeafScorer
+    from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import GoalTreeTrajectoryScorer
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     baseline = await _one(ctx)
-    scorer = GroupLeafScorer(workspace=tmp_path)
+    scorer = GoalTreeTrajectoryScorer(workspace=tmp_path)
 
     async def scored(**_: Any) -> dict[str, Any]:
         return {baseline.label: {"details": {"n1": {}}, "reward": {"aggregate": 0.5}}}

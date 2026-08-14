@@ -12,7 +12,7 @@ record of what ran. It is therefore a plain ``BaseModel`` with no environment bi
 The optimizer's own default/fast model pair is selected by ``nemo setup`` and
 stored in the active Platform CLI context.
 
-Component-owned slices (``LLMCodeEditorConfig``, ``AnalyzerConfig``, ...) are imported from the
+Component-owned slices (``CodeEditBuilderConfig``, ``AnalyzerConfig``, ...) are imported from the
 components that consume them rather than redeclared here.
 """
 
@@ -22,7 +22,7 @@ from typing import Any, Self
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditorConfig
+from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilderConfig
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
 from nemo_experimentalist_plugin.experimentalist.components.models import (  # noqa: F401 - re-exported
     has_metric_dimensions,
@@ -113,11 +113,6 @@ class EvolutionaryOptimizerConfig(BaseModel):
                 "'models' is no longer a run-config key. Run `nemo setup` to select the default and fast agent models."
             )
 
-        # Renamed component *values*. Left alone, a stale value fails later as an
-        # unresolvable component, which reports the registry rather than the fix.
-        for key, removed, replacement in (("analyzer", "agent-trace", "trace"),):
-            if data.get(key) == removed:
-                raise ValueError(f"{key}: {removed!r} was renamed to {replacement!r}; update the configuration")
         return data
 
     strategy: str = Field(
@@ -152,7 +147,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
         description="Registered 'trajectory-scorer'. Null skips step scoring and the goal tree it needs.",
     )
     selector: str = Field(
-        default="pareto-llm-diversity",
+        default="pareto-diversity",
         description="Registered 'selector' component choosing survivors and the winner.",
     )
     selector_config: SelectorConfig = Field(default_factory=SelectorConfig, description="Tuning for the selector.")
@@ -160,7 +155,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default_factory=TerminatorConfig, description="Tuning for the terminator."
     )
     builder: str = Field(
-        default="llm-code-edit",
+        default="code-edit",
         description=(
             "Registered 'builder' component that turns a Proposal into a Candidate. "
             "Swap it for one shipped by another package to change how candidates are "
@@ -197,8 +192,8 @@ class EvolutionaryOptimizerConfig(BaseModel):
     trajectory_scorer_config: GoalTreeConfig = Field(
         default_factory=GoalTreeConfig, description="Tuning for the trajectory scorer."
     )
-    builder_config: LLMCodeEditorConfig = Field(
-        default_factory=LLMCodeEditorConfig, description="Tuning for the builder."
+    builder_config: CodeEditBuilderConfig = Field(
+        default_factory=CodeEditBuilderConfig, description="Tuning for the builder."
     )
     analyzer_config: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
     proposer_config: ProposerConfig = Field(default_factory=ProposerConfig)

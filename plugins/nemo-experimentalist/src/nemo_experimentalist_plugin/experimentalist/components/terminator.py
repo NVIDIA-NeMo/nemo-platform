@@ -53,7 +53,7 @@ class TerminationDecision(BaseModel):
     reason: str = ""
 
 
-class Terminator(Agent, roles.Terminator):
+class ConvergenceTerminator(Agent, roles.Terminator):
     """Decides when the evolutionary optimization loop should stop."""
 
     name = "convergence"

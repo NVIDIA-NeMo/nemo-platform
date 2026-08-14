@@ -169,7 +169,7 @@ class ExperimentContext:
     def outcome_evaluator(self) -> Evaluator:
         """The evaluation component this run was configured with.
 
-        Exposed so a composite strategy can hand it to a component it owns — the LLMCodeEditor
+        Exposed so a composite strategy can hand it to a component it owns — the CodeEditBuilder
         runs smoke evals of its own, against work that is not yet a Candidate.
         """
         return self._evaluator

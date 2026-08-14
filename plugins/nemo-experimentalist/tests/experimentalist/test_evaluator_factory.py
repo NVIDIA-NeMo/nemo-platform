@@ -15,8 +15,8 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import DatasetFactory, EvaluatorFactory
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborOutcomeEvaluator,
 )
 
 _UNSUPPORTED_TYPE = "unsupported"
@@ -153,13 +153,13 @@ def test_build_task_template_single_task(tmp_path):
 def test_evaluator_factory_build_evaluator_with_config():
     factory = EvaluatorFactory()
     evaluator = factory.build_evaluator("harbor", HarborEvaluatorConfig())
-    assert isinstance(evaluator, HarborEvaluator)
+    assert isinstance(evaluator, HarborOutcomeEvaluator)
 
 
 def test_evaluator_factory_build_evaluator_with_dict():
     factory = EvaluatorFactory()
     evaluator = factory.build_evaluator("harbor", {"import_path": "x:Y"})
-    assert isinstance(evaluator, HarborEvaluator)
+    assert isinstance(evaluator, HarborOutcomeEvaluator)
 
 
 def test_evaluator_factory_build_evaluator_unsupported():

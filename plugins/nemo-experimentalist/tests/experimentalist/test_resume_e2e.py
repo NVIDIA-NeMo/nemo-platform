@@ -109,9 +109,9 @@ def _make_runner(tmp_path: Path, strategy: Any, monkeypatch: pytest.MonkeyPatch)
 
 async def _import_baseline(ctx, description: str = "baseline") -> Candidate:
     """Build the baseline the way a strategy does: an import Proposal through its Builder."""
-    from nemo_experimentalist_plugin.experimentalist.components.importer import Importer, import_proposal
+    from nemo_experimentalist_plugin.experimentalist.components.importer import ImportBuilder, import_proposal
 
-    return await Importer().build(ctx, import_proposal(description))
+    return await ImportBuilder().build(ctx, import_proposal(description))
 
 
 @pytest.mark.asyncio

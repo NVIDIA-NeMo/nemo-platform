@@ -26,13 +26,13 @@ from .util import load_framework_skills
 logger = logging.getLogger(__name__)
 
 
-#: What this Proposer produces and the built-in LLMCodeEditor accepts. An opaque
+#: What this Proposer produces and the built-in CodeEditBuilder accepts. An opaque
 #: discriminator, not a global enumeration — it only has to match a Builder.
 CODE_CHANGE = "code-change"
 
 
 class CodeChange(BaseModel):
-    """The ``code-change`` payload schema, owned by this Proposer and the LLMCodeEditor.
+    """The ``code-change`` payload schema, owned by this Proposer and the CodeEditBuilder.
 
     Nothing here belongs on ``Candidate``: it is what the Builder was *asked* to
     produce, which the committed Candidate keeps as ``generated_from`` provenance
@@ -108,7 +108,7 @@ class ProposerConfig(BaseModel):
     )
 
 
-class Proposer(Agent, roles.Proposer):
+class CodeChangeProposer(Agent, roles.Proposer):
     """Propose the next round's isolated optimization candidates."""
 
     name = "code-change"

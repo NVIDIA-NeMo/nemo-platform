@@ -936,12 +936,12 @@ def test_component_configs_are_the_component_owned_classes() -> None:
     """The tree must hold the components' own classes, not re-declared twins."""
     from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
     from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-    from nemo_experimentalist_plugin.experimentalist.components.coder import LLMCodeEditorConfig
+    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilderConfig
     from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
     from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
 
     cfg = EvolutionaryOptimizerConfig()
-    assert type(cfg.builder_config) is LLMCodeEditorConfig
+    assert type(cfg.builder_config) is CodeEditBuilderConfig
     assert type(cfg.analyzer_config) is AnalyzerConfig
     assert type(cfg.proposer_config) is ProposerConfig
     assert type(cfg.trajectory_scorer_config) is GoalTreeConfig

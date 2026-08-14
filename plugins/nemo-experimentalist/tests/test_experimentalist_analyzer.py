@@ -1,19 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for AgentAnalyzer trace-loading plumbing.
+"""Regression tests for TraceRootCauseAnalyzer trace-loading plumbing.
 
 The round-N analysis path silently skips every ``intake://`` trial trace if the
 analyzer cannot load one, and a skipped trace is invisible: the round still
 produces a diagnosis, just one blind to the trajectory. These tests pin the
-plumbing: ``AgentAnalyzer`` takes a ``load_trace`` from the context and threads it
+plumbing: ``TraceRootCauseAnalyzer`` takes a ``load_trace`` from the context and threads it
 into ``TraceAnalyzer.run``.
 
 It takes a loader rather than a platform client so no component signature names a
 platform type -- an analyzer shipped by another package reads traces through the
 same seam.
 
-``AgentAnalyzer`` is built via ``object.__new__`` to skip its LLM-heavy
+``TraceRootCauseAnalyzer`` is built via ``object.__new__`` to skip its LLM-heavy
 ``__init__``, and the LLM-driven strategy methods (``select_trials``,
 ``classify_failures``, ``compare_with_peers``) are replaced by callable
 *objects* — the agent framework's method guard rejects attaching plain
@@ -30,10 +30,10 @@ from nemo_experimentalist_plugin.entities import MetricTarget
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
-    AgentAnalyzer,
     AnalyzerConfig,
     FailureClassification,
     PeerComparison,
+    TraceRootCauseAnalyzer,
     TrialSelection,
 )
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
@@ -189,9 +189,9 @@ def _a_loader() -> Any:
     return _load
 
 
-def _make_analyzer(tmp_path: Path, trials: list[Any], *, load_trace: Any = None) -> AgentAnalyzer:
-    """Build an AgentAnalyzer without the LLM-heavy __init__ and stub its strategies."""
-    analyzer = object.__new__(AgentAnalyzer)
+def _make_analyzer(tmp_path: Path, trials: list[Any], *, load_trace: Any = None) -> TraceRootCauseAnalyzer:
+    """Build an TraceRootCauseAnalyzer without the LLM-heavy __init__ and stub its strategies."""
+    analyzer = object.__new__(TraceRootCauseAnalyzer)
     analyzer._workspace_path = tmp_path
     analyzer._load_trace = load_trace
     analyzer._objective_metrics = []

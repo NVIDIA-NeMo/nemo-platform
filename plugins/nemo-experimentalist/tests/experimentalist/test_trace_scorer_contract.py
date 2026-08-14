@@ -3,7 +3,7 @@
 
 """Pin the parts of the scorer's contract that a turn-less trace depends on.
 
-`GroupLeafScorer.score_group` is a CodeAct prompt, so its docstring is the instruction the
+`GoalTreeTrajectoryScorer.score_group` is a CodeAct prompt, so its docstring is the instruction the
 model follows. The only sanctioned evidence lookups are indexed by turn, so a trace
 with zero turns needs the contract to name that case, permit an empty `span_ids`,
 and point at evidence the scorer can actually reach. These tests keep that escape
@@ -15,15 +15,15 @@ from __future__ import annotations
 import inspect
 
 from nemo_experimentalist_plugin.experimentalist.components.trace_scorer import (
+    GoalTreeTrajectoryScorer,
     GroupLeafScore,
-    GroupLeafScorer,
 )
 
 
 def _run_contract() -> str:
     """The prompt with whitespace collapsed, so assertions do not hinge on where it wraps."""
-    doc = inspect.getdoc(GroupLeafScorer.score_group)
-    assert doc is not None, "GroupLeafScorer.score_group must keep its docstring; it is the prompt"
+    doc = inspect.getdoc(GoalTreeTrajectoryScorer.score_group)
+    assert doc is not None, "GoalTreeTrajectoryScorer.score_group must keep its docstring; it is the prompt"
     return " ".join(doc.lower().split())
 
 

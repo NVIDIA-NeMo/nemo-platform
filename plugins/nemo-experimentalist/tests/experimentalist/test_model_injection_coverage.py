@@ -6,7 +6,7 @@
 `ModelTiers` exists so two runs in one process can target different endpoints and a test
 can inject fakes without touching the environment, and the runner records what it
 resolved as what the run used. A single construction that omits `models=` silently opts
-that component out — the build LLMCodeEditor did, which is the one that writes candidate code —
+that component out — the build CodeEditBuilder did, which is the one that writes candidate code —
 and `config_snapshot` still claims otherwise. Asserting over the source catches the
 omission at the construction site rather than needing a live run per component.
 """
@@ -14,7 +14,14 @@ omission at the construction site rather than needing a live run per component.
 import ast
 import pathlib
 
-COMPONENTS = {"LLMCodeEditor", "AgentAnalyzer", "Proposer", "Terminator", "GoalTreeGenerator", "GroupLeafScorer"}
+COMPONENTS = {
+    "CodeEditBuilder",
+    "TraceRootCauseAnalyzer",
+    "Proposer",
+    "Terminator",
+    "GoalTreeGenerator",
+    "GoalTreeTrajectoryScorer",
+}
 SOURCES = ("strategies/evolutionary.py", "components/analyzer.py")
 
 

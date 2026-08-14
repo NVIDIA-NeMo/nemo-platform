@@ -32,8 +32,8 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor imp
     HarborDataset,
     HarborDependencyContext,
     HarborDependencyRuntime,
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborOutcomeEvaluator,
     HarborVerifierValidationError,
     _chmod_path_chain,
     _cleanup_scoped_imports,
@@ -558,7 +558,7 @@ async def test_harbor_trial_metric_spec_uses_task_verifier_dir(tmp_path: Path) -
     )
     _write(trial_dir / "verifier" / "reward.txt", "0.5")
 
-    trials = await HarborEvaluator()._trials_from_dir(
+    trials = await HarborOutcomeEvaluator()._trials_from_dir(
         tmp_path / "job",
         [Task(id="task-a", metric_specs={"reward": MetricSpec(name="reward", description="reward")})],
     )
@@ -615,7 +615,7 @@ async def test_harbor_trial_metric_spec_uses_task_verifier_dir(tmp_path: Path) -
 
 @pytest.mark.asyncio
 async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    evaluator = HarborEvaluator()
+    evaluator = HarborOutcomeEvaluator()
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
     dataset_dir = tmp_path / "dataset"
@@ -858,7 +858,7 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
     monkeypatch.setattr("builtins.compile", counting_compile)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
-        await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+        await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     message = str(exc_info.value)
     assert "task 'task-a'" in message
@@ -969,7 +969,7 @@ async def test_harbor_evaluator_accepts_valid_python_verifier(
     fake_job = _recording_job(tmp_path / "jobs" / "valid-python")
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
 
-    trials = await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+    trials = await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     assert trials == []
     assert fake_job.create_calls == 1
@@ -992,7 +992,7 @@ async def test_harbor_evaluator_rejects_invalid_configured_test_sh_before_job_cr
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
-        await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+        await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     message = str(exc_info.value)
     assert "task 'task-a'" in message
@@ -1016,7 +1016,7 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
     fake_job = _recording_job(tmp_path / "jobs" / "valid-shell")
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
 
-    trials = await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+    trials = await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     assert trials == []
     assert fake_job.create_calls == 1
@@ -1025,7 +1025,7 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
 
 @pytest.mark.asyncio
 async def test_harbor_evaluator_rejects_invalid_inputs(tmp_path: Path) -> None:
-    evaluator = HarborEvaluator()
+    evaluator = HarborOutcomeEvaluator()
     task_dir = tmp_path / "task-a"
     _write(task_dir / "task.toml", "")
     harbor_dataset = HarborDataset.from_path(task_dir)
@@ -1383,7 +1383,7 @@ def test_harbor_dataset_get_task_found(tmp_path):
 
 @pytest.mark.asyncio
 async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
-    evaluator = HarborEvaluator()
+    evaluator = HarborOutcomeEvaluator()
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
     task_dir = tmp_path / "task-a"
@@ -1448,7 +1448,7 @@ async def test_harbor_trials_from_dir_trial_id_fallback(tmp_path):
         },
     )
 
-    evaluator = HarborEvaluator()
+    evaluator = HarborOutcomeEvaluator()
     trials = await evaluator._trials_from_dir(job_dir, [Task(id="task-x", metric_specs={})])
     assert trials[0].id == trial_dir.name
 
