@@ -32,6 +32,7 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
+from nooa import GenerationError
 
 
 @dataclass
@@ -45,6 +46,8 @@ class _FakeTrial:
     task_id: str
     trace: object
     metrics: dict[str, _FakeMetric]
+    status: str = "completed"
+    error: dict[str, Any] | None = None
 
 
 @dataclass
@@ -135,7 +138,24 @@ class _SelectTrials:
         ]
 
 
+class _FailingSelectTrials:
+    """Stand-in for the triage step a low-capability model cannot satisfy."""
+
+    async def __call__(
+        self,
+        agent_id: str,
+        dataset: Any,
+        evaluation: Any,
+        objective_metrics: list[dict[str, Any]],
+        regression_metrics: list[dict[str, Any]],
+    ) -> list[TrialSelection]:
+        raise GenerationError("return_result validation failed after 3 attempts.")
+
+
 class _ClassifyFailures:
+    def __init__(self, error: BaseException | None = None) -> None:
+        self._error = error
+
     async def __call__(
         self,
         agent_id: str,
@@ -144,6 +164,8 @@ class _ClassifyFailures:
         objective_metrics: list[dict[str, Any]],
         regression_metrics: list[dict[str, Any]],
     ) -> FailureClassification:
+        if self._error is not None:
+            raise self._error
         return FailureClassification(systematic=[], mechanical=[])
 
 
@@ -160,14 +182,19 @@ class _CompareWithPeers:
         return PeerComparison(divergent_trials=[], complementary_patterns=[])
 
 
-def _make_analyzer(tmp_path: Path, trials: list[Any]) -> AgentAnalyzer:
+def _make_analyzer(
+    tmp_path: Path,
+    trials: list[Any],
+    select_trials: Any = None,
+    classify_failures: Any = None,
+) -> AgentAnalyzer:
     """Build an AgentAnalyzer without the LLM-heavy __init__ and stub its strategies."""
     analyzer = object.__new__(AgentAnalyzer)
     analyzer._workspace_path = tmp_path
     analyzer._config = AnalyzerConfig()
     analyzer._framework_skills_dirs = []
-    analyzer.select_trials = _SelectTrials(trials)  # type: ignore[method-assign,assignment]
-    analyzer.classify_failures = _ClassifyFailures()  # type: ignore[method-assign,assignment]
+    analyzer.select_trials = select_trials or _SelectTrials(trials)  # type: ignore[method-assign,assignment]
+    analyzer.classify_failures = classify_failures or _ClassifyFailures()  # type: ignore[method-assign,assignment]
     analyzer.compare_with_peers = _CompareWithPeers()  # type: ignore[method-assign,assignment]
     return analyzer
 
@@ -301,6 +328,86 @@ async def test_run_threads_numeric_objective_targets_into_trace_analyzer(
     )
 
     assert calls[0]["objective_metrics"] == objective_metrics
+
+
+@pytest.mark.asyncio
+async def test_failed_trial_selection_ranks_trials_without_the_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A model that cannot return the selection contract costs the ranking, not the round.
+
+    The fallback ranking is degraded, so it must not be cached: a later run whose
+    triage step works has to recompute rather than replay it.
+    """
+    _install_fakes(monkeypatch, [])
+    healthy = _FakeTrial("trial-healthy", "task-1", object(), {"reward": _FakeMetric(1.0)})
+    weakest = _FakeTrial("trial-weakest", "task-2", object(), {"reward": _FakeMetric(0.1)})
+    errored = _FakeTrial("trial-errored", "task-3", object(), {"reward": _FakeMetric(1.0)}, status="failed")
+    dataset = _FakeDataset(tasks=[_FakeTask(id="task-1"), _FakeTask(id="task-2"), _FakeTask(id="task-3")])
+    evaluation = _FakeEvaluation(trials=[healthy, weakest, errored])
+    cache_entries = tmp_path / "eval-and-optimize" / "cache"
+
+    analyzer = _make_analyzer(tmp_path, [], select_trials=_FailingSelectTrials())
+    analyzer._config = AnalyzerConfig(max_trials=2)
+    result = await analyzer.run(
+        agent="agent-a",
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round=0,
+        objective_metrics=[{"name": "reward", "direction": "maximize"}],
+    )
+
+    # Ranked by status first, then by the weakest objective metric, and capped at max_trials.
+    assert [analysis.trial_id for analysis in result.trial_analyses] == ["trial-errored", "trial-weakest"]
+    assert "status 'failed'" in result.trial_analyses[0].selection_reason
+    assert "lowest of this evaluation" in result.trial_analyses[1].selection_reason
+    assert not list(cache_entries.glob("agent-*.json"))
+
+    # Same agent, evaluation, and metric contract: a working triage step recomputes and caches.
+    working = _make_analyzer(tmp_path, [weakest])
+    await working.run(
+        agent="agent-a",
+        dataset=cast(Any, dataset),
+        evaluation=cast(Any, evaluation),
+        round=0,
+        objective_metrics=[{"name": "reward", "direction": "maximize"}],
+    )
+
+    assert len(list(cache_entries.glob("agent-*.json"))) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_failure_classification_leaves_the_analysis_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A step the model cannot satisfy is reported as missing, not classified as clean."""
+    _install_fakes(monkeypatch, [])
+    trial, dataset, evaluation = _fixtures()
+    analyzer = _make_analyzer(
+        tmp_path,
+        [trial],
+        classify_failures=_ClassifyFailures(GenerationError("return_result validation failed after 3 attempts.")),
+    )
+
+    result = await analyzer.run(agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0)
+
+    assert result.failure_classification == FailureClassification(systematic=[], mechanical=[])
+    assert any("Failures were not classified" in note for note in result.notes)
+    assert "## Incomplete Analysis" in repr(result)
+    assert not list((tmp_path / "eval-and-optimize" / "cache").glob("agent-*.json"))
+
+
+@pytest.mark.asyncio
+async def test_an_error_that_is_not_a_generation_failure_still_fails_the_analysis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a model that cannot comply degrades; infrastructure faults stay loud."""
+    _install_fakes(monkeypatch, [])
+    trial, dataset, evaluation = _fixtures()
+    analyzer = _make_analyzer(tmp_path, [trial], classify_failures=_ClassifyFailures(RuntimeError("gateway is down")))
+
+    with pytest.raises(RuntimeError, match="gateway is down"):
+        await analyzer.run(agent="agent-a", dataset=cast(Any, dataset), evaluation=cast(Any, evaluation), round=0)
 
 
 @pytest.mark.asyncio

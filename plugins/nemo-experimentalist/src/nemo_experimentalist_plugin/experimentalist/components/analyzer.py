@@ -20,7 +20,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer impor
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
-from nooa import Agent, CodeActStrategy, strategy
+from nooa import Agent, CodeActStrategy, GenerationError, strategy
 from nooa.agentdoc import doc, spec
 from nooa.agents import TokenBudgetSummarizer
 from nooa.config import CodeActConfig
@@ -35,6 +35,11 @@ from .tools import GuardedShellTools
 from .util import load_framework_skills
 
 logger = logging.getLogger(__name__)
+
+
+def _first_line(exc: BaseException) -> str:
+    """Return the first line of an error, for a one-line degradation note."""
+    return str(exc).splitlines()[0] if str(exc) else type(exc).__name__
 
 
 class AnalyzerConfig(BaseModel):
@@ -209,6 +214,10 @@ class AgentAnalysis(BaseModel):
     trial_analyses: list[TrialAnalysis]
     failure_classification: FailureClassification
     peer_comparison: PeerComparison
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Steps that could not complete, so a reader knows what this analysis omits.",
+    )
 
     def __repr__(self) -> str:
         """Return markdown-formatted string representation.
@@ -219,6 +228,8 @@ class AgentAnalysis(BaseModel):
         """
         metrics = ", ".join(f"{name}: {value:.3f}" for name, value in self.aggregate_metrics.items()) or "no metrics"
         sections = [f"# Agent Analysis: {self.agent_id} ({metrics})"]
+        if self.notes:
+            sections.append("## Incomplete Analysis\n" + "\n".join(f"- {note}" for note in self.notes))
         sections.append("## Per-Trial Traces\n" + "\n\n".join(repr(t) for t in self.trial_analyses))
         sections.append(repr(self.failure_classification))
         sections.append(repr(self.peer_comparison))
@@ -642,6 +653,51 @@ class AgentAnalyzer(Agent):
         """Return dataset tasks keyed by id."""
         return {task.id: task for task in dataset.list_tasks()}
 
+    def _fallback_selections(
+        self,
+        evaluation: EvaluationResult,
+        objective_metrics: list[dict[str, Any]],
+    ) -> list[TrialSelection]:
+        """Rank trials for analysis without the model, in ``select_trials`` order.
+
+        Trials that did not complete cleanly come first, then the weakest
+        objective metrics, then trials whose trace is missing. Regression metrics
+        are guardrails, so they do not order the selection.
+        """
+        directions = self._metric_directions(objective_metrics, [])
+
+        def unclean(trial: TrialResult) -> bool:
+            return trial.status != "completed" or trial.error is not None
+
+        def weakness(trial: TrialResult) -> tuple[int, float, int, str]:
+            values = [
+                float(metric.value) * (1.0 if directions[name] == "maximize" else -1.0)
+                for name, metric in trial.metrics.items()
+                if name in directions
+            ]
+            return (
+                0 if unclean(trial) else 1,
+                sum(values) / len(values) if values else 0.0,
+                1 if trial.trace is not None else 0,
+                trial.id,
+            )
+
+        ranked = sorted(evaluation.trials, key=weakness)[: self._config.max_trials]
+        return [
+            TrialSelection(
+                trial_id=trial.id,
+                reason=(
+                    "Selected without model triage, because "
+                    + (
+                        f"the evaluator reported status {trial.status!r}."
+                        if unclean(trial)
+                        else "it ranks among the lowest of this evaluation on the objective metrics."
+                    )
+                ),
+            )
+            for trial in ranked
+        ]
+
     async def run(
         self,
         agent: Path | str,
@@ -693,7 +749,18 @@ class AgentAnalyzer(Agent):
         if cached is not None:
             return cached
 
-        selections = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
+        # The evaluation being analyzed is already paid for, so a model that cannot
+        # satisfy a step's return contract costs this analysis that step, not the
+        # round. Every such loss is recorded in ``notes`` and keeps the result out
+        # of the cache. Anything other than a GenerationError is a real fault and
+        # still fails the run.
+        notes: list[str] = []
+        try:
+            selections = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
+        except GenerationError as exc:
+            logger.warning("Trial selection failed for %s; ranking trials without the model: %s", agent_id, exc)
+            selections = self._fallback_selections(evaluation, objective_metrics)
+            notes.append(f"Trials were ranked without the model, because trial selection failed: {_first_line(exc)}")
         trials_by_id = {trial.id: trial for trial in evaluation.trials}
         selected_trials: list[tuple[TrialResult, str]] = []
         for selection in selections:
@@ -798,7 +865,7 @@ class AgentAnalyzer(Agent):
         ]
         diagnoses = [analysis.diagnostic for analysis in trial_analyses]
 
-        classification, comparison = await asyncio.gather(
+        classified, compared = await asyncio.gather(
             self.classify_failures(
                 agent_id,
                 diagnoses,
@@ -814,7 +881,24 @@ class AgentAnalyzer(Agent):
                 objective_metrics,
                 regression_metrics,
             ),
+            return_exceptions=True,
         )
+        if isinstance(classified, BaseException):
+            if not isinstance(classified, GenerationError):
+                raise classified
+            logger.warning("Failure classification failed for %s: %s", agent_id, classified)
+            notes.append(f"Failures were not classified: {_first_line(classified)}")
+            classification = FailureClassification(systematic=[], mechanical=[])
+        else:
+            classification = classified
+        if isinstance(compared, BaseException):
+            if not isinstance(compared, GenerationError):
+                raise compared
+            logger.warning("Peer comparison failed for %s: %s", agent_id, compared)
+            notes.append(f"Peers were not compared: {_first_line(compared)}")
+            comparison = PeerComparison(divergent_trials=[], complementary_patterns=[])
+        else:
+            comparison = compared
 
         analysis_out = AgentAnalysis(
             agent_id=agent_id,
@@ -822,6 +906,11 @@ class AgentAnalyzer(Agent):
             trial_analyses=trial_analyses,
             failure_classification=classification,
             peer_comparison=comparison,
+            notes=notes,
         )
-        cache.store(self._workspace_path, cache_key, analysis_out)
+        # An incomplete analysis is degraded in the same sense as a trace-starved
+        # one: keep it out of the cache so a later run whose model can satisfy
+        # these steps does not replay it.
+        if not notes:
+            cache.store(self._workspace_path, cache_key, analysis_out)
         return analysis_out
