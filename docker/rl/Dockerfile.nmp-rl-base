@@ -194,12 +194,22 @@ uv sync ${UV_SYNC_MODE} --no-install-project
 # https://github.com/pytorch/pytorch/commit/c2671b853e1553b258a30c15d66f9647faae7aee.
 # Remove this when the RL dependency stack moves to PyTorch 2.13 or later.
 torch_include=/opt/nemo_rl_venv/lib/python3.13/site-packages/torch/include
-test -f "${torch_include}/ATen/core/List_inl.h"
+list_inl="${torch_include}/ATen/core/List_inl.h"
+test -f "${list_inl}"
+# UV_LINK_MODE=symlink above leaves every venv file a symlink into UV_CACHE_DIR, and `git apply`
+# rejects a symlink target with "wrong type". Swap this one header for a private copy so the patch
+# lands in the venv alone: writing through the link would edit the shared cache mount, which other
+# targets reuse and which would then fail the --check below on every subsequent build.
+if [ -L "${list_inl}" ]; then
+    cached_list_inl="$(readlink -f "${list_inl}")"
+    rm "${list_inl}"
+    cp "${cached_list_inl}" "${list_inl}"
+fi
 git -C "${torch_include}" apply --check /opt/cherry-picks/pytorch-c2671b8-list-inl.diff
 git -C "${torch_include}" apply /opt/cherry-picks/pytorch-c2671b8-list-inl.diff
 grep -Fq \
     'typename c10::detail::ListImpl::list_type::difference_type' \
-    "${torch_include}/ATen/core/List_inl.h"
+    "${list_inl}"
 
 uv sync ${UV_SYNC_MODE} --extra vllm      --no-install-project   # GRPO generation (vllm 0.20 cu130 + flashinfer + deep_gemm/deep_ep)
 uv sync ${UV_SYNC_MODE} --extra fsdp      --no-install-project   # DPO/GRPO policy training (flash-attn, mamba-ssm, causal-conv1d)
