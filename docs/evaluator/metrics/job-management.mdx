@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Metric Job Management"
 description: ""
 ---
@@ -14,7 +15,6 @@ description: ""
 ## Submit a Job
 
 Submit a metric evaluation with the Evaluator plugin SDK. The `submit` method returns an `EvaluatorJobResource` that you can use to monitor the job and download results.
-
 
 ```python
 import os
@@ -45,7 +45,6 @@ print("Submitted job:", job.name)
 job.wait_until_done()
 result = job.get_result()
 ```
-
 
 ## Monitor Job
 

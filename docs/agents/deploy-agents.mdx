@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Deploy Agents"
 description: ""
 ---
@@ -44,7 +45,6 @@ clients do not need to know which mode the agent runs in.
 The simplest path: the platform launches a FastAPI server for the
 agent on its own host, assigns a port, watches its health, and tears it down
 on `nemo agents undeploy`. No image or executor configuration is required.
-
 
 <Tabs>
 

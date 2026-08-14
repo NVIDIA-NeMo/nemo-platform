@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: creating-a-plugin
 description: Creates a new NeMo plugin from scratch. Use when starting plugin development, setting up a plugin package, registering surfaces via entry points, or asking how plugins are discovered by the platform. Trigger keywords: create plugin, new plugin, plugin setup, entry-points, plugin structure, get started, plugin discovered, entry point.
 ---
@@ -154,10 +155,8 @@ from typing import ClassVar
 from nemo_platform_plugin.job import NemoJob
 from pydantic import BaseModel
 
-
 class SayHelloSpec(BaseModel):
     name: str = "world"
-
 
 class SayHelloJob(NemoJob):
     name: ClassVar[str] = "say-hello"        # suffix ONLY — NOT "my-plugin.say-hello"
@@ -185,14 +184,11 @@ from typing import ClassVar
 from nemo_platform_plugin.function import NemoFunction
 from pydantic import BaseModel
 
-
 class GreetSpec(BaseModel):
     name: str = "world"
 
-
 class GreetResponse(BaseModel):
     message: str
-
 
 class GreetFunction(NemoFunction[GreetSpec]):
     name: ClassVar[str] = "greet"                        # suffix ONLY — NOT "my-plugin.greet"

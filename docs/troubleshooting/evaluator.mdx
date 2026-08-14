@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Troubleshooting NeMo Evaluator"
 description: ""
 ---
@@ -49,7 +50,6 @@ or that the `files_url` is not provided in the expected format.
 The dataset must be a JSON object with the `files_url` property set, 
 pointing to the path of the file in the NeMo Data Store in the format: `hf://datasets/<dataset-namespace>/<dataset-namespace>/<file-path>`.
 
-
 ## Error connecting to inference server
 
 This means that for a custom evaluation, the target LLM endpoint is unable to connect.
@@ -72,14 +72,12 @@ This could mean that the dataset is not specified correctly, or that the NeMo Da
 If the error contains the string `Dataset {file_ref} is not present on datastore`, 
 it means that the datastore is responsive, but the file reference does not exist.
 
-
 ## Evaluation Job Takes a Long Time
 
 The time that an Evaluation job takes can vary from a few minutes to many hours, 
 depending on the target model, config, and other factors. 
 As long as the status is `RUNNING`, your job is still running.
 If there is a problem with your job, you will see `UNAVAILABLE` or `FAILED`.
-
 
 ## Job cannot be launched 
 
@@ -91,8 +89,6 @@ The error contains the details about the checks that failed.
 `EVALUATOR_BASE_URL` is a placeholder for the URL of the evaluator API in examples.
 For local setup, the platform API defaults to `http://localhost:8080`.
 If you changed the platform URL, use the value configured in `NMP_BASE_URL` or in your CLI context.
-
-
 
 ## Advanced Troubleshooting
 
@@ -122,14 +118,12 @@ curl -X 'GET' \
 After the download is complete, the log files are available inside the result.zip file. 
 Log files can be found in the results folder with the file extension `*.log`.
 
-
 ## Skip validation checks
 
 When you launch an evaluation job, NeMo Evaluator performs availability checks (for example, checking if the dataset and files exist in NeMo Data Store). 
 To speed up job launch, or due to strict constraints of validation checks, you can pass the query parameter `skip_validation_checks` during job launch. 
 
 Use the following code to create an evaluation job that skips validation checks.
-
 
 <Tabs>
 

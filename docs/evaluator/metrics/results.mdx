@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Metric Results"
 description: ""
 ---
@@ -17,7 +18,6 @@ An `EvaluationResult` contains:
 
 ## Get Results from a Local Run
 
-
 ```python
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
 from nemo_evaluator_sdk import ExactMatchMetric
@@ -33,10 +33,7 @@ result = LocalEvaluator().run_sync(
 )
 ```
 
-
 ## Get Results from a Submitted Job
-
-
 
 ```python
 import os
@@ -63,8 +60,6 @@ job = evaluator.submit(
 )
 job.wait_until_done()
 ```
-
-
 
 ### Get Results in Memory
 
@@ -155,7 +150,6 @@ uv add pandas
 ```python
 import pandas as pd
 
-
 df_agg = pd.DataFrame(
     score.model_dump(mode="json", exclude_none=True)
     for score in result.aggregate_scores.scores
@@ -167,7 +161,6 @@ print(df_agg[["name", "score_type", "mean", "std_dev", "min", "max", "count"]])
 
 ```python
 import pandas as pd
-
 
 rows = []
 for row in result.row_scores:

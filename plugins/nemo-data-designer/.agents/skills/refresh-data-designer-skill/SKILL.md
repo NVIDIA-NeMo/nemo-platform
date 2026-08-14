@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: refresh-data-designer-skill
 description: Refresh the vendored data-designer skill bundle in this plugin from the upstream NVIDIA-NeMo/DataDesigner repo at the pinned library version, adapting CLI commands and platform-specific guidance to the NeMo plugin context. Use when bumping the `data-designer` library pin in pyproject.toml, when upstream ships skill changes that need to land here, or when auditing drift. Trigger keywords - refresh data designer skill, update data designer skill, vendor data designer skill, sync data designer skill, bump data-designer version.
 ---

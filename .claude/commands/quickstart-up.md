@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 description: Build and start the NeMo Platform quickstart environment with docker-compose
 ---
 Start the NeMo Platform quickstart environment with the specified services and controllers

@@ -1,6 +1,3 @@
-<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 # Seed Datasets Reference
 
 Seed datasets bootstrap synthetic data generation from existing data. Every column from the seed becomes a Jinja2 variable you can reference in prompts and expressions — the seed provides realism and domain specificity, and Data Designer adds volume and variation on top.

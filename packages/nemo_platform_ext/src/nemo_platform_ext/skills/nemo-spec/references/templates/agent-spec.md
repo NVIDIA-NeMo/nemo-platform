@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: <canonical-agent-name>
 created_timestamp: <ISO 8601 creation timestamp, e.g. 2026-06-02T20:00:00Z>
 author: <human or agent that created this spec>

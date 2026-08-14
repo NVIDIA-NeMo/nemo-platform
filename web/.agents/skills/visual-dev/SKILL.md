@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: visual-dev
 description: Screenshot-driven visual development workflow using Playwright MCP. Use when implementing designs from mockups or Figma, building new UI components, or fixing visual bugs.
 ---

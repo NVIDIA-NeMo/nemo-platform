@@ -6,6 +6,7 @@ web/vendor/
 release/
 .agents/skills/
 e2e/
+skills/
 third_party/
 LICENSE*
 NOTICE*

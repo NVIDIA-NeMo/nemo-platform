@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Seeding with External Datasets"
 description: ""
 ---
@@ -140,7 +141,6 @@ config_builder.with_seed_dataset(
 
 Add columns that reference and extend the seed data:
 
-
 ```python
 # Patient details
 config_builder.add_column(
@@ -246,7 +246,6 @@ Respond with only the notes, no other text.
     )
 )
 ```
-
 
 **Note:** The `diagnosis` and `patient_summary` variables come from the seed dataset columns.
 

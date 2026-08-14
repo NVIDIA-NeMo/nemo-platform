@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Agentic Evaluation Metrics"
 description: ""
 ---
@@ -91,7 +92,6 @@ Before running agentic evaluations:
 import os
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -373,7 +373,6 @@ Data must use OpenAI-compliant tool calling format:
 <Tab title="Offline Scoring">
 
 ```python
-
 
 from nemo_evaluator_sdk import ToolCallingMetric
 metric = ToolCallingMetric(reference="{{item.tool_calls}}")
@@ -1182,7 +1181,6 @@ Most agentic metrics require a judge LLM. Configure the judge model in the metri
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
 
-
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
@@ -1201,7 +1199,6 @@ For models that support extended reasoning, such as `nvidia/llama-3.3-nemotron-s
 
 ```python
 from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model, ReasoningParams, SecretRef
-
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",

@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Bring Your Own Metric"
 description: ""
 ---
@@ -36,7 +37,6 @@ import os
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
 
-
 from nemo_evaluator_sdk import (
     NemoAgentToolkitRemoteMetric,
     RemoteMetric,
@@ -53,8 +53,6 @@ evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 ## Durable Remote Jobs
 
 For production workloads, submit the same metric and dataset as a durable platform job. The returned job resource can wait for completion and download the final `EvaluationResult`.
-
-
 
 <Tabs>
 
@@ -80,7 +78,6 @@ metric = RemoteMetric(
     timeout_seconds=30.0,
     max_retries=3,
 )
-
 
 job = evaluator.submit(
     metric=metric,
@@ -112,7 +109,6 @@ metric = NemoAgentToolkitRemoteMetric(
     max_retries=3,
 )
 
-
 job = evaluator.submit(
     metric=metric,
     dataset=[
@@ -143,7 +139,6 @@ If your remote endpoint requires authentication, store the API key as a platform
 
 For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
-
 ```python
 from nemo_evaluator_sdk import JSONScoreParser, RemoteScore, SecretRef, RemoteMetric
 
@@ -158,7 +153,6 @@ job = evaluator.submit(metric=metric, dataset=[{"input": "test"}])
 job.wait_until_done()
 result = job.get_result()
 ```
-
 
 The API key is sent in the `Authorization: Bearer <key>` header. The job runtime resolves `api_key_secret` as a platform secret in the target workspace and receives it securely.
 
@@ -177,18 +171,14 @@ Your remote endpoint must:
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-
 app = FastAPI()
-
 
 class MetricRequest(BaseModel):
     reference: str
     response: str
 
-
 class MetricResponse(BaseModel):
     result: dict[str, float]
-
 
 @app.post("/evaluate")
 async def evaluate(request: MetricRequest) -> MetricResponse:

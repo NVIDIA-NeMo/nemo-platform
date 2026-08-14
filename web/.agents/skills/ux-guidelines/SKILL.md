@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: ux-guidelines
 description: UX design guidelines and standards for NeMo Studio. Use when implementing new UI features, reviewing designs, or making UX decisions.
 ---

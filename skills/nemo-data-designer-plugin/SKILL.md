@@ -1,6 +1,4 @@
 ---
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
 
 name: nemo-data-designer-plugin
 description: Use when the user wants to create a dataset, generate synthetic data, or build a data generation pipeline.

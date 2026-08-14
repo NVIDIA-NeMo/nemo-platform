@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "The Basics"
 description: ""
 ---
@@ -50,7 +51,6 @@ config_builder = dd.DataDesignerConfigBuilder(model_configs)
 ### Add Columns
 
 Define the columns for your dataset. The [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/tutorials/the-basics) explains these column types in detail.
-
 
 ```python
 # Product category sampler
@@ -190,7 +190,6 @@ config_builder.add_column(
 )
 ```
 
-
 ## Part 2: Execute
 
 Now execute your configuration. You can run locally through the CLI, submit to NeMo Services, or call the Data Designer API from the SDK.
@@ -240,7 +239,6 @@ client = NeMoPlatform(base_url=base_url, workspace="default")
 
 data_designer = client.data_designer
 ```
-
 
 ### Previewing the Dataset
 

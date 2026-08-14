@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
+
 import { Button as e, Flex as t, Stack as n, Text as r } from "@nvidia/foundations-react-core";
 import { NavLink as i, Navigate as a, Outlet as o, Route as s, Routes as c } from "react-router";
 import { RelativeTime as l, StatusBadge as u, StudioDataView as d, TableEmptyState as f, useStudioDataViewState as p } from "@nemo/common";

@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Run Inference"
 description: ""
 ---
@@ -26,7 +27,6 @@ There are two distinct ways to list models, depending on what you need:
 | `nemo inference models list` | Only models **currently reachable via the Inference Gateway**, in OpenAI-compatible format. Model IDs use the format `workspace/model_entity_name`. |
 
 Use `nemo models list` to manage model configurations. Use `nemo inference models list` to discover what's ready to serve requests right now.
-
 
 <Tabs>
 
@@ -65,7 +65,6 @@ Route requests using the model entity name. The gateway selects an available pro
 
 Find available model entities:
 
-
 <Tabs>
 
 <Tab title="CLI">
@@ -86,7 +85,6 @@ for model in client.models.list():
 
 </Tabs>
 Run inference by passing the Model Entity.
-
 
 <Tabs>
 
@@ -125,7 +123,6 @@ Route to a specific provider instance. Use for A/B testing or targeting specific
 
 Find available providers:
 
-
 <Tabs>
 
 <Tab title="CLI">
@@ -156,7 +153,6 @@ print(models)
 
 </Tabs>
 Pass inference request using provider routing.
-
 
 <Tabs>
 
@@ -210,7 +206,6 @@ Model entity naming
 ### List Available Models
 
 List models currently reachable via the Inference Gateway. Returns results in OpenAI-compatible format; each `id` is `workspace/model_entity_name`.
-
 
 <Tabs>
 
@@ -266,7 +261,6 @@ response = oai_client.chat.completions.create(
 
 If you construct third-party clients manually, pass the headers returned by `client.models.get_client_default_headers()` so auth and identity headers are preserved when authorization is enabled.
 
-
 <Tabs>
 
 <Tab title="OpenAI (manual client)">
@@ -296,7 +290,6 @@ response = oai_client.chat.completions.create(
 # make sure litellm is installed
 pip install litellm
 ```
-
 
 ```python
 from litellm import completion

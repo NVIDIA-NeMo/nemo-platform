@@ -1,6 +1,3 @@
-<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 ## Description: <br>
 Evaluate models, datasets, and agents with the NeMo Evaluator plugin for metric selection, SDK checks, platform jobs, and result retrieval. <br>
 

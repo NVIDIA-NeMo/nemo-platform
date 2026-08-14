@@ -1,6 +1,3 @@
-<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 # NeMo Plugin Additions
 
 This skill ships in the NeMo Platform data-designer plugin. The CLI surface is `nemo data-designer …`. Most subcommands accept the same arguments as the upstream `data-designer` CLI; the differences are documented below.

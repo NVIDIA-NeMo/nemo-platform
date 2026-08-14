@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluate a Deployed Agent over HTTP"
 description: "Point NeMo Evaluator at an agent reachable over HTTP by describing it as a GenericAgent target — the request to send and where the answer is in the response — then score it exactly like the quickstart."
 ---
@@ -59,7 +60,6 @@ role of the agent. In practice you'd skip this and point `url` at your real endp
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
 
 class _AgentHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
@@ -186,7 +186,6 @@ from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import GenericAgent
 
-
 class KeywordMatchMetric:
     @property
     def type(self) -> str:
@@ -200,7 +199,6 @@ class KeywordMatchMetric:
         answer = (input.candidate.output_text or "").lower()
         return MetricResult(outputs=[MetricOutput(name="score", value=1.0 if expected and expected in answer else 0.0)])
 
-
 def make_tasks() -> list[AgentEvalTask]:
     return [
         AgentEvalTask(id="capital-france", intent="Answer the geography question.",
@@ -210,7 +208,6 @@ def make_tasks() -> list[AgentEvalTask]:
                       inputs={"instruction": "What is the capital of Japan?"},
                       reference={"expected": "Tokyo"}, metrics=[KeywordMatchMetric()]),
     ]
-
 
 # A stand-in "deployed agent": a tiny local HTTP server. Replace with your real agent's URL.
 class _AgentHandler(BaseHTTPRequestHandler):
@@ -226,7 +223,6 @@ class _AgentHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:
         return
-
 
 async def main() -> None:
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _AgentHandler)
@@ -254,7 +250,6 @@ async def main() -> None:
     for trial in result.trials:
         output_text = trial.output.output_text if trial.output else None
         print(f"  {trial.task_id}: {output_text!r}")
-
 
 asyncio.run(main())
 ```

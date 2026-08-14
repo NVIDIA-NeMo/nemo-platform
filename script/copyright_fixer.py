@@ -96,6 +96,11 @@ _HTML_HEADER = (
     "<!-- SPDX-License-Identifier: Apache-2.0 -->\n"
 )
 
+_MDX_HEADER = (
+    f"{{/* SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}}\n"
+    "{/* SPDX-License-Identifier: Apache-2.0 */}\n"
+)
+
 _JINJA_HEADER = (
     f"{{# SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved. #}}\n"
     "{# SPDX-License-Identifier: Apache-2.0 #}\n"
@@ -156,6 +161,10 @@ _CORRECT_SPDX_HTML_BLOCK_RE = re.compile(
     rf"\s*SPDX-License-Identifier: {_APACHE_2}\n"
     rf"\s*-->\n"
 )
+_CORRECT_SPDX_MDX_RE = re.compile(
+    rf"\{{/\* SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} \*/\}}\n"
+    rf"\{{/\* SPDX-License-Identifier: {_APACHE_2} \*/\}}\n"
+)
 _CORRECT_SPDX_JINJA_RE = re.compile(
     rf"{{# SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} #}}\n"
     rf"{{# SPDX-License-Identifier: {_APACHE_2} #}}\n"
@@ -172,6 +181,7 @@ _CORRECT_SPDX_PATTERNS = (
     _CORRECT_SPDX_BLOCK_RE,
     _CORRECT_SPDX_HTML_RE,
     _CORRECT_SPDX_HTML_BLOCK_RE,
+    _CORRECT_SPDX_MDX_RE,
     _CORRECT_SPDX_JINJA_RE,
     _CORRECT_SPDX_HELM_RE,
 )
@@ -203,6 +213,10 @@ _ANY_SPDX_HTML_BLOCK_RE = re.compile(
     r"\s*SPDX-FileCopyrightText:[^\n]*\n"
     r"\s*SPDX-License-Identifier:[^\n]*\n"
     r"\s*-->\n"
+)
+_ANY_SPDX_MDX_RE = re.compile(
+    r"\{/\* SPDX-FileCopyrightText:[^\n]* \*/\}\n"
+    r"\{/\* SPDX-License-Identifier:[^\n]* \*/\}\n"
 )
 _ANY_SPDX_JINJA_RE = re.compile(
     r"{# SPDX-FileCopyrightText:[^\n]* #}\n"
@@ -248,6 +262,7 @@ _NON_SPDX_PATTERNS = (
     _ANY_SPDX_BLOCK_RE,
     _ANY_SPDX_HTML_RE,
     _ANY_SPDX_HTML_BLOCK_RE,
+    _ANY_SPDX_MDX_RE,
     _ANY_SPDX_JINJA_RE,
     _ANY_SPDX_HELM_RE,
     _LEGACY_SPDX_HASH_RE,
@@ -404,6 +419,15 @@ def _collect_files_from_dir(root: str) -> list[str]:
 _SLASH_EXTENSIONS = frozenset({".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
 
 
+def _has_frontmatter(content: str) -> bool:
+    return content.startswith("---\n") or content.startswith("---\r\n")
+
+
+def _is_helm_template_file(path: Path) -> bool:
+    parts = path.parts
+    return path.suffix in {".yaml", ".yml"} and "helm" in parts and "templates" in parts
+
+
 def _get_header_for_ext(ext: str) -> str:
     """Return the appropriate copyright header for the given file extension."""
     if ext in _SLASH_EXTENSIONS:
@@ -414,7 +438,9 @@ def _get_header_for_ext(ext: str) -> str:
         return _JINJA_HEADER + "\n"
     if ext == ".tpl":
         return _HELM_TEMPLATE_HEADER + "\n"
-    if ext in {".html", ".md", ".mdx"}:
+    if ext == ".mdx":
+        return _MDX_HEADER + "\n"
+    if ext in {".html", ".md"}:
         return _HTML_HEADER + "\n"
     if ext in {".bash", ".env", ".hcl", ".py", ".rego", ".sh", ".toml", ".yaml", ".yml"}:
         return _HASH_HEADER + "\n"
@@ -427,8 +453,14 @@ def _get_header_for_file(filepath: str, content: str) -> str:
     name = path.name
     ext = path.suffix
 
+    if _is_helm_template_file(path):
+        return _HELM_TEMPLATE_HEADER + "\n"
+
     if name in _SPECIAL_FILENAMES or name.startswith("Dockerfile.") or name.endswith(".Dockerfile"):
         return _HASH_HEADER + "\n"
+
+    if ext in {".md", ".mdx"} and _has_frontmatter(content):
+        return _HASH_HEADER
 
     # Check shebang for tsx/node — these files need // style comments
     if content.startswith("#!"):
@@ -442,11 +474,28 @@ def _get_header_for_file(filepath: str, content: str) -> str:
 
 def _needs_style_fix(filepath: str) -> bool:
     """Return True if the file has a copyright header with wrong comment style."""
-    head = _read_head(filepath)
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    head = content[:4096]
     if not _has_header(head):
         return False
     expected = _get_header_for_file(filepath, head)
-    return "# SPDX-FileCopyrightText" in head and expected.startswith("//")
+    header_start = _expected_header_start(filepath, content, head)
+    if content.startswith(expected, header_start):
+        return False
+    return _find_spdx_header_match(head, header_start) is not None
+
+
+def _find_spdx_header_match(head: str, header_start: int) -> re.Match[str] | None:
+    for pattern in _NON_SPDX_PATTERNS:
+        match = pattern.search(head, pos=header_start)
+        if match and match.start() == header_start:
+            return match
+    return None
 
 
 def _dockerfile_directive_end(content: str) -> int:
@@ -467,7 +516,7 @@ def _expected_header_start(filepath: str, content: str, head: str) -> int:
     if content.startswith("#!"):
         nl = content.find("\n")
         header_start = (nl + 1) if nl != -1 else len(content)
-    elif Path(filepath).suffix in {".md", ".mdx"} and (content.startswith("---\n") or content.startswith("---\r\n")):
+    elif Path(filepath).suffix in {".md", ".mdx"} and _has_frontmatter(content):
         header_start = len("---\r\n") if content.startswith("---\r\n") else len("---\n")
     elif Path(filepath).name.startswith("Dockerfile") or Path(filepath).name.endswith(".Dockerfile"):
         header_start = _dockerfile_directive_end(content)
@@ -480,18 +529,34 @@ def _expected_header_start(filepath: str, content: str, head: str) -> int:
 
 def _insert_header(filepath: str, content: str, header: str) -> str:
     """Insert *header* at the syntax-safe file header position."""
+
+    def insert_at(index: int) -> str:
+        prefix = content[:index]
+        suffix = content[index:]
+        if not suffix.strip():
+            return prefix + header.rstrip("\n") + "\n"
+        return prefix + header + suffix
+
     path = Path(filepath)
     if content.startswith("#!"):
         nl = content.find("\n")
         newline_pos = nl + 1 if nl != -1 else len(content)
-        return content[:newline_pos] + header + content[newline_pos:]
+        return insert_at(newline_pos)
     if path.name.startswith("Dockerfile") or path.name.endswith(".Dockerfile"):
         directive_end = _dockerfile_directive_end(content)
-        return content[:directive_end] + header + content[directive_end:]
-    if path.suffix in {".md", ".mdx"} and (content.startswith("---\n") or content.startswith("---\r\n")):
+        return insert_at(directive_end)
+    if path.suffix in {".md", ".mdx"} and _has_frontmatter(content):
         sep = "---\r\n" if content.startswith("---\r\n") else "---\n"
-        return sep + _HASH_HEADER + content[len(sep) :]
-    return header + content
+        return insert_at(len(sep))
+    return insert_at(0)
+
+
+def _strip_frontmatter_header_gap(content: str) -> str:
+    """Remove blank lines left after a frontmatter SPDX header replacement."""
+    if not _has_frontmatter(content):
+        return content
+    sep = "---\r\n" if content.startswith("---\r\n") else "---\n"
+    return sep + content[len(sep) :].lstrip("\n")
 
 
 def _has_proprietary_license(head: str) -> bool:
@@ -524,23 +589,30 @@ def _fix_header_style(filepath: str) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
 
-    if not _has_header(content[:512]):
+    head = content[:4096]
+    if not _has_header(head):
         return False
 
     expected_header = _get_header_for_file(filepath, content)
-    # Check if the file uses #-style when it should use //-style (or vice versa)
-    has_hash = "# SPDX-FileCopyrightText" in content[:512]
-    needs_slash = expected_header.startswith("//")
+    header_start = _expected_header_start(filepath, content, head)
+    if content.startswith(expected_header, header_start):
+        return False
 
-    if has_hash and needs_slash:
-        new_content = content.replace("# SPDX-FileCopyrightText", "// SPDX-FileCopyrightText", 1).replace(
-            "# SPDX-License-Identifier", "// SPDX-License-Identifier", 1
-        )
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(new_content)
-        return True
+    match = _find_spdx_header_match(head, header_start)
+    if match is None:
+        return False
 
-    return False
+    new_content = content[: match.start()] + content[match.end() :]
+    if Path(filepath).suffix in {".md", ".mdx"}:
+        new_content = _strip_frontmatter_header_gap(new_content)
+    new_content = _insert_header(filepath, new_content, expected_header)
+    new_content = re.sub(r"\n{3,}", "\n\n", new_content)
+    if new_content == content:
+        return False
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    return True
 
 
 def _fix_non_spdx_header(filepath: str) -> bool:
@@ -551,7 +623,7 @@ def _fix_non_spdx_header(filepath: str) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
 
-    head = content[:1024]
+    head = content[:4096]
     if not _has_header(head) or _has_correct_spdx_header(head):
         return False
 
@@ -560,7 +632,7 @@ def _fix_non_spdx_header(filepath: str) -> bool:
     # We search `head` (not the full content) and require the match to begin at
     # header_start so we never accidentally delete a copyright-like block that
     # appears later in the file body.  The match offsets are valid indices into
-    # content because head == content[:1024].
+    # content because head is a slice from the start of content.
     header_start = _expected_header_start(filepath, content, head)
 
     new_content = content
@@ -771,12 +843,12 @@ def update_license_headers(
                 raise typer.Exit(code=1)
 
         for filepath in files:
-            if _add_header(filepath):
-                updated += 1
-                typer.echo(f"  + {_rel(filepath)}")
-            elif fix_style and _fix_header_style(filepath):
+            if fix_style and _needs_style_fix(filepath) and _fix_header_style(filepath):
                 updated += 1
                 typer.echo(f"  ~ {_rel(filepath)}")
+            elif _add_header(filepath):
+                updated += 1
+                typer.echo(f"  + {_rel(filepath)}")
         typer.echo(f"  Processed {len(files)} files, updated {updated}")
         if updated:
             typer.echo(f"Run 'git diff' to review {updated} changed file(s).")

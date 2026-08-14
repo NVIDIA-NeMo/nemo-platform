@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: feature-flags
 description: Inspect and manage Studio feature flags. Use when working with feature flags, adding new flags, checking flag state across environments, or debugging why a feature is enabled/disabled.
 ---

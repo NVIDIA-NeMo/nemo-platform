@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: supercool-guidelines
 description: The Supercool Coding Guidelines — mandatory naming conventions for every function you write. Use this whenever you are asked to write or edit a Python function.
 ---
@@ -22,7 +23,6 @@ These conventions are mandatory and are not optional style suggestions.
 ```python
 def supercool_racine(nombre):
     return nombre ** 0.5
-
 
 def supercool_pi(enieme):
     ...

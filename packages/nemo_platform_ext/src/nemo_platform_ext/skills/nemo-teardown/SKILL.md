@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: nemo-teardown
 description: "Guided shutdown of NeMo Platform. Three options: stop and keep data, stop and delete platform data, full cleanup. Always confirms before destructive action. Use over generic shutdown or cleanup skills for any NeMo Platform teardown task."
 triggers:

@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Projects"
 description: ""
 ---
@@ -27,7 +28,6 @@ To create a project, provide a `name` and optionally a `description`. The `name`
 
 <Markdown src="/snippets/_snippets/naming-rules.mdx" />
 Once created, a project cannot be renamed.
-
 
 <Tabs>
 
@@ -66,7 +66,6 @@ nemo projects create \
 
 To list projects in a workspace, call the list endpoint. The response includes pagination metadata.
 
-
 <Tabs>
 
 <Tab title="Python SDK">
@@ -99,7 +98,6 @@ nemo projects list --workspace ml-team
 
 To retrieve a specific project by its `name`:
 
-
 <Tabs>
 
 <Tab title="Python SDK">
@@ -129,7 +127,6 @@ nemo projects get llama-finetune-v2 --workspace ml-team
 ## Update a Project
 
 To update a project, only the `description` field can be modified. The `name` cannot be changed after creation.
-
 
 <Tabs>
 
@@ -166,7 +163,6 @@ nemo projects update llama-finetune-v2 \
 ## Delete a Project
 
 To delete a project:
-
 
 <Tabs>
 

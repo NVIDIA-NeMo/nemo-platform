@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Score by Component"
 description: "Go beyond the final answer: add a metric that scores the agent's trajectory (its tool use), attach it alongside an outcome metric, and roll both into one named view — all runnable locally with no services."
 ---
@@ -29,7 +30,6 @@ Reuse the quickstart's `KeywordMatchMetric` — it scores the final answer, read
 ```python
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
-
 class KeywordMatchMetric:
     @property
     def type(self) -> str:
@@ -55,7 +55,6 @@ used the tool you expected and `0.0` otherwise:
 ```python
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.evidence import EVIDENCE_TRACE
-
 
 class UsedExpectedToolMetric:
     """Score whether the agent's trajectory used a given tool."""
@@ -104,7 +103,6 @@ from nemo_evaluator_sdk.values.evidence import (
     EvidenceDescriptor,
 )
 
-
 def _trace(tool_name: str, query: str) -> CandidateEvidence:
     trajectory = Trajectory(
         schema_version="ATIF-v1.7",
@@ -117,7 +115,6 @@ def _trace(tool_name: str, query: str) -> CandidateEvidence:
             )
         }
     )
-
 
 async def my_agent(task: AgentEvalTask) -> TrialDraft:
     answers = {
@@ -138,7 +135,6 @@ them. The view is reported per task and aggregated across the run as `view.<name
 ```python
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask, SemanticReducer, SemanticView, ViewSignal
 
-
 def _quality_view() -> SemanticView:
     return SemanticView(
         reducer=SemanticReducer.MEAN,
@@ -147,7 +143,6 @@ def _quality_view() -> SemanticView:
             ViewSignal(metric="used_expected_tool", output="tool_use"),
         ],
     )
-
 
 def make_tasks() -> list[AgentEvalTask]:
     metrics = [KeywordMatchMetric(), UsedExpectedToolMetric("search")]
@@ -220,7 +215,6 @@ from nemo_evaluator_sdk.values.evidence import (
     EvidenceDescriptor,
 )
 
-
 class KeywordMatchMetric:
     @property
     def type(self) -> str:
@@ -233,7 +227,6 @@ class KeywordMatchMetric:
         expected = str(input.row.data.get("reference", {}).get("expected", "")).lower()
         answer = (input.candidate.output_text or "").lower()
         return MetricResult(outputs=[MetricOutput(name="score", value=1.0 if expected and expected in answer else 0.0)])
-
 
 class UsedExpectedToolMetric:
     """Score whether the agent's trajectory used a given tool."""
@@ -256,7 +249,6 @@ class UsedExpectedToolMetric:
             used = any(call.function_name == self._expected for call in calls)
         return MetricResult(outputs=[MetricOutput(name="tool_use", value=1.0 if used else 0.0)])
 
-
 def _trace(tool_name: str, query: str) -> CandidateEvidence:
     trajectory = Trajectory(
         schema_version="ATIF-v1.7",
@@ -270,7 +262,6 @@ def _trace(tool_name: str, query: str) -> CandidateEvidence:
         }
     )
 
-
 def _quality_view() -> SemanticView:
     return SemanticView(
         reducer=SemanticReducer.MEAN,
@@ -279,7 +270,6 @@ def _quality_view() -> SemanticView:
             ViewSignal(metric="used_expected_tool", output="tool_use"),
         ],
     )
-
 
 def make_tasks() -> list[AgentEvalTask]:
     metrics = [KeywordMatchMetric(), UsedExpectedToolMetric("search")]
@@ -296,7 +286,6 @@ def make_tasks() -> list[AgentEvalTask]:
         ),
     ]
 
-
 async def my_agent(task: AgentEvalTask) -> TrialDraft:
     answers = {
         "capital-france": ("The capital of France is Paris.", "search"),  # used the expected tool
@@ -306,7 +295,6 @@ async def my_agent(task: AgentEvalTask) -> TrialDraft:
     evidence = _trace(tool, task.inputs["instruction"]) if tool else None
     return TrialDraft(output=AgentOutput(output_text=text), evidence=evidence)
 
-
 async def main() -> None:
     result = await AgentEvaluator().run(
         tasks=make_tasks(),
@@ -315,7 +303,6 @@ async def main() -> None:
     )
     for aggregate in result.summary.scores.scores:
         print(f"{aggregate.name}: {aggregate.mean}")
-
 
 asyncio.run(main())
 ```

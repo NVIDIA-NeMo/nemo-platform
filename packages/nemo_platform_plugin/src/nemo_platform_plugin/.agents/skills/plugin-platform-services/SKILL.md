@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: plugin-platform-services
 description: Calls NeMo Platform services (entity store, jobs, files, secrets, models, inference gateway, auth) from a plugin. Use when a plugin needs to submit jobs, access files, read secrets, look up models, call the inference gateway, check permissions, or route calls between services. Trigger keywords: jobs service, files service, secrets service, models service, inference gateway, auth client, NeMo SDK, platform SDK, service-to-service, inter-service call, add_job_routes, job_route_factory, NMP_BASE_URL.
 ---

@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Embedding Model Customization"
 description: ""
 ---
@@ -187,7 +188,6 @@ while True:
     
     time.sleep(10)
 
-
 ```
 
 ```python
@@ -371,7 +371,6 @@ This tutorial fine-tunes [nvidia/llama-nemotron-embed-1b-v2](https://huggingface
 # Note: NGC_API_KEY secret was already created in the baseline step (Step 2)
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-
 def create_or_get_secret(name: str, value: str | None, label: str):
     if not value:
         raise ValueError(f"{label} is not set")
@@ -386,7 +385,6 @@ def create_or_get_secret(name: str, value: str | None, label: str):
     except ConflictError:
         print(f"Secret '{name}' already exists, continuing...")
         return client.secrets.retrieve(name=name, workspace="default")
-
 
 # Public Hugging Face models need no token. Create a secret only when HF_TOKEN is set.
 hf_secret = create_or_get_secret("hf-token", HF_TOKEN, "HF_TOKEN") if HF_TOKEN else None

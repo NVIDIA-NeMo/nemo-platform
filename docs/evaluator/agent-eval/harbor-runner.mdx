@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluate a Harbor Task Suite"
 description: "Run an existing Harbor task dataset through NeMo Evaluator's Harbor runner — Harbor executes each task in a Docker sandbox and its verifier emits a reward, which the SDK scores and reports like any other agent-eval run."
 ---
@@ -75,7 +76,6 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
     discover_harbor_tasks,
 )
 
-
 async def main() -> None:
     # INPUT: your Harbor task suite (a directory of task folders).
     tasks = discover_harbor_tasks("path/to/my-suite")
@@ -93,7 +93,6 @@ async def main() -> None:
 
     for aggregate in result.summary.scores.scores:
         print(f"{aggregate.name}: {aggregate.mean}")
-
 
 asyncio.run(main())
 ```

@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 name: studio-worktree
 description: Prepare the current git worktree for Studio web/ development — copies missing .env.*.local files and runs pnpm install. Use when the user is inside a newly-created linked worktree and wants to bring it to a runnable state. Does NOT create/remove worktrees — use your tool's built-in worktree features for that (Claude Code --worktree, Cursor, git worktree add, etc.).
 ---

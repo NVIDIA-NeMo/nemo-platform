@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 license: other
 license_name: nvidia-open-model-license
 license_link: >-
@@ -31,7 +32,6 @@ This model is ready for commercial use.
 The Llama Nemotron Embedding 1B model is a part of the NVIDIA NeMo Retriever collection of NIM, which provide state-of-the-art, commercially-ready models and microservices, optimized for the lowest latency and highest throughput. It features a production-ready information retrieval pipeline with enterprise support. The models that form the core of this solution have been trained using responsibly selected, auditable data sources. With multiple pre-trained models available as starting points, developers can also readily customize them for domain-specific use cases, such as information technology, human resource help assistants, and research & development research assistants.
 
 We are excited to announce the open sourcing of this commercial embedding model. For users interested in deploying this model in production environments, it is also available via the model API in NVIDIA Inference Microservices (NIM) at [llama-nemotron-embed-1b-v2](https://build.nvidia.com/nvidia/llama-3_2-nv-embedqa-1b-v2).
-
 
 ### **Intended use**
 
@@ -109,7 +109,6 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModel
 
-
 def average_pool(last_hidden_states, attention_mask):
     """Average pooling with attention mask."""
     last_hidden_states_masked = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
@@ -117,14 +116,12 @@ def average_pool(last_hidden_states, attention_mask):
     embedding = F.normalize(embedding, dim=-1)
     return embedding
 
-
 tokenizer = AutoTokenizer.from_pretrained("nvidia/llama-nemotron-embed-1b-v2")
 model = AutoModel.from_pretrained("nvidia/llama-nemotron-embed-1b-v2", trust_remote_code=True)
 model = model.to("cuda:0")
 model.eval()
 query_prefix = "query:"
 document_prefix = "passage:"
-
 
 queries = [
     "how much protein should a female eat",
@@ -136,7 +133,6 @@ documents = [
 ]
 queries = [f"{query_prefix} {query}" for query in queries]
 documents = [f"{document_prefix} {document}" for document in documents]
-
 
 batch_queries = tokenizer(queries, padding=True, truncation=True, return_tensors='pt').to("cuda:0")
 batch_documents = tokenizer(documents, padding=True, truncation=True, return_tensors='pt').to("cuda:0")
@@ -219,12 +215,9 @@ The development of large-scale public open-QA datasets has enabled tremendous pr
 
 **Data Collection Method by dataset**: Automated, Unknown
 
-
 **Labeling Method by dataset**: Automated, Unknown
 
-
 **Properties:** Semi-supervised pre-training on 12M samples from public datasets and fine-tuning on 1M samples from public datasets.
-
 
 ### **Evaluation Results**
 
@@ -303,7 +296,6 @@ Please report security vulnerabilities or NVIDIA AI Concerns [here](https://www.
 ## Get Help
 
 ### Enterprise Support
-
 
 Get access to knowledge base articles and support cases or  submit a ticket at the [NVIDIA AI Enterprise Support Services page.](https://www.nvidia.com/en-us/data-center/products/ai-enterprise-suite/support/).
 

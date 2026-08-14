@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 allowed-tools: Bash(./sdk/stainless.sh:*)
 description: Update the Python SDK for NeMo Platform
 ---

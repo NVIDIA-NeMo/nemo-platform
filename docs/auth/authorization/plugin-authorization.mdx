@@ -1,6 +1,7 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 title: "Plugin Authorization"
 description: ""
 ---
@@ -36,7 +37,6 @@ You never hand-build id strings. Declare permissions in a typed `PermissionSet` 
 
 ```python
 from nemo_platform_plugin.authz import PermissionSet, perm
-
 
 class ItemPerms(PermissionSet, namespace="myplugin.items"):
     CREATE = perm("Create example items")   # -> id "myplugin.items.create"
@@ -85,19 +85,15 @@ from nemo_platform_plugin.service import NemoService, RouterSpec
 
 scope = AuthzScope("example")
 
-
 class ExamplePerms(PermissionSet, namespace="example"):
     READ = perm("Read example items")  # -> Permission("example.read", ...)
 
-
 router = APIRouter()
-
 
 @router.get("/v2/workspaces/{workspace}/items/{name}")
 @scope.read
 @path_rule(callers=[CallerKind.PRINCIPAL], permissions=[ExamplePerms.READ])
 async def get_item(workspace: str, name: str) -> dict: ...
-
 
 class ExampleService(NemoService):
     name = "example"
@@ -117,7 +113,6 @@ A controller-only write route pins the caller kind to `SERVICE_PRINCIPAL` and re
 
 ```python
 from nemo_platform_plugin.authz import CallerKind, path_rule
-
 
 @router.put("/deployments/{name}/status", response_model=Deployment)
 @scope.write
@@ -163,7 +158,6 @@ Some permissions are not 1:1 with a route — they are checked in middleware, de
 ```python
 from nemo_platform_plugin.authz import Permission
 from nemo_platform_plugin.service import NemoService, RouterSpec
-
 
 class MyService(NemoService):
     name = "myplugin"
