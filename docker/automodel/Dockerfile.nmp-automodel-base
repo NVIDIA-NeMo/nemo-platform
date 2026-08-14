@@ -75,7 +75,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     git checkout v1.1.4 && \
     git submodule update --init --recursive && \
     mkdir -p /source-distributions/nmp-automodel-base/git && \
-    git archive --format=tar.gz --output /source-distributions/nmp-automodel-base/git/grouped_gemm-v1.1.4.tar.gz HEAD && \
+    tar --exclude-vcs --create --gzip \
+      --file /source-distributions/nmp-automodel-base/git/grouped_gemm-v1.1.4.tar.gz . && \
     uv pip install --no-build-isolation --no-deps . && \
     rm -rf /tmp/grouped_gemm
 
