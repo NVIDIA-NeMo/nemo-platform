@@ -47,10 +47,15 @@ Measured for a backend reporting ~22 series:
     500 steps, log_interval 10  ->   42 KB final blob,   1.1 MB uploaded
     500 steps, log_interval  1  ->  413 KB final blob, 101.3 MB uploaded
 
-Deliberately accepted for batch training jobs. It does mean a backend that
-reports every step of a long run pays quadratically, so if that becomes a real
-configuration the transport should move to delta appends rather than the series
-being trimmed here.
+Those are client-side upload figures. The server pays twice over: ``JobDispatcher``
+persists each report to the task and then again to the copy propagated up to the
+job, so the write volume is double the numbers above.
+
+Deliberately accepted for batch training jobs, on the understanding that a
+backend bounds its own report count -- NeMo-RL's ``resolve_log_interval`` caps a
+run for exactly this reason. A backend that instead reports every step of a long
+run pays quadratically, and the answer to that is delta appends in the transport
+rather than trimming the series here.
 
 Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
 ``backend`` field on each report (``"unsloth"``); automodel and NeMo-RL leave it

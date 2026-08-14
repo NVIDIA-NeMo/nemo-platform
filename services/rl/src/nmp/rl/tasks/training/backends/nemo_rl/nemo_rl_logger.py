@@ -22,6 +22,12 @@ _logger = logging.getLogger(__name__)
 # notion of a reporting cadence, so it is derived from val_period.
 _REPORTS_PER_VAL_PERIOD = 10
 
+# Upper bound on progress reports for one run, whatever the validation cadence
+# asks for. Every train report resends every accumulated series in full and the
+# Jobs service stores the blob twice, so the cost of a report is not constant --
+# see the payload note in nmp.customization_common.training.callbacks.
+_MAX_REPORTS_PER_RUN = 200
+
 # NeMo-RL's metric dicts are forwarded whole. There is no allow-list: the
 # callback keeps the finite scalars and drops everything else, so a metric
 # NeMo-RL adds charts itself instead of waiting on a change here. That is what
@@ -34,9 +40,23 @@ _REPORTS_PER_VAL_PERIOD = 10
 # one rides in the same dict as the scalars.
 
 
-def resolve_log_interval(val_period: int | None) -> int:
-    """Steps between progress reports, targeting ~10 reports per validation period."""
-    return max((val_period or 0) // _REPORTS_PER_VAL_PERIOD, 1)
+def resolve_log_interval(val_period: int | None, max_steps: int) -> int:
+    """Steps between progress reports: the coarser of two floors.
+
+    The first targets ~10 reports per validation period, which is the cadence
+    someone watching the job expects. The second bounds the whole run at
+    ``_MAX_REPORTS_PER_RUN`` reports, because each report resends every series in
+    full -- so upload and stored-blob writes both grow as the square of the
+    report count, and it is the report count, not the step count, that drives it.
+
+    The second floor is not a corner case guard: ``val_period`` is the user's
+    ``val_check_interval``, and any value below ``_REPORTS_PER_VAL_PERIOD`` --
+    "validate every 5 steps" is an ordinary request -- floors the first one to
+    zero, which clamps to 1 and reports every step of an arbitrarily long run.
+    """
+    per_val_period = (val_period or 0) // _REPORTS_PER_VAL_PERIOD
+    per_run = (max(max_steps, 0) + _MAX_REPORTS_PER_RUN - 1) // _MAX_REPORTS_PER_RUN
+    return max(per_val_period, per_run, 1)
 
 
 def resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explicit: int | None = None) -> int:
@@ -134,7 +154,7 @@ class NemoRLLogger(LoggerInterface):
         return cls(
             steps_per_epoch=resolve_steps_per_epoch(max_steps, num_epochs, steps_per_epoch),
             job_ctx=job_ctx,
-            log_interval=resolve_log_interval(val_period),
+            log_interval=resolve_log_interval(val_period, max_steps),
             max_steps=max_steps,
             num_epochs=num_epochs,
         )

@@ -51,6 +51,7 @@ if importlib.util.find_spec("nemo_rl") is None:  # pragma: no cover - env depend
 
 from nmp.rl.tasks.training.backends.nemo_rl import nemo_rl_logger  # noqa: E402
 from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (  # noqa: E402
+    _MAX_REPORTS_PER_RUN,
     NemoRLLogger,
     resolve_log_interval,
     resolve_steps_per_epoch,
@@ -301,18 +302,45 @@ def test_close_with_nothing_pending_reports_nothing(callback: _RecordingCallback
 
 
 @pytest.mark.parametrize(
-    "val_period,expected",
+    "val_period,max_steps,expected",
     [
-        (100, 10),
-        (10, 1),
-        (5, 1),  # floors to 0 -> clamped
-        (1, 1),
-        (0, 1),
-        (None, 1),  # val_period is Optional
+        # Driven by val_period: ~10 reports across one validation period.
+        (100, 200, 10),
+        (10, 200, 1),
+        (5, 200, 1),  # floors to 0 -> clamped
+        (1, 200, 1),
+        (0, 200, 1),
+        (None, 200, 1),  # val_period is Optional
+        # Driven by the run-length cap, once val_period has stopped bounding
+        # anything. This is the regime a small val_check_interval lands in.
+        (5, 2_000, 10),
+        (5, 20_000, 100),
+        (None, 20_000, 100),
+        # Whichever floor is coarser wins; here it is val_period's.
+        (10_000, 20_000, 1_000),
+        # A run shorter than the cap is never throttled past its own length.
+        (0, 1, 1),
     ],
 )
-def test_resolve_log_interval(val_period: int | None, expected: int) -> None:
-    assert resolve_log_interval(val_period) == expected
+def test_resolve_log_interval(val_period: int | None, max_steps: int, expected: int) -> None:
+    assert resolve_log_interval(val_period, max_steps) == expected
+
+
+def test_the_run_length_cap_bounds_the_report_count(callback: _RecordingCallback) -> None:
+    """val_period alone does not bound reporting, and the report is what costs.
+
+    `val_check_interval=5` is an ordinary request, and it floors the
+    reports-per-validation-period term to zero -- so before the cap this run
+    reported all 20,000 steps. Each report resends every series in full, so that
+    is quadratic in upload and in stored-blob writes, not linear.
+    """
+    max_steps = 20_000
+    logger = NemoRLLogger.for_schedule(max_steps=max_steps, num_epochs=1, val_period=5)
+    for step in _driver_steps(max_steps):
+        logger.log_metrics(TRAIN_METRICS, step=step, prefix="train")
+
+    assert len(callback.train_steps) <= _MAX_REPORTS_PER_RUN
+    assert len(callback.train_steps) >= _MAX_REPORTS_PER_RUN // 2, "still a usable curve, not a throttle to nothing"
 
 
 @pytest.mark.parametrize(
