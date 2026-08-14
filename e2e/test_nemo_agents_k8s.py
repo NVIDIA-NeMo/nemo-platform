@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """E2E test for Kubernetes-mode agent deployments.
 
 The Kubernetes counterpart to ``test_nemo_agents_docker.py``: it deploys an

@@ -39,14 +39,18 @@ _EXTENSIONS = frozenset(
         ".go",
         ".hcl",
         ".html",
+        ".http",
         ".j2",
         ".jinja",
         ".js",
         ".jsx",
+        ".gotmpl",
+        ".mako",
         ".md",
         ".mdx",
         ".mjs",
         ".cjs",
+        ".py",
         ".rego",
         ".sh",
         ".toml",
@@ -68,10 +72,13 @@ _SPECIAL_FILENAMES = frozenset(
         ".gitignore",
         ".helmignore",
         ".prettierignore",
+        "Brewfile",
         "Dockerfile",
         "Makefile",
     }
 )
+
+_HTML_FILENAMES = frozenset({"README"})
 
 _COPYRIGHT_IGNORE_FILE = ".copyrightignore"
 
@@ -121,6 +128,9 @@ _HEADER_MARKERS = (
 
 _PROPRIETARY_LICENSE = "LicenseRef-NvidiaProprietary"
 _CORRECT_LICENSE = "Apache-2.0"
+_PROPRIETARY_LICENSE_RE = re.compile(
+    rf"(?m)^(?:#|//|/\*| \*|<!--|{{{{/\*|\s+) ?SPDX-License-Identifier:\s*{_PROPRIETARY_LICENSE}\b"
+)
 
 # --- SPDX header regexes ---
 #
@@ -387,36 +397,65 @@ def _is_supported_file(path: str) -> bool:
     return (
         suffix in _EXTENSIONS
         or name in _SPECIAL_FILENAMES
+        or name in _HTML_FILENAMES
         or name.startswith("Dockerfile.")
         or name.endswith(".Dockerfile")
+        or (suffix == "" and _has_shebang(p))
     )
 
 
-def _collect_files_from_dir(root: str) -> list[str]:
+def _has_shebang(path: Path) -> bool:
+    """Return True if *path* starts with a shebang."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(2) == b"#!"
+    except OSError:
+        return False
+
+
+def _is_explicitly_included(relpath: str, root_relpath: str, include: list[str]) -> bool:
+    """Return True if --include explicitly targets either relative path."""
+    return _matches_path_filter(relpath, include) or _matches_path_filter(root_relpath, include)
+
+
+def _collect_files_from_dir(root: str, include: list[str] | None = None) -> list[str]:
     """Collect tracked files under *root* that can safely carry SPDX headers."""
     repo = _get_repo(root)
+    include = include or []
 
     if repo is not None:
         repo_root = str(repo.working_tree_dir)
         copyright_excludes = _load_copyright_excludes(repo_root)
         raw = repo.git.ls_files("--cached", "-z", "--", root)
         git_files = [f for f in raw.split("\0") if f]
-        target_files = [os.path.join(repo_root, f) for f in git_files if _is_supported_file(f)]
+        target_files = []
+        for relpath in git_files:
+            path = os.path.join(repo_root, relpath)
+            root_relpath = os.path.relpath(path, root)
+            if not _is_supported_file(path):
+                continue
+            if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
+                relpath, root_relpath, include
+            ):
+                continue
+            target_files.append(path)
     else:
         copyright_excludes = _load_copyright_excludes(None)
         target_files = []
         for dirpath, _, filenames in os.walk(root):
             for fname in filenames:
                 path = os.path.join(dirpath, fname)
-                if _is_supported_file(path):
+                relpath = os.path.relpath(path, root)
+                if _is_supported_file(path) and (
+                    not _is_copyright_excluded(relpath, copyright_excludes)
+                    or _is_explicitly_included(relpath, relpath, include)
+                ):
                     target_files.append(path)
-
-    target_files = [f for f in target_files if not _is_copyright_excluded(os.path.relpath(f, root), copyright_excludes)]
 
     return target_files
 
 
-_SLASH_EXTENSIONS = frozenset({".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
+_SLASH_EXTENSIONS = frozenset({".go", ".http", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"})
 
 
 def _has_frontmatter(content: str) -> bool:
@@ -436,13 +475,13 @@ def _get_header_for_ext(ext: str) -> str:
         return _CSS_HEADER + "\n"
     if ext in {".j2", ".jinja"}:
         return _JINJA_HEADER + "\n"
-    if ext == ".tpl":
+    if ext in {".gotmpl", ".tpl"}:
         return _HELM_TEMPLATE_HEADER + "\n"
     if ext == ".mdx":
         return _MDX_HEADER + "\n"
     if ext in {".html", ".md"}:
         return _HTML_HEADER + "\n"
-    if ext in {".bash", ".env", ".hcl", ".py", ".rego", ".sh", ".toml", ".yaml", ".yml"}:
+    if ext in {".bash", ".env", ".hcl", ".mako", ".py", ".rego", ".sh", ".toml", ".yaml", ".yml"}:
         return _HASH_HEADER + "\n"
     return _HASH_HEADER + "\n"
 
@@ -455,6 +494,9 @@ def _get_header_for_file(filepath: str, content: str) -> str:
 
     if _is_helm_template_file(path):
         return _HELM_TEMPLATE_HEADER + "\n"
+
+    if name in _HTML_FILENAMES:
+        return _HTML_HEADER + "\n"
 
     if name in _SPECIAL_FILENAMES or name.startswith("Dockerfile.") or name.endswith(".Dockerfile"):
         return _HASH_HEADER + "\n"
@@ -561,7 +603,7 @@ def _strip_frontmatter_header_gap(content: str) -> str:
 
 def _has_proprietary_license(head: str) -> bool:
     """Return True if the file uses the disallowed NvidiaProprietary license."""
-    return _PROPRIETARY_LICENSE in head
+    return _PROPRIETARY_LICENSE_RE.search(head) is not None
 
 
 def _fix_proprietary_license(filepath: str) -> bool:
@@ -684,21 +726,13 @@ def _add_header(filepath: str) -> bool:
     return True
 
 
-def _resolve_targets(paths: list[Path]) -> tuple[list[str], str | None]:
+def _resolve_targets(paths: list[Path], include: list[str] | None = None) -> tuple[list[str], str | None]:
     """Return (file_list, display_root)."""
     if len(paths) == 1 and paths[0].is_dir():
         root = str(paths[0].resolve())
-        return _collect_files_from_dir(root), root
+        return _collect_files_from_dir(root, include=include), root
 
-    repo = _get_repo(str(paths[0].resolve()))
-    repo_root = str(repo.working_tree_dir) if repo else None
-    copyright_excludes = _load_copyright_excludes(repo_root)
-
-    files = [
-        str(p.resolve())
-        for p in paths
-        if p.is_file() and _is_supported_file(str(p)) and not _is_copyright_excluded(str(p), copyright_excludes)
-    ]
+    files = [str(p.resolve()) for p in paths if p.is_file() and _is_supported_file(str(p.resolve()))]
     return files, None
 
 
@@ -741,7 +775,8 @@ def update_license_headers(
     style (e.g. ``# SPDX-...`` in TypeScript files instead of ``// SPDX-...``).
 
     Use --include / --exclude to selectively target directories so you
-    don't end up with a monster commit::
+    don't end up with a monster commit. Explicit --include patterns can
+    target files under .copyrightignore-excluded directories::
 
         # Only process two directories
         ./script/copyright_fixer.py . --include services/guardrails --include packages/models
@@ -757,7 +792,7 @@ def update_license_headers(
             typer.echo(f"Error: {p} does not exist", err=True)
             raise typer.Exit(code=1)
 
-    files, root = _resolve_targets(paths)
+    files, root = _resolve_targets(paths, include=include)
 
     # Apply --include / --exclude filters (include takes priority over exclude)
     if include or exclude:
