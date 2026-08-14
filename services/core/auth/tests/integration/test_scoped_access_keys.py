@@ -64,7 +64,7 @@ def _auth_configs(private_key_file: str) -> tuple[AuthConfig, AuthServiceConfig]
     service_config = AuthServiceConfig(
         **shared_config.model_dump(),
         policy_data_refresh_interval=0.2,
-        bundle_cache_seconds=0,
+        bundle_cache_seconds=1,
         admin_email="admin@example.com",
     )
     return shared_config, service_config
