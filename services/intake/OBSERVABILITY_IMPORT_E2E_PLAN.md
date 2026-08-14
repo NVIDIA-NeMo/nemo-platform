@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Observability Imports: End-to-End Plan
 
 ## Outcome
@@ -287,6 +290,7 @@ uv run --frozen pytest services/intake/tests/test_spans_schemas.py -q
 uv run --frozen pytest services/intake/tests/integration/spans/test_direct_span_ingest.py -q
 uv run --frozen pytest services/intake/tests/integration/spans/test_observability_import_e2e.py -q
 uv run --frozen pytest packages/nemo_platform_ext/tests/skills/test_intake_import_scripts.py -q
+uv run --frozen pytest sdk/python/nemo-platform/tests/test_direct_span_ingest.py -q
 uv run scripts/skill-test.py --root .
 uv run ruff check services/intake packages/nemo_platform_ext
 uv run ruff format --check services/intake packages/nemo_platform_ext
@@ -305,15 +309,31 @@ Verified on 2026-08-14:
   pass: 75 tests.
 - Ruff formatting/lint, targeted `ty`, and the pre-commit `ty` hook pass.
 - The repository OpenAPI generator passes and all three checked-in platform specifications contain
-  the direct-ingest operation. `make refresh-openapi` could not use its Flox wrapper on this host, so
-  the documented `script/generate-openapi-spec.sh` fallback was run through `uv` instead.
+  the direct-ingest operation. Static auth maps it to the existing `intake.ingest.create`
+  permission. The Python SDK exposes `client.intake.ingest.spans.create`, the generated CLI exposes
+  `nemo intake ingest spans create`, and a focused SDK transport test verifies the emitted JSON.
+  `make refresh-openapi` could not use its Flox wrapper on this host, so the documented
+  `script/generate-openapi-spec.sh` fallback was run through `uv` instead.
 - A process-level MLflow fixture import through the SDK-backed writer returned two spans, one
   evaluator result, and one annotation; all were queried back. A 2020 span returned the documented
   actionable `422`, and the service plus managed ClickHouse stopped cleanly afterward.
 - The full pre-commit gate's code checks pass; this host cannot run its `helm-docs` and tool-version
   hooks because `helm-docs` and `yq` are not installed. The skill-routing suite retains unrelated
-  pre-existing failures while all four new import cases pass. Stainless SDK generation remains
-  dependent on credentials, as documented above.
+  pre-existing failures while all four new import cases pass.
+
+### Rough edges
+
+- Stainless cloud generation requires `STAINLESS_API_KEY`, which is not available on this host.
+  The checked-in SDK resource/types, Stainless mappings, generation snapshots, CLI, and focused
+  transport test are synchronized locally; `make update-sdk` should still be run in a credentialed
+  environment to confirm the cloud generator produces no delta.
+- Retention validation rejects the whole direct-span batch when any `started_at` is outside the
+  configured 90-day ClickHouse window. This prevents apparently successful imports whose old rows
+  are immediately removed, but customers importing deeper history must increase both the `spans`
+  and `trace_index` TTLs first.
+- Provider APIs can add fields or event variants. Importers preserve unmodeled JSON under
+  `<provider>.raw`/`<provider>.signals`; the checked-in official snapshots make mapping drift
+  reviewable, but they do not replace periodic fixture refreshes against current provider docs.
 
 ## Definition of done
 

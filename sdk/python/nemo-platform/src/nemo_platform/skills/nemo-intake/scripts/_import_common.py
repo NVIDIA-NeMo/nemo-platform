@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import quote, urlparse
 from uuid import UUID
 
-from nemo_platform_ext.client.factory import create_client
+from nemo_platform.client.factory import create_client
 
 JsonObject = dict[str, Any]
 SPAN_BATCH_LIMIT = 1000

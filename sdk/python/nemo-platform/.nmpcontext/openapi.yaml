@@ -4555,6 +4555,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/ingest/spans:
+    post:
+      tags:
+      - Ingest
+      summary: Ingest Spans
+      operationId: ingest_spans_apis_intake_v2_workspaces__workspace__ingest_spans_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirectSpansIngestRequest'
+      responses:
+        '201':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/sessions/{id}:
     get:
       tags:
@@ -10497,6 +10525,85 @@ components:
       type: object
       title: DialogRails
       description: Configuration of topical rails.
+    DirectSpanInput:
+      properties:
+        span_id:
+          type: string
+          minLength: 1
+          title: Span Id
+        trace_id:
+          type: string
+          minLength: 1
+          title: Trace Id
+        session_id:
+          title: Session Id
+          type: string
+          minLength: 1
+        parent_span_id:
+          title: Parent Span Id
+          type: string
+          minLength: 1
+        name:
+          type: string
+          title: Name
+          default: ''
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/SpanKind'
+          default: UNKNOWN
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          default: unknown
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        input:
+          $ref: '#/components/schemas/JsonValue'
+        output:
+          $ref: '#/components/schemas/JsonValue'
+        attributes:
+          additionalProperties:
+            $ref: '#/components/schemas/JsonValue'
+          type: object
+          title: Attributes
+      additionalProperties: false
+      type: object
+      required:
+      - span_id
+      - trace_id
+      - started_at
+      title: DirectSpanInput
+      description: One provider-neutral span supplied by a historical trace importer.
+    DirectSpansIngestRequest:
+      properties:
+        source:
+          type: string
+          maxLength: 128
+          minLength: 1
+          pattern: ^[A-Za-z0-9][A-Za-z0-9_.-]*$
+          title: Source
+          description: Stable name for the source trace store, such as `langsmith`
+            or `mlflow`.
+        spans:
+          items:
+            $ref: '#/components/schemas/DirectSpanInput'
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Spans
+      additionalProperties: false
+      type: object
+      required:
+      - source
+      - spans
+      title: DirectSpansIngestRequest
+      description: A validated batch of spans from one source trace store.
     DistributedGPUExecutionProvider:
       properties:
         provider:
@@ -13326,6 +13433,8 @@ components:
             these variables.
       type: object
       title: JobExecutionProfileConfig
+    JsonValue:
+      title: JsonValue
     JsonWebKey:
       properties: {}
       additionalProperties: true

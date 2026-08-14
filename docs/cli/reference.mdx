@@ -6544,6 +6544,7 @@ nemo intake ingest [OPTIONS] COMMAND [ARGS]...
 * `atif`: Manage atif
 * `chat-completions`: Manage chat_completions
 * `otlp`: Otlp operations
+* `spans`: Manage spans
 
 ##### nemo intake ingest atif
 
@@ -6754,6 +6755,64 @@ nemo intake ingest otlp v1 traces create [OPTIONS]
 **Options:**
 
 * `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, --output, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo intake ingest spans
+
+Manage spans
+
+**Usage:**
+
+```shell
+nemo intake ingest spans [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Ingest Spans
+
+###### nemo intake ingest spans create
+
+Ingest Spans
+
+**Required fields:** source, spans
+
+**Examples:**
+
+```shell
+nemo intake ingest spans create --input-file config.json
+nemo intake ingest spans create --input-data '`{"source": "value", "spans": {}}`'
+echo '{"json": "data"}' | nemo intake ingest spans create --input-file -
+nemo intake ingest spans create --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo intake ingest spans create [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--source`: (required)
+* `--spans`: JSON string
 
 **Help:**
 

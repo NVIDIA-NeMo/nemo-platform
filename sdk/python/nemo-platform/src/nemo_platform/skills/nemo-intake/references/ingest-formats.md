@@ -165,6 +165,47 @@ Then set `nemo.evaluation.name` (+ `nemo.test_case.id`) on the root span of each
 
 ---
 
+## 4. Direct spans (historical imports)
+
+`POST .../ingest/spans` with JSON → empty `201`. The strict body is one source plus 1–1000 spans:
+
+```json
+{
+  "source": "my-trace-store",
+  "spans": [
+    {
+      "span_id": "provider-span-id",
+      "trace_id": "provider-trace-id",
+      "session_id": "conversation-id",
+      "parent_span_id": null,
+      "name": "agent-run",
+      "kind": "AGENT",
+      "status": "success",
+      "started_at": "2026-08-01T00:00:00Z",
+      "ended_at": "2026-08-01T00:00:01Z",
+      "input": {"question": "Hello"},
+      "output": {"answer": "Hi"},
+      "attributes": {"gen_ai.request.model": "example-model", "provider.raw": {"native": true}}
+    }
+  ]
+}
+```
+
+IDs are arbitrary non-empty strings; a missing session ID defaults to the trace ID, and a parent may
+be outside the batch. Timestamps require an offset. Structured inputs, outputs, and unknown
+attributes retain native JSON types. Known semantic attributes populate queryable fields; other
+attributes appear in detailed reads under `raw_attributes`. Reposting the same
+`(source, trace_id, span_id)` updates the existing logical span.
+
+The default ClickHouse TTL is 90 days from `started_at`. If any span is outside that window, Intake
+returns `422` before writing the batch and instructs the operator to increase the `spans` and
+`trace_index` TTLs. Provider timestamps are never rewritten by the endpoint.
+
+Use the bundled provider scripts instead of manually translating MLflow, LangSmith, Phoenix, or
+Braintrust exports.
+
+---
+
 ## Explicit evaluator results (any producer)
 
 To attach scores without the ATIF verifier path:
