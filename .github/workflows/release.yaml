@@ -721,6 +721,10 @@ jobs:
                 cadence: process.env.RELEASE_TYPE,
                 version: process.env.RELEASE_LABEL,
                 containers: JSON.parse(process.env.CONTAINER_IDS),
+                collect_sources: true,
+                bake_env: {
+                  NMP_COLLECT_SOURCES: "1",
+                },
               },
             });
 

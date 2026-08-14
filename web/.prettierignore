@@ -14,3 +14,6 @@ packages/**/playwright-report/
 
 # Ignore generated style
 packages/studio/src/generated/*
+
+# Rolled-up plugin surface types; formatting it breaks the CI drift check
+packages/common/plugin-types/

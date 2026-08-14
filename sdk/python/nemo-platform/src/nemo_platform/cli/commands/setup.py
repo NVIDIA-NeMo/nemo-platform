@@ -36,6 +36,7 @@ from nmp.platform_runner.config import DEFAULT_LOCAL_SERVICES_BIND_HOST, Platfor
 from pydantic import SecretStr
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 from nemo_platform.cli.commands.skills import registry as skills_registry
@@ -49,6 +50,7 @@ from nemo_platform.cli.telemetry.events import OnboardingStepEvent, TaskStatusEn
 from nemo_platform.client.tls import client_verify_from_env
 from nemo_platform.config.config import Config
 from nemo_platform.config.models import DEFAULT_BASE_URL, ConfigFile, ConfigParams, LocalServicesConfig, NoAuthUser
+from nemo_platform.local.install import services_extra_install_command
 from nemo_platform.local.process import (
     PortConflict,
     check_port_available_for_start,
@@ -1154,9 +1156,7 @@ def _maybe_start_services(
     if importlib.util.find_spec("pyleak") is None:
         console.print(f"{CROSS} Local services require extra dependencies that aren't installed.")
         console.print("  Install them with:")
-        console.print("    [cyan]pip install 'nemo-platform\\[all]'[/cyan]")
-        console.print("  On Python 3.14, use:")
-        console.print("    [cyan]PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install 'nemo-platform\\[all]'[/cyan]")
+        console.print(f"    [cyan]{escape(services_extra_install_command())}[/cyan]")
         raise typer.Exit(1)
 
     # Fail before stop/spawn when default local needs Docker (NVBug 6537617).

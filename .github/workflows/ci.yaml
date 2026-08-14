@@ -1072,6 +1072,10 @@ jobs:
           NMP_FILES_HF_RETRY_MAX_DELAY_SECONDS: "30"
           PYTEST_WORKERS: "4"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          # Per-worker crash dumps; pytest's own faulthandler would point them at stderr, which
+          # xdist never forwards. See conftest.py.
+          PYTEST_CRASH_DUMP_DIR: crash-dumps
+          PYTEST_EXTRA: -p no:faulthandler
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1082,6 +1086,15 @@ jobs:
             report.xml
             coverage.xml
             coverage.json
+      - name: Upload worker crash dumps
+        # Separate artifact so coverage-comment keeps receiving exactly the files it expects.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-integration-crash-dumps
+          retention-days: 30
+          if-no-files-found: ignore
+          path: crash-dumps/
 
   python-auth-idp-static-test:
     name: Python auth-idp static tests
@@ -1303,7 +1316,7 @@ jobs:
   # Test each wheel: install from the artifact and run basic CLI /
   # import checks.
   wheel-test:
-    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
+    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }}, ${{ matrix.install-method }})
     needs: [wheel-build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1314,6 +1327,13 @@ jobs:
       matrix:
         package: [nemo-platform, nemo-platform-plugin]
         python-version: ["3.12", "3.13"]
+        # `uv tool install` is the documented front door for the CLI; `venv`
+        # covers installs into an environment the user owns. The plugin is a
+        # library with no CLI entry point, so it only gets the venv leg.
+        install-method: [venv, tool]
+        exclude:
+          - package: nemo-platform-plugin
+            install-method: tool
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1337,9 +1357,11 @@ jobs:
         shell: bash
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
+          INSTALL_METHOD: ${{ matrix.install-method }}
           NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
           NMP_AUTH_ENABLED: "false"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/wheelcheck/tool-bin
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -1351,14 +1373,25 @@ jobs:
           WHEEL="${wheels[0]}"
           # Supply-chain: partial-pin the wheel's direct external deps to a committed constraints
           # file. Regenerate with script/compile-wheel-constraints.sh.
-          VENV="${RUNNER_TEMP}/wheelcheck/.venv"
-          uv venv "${VENV}" --python "${PYTHON_VERSION}"
-          uv pip install --python "${VENV}/bin/python" \
-            --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt" \
-            "${WHEEL}[services]"
+          CONSTRAINTS="${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-services.txt"
+          # --no-config: this step runs inside the checkout, so uv would otherwise apply the
+          # repo's [tool.uv] override-dependencies and resolve a dependency set no user can get.
+          if [[ "${INSTALL_METHOD}" == "tool" ]]; then
+            uv tool install --no-config --python "${PYTHON_VERSION}" \
+              --constraints "${CONSTRAINTS}" \
+              "${WHEEL}[services]"
+            BIN_DIR="${UV_TOOL_BIN_DIR}"
+          else
+            VENV="${RUNNER_TEMP}/wheelcheck/.venv"
+            uv venv "${VENV}" --python "${PYTHON_VERSION}"
+            uv pip install --no-config --python "${VENV}/bin/python" \
+              --constraint "${CONSTRAINTS}" \
+              "${WHEEL}[services]"
+            BIN_DIR="${VENV}/bin"
+          fi
           cd "${RUNNER_TEMP}/wheelcheck"
           unset PYTHONPATH VIRTUAL_ENV
-          export PATH="${VENV}/bin:${PATH}"
+          export PATH="${BIN_DIR}:${PATH}"
           bash "${GITHUB_WORKSPACE}/script/test-nemo-cli.sh"
 
       - name: Install + test nemo-platform-plugin
@@ -1379,7 +1412,7 @@ jobs:
           # (see the nemo-platform CLI step above).
           cd "${RUNNER_TEMP}/wheelcheck"
           uv venv .venv --python "${PYTHON_VERSION}"
-          uv pip install --python .venv/bin/python \
+          uv pip install --no-config --python .venv/bin/python \
             --constraint "${GITHUB_WORKSPACE}/.github/wheel-constraints/nemo-platform-plugin.txt" \
             "${WHEEL}"
           unset PYTHONPATH VIRTUAL_ENV
@@ -1671,6 +1704,38 @@ jobs:
         run: pnpm --filter @nemo/sdk typecheck
       - name: Typecheck web packages against regenerated SDK
         run: pnpm run --recursive --parallel --if-present typecheck
+
+  web-plugin-types:
+    name: Web plugin surface types check
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Regenerate the plugin surface types
+        run: pnpm --filter @nemo/common types:plugin
+      # Out-of-tree plugins vendor this file, so a stale copy types them against
+      # a surface that no longer exists — and still compiles, which is the whole
+      # problem. Fail the change that moved the surface, not the plugin later.
+      - name: Check the committed artifact is up to date
+        run: git diff --exit-code -- packages/common/plugin-types
 
   web-studio-deps:
     name: Web studio deps check
@@ -2042,6 +2107,7 @@ jobs:
       - web-format
       - web-lint
       - web-sdk-gen
+      - web-plugin-types
       - web-studio-deps
       - web-studio-e2e
       - opa-policy-test

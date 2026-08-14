@@ -526,11 +526,13 @@ class EvolutionaryOptimizer(Agent):
         train_eval_dataset = dataset_factory.build_dataset(
             deps.evaluator_type,
             train_dataset_ref,
+            allow_empty=deps.insight is not None,
         )
 
         validation_eval_dataset = dataset_factory.build_dataset(
             deps.evaluator_type,
             validation_dataset_ref,
+            allow_empty=deps.insight is not None,
         )
 
         # ---- Resolve insight (Mode 1) vs local agent (Mode 2) -----------
@@ -808,6 +810,9 @@ class EvolutionaryOptimizer(Agent):
                     phase=phase,
                     config=config,
                 )
+                if not improvements:
+                    logger.info("[TERMINATOR] no improvements proposed; finalizing evaluated candidates")
+                    break
                 new_candidates = [
                     self._create_agent(
                         agents_dir=agents_dir,

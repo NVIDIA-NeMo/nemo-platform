@@ -42,6 +42,10 @@ ENV UV_HTTP_TIMEOUT=120 \
     UV_HTTP_RETRIES=8
 
 COPY --from=uv /uv /uvx /usr/local/bin/
+COPY docker/scripts/collect-apt-sources.sh \
+    docker/scripts/collect-cpython-source.py \
+    docker/scripts/collect-python-sdists.py \
+    /usr/local/bin/
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -190,6 +194,23 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-install-package nemo-platform \
         --no-install-package cryptography \
         --no-install-package pyarrow
+
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    python /usr/local/bin/collect-python-sdists.py \
+        --python /opt/venv/bin/python \
+        --output /usr/share/nemo-platform/source-distributions/safe-synthesizer-tasks \
+        --lock-file /build/uv.lock \
+        --skip-package nemo-safe-synthesizer-plugin \
+        --skip-package nemo-platform-sdk \
+        --skip-package nemo-platform-plugin \
+        --label app-venv && \
+    bash /usr/local/bin/collect-apt-sources.sh /usr/share/nemo-platform/source-distributions/safe-synthesizer-tasks/apt --installed && \
+    uv run --no-project --python /opt/venv/bin/python \
+        /usr/local/bin/collect-cpython-source.py \
+        --python /opt/venv/bin/python \
+        --output /usr/share/nemo-platform/source-distributions/safe-synthesizer-tasks
 
 COPY docker/scripts/cve-cleanup.sh /bin/
 # Perl CVE cleanup removes dpkg-dev/build-essential; keep the non-Perl

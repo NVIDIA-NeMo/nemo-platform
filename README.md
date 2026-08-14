@@ -20,12 +20,12 @@ Quick install from PyPI:
 ```bash
 curl -LsSf https://astral.sh/uv/0.9.30/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv venv --python 3.13
-source .venv/bin/activate
-uv pip install nemo-platform
+uv tool install "nemo-platform[all]"
 
 nemo setup
 ```
+
+`uv tool install` gives you a global `nemo` command in its own isolated environment, with nothing to activate. The `all` extra adds the platform services, so `nemo services run` works; without it you get the SDK and CLI only. To import the SDK from your own code, `uv pip install "nemo-platform[all]"` into a virtual environment instead.
 
 Source checkout for development:
 
@@ -35,12 +35,12 @@ cd nemo-platform
 
 # Install Flox first: https://flox.dev/docs/install-flox/install
 make bootstrap
-flox activate
+flox -q activate
 
 nemo setup
 ```
 
-`make bootstrap` uses the Flox-pinned uv, Node.js, and pnpm toolchain; it does not require a prior `flox activate`. Activate Flox after bootstrap to continue development in the managed environment. Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap` followed by `source .venv/bin/activate`. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
+`make bootstrap` uses the Flox-pinned uv, Node.js, and pnpm toolchain; it does not require a prior `flox -q activate`. Activate Flox after bootstrap to continue development in the managed environment. Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap` followed by `source .venv/bin/activate`. See [SETUP.md](SETUP.md#toolchain-uv-nodejs-pnpm).
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, selects default and fast agent models, installs agent skills, and deploys a sample agent (see more below).
 

@@ -12,7 +12,7 @@ Install NeMo Platform and start working with AI agents.
 - Python 3.12-3.13
 - An API key from one of: [NVIDIA Build](https://build.nvidia.com), [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys), [Google Gemini](https://aistudio.google.com/apikey), or a local [Ollama](https://ollama.com) instance (no key needed)
 - 16 GB available disk space and 8 GB RAM
-- For the PyPI install: `pip` in a Python environment
+- For the PyPI install: [uv](https://docs.astral.sh/uv/) `>=0.9.14`, or `pip` in a Python environment
 - For the source checkout install: [Git](https://git-scm.com/), GNU Make, a C compiler, and [Flox](https://flox.dev/docs/install-flox/install) (recommended). A system-toolchain alternative is documented below.
 
 ## Install
@@ -21,21 +21,37 @@ Choose the install path that matches what you want to do.
 
 ### Install from PyPI
 
-Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest local install. The `all` extra includes the SDK, CLI, platform services, and default first-party plugins:
+Use the [PyPI package](https://pypi.org/project/nemo-platform/) for the quickest local install. The `all` extra includes the SDK, CLI, platform services, and default first-party plugins; drop it for the SDK and CLI alone.
+
+<Tabs>
+
+<Tab title="uv tool (recommended)">
+
+One command, `nemo` available everywhere, nothing to activate.
 
 ```bash
-python -m venv .venv
+uv tool install "nemo-platform[all]"
+```
+
+</Tab>
+
+<Tab title="Virtual environment">
+
+Use when you also import the SDK from your own code. `nemo` works only while the environment is active.
+
+```bash
+uv venv
 source .venv/bin/activate
-pip install "nemo-platform[all]"
+uv pip install "nemo-platform[all]"
 ```
 
-For SDK and CLI usage only, install the base package:
+Plain `pip install "nemo-platform[all]"` works in an environment you manage yourself.
 
-```bash
-pip install nemo-platform
-```
+</Tab>
 
-After installing `nemo-platform[all]` from PyPI, continue with `nemo setup`.
+</Tabs>
+
+Continue with `nemo setup`.
 
 ### Install from source
 
@@ -49,7 +65,7 @@ Install [Flox](https://flox.dev/docs/install-flox/install) before running `make 
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
 cd nemo-platform
 make bootstrap
-flox activate
+flox -q activate
 ```
 
 The `make bootstrap` target creates the Python environment, syncs Python dependencies, builds Studio assets, and installs local plugins. Activate Flox afterward to continue development with the managed toolchain.

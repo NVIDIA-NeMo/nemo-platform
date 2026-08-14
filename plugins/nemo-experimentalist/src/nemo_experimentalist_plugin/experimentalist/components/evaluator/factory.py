@@ -33,7 +33,7 @@ class DatasetFactory:
     ) -> None:
         self.supported_evaluator_types = supported_evaluator_types or _SUPPORTED_EVALUATOR_TYPES
 
-    def build_dataset(self, evaluator_type: EvaluatorType, dataset_ref: DatasetRef) -> Dataset:
+    def build_dataset(self, evaluator_type: EvaluatorType, dataset_ref: DatasetRef, **options: Any) -> Dataset:
         """Build a Dataset for the selected evaluator type.
 
         Args:
@@ -51,7 +51,7 @@ class DatasetFactory:
 
         if evaluator_type not in self.supported_evaluator_types:
             raise ValueError(f"Unsupported evaluator type: {evaluator_type}")
-        return self.supported_evaluator_types[evaluator_type][0].from_ref(dataset_ref)
+        return self.supported_evaluator_types[evaluator_type][0].from_ref(dataset_ref, **options)
 
     def build_task_template(self, evaluator_type: EvaluatorType, template_ref: DatasetRef) -> Task:
         """Parse an evaluator-specific template directory as one task.

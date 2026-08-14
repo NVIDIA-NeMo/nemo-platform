@@ -128,11 +128,11 @@ the root span:
 
 | Meaning | Span attribute key |
 |---|---|
-| Evaluation (by name) | **`nemo.experiment.id`** |
+| Evaluation (by name) | **`nemo.evaluation.name`** |
 | Test case | **`nemo.test_case.id`** |
 
-> Note the key is `nemo.experiment.id` (still "experiment"), even though the REST body field elsewhere
-> is `evaluation_context`. Set `nemo.experiment.id` to the Evaluation's **name**.
+> Set `nemo.evaluation.name` to the Evaluation's **name** (not its id), matching the `evaluation_id`
+> field used by the JSON `evaluation_context` on the other endpoints.
 
 Cost/token/model attributes are read from standard GenAI / OpenInference keys (first match wins):
 
@@ -158,7 +158,7 @@ export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${NMP_BASE_URL}/apis/intake/v2/worksp
 export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL="http/protobuf"
 ```
 
-Then set `nemo.experiment.id` (+ `nemo.test_case.id`) on the root span of each run.
+Then set `nemo.evaluation.name` (+ `nemo.test_case.id`) on the root span of each run.
 
 ---
 

@@ -18,6 +18,7 @@ venv*
 .venv*
 .nemo/
 .env*
+env.yaml
 !**/.env.example
 !**/env.py
 !packages/data_designer/**/environment.py
@@ -157,4 +158,6 @@ docs/helm/index.mdx
 # nektos/act files commonly used
 .act-variables
 .act-secrets
-env.yaml
+
+# Per-worker fatal-signal tracebacks (PYTEST_CRASH_DUMP_DIR)
+crash-dumps/

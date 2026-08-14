@@ -12,6 +12,7 @@ files for more specific fixtures.
 import logging
 import os
 import tempfile
+import time
 from collections.abc import Generator
 from pathlib import Path
 
@@ -205,6 +206,79 @@ def pytest_configure(config):
     This runs once at the start of the test session.
     """
     config.option.importmode = "importlib"
+    _enable_crash_dumps(config)
+    global _SESSION_TIMEOUT_SECONDS
+    _SESSION_TIMEOUT_SECONDS = getattr(config.option, "timeout", None)
+
+
+def _enable_crash_dumps(config) -> None:
+    """Route fatal-signal tracebacks to a per-worker file when ``PYTEST_CRASH_DUMP_DIR`` is set.
+
+    xdist does not forward worker streams, so a signal death otherwise reports only ``node down``.
+    """
+    dump_dir = os.environ.get("PYTEST_CRASH_DUMP_DIR")
+    if not dump_dir:
+        return
+
+    import faulthandler
+
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "controller")
+    directory = Path(dump_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    # Line buffered: a fatal signal gives no chance to flush.
+    handle = (directory / f"crash-{worker}-{os.getpid()}.log").open("w", buffering=1)
+    faulthandler.enable(file=handle, all_threads=True)
+    # Module-level so the handle outlives this function; closing it would disable the handler.
+    global _CRASH_DUMP_FILE
+    _CRASH_DUMP_FILE = handle
+    handle.write(f"--- worker {worker} pid {os.getpid()}\n")
+
+
+#: Open crash-dump file for this process, or None when crash dumps are disabled.
+_CRASH_DUMP_FILE = None
+
+#: Session-wide per-test timeout, to judge a lost worker's elapsed time against.
+_SESSION_TIMEOUT_SECONDS = None
+
+#: Start time of each in-flight test, by nodeid. xdist forwards `logstart` to the controller, so a
+#: lost worker's test can still be timed from there.
+_TEST_START_TIMES: dict[str, float] = {}
+
+
+def pytest_runtest_logstart(nodeid, location):
+    """Record the test being entered, so the tail of a crash dump names it."""
+    del location
+    _TEST_START_TIMES[nodeid] = time.monotonic()
+    if _CRASH_DUMP_FILE is not None:
+        _CRASH_DUMP_FILE.write(f"--- entering {nodeid}\n")
+
+
+def pytest_runtest_logfinish(nodeid, location):
+    """Forget a test that finished, so only genuinely in-flight tests are timed."""
+    del location
+    _TEST_START_TIMES.pop(nodeid, None)
+
+
+def pytest_handlecrashitem(crashitem, report, sched):
+    """Say how long a lost worker's test ran, and name a timeout when it looks like one.
+
+    pytest-timeout's thread method ``os._exit(1)``s the worker, which the controller cannot tell
+    from a crash. Elapsed time is the one number that distinguishes them.
+    """
+    del sched
+    started = _TEST_START_TIMES.pop(crashitem, None)
+    if started is None:
+        return None
+    elapsed = time.monotonic() - started
+    if _SESSION_TIMEOUT_SECONDS and elapsed >= _SESSION_TIMEOUT_SECONDS * 0.9:
+        note = (
+            f"ran {elapsed:.1f}s against --timeout={_SESSION_TIMEOUT_SECONDS:g}s "
+            f"— likely a TIMEOUT, not a crash (pytest-timeout os._exit()s the worker)"
+        )
+    else:
+        note = f"ran {elapsed:.1f}s before the worker was lost"
+    report.longrepr = f"{report.longrepr}\n  {note}"
+    return None
 
 
 def pytest_collection_modifyitems(config, items):

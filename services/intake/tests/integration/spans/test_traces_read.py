@@ -24,6 +24,9 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     "openinference.span.kind": "AGENT",
                     "gen_ai.conversation.id": "trace-session",
                     "project": "project-a",
+                    # Emit the legacy evaluation key on purpose: ingest normalizes it to the canonical
+                    # nemo.evaluation.name, so this asserts the dual-read path end to end (a pre-rename
+                    # producer still associates its traces to the evaluation).
                     "nemo.experiment.id": "experiment-a",
                     "nemo.test_case.id": "case-a",
                     "deployment.environment.name": "prod",

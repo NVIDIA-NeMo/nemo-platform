@@ -36,6 +36,9 @@ RUN mkdir -p /home/${USERNAME}/.cache && \
 # Single RL_PYTHON_ENTRYPOINT the compiler stamps onto every step: /opt/venv/bin/python.
 RUN ln -sfn /opt/nemo_rl_venv /opt/venv
 
+RUN UV_CACHE_DIR=/root/.cache/uv \
+    uv-glue pip freeze --python /opt/nemo_rl_venv/bin/python --exclude-editable > /tmp/base-python-freeze.txt
+
 # Editable platform glue WITH dependency resolution. The from-source base ships clean package
 # metadata, so uv can resolve the glue's real deps (typer, sniffio, ngcsdk, opentelemetry-*,
 # sqlalchemy, kubernetes, fastapi, ...) instead of us pinning them by hand.
@@ -58,6 +61,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         -e /app/packages/nmp_common \
         -e /app/packages/nmp_customization_common \
         -e /app/services/rl
+
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    UV_BIN=uv-glue uv-glue run --no-project --python /opt/nemo_rl_venv/bin/python \
+        /usr/local/bin/collect-python-sdists.py \
+        --python /opt/nemo_rl_venv/bin/python \
+        --output /usr/share/nemo-platform/source-distributions/nmp-rl-training \
+        --baseline-freeze /tmp/base-python-freeze.txt \
+        --label platform-glue
+
+# Codec cleanup for release image scans.
+RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/rl/codec-file-removals.txt
 
 # Runtime uv cache: the base's /opt/uv_cache ships READ-ONLY on purpose - the prefetched venvs
 # symlink their package files into it, so a writable cache would let code running in this container

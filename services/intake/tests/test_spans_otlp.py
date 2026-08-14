@@ -187,10 +187,10 @@ def test_span_to_domain_promotes_pydantic_ai_tool_arguments_and_response():
 
 
 def test_span_to_domain_carries_evaluation_id_attribute() -> None:
-    # OTLP associates a span with an evaluation via the nemo.experiment.id attribute; the ingest path
+    # OTLP associates a span with an evaluation via the nemo.evaluation.name attribute; the ingest path
     # reads it off the built span to mark that evaluation dirty for facet denormalization.
     span = _make_span()
-    _add_string_attr(span, "nemo.experiment.id", "my-eval")
+    _add_string_attr(span, "nemo.evaluation.name", "my-eval")
     domain_span = _span_to_domain(
         workspace="default",
         span=span,
@@ -198,7 +198,23 @@ def test_span_to_domain_carries_evaluation_id_attribute() -> None:
         scope_data={},
         ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    assert domain_span.attributes_string.get("nemo.experiment.id") == "my-eval"
+    assert domain_span.attributes_string.get("nemo.evaluation.name") == "my-eval"
+
+
+def test_span_to_domain_normalizes_legacy_evaluation_id_key() -> None:
+    # A pre-rename producer still emitting nemo.experiment.id must keep associating: ingest normalizes
+    # the legacy source key to the canonical nemo.evaluation.name bag key.
+    span = _make_span()
+    _add_string_attr(span, "nemo.experiment.id", "legacy-eval")
+    domain_span = _span_to_domain(
+        workspace="default",
+        span=span,
+        resource_attributes={},
+        scope_data={},
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    assert domain_span.attributes_string.get("nemo.evaluation.name") == "legacy-eval"
+    assert "nemo.experiment.id" not in domain_span.attributes_string
 
 
 def test_span_to_domain_without_evaluation_attribute_has_no_id() -> None:
@@ -209,7 +225,7 @@ def test_span_to_domain_without_evaluation_attribute_has_no_id() -> None:
         scope_data={},
         ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
-    assert domain_span.attributes_string.get("nemo.experiment.id") is None
+    assert domain_span.attributes_string.get("nemo.evaluation.name") is None
 
 
 def _make_span(

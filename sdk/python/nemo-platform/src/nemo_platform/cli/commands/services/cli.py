@@ -15,6 +15,7 @@ import httpx
 import typer
 from nemo_platform.cli.core.help_formatter import create_typer_app
 from nemo_platform.cli.docker_preflight import require_docker_for_default_local
+from nemo_platform.local.install import services_extra_install_command
 from nemo_platform.local.process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
@@ -75,10 +76,7 @@ def _require_services_extra() -> None:
         "Running local platform services needs extra components that aren't installed yet.\n"
         "\n"
         "Install them with:\n"
-        "  pip install 'nemo-platform[all]'\n"
-        "\n"
-        "On Python 3.14, use:\n"
-        "  PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install 'nemo-platform[all]'\n",
+        f"  {services_extra_install_command()}\n",
         err=True,
     )
     raise typer.Exit(1)
