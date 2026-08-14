@@ -128,7 +128,16 @@ class Model(BaseModel):
         description="API key secret reference for the model. Format: workspace/secret_name or secret_name within the job workspace.",
     )
     format: Literal[ModelFormat.NVIDIA_NIM, ModelFormat.OPEN_AI, ModelFormat.LLAMA_STACK] = Field(
-        default=ModelFormat.NVIDIA_NIM, description="API format of the model."
+        default=ModelFormat.OPEN_AI,
+        deprecated=(
+            "`format` is ignored and will be removed. Structured output support is detected from "
+            "the endpoint during preflight rather than inferred from this label."
+        ),
+        description=(
+            "Deprecated and ignored. Previously selected the structured output encoding; that is "
+            "now detected per endpoint, because support is a property of the endpoint rather than "
+            "of the label attached to the model."
+        ),
     )
 
     @field_validator("default_headers")

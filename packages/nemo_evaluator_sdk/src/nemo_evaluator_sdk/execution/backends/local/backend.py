@@ -12,13 +12,19 @@ from typing import Any
 
 from nemo_evaluator_sdk.dataset_schemas.compatibility import apply_column_mapping_to_row
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
+from nemo_evaluator_sdk.execution import benchmark_execution
 from nemo_evaluator_sdk.execution.backends.base import BackendParams
 from nemo_evaluator_sdk.execution.benchmark_execution import evaluate_benchmark as sdk_evaluate_benchmark
-from nemo_evaluator_sdk.execution.metric_execution import _merge_online_hooks, evaluate_metric
+from nemo_evaluator_sdk.execution.metric_execution import (
+    _merge_online_hooks,
+    evaluate_metric,
+    resolve_target_structured_output_mode,
+)
 from nemo_evaluator_sdk.execution.utils import prepare_metric_for_execution, unique_metric_keys
 from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.resolvers import LocalModelResolver, LocalSecretResolver
+from nemo_evaluator_sdk.structured_output import structured_output_mode_session
 from nemo_evaluator_sdk.values import Agent, DatasetInput, FieldMapping, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult, namespace_result
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
@@ -79,6 +85,36 @@ class LocalBackend:
         Returns:
             A namespaced single-metric evaluation result.
         """
+        # Wraps preparation as well as execution: prepare_metric_for_execution runs the metric's
+        # preflight, which is where an LLM judge probes its endpoint. evaluate_metric opens a
+        # session too; the session is re-entrant, so both share this one cache.
+        async with structured_output_mode_session():
+            return await self._evaluate_one_in_session(
+                metric=metric,
+                metric_key=metric_key,
+                params=params,
+                target=target,
+                prompt_template=prompt_template,
+                aggregate_fields=aggregate_fields,
+                preprocess_hooks=preprocess_hooks,
+                postprocess_hooks=postprocess_hooks,
+                rows=rows,
+            )
+
+    async def _evaluate_one_in_session(
+        self,
+        *,
+        metric: Metric,
+        metric_key: str,
+        params: BackendParams,
+        target: Model | Agent | None,
+        prompt_template: str | dict[str, Any] | None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None,
+        preprocess_hooks: tuple[PreprocessRequest, ...] | None,
+        postprocess_hooks: tuple[PostprocessResponse, ...] | None,
+        rows: list[dict[str, Any]],
+    ) -> EvaluationResult:
+        """Body of :meth:`_evaluate_one`, inside a structured-output detection session."""
         prepared_metric = await prepare_metric_for_execution(
             metric,
             params=params,
@@ -132,6 +168,36 @@ class LocalBackend:
         """
         rows = _prepare_rows(dataset, params, field_mapping)
         metric_keys = unique_metric_keys(metrics)
+        # Opened before metric preparation on purpose: prepare_metric_for_execution runs each
+        # metric's preflight, which is where an LLM judge probes its endpoint. Starting the session
+        # later would leave those probes uncached, so two judges on one endpoint would each probe.
+        async with structured_output_mode_session():
+            return await self._evaluate_dataset_in_session(
+                metrics=metrics,
+                metric_keys=metric_keys,
+                rows=rows,
+                params=params,
+                target=target,
+                prompt_template=prompt_template,
+                aggregate_fields=aggregate_fields,
+                preprocess_hooks=preprocess_hooks,
+                postprocess_hooks=postprocess_hooks,
+            )
+
+    async def _evaluate_dataset_in_session(
+        self,
+        *,
+        metrics: Sequence[Metric],
+        metric_keys: Sequence[str],
+        rows: list[dict[str, Any]],
+        params: BackendParams,
+        target: Model | Agent | None,
+        prompt_template: str | dict[str, Any] | None,
+        aggregate_fields: Sequence[AggregateFieldName] | None,
+        preprocess_hooks: Sequence[PreprocessRequest] | None,
+        postprocess_hooks: Sequence[PostprocessResponse] | None,
+    ) -> BenchmarkEvaluationResult:
+        """Body of :meth:`evaluate_dataset`, inside a structured-output detection session."""
         prepared_metrics = [
             await prepare_metric_for_execution(
                 metric,
@@ -152,6 +218,19 @@ class LocalBackend:
         else:
             merged_preprocess_hooks = tuple(preprocess_hooks or ())
             merged_postprocess_hooks = tuple(postprocess_hooks or ())
+        # This multi-metric path builds target hooks itself and calls evaluate_benchmark directly,
+        # bypassing evaluate_metric, so it has to resolve the hook here or generation would send
+        # whichever encoding new_hooks guessed.
+        if isinstance(target, Model):
+            await resolve_target_structured_output_mode(
+                preprocess_hooks=merged_preprocess_hooks,
+                model=target,
+                # Resolved from the benchmark module at call time, not bound here, so the probe
+                # always travels the exact transport that evaluate_benchmark's own default uses --
+                # including when that binding is swapped.
+                inference_fn=benchmark_execution.make_inference_request,
+                params=params,
+            )
         return await sdk_evaluate_benchmark(
             metrics=metrics_built,
             rows=rows,

@@ -921,3 +921,52 @@ def test_metric_row_error_is_none_for_a_trial_that_did_not_fail() -> None:
     row = _metric_row(AgentEvalTask(id="task-1", intent="Fix it.", inputs={}), _candidate_trial())
 
     assert row["trial"]["error"] is None
+class _PreflightCountingMetric(_ConstantMetric):
+    """Metric that records how many times its preflight ran."""
+
+    preflight_calls: int = 0
+
+    async def preflight(self) -> None:
+        self.preflight_calls += 1
+
+
+@pytest.mark.asyncio
+async def test_run_preflights_metrics_before_scoring_imported_trials() -> None:
+    """Agent-eval scores metrics directly, so it must run their preflight itself.
+
+    An LLM judge detects its endpoint's structured-output encoding in preflight. Without this the
+    judge scores using the provisional encoding new_hooks guessed, silently losing enforcement on
+    an endpoint that does not honour it.
+    """
+    metric = _PreflightCountingMetric()
+
+    await AgentEvaluator().run(
+        tasks=[_task(metric)],
+        trials=[_candidate_trial()],
+        config=AgentEvalRunConfig(parallelism=1),
+    )
+
+    assert metric.preflight_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_run_preflights_each_metric_once_across_tasks() -> None:
+    """The same metric object is scored once per trial; preflight must not repeat per scoring."""
+    metric = _PreflightCountingMetric()
+
+    await AgentEvaluator().run(
+        tasks=[_task(metric, task_id="task-1"), _task(metric, task_id="task-2")],
+        trials=[
+            _candidate_trial(),
+            AgentEvalTrial(
+                id="trial-2",
+                task_id="task-2",
+                status=AgentEvalTrialStatus.COMPLETED,
+                output=AgentOutput(output_text="Candidate answer"),
+                metadata={"model_id": "candidate"},
+            ),
+        ],
+        config=AgentEvalRunConfig(parallelism=1),
+    )
+
+    assert metric.preflight_calls == 1

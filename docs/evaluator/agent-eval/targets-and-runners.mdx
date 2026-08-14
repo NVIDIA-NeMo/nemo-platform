@@ -34,15 +34,14 @@ bare model do before you wrap it in an agent?). The evaluator prompts it with ea
 |---|---|---|
 | `url` | yes | endpoint URL (e.g. `.../v1/chat/completions` or `.../v1/completions`) |
 | `name` | yes | model identifier, stamped on trials |
-| `format` | no | `ModelFormat.NVIDIA_NIM` (default), `ModelFormat.OPEN_AI`, or `ModelFormat.LLAMA_STACK` — serialized as `nim` / `openai` / `llama_stack` |
+| `format` | no | **deprecated and ignored** — structured output support is probed from the endpoint during preflight |
 | `api_key_secret` | no | credential reference — `workspace/secret_name` or `secret_name` |
 
 ```python
-from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values import Model
 
 target = Model(url="https://integrate.api.nvidia.com/v1/chat/completions", name="meta/llama-3.1-8b-instruct",
-               format=ModelFormat.OPEN_AI, api_key_secret="NVIDIA_API_KEY")
+               api_key_secret="NVIDIA_API_KEY")
 ```
 
 For a local `run()`, `api_key_secret` names an **environment variable** in your process; for a submitted

@@ -26,7 +26,6 @@ from nemo_evaluator_sdk.agent_inference import (
     make_agent_inference_request,
     new_agent_inference_client,
 )
-from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.execution.config import fail_fast_from_params, resolve_params
 from nemo_evaluator_sdk.execution.pipeline import (
     GeneratedSampleEvent,
@@ -49,6 +48,7 @@ from nemo_evaluator_sdk.metrics.protocol import (
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.resilience.api import run_indexed_tasks, use_resilience_session
 from nemo_evaluator_sdk.resilience.errors import get_evaluation_error
+from nemo_evaluator_sdk.structured_output import structured_output_mode_session
 from nemo_evaluator_sdk.templates import render_request
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -231,7 +231,6 @@ def _merge_online_hooks(
     #   postprocess -> [log_hook, ...]
     built_preprocess_hooks, built_postprocess_hooks = inference.new_hooks(
         params if isinstance(params, RunConfigOnlineModel) else None,
-        model_format=target.format if isinstance(target, Model) else None,
     )
     if not built_preprocess_hooks or not built_postprocess_hooks:
         raise ValueError(
@@ -259,16 +258,63 @@ def _merge_online_hooks(
     )
 
 
-def _maybe_set_nim_default_max_tokens(
+async def resolve_target_structured_output_mode(
     *,
-    request: dict[str, Any],
+    preprocess_hooks: Sequence[inference.PreprocessRequest],
     model: Model,
-    params: RunConfigOnlineModel | None,
+    inference_fn: inference.InferenceFn,
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None,
 ) -> None:
-    """Apply the NIM max token default only when neither params nor request set one."""
-    if model.format != ModelFormat.NVIDIA_NIM:
+    """Probe the target endpoint so generation uses an encoding it actually honours.
+
+    The judge has its own preflight; target generation had none, and previously relied on the
+    model's ``format`` label to pick an encoding. That label is deprecated and ignored, so without
+    this probe a target that only accepts ``nvext.guided_json`` would be sent ``response_format``
+    and either reject the request or silently drop the constraint.
+
+    Only the hook built from ``params.structured_output`` is retuned. A caller that hand-builds an
+    InferenceStructuredOutput and splices it in via ``preprocess_hooks`` has chosen a mode
+    deliberately, and silently overriding that choice would be surprising; ``_merge_online_hooks``
+    places the run-level hook ahead of caller-supplied ones, so the first match is ours.
+
+    Like the judge's own preflight, this runs before ``use_resilience_session()`` opens, so probe
+    attempts use the process-global scheduler and do not appear in the session summary. Detection
+    itself is cached per endpoint for the run, so a Model used as both target and judge is probed
+    once, not once per role.
+    """
+    from nemo_evaluator_sdk.structured_output import InferenceStructuredOutput, detect_structured_output_mode
+
+    if not (isinstance(params, RunConfigOnlineModel) and params.structured_output):
         return
 
+    structured_hook = next(
+        (hook for hook in preprocess_hooks if isinstance(hook, InferenceStructuredOutput)),
+        None,
+    )
+    if structured_hook is None:
+        return
+
+    mode = await detect_structured_output_mode(
+        model=model,
+        inference_fn=inference_fn,
+        api_key=model.api_key,
+    )
+    structured_hook.set_mode(mode)
+    log.info("Structured output mode selected for target %s: %s", model.name, mode.value)
+
+
+def _maybe_set_default_max_tokens(
+    *,
+    request: dict[str, Any],
+    params: RunConfigOnlineModel | None,
+) -> None:
+    """Apply the default max token cap when neither params nor request set one.
+
+    This was previously applied only to ``nim``-format models. Model format is deprecated and no
+    longer distinguishes endpoints, so the cap is unconditional: an unbounded generation against a
+    reasoning-capable judge is a cost risk on any endpoint, and callers that want more can set
+    ``max_tokens`` or ``max_completion_tokens`` explicitly.
+    """
     inference_params = params.inference if isinstance(params, RunConfigOnlineModel) else None
     if inference_params is not None and (
         inference_params.max_tokens is not None or inference_params.max_completion_tokens is not None
@@ -350,8 +396,8 @@ async def generate_online_sample(
 
     Two valid call shapes, pinned by the ``@overload``s above:
 
-    - ``target: Model`` pairs with ``inference_fn: InferenceFn``. NIM
-      max-token defaults are applied and ``default_headers`` is forwarded
+    - ``target: Model`` pairs with ``inference_fn: InferenceFn``. Default
+      max-token caps are applied and ``default_headers`` is forwarded
       to the inference fn.
     - ``target: Agent`` pairs with ``inference_fn: AgentInferenceFn``.
       ``default_headers`` is forwarded to the inference fn.
@@ -359,7 +405,7 @@ async def generate_online_sample(
     request = render_request(prompt_template, context={**row, "item": row, **(template_context or {})})
     if isinstance(target, Model):
         model_params = params if isinstance(params, RunConfigOnlineModel) else None
-        _maybe_set_nim_default_max_tokens(request=request, model=target, params=model_params)
+        _maybe_set_default_max_tokens(request=request, params=model_params)
     request = inference.preprocess_request(request, list(preprocess_hooks or ()), id=str(index))
 
     max_retries = params.max_retries if params is not None else 3
@@ -822,6 +868,31 @@ async def evaluate_metric(
         log.warning("No rows found in dataset, returning empty evaluation result")
         return empty_evaluation_result()
 
+    # Scope endpoint structured-output detection to this run so probes are cached across rows
+    # without leaking a result (or a transient failure) into the next run.
+    async with structured_output_mode_session():
+        return await _evaluate_metric_in_session(
+            metric=metric,
+            rows=rows,
+            target=target,
+            prompt_template=prompt_template,
+            params=params,
+            preprocess_hooks=preprocess_hooks,
+            postprocess_hooks=postprocess_hooks,
+        )
+
+
+async def _evaluate_metric_in_session(
+    *,
+    metric: Metric,
+    rows: list[dict[str, Any]],
+    target: Model | Agent | None,
+    prompt_template: str | dict[str, Any] | None,
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None,
+    preprocess_hooks: Sequence[inference.PreprocessRequest] | None,
+    postprocess_hooks: Sequence[inference.PostprocessResponse] | None,
+) -> EvaluationResult:
+    """Body of :func:`evaluate_metric`, run inside a structured-output detection session."""
     params = resolve_params(params, target)
 
     client_close_fn = None
@@ -836,6 +907,12 @@ async def evaluate_metric(
         params = cast(RunConfigOnlineModel, params)
         inference_fn = (
             metric.inference_fn if isinstance(metric, InferenceMetricBase) else inference.make_inference_request
+        )
+        await resolve_target_structured_output_mode(
+            preprocess_hooks=merged_preprocess_hooks,
+            model=target,
+            inference_fn=inference_fn,
+            params=params,
         )
         resolved_prompt_template = _resolve_online_prompt_template(prompt_template, target, rows[0])
         client = inference.new_inference_client(target)

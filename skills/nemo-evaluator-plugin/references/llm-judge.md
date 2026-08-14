@@ -21,7 +21,6 @@ judge = LLMJudgeMetric(
     model=Model(
         url="https://provider.example/v1/chat/completions",
         name="<judge-model-id>",
-        format="openai",
         api_key_secret=SecretRef(root="NVIDIA_API_KEY"),
     ),
     scores=[

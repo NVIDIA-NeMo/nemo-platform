@@ -46,10 +46,15 @@ from nemo_evaluator_sdk.agent_inference import (
     make_agent_inference_fn,
     new_agent_inference_client,
 )
-from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample, run_sync
+from nemo_evaluator_sdk.execution.metric_execution import (
+    generate_online_sample,
+    resolve_target_structured_output_mode,
+    run_sync,
+)
+from nemo_evaluator_sdk.structured_output import structured_output_mode_session
 from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.inference import InferenceFn
-from nemo_evaluator_sdk.metrics.protocol import Metric, validate_metric_result
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithPreflight, validate_metric_result
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -161,22 +166,26 @@ class AgentEvaluator:
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
         started_at = datetime.now(UTC)
 
-        # Branch on which seam was supplied so the type checker can narrow ``target`` to a
-        # concrete ``AgentEvalTarget`` without a cast.
-        if trials is not None:
-            if target is not None:
+        # One detection session for the whole run: generation probes the target and scoring probes
+        # any judge model, and imported-trial runs still score, so scoping this to generation alone
+        # would leave judges probing per call.
+        async with structured_output_mode_session():
+            # Branch on which seam was supplied so the type checker can narrow ``target`` to a
+            # concrete ``AgentEvalTarget`` without a cast.
+            if trials is not None:
+                if target is not None:
+                    raise ValueError("provide exactly one of trials or target")
+                trial_list = list(trials)
+            elif target is not None:
+                trial_list = await self._generate_trials(tasks=task_list, target=target, config=runtime_config)
+            else:
                 raise ValueError("provide exactly one of trials or target")
-            trial_list = list(trials)
-        elif target is not None:
-            trial_list = await self._generate_trials(tasks=task_list, target=target, config=runtime_config)
-        else:
-            raise ValueError("provide exactly one of trials or target")
-        scores = await self._score_trials(
-            tasks=task_list,
-            trials=trial_list,
-            config=runtime_config,
-            run_id=run_id,
-        )
+            scores = await self._score_trials(
+                tasks=task_list,
+                trials=trial_list,
+                config=runtime_config,
+                run_id=run_id,
+            )
         runner_scores = _collect_runner_aggregate_scores(target) if target is not None else []
         finished_at = datetime.now(UTC)
         metadata = RunMetadata(
@@ -238,6 +247,19 @@ class AgentEvaluator:
         for task in tasks:
             if not task.metrics:
                 raise ValueError(f"task {task.id!r} does not declare any metrics")
+
+        # Agent-eval scores metrics directly rather than through prepare_metric_for_execution, so
+        # nothing else runs their preflight. An LLM judge detects its endpoint's structured-output
+        # encoding there; without this it would score using the provisional guess from new_hooks.
+        # Deduplicated by identity because the same metric object is scored once per trial. The run
+        # session would collapse repeat probes to one request anyway; this just avoids the repeated
+        # awaits. Identity is stable here: `tasks` holds every metric for the duration of the loop.
+        preflighted: set[int] = set()
+        for task in tasks:
+            for metric in task.metrics:
+                if isinstance(metric, MetricWithPreflight) and id(metric) not in preflighted:
+                    preflighted.add(id(metric))
+                    await metric.preflight()
 
         semaphore = asyncio.Semaphore(config.parallelism)
 
@@ -311,6 +333,8 @@ class AgentEvaluator:
         params = _resolve_live_params(config, target)
         prompt_template = config.prompt_template or _default_prompt_template(target)
         semaphore = asyncio.Semaphore(params.parallelism)
+        # Hooks are built per row below; the run-level session opened by run() is what keeps the
+        # endpoint probe to one round trip for the whole pass instead of one per row.
 
         # Use the injected transport client when provided; otherwise build a default for the
         # resolved target type and close it when generation finishes.
@@ -395,9 +419,17 @@ async def _generate_sample(
     # The transport client is a real class union, so isinstance narrowing is enough there.
     if isinstance(target, Model):
         model_params = cast(RunConfigOnlineModel, params)
-        preprocess_hooks, postprocess_hooks = inference.new_hooks(model_params, model_format=target.format)
+        preprocess_hooks, postprocess_hooks = inference.new_hooks(model_params)
         model_inference_fn = (
             cast(InferenceFn, inference_fn) if inference_fn is not None else inference.make_inference_request
+        )
+        # Hooks are built per row here, so this relies on detection being cached per endpoint:
+        # without the probe the request would carry whichever encoding new_hooks guessed.
+        await resolve_target_structured_output_mode(
+            preprocess_hooks=preprocess_hooks,
+            model=target,
+            inference_fn=model_inference_fn,
+            params=model_params,
         )
         return await generate_online_sample(
             target=target,

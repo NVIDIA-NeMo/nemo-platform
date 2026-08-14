@@ -71,13 +71,11 @@ from nemo_evaluator_sdk import (
     RunConfig,
     LLMJudgeMetric
 )
-from nemo_evaluator_sdk.enums import ModelFormat
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RangeScore(
@@ -169,7 +167,6 @@ Use rubric scores when you want categorical labels with explicit descriptions:
 
 ```python
 from nemo_evaluator_sdk import JSONScoreParser, Model, RubricScore, LLMJudgeMetric
-from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values import Rubric
 from nemo_evaluator_sdk import Evaluator as LocalEvaluator
 
@@ -177,7 +174,6 @@ metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RubricScore(
@@ -279,14 +275,12 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
-from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values import Rubric
 
 metric = LLMJudgeMetric(
     model=Model(
         url="<judge-nim-url>/v1",
         name="meta/llama-3.1-70b-instruct",
-        format=ModelFormat.NVIDIA_NIM,
     ),
     scores=[
         RubricScore(
@@ -552,7 +546,6 @@ metric = {
  "model": {
  "url": "<judge-url>/v1",
  "name": "meta/llama-3.1-70b-instruct",
- "format": "nim"
  },
  "scores": [
  {
@@ -599,7 +592,6 @@ metric = {
     "model": {
         "url": "https://api.example.com/v1",
         "name": "gpt-4",
-        "format": "openai",
         "api_key_secret": "judge-api-key",
     },
     # ... scores and prompt_template
@@ -638,7 +630,6 @@ metric = {
     "model": {
         "url": "<nim-url>/v1",
         "name": "nvidia/llama-3.3-nemotron-super-49b-v1",
-        "format": "nim",
     },
     # ... scores ...
     "system_prompt": "'detailed thinking on'",

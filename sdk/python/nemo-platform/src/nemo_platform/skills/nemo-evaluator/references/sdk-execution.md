@@ -137,7 +137,6 @@ metric = ExactMatchMetric(reference="{{item.expected}}")
 target = Model(
     url="https://provider.example/v1",
     name="<model-id>",
-    format="openai",
     api_key_secret="<secret-or-env-name>",
 )
 
@@ -153,8 +152,9 @@ result = Evaluator().run_sync(
 )
 ```
 
-In `Model(...)`, `format` selects the provider/API protocol shape, such as
-OpenAI-compatible request and response handling. `api_key_secret` is a secret
+In `Model(...)`, `format` is deprecated and ignored; do not set it. Structured
+output support is detected from the endpoint during preflight rather than
+inferred from a label. `api_key_secret` is a secret
 reference name, not a literal secret value. For local SDK runs, ensure the
 matching local environment variable exists; for remote platform jobs, create a
 platform secret with the same name in the job workspace.
@@ -173,7 +173,6 @@ from nemo_evaluator_sdk import Evaluator, JSONScoreParser, LLMJudgeMetric, Model
 judge_model = Model(
     url="https://provider.example/v1",
     name="<judge-model-id>",
-    format="openai",
     api_key_secret="<secret-or-env-name>",
 )
 
