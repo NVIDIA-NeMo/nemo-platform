@@ -133,6 +133,25 @@ def _coerce(value: object) -> float | int:
     return int(real) if isinstance(real, numbers.Integral) else float(real)
 
 
+def _point_step(point: object) -> float | int | None:
+    """The step a stored series point records, or ``None`` if it records none.
+
+    Defensive because the accumulator is seeded from whatever the server had
+    stored: a malformed blob must cost the points it corrupted, never raise out
+    of a report and into the training loop.
+    """
+    if not isinstance(point, dict):
+        return None
+    step = point.get("step")
+    return step if isinstance(step, (int, float)) else None
+
+
+def _highest_step(series: Mapping[str, list[dict[str, float | int]]]) -> float | int:
+    """The furthest step any series in ``series`` has recorded, or 0 for none."""
+    steps = [step for points in series.values() for point in points if (step := _point_step(point)) is not None]
+    return max(steps, default=0)
+
+
 class TrainingProgressCallback:
     """Report training progress to the Jobs service."""
 
@@ -144,8 +163,19 @@ class TrainingProgressCallback:
         self._reporter = reporter
 
         #: series name -> [{step, epoch, value}], seeded from the server so a
-        #: resumed job continues its curves instead of restarting them.
-        self._series: dict[str, list[dict[str, float | int]]] = dict(reporter.fetch_current_metrics())
+        #: resumed job continues its curves instead of restarting them. A seeded
+        #: point that records no step is dropped here: it can be placed neither
+        #: on a curve nor against a rewind, so carrying it only defers the
+        #: problem to whoever reads it.
+        self._series: dict[str, list[dict[str, float | int]]] = {
+            name: [point for point in points if _point_step(point) is not None]
+            for name, points in reporter.fetch_current_metrics().items()
+        }
+
+        #: Furthest step any series has reached, seeded points included. A report
+        #: below it means training resumed from a checkpoint and is replaying
+        #: steps that were already recorded; see :meth:`_discard_from`.
+        self._high_water_step: float | int = _highest_step(self._series)
         if any(self._series.values()):
             logger.info(
                 "Seeded %d metric series from server (%d points): %s",
@@ -173,6 +203,9 @@ class TrainingProgressCallback:
         what the Jobs service records as the task's phase.
         """
         namespaced = _namespace(phase, metrics)
+        if step < self._high_water_step:
+            self._discard_from(step)
+        self._high_water_step = max(self._high_water_step, step)
         for name, value in namespaced.items():
             self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
 
@@ -186,6 +219,27 @@ class TrainingProgressCallback:
         if resolved is not None:
             details["backend"] = resolved
         self._reporter.report_running(phase=report_phase, **details)
+
+    def _discard_from(self, step: int) -> None:
+        """Drop every recorded point at or after ``step``, across all series.
+
+        A report below the high-water mark means training resumed from a
+        checkpoint and is replaying steps it already reported. The replayed
+        values are the real ones -- what is discarded belongs to work that was
+        rolled back -- so keeping both makes the curve double back on itself,
+        which is worse than the gap that removing them leaves.
+
+        Every series, not just the one being appended to: validation runs on its
+        own cadence, so a val curve would otherwise carry its rolled-back points
+        until the next validation pass, potentially hundreds of steps later.
+        Points whose step cannot be read go too, there being no way to place
+        them relative to the rewind.
+
+        Lists are truncated in place; :meth:`_build_metrics_summary` copies each
+        one before handing it over, so payloads already sent are unaffected.
+        """
+        for points in self._series.values():
+            points[:] = [point for point in points if (recorded := _point_step(point)) is not None and recorded < step]
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
         """Build the accumulated metrics payload for inclusion in status_details.

@@ -347,6 +347,118 @@ def test_series_survive_a_resume_beyond_the_loss_curves() -> None:
     ]
 
 
+# --------------------------------------------------------------------------- #
+# Resuming from a checkpoint rewinds the curves
+# --------------------------------------------------------------------------- #
+
+
+def test_a_resumed_run_discards_the_steps_it_replays() -> None:
+    """Reporting runs ahead of checkpointing, so a resume replays reported steps.
+
+    Checkpoint at 100, reports as far as 150, interruption. Training resumes
+    from the checkpoint and reports 110 again with a different value. Both
+    points kept, the curve doubles back on itself; the replayed one is the real
+    one, because 110-150 belong to work that was rolled back.
+    """
+    prior = {
+        "train_loss": [{"step": step, "epoch": 1, "value": 1.0} for step in (100, 110, 120, 130, 140, 150)],
+    }
+    reporter = _RecordingReporter(prior)
+    _make_callback(reporter).report_train_step(step=110, epoch=1, metrics={"loss": 0.7})
+
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [
+        {"step": 100, "epoch": 1, "value": 1.0},
+        {"step": 110, "epoch": 1, "value": 0.7},
+    ]
+
+
+def test_a_rewind_prunes_every_series_not_only_the_one_being_written() -> None:
+    """Validation has its own cadence, so its curve cannot wait to self-heal.
+
+    Pruning only the series being appended to would leave val_loss holding its
+    rolled-back points until the next validation pass, which may be hundreds of
+    steps away -- and on a short run may never come.
+    """
+    prior = {
+        "train_loss": [{"step": 100, "epoch": 1, "value": 1.0}, {"step": 150, "epoch": 2, "value": 0.9}],
+        "val_loss": [{"step": 100, "epoch": 1, "value": 1.1}, {"step": 150, "epoch": 2, "value": 1.2}],
+        "train_reward": [{"step": 150, "epoch": 2, "value": 0.3}],
+    }
+    reporter = _RecordingReporter(prior)
+    _make_callback(reporter).report_train_step(step=110, epoch=1, metrics={"loss": 0.7})
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert [point["step"] for point in metrics["train_loss"]] == [100, 110]
+    assert [point["step"] for point in metrics["val_loss"]] == [100]
+    assert metrics["train_reward"] == []
+
+
+def test_forward_progress_never_prunes(reporter: _RecordingReporter) -> None:
+    """The ordinary path: every step is past the high-water mark, nothing moves."""
+    callback = _make_callback(reporter)
+    for step in (1, 2, 3, 4):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 1.0 / step})
+
+    assert [point["step"] for point in reporter.reports[-1]["metrics"]["train_loss"]] == [1, 2, 3, 4]
+
+
+def test_validation_and_training_at_the_same_step_both_land(reporter: _RecordingReporter) -> None:
+    """Not a rewind: NeMo-RL validates at step N before logging train N.
+
+    The high-water comparison is strict for this reason -- treating "not ahead"
+    as a rewind would have the train report delete the validation point that
+    legitimately shares its step.
+    """
+    callback = _make_callback(reporter)
+    callback.report_validation(step=10, epoch=1, metrics={"loss": 0.9})
+    callback.report_train_step(step=10, epoch=1, metrics={"loss": 0.8})
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert metrics["val_loss"] == [{"step": 10, "epoch": 1, "value": 0.9}]
+    assert metrics["train_loss"] == [{"step": 10, "epoch": 1, "value": 0.8}]
+
+
+def test_a_restart_from_scratch_clears_the_curves() -> None:
+    """A task that reruns without a checkpoint rewinds all the way to zero."""
+    prior = {"train_loss": [{"step": 50, "epoch": 1, "value": 1.0}]}
+    reporter = _RecordingReporter(prior)
+    _make_callback(reporter).report_train_step(step=1, epoch=1, metrics={"loss": 2.0})
+
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 2.0}]
+
+
+def test_a_malformed_stored_point_cannot_raise_into_the_training_loop() -> None:
+    """The blob is read back from the server, so its shape is not guaranteed.
+
+    report_train_step is called straight from NeMo-RL's log_metrics with nothing
+    catching underneath, so a stored point that is not a {step, ...} dict has to
+    be dropped rather than raise.
+    """
+    # Cast because the shape is the point: this is what a corrupted blob reads
+    # back as, and no annotation describes it honestly.
+    prior = cast(
+        dict[str, list[dict[str, Any]]],
+        {"train_loss": [{"step": 100, "epoch": 1, "value": 1.0}, "junk", {"epoch": 1}, {"step": "eight"}]},
+    )
+    reporter = _RecordingReporter(prior)
+    _make_callback(reporter).report_train_step(step=110, epoch=1, metrics={"loss": 0.7})
+
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [
+        {"step": 100, "epoch": 1, "value": 1.0},
+        {"step": 110, "epoch": 1, "value": 0.7},
+    ]
+
+
+def test_a_malformed_stored_point_does_not_skew_the_high_water_mark() -> None:
+    """It is unplaceable, so it cannot be what a later report is compared against."""
+    prior = {"train_loss": [{"step": "eight"}, {"step": 10, "epoch": 1, "value": 1.0}]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter)
+    callback.report_train_step(step=11, epoch=1, metrics={"loss": 0.7})
+
+    assert [point["step"] for point in reporter.reports[-1]["metrics"]["train_loss"]] == [10, 11]
+
+
 def test_series_are_snapshots_not_live_references(reporter: _RecordingReporter) -> None:
     """A shared list would retroactively mutate already-sent payloads."""
     callback = _make_callback(reporter)
