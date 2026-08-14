@@ -6,9 +6,10 @@ import YAML from 'yaml';
 
 /**
  * Loads a sample agent's config from a public static asset and injects the
- * selected model. Parse-then-set: the fetched YAML's model literal is
- * overwritten, so the asset can stay byte-identical to the plugin's
- * ${NEMO_DEFAULT_MODEL} version (the platform service doesn't resolve that).
+ * selected model plus the target workspace. Parse-then-set: the fetched YAML's
+ * literals are overwritten, so the asset can stay byte-identical to the
+ * plugin's ${NEMO_DEFAULT_MODEL} version (the platform service doesn't resolve
+ * that).
  *
  * Branches on the config's own `config_format`:
  * - NAT (`nat-workflow-v1`, the default when absent): model lives at
@@ -18,7 +19,8 @@ import YAML from 'yaml';
  */
 export const loadSampleAgentConfig = async (
   agentConfigPath: string,
-  modelName: string
+  modelName: string,
+  workspace: string
 ): Promise<Record<string, unknown>> => {
   const text = await fetchSampleText(agentConfigPath);
   const config = YAML.parse(text) as Record<string, unknown>;
@@ -27,11 +29,13 @@ export const loadSampleAgentConfig = async (
 
   if (configFormat === 'nemo-agents-spec-v1') {
     injectFabricModel(config, modelName, agentConfigPath);
+    injectIntakeWorkspace(config, workspace);
     return config;
   }
 
   if (configFormat === undefined || configFormat === 'nat-workflow-v1') {
     injectNatModel(config, modelName, agentConfigPath);
+    injectIntakeWorkspace(config, workspace);
     return config;
   }
 
@@ -51,6 +55,33 @@ const injectNatModel = (
     throw new Error(`Sample agent config ${agentConfigPath} is missing llms.llm`);
   }
   (llm as Record<string, unknown>).model_name = modelName;
+};
+
+const INTAKE_WORKSPACE_RE = /(\/apis\/intake\/v\d+\/workspaces\/)[^/]+(\/)/;
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+/**
+ * Point ATIF HTTP storage endpoints at the workspace the agent is created in.
+ * The sample assets ship a literal `default`, so without this the agent's
+ * traces land in the wrong workspace and never reach its own agent page.
+ */
+const injectIntakeWorkspace = (config: Record<string, unknown>, workspace: string): void => {
+  const atif = asRecord(asRecord(config.telemetry)?.atif);
+  const storage = atif?.storage;
+  if (!Array.isArray(storage)) return;
+
+  for (const entry of storage) {
+    const record = asRecord(entry);
+    if (record?.type !== 'http' || typeof record.endpoint !== 'string') continue;
+    record.endpoint = record.endpoint.replace(
+      INTAKE_WORKSPACE_RE,
+      (_match, prefix: string, suffix: string) => `${prefix}${workspace}${suffix}`
+    );
+  }
 };
 
 /** Fabric (nemo-agents-spec-v1) config: overwrite `models.default.model`. */
