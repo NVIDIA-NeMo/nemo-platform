@@ -342,13 +342,19 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
             # prompt, but the population must keep the full records: a later
             # record_reward persists the whole candidate, so carrying a slim copy
             # forward would erase every other channel's trials in the store.
-            by_id = {c.id: c for c in candidates}
+            # Matched on label, not id: `survivors` is a generated method, so its return
+            # value can come back either as the objects themselves or re-specified as
+            # JSON. A candidate's id is a computed property over a private attribute and
+            # is not a model field, so the JSON route cannot carry it and validation
+            # mints a fresh one. The label is an ordinary field and survives both routes,
+            # and is unique within a run.
+            by_label = {c.label: c for c in candidates}
             chosen = (
                 await self._selector(config).survivors([c.slim() for c in candidates], k=config.max_survivors)
                 if len(candidates) > 1
                 else list(candidates)
             )
-            survivors = [by_id[s.id] for s in chosen if s.id in by_id]
+            survivors = [by_label[s.label] for s in chosen if s.label in by_label]
             if len(survivors) != len(chosen):
                 logger.warning(
                     "Selector returned %d candidates this round but only %d are in the population; "
@@ -356,8 +362,8 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     len(chosen),
                     len(survivors),
                 )
-            survived = {s.id for s in survivors}
-            for candidate in [c for c in candidates if c.id not in survived]:
+            survived = {s.label for s in survivors}
+            for candidate in [c for c in candidates if c.label not in survived]:
                 await ctx.update_candidate(candidate, killed_generation=round_num)
 
             # Only the analyzer consumes these, so a diagnosis-blind run does not pay for
