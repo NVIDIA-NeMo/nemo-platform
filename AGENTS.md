@@ -251,6 +251,7 @@ Ensure all pre-commit hooks pass by running `uv run pre-commit run -a`. A clean 
 - **Toolchain:** Install Flox before running `make bootstrap`; Make activates it as needed. For a preinstalled host toolchain, install the versions printed by `make toolchain-versions` and use `TOOLCHAIN=system`.
 - **uv version:** Root `pyproject.toml` specifies the supported minimum for source checkout bootstrap. `make toolchain-versions` reports the exact version used for `uv.lock` updates, Flox, platform containers, and CI.
 - **Native build deps:** `make bootstrap-python` builds `annoy` (via `nemoguardrails`). Install system headers once per VM image: `sudo apt-get install -y python3-dev build-essential`.
+- **Rust toolchain:** `nemo-fabric-runtime` installs from a Git source and compiles Rust crates that use edition 2024, so Cargo 1.85 or newer is a prerequisite. A VM image that ships an older Cargo (for example 1.83) makes `uv sync` fail with a Cargo `edition2024` error. Install a newer toolchain once per VM image: `rustup toolchain install stable --profile minimal && rustup default stable`.
 - **Python bootstrap:** Run `make bootstrap-python` from repo root (creates `.venv`, runs `uv sync --frozen --all-packages`). See [SETUP.md](SETUP.md) for the full playbook.
 - **Studio (optional):** `make bootstrap-studio` uses the Node.js/pnpm versions pinned in the Flox environment, so a VM shipping an older Node does not need upgrading. API services still run without Studio assets. For a preinstalled host toolchain, install the versions printed by `make toolchain-versions` and use `TOOLCHAIN=system`.
 - **Docker:** Not needed for dependency bootstrap. It is required before running `nemo setup` or local services.
@@ -278,6 +279,10 @@ Minimal subset for inference-focused work (documented in SETUP.md): `uv run nemo
 
 Standard commands from repo root (see sections above): `uv run ruff check`, `uv run --frozen ty check`, `make test-unit`, `make test-package PACKAGE=<name>`.
 
+- **Toolchain:** `make` targets call their tools through Flox. On a VM image without Flox, add `TOOLCHAIN=system` (for example, `make test-unit TOOLCHAIN=system`), or the target stops with `flox: command not found`.
+- **Terminal:** Set `TERM=dumb` when you run the tests from tmux. A colour-capable terminal makes Rich add style codes to CLI output, and the CLI assertions then fail.
+- **Full-suite prerequisites:** The Insights testbed tests need the `zstd` CLI (`sudo apt-get install -y zstd`), and the embedded auth PDP tests build `policy.wasm` with the OPA binary. `openpolicyagent.org` is outside the Cursor Cloud allowlist, so take OPA from its GitHub mirror: `OPA_DOWNLOAD_BASE_URL=https://github.com/open-policy-agent/opa/releases/download bash script/build_policy_wasm.sh`.
+- **Live Docker tests:** The `*_live.py` tests in `packages/nemo_evaluator_sdk/tests/agent_eval/` pull images from Docker Hub. Docker Hub serves blobs from `docker-images-prod.s3.dualstack.us-east-1.amazonaws.com`, which is outside the allowlist, so these tests fail until that domain is added.
 - **Docker:** Not required for core platform smoke tests. One `nmp_common` config test expects Docker and sets runtime to `none` when Docker is unavailable.
 - **Inference providers:** `nemo setup`, `nemo chat`, and agent invoke require an API key (`NVIDIA_API_KEY`, `OPENAI_API_KEY`, etc.). Core APIs (workspaces, secrets, hello-world, entities) work without provider credentials.
 

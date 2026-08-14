@@ -140,6 +140,8 @@ flox -q activate
 
 Without Flox, install the versions printed by `make toolchain-versions` and a C compiler, then run `make TOOLCHAIN=system bootstrap`. Docker is required when starting local services, but not for dependency bootstrap.
 
+Flox does not pin Rust. `nemo-fabric-runtime` currently installs from a Git source and compiles a Rust extension, so Cargo 1.85 or newer must also be on your PATH — an older Cargo stops the bootstrap with a Cargo `edition2024` error. `rustup toolchain install stable --profile minimal && rustup default stable` installs a new enough toolchain. This prerequisite ends when the Fabric wheels return to PyPI (see the `nemo-fabric` comment in the root `pyproject.toml`).
+
 If `nemo setup` is too high-level for the task (e.g. debugging startup, custom service set, custom plugin install after bootstrap), use the manual sections below.
 
 ### Default and fast model selection

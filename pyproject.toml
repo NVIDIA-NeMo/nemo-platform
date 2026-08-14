@@ -398,6 +398,8 @@ nooa = { git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git", rev = "6e027
 # and the metapackage pins runtime/adapters to ==0.2.0.
 # Declared dep floors stay >=0.1.0 so wheelcheck / PyPI installs of the published
 # wheel still resolve (uv.sources do not apply outside this workspace).
+# While these git sources are in place, nemo-fabric-runtime builds its Rust extension
+# from source, so bootstrap needs Cargo 1.85+ (Fabric's crates use edition 2024).
 # Remove these entries once PyPI has 0.2.0.
 nemo-fabric = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0" }
 nemo-fabric-runtime = { git = "https://github.com/NVIDIA/NeMo-Fabric.git", rev = "e7353383024523179be6a009ef16dea223bea8c0", subdirectory = "python" }
