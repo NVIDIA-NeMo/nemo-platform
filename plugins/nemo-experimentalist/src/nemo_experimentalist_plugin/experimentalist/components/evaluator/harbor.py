@@ -399,10 +399,7 @@ def _scoped_import_path(agent_path: Path, import_path: str) -> tuple[str, str]:
     module_name, attribute = split_import_path(import_path)
     package_name = _agent_import_package(agent_path)
     _ensure_package(package_name, search_path=agent_path)
-    scoped = f"{package_name}.{module_name}"
-    if ":" in import_path:
-        scoped = f"{scoped}:{attribute}"
-    return scoped, package_name
+    return f"{package_name}.{module_name}:{attribute}", package_name
 
 
 def _cleanup_scoped_imports(package_name: str) -> None:

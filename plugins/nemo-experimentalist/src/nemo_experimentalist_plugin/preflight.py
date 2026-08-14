@@ -461,24 +461,23 @@ def _check_agent_source(
 
 
 def _check_agent_entrypoint(agent_dir: Path, evaluator: dict | None) -> CheckResult:
-    """Resolve the evaluator's entrypoint module inside a local agent directory.
+    """Resolve the evaluator's entrypoint inside a local agent directory.
 
-    The evaluator imports the module from that directory alone, so a module that
-    is absent there fails every trial of every candidate. Only local sources are
-    checked, because a git tree exists after the clone.
+    The evaluator imports it from that directory alone, so an entrypoint it
+    cannot find there fails every trial of every candidate.
     """
     configured = (evaluator or {}).get("import_path")
     import_path = DEFAULT_AGENT_IMPORT_PATH if configured is None else str(configured)
     try:
         module_name, attribute = split_import_path(import_path)
-    except ValueError:
+    except ValueError as exc:
         return CheckResult(
             name="agent-entrypoint",
             group="agent-source",
             status="fail",
             severity="required",
-            message=f"evaluator import_path {import_path!r} names no module",
-            hint="set evaluator.import_path to <module>[:<attribute>] in the experiment config",
+            message=f"evaluator import_path {import_path!r} is unusable: {exc}",
+            hint="set evaluator.import_path in the experiment config to <module>:<attribute>",
         )
     found = find_entrypoint_module(agent_dir, module_name)
     expected = Path(*module_name.split("."))
@@ -490,7 +489,7 @@ def _check_agent_entrypoint(agent_dir: Path, evaluator: dict | None) -> CheckRes
         f"evaluator entrypoint {import_path} at {found}",
         f"evaluator cannot import {module_name!r} from the agent source: {agent_dir}",
         hint=(
-            f"add {expected}.py{f' defining {attribute}' if attribute else ''} to the agent directory, "
+            f"add {expected}.py defining {attribute} to the agent directory, "
             "or point evaluator.import_path in the experiment config at the module you have"
         ),
     )

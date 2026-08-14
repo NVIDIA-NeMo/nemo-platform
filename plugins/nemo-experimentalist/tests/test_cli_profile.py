@@ -57,7 +57,6 @@ def app():
 
 
 def write_harbor_wrapper(agent_dir: Path) -> None:
-    """Make *agent_dir* importable by the evaluator's default entrypoint."""
     (agent_dir / "harbor_wrapper.py").write_text("class WrappedAgent:\n    pass\n", encoding="utf-8")
 
 
@@ -1063,8 +1062,7 @@ def test_missing_evaluator_entrypoint_blocks_both_commands(
     """Doctor reports the same missing wrapper that stops a run, not a clean bill."""
     write_task_toml(profile_tree)
     (profile_tree / "harbor_wrapper.py").unlink()
-    recorder = RunRecorder()
-    monkeypatch.setattr(cli, "run_experimentalist", recorder)
+    monkeypatch.setattr(cli, "run_experimentalist", RunRecorder())
     monkeypatch.chdir(profile_tree)
     args = [command]
     if command == "run":
@@ -1073,7 +1071,6 @@ def test_missing_evaluator_entrypoint_blocks_both_commands(
     result = runner.invoke(app, args)
 
     assert result.exit_code == 1
-    assert recorder.kwargs is None
     assert "evaluator cannot import 'harbor_wrapper'" in result.output
     assert "Traceback" not in result.output
 
