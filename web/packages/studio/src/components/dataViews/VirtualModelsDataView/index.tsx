@@ -239,7 +239,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
   const hasSearchOrFilters =
     !!dataViewState.debouncedSearchBar || dataViewState.debouncedColumnFilters.length > 0;
   const isInitialEmpty =
-    virtualModelsWithId.length === 0 && !isFetching && !error && !hasSearchOrFilters;
+    pagination?.total_results === 0 && !isFetching && !error && !hasSearchOrFilters;
 
   return (
     <Stack gap="density-xl" {...attributes?.Stack}>

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { GUARDRAILS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -20,7 +20,7 @@ export const virtualModelsRoutes: RouteObject[] = gateGuardrailsRoutes([
   {
     path: ROUTES.workspace.virtualModels,
     element: <VirtualModelsListRoute />,
-    errorElement: <ErrorPanel title="Virtual Models" />,
+    errorElement: <RouteErrorPanel title="Virtual Models" />,
   },
 ]);
 

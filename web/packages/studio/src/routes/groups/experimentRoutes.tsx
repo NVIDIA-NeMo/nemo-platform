@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { EXPERIMENT_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -35,22 +35,22 @@ export const experimentRoutes: RouteObject[] = gateExperimentRoutes([
   {
     path: ROUTES.workspace.experiment,
     element: <ExperimentRoute />,
-    errorElement: <ErrorPanel title="Experiments" />,
+    errorElement: <RouteErrorPanel title="Experiments" />,
   },
   {
     path: ROUTES.workspace.evaluationSessionDetail,
     element: <EvaluationSessionDetailRoute />,
-    errorElement: <ErrorPanel title="Session" />,
+    errorElement: <RouteErrorPanel title="Session" />,
   },
   {
     path: ROUTES.workspace.experimentDetail,
     element: <ExperimentDetailRoute />,
-    errorElement: <ErrorPanel title="Experiment" />,
+    errorElement: <RouteErrorPanel title="Experiment" />,
   },
   {
     path: ROUTES.workspace.evaluationDetail,
     element: <EvaluationDetailRoute />,
-    errorElement: <ErrorPanel title="Evaluation" />,
+    errorElement: <RouteErrorPanel title="Evaluation" />,
   },
 ]);
 

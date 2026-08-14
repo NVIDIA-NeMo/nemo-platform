@@ -43,7 +43,7 @@ import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
 export interface InferenceProvidersDataViewProps {
   workspace: string;
   /** Opens the create-provider flow from the first-use empty state. */
-  onCreate?: () => void;
+  readonly onCreate?: () => void;
   attributes?: {
     Stack?: React.ComponentProps<typeof Stack>;
   };

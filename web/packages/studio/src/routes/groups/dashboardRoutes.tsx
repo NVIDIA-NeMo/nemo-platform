@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { ASSISTANT_STUDIO_ENABLED, DASHBOARD_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -34,13 +34,13 @@ export const dashboardRoutes: RouteObject[] = gateDashboardRoutes([
   {
     path: ROUTES.workspace.dashboard,
     element: ASSISTANT_STUDIO_ENABLED ? <DashboardLandingRoute /> : <WorkspaceDashboardRoute />,
-    errorElement: <ErrorPanel title="Workspace" />,
+    errorElement: <RouteErrorPanel title="Workspace" />,
   },
   ...gateAssistantStudioRoutes([
     {
       path: ROUTES.workspace.assistantChat,
       element: <AssistantChatRoute />,
-      errorElement: <ErrorPanel title="NeMo Assistant" />,
+      errorElement: <RouteErrorPanel title="NeMo Assistant" />,
     },
   ]),
 ]);

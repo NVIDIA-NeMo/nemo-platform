@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -36,17 +36,17 @@ export const anonymizerRoutes: RouteObject[] = gateAnonymizerRoutes([
   {
     path: ROUTES.workspace.anonymizer,
     element: AnonymizerListRoute ? <AnonymizerListRoute /> : null,
-    errorElement: <ErrorPanel title="Anonymizer" />,
+    errorElement: <RouteErrorPanel title="Anonymizer" />,
   },
   {
     path: ROUTES.workspace.anonymizerNew,
     element: AnonymizerBuilderRoute ? <AnonymizerBuilderRoute /> : null,
-    errorElement: <ErrorPanel title="Anonymizer" />,
+    errorElement: <RouteErrorPanel title="Anonymizer" />,
   },
   {
     path: ROUTES.workspace.anonymizerJob,
     element: AnonymizerJobDetailRoute ? <AnonymizerJobDetailRoute /> : null,
-    errorElement: <ErrorPanel title="Anonymizer" />,
+    errorElement: <RouteErrorPanel title="Anonymizer" />,
   },
 ]);
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import { FilesetPurpose, type FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/constants';
 import { DatasetsTable } from '@studio/components/DatasetsTable';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
@@ -83,6 +83,21 @@ vi.mock('@studio/components/DatasetCreateModal', () => ({
       ) : null
   ),
 }));
+
+vi.mock('@studio/components/FilesetCreateModal', () => ({
+  FilesetCreateModal: vi.fn(({ open, purpose }: { open?: boolean; purpose?: string }) =>
+    open ? (
+      <div data-testid="fileset-create-modal">
+        <span data-testid="fileset-modal-purpose">{purpose}</span>
+      </div>
+    ) : null
+  ),
+}));
+
+vi.mock('@studio/constants/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@studio/constants/environment')>();
+  return { ...actual, FILESET_DETAILS_ENABLED: true };
+});
 
 const FILESETS_URL = `${PLATFORM_BASE_URL}/apis/files/v2/workspaces/:workspace/filesets`;
 
@@ -464,7 +479,11 @@ describe('DatasetsTable', () => {
 
       const createButton = screen.getByRole('button', { name: 'Create Fileset' });
       await user.click(createButton);
-      expect(await screen.findByText('Create Dataset')).toBeInTheDocument();
+
+      const modal = await screen.findByTestId('fileset-create-modal');
+      expect(within(modal).getByTestId('fileset-modal-purpose')).toHaveTextContent(
+        FilesetPurpose.dataset
+      );
     });
 
     it('shows the no-results empty state with a Clear filters button when search is active', async () => {

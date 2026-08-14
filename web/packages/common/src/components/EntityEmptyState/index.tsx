@@ -135,7 +135,18 @@ const SelfServiceHelp: FC<{ cliCommand?: string; skillPrompt?: string }> = ({
   skillPrompt,
 }) => {
   const toast = useToast();
-  const [kind, setKind] = useState<HelpKind>(skillPrompt ? 'agent' : 'cli');
+  const defaultKind: HelpKind = skillPrompt ? 'agent' : 'cli';
+
+  // `kind` should track the current descriptor's default unless the user has picked a value for
+  // it. Resetting during render (rather than in an effect) when the descriptor changes avoids a
+  // stale selection painting for a frame, while leaving a same-descriptor rerender's user choice
+  // untouched.
+  const [prevDescriptor, setPrevDescriptor] = useState({ cliCommand, skillPrompt });
+  const [kind, setKind] = useState<HelpKind>(defaultKind);
+  if (prevDescriptor.cliCommand !== cliCommand || prevDescriptor.skillPrompt !== skillPrompt) {
+    setPrevDescriptor({ cliCommand, skillPrompt });
+    setKind(defaultKind);
+  }
 
   const items: { value: HelpKind; children: React.ReactNode }[] = [];
   if (skillPrompt)

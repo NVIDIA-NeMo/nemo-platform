@@ -111,7 +111,7 @@ describe('DatasetFileManagementSidePanel', () => {
       ],
     });
 
-    expect(await screen.findByText('No Files')).toBeInTheDocument();
+    expect(await screen.findByText('No files yet')).toBeInTheDocument();
   });
 
   it('shows subfolder breadcrumb segments when navigating into a folder', async () => {

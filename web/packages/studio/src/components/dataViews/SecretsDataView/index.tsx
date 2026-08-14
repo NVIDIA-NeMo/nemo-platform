@@ -22,7 +22,7 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { useSecretsDeleteSecret, useSecretsListSecrets } from '@nemo/sdk/generated/platform/api';
-import { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
+import type { PlatformSecretResponse } from '@nemo/sdk/generated/platform/schema';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { EditSecretModal } from '@studio/routes/SecretsListRoute/EditSecretModal';
 import { keepPreviousData } from '@tanstack/react-query';

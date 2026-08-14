@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { DATASETS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { iconColorClass } from '@studio/routes/constants';
@@ -33,7 +33,7 @@ export const filesetRoutes: RouteObject[] = gateDatasetsRoutes([
   {
     path: ROUTES.workspace.filesets,
     element: <FilesetListRoute />,
-    errorElement: <ErrorPanel title="Filesets" />,
+    errorElement: <RouteErrorPanel title="Filesets" />,
     children: [
       {
         path: ROUTES.workspace.filesetNew,
@@ -53,7 +53,7 @@ export const filesetRoutes: RouteObject[] = gateDatasetsRoutes([
     {
       path: ROUTES.workspace.filesetDetail,
       element: <FilesetDetailRoute />,
-      errorElement: <ErrorPanel title="Fileset" />,
+      errorElement: <RouteErrorPanel title="Fileset" />,
     },
   ]),
 ]);

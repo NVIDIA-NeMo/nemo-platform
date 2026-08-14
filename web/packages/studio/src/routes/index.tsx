@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
-import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTES } from '@studio/constants/routes';
 import { PluginProvider } from '@studio/plugins/PluginProvider';
@@ -105,7 +105,7 @@ export const routes: RouteObject[] = [
                 <Outlet />
               </Suspense>
             ),
-            errorElement: <ErrorPanel title="Entity Store" />,
+            errorElement: <RouteErrorPanel title="Entity Store" />,
             children: [
               ...dashboardRoutes,
               ...baseModelsRoutes,
@@ -129,7 +129,7 @@ export const routes: RouteObject[] = [
                 // The /* suffix allows the plugin to own sub-paths via its own internal router.
                 path: `${ROUTES.workspace.plugin}/*`,
                 element: <PluginRenderer />,
-                errorElement: <ErrorPanel title="Plugin" />,
+                errorElement: <RouteErrorPanel title="Plugin" />,
               }),
               ...settingsRoutes,
               ...modelCompareRoutes,

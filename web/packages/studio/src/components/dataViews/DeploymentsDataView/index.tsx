@@ -32,7 +32,7 @@ import { ComponentProps, FC, useCallback } from 'react';
 export interface DeploymentsDataViewProps {
   workspace: string;
   /** Opens the create-deployment flow from the first-use empty state. */
-  onCreate?: () => void;
+  readonly onCreate?: () => void;
   /** Opens the URL-driven deployment details panel (row click). */
   onDeploymentRowClick: (deployment: ModelDeployment) => void;
   /** Opens the shared delete confirmation flow (row action menu). */

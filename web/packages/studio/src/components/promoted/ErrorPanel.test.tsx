@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanel, ErrorPanelProps } from '@nemo/common/src/components/ErrorPanel';
+import { ErrorPanelProps, RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { suppressConsoleError } from '@nemo/testing/utils/suppress-console';
 import { mockUseNavigate } from '@studio/tests/util/mockUseParams';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -42,7 +42,7 @@ const renderWithRouterError = (
       {
         path: '/',
         element: <ThrowingComponent />,
-        errorElement: <ErrorPanel {...props} />,
+        errorElement: <RouteErrorPanel {...props} />,
       },
     ],
     { initialEntries: ['/'] }
@@ -51,7 +51,7 @@ const renderWithRouterError = (
   return render(<RouterProvider router={router} />);
 };
 
-describe('ErrorPanel', () => {
+describe('RouteErrorPanel', () => {
   describe('Error Display', () => {
     it('displays error UI when an error occurs', () => {
       renderWithRouterError({ title: 'Evaluator' }, new Error('Test error'));

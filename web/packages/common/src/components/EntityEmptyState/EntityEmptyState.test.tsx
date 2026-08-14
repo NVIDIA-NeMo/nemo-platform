@@ -67,6 +67,28 @@ describe('EntityEmptyState', () => {
         screen.queryByRole('button', { name: descriptor.createAction?.label })
       ).not.toBeInTheDocument();
     });
+
+    it('resets the CLI/agent selection when the descriptor changes on rerender', () => {
+      const membersDescriptor = ENTITY_EMPTY_STATES.members;
+      const { rerender } = wrap(<EntityEmptyState entity="members" variant="first-use" />);
+
+      const help = screen.getByTestId('entity-empty-state-help');
+      // `members` has no skillPrompt, so its only (and default) option is CLI.
+      expect(help).toHaveTextContent(membersDescriptor.cliCommand as string);
+
+      rerender(
+        <MemoryRouter>
+          <ToastProvider>
+            <EntityEmptyState entity="guardrails" variant="first-use" />
+          </ToastProvider>
+        </MemoryRouter>
+      );
+
+      // `guardrails` has a skillPrompt, so `kind` must reset to the agent default instead of
+      // sticking with the previous descriptor's CLI-only selection.
+      expect(help).toHaveTextContent(descriptor.skillPrompt as string);
+      expect(help).not.toHaveTextContent(descriptor.cliCommand as string);
+    });
   });
 
   describe('no-results', () => {
