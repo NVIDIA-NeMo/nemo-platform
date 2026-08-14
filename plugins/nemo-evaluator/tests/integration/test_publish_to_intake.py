@@ -105,39 +105,17 @@ def _wait_for_ready(base_url: str, *, timeout: float) -> None:
     raise RuntimeError(f"platform at {base_url} not ready within {timeout}s")
 
 
-#: Stable data directory for this suite's ClickHouse container.
-#
-# Deliberately not a per-session temp directory. The provisioner names the container from a fixed
-# legacy name but validates it against the data directory it was created with, so a per-session
-# path means every new session presents a *different* directory under the *same* container name.
-# One container that outlives its session — which is exactly what happens when an xdist worker is
-# killed before its teardown runs — then makes every later session fail to provision with
-# "does not use the expected data directory", and `--remove` cannot clear it because removal only
-# matches containers whose data directory equals the one being asked for.
-#
-# With a stable path, a stranded container is reclaimable: `--remove` below matches it, so the
-# next session cleans it up instead of colliding with it.
+#: Stable, not per-session: `--remove` only matches containers whose data directory equals the one
+#: being asked for, so a per-session path leaves a stranded container unremovable.
 _CLICKHOUSE_DATA_DIR = REPO_ROOT / "tmp" / "evaluator-intake-clickhouse"
 
 
-#: Ceiling for a single provisioner invocation. Generous enough to cover a cold image pull, short
-#: enough that a wedged Docker fails this fixture rather than the whole worker: an unbounded wait
-#: inside session-fixture setup is charged to whichever test triggered it, and pytest-timeout's
-#: thread method answers that by killing the process outright, which the controller reports as a
-#: bare `node down` with no cause.
+#: Bounds one provisioner call, so a wedged Docker fails this fixture instead of the worker.
 _CLICKHOUSE_SCRIPT_TIMEOUT_ENV = "NMP_EVALUATOR_CLICKHOUSE_SCRIPT_TIMEOUT"
 
 
 def _script_timeout_seconds() -> float:
-    """Resolve the provisioner timeout, rejecting values `subprocess.run` would misread.
-
-    Parsed here rather than inline so a bad value fails with a message that names the variable.
-    A bare ``float()`` at module scope would abort collection of this file with a stray
-    ``ValueError`` and no indication of which setting caused it. Zero and negative are rejected
-    because ``subprocess.run`` treats them as an immediate timeout, silently turning every
-    invocation into a failure, and non-finite values because ``inf`` disables the bound that this
-    setting exists to impose.
-    """
+    """Resolve the provisioner timeout. Zero and negative time out immediately; ``inf`` never."""
     raw = os.getenv(_CLICKHOUSE_SCRIPT_TIMEOUT_ENV)
     if raw is None:
         return 300.0
@@ -169,21 +147,17 @@ def _clickhouse() -> Iterator[None]:
     if not _docker_available():
         pytest.skip("Docker not available; required for ClickHouse-backed Intake")
     clickhouse_env = {**os.environ, "CLICKHOUSE_DATA_DIR": str(_CLICKHOUSE_DATA_DIR)}
-    # Reclaim anything a previous session left behind before provisioning. Not check=True: there is
-    # usually nothing to remove, and a failure here must not mask the provisioning error below. A
-    # timeout counts as a failure, so the wipe below is skipped and provisioning reports the real
-    # problem.
+    # Reclaim anything a previous session left behind. Not check=True: usually there is nothing to
+    # remove, and a failure here must not mask the provisioning error below.
     try:
         reclaimed = _run_clickhouse_script("--remove", env=clickhouse_env, check=False)
     except subprocess.TimeoutExpired:
         reclaimed = -1
-    # Only wipe once removal reported success — including the "nothing to remove" case, which also
-    # exits 0. The directory is bind-mounted read-write into the container, so deleting it after a
-    # failed removal would pull the data out from under a ClickHouse that is still running.
-    # Provisioning below fails loudly on a container it cannot reconcile, which is the better error.
+    # The directory is bind-mounted read-write, so only wipe it once removal succeeded — otherwise
+    # a still-running ClickHouse loses its data underneath it.
     if reclaimed == 0:
-        # Not ignore_errors: a partially deleted data directory would leave the session running
-        # against state it believes is empty. Only absence is tolerable.
+        # Not ignore_errors: a partial delete leaves the session running against state it believes
+        # is empty.
         try:
             shutil.rmtree(_CLICKHOUSE_DATA_DIR)
         except FileNotFoundError:
@@ -193,9 +167,7 @@ def _clickhouse() -> Iterator[None]:
         _wait_for_tcp("localhost", 8123, timeout=60)
         yield
     finally:
-        # Best effort: teardown must not turn a test failure into a fixture error, and the setup
-        # above no longer depends on this having run. A hung Docker would otherwise replace the
-        # real failure with a teardown error.
+        # Best effort: setup reclaims on its own, so this must not mask a real test failure.
         try:
             _run_clickhouse_script("--remove", env=clickhouse_env, check=False)
         except subprocess.TimeoutExpired:

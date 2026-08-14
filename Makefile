@@ -406,12 +406,8 @@ PYTEST_CI_CMD = timeout --kill-after=60s $(PYTEST_CI_TIMEOUT)s $(PYTEST_CMD)
 # ``loadscope``.
 test-integration test-integration-ci: PYTEST_DIST := loadgroup
 
-# Integration workers own external resources (Docker containers, service ports, spawned `nemo`
-# processes) through session-scoped fixtures. A killed worker never runs its teardown, so replacing
-# it re-runs the same group against resources the dead worker still owns — which fails, and can
-# leave the controller waiting until the outer wall-clock timeout. Not replacing a crashed
-# integration worker ends the run instead, with xdist naming the test it died on. Unit workers own
-# nothing external, so they keep the restart budget.
+# A killed integration worker never tears down its containers and ports, so replacing it re-runs
+# the group against resources the dead worker still holds. Unit workers own nothing external.
 test-integration test-integration-ci: PYTEST_MAX_WORKER_RESTART := 0
 
 .PHONY: test-unit

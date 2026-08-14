@@ -212,14 +212,9 @@ def pytest_configure(config):
 
 
 def _enable_crash_dumps(config) -> None:
-    """Route fatal-signal tracebacks to a per-worker file when asked to.
+    """Route fatal-signal tracebacks to a per-worker file when ``PYTEST_CRASH_DUMP_DIR`` is set.
 
-    An xdist worker that dies of a fatal signal reports only ``node down: Not properly terminated``
-    on the controller: xdist does not forward worker stdout/stderr live, so anything the dying
-    process writes to its own streams is lost. A file survives, which is the only way to learn what
-    the worker was doing when it aborted.
-
-    Off unless ``PYTEST_CRASH_DUMP_DIR`` is set, so ordinary runs are untouched.
+    xdist does not forward worker streams, so a signal death otherwise reports only ``node down``.
     """
     dump_dir = os.environ.get("PYTEST_CRASH_DUMP_DIR")
     if not dump_dir:
@@ -233,8 +228,7 @@ def _enable_crash_dumps(config) -> None:
     # Line buffered: a fatal signal gives no chance to flush.
     handle = (directory / f"crash-{worker}-{os.getpid()}.log").open("w", buffering=1)
     faulthandler.enable(file=handle, all_threads=True)
-    # Held module-level so the file object outlives this function; closing it would disable the
-    # handler, and `pytest_runtest_logstart` below needs the same handle.
+    # Module-level so the handle outlives this function; closing it would disable the handler.
     global _CRASH_DUMP_FILE
     _CRASH_DUMP_FILE = handle
     handle.write(f"--- worker {worker} pid {os.getpid()}\n")
@@ -243,22 +237,16 @@ def _enable_crash_dumps(config) -> None:
 #: Open crash-dump file for this process, or None when crash dumps are disabled.
 _CRASH_DUMP_FILE = None
 
-#: Session-wide per-test timeout, so a lost worker's elapsed time can be judged against it.
+#: Session-wide per-test timeout, to judge a lost worker's elapsed time against.
 _SESSION_TIMEOUT_SECONDS = None
 
-
-#: When each in-flight test started, by nodeid. Populated on the controller as well as in workers,
-#: because xdist forwards `logstart` to the controller — which is what lets a lost worker's test be
-#: timed from the outside, where the process that was running it no longer exists to report.
+#: Start time of each in-flight test, by nodeid. xdist forwards `logstart` to the controller, so a
+#: lost worker's test can still be timed from there.
 _TEST_START_TIMES: dict[str, float] = {}
 
 
 def pytest_runtest_logstart(nodeid, location):
-    """Record which test this process entered, so a crash dump can be attributed to it.
-
-    The controller only learns that a worker died, never which test it was on when the signal
-    arrived. Writing the nodeid on entry means the tail of the file names it.
-    """
+    """Record the test being entered, so the tail of a crash dump names it."""
     del location
     _TEST_START_TIMES[nodeid] = time.monotonic()
     if _CRASH_DUMP_FILE is not None:
@@ -272,17 +260,10 @@ def pytest_runtest_logfinish(nodeid, location):
 
 
 def pytest_handlecrashitem(crashitem, report, sched):
-    """Say how long a lost worker's test had been running, and name a timeout when it looks like one.
+    """Say how long a lost worker's test ran, and name a timeout when it looks like one.
 
-    xdist can only report ``worker 'gwN' crashed while running <nodeid>``, because from the
-    controller a lost worker is indistinguishable from any other. A timeout reads as a crash: with
-    ``timeout_method = thread``, pytest-timeout calls ``os._exit(1)``, which is not a signal — so
-    faulthandler never runs — and its own stack dump goes to the worker's captured stdout, which
-    xdist does not forward. Both channels are dark and the operator is left to guess.
-
-    The controller does know when the test started, so it can supply the one number that
-    distinguishes the cases. Appending it turns "crashed" into "ran 121.4s against a 120s timeout",
-    which is the difference between a five-minute diagnosis and a five-day one.
+    pytest-timeout's thread method ``os._exit(1)``s the worker, which the controller cannot tell
+    from a crash. Elapsed time is the one number that distinguishes them.
     """
     del sched
     started = _TEST_START_TIMES.pop(crashitem, None)
