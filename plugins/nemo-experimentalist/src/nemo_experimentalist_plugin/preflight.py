@@ -20,6 +20,11 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.dataset_la
     find_task_dirs,
     is_task_dir,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.entrypoint import (
+    DEFAULT_AGENT_IMPORT_PATH,
+    find_entrypoint_module,
+    split_import_path,
+)
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
     _redact_url,
     looks_like_git,
@@ -205,6 +210,7 @@ def check_artifacts(
     task_template: str | None = None,
     agent_source: str | None = None,
     storage: dict | None = None,
+    evaluator: dict | None = None,
     require_template: bool = True,
     probes: Probes | None = None,
 ) -> list[CheckResult]:
@@ -226,7 +232,7 @@ def check_artifacts(
     effective_template = task_template or (profile.task_template if profile is not None else None)
     if require_template and effective_template is not None:
         results += _check_task_template(resolve_profile_path(effective_template, base_dir))
-    results += _check_agent_source(profile, p, agent_source=agent_source, storage=storage)
+    results += _check_agent_source(profile, p, agent_source=agent_source, storage=storage, evaluator=evaluator)
     return results
 
 
@@ -361,6 +367,7 @@ def _check_agent_source(
     *,
     agent_source: str | None = None,
     storage: dict | None = None,
+    evaluator: dict | None = None,
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
     source = agent_source or (profile.agent_source if profile is not None else None)
@@ -393,6 +400,8 @@ def _check_agent_source(
                 f"agent source dir missing: {path}",
             )
         )
+        if path.is_dir():
+            results.append(_check_agent_entrypoint(path, evaluator))
     # Effective storage flags from the auto path (resolved config, which may come
     # from --config); doctor falls back to reading the profile's inline dict or
     # path-form experiment_config without importing the loop chain.
@@ -476,6 +485,41 @@ def _check_agent_source(
                 )
             )
     return results
+
+
+def _check_agent_entrypoint(agent_dir: Path, evaluator: dict | None) -> CheckResult:
+    """Resolve the evaluator's entrypoint inside a local agent directory.
+
+    The evaluator imports it from that directory alone, so an entrypoint it
+    cannot find there fails every trial of every candidate.
+    """
+    configured = (evaluator or {}).get("import_path")
+    import_path = DEFAULT_AGENT_IMPORT_PATH if configured is None else str(configured)
+    try:
+        module_name, attribute = split_import_path(import_path)
+    except ValueError as exc:
+        return CheckResult(
+            name="agent-entrypoint",
+            group="agent-source",
+            status="fail",
+            severity="required",
+            message=f"evaluator import_path {import_path!r} is unusable: {exc}",
+            hint="set evaluator.import_path in the experiment config to <module>:<attribute>",
+        )
+    found = find_entrypoint_module(agent_dir, module_name)
+    expected = Path(*module_name.split("."))
+    return make_check_result(
+        "agent-entrypoint",
+        "agent-source",
+        found is not None,
+        "required",
+        f"evaluator entrypoint {import_path} at {found}",
+        f"evaluator cannot import {module_name!r} from the agent source: {agent_dir}",
+        hint=(
+            f"add {expected}.py defining {attribute} to the agent directory, "
+            "or point evaluator.import_path in the experiment config at the module you have"
+        ),
+    )
 
 
 def _check_insight_file(

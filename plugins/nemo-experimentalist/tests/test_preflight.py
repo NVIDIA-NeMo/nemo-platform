@@ -38,6 +38,7 @@ def write_task_dir(dataset_dir: Path, name: str = "task-1") -> Path:
 def full_profile(tmp_path: Path, *, agent_source: str | None = None):
     tt = tmp_path / "evals" / "task_template"
     tt.mkdir(parents=True)
+    (tmp_path / "harbor_wrapper.py").write_text("class WrappedAgent:\n    pass\n", encoding="utf-8")
     (tt / "task.toml").write_text('[task]\nname = "org/agent__template"\n', encoding="utf-8")
     (tt / "instruction.md").write_text("do the thing", encoding="utf-8")
     for sub in ("evals/train", "evals/val"):
@@ -219,6 +220,50 @@ def test_local_agent_source_dir_stays_required(tmp_path: Path) -> None:
     src = next(r for r in results if r.name == "agent-source-dir")
     assert src.severity == "required"
     assert src.status == "fail"
+
+
+def test_missing_evaluator_entrypoint_is_required_failure(tmp_path: Path) -> None:
+    (tmp_path / "agent").mkdir()
+
+    results = check_artifacts(full_profile(tmp_path, agent_source="./agent"), probes=make_probes())
+
+    entrypoint = next(r for r in results if r.name == "agent-entrypoint")
+    assert entrypoint.status == "fail"
+    assert entrypoint.severity == "required"
+    assert "harbor_wrapper.py" in (entrypoint.hint or "")
+    assert "WrappedAgent" in (entrypoint.hint or "")
+
+
+@pytest.mark.parametrize(
+    ("import_path", "expected_status"),
+    [
+        ("pkg.wrapper:Agent", "pass"),
+        ("pkg.missing:Agent", "fail"),
+        ("pkg.wrapper", "fail"),
+    ],
+    ids=["configured", "configured-missing", "no-attribute"],
+)
+def test_configured_entrypoint_replaces_the_default(tmp_path: Path, import_path: str, expected_status: str) -> None:
+    (tmp_path / "agent" / "pkg").mkdir(parents=True)
+    (tmp_path / "agent" / "pkg" / "wrapper.py").write_text("class Agent:\n    pass\n", encoding="utf-8")
+
+    results = check_artifacts(
+        full_profile(tmp_path, agent_source="./agent"),
+        probes=make_probes(),
+        evaluator={"import_path": import_path},
+    )
+
+    entrypoint = next(r for r in results if r.name == "agent-entrypoint")
+    assert entrypoint.status == expected_status
+
+
+def test_git_agent_source_has_no_entrypoint_check(tmp_path: Path) -> None:
+    results = check_artifacts(
+        full_profile(tmp_path, agent_source="https://host/g/repo.git@main"),
+        probes=make_probes(),
+    )
+
+    assert not any(r.name == "agent-entrypoint" for r in results)
 
 
 @pytest.mark.parametrize(
