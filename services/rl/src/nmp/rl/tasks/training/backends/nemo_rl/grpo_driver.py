@@ -35,10 +35,11 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
 
 def _maybe_bootstrap_environment(config: MasterConfig) -> None:
-    """Install or refresh the environment FileSet before GRPO setup.
+    """Prepare the environment FileSet before GRPO setup.
 
-    Sandboxed jobs only need live egress endpoints (vLLM + broker). Colocated
-    jobs validate the package on the PVC and offline-install wheels when needed.
+    Sandboxed jobs only need live egress endpoints (vLLM + broker). Colocated jobs
+    validate the package on the PVC; installing it is NeMo-RL's job, because only it
+    knows the per-server venvs Gym creates at spin-up.
     """
     nemo_gym = config.env.get("nemo_gym") if isinstance(config.env, dict) else None
     if not isinstance(nemo_gym, dict):
@@ -63,18 +64,17 @@ def _maybe_bootstrap_environment(config: MasterConfig) -> None:
 
     from nmp.rl.tasks.environment.bootstrap import bootstrap_environment_package
 
-    # host_work_path is only set in sandboxed mode, which returns above — so in practice
-    # this is None and bootstrap picks a temp dir outside the package. Never fall back to
-    # a path inside `root`: the package validator rejects any *.jsonl under it, and
-    # site-packages ships plenty, which would break resume and rerun on the same PVC.
-    host_work = nemo_gym.get("host_work_path")
-    work_venv = Path(str(host_work)) / "venv" if host_work else None
-    result = bootstrap_environment_package(root, work_venv=work_venv, install_wheels=True)
+    # Validate the package here; install nothing. The venvs a Gym server actually runs
+    # from live under NEMO_GYM_VENV_DIR and do not exist until RunHelper.start, so an
+    # install at this point can only land somewhere no server reads. NeMo-RL installs the
+    # wheel closure into those venvs once they exist, and puts the package on Gym's
+    # search root for native-v1 (install_environment_wheels /
+    # register_environment_search_root in nemo_rl.environments.sandbox.gym_host_runtime).
+    result = bootstrap_environment_package(root, install_wheels=False)
     logger.info(
-        "Bootstrapped environment format=%s image_config_root=%s venv=%s",
+        "Validated environment format=%s image_config_root=%s",
         result.manifest.format,
         result.image_config_root,
-        result.work_venv,
     )
 
 
