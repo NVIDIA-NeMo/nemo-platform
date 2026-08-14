@@ -754,8 +754,7 @@ def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> 
 # Checked-in copy of mcqa's example.jsonl: discover_gym_tasks runs client-side here, where
 # nemo-gym isn't installed (only nmp-cpu-tasks has it).
 GYM_MCQA_FIXTURE = (
-    Path(__file__).resolve().parents[1]
-    / "packages/nemo_evaluator_sdk/tests/agent_eval/fixtures/gym_mcqa_example.jsonl"
+    Path(__file__).resolve().parents[1] / "packages/nemo_evaluator_sdk/tests/agent_eval/fixtures/gym_mcqa_example.jsonl"
 )
 
 
