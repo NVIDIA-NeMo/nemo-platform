@@ -3,9 +3,9 @@
 
 """The agent entrypoint contract: one definition of what the evaluator imports.
 
-Preflight reports a wrapper the evaluator could not import before a run instead
-of at the first trial, so it needs this contract without importing ``harbor``:
-whether harbor is importable is itself one of the checks.
+Preflight resolves the same reference the evaluator imports, so it reports a
+missing wrapper before a run instead of at the first trial. It must not import
+``harbor`` to do so, because whether harbor is importable is itself a check.
 """
 
 from importlib.machinery import PathFinder
