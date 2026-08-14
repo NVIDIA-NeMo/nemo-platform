@@ -65,7 +65,7 @@ def _make_callback(reporter: _RecordingReporter) -> TrainingProgressCallback:
 
 
 def test_the_phase_supplies_the_prefix(reporter: _RecordingReporter) -> None:
-    """Backends pass their framework's own names; the phase namespaces them."""
+    """Backends pass their framework's own names; the phase qualifies them."""
     callback = _make_callback(reporter)
     callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "lr": 5e-06, "grad_norm": 1.9})
     callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4, "accuracy": 0.9})
@@ -146,7 +146,7 @@ def test_reserved_names_cannot_be_reached_by_a_metric(reporter: _RecordingReport
         assert report["epoch"] == 1
         assert isinstance(report["metrics"], dict), "the series payload survives"
     assert [r["phase"] for r in reporter.reports] == ["training", "validation"]
-    assert reporter.reports[0]["train_phase"] == 1.0, "the metric is kept, under its namespaced name"
+    assert reporter.reports[0]["train_phase"] == 1.0, "the metric is kept, under its qualified name"
     assert reporter.reports[0]["train_step"] == 2.0
 
 

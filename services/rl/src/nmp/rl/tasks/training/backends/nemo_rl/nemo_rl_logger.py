@@ -168,7 +168,7 @@ class NemoRLLogger(LoggerInterface):
         # modulus would skip whole passes rather than thin them evenly.
         self._val_passes = 0
 
-        # The prefix whose metrics keep the bare names; see _namespace_validation.
+        # The prefix whose metrics keep the bare names; see _qualify_by_dataset.
         self._primary_val_prefix: str | None = None
 
         # Reports built but withheld by a throttle, at most one of each kind.
@@ -269,7 +269,7 @@ class NemoRLLogger(LoggerInterface):
                 report = {
                     "step": step,
                     "epoch": epoch,
-                    "metrics": self._namespace_validation(prefix, metrics),
+                    "metrics": self._qualify_by_dataset(prefix, metrics),
                 }
                 if self._val_passes % self._val_report_interval == 0:
                     self._send("validation", report)
@@ -278,7 +278,7 @@ class NemoRLLogger(LoggerInterface):
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
 
-    def _namespace_validation(self, prefix: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
+    def _qualify_by_dataset(self, prefix: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
         """Fold the dataloader name into each metric name, past the first set.
 
         ``validate()`` loops over ``val_dataloader.items()`` and logs once per
@@ -293,7 +293,7 @@ class NemoRLLogger(LoggerInterface):
         dataloader too, so keying on "did a name arrive" would rename the common
         case and take Studio's curve with it. Iteration order over the dataloader
         dict is stable within a run and across a resume of the same config, so a
-        dataset keeps whichever namespace it started in.
+        dataset keeps whichever naming it started with.
         """
         if self._primary_val_prefix is None:
             self._primary_val_prefix = prefix

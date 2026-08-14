@@ -21,7 +21,7 @@ Series naming
 One rule, no exceptions: a metric is stored and reported as ``<phase>_<name>``,
 where the backend supplies its framework's own ``<name>`` (``loss``, ``lr``,
 ``accuracy``) and the phase that produced it supplies the prefix. The same
-namespaced name is used for the accumulated series and for the current-step
+qualified name is used for the accumulated series and for the current-step
 value in ``status_details``.
 
 The prefix is load-bearing rather than cosmetic -- DPO reports ``accuracy`` in
@@ -144,7 +144,7 @@ def is_chartable(value: Any) -> bool:
         return False
 
 
-def _namespace(phase: str, metrics: Mapping[str, object]) -> dict[str, float | int]:
+def _qualify_metric_names(phase: str, metrics: Mapping[str, object]) -> dict[str, float | int]:
     """The chartable subset of ``metrics``, keyed by ``<phase>_<name>``.
 
     The single naming rule. A backend passes its framework's own metric names --
@@ -261,22 +261,22 @@ class TrainingProgressCallback:
         """Record every metric as a point and report them as current values.
 
         The one path both ``report_train_step`` and ``report_validation`` take.
-        ``phase`` namespaces the series (``train``/``val``); ``report_phase`` is
-        what the Jobs service records as the task's phase.
+        ``phase`` qualifies the series names (``train``/``val``); ``report_phase``
+        is what the Jobs service records as the task's phase.
         """
-        namespaced = _namespace(phase, metrics)
-        for name, value in namespaced.items():
+        qualified = _qualify_metric_names(phase, metrics)
+        for name, value in qualified.items():
             self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
 
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
-            **namespaced,
+            **qualified,
         }
         # Sent in full or not at all, so a report that added no point has nothing
         # to say about the curves: the stored copy already matches, and the merge
         # leaves a key that is not mentioned standing.
-        if not self._seed_unavailable and namespaced:
+        if not self._seed_unavailable and qualified:
             details["metrics"] = self._build_metrics_summary()
         self._send(report_phase, details, backend)
 
@@ -328,9 +328,9 @@ class TrainingProgressCallback:
         loss reports no ``train_loss``, and a name is stated only when it was
         observed, because a null charts as a real zero.
 
-        Taken as a dict rather than ``**kwargs`` so that the metric namespace and
-        this method's own parameters cannot collide. Backends forward whatever
-        their framework emits, and a framework is free to call something ``step``.
+        Taken as a dict rather than ``**kwargs`` so that the metric names and this
+        method's own parameters cannot collide. Backends forward whatever their
+        framework emits, and a framework is free to call something ``step``.
         """
         self._report_metrics("train", "training", step, epoch, metrics, backend)
 
