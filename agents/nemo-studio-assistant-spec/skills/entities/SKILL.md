@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: entities
 description: NeMo Platform model and dataset CRUD lifecycle through the platform SDK, with strict field matching on final verification entities.
 ---

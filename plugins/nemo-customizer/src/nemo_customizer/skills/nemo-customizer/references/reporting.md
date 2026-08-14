@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Report to user
 
 After polling reaches a **terminal** status (`completed`, `error`, or `cancelled`), report using this template for **all** backends (automodel, unsloth, rl). Fill fields from the job JSON and `nemo jobs get-status`.

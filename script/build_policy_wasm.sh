@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Builds policy.wasm from OPA Rego policy sources using a pinned OPA version.
 #
 # Used in all contexts: local dev, SDK wheel builds, and Docker image builds.

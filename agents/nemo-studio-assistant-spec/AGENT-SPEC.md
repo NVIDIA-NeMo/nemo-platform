@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: nemo-studio-assistant
 created_timestamp: 2026-07-28T20:09:49Z
 author: Danielle Ali and Codex

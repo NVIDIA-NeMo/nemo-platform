@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: files
 description: platform fileset and file CRUD playbook with the exact `nemo_api(resource='files'|'files.filesets', ...)` sequence used by harbor benchmarks. Use when the task involves filesets, file uploads/downloads, `verify.txt`, `harbor-test-fileset`, or `harbor-final-fileset`.
 ---

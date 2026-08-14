@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # nmp-automodel base - PyTorch NGC image + Automodel + CUDA extension wheels.
 #
 # PyTorch NGC base + Automodel + CUDA extension wheels for nmp-automodel images.

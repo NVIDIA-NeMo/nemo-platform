@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # NAT workflow configuration for this agentic-use eval task.
 # Run with:  nat run --config_file workflow.yml --input "$(cat instruction.md)"
 #

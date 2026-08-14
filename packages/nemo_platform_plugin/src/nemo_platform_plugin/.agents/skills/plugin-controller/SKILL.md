@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: plugin-controller
 description: Creates background reconcile-loop controllers using NemoController. Use when implementing state-machine reconciliation, running periodic background work, managing deployment lifecycle, building service-principal entity clients for background use, or understanding controller startup/shutdown sequence. Trigger keywords: controller, NemoController, reconcile, background loop, reconcile_one, list_objects, on_startup, state machine, deployment lifecycle, service principal, interval_seconds.
 ---

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Normalize text files on commit to LF endings by default
 * text=auto
 # Make sure Windows batch files preserve CR/LF line endings, otherwise they may not be able to execute.  Windows

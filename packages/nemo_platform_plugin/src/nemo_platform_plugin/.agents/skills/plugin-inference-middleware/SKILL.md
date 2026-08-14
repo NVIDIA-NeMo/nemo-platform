@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: plugin-inference-middleware
 description: Implements NemoInferenceMiddleware plugins for in-process inference request/response interception in IGW. Use when building a middleware plugin, implementing process_request or process_response, handling MiddlewareCall config (inline or config_id), exposing config entity CRUD APIs, or wiring up the nemo.inference_middleware entry-point. Trigger keywords: inference middleware, NemoInferenceMiddleware, process_request, process_response, MiddlewareCall, config_id, ImmediateResponse, VirtualModel middleware, middleware plugin.
 ---

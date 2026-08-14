@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Replace Strategies
 
 Use this reference only for plugin-specific request formatting. The [Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) and library skills own strategy behavior and parameter details for `Redact`, `Annotate`, `Hash`, `Substitute`, and rewrite mode.

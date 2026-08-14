@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Studio plugin web UI — agent instructions
 
 This is the web UI for a NeMo Studio plugin. Studio loads the built bundle at

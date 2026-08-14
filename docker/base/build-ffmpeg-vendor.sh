@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Build FFmpeg ${FFMPEG_VERSION} into ${FFMPEG_PREFIX} (default /ffmpeg_build).
 # Used by docker/base/Dockerfile.python-wheels ffmpeg-vlm wheel stages (av + opencv-python-headless).
 set -euo pipefail

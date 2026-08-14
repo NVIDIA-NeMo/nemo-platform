@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 library_name: transformers
 license: apache-2.0
 license_link: https://huggingface.co/Qwen/Qwen3-8B/blob/main/LICENSE

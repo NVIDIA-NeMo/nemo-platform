@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: nemo-evaluator
 description: >
   NeMo Evaluator SDK-first rubric-to-eval guide for BYOB (Bring Your Own

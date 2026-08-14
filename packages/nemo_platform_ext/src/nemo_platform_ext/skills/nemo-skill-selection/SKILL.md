@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: nemo-skill-selection
 description: Top-level skill selector for ambiguous tasks involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill for setup, design, specification, agent configuration, build, deployment, testing, observability, status, teardown, evaluation, optimization, security, or model customization. Use when the user needs help deciding where a NeMo Platform task should start.
 triggers:

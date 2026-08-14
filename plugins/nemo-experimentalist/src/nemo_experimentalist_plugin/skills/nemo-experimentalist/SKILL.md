@@ -1,5 +1,5 @@
 ---
-# Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 name: nemo-experimentalist
 description: Improve an existing NeMo agent's source or harness from an Insight or explicit Harbor-compatible evaluation datasets. Run the Experimentalist to propose and validate candidate code changes, then optionally publish a changed winner as a draft PR or MR.

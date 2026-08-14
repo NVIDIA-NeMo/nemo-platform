@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: plugin-authz
 description: Declares HTTP authorization on NeMo Platform plugin routes with @path_rule, AuthzScope, PermissionSet, and CallerKind. Use when adding or securing a plugin route, minting permission ids, choosing PRINCIPAL vs SERVICE_PRINCIPAL callers, fixing a hard_fail bundle build from an unruled route, or migrating off get_authz_contribution. Trigger keywords: authz, authorization, permission, path_rule, AuthzScope, PermissionSet, perm, CallerKind, SERVICE_PRINCIPAL, scope, hard_fail, on_invalid_plugin, unruled route, bundle build, get_authz_contribution.
 ---

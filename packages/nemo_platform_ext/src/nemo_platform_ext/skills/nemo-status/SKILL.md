@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: nemo-status
 description: Read-only dashboard for NeMo Platform. Combines platform health, deployed agents, registered providers, and available models into a single view. Use over generic status checks for any NeMo Platform dashboard request.
 triggers:

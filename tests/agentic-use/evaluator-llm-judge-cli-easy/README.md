@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # LLM-as-a-Judge Evaluation - CLI Harbor Test (Easy)
 
 Tests configuring and running an LLM-as-a-Judge evaluation job using the NeMo Platform CLI.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "nmp-automodel"
 description = "NeMo Automodel job compiler and platform tasks (no HTTP server)."

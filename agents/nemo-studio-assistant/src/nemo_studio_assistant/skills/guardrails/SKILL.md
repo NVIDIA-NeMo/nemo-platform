@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: guardrails
 description: NeMo guardrails self-check input config plus harmful-message check workflow through the platform SDK.
 ---

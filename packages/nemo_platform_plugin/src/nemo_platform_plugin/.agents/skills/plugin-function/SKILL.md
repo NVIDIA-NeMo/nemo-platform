@@ -1,4 +1,6 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 name: plugin-function
 description: Creates in-process NemoFunction surfaces for NeMo Platform plugins. Use when adding a function, declaring spec_schema, mounting function routes with add_function_routes, understanding the two CLI verbs (run / submit), or streaming NDJSON frames. Trigger keywords - function, NemoFunction, spec_schema, add_function_routes, nemo_platform_plugin.functions, two verbs, run, submit, streaming, NDJSON, FunctionContext.
 ---

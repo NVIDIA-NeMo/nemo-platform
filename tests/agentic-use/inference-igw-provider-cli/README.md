@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Inference via IGW with Provider - Harbor Eval (CLI)
 
 This eval tests the agent's ability to register an external inference provider (NVIDIA's inference API) in the Inference Gateway and make a real completions request through it.
