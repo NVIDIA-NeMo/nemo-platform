@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { VirtualModelsDataView } from '@studio/components/dataViews/VirtualModelsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { server } from '@studio/mocks/node';
@@ -104,7 +105,7 @@ describe('VirtualModelsDataView', () => {
     server.use(http.get(VMS_URL, () => HttpResponse.json(page([]))));
     renderDataView();
 
-    expect(await screen.findByText('No virtual models yet')).toBeInTheDocument();
+    expect(await screen.findByText(ENTITY_EMPTY_STATES.virtualModels.heading)).toBeInTheDocument();
   });
 
   it('deletes a virtual model through the row action', async () => {

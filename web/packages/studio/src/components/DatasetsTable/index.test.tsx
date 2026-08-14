@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { FilesetPurpose, type FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/constants';
 import { DatasetsTable } from '@studio/components/DatasetsTable';
@@ -469,15 +470,15 @@ describe('DatasetsTable', () => {
       renderTable();
 
       expect(
-        await screen.findByText('No filesets yet', undefined, { timeout: LG_SELECTOR_TIMEOUT })
+        await screen.findByText(ENTITY_EMPTY_STATES.filesets.heading, undefined, {
+          timeout: LG_SELECTOR_TIMEOUT,
+        })
       ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          'Filesets group the files your agents and jobs read from — training data, models, or other artifacts.'
-        )
-      ).toBeInTheDocument();
+      expect(screen.getByText(ENTITY_EMPTY_STATES.filesets.subheading)).toBeInTheDocument();
 
-      const createButton = screen.getByRole('button', { name: 'Create Fileset' });
+      const createButton = screen.getByRole('button', {
+        name: ENTITY_EMPTY_STATES.filesets.createAction?.label,
+      });
       await user.click(createButton);
 
       const modal = await screen.findByTestId('fileset-create-modal');

@@ -215,48 +215,47 @@ export const InferenceProvidersDataView: FC<InferenceProvidersDataViewProps> = (
       []
     );
 
-  const hasSearchOrFilters = !!dataViewState.debouncedSearchBar;
-  const isInitialEmpty =
-    providersWithId.length === 0 && !isFetching && !error && !hasSearchOrFilters;
-
   return (
     <Stack gap="density-xl" {...attributes?.Stack}>
-      {isInitialEmpty ? (
-        <EntityEmptyState entity="inferenceProviders" variant="first-use" onCreate={onCreate} />
-      ) : (
-        <StudioDataView
-          dataViewState={dataViewState}
-          searchField="name"
-          makeColumns={makeColumns}
-          onRowClick={(row: ProviderWithId) => openDetailsPanel(row)}
-          attributes={{
-            DataViewSearchBar: {
-              placeholder: 'Search Providers...',
-            },
-            DataViewRoot: {
-              data: providersWithId,
-              totalCount: pagination?.total_results,
-              requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
-            },
-            DataViewTableContent: {
-              renderEmptyState: () => (
+      <StudioDataView
+        dataViewState={dataViewState}
+        searchField="name"
+        makeColumns={makeColumns}
+        onRowClick={(row: ProviderWithId) => openDetailsPanel(row)}
+        attributes={{
+          DataViewSearchBar: {
+            placeholder: 'Search Providers...',
+          },
+          DataViewRoot: {
+            data: providersWithId,
+            totalCount: pagination?.total_results,
+            requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
+          },
+          DataViewTableContent: {
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? (
                 <EntityEmptyState
                   entity="inferenceProviders"
                   variant="no-results"
                   onClearFilters={dataViewState.resetFilters}
                 />
-              ),
-              renderErrorState: () => (
-                <ErrorPanel
-                  errorMessage={getErrorMessage(
-                    error ?? new Error('Failed to fetch inference providers')
-                  )}
+              ) : (
+                <EntityEmptyState
+                  entity="inferenceProviders"
+                  variant="first-use"
+                  onCreate={onCreate}
                 />
               ),
-            },
-          }}
-        />
-      )}
+            renderErrorState: () => (
+              <ErrorPanel
+                errorMessage={getErrorMessage(
+                  error ?? new Error('Failed to fetch inference providers')
+                )}
+              />
+            ),
+          },
+        }}
+      />
 
       {modalOpen === 'delete' && modalProvider && (
         <DeleteConfirmationModal

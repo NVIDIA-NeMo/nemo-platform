@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
 import { GITKEEP_FILENAME } from '@studio/components/FilesTable/utils';
 import { render } from '@studio/tests/util/render';
@@ -111,7 +112,7 @@ describe('DatasetFileManagementSidePanel', () => {
       ],
     });
 
-    expect(await screen.findByText('No files yet')).toBeInTheDocument();
+    expect(await screen.findByText(ENTITY_EMPTY_STATES.filesetFiles.heading)).toBeInTheDocument();
   });
 
   it('shows subfolder breadcrumb segments when navigating into a folder', async () => {

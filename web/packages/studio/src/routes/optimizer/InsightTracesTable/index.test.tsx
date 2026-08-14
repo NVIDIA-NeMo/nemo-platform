@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { DEFAULT_WORKSPACE } from '@nemo/common/src/models/constants';
 import type { Trace } from '@nemo/sdk/generated/platform/schema';
 import { server } from '@studio/mocks/node';
@@ -93,6 +94,8 @@ describe('InsightTracesTable', () => {
     renderRoute(<InsightTracesTable workspace={DEFAULT_WORKSPACE} traceIds={[makeTrace(1).id]} />);
 
     expect(await screen.findByText('Error')).toBeInTheDocument();
-    expect(screen.queryByText('This insight has no linked traces yet.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(ENTITY_EMPTY_STATES.insightTraces.subheading)
+    ).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
 import { AgentEvaluationsListRoute } from '@studio/routes/agents/AgentEvaluationsRoute';
@@ -26,6 +27,8 @@ describe('AgentEvaluationsListRoute', () => {
 
   it('shows the empty state when no eval jobs are returned (default mock)', async () => {
     renderList();
-    expect(await screen.findByText('No evaluation jobs yet')).toBeInTheDocument();
+    expect(
+      await screen.findByText(ENTITY_EMPTY_STATES.agentEvaluations.heading)
+    ).toBeInTheDocument();
   });
 });

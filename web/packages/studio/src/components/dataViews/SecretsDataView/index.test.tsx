@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { ENTITY_EMPTY_STATES } from '@nemo/common/src/components/EntityEmptyState/registry';
 import { SecretsDataView } from '@studio/components/dataViews/SecretsDataView';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { server } from '@studio/mocks/node';
@@ -77,15 +78,15 @@ describe('SecretsDataView', () => {
       renderComponent({ onCreate: () => {} });
 
       expect(
-        await screen.findByText('No secrets yet', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByText(ENTITY_EMPTY_STATES.secrets.heading, undefined, {
+          timeout: XL_SELECTOR_TIMEOUT,
+        })
       ).toBeInTheDocument();
 
+      expect(screen.getByText(ENTITY_EMPTY_STATES.secrets.subheading)).toBeInTheDocument();
       expect(
-        screen.getByText(
-          'Store API keys and credentials as secrets so providers and jobs can reference them securely.'
-        )
+        screen.getByRole('button', { name: ENTITY_EMPTY_STATES.secrets.createAction?.label })
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Create Secret' })).toBeInTheDocument();
     });
 
     it('invokes onCreate when the create button is clicked', async () => {
@@ -111,7 +112,7 @@ describe('SecretsDataView', () => {
 
       const createButton = await screen.findByRole(
         'button',
-        { name: 'Create Secret' },
+        { name: ENTITY_EMPTY_STATES.secrets.createAction?.label },
         { timeout: XL_SELECTOR_TIMEOUT }
       );
       await user.click(createButton);

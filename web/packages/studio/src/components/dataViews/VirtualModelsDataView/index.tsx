@@ -236,49 +236,41 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
       [openDetailsPanel, workspace]
     );
 
-  const hasSearchOrFilters =
-    !!dataViewState.debouncedSearchBar || dataViewState.debouncedColumnFilters.length > 0;
-  const isInitialEmpty =
-    pagination?.total_results === 0 && !isFetching && !error && !hasSearchOrFilters;
-
   return (
     <Stack gap="density-xl" {...attributes?.Stack}>
-      {isInitialEmpty ? (
-        <EntityEmptyState entity="virtualModels" variant="first-use" />
-      ) : (
-        <StudioDataView
-          dataViewState={dataViewState}
-          searchField="name"
-          makeColumns={makeColumns}
-          onRowClick={(row: VirtualModelWithId) => openDetailsPanel(row)}
-          attributes={{
-            DataViewSearchBar: {
-              placeholder: 'Search by name...',
-            },
-            DataViewRoot: {
-              data: virtualModelsWithId,
-              totalCount: pagination?.total_results,
-              requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
-            },
-            DataViewTableContent: {
-              renderEmptyState: () => (
+      <StudioDataView
+        dataViewState={dataViewState}
+        searchField="name"
+        makeColumns={makeColumns}
+        onRowClick={(row: VirtualModelWithId) => openDetailsPanel(row)}
+        attributes={{
+          DataViewSearchBar: {
+            placeholder: 'Search by name...',
+          },
+          DataViewRoot: {
+            data: virtualModelsWithId,
+            totalCount: pagination?.total_results,
+            requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
+          },
+          DataViewTableContent: {
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+              hasFiltersApplied || hasSearchApplied ? (
                 <EntityEmptyState
                   entity="virtualModels"
                   variant="no-results"
                   onClearFilters={dataViewState.resetFilters}
                 />
+              ) : (
+                <EntityEmptyState entity="virtualModels" variant="first-use" />
               ),
-              renderErrorState: () => (
-                <ErrorPanel
-                  errorMessage={getErrorMessage(
-                    error ?? new Error('Failed to fetch virtual models')
-                  )}
-                />
-              ),
-            },
-          }}
-        />
-      )}
+            renderErrorState: () => (
+              <ErrorPanel
+                errorMessage={getErrorMessage(error ?? new Error('Failed to fetch virtual models'))}
+              />
+            ),
+          },
+        }}
+      />
 
       {modalVirtualModel && (
         <DeleteConfirmationModal

@@ -8,7 +8,10 @@ import {
   ROW_SELECTION_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
-import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
+import {
+  EntityEmptyState,
+  type EntityEmptyStateProps,
+} from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { QuickActionsMenuRoot } from '@nemo/common/src/components/QuickActionsMenu/QuickActionsMenuRoot';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -39,6 +42,11 @@ import { ComponentProps, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 type AgentEvalJobRow = AgentEvaluateJob & { id: string };
+
+/** Variant-specific `EntityEmptyState` props for the `agentEvaluations` entity, minus `entity`/`className`. */
+type AgentEvaluationsEmptyStateProps =
+  | Omit<Extract<EntityEmptyStateProps, { variant: 'first-use' }>, 'entity' | 'className'>
+  | Omit<Extract<EntityEmptyStateProps, { variant: 'no-results' }>, 'entity' | 'className'>;
 
 const STATUS_OPTIONS_WITH_ALL = [{ value: '', label: 'All' }, ...STATUS_FILTER_OPTIONS];
 
@@ -222,16 +230,13 @@ export const AgentEvaluationsDataView = () => {
             requestStatus: isLoading && !jobsData ? 'loading' : undefined,
           },
           DataViewTableContent: {
-            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
-              hasFiltersApplied || hasSearchApplied ? (
-                <EntityEmptyState
-                  entity="agentEvaluations"
-                  variant="no-results"
-                  onClearFilters={dataViewState.resetFilters}
-                />
-              ) : (
-                <EntityEmptyState entity="agentEvaluations" variant="first-use" />
-              ),
+            renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) => {
+              const emptyStateProps: AgentEvaluationsEmptyStateProps =
+                hasFiltersApplied || hasSearchApplied
+                  ? { variant: 'no-results', onClearFilters: dataViewState.resetFilters }
+                  : { variant: 'first-use' };
+              return <EntityEmptyState entity="agentEvaluations" {...emptyStateProps} />;
+            },
           },
         }}
       />
