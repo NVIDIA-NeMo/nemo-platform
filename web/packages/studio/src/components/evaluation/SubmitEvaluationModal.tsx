@@ -54,10 +54,7 @@ import {
 } from '@studio/components/evaluation/submitEvaluationJob';
 import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
-import {
-  getAgentEvaluationDetailRoute,
-  getEvaluationResultDetailsRoute,
-} from '@studio/routes/utils';
+import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
@@ -483,21 +480,17 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
               buildAgentEvalRequestBody(spec, selections) as AgentEvaluateJobRequest
             );
         if (!created?.name) throw new Error('Submission did not return a job name');
-        return { name: created.name, isDataset: isDatasetEvalSpec(spec) };
+        return { name: created.name };
       } catch (err) {
         throw await discardSeeded(workspace, seeded, err);
       }
     },
-    onSuccess: ({ name, isDataset }) => {
+    onSuccess: ({ name }, formData) => {
       toast.success(`Evaluation "${name}" submitted`);
-      void queryClient.invalidateQueries({ queryKey: ['agent-eval-jobs', workspace] });
+      void queryClient.invalidateQueries({ queryKey: ['evaluator-jobs', workspace] });
       onSubmitted?.(name);
       resetAndClose();
-      navigate(
-        isDataset
-          ? getEvaluationResultDetailsRoute(workspace, name)
-          : getAgentEvaluationDetailRoute(workspace, name)
-      );
+      navigate(getAgentEvaluationsTabRoute(workspace, bareName(formData.agent)));
     },
   });
 

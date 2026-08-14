@@ -5,7 +5,7 @@ homogeneous and the interesting variable is coverage, not the kind of task.
 
 ## The dataset
 
-Five rows (three phishing, two benign), each with `subject`, `sender`, `body`, and `label`.
+40 rows (22 phishing, 18 benign), each with `subject`, `sender`, `body`, and `label`.
 `prompt_template` assembles them into the RFC-822 message the agent expects:
 
 ```jinja
@@ -18,8 +18,9 @@ Subject: {{ item.subject }}
 The `From:` line is deliberate — the sender domain is a top phishing signal and is what the agent's
 `extract_iocs` tool harvests. Dropping it measurably weakens the agent.
 
-`label` is the only ground truth here. Add rows by appending to `dataset.jsonl`; five rows means
-each one moves a score by 20%, so treat small differences as noise.
+`label` is the only ground truth here. The rows are shared with the email-security-analyst sample:
+the dataset carries inputs and labels only, so it is agent-agnostic — the YAML verdict contract
+lives entirely in the metrics below. Add rows by appending to `dataset.jsonl`.
 
 ## How the verdict is read
 
