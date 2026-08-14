@@ -44,20 +44,28 @@ folders:
 
 ```
 hello_world_dataset/
-  hello-world/          # [task] name = "harbor/hello-world"
+  hello-world/                 # [task] name = "harbor/hello-world"
     task.toml
     instruction.md
     environment/Dockerfile
     tests/test.sh
     solution/solve.sh
+  injected-runtime-error/      # opt-in via --inject-error-task
+    task.toml
+    instruction.md
+    environment/Dockerfile
+    tests/test.sh
+    solution/solve.sh          # sleeps past agent.timeout_sec=1s → exception_info
 ```
 
 Pointing the runtime at this directory is exactly how user Harbor task
 collections are discovered: Harbor scans the subdirs, treats each folder with a
-`task.toml` as a task, and runs them all. Drop another task folder in here and it
-is picked up with no code changes — the SDK's `discover_harbor_tasks()` mirrors
-the same scan to produce one scoring task per folder (reading the task id from
-each `[task] name`).
+`task.toml` as a task, and runs them all. The example defaults to
+`harbor/hello-world` only; pass `--inject-error-task` to also run the permanent
+failure fixture. Drop another task folder in here and it is picked up with no
+code changes — the SDK's `discover_harbor_tasks()` mirrors the same scan to
+produce one scoring task per folder (reading the task id from each `[task]
+name`).
 
 ## Under the hood
 

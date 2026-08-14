@@ -9,12 +9,16 @@ imports, running a whole Harbor local dataset is two lines — build a
 runs Harbor's ``JobConfig`` and scores the results; the caller never imports
 ``harbor`` or assembles a job.
 
-Two modes, both over the bundled ``hello_world_dataset`` (Harbor's ``hello-world``
-task) scored with the deterministic **oracle** agent, so no LLM/API key is needed:
+Two modes, both over the bundled ``hello_world_dataset`` scored with the
+deterministic **oracle** agent, so no LLM/API key is needed:
 
 * ``--mode native`` — print the SDK summary.
 * ``--mode optimizer`` — collapse the result into NeMo Optimizer's legacy
   ``{reward, reward_details, exceptions}`` payload.
+
+By default only ``harbor/hello-world`` runs. Pass ``--inject-error-task`` to also
+include ``harbor/injected-runtime-error``, whose oracle ``solution/solve.sh``
+sleeps past a 1s agent timeout so Harbor populates ``exception_info``.
 
 Running either mode requires ``harbor`` installed and a working Docker daemon.
 
@@ -22,6 +26,7 @@ Run it as a module from the repository root::
 
     python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
     python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --n-attempts 2
+    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --inject-error-task
     python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
 """
 
@@ -44,9 +49,25 @@ logger = logging.getLogger(__name__)
 # A Harbor "local dataset" is a directory whose immediate subdirectories are task
 # folders. Point the runtime at it and every task is discovered, run, and scored.
 HELLO_WORLD_DATASET_DIR = Path(__file__).resolve().parent / "hello_world_dataset"
+HELLO_WORLD_TASK_NAME = "harbor/hello-world"
+INJECTED_ERROR_TASK_NAME = "harbor/injected-runtime-error"
 
 
-async def _main(mode: str, jobs_dir: Path, *, n_attempts: int, job_name: str | None) -> None:
+def _task_names(*, inject_error_task: bool) -> list[str] | None:
+    """Default to the healthy task; include the permanent error fixture when requested."""
+    if inject_error_task:
+        return [HELLO_WORLD_TASK_NAME, INJECTED_ERROR_TASK_NAME]
+    return [HELLO_WORLD_TASK_NAME]
+
+
+async def _main(
+    mode: str,
+    jobs_dir: Path,
+    *,
+    n_attempts: int,
+    job_name: str | None,
+    inject_error_task: bool,
+) -> None:
     # The entire caller-side plumbing: a config and one call.
     # n_attempts>1 runs the same verifier criteria per attempt so summary can emit pass@k.
     config = HarborRuntimeConfig(
@@ -57,7 +78,11 @@ async def _main(mode: str, jobs_dir: Path, *, n_attempts: int, job_name: str | N
         n_concurrent_trials=1,
         quiet=False,
     )
-    result = await run_harbor_eval(config, HELLO_WORLD_DATASET_DIR)
+    result = await run_harbor_eval(
+        config,
+        HELLO_WORLD_DATASET_DIR,
+        task_names=_task_names(inject_error_task=inject_error_task),
+    )
 
     if mode == "optimizer":
         print("Legacy optimizer reward payload:")
@@ -70,6 +95,9 @@ async def _main(mode: str, jobs_dir: Path, *, n_attempts: int, job_name: str | N
     for score in result.scores:
         reward = score.outputs[0].value if score.outputs else None
         print(f"  {score.task_id}: reward={reward} status={score.status.value}")
+    for trial in result.trials:
+        if trial.error is not None:
+            print(f"  {trial.id}: error={trial.error.type}: {trial.error.message}")
 
 
 if __name__ == "__main__":
@@ -98,5 +126,21 @@ if __name__ == "__main__":
         default=None,
         help="Pin a stable Harbor job name to reuse the job-dir cache across debug runs.",
     )
+    parser.add_argument(
+        "--inject-error-task",
+        action="store_true",
+        help=(
+            "Also run hello_world_dataset/injected-runtime-error, whose oracle "
+            "solution/solve.sh sleeps past a 1s agent timeout and populates exception_info."
+        ),
+    )
     args = parser.parse_args()
-    asyncio.run(_main(args.mode, args.jobs_dir, n_attempts=args.n_attempts, job_name=args.job_name))
+    asyncio.run(
+        _main(
+            args.mode,
+            args.jobs_dir,
+            n_attempts=args.n_attempts,
+            job_name=args.job_name,
+            inject_error_task=args.inject_error_task,
+        )
+    )

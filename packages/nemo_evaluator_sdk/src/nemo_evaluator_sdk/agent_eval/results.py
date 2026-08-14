@@ -398,9 +398,54 @@ class AgentEvalSummary(BaseModel):
             }
         ],
     )
+    error_trial_ids: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Trials that errored, grouped by error type -- Harbor's 'exception_stats' shape. Values "
+            "are trial ids, not task ids: they join to AgentEvalTrial.id (trials.jsonl), "
+            "AgentEvalTaskScore.trial_id (scores.jsonl), and TrialMetricValue.trial_id in "
+            "task_metric_values. Membership is 'the trial carries an error', with no status filter -- "
+            "an errored Harbor trial is PARTIAL rather than FAILED so that it is still scored, and it "
+            "belongs here regardless. A trial that both errored and produced a reward therefore "
+            "appears here AND in task_metric_values, where it may even count as a pass; that is what "
+            "Harbor does too. Ids are appended in trial order and never deduplicated. Key order is "
+            "not meaningful -- summary.json is written with sorted keys. Empty means either no trial "
+            "errored or no trials were supplied to from_scores(); a reader telling those apart checks "
+            "whether the key is present in summary.json."
+        ),
+        examples=[
+            {
+                "RuntimeError": [
+                    "contract-review-msa-indemnity__k3f9wq2",
+                    "nda-scope-carveouts__p2hn8sc",
+                ],
+                "TimeoutError": ["merger-hsr-filing-threshold__w5db3qy"],
+            }
+        ],
+    )
     task_count: int = Field(default=0, description="Number of tasks represented in the run.")
     trial_count: int = Field(default=0, description="Number of distinct trials scored.")
     score_count: int = Field(default=0, description="Total number of metric scores.")
+    error_count: int = Field(
+        default=0,
+        description=(
+            "Number of trials that errored -- Harbor's 'n_errors'. Equals the total ids across "
+            "error_trial_ids; stated rather than derived so a non-Python reader of summary.json need "
+            "not sum a nested structure, matching the other counts here."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _error_count_matches_rollup(self) -> AgentEvalSummary:
+        """Keep the two error fields from disagreeing when a summary is built by hand.
+
+        ``from_scores`` derives both from one walk, but the model is public and directly
+        constructible -- and a count that contradicts the rollup beside it is worse than no count.
+        """
+        total = sum(len(ids) for ids in self.error_trial_ids.values())
+        if self.error_count != total:
+            raise ValueError(f"error_count {self.error_count} does not match {total} ids in error_trial_ids")
+        return self
 
     @property
     def scores_by_name(self) -> Mapping[str, AggregateScore]:
@@ -457,15 +502,23 @@ class AgentEvalSummary(BaseModel):
         scores: Sequence[AgentEvalTaskScore],
         *,
         tasks: Sequence[AgentEvalTask] | None = None,
+        trials: Sequence[AgentEvalTrial] | None = None,
         extra_scores: Sequence[AggregateScore] = (),
     ) -> AgentEvalSummary:
-        """Build aggregated scores, task values, and coverage for a set of metric scores.
+        """Build aggregated scores, task values, coverage, and the error rollup for a set of scores.
 
         ``extra_scores`` are already-aggregated scores contributed by the runner (namespaced
         ``runner.<name>.``), merged in so a backend's own figures are addressable the same way as ours.
+
+        ``trials`` supplies the only thing scores cannot carry: what went wrong. Omitting it leaves
+        :attr:`error_trial_ids` empty rather than raising -- the same silent-skip contract ``tasks``
+        already has for pass@k. It may legitimately be *wider* than ``scores`` (a caller
+        re-aggregating a subset), so the rollup can name trial ids absent from
+        :attr:`task_metric_values`.
         """
         task_list = list(tasks) if tasks is not None else None
         task_metric_values = _task_metric_values(scores, task_list)
+        error_trial_ids = _error_trial_ids(trials)
         return AgentEvalSummary(
             scores=_aggregate_scores(
                 scores,
@@ -475,9 +528,11 @@ class AgentEvalSummary(BaseModel):
             ),
             metric_coverage=_metric_coverage(scores, task_list),
             task_metric_values=task_metric_values,
+            error_trial_ids=error_trial_ids,
             task_count=len(task_list) if task_list is not None else len({score.task_id for score in scores}),
             trial_count=len({score.trial_id for score in scores}),
             score_count=len(scores),
+            error_count=sum(len(ids) for ids in error_trial_ids.values()),
         )
 
 
@@ -932,6 +987,32 @@ def _scorelike_outputs(tasks: Sequence[AgentEvalTask] | None) -> set[tuple[str, 
                 if issubclass(spec.value_schema, _PASS_AT_K_VALUE_SCHEMAS):
                     scorelike.add((metric_type, spec.name))
     return scorelike
+
+
+def _error_trial_ids(trials: Sequence[AgentEvalTrial] | None) -> dict[str, list[str]]:
+    """Trial ids grouped by error type, in trial order — Harbor's ``exception_stats``.
+
+    Three trials, the middle one fine::
+
+        in   t0  error RuntimeError
+             t1  (no error)
+             t2  error RuntimeError
+             t3  error TimeoutError
+
+        out  {"RuntimeError": ["t0", "t2"], "TimeoutError": ["t3"]}
+
+    Selection is on ``trial.error``, never on ``trial.status``: an errored Harbor trial is ``PARTIAL``
+    so that it still scores, and filtering by status would drop exactly the trials this exists to name.
+
+    Ids are **appended**, never collected into a set or used as dict keys. Nothing enforces trial-id
+    uniqueness (Gym derives ids from a rollout index in two separate loops), and losing cardinality
+    here would understate the error count — the same rule ``task_metric_values`` follows.
+    """
+    grouped: dict[str, list[str]] = {}
+    for trial in trials or ():
+        if trial.error is not None:
+            grouped.setdefault(trial.error.type, []).append(trial.id)
+    return grouped
 
 
 def _task_metric_values(

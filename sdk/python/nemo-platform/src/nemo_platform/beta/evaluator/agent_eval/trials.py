@@ -7,10 +7,11 @@ the standard evidence-key builder)."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_platform.beta.evaluator.values import Agent, Model
@@ -26,7 +27,15 @@ from nemo_platform.beta.evaluator.values.evidence import (
     EvidenceDescriptor,
 )
 from nemo_platform.beta.evaluator.values.results import AggregateScore
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    WithJsonSchema,
+    field_validator,
+    model_validator,
+)
 
 
 class AgentEvalTrialStatus(str, Enum):
@@ -57,8 +66,79 @@ class AgentOutput(BaseModel):
     )
 
 
+# Type recorded when a producer reported a failure but named no usable type. The SDK's own fallback,
+# not Harbor's - Harbor's `ExceptionInfo.exception_type` is required and always populated, so this
+# fires only for hand-built or malformed payloads.
+UNKNOWN_ERROR_TYPE = "UnknownException"
+
+# The pre-:class:`TrialError` convention: the Harbor adapter used to stamp the type string onto
+# ``AgentEvalTrial.metadata`` under this key. Read on load so bundles written before the typed field
+# still roll up; no longer written. Kept indefinitely -- bundles on disk are permanent.
+LEGACY_ERROR_TYPE_METADATA_KEY = "exception_type"
+
+
+class TrialError(BaseModel):
+    """What went wrong producing one trial, as the producer reported it.
+
+    Present means the *producer* reported a failure. It does **not** imply ``status is FAILED``: an
+    errored Harbor trial is deliberately :attr:`AgentEvalTrialStatus.PARTIAL` so it is still scored.
+    It is also unrelated to a score diagnostic's ``exception_type`` detail, which records that the
+    *metric* raised - a different event.
+
+    Frozen so callers cannot rewrite ``type`` after construction. These objects are returned as-is
+    (not copied), and ``AgentEvalSummary.error_trial_ids`` groups trial ids by that string. Mutating
+    ``type`` on a live object would leave the summary keyed on the old value while the trial reports
+    a new one.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    type: str = Field(
+        description=(
+            "Error class name as the producer reported it, e.g. 'RuntimeError'. Rollup key for "
+            f"AgentEvalSummary.error_trial_ids. Falls back to {UNKNOWN_ERROR_TYPE!r} when the "
+            "producer reported a failure without a usable type."
+        )
+    )
+    message: str | None = Field(
+        default=None,
+        description="Short error message, when the producer supplied one.",
+    )
+    traceback: str | None = Field(
+        default=None,
+        description=(
+            "Formatted traceback, when the producer supplied one. May be truncated by the adapter "
+            "that captured it. Note run bundles are portable: this can carry absolute filesystem "
+            "paths and other diagnostic text from the machine that ran the trial."
+        ),
+    )
+    # Schema is a bare string, deliberately not `format: date-time`. RFC 3339 date-time requires a
+    # UTC offset, and this field may legitimately carry a naive local timestamp (Harbor writes one),
+    # so claiming the format would be a promise the value cannot keep -- and a client that trusts it
+    # parses a zoneless string into its *own* zone, silently shifting the instant. A plain string
+    # says "timestamp as the producer wrote it"; Python callers still get a parsed datetime.
+    occurred_at: Annotated[datetime | None, WithJsonSchema({"type": "string"})] = Field(
+        default=None,
+        description=(
+            "When the producer recorded the failure, as it reported it. The SDK does not rewrite "
+            "this: an aware value (UTC, offset) is kept, and a naive value stays naive. Harbor's "
+            "clock is naive local, e.g. '2026-08-13T17:22:32', while that trial's start in "
+            "result.json is UTC ('2026-08-14T00:22:25Z') — the same instant on two clocks, so do "
+            "not subtract them or attach a zone Harbor never wrote. A runner that recorded an "
+            "offset keeps it. Not RFC 3339 date-time: the offset may be absent."
+        ),
+    )
+
+    @field_validator("type")
+    @classmethod
+    def _non_empty_type(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("trial error type must not be empty")
+        return value
+
+
 class AgentEvalTrial(BaseModel):
-    """Durable trial artifact for one task: output, evidence, status, and metadata."""
+    """Durable trial artifact for one task: output, evidence, status, error, and metadata."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -73,6 +153,13 @@ class AgentEvalTrial(BaseModel):
         default=None,
         description="Named evidence descriptors (final state, traces, logs, ...) captured for the trial.",
     )
+    error: TrialError | None = Field(
+        default=None,
+        description=(
+            "What went wrong producing this trial, when the producer reported a failure. Populated "
+            "by a runner runtime. Drives AgentEvalSummary.error_trial_ids."
+        ),
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Free-form metadata associated with the trial.",
@@ -84,6 +171,30 @@ class AgentEvalTrial(BaseModel):
         if not value:
             raise ValueError("trial id and task_id must not be empty")
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _lift_legacy_error_type(cls, data: Any) -> Any:
+        """Read a pre-:class:`TrialError` bundle's ``metadata['exception_type']`` as a typed error.
+
+        Not about loadability - ``error`` defaults to ``None``, so an old row loads either way. It is
+        about *meaning*: without this, :func:`read_trials` on a shipped Harbor bundle yields a summary
+        reporting zero errors while every trial visibly records one.
+
+        Narrow on purpose. Only the Harbor key is lifted; ``error_type``/``error``/``gym_failure``
+        belong to runtimes whose semantics have not been reviewed (``gym_failure`` holds a *message*,
+        not a type). ``metadata`` is left untouched - ``_trial_sample`` spreads it into metric inputs.
+        An explicit ``error`` always wins, so a producer setting both is never overridden.
+        """
+        if not isinstance(data, Mapping) or data.get("error") is not None:
+            return data
+        metadata = data.get("metadata")
+        if not isinstance(metadata, Mapping):
+            return data
+        legacy = metadata.get(LEGACY_ERROR_TYPE_METADATA_KEY)
+        if not isinstance(legacy, str) or not legacy.strip():
+            return data
+        return {**data, "error": TrialError(type=legacy)}
 
     @model_validator(mode="after")
     def _completed_trial_requires_output(self) -> AgentEvalTrial:
