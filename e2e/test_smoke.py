@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Smoke tests that verify the platform is reachable and core APIs respond.
 
 These are intentionally minimal — they validate the e2e harness works and

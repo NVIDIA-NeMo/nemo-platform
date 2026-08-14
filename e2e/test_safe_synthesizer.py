@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """E2E coverage for the Safe Synthesizer plugin.
 
 Smoke coverage runs in the local subprocess harness and verifies the API,
