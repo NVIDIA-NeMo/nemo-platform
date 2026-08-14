@@ -1,0 +1,19 @@
+{
+  "span_count": 1,
+  "span": {
+    "span_id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+    "trace_id": "df570c03-5a03-4cea-8df0-c162d05127ac",
+    "kind": "LLM",
+    "status": "error",
+    "input": {},
+    "output": {}
+  },
+  "read_fields": {"project": "fixture", "input_tokens": 0, "output_tokens": 0, "error_message": "string"},
+  "raw_paths": [
+    {"path": ["langsmith.raw", "feedback_stats", "correctness", "avg"], "value": 1.0},
+    {"path": ["langsmith.raw", "first_token_time"], "value": null},
+    {"path": ["langsmith.signals", 0, "feedback_source", "type"], "value": "app"}
+  ],
+  "evaluator_names": [],
+  "annotation_kinds": ["label", "note"]
+}

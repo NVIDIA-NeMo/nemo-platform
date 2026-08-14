@@ -1,0 +1,26 @@
+{
+  "span_count": 1,
+  "span": {
+    "span_id": "braintrust-span-1",
+    "trace_id": "braintrust-span-1",
+    "kind": "LLM",
+    "status": "success",
+    "input": {"question": "What is the capital of France?"},
+    "output": {"answer": "Paris"}
+  },
+  "read_fields": {
+    "project": "fixture",
+    "model": "fixture-model",
+    "provider": "fixture-provider",
+    "input_tokens": 12,
+    "output_tokens": 3,
+    "total_tokens": 15
+  },
+  "raw_paths": [
+    {"path": ["braintrust.raw", "metadata", "nullable"], "value": null},
+    {"path": ["braintrust.raw", "audit_data", 0, "actor"], "value": "fixture-user"},
+    {"path": ["braintrust.signals", 1, "value"], "value": true}
+  ],
+  "evaluator_names": ["braintrust.correctness", "braintrust.grounded"],
+  "annotation_kinds": ["metadata", "note", "metadata"]
+}

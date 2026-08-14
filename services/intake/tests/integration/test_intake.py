@@ -49,3 +49,4 @@ def test_intake_openapi_keeps_span_era_routes(sdk: NeMoPlatform) -> None:
     assert "/apis/intake/v2/workspaces/{workspace}/annotations" in paths
     assert "/apis/intake/v2/workspaces/{workspace}/evaluator-results" in paths
     assert "/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces" in paths
+    assert "/apis/intake/v2/workspaces/{workspace}/ingest/spans" in paths

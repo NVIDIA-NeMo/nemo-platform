@@ -11,6 +11,7 @@ from nmp.intake.spans.api.spans_schemas import SPAN_SUMMARY_ERROR_MESSAGE_CHAR_L
 from nmp.intake.spans.api.traces_schemas import Trace
 from nmp.intake.spans.domain import INTAKE_PREVIEW_PAYLOAD_CHAR_LIMIT, IntakeSpan, IntakeTrace, SpanKind, SpanStatus
 from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
+from nmp.intake.spans.span_attribute_bags import DIRECT_INGEST_RAW_ATTRIBUTES_KEY, SpanAttributeBags
 from nmp.intake.spans.storage import json_dumps_preserve
 from pydantic import ValidationError
 
@@ -62,6 +63,26 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         "custom.string": "value-a",
         "custom.number": 1.25,
         "custom.bool": True,
+    }
+
+
+def test_span_response_rehydrates_direct_ingest_raw_attributes_without_type_loss():
+    bags = SpanAttributeBags()
+    bags.put_json(
+        DIRECT_INGEST_RAW_ATTRIBUTES_KEY,
+        {
+            "provider.raw": {
+                "nested": [1, True, None, {"unicode": "雪"}],
+                "empty": "",
+            }
+        },
+    )
+
+    assert json.loads(bags.raw_attributes_json() or "{}") == {
+        "provider.raw": {
+            "nested": [1, True, None, {"unicode": "雪"}],
+            "empty": "",
+        }
     }
 
 

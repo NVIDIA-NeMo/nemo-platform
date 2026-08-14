@@ -1,0 +1,19 @@
+{
+  "span_count": 2,
+  "span": {
+    "span_id": "c1db39004862bb12",
+    "trace_id": "tr-mlflow-example",
+    "kind": "CHAIN",
+    "status": "success",
+    "input": {"question": "What is the capital of France?"},
+    "output": {"answer": "Paris"}
+  },
+  "read_fields": {"project": "fixture"},
+  "raw_paths": [
+    {"path": ["fixture.unmapped"], "value": {"unicode": "café", "null": null}},
+    {"path": ["mlflow.raw", "trace_metadata", "mlflow.trace_schema.version"], "value": "3"},
+    {"path": ["mlflow.signals", 0, "assessment_id"], "value": "a-mlflow-correctness"}
+  ],
+  "evaluator_names": ["mlflow.correctness"],
+  "annotation_kinds": ["metadata"]
+}

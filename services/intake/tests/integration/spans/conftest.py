@@ -98,7 +98,12 @@ def clickhouse_client(clickhouse_settings: ClickHouseSettings):
 
 @pytest.fixture(autouse=True)
 def clean_clickhouse(clickhouse_client: ClickHouseSpanClient):
-    tables = (ClickHouseTable.SPANS, ClickHouseTable.EVALUATOR_RESULTS, ClickHouseTable.TRACE_INDEX)
+    tables = (
+        ClickHouseTable.SPANS,
+        ClickHouseTable.EVALUATOR_RESULTS,
+        ClickHouseTable.ANNOTATIONS,
+        ClickHouseTable.TRACE_INDEX,
+    )
     for table in tables:
         _run(clickhouse_client.command(f"TRUNCATE TABLE {qualified_table(clickhouse_client.database, table)}"))
     yield
