@@ -921,6 +921,8 @@ def test_metric_row_error_is_none_for_a_trial_that_did_not_fail() -> None:
     row = _metric_row(AgentEvalTask(id="task-1", intent="Fix it.", inputs={}), _candidate_trial())
 
     assert row["trial"]["error"] is None
+
+
 class _PreflightCountingMetric(_ConstantMetric):
     """Metric that records how many times its preflight ran."""
 

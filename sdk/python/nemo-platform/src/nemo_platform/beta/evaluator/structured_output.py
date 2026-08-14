@@ -16,6 +16,10 @@ from nemo_platform.beta.evaluator.values import Model
 
 _logger = logging.getLogger(__name__)
 
+#: Probes must survive a reasoning model's thinking budget; too small and truncated output looks
+#: identical to an endpoint that ignored the encoding.
+_PROBE_MAX_TOKENS = 4096
+
 #: The marker name must stay unguessable: the probe never shows this schema to the model, so a
 #: mode only passes when the server actually injected the grammar.
 _DEFAULT_PROBE_SCHEMA: dict = {
@@ -165,6 +169,14 @@ def _looks_like_unsupported_guided_json_error(message: str) -> bool:
     return False
 
 
+def _probe_was_truncated(response: dict) -> bool:
+    """Return whether the probe ran out of output budget before producing content."""
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return False
+    return choices[0].get("finish_reason") == "length"
+
+
 def _extract_chat_content(response: dict) -> str | None:
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -249,7 +261,9 @@ async def _probe_structured_output_mode(
     base_request = {
         "messages": [{"role": "user", "content": probe_message}],
         "temperature": 0,
-        "max_tokens": 128,
+        # Generous because reasoning models spend most of a small budget thinking and return
+        # truncated or empty content, which is indistinguishable from an unhonoured encoding.
+        "max_tokens": _PROBE_MAX_TOKENS,
     }
     # Deep-copied so `probe_schema` stays unreachable from the request: Pydantic copies only a
     # dict's top level, and `probe_schema` is what the response is validated against.
@@ -270,6 +284,14 @@ async def _probe_structured_output_mode(
             content = _extract_chat_content(response)
             if content and _is_probe_valid_json(content, probe_schema):
                 return mode
+            if _probe_was_truncated(response):
+                _logger.warning(
+                    "Structured output probe for %s hit the %d-token budget, so support for %s "
+                    "could not be determined; enforcement may be dropped for this run.",
+                    model.name,
+                    _PROBE_MAX_TOKENS,
+                    mode.value,
+                )
         except Exception as e:
             if _looks_like_unsupported_guided_json_error(str(e)):
                 continue

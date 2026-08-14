@@ -519,3 +519,37 @@ async def test_concurrent_runs_get_isolated_caches():
 
     assert set(modes) == {StructuredOutputMode.OPENAI_RESPONSE_FORMAT}
     assert sorted(calls) == ["a", "b"], f"each concurrent run must probe in its own cache, got {calls}"
+
+
+@pytest.mark.asyncio
+async def test_truncated_probe_is_reported_rather_than_silently_unsupported(caplog):
+    """A reasoning model can spend the whole probe budget thinking and return empty content.
+
+    Truncation is indistinguishable from an endpoint ignoring the encoding, so it must at least be
+    surfaced instead of quietly resolving to the unenforced prompt fallback.
+    """
+
+    async def truncating_inference_fn(model, request, max_retries, **kwargs):
+        return {"choices": [{"finish_reason": "length", "message": {"content": ""}}]}
+
+    with caplog.at_level(logging.WARNING):
+        mode = await detect_structured_output_mode(
+            model=_test_model(), inference_fn=truncating_inference_fn, api_key=None
+        )
+
+    assert mode == StructuredOutputMode.UNSUPPORTED
+    assert [r for r in caplog.records if "could not be determined" in r.message]
+
+
+@pytest.mark.asyncio
+async def test_probe_budget_accommodates_a_reasoning_model():
+    """The probe must not use a budget a reasoning model burns before emitting content."""
+    seen: list[int] = []
+
+    async def inference_fn(model, request, max_retries, **kwargs):
+        seen.append(request["max_tokens"])
+        return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
+
+    await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
+
+    assert seen[0] >= 2048, f"probe budget {seen[0]} is too small for a reasoning model"
