@@ -12,6 +12,7 @@ files for more specific fixtures.
 import logging
 import os
 import tempfile
+import time
 from collections.abc import Generator
 from pathlib import Path
 
@@ -206,6 +207,8 @@ def pytest_configure(config):
     """
     config.option.importmode = "importlib"
     _enable_crash_dumps(config)
+    global _SESSION_TIMEOUT_SECONDS
+    _SESSION_TIMEOUT_SECONDS = getattr(config.option, "timeout", None)
 
 
 def _enable_crash_dumps(config) -> None:
@@ -240,6 +243,15 @@ def _enable_crash_dumps(config) -> None:
 #: Open crash-dump file for this process, or None when crash dumps are disabled.
 _CRASH_DUMP_FILE = None
 
+#: Session-wide per-test timeout, so a lost worker's elapsed time can be judged against it.
+_SESSION_TIMEOUT_SECONDS = None
+
+
+#: When each in-flight test started, by nodeid. Populated on the controller as well as in workers,
+#: because xdist forwards `logstart` to the controller — which is what lets a lost worker's test be
+#: timed from the outside, where the process that was running it no longer exists to report.
+_TEST_START_TIMES: dict[str, float] = {}
+
 
 def pytest_runtest_logstart(nodeid, location):
     """Record which test this process entered, so a crash dump can be attributed to it.
@@ -248,8 +260,44 @@ def pytest_runtest_logstart(nodeid, location):
     arrived. Writing the nodeid on entry means the tail of the file names it.
     """
     del location
+    _TEST_START_TIMES[nodeid] = time.monotonic()
     if _CRASH_DUMP_FILE is not None:
         _CRASH_DUMP_FILE.write(f"--- entering {nodeid}\n")
+
+
+def pytest_runtest_logfinish(nodeid, location):
+    """Forget a test that finished, so only genuinely in-flight tests are timed."""
+    del location
+    _TEST_START_TIMES.pop(nodeid, None)
+
+
+def pytest_handlecrashitem(crashitem, report, sched):
+    """Say how long a lost worker's test had been running, and name a timeout when it looks like one.
+
+    xdist can only report ``worker 'gwN' crashed while running <nodeid>``, because from the
+    controller a lost worker is indistinguishable from any other. A timeout reads as a crash: with
+    ``timeout_method = thread``, pytest-timeout calls ``os._exit(1)``, which is not a signal — so
+    faulthandler never runs — and its own stack dump goes to the worker's captured stdout, which
+    xdist does not forward. Both channels are dark and the operator is left to guess.
+
+    The controller does know when the test started, so it can supply the one number that
+    distinguishes the cases. Appending it turns "crashed" into "ran 121.4s against a 120s timeout",
+    which is the difference between a five-minute diagnosis and a five-day one.
+    """
+    del sched
+    started = _TEST_START_TIMES.pop(crashitem, None)
+    if started is None:
+        return None
+    elapsed = time.monotonic() - started
+    if _SESSION_TIMEOUT_SECONDS and elapsed >= _SESSION_TIMEOUT_SECONDS * 0.9:
+        note = (
+            f"ran {elapsed:.1f}s against --timeout={_SESSION_TIMEOUT_SECONDS:g}s "
+            f"— likely a TIMEOUT, not a crash (pytest-timeout os._exit()s the worker)"
+        )
+    else:
+        note = f"ran {elapsed:.1f}s before the worker was lost"
+    report.longrepr = f"{report.longrepr}\n  {note}"
+    return None
 
 
 def pytest_collection_modifyitems(config, items):
