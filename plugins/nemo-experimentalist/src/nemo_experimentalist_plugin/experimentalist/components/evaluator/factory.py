@@ -12,14 +12,25 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
     EvaluatorType,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator import (
+    HarborRunnerConfig,
+    HarborRunnerEvaluator,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborEvaluator,
     HarborEvaluatorConfig,
 )
 
-_SUPPORTED_EVALUATOR_TYPES = {
-    "harbor": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
+# Both Harbor-backed types read the same Harbor dataset layout; only who drives
+# the run differs, so they share ``HarborDataset``.
+_SUPPORTED_EVALUATOR_TYPES: dict[EvaluatorType, tuple[type[Dataset], type[Evaluator], type[EvaluatorConfig]]] = {
+    "harbor_native": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
+    "harbor_evaluator": (
+        HarborDataset,
+        HarborRunnerEvaluator,
+        HarborRunnerConfig,
+    ),
 }
 
 
@@ -98,7 +109,10 @@ class EvaluatorFactory:
             if isinstance(config, EvaluatorConfig):
                 config = config.model_dump()
             elif not isinstance(config, dict):
-                raise TypeError(f"{evaluator_type.capitalize()} evaluator config must be an EvaluatorConfig or dict")
+                # Quoted rather than .capitalize()d: these names are snake_case, so
+                # capitalizing produced "Harbor_native" — and it silently changes
+                # shape every time a type is renamed.
+                raise TypeError(f"{evaluator_type!r} evaluator config must be an EvaluatorConfig or dict")
             evaluator_config = _SUPPORTED_EVALUATOR_TYPES[evaluator_type][2].model_validate(config)
             return _SUPPORTED_EVALUATOR_TYPES[evaluator_type][1](
                 options=evaluator_config, experiment_dir=experiment_dir

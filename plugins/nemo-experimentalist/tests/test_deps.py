@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
+from pydantic import ValidationError
 
 
 def _datasets(tmp_path: Path) -> dict:
@@ -53,3 +54,14 @@ def test_insight_without_task_template_raises(tmp_path: Path) -> None:
 def test_neither_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must be set"):
         ExperimentalistDeps(**_datasets(tmp_path))
+
+
+def test_deprecated_evaluator_alias_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        ExperimentalistDeps.model_validate(
+            {
+                "agent": "ssh://git@h/g/r.git@main",
+                "evaluator_type": "harbor",
+                **_datasets(tmp_path),
+            }
+        )

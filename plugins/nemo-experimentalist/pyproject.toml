@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2",
     "httpx",
     "harbor>=0.16",
+    "nemo-evaluator-sdk",
     "opentelemetry-proto>=1.42.1",
     "protobuf>=6.0.0",
     "nooa",

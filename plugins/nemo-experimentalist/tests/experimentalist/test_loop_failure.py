@@ -74,7 +74,7 @@ async def test_baseline_failure_marks_run_failed(monkeypatch, tmp_path, failure_
         backend=backend,
         workspace="default",
         config=config,
-        evaluator_type="harbor",
+        evaluator_type="harbor_native",
         train_dataset=object(),
         validation_dataset=object(),
         insight=None,
