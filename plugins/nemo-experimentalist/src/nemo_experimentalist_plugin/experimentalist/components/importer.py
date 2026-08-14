@@ -23,8 +23,7 @@ class Importer(roles.Builder):
     """Commit a candidate that is the agent under test, unchanged.
 
     An ordinary build of an ordinary Proposal, so ``commit_candidate`` stays the only way
-    a Candidate is born and a strategy wanting several roots gets that for free. It lands
-    on ``agent-0`` without anyone naming it: the first fork takes the first free handle.
+    a Candidate is born and a strategy wanting several roots gets that for free.
     """
 
     name = "import"

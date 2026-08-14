@@ -198,8 +198,7 @@ class GroupLeafScorer(Agent, roles.TrajectoryScorer):
 
         The goal tree this scorer ranks against is its own: built on first use from the
         train split, refined from each round's analysis, and persisted under the run's
-        analysis directory. A scorer that models something else keeps whatever state it
-        needs here instead, which is why none of it is the strategy's business.
+        analysis directory.
         """
         self._load_trace = ctx.load_trace
         await self._ensure_goal_tree(ctx.datasets["train"], ctx.agent_spec)

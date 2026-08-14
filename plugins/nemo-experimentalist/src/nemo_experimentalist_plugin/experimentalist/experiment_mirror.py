@@ -9,7 +9,7 @@ This module is the *only* place that talks to ``client.experiments`` /
 ``ExperimentRun → ExperimentGroup`` (1:1) and ``Candidate → Experiment[]`` (one per
 evaluated split). It mirrors **structure only** (identity/lineage/status/description);
 eval results (reward/trials) are NOT copied into ``Experiment.metadata`` — those arrive
-via the Intake rollup path later (spec §4.3).
+via the Intake rollup path (spec §4.3).
 """
 
 from __future__ import annotations
@@ -74,9 +74,6 @@ def group_metadata(run: ExperimentRun) -> dict[str, str]:
     Platform ``metadata`` is ``dict[str, str]``: every value must be a string. Non-string
     fields are serialized (``config_snapshot`` as JSON, the progress counter via ``str``);
     ``winner_candidate`` is omitted until a winner exists rather than sent as ``None``.
-
-    Progress is reported as a counter with its unit, not a fraction, because the
-    strategies that most need reporting are exactly the ones that cannot compute one.
     """
     md = {
         "agent": run.agent,
@@ -93,8 +90,8 @@ def group_metadata(run: ExperimentRun) -> dict[str, str]:
 
 
 def experiment_metadata(candidate: Candidate, split: str) -> dict[str, str]:
-    """Identity/grouping metadata only. Eval results (reward/trials) are NOT copied this
-    PR — scores/traces arrive via the Intake rollup path later (spec §4.3).
+    """Identity/grouping metadata only. Eval results (reward/trials) are not copied here;
+    scores and traces arrive via the Intake rollup path (spec §4.3).
 
     Platform ``metadata`` is ``dict[str, str]``, so ``generation`` is serialized via ``str``.
     Both the durable id and the display label are recorded: ``ancestor`` references are

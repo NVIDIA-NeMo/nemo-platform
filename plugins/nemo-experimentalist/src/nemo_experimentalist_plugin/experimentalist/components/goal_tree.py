@@ -275,7 +275,6 @@ def find_node(root: GoalNode, node_id: str) -> GoalNode | None:
     return None
 
 
-# Standard Pydantic v2 pattern for recursive models
 GoalNode.model_rebuild()
 
 

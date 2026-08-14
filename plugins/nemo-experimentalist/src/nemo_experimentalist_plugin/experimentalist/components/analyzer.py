@@ -255,7 +255,6 @@ class AgentAnalyzer(Agent, roles.Analyzer):
             workspace: Absolute path to the eval-and-optimize workspace root.
             config: Tuning parameters; defaults to ``AnalyzerConfig()`` if ``None``.
             framework_skills_dirs: Optional list of directories containing framework skills to load.
-            models: Resolved model tiers; falls back to this install's settings.
             load_trace: Resolves a trace reference to a TraceExplorer. Taken from the
                 context so this signature names no platform type.
             **kwargs: Forwarded to ``Agent.__init__``.

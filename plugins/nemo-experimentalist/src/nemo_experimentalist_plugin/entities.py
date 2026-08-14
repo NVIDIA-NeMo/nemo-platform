@@ -430,7 +430,6 @@ class ExperimentRun(NemoEntity, entity_type="experiment_run"):
         Without this, resumed runs lose their identity and projection names collapse.
         """
         if isinstance(data, dict) and "id" in data:
-            # Pydantic wraps the dict during validation, extract the raw data
             instance = handler(data)
             instance._id = data["id"]  # type: ignore[attr-defined]
             return instance
@@ -613,7 +612,7 @@ class Candidate(NemoEntity, entity_type="candidate"):
         description=(
             "Per-node, per-task trajectory scores and explanations "
             "(node_id -> task_id -> {reward, explanation}). Shaped unlike RewardRecord.trials "
-            "and produced by one scorer; revisit when the trajectory-scorer seam lands."
+            "and produced by one scorer."
         ),
     )
     killed_generation: int | None = Field(

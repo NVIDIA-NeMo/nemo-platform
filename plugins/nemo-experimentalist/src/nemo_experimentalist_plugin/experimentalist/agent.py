@@ -22,13 +22,12 @@ def build_experimentalist_agent(
     implementation needs no change in this repository.
 
     Args:
-        working_dir: Local temp directory hydrated from the agent's fileset before the
-            run starts. The strategy reads and writes its intermediate artifacts here.
+        working_dir: Working directory for the run. The runner copies the agent under
+            test into it before the strategy starts, and the strategy reads and writes
+            its intermediate artifacts there.
         config: Run configuration. When None the defaults select the evolutionary loop.
         framework_skills_dirs: Directories of framework skills to load into the
             strategy's agents.
-        models: The run's resolved model tiers, so the strategy runs on the tiers the
-            run record reports rather than re-reading the environment for itself.
 
     Raises:
         LookupError: if no strategy is registered under ``config.strategy`` — naming one

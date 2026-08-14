@@ -306,10 +306,6 @@ class ExperimentRunner:
             insight=inputs.insight_ref,
             config_snapshot={
                 **self._config.model_dump(mode="json"),
-                # What this run actually resolved, not what was declared. Deployment
-                # settings live outside the run config, so without this the record
-                # cannot answer "which models did this run use". Never the credential:
-                # the snapshot is written to disk and mirrored to the platform.
             },
             status="running",
         )

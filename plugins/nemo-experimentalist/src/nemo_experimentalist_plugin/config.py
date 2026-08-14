@@ -98,9 +98,6 @@ class EvolutionaryOptimizerConfig(BaseModel):
         # would otherwise be dropped in silence — changing what the run does.
         for removed, role, config_key in (
             ("evaluator", "outcome_evaluator", "outcome_evaluator_config"),
-            # 'evaluation' said what the step produces; the role is the thing that does it,
-            # and 'outcome' is what distinguishes it from the trajectory-scorer, which
-            # measures the process of the same run.
             ("evaluation", "outcome_evaluator", "outcome_evaluator_config"),
             ("evaluation_config", "outcome_evaluator", "outcome_evaluator_config"),
             ("coder", "builder", "builder_config"),

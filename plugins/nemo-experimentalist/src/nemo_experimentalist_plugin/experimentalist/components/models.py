@@ -254,8 +254,6 @@ class EvolutionTree:
 
         fixed = ["gen", "agent", "ancestor", "type"]
         reward_cols = [(channel, dimension) for channel in channels for dimension in dimensions[channel]]
-        # Channel names in full, per M0's channel-agnostic rendering; the last column
-        # follows the field it prints, which is `description` now.
         all_cols = fixed + [f"{channel}:{dimension}" for channel, dimension in reward_cols] + ["description"]
         header = "| " + " | ".join(all_cols) + " |"
         sep = "| " + " | ".join("---" for _ in all_cols) + " |"

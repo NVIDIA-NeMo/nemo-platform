@@ -69,9 +69,6 @@ def _accepted(constructor: Any, supplied: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-#: The split every run has, and what ``evaluate()`` measures unless told otherwise.
-#: It is also the channel a selector ranks on by default.
-
 #: What a fork must not carry from its source, composed from the owners that actually
 #: contribute names: this run's own layout, generic developer hygiene, the evaluator's
 #: scratch, and the strategy's generated documentation. Hardcoding one flat list is how
@@ -94,8 +91,7 @@ def _ignore_forked(source_root: Path) -> Callable[[str, list[str]], set[str]]:
     Returns a callable bound to *source_root* because one of the three owners applies at
     the top level only: ``architecture.md`` is generated *about* the agent and sits beside
     it, so an agent whose own source contains ``docs/architecture.md`` must keep it. The
-    others — run layout, hygiene, evaluator scratch — are stripped at every depth, which
-    is what the paths this replaces did.
+    others — run layout, hygiene, evaluator scratch — are stripped at every depth.
     """
     root = source_root.resolve()
 
@@ -495,8 +491,8 @@ class ExperimentContext:
             LookupError: if nothing is registered under that name.
         """
         component = resolve(role, name)
-        # `workspace` and `working_dir` are the same run root under two spellings that
-        # predate the registry; both are offered so a component keeps whichever it uses.
+        # Two spellings of the same run root; both are offered so a component keeps
+        # whichever it names.
         supplied: dict[str, Any] = {
             "workspace": self.root,
             "working_dir": self.root,

@@ -200,8 +200,6 @@ class AnalysisSkill(Skill):
 class EvolutionaryStrategy(Agent, roles.Strategy):
     """Merge each round's per-agent analyses, and write the run's optimization report."""
 
-    #: Resolvable as ``strategy: evolutionary``. Ours registers exactly like a third
-    #: party's — there is no privileged built-in.
     name = "evolutionary"
 
     #: This loop resumes from its own round-analysis files plus ``ctx.candidates()``,
@@ -320,7 +318,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 if round_num > 0
                 else None
             )
-            # Selecting no terminator means no early stopping; the budget above still holds.
             if config.terminator is not None:
                 terminator = self._terminator(ctx, config)
                 # The whole history, not this round's working set: convergence counts distinct
@@ -624,7 +621,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         here: `_ensure_baseline` keeps the existing baseline rather than minting a second,
         and `_evaluate_validation_candidates` only returns candidates it actually ran. A
         round-0 resume therefore has nothing to record, and indexing the map raised
-        KeyError — failing the run on restart, which is exactly when it must not.
+        KeyError on a round-0 resume.
         """
         measured = results.get(baseline.label)
         if measured is not None:
@@ -634,7 +631,7 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         """Create the baseline candidate unless this run already has one.
 
         A crash during round 0 leaves ``run.json`` behind but no round analysis, so the
-        runner resumes and this branch runs again. Candidate ids are uuids now, so a
+        runner resumes and this branch runs again. Candidate ids are uuids, so a
         second commit mints a duplicate baseline that is re-evaluated, offered to the
         Proposer, and published to the same branch as the original.
         """
@@ -991,9 +988,6 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         One instance per build because a Builder is stateful — the LLMCodeEditor holds a shell
         session and a todo list — and builds run concurrently.
 
-        These constructor arguments are this strategy's contract with its Builder, not a
-        global one: a replacement shipped by another package targets *this* signature,
-        because this is the strategy that resolves it.
         """
         return get_component(
             "builder",

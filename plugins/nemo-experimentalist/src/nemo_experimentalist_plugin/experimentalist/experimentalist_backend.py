@@ -598,8 +598,8 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     async def update_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
         # Written through a temp file and renamed, because this is rewritten on every
         # progress report and it is the only record of which run owns the candidates on
-        # disk. A plain write_text truncates first, so killing the process mid-round left
-        # a half-written file that resume could not parse.
+        # disk. A plain write_text truncates first, so killing the process mid-round leaves
+        # a half-written file that resume cannot parse.
         _atomic_write(self._eo / "run.json", run.model_dump_json(indent=2))
         await self._project_best_effort(workspace, lambda m: m.update_group(run))
         return run
@@ -681,7 +681,6 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if self.client is None:
             return  # pure-offline run: traces stay on local disk
 
-        # Derive experiment_id internally (ensures entity exists, returns deterministic name)
         experiment_id = await self.get_experiment_id(workspace=workspace, candidate=candidate, split=split)
         if not experiment_id:
             return  # projection failed (shouldn't happen, but defensive)

@@ -167,13 +167,10 @@ class Proposer(Agent, roles.Proposer):
 
         Args:
             analysis: merged round analysis markdown with root causes already enumerated.
-            evolution_history: markdown table of prior rounds for context.
-            evolution_tree: live tree used to derive survivors and tried optimization types.
-            round_num: current optimization round number; used to filter survivors.
-            phase: "exploration" for novel directions, "exploitation" to refine the best.
-            max_candidates: maximum number of Improvement objects to return.
-            objective_metrics: Evaluator metric dimensions this round must improve.
-            regression_metrics: Evaluator metric dimensions this round must preserve.
+            candidates: the scored population to propose against; lineage is on each one.
+            round_num: the round these Proposals are for.
+            max_candidates: maximum number of Proposals to return.
+            hint: optional steer from the strategy, e.g. to explore rather than refine.
 
         Returns:
             list[Proposal]: up to max_candidates build requests, each routed to a
