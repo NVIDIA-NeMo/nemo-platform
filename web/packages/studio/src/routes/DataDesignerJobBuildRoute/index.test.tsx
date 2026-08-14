@@ -37,10 +37,10 @@ const generatedJobRequest: DataDesignerJobRequest = {
   },
 } as unknown as DataDesignerJobRequest;
 
-const renderBuildRoute = (state?: DataDesignerGeneratedState) => {
+const renderBuildRoute = (state?: DataDesignerGeneratedState, search = '') => {
   const router = createMemoryRouter(
     [{ path: BUILD_ROUTE, element: <DataDesignerJobBuildRoute /> }],
-    { initialEntries: [{ pathname: BUILD_PATH, state }] }
+    { initialEntries: [{ pathname: BUILD_PATH, search, state }] }
   );
   return render(
     <TestProviders>
@@ -61,5 +61,13 @@ describe('DataDesignerJobBuildRoute', () => {
     renderBuildRoute();
 
     expect(await screen.findByText(/No columns yet/i)).toBeInTheDocument();
+  });
+
+  it('reports a template model the workspace does not serve', async () => {
+    renderBuildRoute(undefined, '?template=sft-instruction');
+
+    expect(
+      await screen.findByText(/template asks for a model your workspace doesn't have/i)
+    ).toBeInTheDocument();
   });
 });

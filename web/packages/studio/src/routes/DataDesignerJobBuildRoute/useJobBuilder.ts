@@ -16,7 +16,8 @@ import {
   buildModelsFromTemplate,
   builderModelFromSelection,
   fetchAutoFillCandidates,
-  resolveTemplateModel,
+  findWorkspaceModel,
+  firstAvailableModel,
 } from '@studio/routes/DataDesignerJobBuildRoute/models';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type UseFormReturn, useFieldArray, useForm } from 'react-hook-form';
@@ -49,6 +50,28 @@ export interface JobBuilderSeed {
   columns: BuilderColumn[];
   models: BuilderModel[];
 }
+
+/**
+ * A template model auto-fill could not honour: the workspace does not serve `requested`. The
+ * requested name stays in the form so the recipe still reads as the template wrote it; the build
+ * route surfaces the issue and blocks the run until the user picks a model that exists.
+ */
+export interface TemplateModelIssue {
+  /** Builder model id, stable across alias edits — how the issue is matched to live form state. */
+  id: string;
+  alias: string;
+  requested: string;
+}
+
+/**
+ * The issues that still apply: auto-fill records them once, but the user can resolve one by
+ * picking an available model, which fills in the provider auto-fill could not.
+ */
+export const unresolvedTemplateModelIssues = (
+  issues: TemplateModelIssue[],
+  models: BuilderModel[]
+): TemplateModelIssue[] =>
+  issues.filter((issue) => models.some((model) => model.id === issue.id && !model.provider));
 
 /**
  * Column/model state for the recipe builder. Selecting a column and selecting a model are
@@ -105,6 +128,7 @@ export const useJobBuilder = (
   const nextModelId = useRef(initialModels.current.length);
   const [paletteTab, setPaletteTab] = useState<PaletteTab>('columns');
 
+  const [templateModelIssues, setTemplateModelIssues] = useState<TemplateModelIssue[]>([]);
   const autoFilled = useRef(false);
   useEffect(() => {
     if (autoFilled.current || !workspace) return;
@@ -117,16 +141,31 @@ export const useJobBuilder = (
         pending.map(async (model) => {
           const preferred = model.model || undefined;
           const candidates = await fetchAutoFillCandidates(workspace, preferred).catch(() => []);
-          return [model.id, resolveTemplateModel(candidates, preferred)] as const;
+          // A template that names a model means it; only a spec that named none takes whatever
+          // the workspace offers.
+          return [
+            model.id,
+            preferred ? findWorkspaceModel(candidates, preferred) : firstAvailableModel(candidates),
+          ] as const;
         })
       );
       const byId = new Map(resolutions);
+      // Unresolved models keep the name the template asked for — clearing it would hide which
+      // model the recipe was written against, and the banner has nothing left to name.
+      setTemplateModelIssues(
+        pending.flatMap((model) =>
+          model.model && !byId.get(model.id)
+            ? [{ id: model.id, alias: model.alias, requested: model.model }]
+            : []
+        )
+      );
       setValue(
         'models',
         getValues('models').map((model) => {
-          if (!byId.has(model.id)) return model;
           const resolved = byId.get(model.id);
-          return resolved ? { ...model, ...resolved } : { ...model, model: '' };
+          return resolved
+            ? { ...model, model: resolved.model, provider: resolved.provider }
+            : model;
         })
       );
     })();
@@ -216,6 +255,7 @@ export const useJobBuilder = (
     selectedColumnId: selectedId,
     selectedModelId,
     focusId,
+    templateModelIssues,
     paletteTab,
     setPaletteTab,
     selectColumn,

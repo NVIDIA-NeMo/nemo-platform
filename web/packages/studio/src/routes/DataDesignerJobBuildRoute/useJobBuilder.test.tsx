@@ -58,20 +58,55 @@ describe('useJobBuilder template auto-fill', () => {
     expect(mockListModels).toHaveBeenCalledTimes(2);
   });
 
-  it('clears the model when the workspace has nothing to resolve to', async () => {
+  it('reports no issue when the template model resolves', async () => {
+    const { result } = renderHook(() => useJobBuilder(template, 'ws1'), { wrapper: StrictMode });
+
+    await waitFor(() =>
+      expect(result.current.getBuilderValues().models[0].provider).toBe('ws1/build')
+    );
+    expect(result.current.templateModelIssues).toEqual([]);
+  });
+
+  it('keeps the requested model and reports it when the workspace serves a different one', async () => {
+    mockListModels.mockResolvedValue(makePage([model('some-other-model')]));
+
+    const { result } = renderHook(() => useJobBuilder(template, 'ws1'), { wrapper: StrictMode });
+
+    await waitFor(() =>
+      expect(result.current.templateModelIssues).toEqual([
+        { id: 'model-0', alias: 'default', requested: NEMOTRON },
+      ])
+    );
+    expect(result.current.getBuilderValues().models[0]).toMatchObject({
+      model: NEMOTRON,
+      provider: '',
+    });
+  });
+
+  it('keeps the requested model when the workspace has nothing to resolve to', async () => {
     mockListModels.mockResolvedValue(makePage([]));
 
     const { result } = renderHook(() => useJobBuilder(template, 'ws1'), { wrapper: StrictMode });
 
-    await waitFor(() => expect(result.current.getBuilderValues().models[0].model).toBe(''));
+    await waitFor(() =>
+      expect(result.current.templateModelIssues).toEqual([
+        { id: 'model-0', alias: 'default', requested: NEMOTRON },
+      ])
+    );
+    expect(result.current.getBuilderValues().models[0].model).toBe(NEMOTRON);
   });
 
-  it('skips provider-less models rather than seeding one that cannot run', async () => {
+  it('reports a model whose only match cannot serve it', async () => {
     mockListModels.mockResolvedValue(makePage([model(NEMOTRON, [])]));
 
     const { result } = renderHook(() => useJobBuilder(template, 'ws1'), { wrapper: StrictMode });
 
-    await waitFor(() => expect(result.current.getBuilderValues().models[0].model).toBe(''));
+    await waitFor(() =>
+      expect(result.current.templateModelIssues).toEqual([
+        { id: 'model-0', alias: 'default', requested: NEMOTRON },
+      ])
+    );
+    expect(result.current.getBuilderValues().models[0].model).toBe(NEMOTRON);
   });
 
   it('leaves models that already carry a provider alone', async () => {
