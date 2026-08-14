@@ -101,6 +101,7 @@ def _entity_to_taskset(entity: TasksetEntity) -> Taskset:
         project=entity.project,
         description=entity.description,
         tasks=entity.tasks,
+        files_ref=entity.files_ref,
         revision=entity.latest_revision,
         tags=entity.tags,
         metadata=entity.metadata,
@@ -122,6 +123,7 @@ def _revision_to_taskset(head: TasksetEntity, revision: TasksetRevisionEntity) -
         project=head.project,
         description=revision.description,
         tasks=revision.tasks,
+        files_ref=revision.files_ref,
         metadata=revision.metadata,
         revision=revision.revision,
         tags={tag: ordinal for tag, ordinal in head.tags.items() if ordinal == revision.revision},
@@ -265,6 +267,7 @@ class TasksetService:
             project=project,
             description=taskset_input.description,
             tasks=await self._resolved_content(taskset_input, workspace=workspace),
+            files_ref=taskset_input.files_ref,
             metadata=taskset_input.metadata,
         )
         try:
@@ -312,6 +315,7 @@ class TasksetService:
             head.project = project
         head.description = taskset_input.description
         head.tasks = await self._resolved_content(taskset_input, workspace=workspace)
+        head.files_ref = taskset_input.files_ref
         head.metadata = taskset_input.metadata
         # Publish the staged content *without* committing the head first — see the matching comment
         # in ``TaskService.replace_task``. Publishing writes the head itself, so a pre-write would

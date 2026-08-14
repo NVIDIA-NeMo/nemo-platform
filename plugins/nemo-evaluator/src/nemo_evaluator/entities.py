@@ -24,6 +24,7 @@ from nemo_evaluator.api.schemas import (
     TaskDefinition,
     TaskMetadataList,
     TaskRefList,
+    TasksetFilesRef,
 )
 from nemo_evaluator.content_hash import DIGEST_LENGTH, DIGEST_PATTERN
 from nemo_evaluator.shared.metric_bundles.bundles import BundledMetricOutputSpec
@@ -266,6 +267,12 @@ class TasksetEntity(_RevisionedCommon, EntityBase):
     A taskset is a flexible grouping of stored tasks: it holds references to its members
     (``workspace/name``) plus free-form annotations. Membership is a set — order is not significant
     and duplicate references are rejected. Referenced tasks are validated to exist at create time.
+
+    ``files_ref`` points at the grouping's own files: shared by its members, owned by none of
+    them, the way a Harbor dataset ships a metric script beside its tasks. One reference rather
+    than a list of per-file entries — a grouping's files are a directory, and the fileset already
+    knows what is in it. It is a first-class field rather than an annotation because it is
+    content: the revision digest covers it, so repointing publishes a revision.
     """
 
     __entity_type__: ClassVar[str] = "taskset"
@@ -278,6 +285,10 @@ class TasksetEntity(_RevisionedCommon, EntityBase):
     tasks: TaskRefList = Field(
         default_factory=list,
         description="References to the member tasks (set semantics; duplicates rejected).",
+    )
+    files_ref: TasksetFilesRef | None = Field(
+        default=None,
+        description="Files reference to the taskset's own files (workspace/fileset[#prefix]).",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
 
@@ -370,5 +381,10 @@ class TasksetRevisionEntity(_RevisionCommon, EntityBase):
     tasks: PinnedTaskRefList = Field(
         default_factory=list,
         description="Digest-pinned references to the member tasks, resolved at publish time.",
+    )
+    files_ref: TasksetFilesRef | None = Field(
+        default=None,
+        description="Files reference as published. Unlike a member ref there is nothing to resolve: "
+        "a Files reference already names an exact location.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
