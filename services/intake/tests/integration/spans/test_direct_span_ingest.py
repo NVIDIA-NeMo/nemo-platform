@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -162,6 +162,21 @@ def test_direct_span_ingest_rejects_data_outside_retention_without_partial_write
     listed = client.get(SPANS_URL, params={"filter[source]": "expired-import", "page_size": 10})
     assert listed.status_code == 200, listed.text
     assert listed.json()["data"] == []
+
+
+def test_direct_span_ingest_matches_clickhouse_date_retention_boundary(client: TestClient) -> None:
+    retention_date = datetime.now(timezone.utc).date() - timedelta(days=90)
+    started_at = datetime.combine(retention_date, time(23, 59), tzinfo=timezone.utc).isoformat()
+
+    response = client.post(
+        INGEST_URL,
+        json={
+            "source": "retention-boundary",
+            "spans": [_span(started_at=started_at, ended_at=started_at)],
+        },
+    )
+
+    assert response.status_code == 422, response.text
 
 
 def test_direct_span_ingest_accepts_parent_outside_batch(client: TestClient):

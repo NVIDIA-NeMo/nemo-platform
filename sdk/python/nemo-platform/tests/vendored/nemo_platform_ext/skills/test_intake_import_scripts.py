@@ -7,7 +7,6 @@ import argparse
 import base64
 import importlib
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[4]
 SCRIPTS = ROOT / "packages/nemo_platform_ext/src/nemo_platform_ext/skills/nemo-intake/scripts"
 FIXTURES = Path(__file__).parent / "fixtures/observability"
-sys.path.insert(0, str(SCRIPTS))
+
+
+@pytest.fixture(autouse=True)
+def _import_scripts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.syspath_prepend(str(SCRIPTS))
 
 
 def _payload(provider: str) -> dict[str, Any]:
@@ -52,6 +55,7 @@ def test_official_provider_fixture_maps_to_golden_without_field_gaps(provider: s
         assert span[key] == value
     for expectation in golden["raw_paths"]:
         assert _at_path(span["attributes"], expectation["path"]) == expectation["value"]
+    assert span["attributes"][f"{provider}.signals"] == golden["signals"]
     assert [item["name"] for item in bundle.evaluator_results] == golden["evaluator_names"]
     assert [item["kind"] for item in bundle.annotations] == golden["annotation_kinds"]
 
@@ -93,6 +97,20 @@ def test_braintrust_epoch_zero_start_is_not_replaced_by_created_time() -> None:
     assert bundle.spans[0]["ended_at"] == "1970-01-01T00:00:01+00:00"
 
 
+def test_braintrust_top_level_name_is_mapped_without_raw_duplication() -> None:
+    payload = _payload("braintrust")
+    payload["events"][0]["name"] = "top-level-name"
+    payload["events"][0]["span_attributes"].pop("name")
+    module = importlib.import_module("import_braintrust")
+
+    bundle = module.map_braintrust_export(payload, project="fixture", include_feedback=False)
+
+    assert bundle.spans[0]["name"] == "top-level-name"
+    assert "name" not in bundle.spans[0]["attributes"]["braintrust.raw"]
+    event_coverage = next(item for item in bundle.coverage if item.record == "event[0]")
+    assert "name" in event_coverage.mapped_fields
+
+
 def test_braintrust_fetch_does_not_assume_created_time_page_order(monkeypatch: pytest.MonkeyPatch) -> None:
     module = importlib.import_module("import_braintrust")
     responses = [
@@ -113,6 +131,17 @@ def test_braintrust_fetch_does_not_assume_created_time_page_order(monkeypatch: p
 
     assert [event["id"] for event in payload["events"]] == ["in-range"]
     assert get.call_count == 2
+
+
+def test_braintrust_fetch_accepts_null_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("import_braintrust")
+    get = Mock(return_value=_Response({"events": [{"id": "one", "created": "2026-08-01T12:00:00Z", "metrics": None}]}))
+    monkeypatch.setattr(module.requests, "get", get)
+    monkeypatch.setenv("BRAINTRUST_API_KEY", "test-key")
+
+    payload = module.fetch_braintrust(_braintrust_args())
+
+    assert payload["events"][0]["id"] == "one"
 
 
 def test_braintrust_fetch_rejects_missing_event_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,6 +232,21 @@ def test_mlflow_native_trace_id_fallback_is_canonicalized() -> None:
     assert bundle.evaluator_results[0]["span_id"] in {span["span_id"] for span in bundle.spans}
 
 
+def test_phoenix_mapper_reports_missing_required_start_time() -> None:
+    payload = _payload("phoenix")
+    del payload["spans"][0]["start_time_unix_nano"]
+    module = importlib.import_module("import_phoenix")
+
+    with pytest.raises(ValueError, match="Phoenix spans require startTimeUnixNano"):
+        module.map_phoenix_export(payload, project="fixture", include_feedback=False)
+
+
+def test_nanoseconds_to_datetime_preserves_microseconds_without_float_rounding() -> None:
+    common = importlib.import_module("_import_common")
+
+    assert common.nanoseconds_to_datetime(1_000_000_000_123_456_789) == "2001-09-09T01:46:40.123456+00:00"
+
+
 @pytest.mark.parametrize(
     ("provider", "field", "message"),
     [
@@ -282,6 +326,36 @@ def test_intake_writer_reports_only_new_annotation_writes(monkeypatch: pytest.Mo
     assert session.request.call_count == 2
     assert session.request.call_args_list[0].args[0] == "POST"
     assert session.request.call_args_list[1].args[0] == "GET"
+
+
+def test_intake_writer_fetches_existing_annotations_once_per_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    common = importlib.import_module("_import_common")
+    first = {"kind": "note", "span_id": "span-1", "session_id": "session-1", "text": "first"}
+    second = {**first, "text": "second"}
+    session = Mock()
+    session.request.side_effect = [
+        _Response({}, status_code=201),
+        _Response({"data": [], "pagination": {"page": 1, "total_pages": 1}}),
+        _Response({}, status_code=201),
+        _Response({}, status_code=201),
+    ]
+    writer = common.IntakeWriter(
+        base_url="https://platform.example.com",
+        workspace="default",
+        session=session,
+    )
+    monkeypatch.setattr(writer, "_verify_spans", Mock())
+    bundle = common.ImportBundle(
+        source="langsmith",
+        spans=[{"span_id": "span-1", "trace_id": "trace-1"}],
+        annotations=[first, second],
+    )
+
+    summary = writer.write(bundle, batch_size=500)
+
+    assert summary["annotations"] == 2
+    methods = [call.args[0] for call in session.request.call_args_list]
+    assert methods == ["POST", "GET", "POST", "POST"]
 
 
 def test_sdk_session_uses_public_sdk_request_methods() -> None:

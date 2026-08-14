@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -19,11 +18,15 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[5]
 SCRIPTS = ROOT / "packages/nemo_platform_ext/src/nemo_platform_ext/skills/nemo-intake/scripts"
 FIXTURES = ROOT / "packages/nemo_platform_ext/tests/skills/fixtures/observability"
-sys.path.insert(0, str(SCRIPTS))
 
 SPANS_URL = "/apis/intake/v2/workspaces/default/spans"
 EVALUATORS_URL = "/apis/intake/v2/workspaces/default/evaluator-results"
 ANNOTATIONS_URL = "/apis/intake/v2/workspaces/default/annotations"
+
+
+@pytest.fixture(autouse=True)
+def _import_scripts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.syspath_prepend(str(SCRIPTS))
 
 
 class _TestClientSession:
@@ -69,6 +72,7 @@ def test_provider_fixture_full_import_is_lossless_and_replay_safe(client: TestCl
     raw_attributes = json.loads(imported["raw_attributes"])
     for expectation in golden["raw_paths"]:
         assert _at_path(raw_attributes, expectation["path"]) == expectation["value"]
+    assert raw_attributes[f"{provider}.signals"] == golden["signals"]
 
     evaluator_response = client.get(EVALUATORS_URL, params={"page_size": 1000})
     assert evaluator_response.status_code == 200, evaluator_response.text

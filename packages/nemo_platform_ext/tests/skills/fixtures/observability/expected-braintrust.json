@@ -21,6 +21,10 @@
     {"path": ["braintrust.raw", "audit_data", 0, "actor"], "value": "fixture-user"},
     {"path": ["braintrust.signals", 1, "value"], "value": true}
   ],
+  "signals": [
+    {"name": "correctness", "type": "score", "value": 1.0},
+    {"name": "grounded", "type": "score", "value": true}
+  ],
   "evaluator_names": ["braintrust.correctness", "braintrust.grounded"],
   "annotation_kinds": ["metadata", "note", "metadata"]
 }

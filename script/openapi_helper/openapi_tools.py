@@ -881,6 +881,7 @@ def fix_schema(
         spec = remove_invalid_components(spec)
         spec = fix_recursive_schemas(spec)
         spec = update_object_type(spec)
+        spec = mark_direct_span_json_value_for_stainless(spec)
 
         # Make sure the version is set to 3.1.0
         spec["openapi"] = "3.1.0"

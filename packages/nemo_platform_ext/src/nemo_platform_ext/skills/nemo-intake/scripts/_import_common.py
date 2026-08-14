@@ -10,7 +10,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -148,7 +148,9 @@ def normalize_datetime(value: Any) -> str:
 
 
 def nanoseconds_to_datetime(value: Any) -> str:
-    return datetime.fromtimestamp(int(value) / 1_000_000_000, tz=timezone.utc).isoformat()
+    nanoseconds = int(value)
+    seconds, remainder = divmod(nanoseconds, 1_000_000_000)
+    return (datetime.fromtimestamp(seconds, tz=timezone.utc) + timedelta(microseconds=remainder // 1000)).isoformat()
 
 
 def normalize_kind(value: Any) -> str:
@@ -470,12 +472,20 @@ class IntakeWriter:
                 expected={201},
             )
         existing_signatures: set[str] = set()
+        fetched_annotation_keys: set[tuple[str, str, str]] = set()
         written_annotations = 0
         for annotation in bundle.annotations:
             signature = _annotation_signature(annotation)
             if signature in existing_signatures:
                 continue
-            existing_signatures.update(self._existing_annotation_signatures(annotation))
+            annotation_key = (
+                str(annotation["session_id"]),
+                str(annotation["kind"]),
+                str(annotation.get("span_id") or ""),
+            )
+            if annotation_key not in fetched_annotation_keys:
+                fetched_annotation_keys.add(annotation_key)
+                existing_signatures.update(self._existing_annotation_signatures(annotation))
             if signature in existing_signatures:
                 continue
             self._request(

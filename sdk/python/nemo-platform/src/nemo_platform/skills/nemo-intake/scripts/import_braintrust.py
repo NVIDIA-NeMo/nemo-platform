@@ -49,6 +49,7 @@ EVENT_FIELDS = {
     "expected",
     "comments",
     "classifications",
+    "name",
 }
 
 
@@ -242,7 +243,7 @@ def fetch_braintrust(args: argparse.Namespace) -> dict[str, Any]:
             if event_id in seen_ids:
                 continue
             seen_ids.add(event_id)
-            metrics_start = _object(event.get("metrics", {}), "metrics").get("start")
+            metrics_start = _object(event.get("metrics") or {}, "metrics").get("start")
             created_at = _as_datetime(event.get("created") if event.get("created") is not None else metrics_start)
             if args.since <= created_at < args.until:
                 events.append(event)

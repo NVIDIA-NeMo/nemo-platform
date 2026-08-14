@@ -17,7 +17,8 @@ should continue to use OTLP when the producer already emits OpenInference or OTe
 
 - ClickHouse retention remains 90 days from provider `start_time`. Direct ingest rejects the entire
   batch with `422` when any span is already outside that window and tells the operator to increase
-  both span/index TTLs before importing older data. Provider timestamps remain unchanged.
+  both span/index TTLs before importing older data. The check compares UTC dates to match the table
+  expression `toDate(start_time) + INTERVAL 90 DAY`; provider timestamps remain unchanged.
 - Coverage is classified at each native record's top level. A nested container is retained whole
   when any of its leaves have no exact Intake field, so all descendant leaves inherit that preserved
   disposition. This is safer and more reviewable than provider-specific recursive deletion.
@@ -64,8 +65,8 @@ The public request should be direct and provider-neutral:
       "name": "ChatOpenAI",
       "kind": "LLM",
       "status": "success",
-      "started_at": "2026-01-01T00:00:00Z",
-      "ended_at": "2026-01-01T00:00:01Z",
+      "started_at": "2026-08-14T00:00:00Z",
+      "ended_at": "2026-08-14T00:00:01Z",
       "input": {"messages": [{"role": "user", "content": "Hello"}]},
       "output": {"content": "Hi"},
       "attributes": {
@@ -248,7 +249,9 @@ the checked-in provider fixtures and test the adapter functions directly. For ev
 2. The three classifications are exhaustive and disjoint.
 3. Core IDs, hierarchy, timestamps, status, input, and output map to the expected direct-span body.
 4. Unmapped data equals the expected `<provider>.raw` object, including native JSON types.
-5. Feedback, expectations, annotations, comments, and scores produce the expected evaluator-result
+5. The complete `<provider>.signals` object exactly matches the golden, including provider event
+   IDs, actors, timestamps, rationales, and audit fields.
+6. Feedback, expectations, annotations, comments, and scores produce the expected evaluator-result
    and annotation requests.
 
 Keep expected normalized outputs as explicit golden JSON beside the inputs. This makes provider

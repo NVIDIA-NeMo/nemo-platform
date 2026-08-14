@@ -14,6 +14,25 @@
     {"path": ["langsmith.raw", "first_token_time"], "value": null},
     {"path": ["langsmith.signals", 0, "feedback_source", "type"], "value": "app"}
   ],
+  "signals": [
+    {
+      "comment": "I gave this score because the answer was correct.",
+      "correction": null,
+      "created_at": "2024-05-05T23:23:11.077838",
+      "feedback_source": {
+        "metadata": null,
+        "type": "app",
+        "user_id": "ad52b092-1346-42f4-a934-6e5521562fab"
+      },
+      "id": "62104630-c7f5-41dc-8ee2-0acee5c14224",
+      "key": "correctness",
+      "modified_at": "2024-05-05T23:23:11.232962",
+      "run_id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+      "score": 1.0,
+      "session_id": "c919298b-0af2-4517-97a2-0f98ed4a48f8",
+      "value": null
+    }
+  ],
   "evaluator_names": [],
   "annotation_kinds": ["label", "note"]
 }

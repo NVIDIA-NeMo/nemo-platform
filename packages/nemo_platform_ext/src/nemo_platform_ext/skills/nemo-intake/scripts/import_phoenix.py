@@ -84,6 +84,8 @@ def map_phoenix_export(payload: Any, *, project: str | None, include_feedback: b
         status_code = status.get("code") if isinstance(status, dict) else status
         start_ns = _alias(native, "startTimeUnixNano", "start_time_unix_nano")
         end_ns = _alias(native, "endTimeUnixNano", "end_time_unix_nano")
+        if start_ns is None:
+            raise ValueError("Phoenix spans require startTimeUnixNano")
         span = {
             "span_id": span_id,
             "trace_id": trace_id,
