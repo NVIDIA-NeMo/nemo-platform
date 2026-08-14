@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 
 repos:
@@ -119,7 +122,7 @@ repos:
         entry: uv run script/copyright_fixer.py
         language: system
         pass_filenames: true
-        files: '\.(py|ts)$'
+        files: '(^|/)(Dockerfile(\.|$)|Makefile$|.*\.Dockerfile$|.*\.(py|ts|tsx|js|jsx|mjs|cjs|css|md|mdx|ya?ml|toml|sh|bash|rego|hcl|j2|jinja|tpl)$|.*\.(dockerignore|gitignore|gitattributes|helmignore|prettierignore|cursorignore|copyrightignore)$|.*\.env(\..*)?$)'
       - id: check-signoff
         name: Check commit is signed off (DCO)
         entry: "grep -qE '^Signed-off-by: .+ <.+>'"

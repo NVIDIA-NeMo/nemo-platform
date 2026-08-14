@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Auditor Plugin Reference
 
 The auditor plugin is a first-party scaffold for auditor functionality. It keeps the plugin identity separate from the legacy auditor service while providing the basic surfaces needed for SDK-backed jobs.

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # nmp-automodel container images
 
 All Automodel Docker build files live under **`docker/automodel/`** (wheel vendor script: `docker/base/build-ffmpeg-vendor.sh`).

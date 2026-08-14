@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Troubleshooting
 
 Read this file when submit fails, jobs fail on images, the platform is unreachable, W&B/MLflow integrations fail, gated HuggingFace model download fails, or the user asks for Unsloth.

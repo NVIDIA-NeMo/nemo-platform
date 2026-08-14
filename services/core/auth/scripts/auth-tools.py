@@ -10,6 +10,7 @@ have corresponding entries in the static authorization configuration.
 """
 
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -1207,6 +1208,7 @@ def _build_grouped_rows(
 
 def _generate_permissions_reference(auth_config: Dict) -> str:
     """Generate the permissions reference markdown content from the auth config."""
+    current_year = datetime.now().year
     registry = extract_registered_permissions(auth_config)
     roles_data = auth_config.get("authz", {}).get("roles", {})
 
@@ -1219,6 +1221,11 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
 
     lines: List[str] = []
     lines.append("---")
+    lines.append(
+        f"# SPDX-FileCopyrightText: Copyright (c) 2025-{current_year} "
+        "NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+    )
+    lines.append("# SPDX-License-Identifier: Apache-2.0")
     lines.append('title: "Permissions Reference"')
     lines.append('description: ""')
     lines.append("---")

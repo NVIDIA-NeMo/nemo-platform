@@ -1,4 +1,7 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # .claude/hooks/nvm-on-cd.sh
 # Switches Node version via nvm when cd'ing into a directory with .nvmrc.
 # Writes the resulting PATH to CLAUDE_ENV_FILE so it persists across Bash calls.

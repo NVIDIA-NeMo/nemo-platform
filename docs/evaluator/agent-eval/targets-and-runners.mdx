@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Targets and Runners"
 description: "Reference for what an agent-eval run can point at — a Model, a deployed Agent over HTTP, or an AgentTaskRunner (a callable, Harbor, or your own) — with each target's key fields and when to use it."
 ---
@@ -93,7 +96,6 @@ from collections.abc import Sequence
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial
 
-
 class AgentTaskRunner:
     async def run_tasks(
         self, tasks: Sequence[AgentEvalTask], config: AgentEvalRunConfig | None = None
@@ -114,7 +116,6 @@ Return one `AgentEvalTrial` per task; the evaluator scores them exactly like any
 
 ```python
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
-
 
 class EchoRunner:
     async def run_tasks(self, tasks, config=None):

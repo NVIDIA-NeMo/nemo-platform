@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Rails Config Reference
 
 The plugin consumes the standard `nemoguardrails` `RailsConfig` shape. This page covers the fields that show up most often when authoring a `GuardrailConfig` for the NeMo Inference Gateway path.

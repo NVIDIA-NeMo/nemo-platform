@@ -1,3 +1,6 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}}
+{{/* SPDX-License-Identifier: Apache-2.0 */}}
+
 {{- if and .Values.api.enabled .Values.platformSeedJob.enabled }}
 {{- $imagePullSecrets := include "nemo-common.imagepullsecrets" . }}
 apiVersion: batch/v1

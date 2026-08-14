@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: skills-optimization
 description: >-
   Improve agent skills via the `nemo agents` plugin (evaluate-suite / analyze / optimize-skills). Use when the user wants to improve an agent's skills using a Harbor or NAT eval suite, run a batch of agentic tests, analyze why evals fail, or kick off an automated skill-optimization

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 ## NeMo Platform Helm Chart
 
 NVIDIA NeMo Platform Helm Chart for the deployment of NeMo Platform on Kubernetes.

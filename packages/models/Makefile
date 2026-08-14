@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 NMP_ROOT_PATH := $(shell dirname $(shell dirname $(shell pwd)))
 
 .PHONY: vendor-only

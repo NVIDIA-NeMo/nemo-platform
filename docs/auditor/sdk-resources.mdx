@@ -1,15 +1,16 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "NeMo Auditor NeMo Platform SDK Resources"
 description: ""
 ---
 <a id="auditor-nmp-sdk-resources"></a>
 
-
 The NeMo Auditor plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
 This page documents that surface: how to manage audit configurations and targets in the entity store, and how to run an audit in-process using the local execution path.
 
 The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets` are 1:1 mirrors of the [audit configuration](/documentation/vulnerability-scanning/configurations) and [audit target](/documentation/vulnerability-scanning/targets) lifecycle and use the same `AuditConfig` and `AuditTarget` pydantic schemas the entity store persists.
-
 
 ## AuditorPluginResource
 
@@ -19,7 +20,6 @@ It is accessed directly from a `NeMoPlatform` instance:
 ```python
 import os
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -154,7 +154,6 @@ from nemo_auditor.entities import (
     AuditReportData,
 )
 
-
 # Persist a configuration.
 config = auditor.configs.create(
     workspace="default",
@@ -195,7 +194,6 @@ Alternatively, pass inline `AuditConfig` and `AuditTarget` instances directly â€
 result = auditor.run(config=config, target=target, workspace="default")
 ```
 
-
 ## AsyncAuditorPluginResource
 
 The `AsyncAuditorPluginResource` provides the same surface for `AsyncNeMoPlatform`.
@@ -204,7 +202,6 @@ Async methods must be awaited.
 ```python
 import os
 from nemo_platform import AsyncNeMoPlatform
-
 
 client = AsyncNeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -229,7 +226,6 @@ auditor = client.auditor  # AsyncAuditorPluginResource
 ```python
 import asyncio
 
-
 async def main() -> None:
     # Submit and wait.
     job = await auditor.submit(
@@ -249,7 +245,6 @@ async def main() -> None:
     )
     for name, ref in result["results"].items():
         print(f"  {name}: {ref['artifact_url']}")
-
 
 asyncio.run(main())
 ```

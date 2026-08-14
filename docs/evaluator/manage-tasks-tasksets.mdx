@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Manage Tasks & Tasksets"
 description: ""
 ---
@@ -41,7 +44,6 @@ definition freely without accumulating versions.
 import os
 
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -414,13 +416,11 @@ import asyncio
 
 from nemo_platform import AsyncNeMoPlatform
 
-
 async def main() -> None:
     client = AsyncNeMoPlatform(base_url="http://localhost:8080", workspace="default")
     page = await client.evaluator.tasks.list()
     for item in page.data:
         print(item.name)
-
 
 asyncio.run(main())
 ```

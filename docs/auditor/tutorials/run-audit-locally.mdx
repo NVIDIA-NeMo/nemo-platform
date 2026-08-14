@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Run an Audit Locally"
 description: ""
 ---
@@ -44,7 +47,6 @@ import os
 
 from nemo_platform import NeMoPlatform
 
-
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     workspace="default",
@@ -70,7 +72,6 @@ from nemo_auditor.entities import (
     AuditRunData,
     AuditSystemData,
 )
-
 
 config = auditor.configs.create(
     workspace="default",
@@ -167,10 +168,8 @@ import json
 from pathlib import Path
 from urllib.parse import urlparse
 
-
 def url_to_path(url: str) -> Path:
     return Path(urlparse(url).path)
-
 
 jsonl_path = url_to_path(result["results"]["report-jsonl"]["artifact_url"])
 records = [json.loads(line) for line in jsonl_path.read_text().splitlines() if line.strip()]
@@ -181,7 +180,6 @@ Summarize hits per probe from the hitlog:
 
 ```python
 from collections import Counter
-
 
 hitlog_ref = result["results"].get("report-hitlog-jsonl")
 if hitlog_ref is None:

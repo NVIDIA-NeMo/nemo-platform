@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Workspace Basic MCP - Harbor Test
 
 This Harbor test validates that Claude Code can create a workspace using the NeMo Platform MCP server.

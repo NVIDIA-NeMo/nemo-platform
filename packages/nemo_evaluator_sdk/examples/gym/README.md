@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Run a NeMo Gym environment through NeMo Evaluator
 
 `run_gym_eval.py` runs an **existing** NeMo Gym environment (the `mcqa` benchmark by default) through the Evaluator's `GymAgentTaskRunner` and scores it with `AgentEvaluator`. Use it when you already have a Gym environment and want to run and score it through NeMo Evaluator without migrating it. Gym owns execution *and* scoring; the runner shells out to the `gym` CLI and adapts the rollout bundle into trials, and `GymRewardMetric` surfaces Gym's per-attempt reward.

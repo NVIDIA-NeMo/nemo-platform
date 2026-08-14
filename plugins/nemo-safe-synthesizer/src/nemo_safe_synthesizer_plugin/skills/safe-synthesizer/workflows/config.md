@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Configuring Safe Synthesizer
 
 Reference for the job spec fields the plugin accepts. For runnable examples, read `workflows/config-runs.md`. For provider resolution details, read `workflows/pii-architecture.md`.

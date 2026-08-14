@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform SDK
 
 > **Using SDK generation for the first time? Start with [setup instructions](./setup-instructions.md)**.

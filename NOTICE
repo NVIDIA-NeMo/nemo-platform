@@ -14,6 +14,13 @@ below. Each component retains its original license, which can be found in the
 respective directory or package metadata.
 
 --------------------------------------------------------------------------------
+sdk/python/nemo-platform/LICENSE
+sdk/python/overrides/nemo-platform/LICENSE
+  These files are packaging copies of the root Apache-2.0 LICENSE used by the
+  generated Python SDK and its Stainless override inputs. They do not declare a
+  separate sub-component license from the repository root license.
+
+--------------------------------------------------------------------------------
 packages/garak_api/
   Garak v0.14.1 — LLM vulnerability scanner
   Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -47,6 +54,18 @@ plugins/nemo-switchyard/vendor/switchyard/
 
   The vendored snapshot retains its own LICENSE and NOTICE files in:
     plugins/nemo-switchyard/vendor/switchyard/
+
+--------------------------------------------------------------------------------
+plugins/nemo-agents/vendor/codex_agent_adapter/
+  Codex agent adapter vendored snapshot from NVIDIA NeMo Agent Toolkit commit
+  7f9c8a4a674ed2e9e14cf870cb6b7955ee00042f.
+  Home: https://github.com/NVIDIA/NeMo-Agent-Toolkit
+  License: Apache-2.0
+
+  This repository vendors the `examples/experimental/codex_agent_adapter`
+  package for use by the `nemo-agents` plugin. The vendored snapshot retains
+  its own LICENSE.md in:
+    plugins/nemo-agents/vendor/codex_agent_adapter/
 
 --------------------------------------------------------------------------------
 services/guardrails/callouts/internal/server/

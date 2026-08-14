@@ -1,14 +1,15 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluator NeMo Platform SDK Resources"
 description: ""
 ---
 <a id="evaluator-nmp-sdk-resources"></a>
 
-
 The `nemo_evaluator_sdk` package provides context-agnostic objects for defining metrics, datasets, evaluation configuration, and result handling.
 When you want to execute those evaluations through the NeMo Platform Evaluator plugin, use the Evaluator SDK resource mounted on the `nemo_platform` SDK.
 This page explains the NeMo Platform-specific objects used to submit durable platform jobs and retrieve evaluator job results.
-
 
 ## Evaluator
 
@@ -19,7 +20,6 @@ It is accessed directly from a `NeMoPlatform` instance:
 import os
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -51,11 +51,8 @@ The `dataset` argument accepts inline rows, local dataset paths, local glob path
 
 ### Submit a platform job
 
-
-
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
-
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 dataset = [
@@ -69,9 +66,6 @@ result = job.get_result()
 print(result.aggregate_scores)
 ```
 
-
-
-
 ## AsyncEvaluator
 
 The `AsyncEvaluator` resource provides the same Evaluator plugin surface for `AsyncNeMoPlatform`.
@@ -81,7 +75,6 @@ Async methods must be awaited:
 import os
 from nemo_evaluator.sdk import AsyncEvaluator
 from nemo_platform import AsyncNeMoPlatform
-
 
 client = AsyncNeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -98,13 +91,10 @@ evaluator: AsyncEvaluator = client.evaluator
 
 `AsyncEvaluator.submit()` accepts the same arguments as the sync method [above](#submit-arguments).
 
-
-
 ```python
 import asyncio
 
 from nemo_evaluator_sdk import ExactMatchMetric
-
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 dataset = [
@@ -112,19 +102,14 @@ dataset = [
     {"expected": "Berlin", "output": "Munich"},
 ]
 
-
 async def main() -> None:
     job = await evaluator.submit(metric=metric, dataset=dataset)
     await job.wait_until_done()
     result = await job.get_result()
     print(result.aggregate_scores)
 
-
 asyncio.run(main())
 ```
-
-
-
 
 ## EvaluatorJobResource
 
@@ -143,7 +128,6 @@ Some of the most useful methods and properties are described below.
 | `get_result(aggregate_fields=None)` | Downloads aggregate-score and row-score artifacts and returns an `EvaluationResult`. Optional `aggregate_fields` shapes the returned aggregate scores only. |
 | `download_artifacts(path=None)` | Downloads and extracts the full job artifacts archive under a job-specific directory. |
 | `as_async()` | Returns an `AsyncEvaluatorJobResource` view over the same job. |
-
 
 ## AsyncEvaluatorJobResource
 

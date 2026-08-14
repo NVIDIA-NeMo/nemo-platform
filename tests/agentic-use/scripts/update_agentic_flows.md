@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 ## NOTE This prompt is a low frequency prompt for use when updating the flows. Probably I should create a skill.
 
 Under tests/agentic-use/agentic_flows, I've listed all the flows we're trying to cover with CLI and MCP tests across many markdown files. Under tests/agentic-use, there are a large numbe of evals already present.

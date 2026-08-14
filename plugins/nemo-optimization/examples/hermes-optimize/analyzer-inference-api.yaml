@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Analyzer LLM settings for the path-only MCP example (inference-api key).
 # The agent checkout's configs/common.yaml targets integrate.api.nvidia.com,
 # which 401s for many NVIDIA_API_KEY values that work on inference-api.

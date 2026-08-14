@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Manage Metrics"
 description: ""
 ---
@@ -14,7 +17,6 @@ import os
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
 
-
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     workspace="default",
@@ -25,7 +27,6 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 ## Create Metric Objects Inline
 
 Metric objects are normal Python objects from `nemo_evaluator_sdk.metrics.*`. Keep them close to the evaluation code so the definition, dataset fields, and execution request stay in sync.
-
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
@@ -49,13 +50,11 @@ for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
 
-
 Use `run` for fast local execution while developing a metric. Use `submit` for durable remote execution through the platform job service.
 
 ## Reuse a Metric Definition
 
 Because metrics are inline objects, reuse is usually just a Python helper function or module-level factory.
-
 
 ```python
 from nemo_evaluator_sdk import F1Metric
@@ -67,10 +66,8 @@ def answer_f1_metric() -> F1Metric:
         description="Token-level F1 between expected and generated answers.",
     )
 
-
 metric = answer_f1_metric()
 ```
-
 
 ## Choose Metric Classes
 
@@ -97,7 +94,6 @@ For online evaluations, provide a model or agent target and use the online param
 
 ## Submit a Durable Job
 
-
 ```python
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
 
@@ -115,7 +111,6 @@ job = evaluator.submit(
 job.wait_until_done()
 result = job.get_result()
 ```
-
 
 ## Related Topics
 
