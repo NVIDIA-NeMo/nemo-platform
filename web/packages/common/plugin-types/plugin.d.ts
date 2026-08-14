@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 import * as React$2 from "react";
 import React$1, { CSSProperties, ChangeEvent, ComponentProps, ComponentPropsWithRef, ComponentPropsWithoutRef, ComponentType, ElementType, FC, ForwardRefExoticComponent, JSX as JSX$1, JSXElementConstructor, MouseEventHandler, PropsWithChildren, ReactElement, ReactNode, RefAttributes, RefObject, SVGProps } from "react";
 import { ThreadMessageLike, ThreadPrimitive } from "@assistant-ui/react";
