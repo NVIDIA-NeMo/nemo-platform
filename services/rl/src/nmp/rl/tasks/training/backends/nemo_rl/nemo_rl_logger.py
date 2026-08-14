@@ -18,14 +18,18 @@ from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
 
-# How many progress reports to aim for across one validation period. NeMo-RL has no
-# notion of a reporting cadence, so it is derived from val_period.
-_REPORTS_PER_VAL_PERIOD = 10
-
-# Upper bound on progress reports for one run, per reporting path, whatever the
-# validation cadence asks for. Every report resends every accumulated series in
-# full and the Jobs service stores the blob twice, so the cost of a report is not
-# constant -- see the payload note in nmp.customization_common.training.callbacks.
+# Progress reports for one run, per reporting path. Reporting is throttled to
+# whatever cadence lands about this many across the run, so a curve has the same
+# resolution whether the run is 300 steps or 30,000. Roughly the number of points a
+# chart a few hundred pixels wide can draw distinctly, and past which the extra
+# points cost more than they show.
+#
+# It is also what bounds the cost, which is why it is a ceiling and not a target.
+# Every report resends every accumulated series in full and the Jobs service stores
+# the blob twice, so upload grows as the square of the report count -- see the
+# payload note in nmp.customization_common.training.callbacks. Capping the count is
+# what keeps that finite; the resolution argument is what makes 200 the right
+# number rather than merely a small one.
 #
 # Per path, so a run making full use of both is bounded by twice this. That is a
 # bound either way; what matters is that no path is unbounded, and applying one
@@ -45,23 +49,27 @@ _MAX_REPORTS_PER_RUN = 200
 # one rides in the same dict as the scalars.
 
 
-def resolve_log_interval(val_period: int | None, max_steps: int) -> int:
-    """Steps between progress reports: the coarser of two floors.
+def resolve_log_interval(max_steps: int) -> int:
+    """Steps between progress reports: enough steps for ``_MAX_REPORTS_PER_RUN``.
 
-    The first targets ~10 reports per validation period, which is the cadence
-    someone watching the job expects. The second bounds the whole run at
-    ``_MAX_REPORTS_PER_RUN`` reports, because each report resends every series in
-    full -- so upload and stored-blob writes both grow as the square of the
-    report count, and it is the report count, not the step count, that drives it.
+    Run length is the only input. The cadence used to be derived from
+    ``val_period`` as well, targeting ~10 reports per validation period, and that
+    term decided the interval on nearly every real configuration. It had no
+    bearing on the question: how often someone wants the curve and the progress
+    bar to move is unrelated to how often the run validates.
 
-    The second floor is not a corner case guard: ``val_period`` is the user's
-    ``val_check_interval``, and any value below ``_REPORTS_PER_VAL_PERIOD`` --
-    "validate every 5 steps" is an ordinary request -- floors the first one to
-    zero, which clamps to 1 and reports every step of an arbitrarily long run.
+    Its effect was to hold the report count at ten per epoch at every scale.
+    ``compute_val_check_interval`` returns ``steps_per_epoch`` when the user sets
+    no ``val_check_interval``, so on the default path ``val_period`` *was* the
+    epoch: a 20,000-step run drew its loss curve from ten points. The coupling
+    was inverted, too -- validating less often, which is what you do when
+    validation is expensive, made the training curve coarser.
+
+    ``report_running`` derives ``percentage_done`` from the step a train report
+    states, so this sets the granularity of the progress bar as well as of the
+    chart. Ten reports across an eleven-hour run is ten movements of the bar.
     """
-    per_val_period = (val_period or 0) // _REPORTS_PER_VAL_PERIOD
-    per_run = (max(max_steps, 0) + _MAX_REPORTS_PER_RUN - 1) // _MAX_REPORTS_PER_RUN
-    return max(per_val_period, per_run, 1)
+    return max((max(max_steps, 0) + _MAX_REPORTS_PER_RUN - 1) // _MAX_REPORTS_PER_RUN, 1)
 
 
 def resolve_val_report_interval(val_period: int | None, max_steps: int) -> int:
@@ -187,20 +195,20 @@ class NemoRLLogger(LoggerInterface):
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
 
-        The arithmetic lives here rather than in each driver. DPO's copy read
-        ``(val_period // 10) + 1``, where the ``+1`` was a divide-by-zero guard
-        that also skewed every value it produced, and raised outright when
-        ``val_period`` was None. Owning it here fixes both and gives any further
-        algorithm one place to call.
+        The arithmetic lives here rather than in each driver, which is where DPO
+        derived its own ``log_interval`` from ``val_period`` and where any further
+        algorithm would have copied it. One place to call, and one place to fix.
 
         Args:
             steps_per_epoch: Authoritative value when the algorithm config carries
                 one (DPO does); otherwise derived from max_steps and num_epochs.
+            val_period: Steps between validation passes. Sets the cadence of the
+                validation reports only; the train cadence is run length alone.
         """
         return cls(
             steps_per_epoch=resolve_steps_per_epoch(max_steps, num_epochs, steps_per_epoch),
             job_ctx=job_ctx,
-            log_interval=resolve_log_interval(val_period, max_steps),
+            log_interval=resolve_log_interval(max_steps),
             val_report_interval=resolve_val_report_interval(val_period, max_steps),
             max_steps=max_steps,
             num_epochs=num_epochs,

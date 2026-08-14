@@ -349,45 +349,51 @@ def test_close_still_flushes_a_step_ahead_of_the_last_validation(callback: _Reco
 
 
 @pytest.mark.parametrize(
-    "val_period,max_steps,expected",
+    "max_steps,expected",
     [
-        # Driven by val_period: ~10 reports across one validation period.
-        (100, 200, 10),
-        (10, 200, 1),
-        (5, 200, 1),  # floors to 0 -> clamped
-        (1, 200, 1),
-        (0, 200, 1),
-        (None, 200, 1),  # val_period is Optional
-        # Driven by the run-length cap, once val_period has stopped bounding
-        # anything. This is the regime a small val_check_interval lands in.
-        (5, 2_000, 10),
-        (5, 20_000, 100),
-        (None, 20_000, 100),
-        # Whichever floor is coarser wins; here it is val_period's.
-        (10_000, 20_000, 1_000),
-        # A run shorter than the cap is never throttled past its own length.
-        (0, 1, 1),
+        (0, 1),  # degenerate, but the clamp keeps it a usable modulus
+        (1, 1),
+        (200, 1),  # a run no longer than the budget reports every step
+        (313, 2),  # 157 reports, not 313
+        (2_000, 10),
+        (20_000, 100),
+        (20_001, 101),  # ceiling division: never rounds down past the budget
     ],
 )
-def test_resolve_log_interval(val_period: int | None, max_steps: int, expected: int) -> None:
-    assert resolve_log_interval(val_period, max_steps) == expected
+def test_resolve_log_interval(max_steps: int, expected: int) -> None:
+    assert resolve_log_interval(max_steps) == expected
 
 
-def test_the_run_length_cap_bounds_the_report_count(callback: _RecordingCallback) -> None:
-    """val_period alone does not bound reporting, and the report is what costs.
+@pytest.mark.parametrize("val_period", [None, 0, 1, 5, 100, 20_000])
+def test_the_train_cadence_does_not_move_with_the_validation_cadence(
+    callback: _RecordingCallback, val_period: int | None
+) -> None:
+    """How often a run validates says nothing about how often it should report.
 
-    `val_check_interval=5` is an ordinary request, and it floors the
-    reports-per-validation-period term to zero -- so before the cap this run
-    reported all 20,000 steps. Each report resends every series in full, so that
-    is quadratic in upload and in stored-blob writes, not linear.
+    The two were coupled, and the coupling ran the wrong way: validating less
+    often -- what you do when validation is expensive -- made the training curve
+    coarser. Run length is the only thing that sets the train cadence now.
+    """
+    logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=val_period)
+
+    assert logger._log_interval == 100
+
+
+def test_a_long_run_on_the_default_cadence_draws_a_usable_curve(callback: _RecordingCallback) -> None:
+    """The regression the val_period term caused, at the scale where it mattered.
+
+    `compute_val_check_interval` returns steps_per_epoch when the user sets no
+    `val_check_interval`, so a one-epoch run reached here with
+    `val_period == max_steps`. Targeting ~10 reports per validation period then
+    drew this whole curve from ten points, and moved the progress bar ten times,
+    however long the run was.
     """
     max_steps = 20_000
-    logger = NemoRLLogger.for_schedule(max_steps=max_steps, num_epochs=1, val_period=5)
+    logger = NemoRLLogger.for_schedule(max_steps=max_steps, num_epochs=1, val_period=max_steps)
     for step in _driver_steps(max_steps):
         logger.log_metrics(TRAIN_METRICS, step=step, prefix="train")
 
-    assert len(callback.train_steps) <= _MAX_REPORTS_PER_RUN
-    assert len(callback.train_steps) >= _MAX_REPORTS_PER_RUN // 2, "still a usable curve, not a throttle to nothing"
+    assert len(callback.train_steps) == _MAX_REPORTS_PER_RUN
 
 
 @pytest.mark.parametrize(
@@ -406,10 +412,14 @@ def test_resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explici
 
 
 def test_for_schedule_builds_a_consistent_logger(callback: _RecordingCallback) -> None:
-    """DPO's own formula produced 11 here, via a `+1` that skewed every value."""
+    """A 100-step run is shorter than the report budget, so every step reports.
+
+    DPO's own formula produced 11 here -- one report for the whole run, from a
+    `+1` that was a divide-by-zero guard and skewed every value it produced.
+    """
     logger = NemoRLLogger.for_schedule(max_steps=100, num_epochs=4, val_period=100)
 
-    assert logger._log_interval == 10
+    assert logger._log_interval == 1
     assert logger._steps_per_epoch == 25
     assert logger._max_steps == 100
 
