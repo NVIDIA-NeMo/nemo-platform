@@ -270,8 +270,11 @@ async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isol
 
     config = EvolutionaryOptimizerConfig(max_rounds=1, max_candidates=1, builder="acme-noop-build")
     # resolve() is typed to the role protocol, which is the point: the host knows a
-    # Strategy, not this package's class.
-    strategy = cast("Strategy", resolve("strategy", "random-search")(config=config))
+    # Strategy, not this package's class. The role declares no __init__, so the
+    # constructor's arguments are the resolving strategy's contract, not the role's --
+    # hence the cast to build it.
+    strategy_class = cast("Any", resolve("strategy", "random-search"))
+    strategy = cast("Strategy", strategy_class(config=config))
 
     winner = await strategy.run(ctx)
 
