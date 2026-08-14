@@ -308,9 +308,11 @@ describe('GuardrailsDataView', () => {
         'no-such-config'
       );
       expect(
-        await screen.findByText('No Results Found', undefined, { timeout: XL_SELECTOR_TIMEOUT })
+        await screen.findByTestId('entity-empty-state-no-results', undefined, {
+          timeout: XL_SELECTOR_TIMEOUT,
+        })
       ).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Clear Filters/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Clear filters/i })).toBeInTheDocument();
     });
   });
 
