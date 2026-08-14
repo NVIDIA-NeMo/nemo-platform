@@ -40,7 +40,7 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
     ensure_heldout_hidden,
     restore_heldout_splits,
 )
-from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
+from nemo_experimentalist_plugin.experimentalist.context import RUN_LAYOUT, ExperimentContext
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
@@ -401,7 +401,12 @@ class ExperimentRunner:
 
     def _copy_winner_to_workspace(self, winner_dir: Path) -> None:
         """Copy the winner's artifact to the workspace root, minus every owner's scaffolding."""
-        skip = _STRATEGY_ARTIFACTS | _EVALUATOR_ARTIFACTS
+        # The run's own layout is never copied over. `fork` already strips these on the way
+        # in, but `commit_candidate` accepts any artifact under the candidate root, so a
+        # strategy that builds without forking -- the documented extension point -- can
+        # commit one containing `eval-and-optimize`, and the rmtree below would delete the
+        # run it is finalizing.
+        skip = _STRATEGY_ARTIFACTS | _EVALUATOR_ARTIFACTS | RUN_LAYOUT
         if not winner_dir.is_dir():
             logger.warning("[FINAL] winner artifact %s is not a directory; skipping workspace copy", winner_dir)
             return

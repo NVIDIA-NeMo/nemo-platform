@@ -13,7 +13,9 @@ the context, and land results in Studio like any other run.
 """
 
 import random
+from pathlib import Path
 
+from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import Candidate, Proposal
 from nemo_experimentalist_plugin.experimentalist.roles import Strategy
 from nemo_experimentalist_plugin.experimentalist.seam import StrategyContext
@@ -44,11 +46,23 @@ class RandomSearch(Strategy):
     name = "random-search"
     supports_resume = True
 
-    def __init__(self, working_dir=None, config=None, framework_skills_dirs=None, **_: object) -> None:
-        """Accept the arguments the runner constructs a strategy with, and ignore the rest."""
-        self._rounds = getattr(config, "max_rounds", 3)
-        self._per_round = getattr(config, "max_candidates", 1)
-        self._builder = getattr(config, "builder", "code-edit")
+    def __init__(
+        self,
+        working_dir: Path,
+        config: EvolutionaryOptimizerConfig | None = None,
+        framework_skills_dirs: list[Path] | None = None,
+        **_: object,
+    ) -> None:
+        """The arguments the runner constructs a strategy with; the rest are ignored.
+
+        Spelled out rather than left untyped because this package is the worked example a
+        third party copies: the signature is the contract, so it should show it.
+        """
+        del working_dir, framework_skills_dirs
+        settings = config or EvolutionaryOptimizerConfig()
+        self._rounds = settings.max_rounds
+        self._per_round = settings.max_candidates
+        self._builder = settings.builder
 
     async def run(self, ctx: StrategyContext) -> Candidate | None:
         """Import the agent, then build and score random variants of it."""
@@ -57,7 +71,13 @@ class RandomSearch(Strategy):
             population = [await self._import_baseline(ctx)]
 
         rng = random.Random(0)
-        for generation in range(1, self._rounds + 1):
+        # Resume where the store left off. `supports_resume` is true, so `ctx.candidates()`
+        # can return work from an earlier attempt; restarting at 1 would rebuild it and
+        # report progress that goes backwards.
+        done = max((c.generation for c in population), default=0)
+        if done >= self._rounds:
+            return self._best(population)
+        for generation in range(done + 1, self._rounds + 1):
             parent = rng.choice(population)
             for _ in range(self._per_round):
                 proposal = Proposal(
@@ -73,7 +93,12 @@ class RandomSearch(Strategy):
                 population.append(candidate)
             await ctx.report_progress(completed=generation, total=self._rounds, unit="round")
 
-        return max(population, key=_validation_score)
+        return self._best(population)
+
+    @staticmethod
+    def _best(population: list[Candidate]) -> Candidate | None:
+        """Highest validation score, or None when the run produced nothing."""
+        return max(population, key=_validation_score) if population else None
 
     async def _import_baseline(self, ctx: StrategyContext) -> Candidate:
         """Commit the agent under test unchanged, using the built-in import Builder."""

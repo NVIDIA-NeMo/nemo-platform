@@ -73,7 +73,9 @@ def _accepted(constructor: Any, supplied: dict[str, Any]) -> dict[str, Any]:
 #: contribute names: this run's own layout, generic developer hygiene, the evaluator's
 #: scratch, and the strategy's generated documentation. Hardcoding one flat list is how
 #: a third-party strategy's real output gets stripped.
-_RUN_LAYOUT = frozenset({"eval-and-optimize", "artifacts", "dataset", "scratch"})
+#: Directories the run owns. A fork must not inherit them, and the winner copy-out
+#: must not overwrite them -- both directions of the same rule, so it lives here once.
+RUN_LAYOUT = frozenset({"eval-and-optimize", "artifacts", "dataset", "scratch"})
 _HYGIENE = frozenset({"__pycache__", ".git", ".runtime-cache", ".claude", ".uv", ".venv"})
 _EVALUATOR_SCRATCH_GLOBS = ("*traces*", "*eval-and-optimize_*")
 #: Generated *about* the ancestor rather than part of it, and the Proposer's only view of
@@ -96,7 +98,7 @@ def _ignore_forked(source_root: Path) -> Callable[[str, list[str]], set[str]]:
     root = source_root.resolve()
 
     def _ignore(directory: str, contents: list[str]) -> set[str]:
-        skip = _RUN_LAYOUT | _HYGIENE
+        skip = RUN_LAYOUT | _HYGIENE
         if Path(directory).resolve() == root:
             skip = skip | _GENERATED_DOCS
         return {

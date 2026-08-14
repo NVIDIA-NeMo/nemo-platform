@@ -24,7 +24,6 @@ from nemo_experimentalist_plugin.entities import (
     Proposal,
 )
 from nemo_experimentalist_plugin.experimentalist import roles
-from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilderConfig
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import (
     ensure_heldout_hidden,
     restore_heldout_splits,
@@ -239,10 +238,17 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         )
 
     @staticmethod
-    def _coder_config(config: EvolutionaryOptimizerConfig) -> CodeEditBuilderConfig:
-        if config.model_catalog_path is None or config.builder_config.model_catalog_path is not None:
-            return config.builder_config
-        return config.builder_config.model_copy(update={"model_catalog_path": config.model_catalog_path})
+    def _coder_config(config: EvolutionaryOptimizerConfig) -> dict[str, Any]:
+        """The builder's settings, with the run's model catalog filled in if it named one.
+
+        A mapping, not a model: the builder validates it against its own `config_type`, so
+        a builder from another package is configured the same way. The run-level
+        `model_catalog_path` is a default the builder's own setting overrides.
+        """
+        settings = dict(config.builder_config)
+        if config.model_catalog_path is not None and settings.get("model_catalog_path") is None:
+            settings["model_catalog_path"] = config.model_catalog_path
+        return settings
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -361,6 +367,14 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                     len(chosen),
                     len(survivors),
                 )
+            if chosen and not survivors:
+                # Nothing the selector named exists here, so this says nothing about which
+                # candidates are worth keeping. Killing is durable and kills everything:
+                # the run would spend its remaining rounds with an empty population and
+                # could not recover, on resume either. Keep them and let the next round
+                # ask again.
+                logger.warning("No returned survivor resolved; keeping the population for this round.")
+                survivors = list(candidates)
             survived = {s.label for s in survivors}
             for candidate in [c for c in candidates if c.label not in survived]:
                 await ctx.update_candidate(candidate, killed_generation=round_num)

@@ -16,6 +16,7 @@ from nemo_experimentalist_plugin.entities import (
     Dataset,
     DatasetRef,
     ExperimentRun,
+    MetricTarget,
     ResourceRef,
     RewardRecord,
     Task,
@@ -457,11 +458,62 @@ async def test_the_run_record_never_carries_the_credential(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_the_strategy_receives_the_runs_resolved_tiers(monkeypatch, tmp_path) -> None:
-    """Components read tiers off what they were handed, not off a module-level getter."""
+async def test_the_strategy_receives_the_runs_metric_contract(monkeypatch, tmp_path) -> None:
+    """A strategy reads the run's objectives off the context it was handed.
+
+    Reading them from a module-level getter instead would make a run report metrics other
+    than the ones it optimized, and `config_snapshot` would record the config's while the
+    loop used something else.
+    """
+    objectives = [MetricTarget(name="pass_rate", direction="maximize")]
+    guardrails = [MetricTarget(name="latency", direction="minimize")]
     strategy = RecordingStrategy()
-    runner, _ = _make_runner(tmp_path, strategy=strategy, monkeypatch=monkeypatch)
+    runner, _ = _make_runner(
+        tmp_path,
+        strategy=strategy,
+        monkeypatch=monkeypatch,
+        config=EvolutionaryOptimizerConfig(objective_function=objectives, regression_metrics=guardrails),
+    )
 
     await runner.run()
 
     assert strategy.ctx is not None
+    assert strategy.ctx.objective_metrics == objectives, "the strategy was handed different objectives"
+    assert strategy.ctx.regression_metrics == guardrails
+
+
+@pytest.mark.asyncio
+async def test_the_winner_copy_out_never_overwrites_the_runs_own_layout(monkeypatch, tmp_path) -> None:
+    """A winner artifact containing `eval-and-optimize` must not delete the run.
+
+    `fork` strips the run layout on the way in, but `commit_candidate` accepts any
+    artifact under the candidate root, so a strategy that builds without forking -- the
+    documented extension point -- can commit one that carries it. The copy-out `rmtree`s
+    each destination first, so without this the run deletes its own records while
+    finalizing, and there is nothing left to resume.
+    """
+    artifact = tmp_path / "artifact" / "agent-1"
+    (artifact / "eval-and-optimize").mkdir(parents=True)
+    # the winner carries a directory named like the run's own
+    (artifact / "eval-and-optimize" / "planted.txt").write_text("from the candidate", encoding="utf-8")
+    (artifact / "agent.py").write_text("real source", encoding="utf-8")
+    winner = make_candidate(
+        run_id="run-1",
+        label="agent-1",
+        ancestor="agent-0",
+        generation=1,
+        description="x",
+        artifact=artifact.as_uri(),
+    )
+
+    runner, _ = _make_runner(tmp_path, strategy=RecordingStrategy(winner=winner), monkeypatch=monkeypatch)
+
+    await runner.run()
+
+    # The run's own directory is left alone; had it been copied, rmtree would have taken
+    # the live one with it and this file would be sitting inside the result.
+    assert not (tmp_path / "experiment" / "eval-and-optimize" / "planted.txt").exists(), (
+        "the winner's eval-and-optimize was copied over the run's own"
+    )
+    # ...and the rest of the winner still copies, so the guard is not simply skipping.
+    assert (tmp_path / "experiment" / "agent.py").read_text(encoding="utf-8") == "real source"

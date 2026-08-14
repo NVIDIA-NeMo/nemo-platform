@@ -800,3 +800,45 @@ async def test_the_context_loads_a_trace_by_reference(tmp_path, isolated_registr
     )
 
     assert explorer is not None
+
+
+@pytest.mark.asyncio
+async def test_the_example_strategy_resumes_where_the_store_left_off(tmp_path, isolated_registry: None) -> None:
+    """The out-of-tree example declares `supports_resume`, so it must honour it.
+
+    Restarting at generation 1 would rebuild finished work and report progress that goes
+    backwards. It is the package a third party copies, so the resume contract has to be
+    demonstrated rather than merely declared.
+    """
+    pytest.importorskip("acme_strategies", reason="out-of-tree example package is not installed")
+    import importlib
+
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+
+    # Imported by name: the package is optional here, so a static import would make the
+    # type checker resolve something that is not installed.
+    strategy_class = cast("Any", importlib.import_module("acme_strategies.random_search").RandomSearch)
+
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+    baseline = await _one(ctx)
+    assert baseline.generation == 0
+
+    # A run whose configured rounds are already in the store returns its winner and
+    # builds nothing more.
+    built: list[str] = []
+    original = ctx.component
+
+    def _recording_component(role: str, name: str, **kwargs: Any) -> Any:
+        component = original(role, name, **kwargs)
+        if role == "builder":
+            built.append(name)
+        return component
+
+    ctx.component = _recording_component  # type: ignore[method-assign]
+    strategy = strategy_class(working_dir=tmp_path, config=EvolutionaryOptimizerConfig(max_rounds=0))
+
+    winner = await strategy.run(ctx)
+
+    assert winner is not None, "a resumed run with nothing left to do still has a winner"
+    assert built == [], f"a completed run rebuilt candidates: {built}"

@@ -1028,7 +1028,13 @@ class CodeEditBuilder(Agent, roles.Builder):
 
         smoke_dataset = dataset.subset([task.id for task in tasks])
         base_options = evaluator.options
-        smoke_options = base_options.model_copy(update={"force_rerun": True})
+        # A configured job_name would otherwise be shared: builds run concurrently, and
+        # `force_rerun` deletes the results directory that name points at, so one builder's
+        # smoke check would clear another's mid-read. The workdir and the task subset are
+        # what make this check distinct, so they name it.
+        smoke_options = base_options.model_copy(
+            update={"force_rerun": True, "job_name": f"smoke-{workdir.name}-{smoke_dataset.id}"}
+        )
         return await evaluator.run(
             agent=workdir,
             dataset=smoke_dataset,

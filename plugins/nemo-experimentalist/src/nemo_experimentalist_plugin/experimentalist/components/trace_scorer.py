@@ -21,6 +21,10 @@ from .goal_tree import GoalNode, GoalTree, GoalTreeConfig, GoalTreeGenerator, le
 
 logger = logging.getLogger(__name__)
 
+#: Concurrent scoring calls. `max_trajectory_tasks` caps tasks, not the nodes each is
+#: scored against, so the product is what needs bounding.
+_MAX_CONCURRENT_SCORING = 8
+
 
 def _trajectory_detail_from_reward(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
@@ -349,11 +353,25 @@ class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
         keys = [(node.id, task_id) for node in nodes for task_id in traces_by_task]
         logger.info(f"[TRAJ] Starting {len(keys)} GRA scoring tasks...")
 
+        # Bounded, and tolerant of one call failing. The fan-out is nodes x tasks and every
+        # element is an LLM call, so a wide goal tree would otherwise issue them all at
+        # once; and this whole channel is optional, so one unreadable trace must not end a
+        # run that has already spent hours.
+        limit = asyncio.Semaphore(_MAX_CONCURRENT_SCORING)
+
+        async def _score(node: GoalNode, task_id: str) -> dict[str, GroupLeafScore]:
+            async with limit:
+                return await self.score_group(node, traces_by_task[task_id], dataset)
+
         scoring_results = await asyncio.gather(
-            *[self.score_group(node, traces_by_task[task_id], dataset) for node in nodes for task_id in traces_by_task]
+            *[_score(node, task_id) for node in nodes for task_id in traces_by_task],
+            return_exceptions=True,
         )
         logger.info("[TRAJ] Scoring completed")
         for (node_id, task_id), group_scores in zip(keys, scoring_results, strict=True):
+            if isinstance(group_scores, BaseException):
+                logger.warning("[TRAJ] scoring %s on %s failed; skipping: %s", node_id, task_id, group_scores)
+                continue
             for aid, gs in group_scores.items():
                 scores_by_node_trial_agent[node_id][task_id][aid] = _trajectory_detail_from_reward(gs)
 

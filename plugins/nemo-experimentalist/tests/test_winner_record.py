@@ -90,3 +90,34 @@ def test_the_label_is_usable_as_a_path_component(tmp_path: Path) -> None:
 
     assert (eo / "agents" / label).is_dir()
     assert (eo / "results" / f"{label}-validation").is_dir()
+
+
+def test_every_run_critical_write_is_atomic() -> None:
+    """`run.json` and `candidates/<id>.json` decide whether a run can resume.
+
+    A plain `write_text` truncates before writing, so a process killed mid-write leaves a
+    half-written file: `run.json` stops parsing and `list_candidates` raises, which loses
+    the whole run rather than one record. `_atomic_write` writes a sibling and renames.
+
+    Checked over the source rather than by killing a process, because the failure needs a
+    crash at one specific instant to reproduce.
+    """
+    import re
+
+    backend = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "nemo_experimentalist_plugin"
+        / "experimentalist"
+        / "experimentalist_backend.py"
+    ).read_text(encoding="utf-8")
+
+    plain = [
+        line.strip()
+        for line in backend.splitlines()
+        if re.search(r"\.write_text\(", line)
+        and "temporary.write_text" not in line  # _atomic_write's own write
+        and "report_path" not in line  # OPTIMIZATION.md: regenerated, never read back
+    ]
+
+    assert not plain, f"run-critical writes that truncate in place: {plain}"

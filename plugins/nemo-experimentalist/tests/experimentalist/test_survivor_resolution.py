@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from doubles import FakeBackend, make_context
+from doubles import FakeBackend, make_candidate, make_context
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import Candidate, Proposal
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryStrategy
@@ -119,3 +119,56 @@ def test_the_label_is_what_survives_a_json_answer() -> None:
 
     assert returned.label == original.label, "label is a model field and must survive"
     assert returned.id != original.id, "id is not a model field and cannot survive"
+
+
+@pytest.mark.asyncio
+async def test_an_unresolvable_selection_keeps_the_population(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """If nothing the selector names exists here, keep everyone rather than kill everyone.
+
+    Killing is durable. An empty survivor set writes `killed_generation` on the whole
+    population, so the run spends its remaining rounds with nothing alive and cannot
+    recover -- not even on resume, because the tombstones are on disk. A selection that
+    resolves to nothing says nothing about which candidates are worth keeping, so the
+    round keeps them and the next one asks again.
+    """
+
+    class _SelectorNamingStrangers:
+        def rank(self, candidates: list[Candidate]) -> list[Candidate]:
+            return list(candidates)
+
+        async def survivors(self, candidates: list[Candidate], *, k: int) -> list[Candidate]:
+            return [make_candidate(label="agent-does-not-exist", generation=99)]
+
+        def winner(self, candidates: list[Candidate]) -> Candidate | None:
+            return candidates[0] if candidates else None
+
+    config = EvolutionaryOptimizerConfig(
+        max_rounds=1, max_survivors=1, terminator=None, analyzer=None, trajectory_scorer=None
+    )
+    loop = EvolutionaryStrategy(working_dir=tmp_path, config=config)
+    ctx = make_context(root=tmp_path, backend=FakeBackend())
+
+    async def _none(*_a: Any, **_k: Any) -> Any:
+        return {}
+
+    async def _nothing(*_a: Any, **_k: Any) -> None:
+        return None
+
+    async def _no_analysis(*_a: Any, **_k: Any) -> str:
+        return ""
+
+    async def _no_proposals(*_a: Any, **_k: Any) -> list[Proposal]:
+        return []
+
+    monkeypatch.setattr(loop, "_ensure_baseline", _two_candidates)
+    monkeypatch.setattr(loop, "_selector", lambda *_a, **_k: _SelectorNamingStrangers())
+    monkeypatch.setattr(loop, "_evaluate_validation_candidates", _none)
+    monkeypatch.setattr(loop, "_evaluate_train_candidates", _none)
+    monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
+    monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
+    monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+
+    await loop._run(ctx)
+
+    alive = [c for c in await ctx.candidates() if c.killed_generation is None]
+    assert len(alive) == 2, "an unresolvable selection killed the population it could not name"

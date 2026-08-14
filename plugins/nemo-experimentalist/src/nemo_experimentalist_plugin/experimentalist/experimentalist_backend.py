@@ -591,7 +591,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     async def create_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
         if not run.id:
             run._id = str(uuid.uuid4())  # type: ignore[attr-defined]
-        (self._eo / "run.json").write_text(run.model_dump_json(indent=2))
+        _atomic_write(self._eo / "run.json", run.model_dump_json(indent=2))
         await self._project_best_effort(workspace, lambda m: m.ensure_group(run))
         return run
 
@@ -621,7 +621,10 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     def _write_candidate(self, candidate: Candidate) -> None:
         path = self._candidate_path(candidate.id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({**candidate.model_dump(), "id": candidate.id}, indent=2))
+        # Atomic for the same reason as run.json: this runs on every record_reward, and a
+        # truncated candidates/<id>.json makes list_candidates raise, which leaves the whole
+        # run unresumable rather than losing one record.
+        _atomic_write(path, json.dumps({**candidate.model_dump(), "id": candidate.id}, indent=2))
 
     async def create_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
         if not candidate.id:
@@ -831,7 +834,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             run.summary = result.summary  # so publish_candidate's _compose_pr_body reads the real summary
             if result.winner is not None:
                 run.winner_agent = result.winner.label
-            run_path.write_text(run.model_dump_json(indent=2))
+            _atomic_write(run_path, run.model_dump_json(indent=2))
         await self._project_best_effort(
             workspace,
             lambda m: m.finalize(
