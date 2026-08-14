@@ -39,18 +39,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # the `uv sync` above -- same reasoning as docker/rl/Dockerfile.nmp-rl-base's separate Ray venv,
 # just without that image's much heavier multi-venv-per-actor machinery, which Gym-through-
 # Evaluator doesn't need: one `gym` process on PATH is enough here.
+#
+# No baked env.yaml: this image ships to production (see .github/workflows/release.yaml), so it
+# must not carry test-only credentials. Callers pass policy_base_url/policy_api_key/
+# policy_model_name per-job via GymRunnerTarget.env_overrides instead -- Gym's own config loader
+# merges CLI overrides last, so they take precedence over any env.yaml regardless.
 RUN python3 -m venv /opt/gym-venv \
     && /opt/gym-venv/bin/pip install --no-cache-dir nemo-gym tiktoken
-# Gym's collector reads model credentials from a gitignored env.yaml, checked in its process's
-# cwd first, then falling back to its own install root (nemo_gym/global_config.py: PARENT_DIR,
-# i.e. the directory *containing* the nemo_gym package -- verified against the installed package,
-# not guessed). Baking it there means it resolves regardless of the job process's cwd. Points at
-# a fixed, idempotently-created mock-provider model (see e2e/test_evaluator_plugin.py) rather
-# than a per-test one, since GymRunnerTarget has no field to carry dynamic credentials into this
-# lookup -- this is the actual "friction-log issue #1" the ticket names.
-RUN GYM_SITE_PACKAGES="$(/opt/gym-venv/bin/python -c 'import nemo_gym, os; print(os.path.dirname(os.path.dirname(nemo_gym.__file__)))')" \
-    && printf 'policy_base_url: http://nemo-platform-api:8080/apis/inference-gateway/v2/workspaces/default/model/gym-mock-mcqa/-/v1\npolicy_api_key: not-used-mock-provider\npolicy_model_name: gym-mock-mcqa\n' \
-       > "${GYM_SITE_PACKAGES}/env.yaml"
 
 FROM ${NMP_PYTHON_BASE} AS runtime
 ENV USERNAME=nvs \
