@@ -37,6 +37,61 @@ export const Unavailable: Story = {
   },
 };
 
+export const WithTrailingLabel: Story = {
+  args: {
+    label: 'gen_kl_error',
+    value: '5.4e-4',
+    trailingLabel: 'ok',
+    trailingLabelStatus: 'success',
+    hint: 'flag above 1e-3',
+  },
+};
+
+export const TrailingLabelWarning: Story = {
+  args: {
+    label: 'approx_entropy',
+    value: '0.31',
+    trailingLabel: 'falling',
+    trailingLabelStatus: 'warning',
+    hint: 'entropy collapse risk',
+  },
+};
+
+export const DiagnosticsRow: Story = {
+  render: () => (
+    <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-xl">
+      <StatTile
+        label="gen_kl_error"
+        value="5.4e-4"
+        trailingLabel="ok"
+        trailingLabelStatus="success"
+        hint="flag above 1e-3"
+      />
+      <StatTile
+        label="token_mult_prob_error"
+        value="0.4%"
+        trailingLabel="ok"
+        trailingLabelStatus="success"
+        hint="flag above 1-2%"
+      />
+      <StatTile
+        label="sampling_importance_ratio"
+        value="1.002"
+        trailingLabel="ok"
+        trailingLabelStatus="success"
+        hint="should hover near 1"
+      />
+      <StatTile
+        label="approx_entropy"
+        value="0.31"
+        trailingLabel="falling"
+        trailingLabelStatus="warning"
+        hint="entropy collapse risk"
+      />
+    </Grid>
+  ),
+};
+
 export const HintStatuses: Story = {
   render: () => (
     <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-xl">

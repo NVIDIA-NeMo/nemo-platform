@@ -12,6 +12,33 @@ describe('StatTile', () => {
     expect(screen.getByText('0.1234')).toBeInTheDocument();
   });
 
+  it('renders the trailing label only when provided', () => {
+    const { rerender } = render(
+      <StatTile label="gen_kl_error" value="5.4e-4" trailingLabel="ok" />
+    );
+    expect(screen.getByText('ok')).toBeInTheDocument();
+
+    rerender(<StatTile label="gen_kl_error" value="5.4e-4" />);
+    expect(screen.queryByText('ok')).not.toBeInTheDocument();
+  });
+
+  it('statuses the trailing label independently of the hint', () => {
+    render(
+      <StatTile
+        label="approx_entropy"
+        value="0.31"
+        trailingLabel="falling"
+        trailingLabelStatus="warning"
+        hint="entropy collapse risk"
+      />
+    );
+
+    expect(screen.getByText('falling')).toHaveClass(
+      'text-[color:var(--text-color-feedback-warning)]'
+    );
+    expect(screen.getByText('entropy collapse risk')).toHaveClass('text-placeholder');
+  });
+
   it('renders the hint only when provided', () => {
     const { rerender } = render(
       <StatTile label="Final training loss" value="0.1234" hint="-0.05 from start" />
