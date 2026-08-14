@@ -62,8 +62,10 @@ def write_harbor_wrapper(agent_dir: Path) -> None:
 
 @pytest.fixture()
 def profile_tree(tmp_path: Path) -> Path:
-    for sub in ("evals/task_template", "evals/train", "evals/val"):
-        (tmp_path / sub).mkdir(parents=True)
+    (tmp_path / "evals" / "task_template").mkdir(parents=True)
+    for split in ("train", "val"):
+        (tmp_path / "evals" / split / "task-1").mkdir(parents=True)
+        (tmp_path / "evals" / split / "task-1" / "task.toml").write_text("", encoding="utf-8")
     write_harbor_wrapper(tmp_path)
     (tmp_path / "optimizer.yaml").write_text(
         "agent: flight-planner\n"

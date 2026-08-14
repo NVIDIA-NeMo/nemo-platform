@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import shutil
 from pathlib import Path
 
 import nemo_experimentalist_plugin.preflight as preflight
@@ -26,6 +27,14 @@ def make_probes(*, cmd_ok: bool = True, http: bool = True) -> Probes:
     )
 
 
+def write_task_dir(dataset_dir: Path, name: str = "task-1") -> Path:
+    """Write the shape a dataset holds: a task directory with a task.toml."""
+    task_dir = dataset_dir / name
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.toml").write_text("", encoding="utf-8")
+    return task_dir
+
+
 def full_profile(tmp_path: Path, *, agent_source: str | None = None):
     tt = tmp_path / "evals" / "task_template"
     tt.mkdir(parents=True)
@@ -33,7 +42,7 @@ def full_profile(tmp_path: Path, *, agent_source: str | None = None):
     (tt / "task.toml").write_text('[task]\nname = "org/agent__template"\n', encoding="utf-8")
     (tt / "instruction.md").write_text("do the thing", encoding="utf-8")
     for sub in ("evals/train", "evals/val"):
-        (tmp_path / sub).mkdir(parents=True)
+        write_task_dir(tmp_path / sub)
     body = (
         "agent: a\ntask_template: ./evals/task_template\ndatasets:\n  train: ./evals/train\n  validation: ./evals/val\n"
     )
@@ -695,7 +704,7 @@ def test_ambiguous_selected_insight_is_required_failure(tmp_path: Path) -> None:
 
 def test_bare_dataset_name_matching_local_directory_is_local_path(tmp_path: Path) -> None:
     profile = full_profile(tmp_path)
-    (tmp_path / "mydata").mkdir()
+    write_task_dir(tmp_path / "mydata")
     (tmp_path / "optimizer.yaml").write_text(
         "agent: a\ntask_template: ./evals/task_template\ndatasets:\n  train: mydata\n  validation: ./evals/val\n",
         encoding="utf-8",
@@ -721,6 +730,33 @@ def test_doctor_rejects_local_dataset_file(tmp_path: Path) -> None:
     train = next(result for result in results if result.name == "dataset-train")
     assert train.status == "fail"
     assert "not a directory" in train.message
+
+
+@pytest.mark.parametrize("dataset_is_a_task", [False, True], ids=["holds-nothing", "is-a-task-dir"])
+def test_dataset_without_task_directories_is_required_failure(tmp_path: Path, dataset_is_a_task: bool) -> None:
+    profile = full_profile(tmp_path)
+    train = tmp_path / "evals" / "train"
+    shutil.rmtree(train)
+    train.mkdir()
+    if dataset_is_a_task:
+        (train / "task.toml").write_text("", encoding="utf-8")
+
+    failure = next(r for r in required_failures(check_datasets(profile)) if r.name == "dataset-train")
+
+    assert "holds no task directories" in failure.message
+    assert str(train) in failure.message
+    expected_hint = "itself a task directory" if dataset_is_a_task else "task.toml"
+    assert expected_hint in (failure.hint or "")
+
+
+def test_insight_run_accepts_datasets_eval_author_will_fill(tmp_path: Path) -> None:
+    profile = full_profile(tmp_path)
+    shutil.rmtree(tmp_path / "evals" / "train")
+    (tmp_path / "evals" / "train").mkdir()
+
+    results = check_datasets(profile, require_tasks=False)
+
+    assert all(r.status == "pass" for r in results)
 
 
 def test_check_artifacts_has_no_dataset_results(tmp_path: Path) -> None:

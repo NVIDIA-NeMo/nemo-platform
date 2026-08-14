@@ -15,6 +15,11 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import httpx
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.dataset_layout import (
+    TASK_CONFIG_FILENAME,
+    find_task_dirs,
+    is_task_dir,
+)
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.entrypoint import (
     DEFAULT_AGENT_IMPORT_PATH,
     find_entrypoint_module,
@@ -231,10 +236,16 @@ def check_artifacts(
     return results
 
 
-def check_datasets(profile: AgentProfile) -> list[CheckResult]:
+def check_datasets(profile: AgentProfile, *, require_tasks: bool = True) -> list[CheckResult]:
     """Classify and validate the profile's train/validation dataset refs
     (path-exists / registry-ref pass). Doctor-only: the experiment flow
-    resolves its datasets, which proves they exist."""
+    resolves its datasets, which proves they exist.
+
+    Existing is not enough to evaluate: Harbor reads the task directories a
+    dataset holds, so a directory holding none fails the run. ``require_tasks``
+    is off for an insight run, where Eval Author generates the tasks and both
+    splits legitimately start empty.
+    """
     results: list[CheckResult] = []
     for label, value in (("train", profile.datasets.train), ("validation", profile.datasets.validation)):
         try:
@@ -247,21 +258,7 @@ def check_datasets(profile: AgentProfile) -> list[CheckResult]:
             )
             continue
         if kind == "path":
-            path = resolve_profile_path(value, profile.profile_dir)
-            results.append(
-                make_check_result(
-                    f"dataset-{label}",
-                    "artifacts",
-                    path.is_dir(),
-                    "required",
-                    f"{label} dataset at {path}",
-                    (
-                        f"{label} dataset path is not a directory: {path}"
-                        if path.exists()
-                        else f"{label} dataset path missing: {path}"
-                    ),
-                )
-            )
+            results.append(_check_dataset_path(label, resolve_profile_path(value, profile.profile_dir), require_tasks))
         else:
             results.append(
                 CheckResult(
@@ -273,6 +270,36 @@ def check_datasets(profile: AgentProfile) -> list[CheckResult]:
                 )
             )
     return results
+
+
+def _check_dataset_path(label: str, path: Path, require_tasks: bool) -> CheckResult:
+    """Check one resolved local dataset directory for the tasks a run evaluates."""
+    if not path.is_dir():
+        return CheckResult(
+            name=f"dataset-{label}",
+            group="artifacts",
+            status="fail",
+            severity="required",
+            message=(
+                f"{label} dataset path is not a directory: {path}"
+                if path.exists()
+                else f"{label} dataset path missing: {path}"
+            ),
+        )
+    has_tasks = not require_tasks or bool(find_task_dirs(path))
+    return make_check_result(
+        f"dataset-{label}",
+        "artifacts",
+        has_tasks,
+        "required",
+        f"{label} dataset at {path}",
+        f"{label} dataset holds no task directories: {path}",
+        hint=(
+            f"{path} is itself a task directory; point {label} at the directory holding it"
+            if is_task_dir(path)
+            else f"each task is a subdirectory with a {TASK_CONFIG_FILENAME}"
+        ),
+    )
 
 
 def _check_task_template(tt: Path) -> list[CheckResult]:

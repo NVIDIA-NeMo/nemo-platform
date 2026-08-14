@@ -327,7 +327,7 @@ def test_harbor_dataset_from_ref_validates_task_ids(tmp_path: Path, task_ids: ob
 
 
 def test_harbor_dataset_maps_step_edge_cases(tmp_path: Path) -> None:
-    task_dir = tmp_path / "step-edge-task"
+    task_dir = tmp_path / "dataset" / "step-edge-task"
     _write(
         task_dir / "task.toml",
         """
@@ -344,7 +344,7 @@ name = "missing-instruction"
 """.lstrip(),
     )
 
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
 
     expected_task = Task(
         uri=task_dir.resolve().as_uri(),
@@ -389,7 +389,7 @@ name = "missing-instruction"
 
 
 def test_harbor_dataset_from_ref_and_multistep_output(tmp_path: Path) -> None:
-    task_dir = tmp_path / "multi-step-task"
+    task_dir = tmp_path / "dataset" / "multi-step-task"
     _write(
         task_dir / "task.toml",
         """
@@ -414,7 +414,7 @@ timeout_sec = 5.0
 
     dataset = HarborDataset.from_ref(
         DatasetRef(
-            uri=task_dir.resolve().as_uri(),
+            uri=task_dir.parent.resolve().as_uri(),
             metadata={"id": "custom-id"},
         )
     )
@@ -492,7 +492,7 @@ timeout_sec = 5.0
 
     assert dataset.id == "custom-id"
     assert dataset.source == ResourceRef(
-        uri=task_dir.resolve().as_uri(),
+        uri=task_dir.parent.resolve().as_uri(),
         description="Harbor dataset root directory.",
     )
     assert dataset.tasks == [expected_task]
@@ -517,6 +517,11 @@ def test_harbor_dataset_rejects_invalid_refs_and_paths(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="contains no Harbor task directories"):
         HarborDataset.from_path(empty_dir)
 
+    # Harbor reads task.toml as a file, so a directory by that name is no task of ours either.
+    (empty_dir / "task-a" / "task.toml").mkdir(parents=True)
+    with pytest.raises(ValueError, match="contains no Harbor task directories"):
+        HarborDataset.from_path(empty_dir)
+
     with pytest.raises(ValueError, match="metadata field 'id' must be a string"):
         HarborDataset.from_ref(DatasetRef(uri=str(tmp_path), metadata={"id": 1}))
 
@@ -527,10 +532,25 @@ def test_harbor_dataset_rejects_invalid_refs_and_paths(tmp_path: Path) -> None:
         HarborDataset.from_ref(DatasetRef(uri="s3://bucket/dataset"))
 
 
-def test_harbor_dataset_rejects_missing_task_ids(tmp_path: Path) -> None:
-    task_dir = tmp_path / "task-a"
+def test_task_directory_is_a_template_not_a_dataset(tmp_path: Path) -> None:
+    """Harbor's job config enumerates the task directories a dataset holds, and
+    nothing else, so only a template reads its own directory as one task."""
+    task_dir = tmp_path / "train"
     _write(task_dir / "task.toml", "")
-    dataset = HarborDataset.from_path(task_dir)
+
+    with pytest.raises(ValueError, match="itself a task directory") as exc_info:
+        HarborDataset.from_path(task_dir)
+    assert str(task_dir) in str(exc_info.value)
+
+    template = HarborDataset.from_path(task_dir, single_task=True)
+
+    assert [task.id for task in template.list_tasks()] == ["train"]
+
+
+def test_harbor_dataset_rejects_missing_task_ids(tmp_path: Path) -> None:
+    task_dir = tmp_path / "dataset" / "task-a"
+    _write(task_dir / "task.toml", "")
+    dataset = HarborDataset.from_path(task_dir.parent)
 
     with pytest.raises(ValueError, match="Task id not found"):
         dataset.get_task("missing")
@@ -962,10 +982,10 @@ async def test_harbor_evaluator_accepts_valid_python_verifier(
 ) -> None:
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
     _write(task_dir / "tests" / "check.py", "def check():\n    return True\n")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-python")
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
 
@@ -983,11 +1003,11 @@ async def test_harbor_evaluator_rejects_invalid_configured_test_sh_before_job_cr
 ) -> None:
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write_task_config(task_dir, verifier_dir="test")
     _write(task_dir / "tests" / "test.sh", "echo ignored\n")
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo broken\n")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "invalid-shell")
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
 
@@ -1009,10 +1029,10 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
 ) -> None:
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo valid\nfi\n")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-shell")
     monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
 
@@ -1026,9 +1046,9 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
 @pytest.mark.asyncio
 async def test_harbor_evaluator_rejects_invalid_inputs(tmp_path: Path) -> None:
     evaluator = HarborEvaluator()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
-    harbor_dataset = HarborDataset.from_path(task_dir)
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
 
     with pytest.raises(ValueError, match="Dataset must be a Harbor dataset"):
         await evaluator.run(agent=tmp_path, dataset=Dataset(id="base"), options={"import_path": "agent:Agent"})
@@ -1378,9 +1398,9 @@ def test_trial_resources_fallback_artifact(tmp_path):
 
 
 def test_harbor_dataset_get_task_found(tmp_path):
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     task = dataset.get_task("task-a")
     assert task.id == "task-a"
 
@@ -1390,9 +1410,9 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
     evaluator = HarborEvaluator()
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
-    harbor_dataset = HarborDataset.from_path(task_dir)
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
 
     jobs_dir = tmp_path / "jobs"
     job_name = f"agent-{harbor_dataset.id}"

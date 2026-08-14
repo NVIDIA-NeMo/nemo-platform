@@ -64,7 +64,7 @@ class DatasetFactory:
         Returns:
             Task: The built task.
         """
-        tasks = list(self.build_dataset(evaluator_type, template_ref).list_tasks())
+        tasks = list(self.build_dataset(evaluator_type, template_ref, single_task=True).list_tasks())
         if len(tasks) != 1:
             raise ValueError(f"Task template must contain exactly one {evaluator_type} task; found {len(tasks)}")
         return tasks[0]
