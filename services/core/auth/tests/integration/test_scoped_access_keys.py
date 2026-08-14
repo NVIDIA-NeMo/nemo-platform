@@ -19,7 +19,17 @@ from nmp.testing.client import create_test_client
 # Run on a dedicated worker so the inline create_test_client call doesn't share
 # the module-level wasmtime singleton with the module-scoped test_client fixture
 # used by sibling integration tests (which would violate wasmtime thread affinity).
-pytestmark = pytest.mark.xdist_group("auth_scoped_access_keys")
+pytestmark = [
+    pytest.mark.xdist_group("auth_scoped_access_keys"),
+    # This test stands up a full auth-enabled platform in-process and drives the whole access-key
+    # lifecycle through it, which costs around two minutes on a loaded CI worker. Measured on
+    # passing main runs: 89.47s, 108.28s, 117.81s, 119.92s — against the suite-wide `--timeout=120`.
+    # Runs that exceed it are killed by pytest-timeout's thread method, which calls os._exit(1);
+    # that is not a signal, so faulthandler writes nothing, and its own stack dump goes to the
+    # worker's captured stdout which xdist never forwards. The controller sees only
+    # `node down: Not properly terminated`, which reads as a hard crash rather than a timeout.
+    pytest.mark.timeout(600),
+]
 
 ACCESS_KEYS_PATH = "/apis/auth/v2/access-keys"
 IAM_ROLE_BINDINGS_PATH = "/apis/auth/v2/iam/role-bindings"
