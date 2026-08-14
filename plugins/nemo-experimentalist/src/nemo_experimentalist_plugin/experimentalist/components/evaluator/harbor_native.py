@@ -103,6 +103,18 @@ def _cleanup_scoped_imports(package_name: str) -> None:
             delattr(parent, child_name)
 
 
+def _validated_job_dir(jobs_dir: Path, job_name: str) -> Path:
+    """Resolve ``jobs_dir / job_name`` and require it stay under ``jobs_dir``."""
+    resolved_jobs_dir = jobs_dir.resolve()
+    candidate = (jobs_dir / job_name).resolve()
+    if candidate == resolved_jobs_dir or not candidate.is_relative_to(resolved_jobs_dir):
+        raise ValueError(
+            f"Resolved job directory {candidate} is not a strict descendant of "
+            f"{resolved_jobs_dir} (job_name={job_name!r})"
+        )
+    return candidate
+
+
 def _with_trace_artifact(artifacts: Sequence[str | ArtifactConfig], trace_source: str) -> list[str | ArtifactConfig]:
     for artifact in artifacts:
         if isinstance(artifact, ArtifactConfig):
@@ -180,7 +192,7 @@ class HarborEvaluator(Evaluator):
         datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in harbor_dataset.tasks])]
         job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
         if force_rerun:
-            job_dir = job_config.jobs_dir / job_config.job_name
+            job_dir = _validated_job_dir(job_config.jobs_dir, job_config.job_name)
             if job_dir.exists():
                 shutil.rmtree(job_dir)
 

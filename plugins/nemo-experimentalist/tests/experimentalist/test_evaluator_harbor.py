@@ -48,6 +48,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_nat
     _ensure_package,
     _safe_identifier,
     _scoped_import_path,
+    _validated_job_dir,
     _with_trace_artifact,
 )
 
@@ -1428,7 +1429,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
         rmtree_calls.append(path)
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.shutil.rmtree", fake_rmtree
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.shutil.rmtree", fake_rmtree
     )
 
     class FakeJob:
@@ -1459,7 +1460,60 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
     )
     assert trials == []
     assert len(rmtree_calls) == 1
-    assert rmtree_calls[0] == job_dir
+    assert rmtree_calls[0] == job_dir.resolve()
+
+
+def test_validated_job_dir_rejects_parent_escape(tmp_path: Path) -> None:
+    jobs_dir = tmp_path / "jobs"
+    jobs_dir.mkdir()
+    with pytest.raises(ValueError, match="strict descendant"):
+        _validated_job_dir(jobs_dir, "../outside")
+
+
+@pytest.mark.asyncio
+async def test_harbor_evaluator_force_rerun_rejects_job_name_outside_jobs_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evaluator = HarborEvaluator()
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    task_dir = tmp_path / "dataset" / "task-a"
+    _write(task_dir / "task.toml", "")
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("do not delete", encoding="utf-8")
+
+    rmtree_calls: list[Path] = []
+
+    def fake_rmtree(path: Path, **kwargs: object) -> None:
+        rmtree_calls.append(path)
+
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.shutil.rmtree",
+        fake_rmtree,
+    )
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job",
+        object,
+    )
+
+    with pytest.raises(ValueError, match="strict descendant"):
+        await evaluator._run(
+            agent=agent_dir,
+            dataset=harbor_dataset,
+            options=HarborEvaluatorConfig(
+                import_path="harbor_wrapper:WrappedAgent",
+                jobs_dir=tmp_path / "jobs",
+                job_name="../outside",
+                force_rerun=True,
+            ),
+        )
+
+    assert rmtree_calls == []
+    assert marker.read_text(encoding="utf-8") == "do not delete"
 
 
 @pytest.mark.asyncio
