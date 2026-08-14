@@ -132,6 +132,8 @@ export interface AssistantChatProps {
     slotHeading?: string;
     slotSubheading?: string;
   };
+  /** Overrides used when rendering Markdown inside chat messages. */
+  messageContentProps?: AssistantChatMessageContentProps;
   composerOverride?: ReactNode;
   /**
    * @default true

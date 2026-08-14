@@ -6,19 +6,19 @@ import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
 } from '@nemo/common/src/components/DataView/StudioDataView';
+import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { useGuardrailsListGuardrailConfigs } from '@nemo/sdk/generated/platform/api';
 import type {
   GuardrailConfig,
   GuardrailsListGuardrailConfigsParams,
 } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Text } from '@nvidia/foundations-react-core';
+import { Text } from '@nvidia/foundations-react-core';
 import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { Copy, ShieldCheck, Trash } from 'lucide-react';
+import { Copy, Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface GuardrailsDataViewProps {
@@ -26,7 +26,8 @@ export interface GuardrailsDataViewProps {
   onRowClick: (config: GuardrailConfig) => void;
   onRequestDuplicate?: (config: GuardrailConfig) => void;
   onRequestDelete?: (config: GuardrailConfig) => void;
-  emptyStateActions?: React.ReactNode;
+  /** Opens the create-guardrail flow from the first-use empty state. */
+  onCreate?: () => void;
 }
 
 export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
@@ -34,7 +35,7 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
   onRowClick,
   onRequestDuplicate,
   onRequestDelete,
-  emptyStateActions,
+  onCreate,
 }) => {
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
@@ -61,7 +62,6 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
   );
 
   const pagination = data?.pagination;
-  const hasSearchOrFilters = !!dataViewState.debouncedSearchBar;
 
   const makeColumns: ComponentProps<typeof StudioDataView<GuardrailConfig>>['makeColumns'] =
     useCallback(
@@ -150,29 +150,16 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
           requestStatus: error ? 'error' : isFetching ? 'loading' : undefined,
         },
         DataViewTableContent: {
-          renderEmptyState: () => {
-            if (data?.data?.length === 0 && !isFetching && !hasSearchOrFilters) {
-              return (
-                <TableEmptyState
-                  icon={<ShieldCheck className="h-[64px] w-[64px]" />}
-                  header="Manage Guardrail Configs"
-                  emptyMessage="Create a guardrail configuration to protect your workspace models."
-                  actions={<Flex gap="2">{emptyStateActions}</Flex>}
-                />
-              );
-            }
-            return (
-              <TableEmptyState
-                header="No Results Found"
-                emptyMessage="No guardrail configs match your search"
-                actions={
-                  <Button kind="tertiary" onClick={dataViewState.resetFilters}>
-                    Clear Search
-                  </Button>
-                }
+          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+            hasFiltersApplied || hasSearchApplied ? (
+              <EntityEmptyState
+                entity="guardrails"
+                variant="no-results"
+                onClearFilters={dataViewState.resetFilters}
               />
-            );
-          },
+            ) : (
+              <EntityEmptyState entity="guardrails" variant="first-use" onCreate={onCreate} />
+            ),
           renderErrorState: () => (
             <ErrorPanel
               errorMessage={getErrorMessage(

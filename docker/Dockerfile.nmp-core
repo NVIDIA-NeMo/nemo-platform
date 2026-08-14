@@ -18,6 +18,24 @@ RUN /app/.venv/bin/python -c 'from nmp.core.auth.app.embedded_pdp.policy_wasm im
 # Download the extension artifacts directly over HTTPS and install from local files
 # because DuckDB's default remote INSTALL path can be blocked or flaky in some build environments.
 RUN sh /app/script/install_duckdb_extensions.sh
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-workspace-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-core && \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-python-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-core \
+        --lock-file /app/uv.lock \
+        --label app-venv && \
+    bash /usr/local/bin/collect-apt-sources.sh /app/.source-distributions/nmp-core/apt --installed && \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-cpython-source.py \
+        --python /app/.venv/bin/python \
+        --output /app/.source-distributions/nmp-core
 
 FROM ${NMP_CORE_RUNTIME_BASE} AS runtime
 WORKDIR /app
@@ -48,6 +66,7 @@ ENV USERNAME=nvs \
 COPY --chown=1000:1000 --from=builder /root/.duckdb /root/.duckdb
 COPY --chown=1000:1000 --from=builder /root/.duckdb /home/nvs/.duckdb
 COPY --chown=1000:1000 --from=builder /app/.venv /app/.venv
+COPY --chown=1000:1000 --from=builder /app/.source-distributions/nmp-core/ /usr/share/nemo-platform/source-distributions/nmp-core/
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/.venv/lib/python${PY_VERSION}/site-packages"

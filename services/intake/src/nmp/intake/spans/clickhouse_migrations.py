@@ -252,8 +252,20 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
     client.command(f"DROP TABLE IF EXISTS {table}")
 
     project_key = spec_for_field(SpanAttributeField.PROJECT).bag_key
-    evaluation_key = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
     test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key
+
+    # Resolve evaluation_id by coalescing the canonical bag key with any legacy aliases. Ingest always
+    # re-keys new spans to the canonical key, so this only matters for the backfill INSERT: spans stored
+    # under an older key (e.g. the pre-rename ``nemo.experiment.id``) keep their evaluation association
+    # instead of being dropped when the MV is rebuilt.
+    evaluation_spec = spec_for_field(SpanAttributeField.EVALUATION_NAME)
+    evaluation_keys = [
+        evaluation_spec.bag_key,
+        *(k for k in evaluation_spec.source_keys if k != evaluation_spec.bag_key),
+    ]
+    evaluation_id_expr = (
+        "coalesce(" + ", ".join(f"nullIf(attributes_string['{key}'], '')" for key in evaluation_keys) + ", '')"
+    )
 
     # Note this is logically a single table. CH requires creating an underlying table and then a view that writes to that table.
     client.command(
@@ -310,7 +322,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
             input AS root_input,
             output AS root_output,
             attributes_string['{project_key}'] AS project,
-            attributes_string['{evaluation_key}'] AS evaluation_id,
+            {evaluation_id_expr} AS evaluation_id,
             attributes_string['{test_case_key}'] AS test_case_id,
             start_time AS root_started_at,
             nullIf(end_time, toDateTime64(0, 6)) AS root_ended_at,
@@ -343,7 +355,7 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_evaluator_results_0002", _add_evaluator_results_skip_indexes),
     ("ch_trace_index_0003", _create_trace_index_schema),
     # NeMo-owned span attribute keys moved under the ``nemo.*`` namespace
-    # (e.g., ``evaluation.id`` → ``nemo.evaluation.id``). The trace_index MV's SELECT clause
+    # (e.g., ``test_case.id`` → ``nemo.test_case.id``). The trace_index MV's SELECT clause
     # resolves bag keys from the catalog at creation time, so any environment that already
     # applied 0003 has the old keys baked in. Re-running the schema function drops and
     # recreates the MV with the current catalog keys.
@@ -354,6 +366,12 @@ _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     # re-run the rebuild under a new key. The function drops and recreates trace_index with the new
     # column and backfills losslessly from ``spans`` (the durable source of truth).
     ("ch_trace_index_0005_evaluation_id", _create_trace_index_schema),
+    # The evaluation span-attribute bag key was renamed ``nemo.experiment.id`` -> ``nemo.evaluation.name``
+    # (finishing the Experiment->Evaluation rename). The MV bakes the SELECT at creation time, so
+    # environments that applied 0005 still resolve evaluation_id from the old key. Re-run the rebuild:
+    # the MV now coalesces both keys, so spans already ingested under ``nemo.experiment.id`` keep their
+    # evaluation association while new spans use the canonical key.
+    ("ch_trace_index_0006_nemo_evaluation_name", _create_trace_index_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

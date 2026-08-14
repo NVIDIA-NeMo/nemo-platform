@@ -86,7 +86,9 @@ is unavailable, start Docker and retry—do not proceed to `rm -rf`.
 
 ## Bootstrap and start
 
-The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot:
+This section is the **source checkout** path: use it to work on NeMo Platform itself, on a local plugin, or on Studio assets. To only *use* the platform, install the published wheel instead — `uv tool install "nemo-platform[all]"` needs no checkout and no toolchain, then continue at `nemo setup`.
+
+The steps below cover prerequisites install, service startup, provider registration, default/fast model selection, and demo agent deployment in one shot. Prefer them over the manual sections further down whenever the task fits:
 
 Before running `make bootstrap`, install Flox from the [Flox installation guide](https://flox.dev/docs/install-flox/install). Flox is the recommended source-development toolchain and does not need to be activated first. Contributors using a preinstalled host toolchain instead need the versions printed by `make toolchain-versions` and a C compiler; they must use `make TOOLCHAIN=system bootstrap`.
 
