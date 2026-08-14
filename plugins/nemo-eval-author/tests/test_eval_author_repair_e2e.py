@@ -17,8 +17,8 @@ from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import DatasetValidationError, local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     HarborDataset,
-    HarborOutcomeEvaluator,
     HarborEvaluatorConfig,
+    HarborOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_insights_plugin.entities import Insight
