@@ -14,4 +14,5 @@ export * from '@nemo/common/src/components/form/ControlledVariableTextArea';
 export * from '@nemo/common/src/components/RelativeTime';
 export * from '@nemo/common/src/components/RadioCard';
 export * from '@nemo/common/src/components/ScoreGauge';
+export * from '@nemo/common/src/components/SegmentedMeter';
 export * from '@nemo/common/src/components/SliderWithTextInput';
