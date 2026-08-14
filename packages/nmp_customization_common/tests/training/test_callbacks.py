@@ -381,13 +381,19 @@ def test_a_restart_appends_to_the_previous_runs_points() -> None:
 
     A replaced pod -- a suspended and resumed Kubernetes Job, or a Volcano
     restart where an execution profile raises maxRetry above zero -- seeds itself
-    from the old run's points and starts again at step one, nothing being able to
-    restore a checkpoint. The series then carries both runs, and two values can
-    sit at one step contradicting each other.
+    from the old run's points and appends its own. This is the shape it takes
+    when the backend does not resume: automodel and unsloth never do, and a
+    NeMo-RL run that has not written a checkpoint yet has none to return to. The
+    series then carries both runs end to end.
 
-    Accepted rather than solved: telling the runs apart needs a run identifier on
-    each point, and dropping the superseded ones loses a failed attempt's history
-    for good. See the seeding note in callbacks.py.
+    The other shape is a NeMo-RL run that does resume -- dpo.setup() loads the
+    latest checkpoint unconditionally -- and replays the steps it had already
+    reported since that checkpoint, so its curve doubles back across that range
+    instead of restarting. Not pinned here.
+
+    Accepted rather than solved either way: telling the runs apart needs a run
+    identifier on each point, and dropping the superseded ones is right for a
+    replay and destructive for a restart. See the seeding note in callbacks.py.
     """
     prior = {"train_loss": [{"step": 50, "epoch": 1, "value": 1.0}]}
     reporter = _RecordingReporter(prior)

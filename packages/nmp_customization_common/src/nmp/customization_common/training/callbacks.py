@@ -71,19 +71,34 @@ contradict each other. If a task's pod is replaced -- the Jobs service can
 suspend and resume a Kubernetes Job, and the Volcano backend restarts on
 ``PodFailed`` when an execution profile raises ``maxRetry`` above its default
 of zero -- the new process seeds itself from the old one's points and then
-appends its own. Nothing restores a checkpoint, so it starts again at step one
-and the series carries two values at each repeated step. Consumers see the
-last one written at a given step, and a tail from the abandoned attempt beyond
-wherever the new run has reached.
+appends its own. It takes one of two shapes, according to whether the backend
+resumes from a checkpoint.
 
-Left alone deliberately. The fix is to identify which run a point came from,
-so both can be kept and told apart, and that belongs with checkpoint restore:
-without it there is no second curve worth the work to separate, and Studio's
-loss chart keys a Map by step, so it would need to filter or overlay by run
-before any of it were visible. Detecting the restart here and dropping the
-superseded points is the other option, and it loses a failed attempt's history
-permanently to keep one series single-valued -- a trade for the readers rather
-than the data, and not one to make in passing.
+Automodel and unsloth never do, and neither does a NeMo-RL run that has not
+written a checkpoint yet to return to: ``save_period`` is ``val_period``, which
+is ``steps_per_epoch``, so a single-epoch run saves only on its last step.
+Training restarts at step one and the series carries both runs end to end.
+
+NeMo-RL otherwise does resume. ``dpo.setup()`` loads the latest checkpoint
+unconditionally and the loop continues from the step recorded in it. Reporting
+runs ahead of checkpointing -- the train cadence is set by run length, the save
+cadence by ``val_period`` -- so the steps between that checkpoint and the
+interruption had already been recorded, and the replayed points are appended
+after the ones they supersede. The curve doubles back on itself across that
+range rather than restarting.
+
+Either way, consumers see the last value written at a given step, and a tail
+from the abandoned attempt beyond wherever the new run has reached.
+
+Left alone deliberately, and the two shapes are why. The clean fix is to
+identify which run a point came from so both can be kept and told apart, but
+Studio's loss chart keys a Map by step, so it would need to filter or overlay
+by run before any of it were visible. Detecting the restart here and dropping
+the superseded points is the other option, and it is right for one shape and
+not the other: a replayed range is work that was rolled back and is no loss,
+while a from-scratch restart's points are a failed attempt's entire history,
+gone permanently to keep one series single-valued. Telling those two apart is
+the work, and not a trade to make in passing.
 
 Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
 ``backend`` field on each report (``"unsloth"``); automodel and NeMo-RL leave it
