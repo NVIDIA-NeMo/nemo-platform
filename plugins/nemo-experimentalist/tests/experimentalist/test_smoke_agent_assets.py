@@ -383,3 +383,28 @@ def test_the_combined_scenario_keeps_its_terminator() -> None:
 
     assert full.terminator is not None, "the combined scenario lost the terminator it exists to test"
     assert short.terminator is None, "the per-group gates want a fixed round count, not early stopping"
+
+
+def test_every_source_file_opens_with_its_licence_header() -> None:
+    """The header must be the first thing in the file, not merely present somewhere.
+
+    `script/copyright_fixer.py` checks presence, so a header that drifts into the middle
+    of a file passes every local hook. One did: an import rewrite detached it from the
+    import block and isort reordered around it, leaving it stranded at line 3 between two
+    imports, green the whole way.
+    """
+    package = _REPO_ROOT / "plugins" / "nemo-experimentalist"
+    sources = [
+        path
+        for path in package.rglob("*.py")
+        if "/tmp/" not in str(path) and "__pycache__" not in str(path) and ".venv" not in str(path)
+    ]
+    assert sources, "found no python files; the glob is wrong"
+
+    misplaced = [
+        str(path.relative_to(package))
+        for path in sources
+        if "SPDX-FileCopyrightText" not in "".join(path.read_text(encoding="utf-8").splitlines(keepends=True)[:2])
+    ]
+
+    assert not misplaced, f"licence header is not in the first two lines of: {misplaced}"
