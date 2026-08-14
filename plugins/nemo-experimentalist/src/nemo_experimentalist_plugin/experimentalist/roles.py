@@ -54,9 +54,14 @@ class OutcomeEvaluator(Component, Evaluator):
     (`EvaluationResult`, `persist_evaluation`, NeMo Evaluator), and it measures the
     *outcome*, where a trajectory-scorer measures the process of the same run.
 
-    Inherits :class:`Evaluator`, so resolving this role yields something that is both
-    constructible (``options``, ``experiment_dir``) and carries the two ClassVars — one
-    type rather than an implicit pairing a plugin author has to infer.
+    Two bases because they answer different questions. :class:`Evaluator` is the *shape*
+    — what it means to measure an artifact — and is usable without the registry, which is
+    what lets the Builder hold one for its own smoke checks without registering it.
+    :class:`Component` is the *role*: resolvable by name, and swappable from config.
+
+    Inheriting both means resolving this role yields one type that is constructible
+    (``options``, ``experiment_dir``) and carries the two ClassVars, rather than an
+    implicit pairing a plugin author would have to infer.
     """
 
     role: ClassVar[str] = "outcome-evaluator"
