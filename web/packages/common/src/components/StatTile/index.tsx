@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { FC } from 'react';
+import type { FC } from 'react';
 
 export type StatTileStatus = 'success' | 'warning' | 'error' | 'neutral';
 
