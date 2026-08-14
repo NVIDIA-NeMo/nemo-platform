@@ -897,9 +897,9 @@ async def test_run_threads_trials_into_the_summary_error_rollup() -> None:
 def test_metric_row_exposes_the_typed_trial_error() -> None:
     """The replacement for reading ``metadata["exception_type"]``.
 
-    The legacy key is still mirrored onto Harbor trial metadata so existing metrics keep working,
-    but that mirror is scheduled for deletion. A metric that grades on how a trial failed should
-    read ``trial.error`` here instead, which is populated for every runtime that reports one.
+    Harbor no longer writes that key at all (``test_harbor_runtime.py`` asserts its absence), so this
+    is the only path by which a metric can grade on *how* a trial failed. A pre-``TrialError`` bundle
+    still carries the old key in its metadata, but nothing reads it.
     """
     task = AgentEvalTask(id="task-1", intent="Fix it.", inputs={"instruction": "Q?"})
     trial = _candidate_trial().model_copy(

@@ -50,7 +50,7 @@ hello_world_dataset/
     environment/Dockerfile
     tests/test.sh
     solution/solve.sh
-  injected-runtime-error/      # opt-in via --inject-error-task
+  injected-runtime-error/      # permanent failure fixture (see note below)
     task.toml
     instruction.md
     environment/Dockerfile
@@ -60,12 +60,17 @@ hello_world_dataset/
 
 Pointing the runtime at this directory is exactly how user Harbor task
 collections are discovered: Harbor scans the subdirs, treats each folder with a
-`task.toml` as a task, and runs them all. The example defaults to
-`harbor/hello-world` only; pass `--inject-error-task` to also run the permanent
-failure fixture. Drop another task folder in here and it is picked up with no
-code changes — the SDK's `discover_harbor_tasks()` mirrors the same scan to
-produce one scoring task per folder (reading the task id from each `[task]
-name`).
+`task.toml` as a task, and runs them all. Drop another task folder in here and it
+is picked up with no code changes — the SDK's `discover_harbor_tasks()` mirrors
+the same scan to produce one scoring task per folder (reading the task id from
+each `[task] name`).
+
+Because the scan takes everything, `injected-runtime-error` is opt-*out*, not
+opt-in, for a bare `run_harbor_eval(config, "hello_world_dataset")` — including
+the two-line snippet above. Pass `task_names=["harbor/hello-world"]` to skip it,
+which is what `test_harbor_runtime_e2e.py` does. `--inject-error-task` is a flag
+on `run_harbor_example.py` only: that script pins `harbor/hello-world` by default
+and adds the failure fixture when you ask for it.
 
 ## Under the hood
 
@@ -103,10 +108,10 @@ From the repository root:
 
 ```bash
 # Native path: run and print the SDK summary.
-python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
+uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
 
 # Optimizer path: run, then rebuild NeMo Optimizer's legacy reward payload.
-python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
+uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
 ```
 
 Both modes call `run_harbor_eval`; the only difference is what they print.

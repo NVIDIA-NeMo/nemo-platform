@@ -409,9 +409,11 @@ class AgentEvalSummary(BaseModel):
             "belongs here regardless. A trial that both errored and produced a reward therefore "
             "appears here AND in task_metric_values, where it may even count as a pass; that is what "
             "Harbor does too. Ids are appended in trial order and never deduplicated. Key order is "
-            "not meaningful -- summary.json is written with sorted keys. Empty means either no trial "
-            "errored or no trials were supplied to from_scores(); a reader telling those apart checks "
-            "whether the key is present in summary.json."
+            "not meaningful -- summary.json is written with sorted keys. Empty is ambiguous and "
+            "stays that way: it means either no trial errored or no trials were supplied to "
+            "from_scores(). The field always serializes (it defaults to {}), so the two cases are "
+            "indistinguishable in summary.json -- read trial_count, or the trials themselves, to "
+            "tell them apart."
         ),
         examples=[
             {

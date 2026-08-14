@@ -24,10 +24,10 @@ Running either mode requires ``harbor`` installed and a working Docker daemon.
 
 Run it as a module from the repository root::
 
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --n-attempts 2
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --inject-error-task
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --n-attempts 2
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --inject-error-task
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     if __package__ in {None, ""}:
         raise SystemExit(
             "Run this example as a module from the repository root:\n"
-            "  python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native"
+            "  uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native"
         )
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
