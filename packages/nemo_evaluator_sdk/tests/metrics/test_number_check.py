@@ -209,7 +209,7 @@ class TestNumberCheckMetric:
             right_template="{{item.actual}}",
         )
         result = Evaluator().run_sync(
-            metrics=metric,
+            metrics=[metric],
             dataset=[{"expected": "1", "actual": "1"}, {"expected": "1", "actual": "2"}],
         )
         assert len(result.row_scores) == 2

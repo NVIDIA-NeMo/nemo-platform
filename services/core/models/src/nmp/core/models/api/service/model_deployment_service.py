@@ -494,6 +494,11 @@ class ModelDeploymentService:
             # Otherwise, mark for deletion
             entity.status = ModelDeploymentStatus.DELETING
             entity.status_message = "Deployment deletion requested"
+            # Append to history so consumers reading status_history[-1] see the
+            # DELETING state (the history is the client's source of current status).
+            entity.status_history.append(
+                _status_history_entry(datetime.now(timezone.utc), entity.status, entity.status_message)
+            )
             updated = await self.entity_client.update(entity)
             logger.info(f"Marked deployment for deletion: {workspace}/{name} version {version}")
             return _entity_to_schema(updated)
@@ -530,6 +535,9 @@ class ModelDeploymentService:
                 if entity.status != ModelDeploymentStatus.DELETED:
                     entity.status = ModelDeploymentStatus.DELETING
                     entity.status_message = "Deployment deletion requested"
+                    entity.status_history.append(
+                        _status_history_entry(datetime.now(timezone.utc), entity.status, entity.status_message)
+                    )
                     updated = await self.entity_client.update(entity)
                     latest_updated = updated
 

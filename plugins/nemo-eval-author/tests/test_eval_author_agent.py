@@ -262,7 +262,6 @@ def _install_pipeline(
     monkeypatch.setattr(eval_author_module, "TraceAnalyzer", FakeTraceAnalyzer)
     monkeypatch.setattr(eval_author_module, "validate_metric_contracts", validate_metric_contracts)
 
-    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
     monkeypatch.setattr(eval_author_module, "doc", lambda *_args, **_kwargs: "dataset docs")
     return calls
 

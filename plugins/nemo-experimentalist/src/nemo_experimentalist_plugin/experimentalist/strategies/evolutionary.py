@@ -399,6 +399,11 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
                 phase=phase,
                 config=config,
             )
+            if not proposals:
+                # Nothing to build, so another round would re-analyze the same population
+                # and pay for it. Finalize on what has been evaluated instead.
+                logger.info("phase=terminate reason=no proposals")
+                break
             new_candidates = await self._build_candidates(
                 ctx=ctx,
                 dataset=train_eval_dataset,

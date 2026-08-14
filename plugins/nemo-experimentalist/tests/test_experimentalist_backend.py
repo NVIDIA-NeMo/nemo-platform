@@ -426,7 +426,7 @@ async def test_upload_trace_atif_posts_to_the_atif_ingest_endpoint(tmp_path):
         cast(Any, client),
         "ws-1",
         _atif_ref(tmp_path),
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         task_id="case-a",
         extra_attrs={"gen_ai.request.model": "gpt-5-mini"},
     )
@@ -445,6 +445,6 @@ async def test_upload_trace_atif_sends_json_not_protobuf(tmp_path):
     from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import _upload_trace_atif
 
     client = _RecordingClient()
-    await _upload_trace_atif(cast(Any, client), "ws-1", _atif_ref(tmp_path), experiment_id="exp-1", task_id="case-a")
+    await _upload_trace_atif(cast(Any, client), "ws-1", _atif_ref(tmp_path), evaluation_name="exp-1", task_id="case-a")
     assert client.posts[0]["content"] is None
     assert client.posts[0]["body"] is not None

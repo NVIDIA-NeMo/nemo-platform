@@ -52,6 +52,7 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
     _write_tree(template, "template source")
     experiment = tmp_path / "experiment"
     captured: dict[str, Path] = {}
+    build_options: list[dict[str, object]] = []
 
     class EvalAuthorHandoff:
         def __init__(self, train_dataset: SimpleNamespace, validation_dataset: SimpleNamespace) -> None:
@@ -61,7 +62,8 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
             self.metric_keys = ("reward",)
 
     class RecordingDatasetFactory:
-        def build_dataset(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
+        def build_dataset(self, evaluator_type: str, ref: DatasetRef, **options: object) -> SimpleNamespace:
+            build_options.append(options)
             return SimpleNamespace(ref=ref)
 
         def build_task_template(self, evaluator_type: str, ref: DatasetRef) -> SimpleNamespace:
@@ -121,6 +123,11 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
         "template": experiment / "dataset" / "task-template",
     }
     assert (train / "task-1" / "tests" / "test.sh").read_text(encoding="utf-8") == "train source"
+    # An insight run's splits are empty until the Eval Author fills them, and build_dataset
+    # refuses an empty split by default -- so the run cannot start without this.
+    assert build_options and all(o.get("allow_empty") is True for o in build_options), (
+        f"runner built datasets without allow_empty in insight mode: {build_options}"
+    )
     assert not (template.parent / "generated-task").exists()
 
 

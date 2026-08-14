@@ -12,6 +12,7 @@ import {
   isGuardrailChecksSubTab,
 } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailTestCasesEditor } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCasesEditor';
+import { useDraftRailsConfig } from '@studio/routes/guardrails/GuardrailForm/useDraftRailsConfig';
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
@@ -22,6 +23,9 @@ export const GuardrailChecksTab: FC = () => {
   const { guardrailConfigName } = useRequiredPathParams([ROUTE_PARAMS.guardrailConfigName]);
   const subTab = useParams()[ROUTE_PARAMS.guardrailChecksSubTab];
   const isValidSubTab = isGuardrailChecksSubTab(subTab);
+
+  // The unsaved edits from the Configuration tab; both tabs sit inside GuardrailFormProvider.
+  const { isDirty, draftConfig } = useDraftRailsConfig();
 
   const { data: config, isPending: isConfigPending } = useGuardrailsGetGuardrailConfig(
     workspace,
@@ -84,6 +88,8 @@ export const GuardrailChecksTab: FC = () => {
       workspace={workspace}
       configId={config.id}
       configData={config.data}
+      isDirty={isDirty}
+      draftConfig={draftConfig}
       checks={checksPage.data}
       subTab={subTab}
     />

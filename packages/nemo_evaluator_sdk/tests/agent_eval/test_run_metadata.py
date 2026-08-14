@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import cast
 
 from nemo_evaluator_sdk.agent_eval.evaluator import _describe_target
@@ -195,24 +196,35 @@ def test_gym_redacts_credential_looking_env_overrides() -> None:
             agent="a",
             agent_config="c",
             resources_server="r",
-            env_overrides=[
-                "+model.api_key=sk-should-not-be-recorded",
-                "+env.HF_TOKEN=hf_should-not-be-recorded",
-                "+agent.temperature=0.7",
-                "--flagged-without-a-value",
-            ],
+            env_overrides={
+                "model": {"api_key": "sk-should-not-be-recorded", "temperature": 0.7},
+                "env": {"HF_TOKEN": "hf_should-not-be-recorded"},
+                "agent": {"nested": {"secret": "deep-should-not-be-recorded"}},
+                "models": [
+                    {"name": "m", "api_key": "sk-in-a-list-should-not-be-recorded"},
+                ],
+                "api_keys": ["sk-whole-list-should-not-be-recorded"],
+            },
         )
     )
 
     recorded = runner.runner_info().config["env_overrides"]
 
-    assert recorded == [
-        "+model.api_key=<redacted>",
-        "+env.HF_TOKEN=<redacted>",
-        "+agent.temperature=0.7",  # not credential-shaped, kept verbatim for reproducibility
-        "--flagged-without-a-value",  # no value to leak
-    ]
-    assert not any("sk-" in entry or "hf_" in entry for entry in recorded)
+    assert recorded == {
+        "model": {
+            "api_key": "<redacted>",
+            "temperature": 0.7,  # not credential-shaped, kept verbatim for reproducibility
+        },
+        "env": {"HF_TOKEN": "<redacted>"},
+        # Matching is on the full dotted path, so a credential stays redacted at any depth.
+        "agent": {"nested": {"secret": "<redacted>"}},
+        # A mapping inside a list reaches Gym just as a nested one does, so it is walked too. The
+        # index contributes no path segment: the key marks the credential, not the position.
+        "models": [{"name": "m", "api_key": "<redacted>"}],
+        # A credential-shaped key wins over descending into it — the whole list goes.
+        "api_keys": "<redacted>",
+    }
+    assert "should-not-be-recorded" not in json.dumps(recorded)
 
 
 def test_model_provenance_records_the_endpoint_and_invocation_params() -> None:

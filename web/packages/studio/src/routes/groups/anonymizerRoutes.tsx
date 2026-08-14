@@ -4,7 +4,9 @@
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { ANONYMIZER_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateAnonymizerRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import { gateAnonymizerRoutes, getWorkspaceAnonymizerRoute } from '@studio/routes/utils';
+import { UserPen } from 'lucide-react';
 import { lazy, type FC } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -47,3 +49,15 @@ export const anonymizerRoutes: RouteObject[] = gateAnonymizerRoutes([
     errorElement: <ErrorPanel title="Anonymizer" />,
   },
 ]);
+
+export const getAnonymizerSideNavItems = (workspace: string) =>
+  ANONYMIZER_ENABLED
+    ? [
+        {
+          id: 'anonymizer',
+          slotIcon: <UserPen className={iconColorClass} />,
+          slotLabel: 'Anonymizer',
+          href: getWorkspaceAnonymizerRoute(workspace),
+        },
+      ]
+    : [];

@@ -30,12 +30,15 @@ def _evaluation(name: EvaluatorType) -> "type[OutcomeEvaluator]":
 class DatasetFactory:
     """Build evaluator-compatible Dataset objects from source references."""
 
-    def build_dataset(self, evaluator_type: EvaluatorType, dataset_ref: DatasetRef) -> Dataset:
+    def build_dataset(self, evaluator_type: EvaluatorType, dataset_ref: DatasetRef, **options: Any) -> Dataset:
         """Build a Dataset for the selected evaluator type.
 
         Args:
             evaluator_type(EvaluatorType): The type of evaluator to build the dataset for.
             dataset_ref(DatasetRef): The reference to the dataset to build.
+            **options: Forwarded to the dataset type's ``from_ref``. ``allow_empty=True``
+                is what lets an Insight-driven run start with splits the Eval Author has
+                not filled yet.
 
         Returns:
             Dataset: The built dataset.
@@ -45,7 +48,7 @@ class DatasetFactory:
         """
         if not evaluator_type or not dataset_ref:
             raise ValueError("Evaluator type and dataset reference are required")
-        return _evaluation(evaluator_type).dataset_type.from_ref(dataset_ref)
+        return _evaluation(evaluator_type).dataset_type.from_ref(dataset_ref, **options)
 
     def build_task_template(self, evaluator_type: EvaluatorType, template_ref: DatasetRef) -> Task:
         """Parse an evaluator-specific template directory as one task.

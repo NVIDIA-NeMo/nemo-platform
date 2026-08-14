@@ -160,7 +160,7 @@ class TestToolCallingMetric:
     def test_run_sync(self):
         metric = ToolCallingMetric(reference="{{item.reference}}")
         result = Evaluator().run_sync(
-            metrics=metric,
+            metrics=[metric],
             dataset=[
                 {
                     "reference": [{"function": {"name": "sum", "arguments": {"x": 1}}}],

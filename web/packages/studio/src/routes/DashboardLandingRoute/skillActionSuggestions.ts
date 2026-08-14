@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { featureFlags } from '@studio/constants/featureFlags';
-import type { CopilotSkill } from '@studio/routes/agents/CopilotChatRoute/types';
+import type { AssistantSkill } from '@studio/routes/agents/AssistantChatRoute/types';
 import {
   SKILL_ACTION_TEMPLATES,
   type SkillActionSuggestion,
@@ -19,7 +19,7 @@ export type {
 const isSkillActionTemplateName = (skillName: string): skillName is SkillActionTemplateName =>
   Object.prototype.hasOwnProperty.call(SKILL_ACTION_TEMPLATES, skillName);
 
-const getSkillActionTemplate = (skill: CopilotSkill): SkillActionTemplate | undefined => {
+const getSkillActionTemplate = (skill: AssistantSkill): SkillActionTemplate | undefined => {
   for (const lookupKey of getSkillLookupKeys(skill)) {
     if (isSkillActionTemplateName(lookupKey)) {
       return SKILL_ACTION_TEMPLATES[lookupKey];
@@ -32,7 +32,7 @@ const getSkillActionTemplate = (skill: CopilotSkill): SkillActionTemplate | unde
 export const isSkillActionEnabled = (template: SkillActionTemplate) =>
   template.requiredFeatureFlags?.every((flag) => featureFlags[flag] !== false) ?? true;
 
-export const getSkillActionSuggestions = (skills: CopilotSkill[]): SkillActionSuggestion[] => {
+export const getSkillActionSuggestions = (skills: AssistantSkill[]): SkillActionSuggestion[] => {
   const seenSkills = new Set<string>();
   const suggestions: SkillActionSuggestion[] = [];
 

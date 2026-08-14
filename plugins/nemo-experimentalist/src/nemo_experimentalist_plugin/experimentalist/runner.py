@@ -204,8 +204,14 @@ class ExperimentRunner:
             )
 
         datasets: dict[str, Dataset] = {
-            "train": dataset_factory.build_dataset(self._config.outcome_evaluator, train_ref),
-            "validation": dataset_factory.build_dataset(self._config.outcome_evaluator, validation_ref),
+            # allow_empty in insight mode: the Eval Author fills these splits, so they are
+            # legitimately empty when the run starts.
+            "train": dataset_factory.build_dataset(
+                self._config.outcome_evaluator, train_ref, allow_empty=insight is not None
+            ),
+            "validation": dataset_factory.build_dataset(
+                self._config.outcome_evaluator, validation_ref, allow_empty=insight is not None
+            ),
         }
 
         agent_ref = self._agent if self._agent is not None else (insight.agent if insight is not None else None)

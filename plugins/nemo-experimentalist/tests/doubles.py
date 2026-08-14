@@ -120,7 +120,7 @@ class FakeBackend(ExperimentalistBackend):
             RecordedEvaluation(workspace=workspace, result=result, candidate=candidate, split=split)
         )
 
-    async def get_experiment_id(self, *, workspace: str, candidate: Candidate, split: str) -> str:
+    async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
         return f"exp-{candidate.label}-{split}"
 
     async def get_agent_code(

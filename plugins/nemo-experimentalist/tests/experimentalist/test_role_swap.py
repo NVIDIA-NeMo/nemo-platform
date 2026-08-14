@@ -66,6 +66,18 @@ async def _nothing(*_args: Any, **_kwargs: Any) -> None:
 
 
 async def _no_proposals(*_args: Any, **_kwargs: Any) -> list[Proposal]:
+    """One proposal that builds nothing.
+
+    An *empty* list ends the loop -- there is nothing to build, so another round would
+    re-analyze the same population and pay for it again. These tests want a round that
+    runs and produces no candidate, which is a different thing, so they pair this with
+    `_builds_nothing`.
+    """
+    return [Proposal(ancestor=None, description="proposed", kind="code-change", payload={})]
+
+
+async def _builds_nothing(*_args: Any, **_kwargs: Any) -> list[Any]:
+    """Accept the proposal and produce no candidate."""
     return []
 
 
@@ -182,6 +194,7 @@ async def test_turning_off_the_analyzer_skips_the_work_that_feeds_it(
     monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
     monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
     monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+    monkeypatch.setattr(loop, "_build_candidates", _builds_nothing)
 
     await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
 
@@ -289,10 +302,13 @@ async def test_the_round_budget_bounds_the_loop_without_a_terminator(
         rounds += 1
         if rounds > config.max_rounds:  # the bound is broken; stop rather than spin
             raise AssertionError(f"loop ran round {rounds} with max_rounds={config.max_rounds}")
-        return []
+        # Proposing nothing would end the loop on its own, which would pass this test
+        # without the budget doing any work.
+        return [Proposal(ancestor=None, description="proposed", kind="code-change", payload={})]
 
     monkeypatch.setattr(loop, "_ensure_baseline", _one_baseline)
     monkeypatch.setattr(loop, "_propose_improvements", one_round)
+    monkeypatch.setattr(loop, "_build_candidates", _builds_nothing)
     monkeypatch.setattr(loop, "_evaluate_validation_candidates", _no_evaluations)
     monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
     monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
@@ -472,6 +488,7 @@ async def test_naming_a_trajectory_scorer_reaches_it(
     monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
     monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
     monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+    monkeypatch.setattr(loop, "_build_candidates", _builds_nothing)
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     await loop._run(ctx)
@@ -555,6 +572,7 @@ async def test_the_loop_carries_full_candidates_forward_not_the_selectors_slim_c
     monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
     monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
     monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+    monkeypatch.setattr(loop, "_build_candidates", _builds_nothing)
 
     await loop._run(ctx)
 
@@ -666,6 +684,7 @@ async def test_the_scorer_is_told_the_round_its_analysis_describes(
     monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
     monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
     monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+    monkeypatch.setattr(loop, "_build_candidates", _builds_nothing)
 
     await loop._run(make_context(root=tmp_path, backend=FakeBackend()))
 
@@ -717,6 +736,7 @@ async def test_the_terminator_sees_eliminated_candidates_too(
     monkeypatch.setattr(loop, "_record_baseline_validation", _nothing)
     monkeypatch.setattr(loop, "_analyze_round", _no_analysis)
     monkeypatch.setattr(loop, "_propose_improvements", _no_proposals)
+    monkeypatch.setattr(loop, "_build_candidates", _builds_nothing)
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     await loop._run(ctx)

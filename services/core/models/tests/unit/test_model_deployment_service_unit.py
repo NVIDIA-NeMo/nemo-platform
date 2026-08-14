@@ -574,6 +574,31 @@ async def test_delete_deployment_marks_deleting(deployment_service, mock_entity_
 
 
 @pytest.mark.asyncio
+async def test_delete_deployment_appends_deleting_to_status_history(
+    deployment_service, mock_entity_client, sample_deployment_entity
+):
+    """Marking a deployment DELETING must append a status_history entry.
+
+    Clients read the current status from ``status_history[-1]``; if the delete
+    path mutates ``status`` without appending, they see a stale status.
+    """
+    # Arrange
+    sample_deployment_entity.status_history = []
+    mock_entity_client.get.return_value = sample_deployment_entity
+    mock_entity_client.update.side_effect = lambda entity: entity
+
+    # Act
+    await deployment_service.delete_deployment("default", "test-deployment", version=1)
+
+    # Assert: the entity handed to update() carries a DELETING history tail.
+    (updated_entity,), _ = mock_entity_client.update.call_args
+    assert updated_entity.status_history
+    last = updated_entity.status_history[-1]
+    assert last["status"] == ModelDeploymentStatus.DELETING.value
+    assert last["status_message"] == "Deployment deletion requested"
+
+
+@pytest.mark.asyncio
 async def test_delete_deployment_already_deleted_hard_deletes(deployment_service, mock_entity_client):
     """Test that deleting a DELETED deployment performs hard delete."""
     # Arrange

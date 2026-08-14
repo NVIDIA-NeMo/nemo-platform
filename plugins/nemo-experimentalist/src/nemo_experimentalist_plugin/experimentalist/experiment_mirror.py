@@ -162,7 +162,7 @@ class ExperimentMirror:
         name (``opt-<run>-<label>-<split>``).
 
         The name — not the server-assigned id (``experiment-…``) — is what tags the trace's
-        ``nemo.experiment.id``: it is human-readable, greppable, and stable across resumes,
+        ``nemo.evaluation.name``: it is human-readable, greppable, and stable across resumes,
         and matches the Experiment's own ``name`` so the trace still joins back to it.
         """
         gname = group_name(candidate.run_id)

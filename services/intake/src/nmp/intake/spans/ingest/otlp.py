@@ -24,7 +24,7 @@ API_TAG = "Ingest"
 
 # Bag key the evaluation id lands under on a built span (from the attribute catalog). The ingest loop
 # reads it back off each span to learn which evaluations a batch touched, for the denormalizer.
-_EVALUATION_ID_BAG_KEY = spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key
+_EVALUATION_NAME_BAG_KEY = spec_for_field(SpanAttributeField.EVALUATION_NAME).bag_key
 
 # Ordered by precedence. Keep direct input.value/output.value first so existing
 # OpenInference/LangChain payloads continue to win over framework-specific fallbacks.
@@ -84,7 +84,7 @@ async def ingest_otlp_traces(
     export_request = _parse_export_request(body)
     ingested_at = utc_now()
     spans: list[IntakeSpan] = []
-    evaluation_ids: set[str] = set()
+    evaluation_names: set[str] = set()
     errors: list[str] = []
 
     for resource_spans in export_request.resource_spans:
@@ -109,16 +109,16 @@ async def ingest_otlp_traces(
                     errors.append(f"span {span_hex}: {exc}")
                     continue
                 spans.append(span_domain)
-                evaluation_id = span_domain.attributes_string.get(_EVALUATION_ID_BAG_KEY)
-                if evaluation_id:
-                    evaluation_ids.add(evaluation_id)
+                evaluation_name = span_domain.attributes_string.get(_EVALUATION_NAME_BAG_KEY)
+                if evaluation_name:
+                    evaluation_names.add(evaluation_name)
 
     await service.ingest_batch(TraceBatch(spans=spans))
     # A single OTLP batch can carry spans for several evaluations (associated via the
-    # nemo.experiment.id attribute), so refresh the denormalized name facets for every one it touched.
+    # nemo.evaluation.name attribute), so refresh the denormalized name facets for every one it touched.
     if denormalizer is not None:
-        for evaluation_id in evaluation_ids:
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_id)
+        for evaluation_name in evaluation_names:
+            denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_name)
     return IngestResponse(errors=errors)
 
 

@@ -261,8 +261,10 @@ class EvaluateJob(NemoJob):
         workspace: str,
         entity_client: object,
         # Widened from the base signature: `resolve_metrics_to_inline` documents that it takes
-        # either client, and the local-run path (`_executor._resolve_sync_local_spec`) forwards the
-        # sync one. Contravariant, so overriding with a wider parameter stays substitutable.
+        # either client. Contravariant, so overriding with a wider parameter stays substitutable.
+        # The caller that actually forwarded a sync client was the plugin's local-run path, now
+        # removed, so this could likely narrow to the async client alone — left alone here to keep
+        # this change a pure deletion.
         async_sdk: AsyncNeMoPlatform | NeMoPlatform | None,
         is_local: bool,
     ) -> BaseModel:
@@ -313,12 +315,11 @@ class EvaluateJob(NemoJob):
             sdk=sdk,
             async_sdk=async_sdk,
         )
-        runtime_metrics = metrics if len(metrics) > 1 else metrics[0]
         if isinstance(spec.target, Model):
             if not isinstance(params, RunConfigOnlineModel):
                 raise TypeError("model target requires RunConfigOnlineModel")
             result = evaluator.run_sync(
-                metrics=runtime_metrics,
+                metrics=metrics,
                 dataset=dataset,
                 config=params,
                 target=spec.target,
@@ -331,7 +332,7 @@ class EvaluateJob(NemoJob):
             if spec.prompt_template is None:
                 raise ValueError("agent target requires prompt_template")
             result = evaluator.run_sync(
-                metrics=runtime_metrics,
+                metrics=metrics,
                 dataset=dataset,
                 config=params,
                 target=spec.target,
@@ -342,7 +343,7 @@ class EvaluateJob(NemoJob):
             if type(params) is not RunConfig:
                 raise TypeError("offline evaluation requires RunConfig")
             result = evaluator.run_sync(
-                metrics=runtime_metrics,
+                metrics=metrics,
                 dataset=dataset,
                 config=params,
                 target=None,

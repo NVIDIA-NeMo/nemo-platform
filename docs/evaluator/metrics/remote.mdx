@@ -17,12 +17,7 @@ Remote metrics support two types:
 | **Generic Remote** (`remote`) | Custom endpoints with configurable request body and score extraction | User-defined Jinja template |
 | **NeMo Agent Toolkit Remote** (`nemo-agent-toolkit-remote`) | NeMo Agent Toolkit evaluator endpoints | Fixed: `{evaluator_name, item}` |
 
-NeMo Evaluator supports two execution modes through the Evaluator plugin SDK:
-
-| Mode | Use Case | SDK Call |
-|------|----------|----------|
-| **Local execution** | Rapid prototyping and synchronous workflows | `evaluator.run(metric=metric, dataset=dataset)` |
-| **Durable remote job** | Production workloads that should run as platform jobs | `evaluator.submit(metric=metric, dataset=dataset)` |
+The Evaluator plugin SDK runs either type as a durable platform job through `evaluator.submit(metric=metric, dataset=dataset)`. To iterate on a metric in-process without platform services, use the standalone `nemo_evaluator_sdk.Evaluator` instead.
 
 ## Prerequisites
 
@@ -50,96 +45,6 @@ sdk = NeMoPlatform(
 )
 evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 ```
-
----
-
-## Local Execution
-
-Local execution provides immediate results for rapid iteration when developing and testing your metrics.
-
-### Generic Remote Metric
-
-Use a generic remote metric when you need full control over the request payload and score extraction:
-
-
-```python
-from nemo_evaluator_sdk import JSONScoreParser, RemoteScore, RemoteMetric
-
-metric = RemoteMetric(
-    url="https://my-evaluation-server.test/evaluate",
-    body={
-        "reference": "{{item.reference}}",
-        "response": "{{item.output}}",
-    },
-    scores=[
-        RemoteScore(
-            name="accuracy",
-            parser=JSONScoreParser(json_path="$.result.accuracy"),
-            description="Measures response accuracy against the reference",
-            minimum=0.0,
-            maximum=1.0,
-        )
-    ],
-    timeout_seconds=30.0,
-    max_retries=3,
-)
-
-
-result = evaluator.run(
-    metric=metric,
-    dataset=[
-        {"reference": "The capital is Paris", "output": "Paris is the capital"},
-        {"reference": "2", "output": "2"},
-    ],
-)
-
-for score in result.aggregate_scores.scores:
-    print(f"{score.name}: mean={score.mean}, count={score.count}")
-```
-
-
-**Key configuration:**
-- `body`: Jinja template for the request payload. Use `{{ item.<column> }}` to access dataset columns.
-- `scores`: List of score definitions with a `parser` object containing [JSONPath](https://datatracker.ietf.org/doc/html/rfc9535) expression for extracting values from the response.
-
-### NeMo Agent Toolkit Remote Metric
-
-Use the NAT remote metric type when integrating with NeMo Agent Toolkit evaluator endpoints:
-
-```python
-from nemo_evaluator_sdk import NemoAgentToolkitRemoteMetric
-
-metric = NemoAgentToolkitRemoteMetric(
-    url="http://localhost:8001/evaluate_item",
-    evaluator_name="similarity_eval",
-    timeout_seconds=30.0,
-    max_retries=3,
-)
-
-
-result = evaluator.run(
-    metric=metric,
-    dataset=[
-        {
-            "id": "item_1",
-            "input_obj": "What is the capital of France?",
-            "expected_output_obj": "The capital of France is Paris.",
-            "output_obj": "Paris is the capital of France.",
-            "trajectory": [],
-            "expected_trajectory": [],
-            "full_dataset_entry": {},
-        }
-    ],
-)
-
-for score in result.aggregate_scores.scores:
-    print(f"{score.name}: mean={score.mean}")
-```
-
-The NAT metric automatically:
-
-- Sends payload: `{"evaluator_name": "<name>", "item": <row_data>}`.
-- Extracts the score from: `$.result.score`.
 
 ---
 
@@ -234,7 +139,7 @@ result = job.get_result()
 
 If your remote endpoint requires authentication, store the API key as a platform secret and reference it from your metric:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 
 ```python
@@ -247,11 +152,13 @@ metric = RemoteMetric(
     api_key_secret=SecretRef(root="my-remote-api-key"),
 )
 
-result = evaluator.run(metric=metric, dataset=[{"input": "test"}])
+job = evaluator.submit(metric=metric, dataset=[{"input": "test"}])
+job.wait_until_done()
+result = job.get_result()
 ```
 
 
-The API key is sent in the `Authorization: Bearer <key>` header. For local execution, the SDK resolves the key according to the local `api_key_secret` behavior. For durable remote jobs, the job runtime receives the secret securely.
+The API key is sent in the `Authorization: Bearer <key>` header. The job runtime resolves `api_key_secret` as a platform secret in the target workspace and receives it securely.
 
 ---
 
@@ -321,6 +228,8 @@ And must return:
   "error": null
 }
 ```
+
+The NAT metric extracts the score from `$.result.score`.
 
 ---
 

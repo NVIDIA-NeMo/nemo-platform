@@ -52,3 +52,6 @@ packages = ["src/nemo_experimentalist_plugin"]
 asyncio_mode = "auto"
 pythonpath = ["src", "tests"]
 testpaths = ["tests"]
+markers = [
+    "e2e: executes model-written shell and requires a sandbox, Docker, a running Platform, and configured models",
+]

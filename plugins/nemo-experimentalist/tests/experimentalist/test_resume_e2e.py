@@ -88,8 +88,8 @@ def _make_runner(tmp_path: Path, strategy: Any, monkeypatch: pytest.MonkeyPatch)
             "F",
             (),
             {
-                "build_dataset": staticmethod(lambda _type, ref: Dataset(id=ref.uri)),
-                "build_task_template": staticmethod(lambda _type, ref: Task(id="template", uri=ref.uri)),
+                "build_dataset": staticmethod(lambda _type, ref, **_options: Dataset(id=ref.uri)),
+                "build_task_template": staticmethod(lambda _type, ref, **_options: Task(id="template", uri=ref.uri)),
             },
         )(),
     )

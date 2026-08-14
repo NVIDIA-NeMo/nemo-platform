@@ -4,7 +4,7 @@ description: ""
 ---
 <a id="eval-metrics-manage-metrics"></a>
 
-Instantiate the metric class you want to run and pass it with `dataset` and optional configuration to `evaluator.run(...)` or `evaluator.submit(...)`.
+Instantiate the metric class you want to run and pass it with `dataset` and optional configuration to `evaluator.submit(...)`.
 
 ## Initialize the SDK
 
@@ -35,13 +35,15 @@ metric = ExactMatchMetric(
     candidate="{{item.output}}",
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {"expected": "Paris", "output": "Paris"},
         {"expected": "Berlin", "output": "Munich"},
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")

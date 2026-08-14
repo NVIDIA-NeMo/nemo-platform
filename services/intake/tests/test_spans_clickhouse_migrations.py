@@ -61,7 +61,10 @@ def test_trace_index_schema_is_root_span_projection():
     assert "TO {table}" in ddl
     assert "INSERT INTO {table}" in source
     assert "WHERE external_parent_span_id = ''" in ddl
-    assert "attributes_string['{evaluation_key}'] AS evaluation_id" in ddl
+    # evaluation_id is resolved via a coalesce expression (canonical key + legacy aliases), not a single
+    # bag-key lookup, so the backfill keeps spans stored under an older key associated.
+    assert "{evaluation_id_expr} AS evaluation_id" in ddl
+    assert "coalesce(" in ddl
     assert "attributes_string['{test_case_key}'] AS test_case_id" in ddl
     assert "root_status LowCardinality(String)" in ddl
     assert "root_input String" in ddl
@@ -72,5 +75,8 @@ def test_trace_index_schema_is_root_span_projection():
 
 
 def test_trace_index_mv_keys_match_attribute_catalog():
-    assert spec_for_field(SpanAttributeField.EVALUATION_ID).bag_key == "nemo.experiment.id"
+    evaluation_spec = spec_for_field(SpanAttributeField.EVALUATION_NAME)
+    assert evaluation_spec.bag_key == "nemo.evaluation.name"
+    # The legacy key is still accepted on ingest so pre-rename producers keep associating.
+    assert "nemo.experiment.id" in evaluation_spec.source_keys
     assert spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key == "nemo.test_case.id"

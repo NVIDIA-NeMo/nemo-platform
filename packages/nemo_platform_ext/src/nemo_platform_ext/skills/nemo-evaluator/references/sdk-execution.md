@@ -66,9 +66,9 @@ scores separately.
 
 ## SDK Execution Patterns
 
-Use `Evaluator` directly for local, completed-result evaluation. It accepts one
-metric or a sequence of metrics and returns either `EvaluationResult` or a
-multi-metric benchmark result.
+Use `Evaluator` directly for local, completed-result evaluation. `run` and
+`run_sync` take a sequence of metrics — pass `metrics=[metric]` even for a
+single one — and always return a `BenchmarkEvaluationResult`.
 
 ```python
 from nemo_evaluator_sdk import Evaluator, RunConfig, StringCheckMetric
@@ -81,7 +81,7 @@ metric = StringCheckMetric(
 )
 
 result = Evaluator().run_sync(
-    metrics=metric,
+    metrics=[metric],
     dataset=[
         {"output": "hello", "expected": "hello"},
         {"output": "foo", "expected": "bar"},
@@ -139,7 +139,7 @@ target = Model(
 )
 
 result = Evaluator().run_sync(
-    metrics=metric,
+    metrics=[metric],
     target=target,
     dataset=[{"prompt": "What is 2+2?", "expected": "4"}],
     prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
@@ -200,7 +200,7 @@ metric = LLMJudgeMetric(
 )
 
 result = Evaluator().run_sync(
-    metrics=metric,
+    metrics=[metric],
     dataset=[
         {"input": "Explain photosynthesis.", "output": "Plants use sunlight to make sugars."},
         {"input": "Explain photosynthesis.", "output": "I cannot help."},
@@ -225,7 +225,7 @@ from nemo_evaluator_sdk import Evaluator, ToolCallingMetric
 
 
 metric = ToolCallingMetric(reference="{{item.expected_tool_calls}}")
-result = Evaluator().run_sync(metrics=metric, dataset=rows)
+result = Evaluator().run_sync(metrics=[metric], dataset=rows)
 ```
 
 Each row should include a `response` object shaped like an OpenAI chat

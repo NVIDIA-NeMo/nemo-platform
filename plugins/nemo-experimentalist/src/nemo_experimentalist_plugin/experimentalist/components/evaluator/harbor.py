@@ -952,7 +952,7 @@ class HarborDataset(Dataset):
         )
 
     @classmethod
-    def from_ref(cls, ref: DatasetRef, **options: Any) -> HarborDataset:
+    def from_ref(cls, ref: DatasetRef, *, allow_empty: bool = False, **options: Any) -> HarborDataset:
         """Build a Harbor dataset from a local dataset reference."""
         dataset_path = local_path_from_uri(ref.uri, context="Harbor dataset reference")
         dataset_id = ref.metadata.get("id")
@@ -962,6 +962,7 @@ class HarborDataset(Dataset):
         dataset = cls.from_path(
             dataset_path,
             dataset_id=dataset_id,
+            allow_empty=allow_empty,
             **options,
         )
         return dataset.subset(task_ids) if task_ids is not None else dataset
@@ -985,6 +986,7 @@ class HarborDataset(Dataset):
         dataset_path: Path,
         *,
         dataset_id: str | None = None,
+        allow_empty: bool = False,
         **_ignored_options: Any,
     ) -> HarborDataset:
         """Build a Harbor dataset from a local Harbor task collection."""
@@ -995,7 +997,7 @@ class HarborDataset(Dataset):
             raise ValueError(f"Harbor dataset path is not a directory: {dataset_path}")
 
         task_dirs = cls._find_task_dirs(dataset_path)
-        if not task_dirs:
+        if not task_dirs and not allow_empty:
             raise ValueError(f"Harbor dataset path contains no Harbor task directories: {dataset_path}")
 
         tasks = [cls._from_task_dir(task_dir) for task_dir in task_dirs]
