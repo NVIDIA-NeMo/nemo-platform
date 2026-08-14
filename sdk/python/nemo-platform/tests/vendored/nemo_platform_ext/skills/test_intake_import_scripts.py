@@ -358,6 +358,52 @@ def test_intake_writer_fetches_existing_annotations_once_per_target(monkeypatch:
     assert methods == ["POST", "GET", "POST", "POST"]
 
 
+def test_intake_writer_accepts_injected_httpx_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    common = importlib.import_module("_import_common")
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(201)
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as session:
+        writer = common.IntakeWriter(
+            base_url="https://platform.example.com",
+            workspace="default",
+            session=session,
+        )
+        monkeypatch.setattr(writer, "_verify_spans", Mock())
+
+        summary = writer.write(
+            common.ImportBundle(source="langsmith", spans=[{"span_id": "span-1", "trace_id": "trace-1"}]),
+            batch_size=500,
+        )
+
+    assert summary["spans"] == 1
+    assert [request.method for request in requests] == ["POST"]
+
+
+def test_intake_writer_paginated_data_advances_pages_and_enforces_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    common = importlib.import_module("_import_common")
+    session = Mock()
+    session.request.side_effect = [
+        _Response({"data": [{"span_id": "one"}], "pagination": {"page": 1, "total_pages": 3}}),
+        _Response({"data": [{"span_id": "two"}], "pagination": {"page": 2, "total_pages": 3}}),
+    ]
+    writer = common.IntakeWriter(
+        base_url="https://platform.example.com",
+        workspace="default",
+        session=session,
+    )
+    monkeypatch.setattr(common, "MAX_INTAKE_PAGES", 2)
+
+    with pytest.raises(RuntimeError, match="pagination exceeded 2 pages"):
+        list(writer._paginated_data("/spans", filters=[("filter[source]", "langsmith")]))
+
+    pages = [dict(call.kwargs["params"])["page"] for call in session.request.call_args_list]
+    assert pages == [1, 2]
+
+
 def test_sdk_session_uses_public_sdk_request_methods() -> None:
     common = importlib.import_module("_import_common")
     client = Mock()
@@ -369,7 +415,7 @@ def test_sdk_session_uses_public_sdk_request_methods() -> None:
         params=[("page", 1)],
         headers={},
         timeout=60,
-        allow_redirects=False,
+        follow_redirects=False,
     )
     adapter.request(
         "POST",
@@ -377,7 +423,7 @@ def test_sdk_session_uses_public_sdk_request_methods() -> None:
         json={"kind": "note"},
         headers={},
         timeout=60,
-        allow_redirects=False,
+        follow_redirects=False,
     )
 
     client.get.assert_called_once_with(

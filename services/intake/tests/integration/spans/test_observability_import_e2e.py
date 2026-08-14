@@ -34,7 +34,7 @@ class _TestClientSession:
         self.client = client
 
     def request(self, method: str, url: str, **kwargs: Any) -> Any:
-        kwargs.pop("allow_redirects", None)
+        kwargs.pop("follow_redirects", None)
         kwargs.pop("timeout", None)
         parsed = urlsplit(url)
         return self.client.request(method, parsed.path, follow_redirects=False, **kwargs)

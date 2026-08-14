@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -24,6 +25,7 @@ JsonObject = dict[str, Any]
 SPAN_BATCH_LIMIT = 1000
 DEFAULT_BATCH_SIZE = 500
 DEFAULT_TIMEOUT_SECONDS = 60
+MAX_INTAKE_PAGES = 1000
 
 
 @dataclass(frozen=True)
@@ -505,56 +507,52 @@ class IntakeWriter:
         }
 
     def _existing_annotation_signatures(self, annotation: JsonObject) -> set[str]:
-        params: list[tuple[str, str | int]] = [
+        filters: list[tuple[str, str | int]] = [
             ("filter[session_id]", str(annotation["session_id"])),
             ("filter[kind]", str(annotation["kind"])),
-            ("page", 1),
-            ("page_size", 1000),
         ]
         if annotation.get("span_id"):
-            params.append(("filter[span_id]", str(annotation["span_id"])))
-        signatures: set[str] = set()
-        while True:
-            payload = self._request("GET", f"{self.prefix}/annotations", params=params, expected={200})
-            if not isinstance(payload, dict):
-                raise RuntimeError("Intake annotations response must be an object")
-            for item in payload.get("data", []):
-                signatures.add(_annotation_signature(item))
-            pagination = payload.get("pagination") or {}
-            if int(pagination.get("page", 1)) >= int(pagination.get("total_pages", 1)):
-                return signatures
-            for index, (key, value) in enumerate(params):
-                if key == "page":
-                    params[index] = (key, int(value) + 1)
-                    break
+            filters.append(("filter[span_id]", str(annotation["span_id"])))
+        return {
+            _annotation_signature(item) for item in self._paginated_data(f"{self.prefix}/annotations", filters=filters)
+        }
 
     def _verify_spans(self, spans: list[JsonObject], *, source: str) -> None:
         expected_by_trace: dict[str, set[str]] = {}
         for item in spans:
             expected_by_trace.setdefault(str(item["trace_id"]), set()).add(str(item["span_id"]))
         for trace_id, expected_ids in expected_by_trace.items():
-            params: list[tuple[str, str | int]] = [
+            filters: list[tuple[str, str | int]] = [
                 ("filter[trace_id]", trace_id),
                 ("filter[source]", source),
-                ("page", 1),
-                ("page_size", 1000),
             ]
-            found_ids: set[str] = set()
-            while True:
-                payload = self._request("GET", f"{self.prefix}/spans", params=params, expected={200})
-                if not isinstance(payload, dict):
-                    raise RuntimeError("Intake spans response must be an object")
-                found_ids.update(str(item["span_id"]) for item in payload.get("data", []))
-                pagination = payload.get("pagination") or {}
-                if int(pagination.get("page", 1)) >= int(pagination.get("total_pages", 1)):
-                    break
-                for index, (key, value) in enumerate(params):
-                    if key == "page":
-                        params[index] = (key, int(value) + 1)
-                        break
+            found_ids = {str(item["span_id"]) for item in self._paginated_data(f"{self.prefix}/spans", filters=filters)}
             missing = expected_ids - found_ids
             if missing:
                 raise RuntimeError(f"Intake verification did not find imported spans: {sorted(missing)}")
+
+    def _paginated_data(
+        self,
+        path: str,
+        *,
+        filters: list[tuple[str, str | int]],
+    ) -> Iterator[JsonObject]:
+        for page in range(1, MAX_INTAKE_PAGES + 1):
+            params = [*filters, ("page", page), ("page_size", 1000)]
+            payload = self._request("GET", path, params=params, expected={200})
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Intake {path} response must be an object")
+            data = payload.get("data", [])
+            if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+                raise RuntimeError(f"Intake {path} response `data` must be an array of objects")
+            yield from data
+            pagination = payload.get("pagination") or {}
+            if not isinstance(pagination, dict):
+                raise RuntimeError(f"Intake {path} response `pagination` must be an object")
+            response_page = int(pagination.get("page", page))
+            if response_page >= int(pagination.get("total_pages", response_page)):
+                return
+        raise RuntimeError(f"Intake {path} pagination exceeded {MAX_INTAKE_PAGES} pages")
 
     def _request(
         self,
@@ -572,7 +570,7 @@ class IntakeWriter:
             json=json_body,
             headers=self.headers,
             timeout=self.timeout_seconds,
-            allow_redirects=False,
+            follow_redirects=False,
         )
         if response.status_code not in expected:
             body = response.text[:2000]
@@ -631,7 +629,7 @@ class _SdkSession:
             "params": kwargs.pop("params", None),
             "headers": kwargs.pop("headers", None),
             "timeout": kwargs.pop("timeout", None),
-            "follow_redirects": bool(kwargs.pop("allow_redirects", False)),
+            "follow_redirects": bool(kwargs.pop("follow_redirects", False)),
         }
         options = {key: value for key, value in options.items() if value is not None}
         json_body = kwargs.pop("json", None)
