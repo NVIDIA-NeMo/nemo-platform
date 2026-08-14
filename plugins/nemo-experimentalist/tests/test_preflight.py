@@ -231,8 +231,9 @@ def test_missing_evaluator_entrypoint_is_required_failure(tmp_path: Path) -> Non
         ("pkg.wrapper:Agent", "pass"),
         ("pkg.missing:Agent", "fail"),
         (":Agent", "fail"),
+        ("", "fail"),
     ],
-    ids=["configured", "configured-missing", "no-module"],
+    ids=["configured", "configured-missing", "no-module", "empty"],
 )
 def test_configured_entrypoint_replaces_the_default(tmp_path: Path, import_path: str, expected_status: str) -> None:
     (tmp_path / "agent" / "pkg").mkdir(parents=True)

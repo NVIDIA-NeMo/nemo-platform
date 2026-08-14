@@ -463,22 +463,21 @@ def _check_agent_source(
 def _check_agent_entrypoint(agent_dir: Path, evaluator: dict | None) -> CheckResult:
     """Resolve the evaluator's entrypoint module inside a local agent directory.
 
-    The evaluator imports it from that directory alone, so a module it cannot
-    find there fails every trial of every candidate. A git source is unchecked:
-    the tree only exists after the clone. Git sources aside, this is the most
-    common first-run blocker, so it is required rather than advisory.
+    The evaluator imports the module from that directory alone, so a module that
+    is absent there fails every trial of every candidate. Only local sources are
+    checked, because a git tree exists after the clone.
     """
     configured = (evaluator or {}).get("import_path")
-    import_path = str(configured) if configured else DEFAULT_AGENT_IMPORT_PATH
+    import_path = DEFAULT_AGENT_IMPORT_PATH if configured is None else str(configured)
     try:
         module_name, attribute = split_import_path(import_path)
-    except ValueError as exc:
+    except ValueError:
         return CheckResult(
             name="agent-entrypoint",
             group="agent-source",
             status="fail",
             severity="required",
-            message=f"evaluator import_path {import_path!r} names no module: {exc}",
+            message=f"evaluator import_path {import_path!r} names no module",
             hint="set evaluator.import_path to <module>[:<attribute>] in the experiment config",
         )
     found = find_entrypoint_module(agent_dir, module_name)
