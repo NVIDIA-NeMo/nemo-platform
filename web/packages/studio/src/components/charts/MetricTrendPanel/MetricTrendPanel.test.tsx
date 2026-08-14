@@ -81,4 +81,20 @@ describe('MetricTrendPanel', () => {
 
     expect(onViewClick).toHaveBeenCalledTimes(1);
   });
+
+  it('renders a neutral delta with no directional icon when delta is zero', () => {
+    render(<MetricTrendPanel title="Primary use cases" series={[{ ...series[0], delta: 0 }]} />);
+
+    const deltaTag = screen.getByTestId('nv-tag-root');
+    expect(deltaTag).toHaveTextContent('0.0');
+    expect(deltaTag.className).toContain('nv-tag--color-gray');
+    expect(deltaTag.querySelector('svg')).not.toBeInTheDocument();
+  });
+
+  it('does not show the loading skeleton for an empty series once pending finishes', () => {
+    render(<MetricTrendPanel title="Primary use cases" series={[]} isPending={false} />);
+
+    expect(screen.queryByTestId('nv-skeleton')).not.toBeInTheDocument();
+    expect(screen.getByText('No data available')).toBeInTheDocument();
+  });
 });

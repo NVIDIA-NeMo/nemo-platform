@@ -63,6 +63,20 @@ export const NegativeDelta: Story = {
   args: { selectedSeriesId: 'tool-use' },
 };
 
+export const ZeroDelta: Story = {
+  args: {
+    series: [{ id: 'solved', label: 'Solved', value: 78.4, delta: 0, points: makePoints(78.4, 0) }],
+  },
+};
+
+export const ValueCaption: Story = {
+  args: {
+    comparisonLabel: undefined,
+    valueLabel: 'Latest result',
+    series: [{ id: 'solved', label: 'Solved', value: 78.4, points: makePoints(62, 0.55) }],
+  },
+};
+
 export const Loading: Story = {
   args: { isPending: true },
 };

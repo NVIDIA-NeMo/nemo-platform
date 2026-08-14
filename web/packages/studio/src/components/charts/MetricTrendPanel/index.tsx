@@ -39,6 +39,8 @@ interface Props {
   series: MetricTrendSeries[];
   /** Qualifies the delta, e.g. "vs. 7 days ago". */
   comparisonLabel?: string;
+  /** Caption under the value, e.g. "Latest result". */
+  valueLabel?: string;
   /** Controls the active pill. Leave undefined to let the panel manage it. */
   selectedSeriesId?: string;
   onSeriesChange?: (seriesId: string) => void;
@@ -72,6 +74,7 @@ export const MetricTrendPanel: FC<Props> = ({
   description,
   series,
   comparisonLabel,
+  valueLabel,
   selectedSeriesId,
   onSeriesChange,
   onViewClick,
@@ -100,7 +103,8 @@ export const MetricTrendPanel: FC<Props> = ({
 
   const delta = active?.delta;
   const isNegative = delta !== undefined && delta < 0;
-  const deltaColor = isNegative ? 'red' : 'green';
+  const isZero = delta === 0;
+  const deltaColor = isZero ? 'gray' : isNegative ? 'red' : 'green';
   const lineColor = isNegative ? 'var(--text-color-accent-red)' : 'var(--text-color-brand)';
   const colorMode = useNvColorMode();
   const gradient = colorMode === 'dark' ? AREA_GRADIENT.dark : AREA_GRADIENT.light;
@@ -124,18 +128,22 @@ export const MetricTrendPanel: FC<Props> = ({
       </PanelHeader>
 
       <PanelContent>
-        <Stack gap="density-lg">
-          <Text kind="display/lg">{active ? formatValue(active.value) : '—'}</Text>
+        {/* The chart bleeds into the panel's right and bottom padding; the value column
+            pads itself back so it stays optically centered against the trendline. */}
+        <Flex align="center" gap="density-2xl" className="-mb-density-2xl -mr-density-2xl">
+          <Stack gap="density-xs" className="shrink-0 pb-density-2xl">
+            <Text kind="display/lg">{active ? formatValue(active.value) : '—'}</Text>
 
-          <Flex align="center" gap="density-lg" wrap="wrap">
             {delta !== undefined && (
               <Flex align="center" gap="density-sm">
                 <Tag readOnly color={deltaColor} density="compact">
-                  <Triangle
-                    size={12}
-                    className={`fill-current ${isNegative ? 'rotate-180' : ''}`}
-                    aria-hidden
-                  />
+                  {!isZero && (
+                    <Triangle
+                      size={12}
+                      className={`fill-current ${isNegative ? 'rotate-180' : ''}`}
+                      aria-hidden
+                    />
+                  )}
                   {formatDelta(delta)}
                 </Tag>
                 {comparisonLabel && (
@@ -146,6 +154,14 @@ export const MetricTrendPanel: FC<Props> = ({
               </Flex>
             )}
 
+            {valueLabel && (
+              <Text kind="body/regular/md" className="text-secondary">
+                {valueLabel}
+              </Text>
+            )}
+          </Stack>
+
+          <Stack gap="density-sm" className="min-w-0 flex-1">
             {series.length > 1 && (
               <Flex align="center" gap="density-sm" wrap="wrap" role="group" aria-label={title}>
                 {series.map((s) => {
@@ -165,51 +181,58 @@ export const MetricTrendPanel: FC<Props> = ({
                 })}
               </Flex>
             )}
-          </Flex>
-        </Stack>
-      </PanelContent>
 
-      <div className="-mx-density-2xl -mb-density-2xl overflow-hidden rounded-b-density-xl">
-        {isPending || !active ? (
-          <StackedSkeleton count={1} height={chartHeight} className="w-full" />
-        ) : (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={active.points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={lineColor} stopOpacity={gradient.top} />
-                  <stop offset="55%" stopColor={lineColor} stopOpacity={gradient.mid} />
-                  <stop offset="100%" stopColor={lineColor} stopOpacity={gradient.bottom} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="label" hide />
-              <YAxis domain={['dataMin', 'dataMax']} hide />
-              <Tooltip
-                cursor={{ stroke: 'var(--border-color-base)', strokeWidth: 1 }}
-                formatter={(value: number) => [formatValue(value), active.label]}
-                contentStyle={{
-                  fontSize: 12,
-                  backgroundColor: 'var(--background-color-component-tooltip)',
-                  borderColor: 'var(--border-color-base)',
-                  color: 'var(--text-color-base)',
-                }}
-                labelStyle={{ color: 'var(--text-color-base)' }}
-                itemStyle={{ color: 'var(--text-color-base)' }}
-              />
-              <Area
-                type="linear"
-                dataKey="value"
-                name={active.label}
-                stroke={lineColor}
-                strokeWidth={2}
-                fill={`url(#${gradientId})`}
-                dot={active.points.length <= 2}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+            <div className="overflow-hidden rounded-br-density-xl">
+              {isPending ? (
+                <StackedSkeleton count={1} height={chartHeight} className="w-full" />
+              ) : !active ? (
+                // eslint-disable-next-line no-restricted-syntax -- chartHeight is a caller-controlled number, not a static Tailwind class
+                <Flex align="center" justify="center" style={{ height: chartHeight }}>
+                  <Text kind="body/regular/md" className="text-secondary">
+                    No data available
+                  </Text>
+                </Flex>
+              ) : (
+                <ResponsiveContainer width="100%" height={chartHeight}>
+                  <AreaChart data={active.points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={lineColor} stopOpacity={gradient.top} />
+                        <stop offset="55%" stopColor={lineColor} stopOpacity={gradient.mid} />
+                        <stop offset="100%" stopColor={lineColor} stopOpacity={gradient.bottom} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="label" hide />
+                    <YAxis domain={['dataMin', 'dataMax']} hide />
+                    <Tooltip
+                      cursor={{ stroke: 'var(--border-color-base)', strokeWidth: 1 }}
+                      formatter={(value: number) => [formatValue(value), active.label]}
+                      contentStyle={{
+                        fontSize: 12,
+                        backgroundColor: 'var(--background-color-component-tooltip)',
+                        borderColor: 'var(--border-color-base)',
+                        color: 'var(--text-color-base)',
+                      }}
+                      labelStyle={{ color: 'var(--text-color-base)' }}
+                      itemStyle={{ color: 'var(--text-color-base)' }}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="value"
+                      name={active.label}
+                      stroke={lineColor}
+                      strokeWidth={2}
+                      fill={`url(#${gradientId})`}
+                      dot={active.points.length <= 2}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </Stack>
+        </Flex>
+      </PanelContent>
     </PanelRoot>
   );
 };
