@@ -312,6 +312,13 @@ def _wait_for_evaluator_job(job: EvaluatorJobResource) -> None:
             time.sleep(min(EVALUATOR_POLL_INTERVAL_SECONDS, remaining))
 
 
+def _require_job_name(payload: object) -> str:
+    job_name = payload.get("name") if isinstance(payload, Mapping) else None
+    if not isinstance(job_name, str):
+        raise TypeError(f"Unexpected job response: {payload!r}")
+    return job_name
+
+
 def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJobResource:
     payload = _post_evaluator_payload(
         sdk,
@@ -319,10 +326,7 @@ def _submit_input_spec(sdk: NeMoPlatform, spec: EvaluateInputSpec) -> EvaluatorJ
         "evaluate/jobs",
         {"spec": spec.model_dump(mode="json")},
     )
-    job_name = payload.get("name") if isinstance(payload, Mapping) else None
-    if not isinstance(job_name, str):
-        raise TypeError(f"Unexpected evaluator job response: {payload!r}")
-    return sdk.evaluator.get_job_resource(job_name)
+    return sdk.evaluator.get_job_resource(_require_job_name(payload))
 
 
 def _metric_output_values(result: EvaluationResult, name: str) -> list[float]:
@@ -737,74 +741,46 @@ def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> 
     _assert_runtime_input_failure(evaluator_sdk, _exact_match_metric(), dataset)
 
 
-# --- Gym agent-evaluate job (AALGO-494) -------------------------------------------------------
+# --- Gym agent-evaluate job ------------------------------------------------------------------
 #
-# GymAgentTaskRunner executes inside nmp-cpu-tasks (AgentEvalJob.container = "cpu-tasks"), not in
-# this test process, so the real `gym env start`/`gym eval run` subprocess path -- entirely
-# untested by packages/nemo_evaluator_sdk/tests/agent_eval/test_gym_runtime.py's synthetic-data
-# unit tests -- only gets exercised once the job actually runs server-side. See
-# docker/Dockerfile.nmp-cpu-tasks for how nemo-gym gets baked into that image (a separate venv,
-# since Ray -- which Gym imports at module load -- is excluded from the main uv workspace
-# workspace-wide over an unfixed CVE).
+# GymAgentTaskRunner runs inside nmp-cpu-tasks, not this test process, so this is the only place
+# exercising the real `gym env start`/`gym eval run` subprocess path (the SDK's unit tests use
+# synthetic data). See docker/Dockerfile.nmp-cpu-tasks for how Gym gets installed there.
 #
-# GymRunnerTarget carries no field for model credentials (gym_runtime.py: "no config field naming
-# a checkout, a venv, or a search root... credentials never pass through this SDK"), so a
-# per-test, dynamically-created mock model has nowhere to go. The Gym collector inside the job
-# container reads policy_base_url/policy_api_key/policy_model_name from a static env.yaml baked
-# into the image instead, pointing at this fixed, idempotently-created model -- the actual
-# "friction-log issue #1" the ticket names, not yet solved generically for every agent-eval
-# runner.
-GYM_MOCK_MODEL_NAME = "gym-mock-mcqa"
-# Fixed, not evaluator_workspace's per-test random name: the env.yaml baked into
-# docker/Dockerfile.nmp-cpu-tasks hardcodes this workspace in the model's internal IGW route, so
-# it has to be a real, always-present workspace rather than one this test creates and deletes.
-GYM_WORKSPACE = "default"
-# Checked-in copy of mcqa's bundled example.jsonl rows (packages/nemo_evaluator_sdk/tests/
-# agent_eval/fixtures/gym_mcqa_example.jsonl), not the wheel-packaged resources_servers.mcqa
-# copy: discover_gym_tasks runs client-side, in this test process, which does not have nemo-gym
-# installed (only nmp-cpu-tasks does) -- so the dataset has to come from somewhere that doesn't
-# require importing Gym at all.
+# GymRunnerTarget has no dedicated credentials field, so the mock model's route/key travel via
+# env_overrides instead -- Gym's config loader merges CLI overrides last, so they win over
+# whatever (if anything) is in env.yaml.
+#
+# Checked-in copy of mcqa's example.jsonl: discover_gym_tasks runs client-side here, where
+# nemo-gym isn't installed (only nmp-cpu-tasks has it).
 GYM_MCQA_FIXTURE = (
     Path(__file__).resolve().parents[1]
     / "packages/nemo_evaluator_sdk/tests/agent_eval/fixtures/gym_mcqa_example.jsonl"
 )
 
 
-@pytest.fixture(scope="module")
-def gym_mock_model(sdk: NeMoPlatform) -> str:
-    """Ensure the fixed mock model that docker/Dockerfile.nmp-cpu-tasks' baked env.yaml expects."""
-    try:
-        _create_ready_mock_model(
-            sdk,
-            workspace=GYM_WORKSPACE,
-            name=GYM_MOCK_MODEL_NAME,
-            mock_response_body=_chat_completion(r"\boxed{A}"),
-        )
-    except APIStatusError as exc:
-        if exc.status_code != 409:
-            raise
-    return GYM_MOCK_MODEL_NAME
-
-
 def test_gym_agent_evaluate_job_completes(
     sdk: NeMoPlatform,
-    gym_mock_model: str,
+    evaluator_sdk: NeMoPlatform,
+    evaluator_workspace: str,
     tmp_path: Path,
 ) -> None:
-    """Runs mcqa -- the one Gym environment the runner has been exercised against, per the
-    ticket -- as a real, durable agent-evaluate job, closing the gap left by the unit tests'
-    synthetic-data-only coverage of the Gym runtime's subprocess orchestration.
-    """
+    """Submits mcqa as a real agent-evaluate job and verifies it completes with real rewards."""
+    model_name = short_unique_name("gym-mcqa")
+    _create_ready_mock_model(
+        sdk,
+        workspace=evaluator_workspace,
+        name=model_name,
+        mock_response_body=_chat_completion(r"\boxed{A}"),
+    )
+
     tasks = discover_gym_tasks(GYM_MCQA_FIXTURE)[:2]  # keep the run cheap; this is a wiring test
     bundled_reward = bundle_metric(GymRewardMetric(), CloudpickleMetricBundlePackager()).model_dump(mode="json")
     task_dicts = [
         {
             "id": task.id,
             "intent": task.intent,
-            # discover_gym_tasks stashes gym_row in metadata, not inputs: TaskInputs (the wire
-            # schema) only recognizes `instruction`, so an arbitrary dataset row has nowhere to
-            # travel through a submitted job spec except metadata (JSON-encoded, like
-            # gym_row_extras already is).
+            # gym_row travels via metadata, not inputs -- see discover_gym_tasks.
             "inputs": task.inputs or {},
             "reference": task.reference or {},
             "metrics": [bundled_reward],
@@ -822,27 +798,29 @@ def test_gym_agent_evaluate_job_completes(
         resources_server="mcqa",
         num_repeats=1,
         concurrency=2,
+        env_overrides={
+            "policy_base_url": _internal_model_route(evaluator_workspace, model_name),
+            "policy_api_key": "not-used-mock-provider",
+            "policy_model_name": model_name,
+        },
     )
     payload = _post_evaluator_payload(
-        sdk,
-        GYM_WORKSPACE,
+        evaluator_sdk,
+        evaluator_workspace,
         "agent-evaluate/jobs",
-        {"tasks": task_dicts, "target": target.model_dump(mode="json")},
+        {"spec": {"tasks": task_dicts, "target": target.model_dump(mode="json")}},
     )
-    job_name = payload.get("name") if isinstance(payload, Mapping) else None
-    if not isinstance(job_name, str):
-        raise TypeError(f"Unexpected agent-evaluate job response: {payload!r}")
+    job_name = _require_job_name(payload)
     try:
-        # Not EvaluatorJobResource/get_job_resource: that resolves against evaluate/jobs, the
-        # wrong route for an agent-evaluate job (confirmed live -- it 500s). agent-evaluate jobs
-        # go through the same generic platform jobs API every NemoJob shares.
-        job = wait_for_platform_job(sdk, job_name, GYM_WORKSPACE, timeout=480)
+        # Not EvaluatorJobResource/get_job_resource: that targets evaluate/jobs, the wrong route
+        # for an agent-evaluate job. Use the generic platform jobs API instead.
+        job = wait_for_platform_job(evaluator_sdk, job_name, evaluator_workspace, timeout=480)
         assert job.status.lower() == "completed", f"job {job_name!r} ended {job.status!r}"
 
         archive_path = tmp_path / "agent-eval-results.tar.gz"
-        sdk.jobs.results.download("agent-eval-results", job=job_name, workspace=GYM_WORKSPACE).write_to_file(
-            archive_path
-        )
+        evaluator_sdk.jobs.results.download(
+            "agent-eval-results", job=job_name, workspace=evaluator_workspace
+        ).write_to_file(archive_path)
         extract_dir = tmp_path / "agent-eval-results"
         with tarfile.open(archive_path) as archive:
             archive.extractall(extract_dir)  # noqa: S202 - trusted first-party job artifact, not user input
@@ -857,9 +835,4 @@ def test_gym_agent_evaluate_job_completes(
         for trial in completed:
             assert trial.get("metadata", {}).get("reward") is not None, "completed trial missing Gym's reward"
     finally:
-        # Not _cleanup_evaluator_job: it resolves workspace from sdk.workspace, which is None on
-        # the raw (non-evaluator_sdk) fixture used here.
-        with suppress(Exception):
-            sdk.jobs.cancel(name=job_name, workspace=GYM_WORKSPACE)
-        with suppress(Exception):
-            sdk.jobs.delete(name=job_name, workspace=GYM_WORKSPACE)
+        _cleanup_evaluator_job(evaluator_sdk, job_name)
