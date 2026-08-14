@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Card, Grid, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
+import { StatTile, type StatTileProps } from '@nemo/common/src/components/StatTile/index';
+import { Grid, Panel, Skeleton, Stack } from '@nvidia/foundations-react-core';
 import type { TraceStatisticsSummary } from '@studio/components/AgentTraceStatistics/types';
 import {
   formatCostUsd,
@@ -15,14 +16,8 @@ interface Props {
   isPending?: boolean;
 }
 
-interface Tile {
-  label: string;
-  value: string;
-  hint?: string;
-}
-
 export const TraceStatisticsTiles: FC<Props> = ({ summary, isPending }) => {
-  const tiles: Tile[] = [
+  const tiles: StatTileProps[] = [
     { label: 'Total traces', value: formatTokens(summary.totalTraces) },
     {
       label: 'Avg latency',
@@ -39,21 +34,18 @@ export const TraceStatisticsTiles: FC<Props> = ({ summary, isPending }) => {
 
   return (
     <Grid cols={{ base: 1, md: 2, lg: 4 }} gap="density-lg">
-      {tiles.map((tile) => (
-        <Card key={tile.label}>
-          <Stack gap="density-sm" padding="density-xl">
-            <Text kind="body/regular/md">{tile.label}</Text>
-            {isPending ? (
+      {tiles.map((tile) =>
+        isPending ? (
+          <Panel key={tile.label} className="max-w-sm bg-surface-raised">
+            <Stack gap="density-sm">
+              <Skeleton className="h-4 w-24" />
               <Skeleton className="h-8 w-20" />
-            ) : (
-              <Text kind="body/bold/3xl">{tile.value}</Text>
-            )}
-            <Text kind="body/regular/sm" className="text-secondary">
-              {tile.hint ?? ' '}
-            </Text>
-          </Stack>
-        </Card>
-      ))}
+            </Stack>
+          </Panel>
+        ) : (
+          <StatTile key={tile.label} {...tile} className="bg-surface-raised" />
+        )
+      )}
     </Grid>
   );
 };
