@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -31,11 +32,37 @@ logger = logging.getLogger(__name__)
 PRIME_HUB_SIMPLE_INDEX = "https://hub.primeintellect.ai/primeintellect/simple/"
 DEFAULT_VERIFIERS_SPEC = "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@v0.1.14"
 
+# The closure is consumed by the Gym server venvs inside the training image, NOT by the
+# host running this conversion. Resolving and downloading for the host is what ships an
+# arm64 macOS wheel to a linux/amd64 cluster, where it fails at install with
+# "cffi==2.1.1 has no wheels with a matching platform tag".
+#
+# pip needs the concrete wheel tags it should accept; several are listed because pip
+# matches them literally and projects build against different glibc floors. uv takes its
+# own platform vocabulary for the resolution step.
+TARGET_WHEEL_PLATFORMS = (
+    "manylinux_2_39_x86_64",
+    "manylinux_2_28_x86_64",
+    "manylinux_2_17_x86_64",
+    "manylinux2014_x86_64",
+)
+TARGET_UV_PLATFORM = "x86_64-unknown-linux-gnu"
+# Matches the interpreter the training image builds Gym server venvs with; Gym takes it
+# from platform.python_version() of the gym host (nemo_gym.global_config).
+TARGET_PYTHON_VERSION = "3.13"
+# A wheel is portable to the target if it is pure Python or built for linux x86_64.
+_TARGET_PLATFORM_TAG_RE = re.compile(r"^(any|linux_x86_64|manylinux[0-9_.]*_x86_64)$")
+
 
 @dataclass(frozen=True)
 class ConvertEnvironmentSpec:
     hub_id: str
     out_dir: Path
+    # Exact hub release to vendor, e.g. "0.1.5". Unset takes whatever the index resolves
+    # to, which is a moving target: a hub package can publish a release that narrows
+    # Requires-Python and drop the interpreter the training image runs, breaking a
+    # conversion that worked yesterday with no local change.
+    hub_version: str | None = None
     dataset_dir: Path | None = None
     vf_env_id: str | None = None
     vf_env_args: dict[str, Any] | None = None
@@ -49,16 +76,82 @@ class ConvertEnvironmentSpec:
     wheels_dir: Path | None = None
 
 
-def _run_pip_download(
-    dest: Path,
+def _compile_pinned_requirements(
+    work_dir: Path,
     packages: list[str],
     *,
+    extra_index_url: str | None = None,
+) -> Path:
+    """Resolve ``packages`` to a fully pinned requirements file.
+
+    Split out from the download because ``pip download`` resolves *while* fetching and
+    keeps every candidate it pulled, including versions its resolver later backtracked
+    away from. The result is a ``wheels/`` tree carrying two versions of the same
+    distribution, which the cluster-side installer then cannot satisfy:
+
+        Because you require xxhash==3.8.1 and xxhash==4.0.0, we can conclude
+        that your requirements are unsatisfiable.
+
+    Resolving first yields exactly one pin per distribution, and the download below runs
+    with ``--no-deps`` so nothing else can creep in.
+    """
+    work_dir.mkdir(parents=True, exist_ok=True)
+    requirements_in = work_dir / "requirements.in"
+    requirements_in.write_text("\n".join(packages) + "\n", encoding="utf-8")
+    pinned = work_dir / "requirements.txt"
+    cmd = [
+        "uv",
+        "pip",
+        "compile",
+        str(requirements_in),
+        "--output-file",
+        str(pinned),
+        "--no-header",
+        # Resolve in isolation from THIS repo. uv discovers the nearest pyproject.toml and
+        # applies its [tool.uv] policy, and nemo-platform's exists for the platform's own
+        # CVE posture -- e.g. an `openai>=2.26.0` override. An override REPLACES a
+        # dependency's declared requirement, so openai-agents' `openai>=2.45.0,<3` loses
+        # its upper bound here and the closure vendors openai 3.0.0. Nothing applies those
+        # overrides on the cluster, so the package is unsatisfiable the moment it lands:
+        # "Because openai-agents==0.20.0 depends on openai>=2.45.0,<3 and you require
+        # openai==3.0.0 ... your requirements are unsatisfiable".
+        "--no-config",
+        # Resolve for the TARGET, not this host. Markers are evaluated during resolution,
+        # so a host-targeted resolve can pull in a darwin-only dependency and omit a
+        # linux-only one -- a closure that is wrong before a single wheel is fetched.
+        "--python-platform",
+        TARGET_UV_PLATFORM,
+        "--python-version",
+        TARGET_PYTHON_VERSION,
+    ]
+    if extra_index_url:
+        # unsafe-best-match matches what `pip download --extra-index-url` already did:
+        # pip merges indexes, while uv's default first-index strategy would stop at the
+        # first index carrying a name. Changing that here would silently repin packages.
+        cmd.extend(["--extra-index-url", extra_index_url, "--index-strategy", "unsafe-best-match"])
+    logger.info("Running: %s", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+    # Echo the resolution. It is the record of exactly what got vendored, and when the
+    # download step then fails on one of these pins -- a hub release that narrowed its
+    # Requires-Python, most often -- this is what says which package and which version.
+    logger.info("Resolved closure:\n%s", pinned.read_text(encoding="utf-8").strip())
+    return pinned
+
+
+def _run_pip_download(
+    dest: Path,
+    *,
+    requirements_file: Path,
     extra_index_url: str | None = None,
 ) -> None:
     """Vendor wheels via ``pip download`` using this process's interpreter.
 
     ``pip`` is a declared ``nmp-rl`` dependency so the synced env can run
     ``python -m pip`` without nested ``uv run`` bootstraps.
+
+    ``--no-deps`` is what keeps the output one-file-per-distribution: the requirements
+    file is already the complete resolved closure, so any dependency walk here could only
+    re-introduce the duplicates :func:`_compile_pinned_requirements` exists to avoid.
     """
     dest.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -69,12 +162,46 @@ def _run_pip_download(
         "--dest",
         str(dest),
         "--no-cache-dir",
+        "--no-deps",
+        "--python-version",
+        TARGET_PYTHON_VERSION,
     ]
+    # Repeated --platform: pip matches these tags literally rather than expanding a
+    # compatibility range, so a project that only publishes against an older glibc floor
+    # is missed unless its tag is named here.
+    for platform_tag in TARGET_WHEEL_PLATFORMS:
+        cmd.extend(["--platform", platform_tag])
+    cmd.extend(["-r", str(requirements_file)])
     if extra_index_url:
         cmd.extend(["--extra-index-url", extra_index_url])
-    cmd.extend(packages)
     logger.info("Running: %s", " ".join(cmd))
     subprocess.run(cmd, check=True)
+
+
+def _wheel_platform_tags(wheel: Path) -> list[str]:
+    """Platform tags a wheel declares, e.g. ``manylinux2014_x86_64.manylinux_2_17_x86_64``."""
+    return wheel.stem.rsplit("-", 1)[-1].split(".")
+
+
+def assert_wheels_target_platform(wheels_dir: Path) -> None:
+    """Fail if anything in the closure cannot install on the training image.
+
+    The consumer is a linux/amd64 sandbox with no index and no compiler budget, so a
+    macOS or Windows wheel there is unusable. Checked locally because the alternative is
+    finding out from a cluster job several minutes in, as an opaque
+    ``no wheels with a matching platform tag`` from the resolver.
+    """
+    foreign: dict[str, list[str]] = {}
+    for wheel in sorted(wheels_dir.glob("*.whl")):
+        tags = _wheel_platform_tags(wheel)
+        if not any(_TARGET_PLATFORM_TAG_RE.match(tag) for tag in tags):
+            foreign[wheel.name] = tags
+    if foreign:
+        listed = "\n  ".join(f"{name} -> {', '.join(tags)}" for name, tags in foreign.items())
+        raise RuntimeError(
+            f"{len(foreign)} vendored wheel(s) are not installable on the training image "
+            f"(expected pure-Python or linux x86_64):\n  {listed}"
+        )
 
 
 def download_hub_wheels(
@@ -98,16 +225,33 @@ def download_hub_wheels(
         wheels_dir.mkdir(parents=True, exist_ok=True)
         for whl in src_wheels:
             shutil.copy2(whl, wheels_dir / whl.name)
+        assert_wheels_target_platform(wheels_dir)
         return wheels_dir
 
     package_name = hub_id_to_package_name(spec.hub_id)
-    packages = [spec.verifiers_spec, package_name, *spec.extra_wheels]
-    _run_pip_download(wheels_dir, packages, extra_index_url=PRIME_HUB_SIMPLE_INDEX)
+    hub_requirement = f"{package_name}=={spec.hub_version}" if spec.hub_version else package_name
+    packages = [spec.verifiers_spec, hub_requirement, *spec.extra_wheels]
+    pinned = _compile_pinned_requirements(work_dir, packages, extra_index_url=PRIME_HUB_SIMPLE_INDEX)
+    _run_pip_download(wheels_dir, requirements_file=pinned, extra_index_url=PRIME_HUB_SIMPLE_INDEX)
     downloaded = sorted(wheels_dir.glob("*.whl"))
     if not downloaded:
         raise RuntimeError(
             f"pip download produced no wheels for {packages!r}; adapter-wheels-v1 requires a wheel closure"
         )
+    # Targeting a foreign platform stops pip building sdists, so anything without a wheel
+    # on the index -- and the git-sourced verifiers -- arrives as a source archive, which
+    # the wheels-only package format then drops. Say so: these have to come from the Gym
+    # server's own requirements.txt when it builds its venv, which is where verifiers
+    # already comes from today.
+    sdists = sorted(p.name for p in wheels_dir.iterdir() if p.is_file() and p.suffix != ".whl")
+    if sdists:
+        logger.warning(
+            "Not vendoring %d source-only artifact(s): %s. They are excluded from the "
+            "package and must be satisfied when the Gym server venv is built.",
+            len(sdists),
+            ", ".join(sdists),
+        )
+    assert_wheels_target_platform(wheels_dir)
     return wheels_dir
 
 
