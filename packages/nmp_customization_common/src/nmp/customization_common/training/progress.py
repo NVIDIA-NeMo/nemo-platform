@@ -20,9 +20,11 @@ For training-specific metrics (loss, validation, checkpoints) see the
 
 import logging
 import os
+from collections.abc import Mapping
 from typing import Any, cast
 
 from nemo_platform_plugin.client.adapter import client_from_platform
+from nemo_platform_plugin.client.errors import NotFoundError
 from nemo_platform_plugin.jobs.client import JobsClient
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nemo_platform_plugin.jobs.types import PlatformJobTaskUpdate
@@ -87,18 +89,40 @@ class JobsServiceProgressReporter:
         except Exception as e:
             logger.warning(f"Failed to update task progress: {e}")
 
-    def fetch_current_metrics(self) -> dict[str, list[dict[str, float | int]]]:
-        """Read back every stored metric series, for resume seeding.
+    def fetch_current_metrics(self) -> dict[str, list[dict[str, float | int]]] | None:
+        """Read back every stored metric series, to seed a new process.
 
-        The only read this reporter makes, and it happens once per process.
+        The only read this reporter makes, and it happens once per process. The
+        accumulator lives in memory, so a process taking over a task would report
+        from empty and replace what the task had stored; reading it back is what
+        keeps the curves continuous. Predates the per-metric series -- the two
+        loss curves were seeded the same way.
+
         Because the server merges, no write path needs to know what is already
         stored -- a report that omits a field leaves it standing.
 
         Deliberately not restricted to a known set of names: backends decide what
-        they accumulate, and a resumed job that only seeded ``train_loss`` would
-        silently restart every other curve from empty. Non-list values are
+        they accumulate, and seeding only ``train_loss`` would silently restart
+        every other curve from empty. Non-list values are
         dropped so a malformed blob cannot poison the accumulator, and each list
         is copied so the caller's accumulator does not alias the response.
+
+        Returns ``{}`` when there is nothing to seed from and ``None`` when the
+        read itself failed, which are not the same thing and must not look the
+        same to the caller. The merge is wholesale per key, so a caller that
+        treats a failed read as "nothing stored" sends its own partial
+        accumulator under ``metrics`` and destroys the history it could not read
+        -- see :class:`~nmp.customization_common.training.callbacks.TrainingProgressCallback`.
+
+        Only a 404 means "nothing stored": every other failure is a transport or
+        server problem, and a distributed launch racing a briefly unreachable
+        Jobs service hits those, not the 404.
+
+        A blob that reads back malformed is a successful read of unusable data,
+        so it seeds nothing and is *not* an error: overwriting it is the repair.
+        Neither branch may raise -- this runs from the callback's constructor,
+        which backends build outside any try, so raising here kills the training
+        process rather than costing it its seed.
         """
         if not self._enabled:
             return {}
@@ -111,13 +135,24 @@ class JobsServiceProgressReporter:
                 job=self._job_ctx.job_id,
                 step=self._job_ctx.step,
             ).data()
-            stored = cast(dict[str, Any], task.status_details or {})
-        except Exception as e:
+            stored = task.status_details or {}
+        except NotFoundError:
             # Expected on a first run, where the task has no stored details yet.
-            logger.info(f"No stored status details to seed from: {e}")
+            logger.info("No stored status details to seed from: task not found")
+            return {}
+        except Exception as e:
+            logger.warning(f"Could not read stored metric series to seed from: {e}")
+            return None
+
+        if not isinstance(stored, Mapping):
+            logger.warning(f"Stored status details are not an object ({type(stored).__name__}); seeding nothing")
             return {}
 
-        metrics = cast(dict[str, Any], stored.get("metrics", {}) or {})
+        metrics = stored.get("metrics") or {}
+        if not isinstance(metrics, Mapping):
+            logger.warning(f"Stored metrics are not an object ({type(metrics).__name__}); seeding nothing")
+            return {}
+
         return cast(
             dict[str, list[dict[str, float | int]]],
             {name: list(points) for name, points in metrics.items() if isinstance(points, list)},

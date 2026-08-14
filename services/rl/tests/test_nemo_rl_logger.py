@@ -13,7 +13,6 @@ which entries survive is the shared callback's business, covered by its own suit
 
 from __future__ import annotations
 
-import importlib.machinery
 import importlib.util
 import sys
 import types
@@ -25,29 +24,28 @@ import pytest
 # at nemo_rl_logger module scope fails in a plain repo checkout. Stub just enough to
 # import the module under test; when the real package IS present (the in-image smoke
 # run) this is skipped and the genuine base class is used.
+#
+# The stubs are removed again as soon as the import that needs them is done. Left in
+# sys.modules they outlived this file and leaked a hollow `nemo_rl` package into
+# every other test sharing the xdist worker -- a sibling test_dpo_config had already
+# had to be written around exactly that. nemo_rl_logger binds LoggerInterface at
+# import time, so nothing downstream needs the stub to still be there.
+_stubbed: list[str] = []
 if importlib.util.find_spec("nemo_rl") is None:  # pragma: no cover - env dependent
 
     class LoggerInterface:  # minimal stand-in for the abstract base
         pass
 
-    def _stub(name: str) -> types.ModuleType:
-        """Build a stub module that survives a later importlib.util.find_spec.
-
-        A bare ModuleType has ``__spec__ = None``, and find_spec consults
-        sys.modules first -- so leaving it unset makes a later
-        ``find_spec("nemo_rl")`` raise ValueError rather than return None. The
-        stub outlives this module (nothing tears it down), so it must not booby
-        trap whatever runs next in the session.
-        """
-        module = types.ModuleType(name)
-        module.__spec__ = importlib.machinery.ModuleSpec(name, loader=None)
-        return module
-
-    _logger_mod = _stub("nemo_rl.utils.logger")
+    _logger_mod = types.ModuleType("nemo_rl.utils.logger")
     setattr(_logger_mod, "LoggerInterface", LoggerInterface)
-    sys.modules.setdefault("nemo_rl", _stub("nemo_rl"))
-    sys.modules.setdefault("nemo_rl.utils", _stub("nemo_rl.utils"))
-    sys.modules.setdefault("nemo_rl.utils.logger", _logger_mod)
+    for _name, _module in (
+        ("nemo_rl", types.ModuleType("nemo_rl")),
+        ("nemo_rl.utils", types.ModuleType("nemo_rl.utils")),
+        ("nemo_rl.utils.logger", _logger_mod),
+    ):
+        if _name not in sys.modules:
+            sys.modules[_name] = _module
+            _stubbed.append(_name)
 
 from nmp.rl.tasks.training.backends.nemo_rl import nemo_rl_logger  # noqa: E402
 from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (  # noqa: E402
@@ -55,7 +53,11 @@ from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (  # noqa: E40
     NemoRLLogger,
     resolve_log_interval,
     resolve_steps_per_epoch,
+    resolve_val_report_interval,
 )
+
+for _name in _stubbed:
+    del sys.modules[_name]
 
 
 class _RecordingCallback:
@@ -65,6 +67,9 @@ class _RecordingCallback:
         self.train_steps: list[dict[str, Any]] = []
         self.validations: list[dict[str, Any]] = []
         self.training_starts: list[dict[str, Any]] = []
+        #: Report kinds in arrival order -- the real callback prunes against the
+        #: step of the last one it saw, so the sequence is part of the contract.
+        self.order: list[str] = []
         self.closed = False
 
     def report_training_start(self, max_steps: int, num_epochs: int) -> None:
@@ -72,9 +77,11 @@ class _RecordingCallback:
 
     def report_train_step(self, step, epoch, metrics, *, backend=None):
         self.train_steps.append({"step": step, "epoch": epoch, "metrics": metrics})
+        self.order.append("train")
 
     def report_validation(self, step, epoch, metrics, *, backend=None):
         self.validations.append({"step": step, "epoch": epoch, "metrics": metrics})
+        self.order.append("validation")
 
     def close(self) -> None:
         self.closed = True
@@ -145,15 +152,16 @@ REWARD_VALIDATION_METRICS: dict[str, Any] = {"accuracy": 0.61, "avg_length": 412
 # --------------------------------------------------------------------------- #
 
 
-def test_module_stub_does_not_break_find_spec() -> None:
-    """The stub installed at import time outlives this module; it must be inert.
+def test_the_import_stub_does_not_outlive_this_module() -> None:
+    """A stub left in sys.modules leaks a hollow nemo_rl across the xdist worker.
 
-    find_spec consults sys.modules first and raises on a `__spec__` of None, so a
-    bare ModuleType here would turn an unrelated later `find_spec("nemo_rl")`
-    into a ValueError -- the same kind of cross-suite leak this file's sibling
-    test_dpo_config had to be rewritten around.
+    Worth asserting because the failure is silent and lands somewhere else: an
+    unrelated `import nemo_rl.algorithms.dpo` would get a module with no
+    attributes rather than a clean ImportError, and which tests broke would
+    depend on collection order. Vacuously true in the training image, where
+    nothing was stubbed because the real package is installed.
     """
-    assert importlib.util.find_spec("nemo_rl") is not None
+    assert all(name not in sys.modules for name in _stubbed)
 
 
 # --------------------------------------------------------------------------- #
@@ -324,6 +332,17 @@ def test_close_with_nothing_pending_reports_nothing(callback: _RecordingCallback
     assert callback.train_steps == []
 
 
+def test_close_still_flushes_a_step_ahead_of_the_last_validation(callback: _RecordingCallback) -> None:
+    """The ordinary interleaving: nothing overtook it, so the flush still runs."""
+    logger = _make_logger(log_interval=10)
+    logger.log_metrics({"loss": 0.4}, step=13, prefix="validation")
+    logger.log_metrics(TRAIN_METRICS, step=14, prefix="train")
+
+    logger.close()
+
+    assert [r["step"] for r in callback.train_steps] == [14]
+
+
 # --------------------------------------------------------------------------- #
 # Schedule resolution — one formula for both drivers
 # --------------------------------------------------------------------------- #
@@ -472,25 +491,122 @@ def test_a_validation_pass_without_a_loss_is_still_reported(callback: _Recording
     assert callback.validations[0]["metrics"] == REWARD_VALIDATION_METRICS
 
 
-def test_a_loss_free_validation_leaves_the_best_metric_alone(callback: _RecordingCallback) -> None:
-    """Best-so-far tracks the validation loss, so a pass without one says nothing."""
+def test_a_loss_free_validation_is_still_a_reported_pass(callback: _RecordingCallback) -> None:
+    """A pass that scores on rewards alone reports, like any other."""
     logger = _make_logger()
     logger.log_metrics({"loss": 0.4}, step=10, prefix="validation")
     logger.log_metrics(REWARD_VALIDATION_METRICS, step=20, prefix="validation")
 
     assert len(callback.validations) == 2
-    assert logger._best_metric_value == 0.4
-    assert logger._best_epoch == 1
 
 
-def test_best_validation_loss_tracks_minimum(callback: _RecordingCallback) -> None:
+def test_one_dataset_keeps_the_bare_metric_names(callback: _RecordingCallback) -> None:
+    """NeMo-RL names the dataloader even when there is only one, so val_loss must survive."""
     logger = _make_logger()
-    logger.log_metrics({"loss": 0.5}, step=10, prefix="validation")
-    logger.log_metrics({"loss": 0.2}, step=20, prefix="validation")
-    logger.log_metrics({"loss": 0.7}, step=30, prefix="validation")
+    logger.log_metrics({"loss": 0.4, "accuracy": 0.9}, step=10, prefix="validation-train_ds")
 
-    assert logger._best_metric_value == 0.2
-    assert logger._best_epoch == 2
+    assert callback.validations[0]["metrics"] == {"loss": 0.4, "accuracy": 0.9}
+
+
+def test_a_second_dataset_does_not_share_the_first_ones_series(callback: _RecordingCallback) -> None:
+    """validate() logs once per dataloader, all at one step, all under `validation-*`.
+
+    Passed through as-is, two datasets' `loss` land as two points at the same
+    step in one val_loss series -- the collision the <phase>_ prefix rule exists
+    to prevent, a level further down.
+    """
+    logger = _make_logger()
+    logger.log_metrics({"loss": 0.4}, step=10, prefix="validation-train_ds")
+    logger.log_metrics({"loss": 0.9}, step=10, prefix="validation-heldout")
+
+    assert callback.validations[0]["metrics"] == {"loss": 0.4}
+    assert callback.validations[1]["metrics"] == {"heldout_loss": 0.9}
+
+
+def test_a_dataset_keeps_the_namespace_it_started_in(callback: _RecordingCallback) -> None:
+    """Otherwise a curve would change names partway through the run."""
+    logger = _make_logger()
+    for step in (10, 20):
+        logger.log_metrics({"loss": 0.4}, step=step, prefix="validation-train_ds")
+        logger.log_metrics({"loss": 0.9}, step=step, prefix="validation-heldout")
+
+    assert [set(v["metrics"]) for v in callback.validations] == [
+        {"loss"},
+        {"heldout_loss"},
+        {"loss"},
+        {"heldout_loss"},
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# Validation reporting is bounded too
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "val_period,max_steps,expected",
+    [
+        (100, 100, 1),  # 1 pass
+        (100, 20_000, 1),  # 200 passes -- exactly the cap, still every pass
+        (1, 20_000, 100),  # 20,000 passes -- thinned to 200
+        (5, 20_000, 20),
+        (None, 20_000, 100),  # treated as "every step"
+        (0, 0, 1),
+    ],
+)
+def test_resolve_val_report_interval(val_period: int | None, max_steps: int, expected: int) -> None:
+    assert resolve_val_report_interval(val_period, max_steps) == expected
+
+
+def test_the_run_length_cap_bounds_validation_reports_too(callback: _RecordingCallback) -> None:
+    """Capping only the train side bounded nothing.
+
+    `val_check_interval=1` is reachable, and it validates on every step: the
+    train reports were held to 200 while validation reported all 20,000, each
+    one resending every accumulated series in full.
+    """
+    max_steps = 20_000
+    logger = NemoRLLogger.for_schedule(max_steps=max_steps, num_epochs=1, val_period=1)
+    for step in _driver_steps(max_steps):
+        logger.log_metrics({"loss": 0.5}, step=step, prefix="validation")
+
+    assert len(callback.validations) <= _MAX_REPORTS_PER_RUN
+    assert len(callback.validations) >= _MAX_REPORTS_PER_RUN // 2, "still a usable curve"
+
+
+def test_an_ordinary_validation_cadence_reports_every_pass(callback: _RecordingCallback) -> None:
+    """Nothing in the existing regime moves: 200 passes is already the cap."""
+    logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
+    for step in range(100, 20_001, 100):
+        logger.log_metrics({"loss": 0.5}, step=step, prefix="validation")
+
+    assert len(callback.validations) == 200
+
+
+def test_close_flushes_the_withheld_final_validation(callback: _RecordingCallback) -> None:
+    """The last pass is the one worth having; the throttle must not eat it."""
+    logger = _make_logger(val_report_interval=10)
+    for step in (10, 20, 30):
+        logger.log_metrics({"loss": 0.5}, step=step, prefix="validation")
+
+    assert callback.validations == []
+
+    logger.close()
+
+    assert [v["step"] for v in callback.validations] == [30]
+
+
+def test_pending_reports_flush_in_step_order(callback: _RecordingCallback) -> None:
+    """Both go to a callback that reads a report behind the last one as a rewind."""
+    logger = _make_logger(log_interval=100, val_report_interval=100)
+    logger.log_metrics(TRAIN_METRICS, step=18, prefix="train")
+    logger.log_metrics({"loss": 0.5}, step=19, prefix="validation")
+
+    logger.close()
+
+    assert [r["step"] for r in callback.train_steps] == [18]
+    assert [v["step"] for v in callback.validations] == [19]
+    assert callback.order == ["train", "validation"]
 
 
 @pytest.mark.parametrize("prefix", ["validation", "validation-0", "validation/nemo_gym"])

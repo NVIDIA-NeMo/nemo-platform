@@ -86,8 +86,30 @@ def strip_val_prefix(metrics: Mapping[str, Any]) -> dict[str, Any]:
     ``train_bi_encoder`` adds ``val_acc1`` and ``val_mrr``. Only the callback
     should be deciding the phase, so the prefix comes off wherever the recipe
     happened to put one.
+
+    Stripping can collide: a dict carrying both ``val_loss`` and ``loss`` maps
+    them onto one name, and whichever lands second silently replaces the other.
+    None of today's recipes do that, but nothing stops one from starting, and the
+    failure would read as a validation curve charting the wrong quantity. The
+    prefixed name wins, being the one the recipe marked as validation, and the
+    collision is logged rather than swallowed.
     """
-    return {name.removeprefix("val_"): value for name, value in metrics.items()}
+    stripped: dict[str, Any] = {}
+    for name, value in metrics.items():
+        bare = name.removeprefix("val_")
+        if bare not in stripped:
+            stripped[bare] = value
+            continue
+        # One of the two is the prefixed name -- they cannot both be, having come
+        # from one dict -- so whether this one wins is just whether it is that one.
+        prefixed, dropped = (name, bare) if bare != name else (f"val_{bare}", name)
+        logger.warning(
+            f"Validation metrics carry both {prefixed!r} and {bare!r}, which strip to one name; "
+            f"reporting the {prefixed!r} value and dropping {dropped!r}."
+        )
+        if bare != name:
+            stripped[bare] = value
+    return stripped
 
 
 class AutomodelRecipeWrapper:

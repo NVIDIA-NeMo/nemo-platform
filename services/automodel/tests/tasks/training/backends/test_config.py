@@ -16,7 +16,28 @@ import pytest
 sys.modules["nemo_automodel"] = MagicMock()
 sys.modules["nemo_automodel._transformers"] = MagicMock()
 sys.modules["nemo_automodel._transformers.registry"] = MagicMock()
-sys.modules.setdefault("transformers", MagicMock())
+
+
+@pytest.fixture(autouse=True)
+def _transformers_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Supply `transformers` for the AutoConfig patches without leaking one.
+
+    config.py imports transformers inside the functions that need it, so it is
+    only wanted while a test runs -- and only when the real package is absent,
+    which is the training image's arrangement, not necessarily the test env's.
+
+    Installed at module scope with setdefault it won permanently whenever this
+    file happened to import before anything had loaded the real package, and the
+    MagicMock then leaked across the whole xdist worker. services/unsloth does
+    `from transformers import TrainerCallback` at call time, so its
+    HfTrainerProgressCallback became a mock subclass whose hooks did nothing --
+    two of its tests passed vacuously or failed depending on collection order.
+    """
+    try:
+        import transformers  # noqa: F401
+    except ImportError:
+        monkeypatch.setitem(sys.modules, "transformers", MagicMock())
+
 
 from nmp.automodel.tasks.training.backends.config import (  # noqa: E402
     _configure_chat_dataset,

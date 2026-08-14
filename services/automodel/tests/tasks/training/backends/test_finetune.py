@@ -12,6 +12,7 @@ that first -- otherwise the prefix arrives twice.
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
 from collections.abc import Iterator
 from types import ModuleType
@@ -81,3 +82,22 @@ def test_only_a_leading_occurrence_is_removed(finetune: ModuleType) -> None:
 
 def test_an_empty_metric_dict_survives(finetune: ModuleType) -> None:
     assert finetune.strip_val_prefix({}) == {}
+
+
+def test_a_collision_keeps_the_prefixed_value(finetune: ModuleType) -> None:
+    """Stripping can map two names onto one, and the wrong winner is undetectable.
+
+    No recipe reports both today, but the loser vanishes silently and the
+    validation curve then charts whatever else was in the dict. The prefixed name
+    wins, being the one the recipe marked as validation.
+    """
+    assert finetune.strip_val_prefix({"val_loss": 0.5, "loss": 0.7}) == {"loss": 0.5}
+    assert finetune.strip_val_prefix({"loss": 0.7, "val_loss": 0.5}) == {"loss": 0.5}
+
+
+def test_a_collision_is_logged(finetune: ModuleType, caplog: pytest.LogCaptureFixture) -> None:
+    """Silently dropping a metric is how this would go unnoticed for a release."""
+    with caplog.at_level(logging.WARNING):
+        finetune.strip_val_prefix({"val_loss": 0.5, "loss": 0.7})
+
+    assert "val_loss" in caplog.text

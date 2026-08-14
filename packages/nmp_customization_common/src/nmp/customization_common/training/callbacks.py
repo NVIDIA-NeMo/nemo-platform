@@ -52,10 +52,38 @@ persists each report to the task and then again to the copy propagated up to the
 job, so the write volume is double the numbers above.
 
 Deliberately accepted for batch training jobs, on the understanding that a
-backend bounds its own report count -- NeMo-RL's ``resolve_log_interval`` caps a
-run for exactly this reason. A backend that instead reports every step of a long
-run pays quadratically, and the answer to that is delta appends in the transport
-rather than trimming the series here.
+backend bounds its own report count -- on *every* path that reports, since one
+uncapped path is enough to make the total quadratic. NeMo-RL bounds both its
+train steps and its validation passes for exactly this reason. A backend that
+instead reports every step of a long run pays quadratically, and the answer to
+that is delta appends in the transport rather than trimming the series here.
+
+Seeding, and what it inherits
+----------------------------
+The accumulator lives in this process, so a new process taking over a task
+would report from empty and -- the merge being wholesale per key -- replace
+whatever the task had already stored. It therefore seeds itself from the
+server, which is behaviour that predates the per-metric series: the reporter
+has always read back the stored curves.
+
+Known issue: a series can end up holding points from more than one run, which
+contradict each other. If a task's pod is replaced -- the Jobs service can
+suspend and resume a Kubernetes Job, and the Volcano backend restarts on
+``PodFailed`` when an execution profile raises ``maxRetry`` above its default
+of zero -- the new process seeds itself from the old one's points and then
+appends its own. Nothing restores a checkpoint, so it starts again at step one
+and the series carries two values at each repeated step. Consumers see the
+last one written at a given step, and a tail from the abandoned attempt beyond
+wherever the new run has reached.
+
+Left alone deliberately. The fix is to identify which run a point came from,
+so both can be kept and told apart, and that belongs with checkpoint restore:
+without it there is no second curve worth the work to separate, and Studio's
+loss chart keys a Map by step, so it would need to filter or overlay by run
+before any of it were visible. Detecting the restart here and dropping the
+superseded points is the other option, and it loses a failed attempt's history
+permanently to keep one series single-valued -- a trade for the readers rather
+than the data, and not one to make in passing.
 
 Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
 ``backend`` field on each report (``"unsloth"``); automodel and NeMo-RL leave it
@@ -146,12 +174,6 @@ def _point_step(point: object) -> float | int | None:
     return step if isinstance(step, (int, float)) else None
 
 
-def _highest_step(series: Mapping[str, list[dict[str, float | int]]]) -> float | int:
-    """The furthest step any series in ``series`` has recorded, or 0 for none."""
-    steps = [step for points in series.values() for point in points if (step := _point_step(point)) is not None]
-    return max(steps, default=0)
-
-
 class TrainingProgressCallback:
     """Report training progress to the Jobs service."""
 
@@ -162,20 +184,32 @@ class TrainingProgressCallback:
     def __init__(self, reporter: JobsServiceProgressReporter):
         self._reporter = reporter
 
+        seeded = reporter.fetch_current_metrics()
+
+        #: True when the seed read failed outright, as opposed to finding nothing
+        #: stored. The accumulator is then known to be incomplete, and because
+        #: the server replaces a sent key wholesale, reporting it would overwrite
+        #: the very history that could not be read. So the ``metrics`` key is
+        #: withheld for the life of the process: this run's curves stall, which
+        #: is recoverable, rather than every previous run's being destroyed,
+        #: which is not. Current values and progress still report normally.
+        self._seed_unavailable = seeded is None
+        if self._seed_unavailable:
+            logger.warning(
+                "Could not read the stored metric series; this run will report progress and current "
+                "values but will not update the accumulated curves, to avoid overwriting them."
+            )
+
         #: series name -> [{step, epoch, value}], seeded from the server so a
-        #: resumed job continues its curves instead of restarting them. A seeded
-        #: point that records no step is dropped here: it can be placed neither
-        #: on a curve nor against a rewind, so carrying it only defers the
-        #: problem to whoever reads it.
+        #: process taking over a task continues its curves instead of replacing
+        #: them, which is what an empty accumulator would do. A seeded point that
+        #: records no step is dropped here: nothing can place it on a curve, so
+        #: carrying it only defers the problem to whoever reads it.
         self._series: dict[str, list[dict[str, float | int]]] = {
             name: [point for point in points if _point_step(point) is not None]
-            for name, points in reporter.fetch_current_metrics().items()
+            for name, points in (seeded or {}).items()
         }
 
-        #: Furthest step any series has reached, seeded points included. A report
-        #: below it means training resumed from a checkpoint and is replaying
-        #: steps that were already recorded; see :meth:`_discard_from`.
-        self._high_water_step: float | int = _highest_step(self._series)
         if any(self._series.values()):
             logger.info(
                 "Seeded %d metric series from server (%d points): %s",
@@ -186,6 +220,19 @@ class TrainingProgressCallback:
 
     def _resolve_backend(self, backend: str | None) -> str | None:
         return backend if backend is not None else self._default_backend
+
+    def _send(self, phase: str, details: dict[str, object], backend: str | None) -> None:
+        """Stamp the backend field, if there is one, and hand the report over.
+
+        The tail every report shares, in one place because a change to it that
+        missed a copy would be close to invisible: ``_default_backend`` is
+        ``None`` for two of the three backends, so only unsloth's payload would
+        have shown the difference.
+        """
+        resolved = self._resolve_backend(backend)
+        if resolved is not None:
+            details["backend"] = resolved
+        self._reporter.report_running(phase=phase, **details)
 
     def _report_metrics(
         self,
@@ -203,9 +250,6 @@ class TrainingProgressCallback:
         what the Jobs service records as the task's phase.
         """
         namespaced = _namespace(phase, metrics)
-        if step < self._high_water_step:
-            self._discard_from(step)
-        self._high_water_step = max(self._high_water_step, step)
         for name, value in namespaced.items():
             self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
 
@@ -213,33 +257,13 @@ class TrainingProgressCallback:
             "step": step,
             "epoch": epoch,
             **namespaced,
-            "metrics": self._build_metrics_summary(),
         }
-        resolved = self._resolve_backend(backend)
-        if resolved is not None:
-            details["backend"] = resolved
-        self._reporter.report_running(phase=report_phase, **details)
-
-    def _discard_from(self, step: int) -> None:
-        """Drop every recorded point at or after ``step``, across all series.
-
-        A report below the high-water mark means training resumed from a
-        checkpoint and is replaying steps it already reported. The replayed
-        values are the real ones -- what is discarded belongs to work that was
-        rolled back -- so keeping both makes the curve double back on itself,
-        which is worse than the gap that removing them leaves.
-
-        Every series, not just the one being appended to: validation runs on its
-        own cadence, so a val curve would otherwise carry its rolled-back points
-        until the next validation pass, potentially hundreds of steps later.
-        Points whose step cannot be read go too, there being no way to place
-        them relative to the rewind.
-
-        Lists are truncated in place; :meth:`_build_metrics_summary` copies each
-        one before handing it over, so payloads already sent are unaffected.
-        """
-        for points in self._series.values():
-            points[:] = [point for point in points if (recorded := _point_step(point)) is not None and recorded < step]
+        # Sent in full or not at all, so a report that added no point has nothing
+        # to say about the curves: the stored copy already matches, and the merge
+        # leaves a key that is not mentioned standing.
+        if not self._seed_unavailable and namespaced:
+            details["metrics"] = self._build_metrics_summary()
+        self._send(report_phase, details, backend)
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
         """Build the accumulated metrics payload for inclusion in status_details.
@@ -256,19 +280,23 @@ class TrainingProgressCallback:
         """Report that training has started with schedule information.
 
         Carries no ``metrics``: it fires before the first step, so it has nothing
-        to add to the curves, and sending the empty accumulator would replace a
-        resumed job's stored series with two empty lists.
+        to add to the curves, and sending the empty accumulator would replace the
+        stored series with two empty lists.
+
+        Carries no ``step`` either, for the same reason one level along.
+        ``report_running`` turns a stated step into ``percentage_done``, and the
+        merge is wholesale per key, so a literal 0 here overwrites whatever
+        progress the task had stored -- in a field harder to spot than the series,
+        because the epoch beside it is not restated and goes on reading
+        correctly. Nothing has happened yet that this could truthfully report, so
+        it says nothing and lets the first train step state the position.
         """
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
         details: dict[str, object] = {
-            "step": 0,
             "max_steps": max_steps,
             "num_epochs": num_epochs,
         }
-        resolved = self._resolve_backend(backend)
-        if resolved is not None:
-            details["backend"] = resolved
-        self._reporter.report_running(phase="training", **details)
+        self._send("training", details, backend)
 
     def report_train_step(
         self, step: int, epoch: int, metrics: Mapping[str, object], *, backend: str | None = None
@@ -324,10 +352,7 @@ class TrainingProgressCallback:
         }
         if checkpoint_path:
             details["checkpoint_path"] = checkpoint_path
-        resolved = self._resolve_backend(backend)
-        if resolved is not None:
-            details["backend"] = resolved
-        self._reporter.report_running(phase="checkpoint_saved", **details)
+        self._send("checkpoint_saved", details, backend)
 
     def report_epoch_end(self, step: int, epoch: int, *, backend: str | None = None) -> None:
         """Report that an epoch has completed."""
@@ -335,10 +360,7 @@ class TrainingProgressCallback:
             "step": step,
             "epoch": epoch,
         }
-        resolved = self._resolve_backend(backend)
-        if resolved is not None:
-            details["backend"] = resolved
-        self._reporter.report_running(phase="epoch_end", **details)
+        self._send("epoch_end", details, backend)
 
     def close(self) -> None:
         """Clean up resources."""

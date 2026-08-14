@@ -22,10 +22,15 @@ _logger = logging.getLogger(__name__)
 # notion of a reporting cadence, so it is derived from val_period.
 _REPORTS_PER_VAL_PERIOD = 10
 
-# Upper bound on progress reports for one run, whatever the validation cadence
-# asks for. Every train report resends every accumulated series in full and the
-# Jobs service stores the blob twice, so the cost of a report is not constant --
-# see the payload note in nmp.customization_common.training.callbacks.
+# Upper bound on progress reports for one run, per reporting path, whatever the
+# validation cadence asks for. Every report resends every accumulated series in
+# full and the Jobs service stores the blob twice, so the cost of a report is not
+# constant -- see the payload note in nmp.customization_common.training.callbacks.
+#
+# Per path, so a run making full use of both is bounded by twice this. That is a
+# bound either way; what matters is that no path is unbounded, and applying one
+# budget across two cadences that fire independently would mean whichever ran
+# first starved the other.
 _MAX_REPORTS_PER_RUN = 200
 
 # NeMo-RL's metric dicts are forwarded whole. There is no allow-list: the
@@ -59,6 +64,34 @@ def resolve_log_interval(val_period: int | None, max_steps: int) -> int:
     return max(per_val_period, per_run, 1)
 
 
+def resolve_val_report_interval(val_period: int | None, max_steps: int) -> int:
+    """Validation passes between validation reports.
+
+    The same bound as :func:`resolve_log_interval`, applied to the other report
+    path. A validation report costs exactly what a train report costs -- every
+    series resent in full, stored twice by the Jobs service -- so capping only
+    the train side bounds nothing: ``val_check_interval=1`` is reachable through
+    ``compute_val_check_interval``, and it produces one validation pass per step.
+    A 20k-step run then made 200 train reports and 20,000 validation ones.
+
+    Returns 1 for any ordinary cadence, so nothing in the existing regime moves:
+    validating every 100 steps over 20k steps is 200 passes, which is already the
+    cap. Only a cadence that would exceed it thins the passes out.
+    """
+    period = max(val_period or 0, 1)
+    passes = max(max_steps, 0) // period
+    return max((passes + _MAX_REPORTS_PER_RUN - 1) // _MAX_REPORTS_PER_RUN, 1)
+
+
+def _val_dataset_name(prefix: str) -> str:
+    """The dataloader name NeMo-RL suffixed onto a validation prefix.
+
+    ``validation`` carries none; ``validation-0`` and ``validation/nemo_gym``
+    name their dataloader, the separator depending on the caller.
+    """
+    return prefix[len("validation") :].lstrip("-/")
+
+
 def resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explicit: int | None = None) -> int:
     """Steps per epoch, preferring an explicit value from the algorithm config."""
     if explicit is not None and explicit >= 1:
@@ -84,6 +117,7 @@ class NemoRLLogger(LoggerInterface):
         log_interval: int = 10,
         max_steps: int | None = None,
         num_epochs: int | None = None,
+        val_report_interval: int = 1,
     ):
         """Initialize the NemoRL logger.
 
@@ -93,35 +127,47 @@ class NemoRLLogger(LoggerInterface):
             log_interval: Number of steps between progress updates.
             max_steps: Total number of training steps (optional, used for progress reporting).
             num_epochs: Total number of epochs (optional, used for progress reporting).
+            val_report_interval: Validation passes between validation reports. 1 reports
+                every pass, which is what any ordinary validation cadence resolves to.
 
         Raises:
-            ValueError: If ``steps_per_epoch`` or ``log_interval`` is < 1. Both are
-                used as divisors/moduli in ``log_metrics`` (epoch derivation and
-                log-interval throttling), so non-positive values are rejected up
-                front to fail fast instead of raising ZeroDivisionError mid-training.
+            ValueError: If ``steps_per_epoch``, ``log_interval`` or
+                ``val_report_interval`` is < 1. All three are used as
+                divisors/moduli in ``log_metrics`` (epoch derivation and the two
+                throttles), so non-positive values are rejected up front to fail
+                fast instead of raising ZeroDivisionError mid-training.
         """
         if steps_per_epoch < 1:
             raise ValueError(f"steps_per_epoch must be >= 1, got {steps_per_epoch}")
         if log_interval < 1:
             raise ValueError(f"log_interval must be >= 1, got {log_interval}")
+        if val_report_interval < 1:
+            raise ValueError(f"val_report_interval must be >= 1, got {val_report_interval}")
 
         self._job_ctx = job_ctx or NMPJobContext.from_env()
         self._log_interval = log_interval
+        self._val_report_interval = val_report_interval
         self._max_steps = max_steps
         self._num_epochs = num_epochs
         self._steps_per_epoch = steps_per_epoch
 
         self._callback = TrainingProgressCallback(JobsServiceProgressReporter(self._job_ctx))
 
-        # Track best metrics for monitoring
-        self._best_metric_value = float("inf")
-        self._best_epoch: int | None = None
         self._closed = False
 
-        # Last train step built but withheld by the log_interval throttle. Flushed on
-        # close() so the final step is reported even when max_steps is not a multiple
-        # of log_interval -- otherwise the run's last recorded loss is stale.
-        self._pending_train_report: dict[str, Any] | None = None
+        # Validation passes seen so far, which is what the validation throttle
+        # counts against: passes arrive on their own cadence, so a step-based
+        # modulus would skip whole passes rather than thin them evenly.
+        self._val_passes = 0
+
+        # The prefix whose metrics keep the bare names; see _namespace_validation.
+        self._primary_val_prefix: str | None = None
+
+        # Reports built but withheld by a throttle, at most one of each kind.
+        # Flushed on close() so a run's final train step and final validation pass
+        # are reported even when neither lands on its interval -- otherwise the
+        # last recorded values are stale.
+        self._pending: dict[str, dict[str, Any]] = {}
 
         _logger.info(
             f"Initialized NemoRLLogger with jobs_url={self._job_ctx.jobs_url}, "
@@ -155,6 +201,7 @@ class NemoRLLogger(LoggerInterface):
             steps_per_epoch=resolve_steps_per_epoch(max_steps, num_epochs, steps_per_epoch),
             job_ctx=job_ctx,
             log_interval=resolve_log_interval(val_period, max_steps),
+            val_report_interval=resolve_val_report_interval(val_period, max_steps),
             max_steps=max_steps,
             num_epochs=num_epochs,
         )
@@ -198,28 +245,62 @@ class NemoRLLogger(LoggerInterface):
             # Throttled to log_interval to reduce output. A withheld step is held as
             # pending rather than dropped, so close() can flush the last one.
             if step % self._log_interval == 0:
-                self._callback.report_train_step(**report)
-                self._pending_train_report = None
+                self._send("train", report)
             else:
-                self._pending_train_report = report
+                self._pending["train"] = report
 
         # Validation reports whatever the pass produced. There is one validation
-        # log per pass and no rollout twin to tell apart, so requiring a `loss`
-        # here bought nothing and cost whole passes: GRPO validates on
-        # `accuracy` and `avg_length` and reports no loss at all, so every
-        # validation it ran went unrecorded. The gate is only against a hollow
-        # report -- a pass whose metrics are all histograms says nothing.
+        # log per pass per dataloader and no rollout twin to tell apart, so
+        # requiring a `loss` here bought nothing and cost whole passes: GRPO
+        # validates on `accuracy` and `avg_length` and reports no loss at all, so
+        # every validation it ran went unrecorded. The gate is only against a
+        # hollow report -- a pass whose metrics are all histograms says nothing.
         elif prefix and prefix.startswith("validation"):
             if any(is_chartable(value) for value in metrics.values()):
-                self._callback.report_validation(step=step, epoch=epoch, metrics=dict(metrics))
-                # Track best validation loss, when the algorithm reports one.
-                if is_chartable(metrics.get("loss")):
-                    val_loss = float(metrics["loss"])
-                    if val_loss < self._best_metric_value:
-                        self._best_metric_value = val_loss
-                        self._best_epoch = epoch
+                self._val_passes += 1
+                report = {
+                    "step": step,
+                    "epoch": epoch,
+                    "metrics": self._namespace_validation(prefix, metrics),
+                }
+                if self._val_passes % self._val_report_interval == 0:
+                    self._send("validation", report)
+                else:
+                    self._pending["validation"] = report
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
+
+    def _namespace_validation(self, prefix: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
+        """Fold the dataloader name into each metric name, past the first set.
+
+        ``validate()`` loops over ``val_dataloader.items()`` and logs once per
+        dataset, every call at the same step under ``f"validation-{name}"``.
+        Forwarded as-is, two datasets' ``loss`` interleave as two points at one
+        step in a single ``val_loss`` series -- the collision the ``<phase>_``
+        rule exists to prevent, one level further down. Automodel's
+        ``val_dataloaders`` loop has the same shape.
+
+        The first prefix seen keeps the bare names, so ``val_loss`` stays
+        ``val_loss`` on the ordinary single-dataset run. NeMo-RL names that
+        dataloader too, so keying on "did a name arrive" would rename the common
+        case and take Studio's curve with it. Iteration order over the dataloader
+        dict is stable within a run and across a resume of the same config, so a
+        dataset keeps whichever namespace it started in.
+        """
+        if self._primary_val_prefix is None:
+            self._primary_val_prefix = prefix
+        if prefix == self._primary_val_prefix:
+            return dict(metrics)
+        dataset = _val_dataset_name(prefix) or prefix
+        return {f"{dataset}_{name}": value for name, value in metrics.items()}
+
+    def _send(self, kind: str, report: dict[str, Any]) -> None:
+        """Report one built payload, retiring anything withheld of that kind."""
+        if kind == "train":
+            self._callback.report_train_step(**report)
+        else:
+            self._callback.report_validation(**report)
+        self._pending.pop(kind, None)
 
     def log_hyperparams(self, params: Mapping[str, Any]) -> None:
         """Log hyperparameters and report training start.
@@ -274,23 +355,25 @@ class NemoRLLogger(LoggerInterface):
         if self._closed:
             return
         self._closed = True
-        self._flush_pending_train_report()
+        self._flush_pending()
         _logger.info("NemoRLLogger closing")
         self._callback.close()
 
-    def _flush_pending_train_report(self) -> None:
-        """Report the last step if the log_interval throttle withheld it.
+    def _flush_pending(self) -> None:
+        """Report whatever the throttles withheld, oldest step first.
+
+        Step order so a series' points are appended in the order they were
+        produced, rather than in whichever order the kinds happen to iterate.
 
         Reachable from ``__del__``, so failures must not propagate; the reporter
         already swallows and logs transport errors, and this guards the rest.
         """
-        if self._pending_train_report is None:
-            return
-        report, self._pending_train_report = self._pending_train_report, None
-        try:
-            self._callback.report_train_step(**report)
-        except Exception as exc:  # pragma: no cover - defensive, shutdown path
-            _logger.warning(f"Failed to flush final train step: {exc}")
+        pending, self._pending = self._pending, {}
+        for kind, report in sorted(pending.items(), key=lambda item: item[1]["step"]):
+            try:
+                self._send(kind, report)
+            except Exception as exc:  # pragma: no cover - defensive, shutdown path
+                _logger.warning(f"Failed to flush final {kind} report: {exc}")
 
     def __del__(self):
         """Cleanup when the logger is destroyed."""

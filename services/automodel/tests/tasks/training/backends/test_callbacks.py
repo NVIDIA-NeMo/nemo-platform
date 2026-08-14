@@ -142,9 +142,10 @@ class TestTrainingProgressCallback:
         callback.report_training_start(max_steps=500, num_epochs=2)
 
         reporter.configure_progress_tracking.assert_called_once_with(500, 2)
+        # No `step`: it fires before the first one, and a literal 0 would write
+        # 0% over whatever progress the task had stored.
         reporter.report_running.assert_called_once_with(
             phase="training",
-            step=0,
             max_steps=500,
             num_epochs=2,
         )

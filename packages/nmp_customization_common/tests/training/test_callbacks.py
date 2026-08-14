@@ -29,7 +29,7 @@ class _RecordingReporter:
         self.tracking: tuple[int, int] | None = None
         self.closed = False
 
-    def fetch_current_metrics(self) -> dict[str, list[dict[str, Any]]]:
+    def fetch_current_metrics(self) -> dict[str, list[dict[str, Any]]] | None:
         return self._prior
 
     def configure_progress_tracking(self, max_steps: int, num_epochs: int) -> None:
@@ -40,6 +40,13 @@ class _RecordingReporter:
 
     def close(self) -> None:
         self.closed = True
+
+
+class _UnreadableReporter(_RecordingReporter):
+    """A reporter whose one read failed, as opposed to finding nothing stored."""
+
+    def fetch_current_metrics(self) -> dict[str, list[dict[str, Any]]] | None:
+        return None
 
 
 @pytest.fixture
@@ -168,13 +175,19 @@ def test_validation_without_a_loss_leaves_the_curve_empty(reporter: _RecordingRe
 
 
 def test_an_empty_metric_dict_still_reports_progress(reporter: _RecordingReporter) -> None:
-    """step/epoch are progress, not metrics; they land with or without a curve."""
+    """step/epoch are progress, not metrics; they land with or without a curve.
+
+    The series are left out rather than resent: nothing was added to them, the
+    stored copy already matches, and the merge leaves an unmentioned key
+    standing. Resending would pay the full payload for a report that changed
+    nothing -- up to 413 KB by this module's own measurements.
+    """
     _make_callback(reporter).report_train_step(step=7, epoch=2, metrics={})
 
     report = reporter.reports[-1]
     assert report["step"] == 7
     assert report["epoch"] == 2
-    assert report["metrics"] == {"train_loss": [], "val_loss": []}
+    assert "metrics" not in report
 
 
 # --------------------------------------------------------------------------- #
@@ -348,67 +361,12 @@ def test_series_survive_a_resume_beyond_the_loss_curves() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Resuming from a checkpoint rewinds the curves
+# Seeded points, and the run they came from
 # --------------------------------------------------------------------------- #
 
 
-def test_a_resumed_run_discards_the_steps_it_replays() -> None:
-    """Reporting runs ahead of checkpointing, so a resume replays reported steps.
-
-    Checkpoint at 100, reports as far as 150, interruption. Training resumes
-    from the checkpoint and reports 110 again with a different value. Both
-    points kept, the curve doubles back on itself; the replayed one is the real
-    one, because 110-150 belong to work that was rolled back.
-    """
-    prior = {
-        "train_loss": [{"step": step, "epoch": 1, "value": 1.0} for step in (100, 110, 120, 130, 140, 150)],
-    }
-    reporter = _RecordingReporter(prior)
-    _make_callback(reporter).report_train_step(step=110, epoch=1, metrics={"loss": 0.7})
-
-    assert reporter.reports[-1]["metrics"]["train_loss"] == [
-        {"step": 100, "epoch": 1, "value": 1.0},
-        {"step": 110, "epoch": 1, "value": 0.7},
-    ]
-
-
-def test_a_rewind_prunes_every_series_not_only_the_one_being_written() -> None:
-    """Validation has its own cadence, so its curve cannot wait to self-heal.
-
-    Pruning only the series being appended to would leave val_loss holding its
-    rolled-back points until the next validation pass, which may be hundreds of
-    steps away -- and on a short run may never come.
-    """
-    prior = {
-        "train_loss": [{"step": 100, "epoch": 1, "value": 1.0}, {"step": 150, "epoch": 2, "value": 0.9}],
-        "val_loss": [{"step": 100, "epoch": 1, "value": 1.1}, {"step": 150, "epoch": 2, "value": 1.2}],
-        "train_reward": [{"step": 150, "epoch": 2, "value": 0.3}],
-    }
-    reporter = _RecordingReporter(prior)
-    _make_callback(reporter).report_train_step(step=110, epoch=1, metrics={"loss": 0.7})
-
-    metrics = reporter.reports[-1]["metrics"]
-    assert [point["step"] for point in metrics["train_loss"]] == [100, 110]
-    assert [point["step"] for point in metrics["val_loss"]] == [100]
-    assert metrics["train_reward"] == []
-
-
-def test_forward_progress_never_prunes(reporter: _RecordingReporter) -> None:
-    """The ordinary path: every step is past the high-water mark, nothing moves."""
-    callback = _make_callback(reporter)
-    for step in (1, 2, 3, 4):
-        callback.report_train_step(step=step, epoch=1, metrics={"loss": 1.0 / step})
-
-    assert [point["step"] for point in reporter.reports[-1]["metrics"]["train_loss"]] == [1, 2, 3, 4]
-
-
 def test_validation_and_training_at_the_same_step_both_land(reporter: _RecordingReporter) -> None:
-    """Not a rewind: NeMo-RL validates at step N before logging train N.
-
-    The high-water comparison is strict for this reason -- treating "not ahead"
-    as a rewind would have the train report delete the validation point that
-    legitimately shares its step.
-    """
+    """NeMo-RL validates at step N before logging train N; both belong on the curves."""
     callback = _make_callback(reporter)
     callback.report_validation(step=10, epoch=1, metrics={"loss": 0.9})
     callback.report_train_step(step=10, epoch=1, metrics={"loss": 0.8})
@@ -418,13 +376,27 @@ def test_validation_and_training_at_the_same_step_both_land(reporter: _Recording
     assert metrics["train_loss"] == [{"step": 10, "epoch": 1, "value": 0.8}]
 
 
-def test_a_restart_from_scratch_clears_the_curves() -> None:
-    """A task that reruns without a checkpoint rewinds all the way to zero."""
+def test_a_restart_appends_to_the_previous_runs_points() -> None:
+    """Known issue, pinned so it cannot change without someone deciding to.
+
+    A replaced pod -- a suspended and resumed Kubernetes Job, or a Volcano
+    restart where an execution profile raises maxRetry above zero -- seeds itself
+    from the old run's points and starts again at step one, nothing being able to
+    restore a checkpoint. The series then carries both runs, and two values can
+    sit at one step contradicting each other.
+
+    Accepted rather than solved: telling the runs apart needs a run identifier on
+    each point, and dropping the superseded ones loses a failed attempt's history
+    for good. See the seeding note in callbacks.py.
+    """
     prior = {"train_loss": [{"step": 50, "epoch": 1, "value": 1.0}]}
     reporter = _RecordingReporter(prior)
     _make_callback(reporter).report_train_step(step=1, epoch=1, metrics={"loss": 2.0})
 
-    assert reporter.reports[-1]["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 2.0}]
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [
+        {"step": 50, "epoch": 1, "value": 1.0},
+        {"step": 1, "epoch": 1, "value": 2.0},
+    ]
 
 
 def test_a_malformed_stored_point_cannot_raise_into_the_training_loop() -> None:
@@ -449,14 +421,84 @@ def test_a_malformed_stored_point_cannot_raise_into_the_training_loop() -> None:
     ]
 
 
-def test_a_malformed_stored_point_does_not_skew_the_high_water_mark() -> None:
-    """It is unplaceable, so it cannot be what a later report is compared against."""
-    prior = {"train_loss": [{"step": "eight"}, {"step": 10, "epoch": 1, "value": 1.0}]}
-    reporter = _RecordingReporter(prior)
+def test_a_report_that_changes_no_curve_omits_the_series(reporter: _RecordingReporter) -> None:
+    """Nothing recorded means nothing to say: the stored copy already matches."""
     callback = _make_callback(reporter)
-    callback.report_train_step(step=11, epoch=1, metrics={"loss": 0.7})
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_train_step(step=2, epoch=1, metrics={"grad_norm": float("nan")})
 
-    assert [point["step"] for point in reporter.reports[-1]["metrics"]["train_loss"]] == [10, 11]
+    assert "metrics" in reporter.reports[0]
+    assert "metrics" not in reporter.reports[-1]
+
+
+# --------------------------------------------------------------------------- #
+# Training start states where the run actually starts
+# --------------------------------------------------------------------------- #
+
+
+def test_training_start_states_the_schedule_and_no_position(reporter: _RecordingReporter) -> None:
+    """It fires before the first step, so it has no position to report yet."""
+    _make_callback(reporter).report_training_start(max_steps=940, num_epochs=2)
+
+    report = reporter.reports[-1]
+    assert report["max_steps"] == 940
+    assert report["num_epochs"] == 2
+    assert "step" not in report
+
+
+def test_training_start_does_not_reset_the_stored_progress() -> None:
+    """report_running derives percentage_done from a stated step, and it merges.
+
+    A literal 0 here wrote 0% over whatever progress the task had stored, and
+    Studio rendered `2/2 (0%)` until the first train step landed -- many minutes
+    later at log_interval=10. Stating nothing leaves the stored value standing.
+    """
+    prior = {"train_loss": [{"step": 470, "epoch": 2, "value": 0.5}]}
+    reporter = _RecordingReporter(prior)
+
+    _make_callback(reporter).report_training_start(max_steps=940, num_epochs=2)
+
+    assert "step" not in reporter.reports[-1]
+    assert "percentage_done" not in reporter.reports[-1]
+
+
+# --------------------------------------------------------------------------- #
+# A seed that could not be read is not a seed that found nothing
+# --------------------------------------------------------------------------- #
+
+
+def test_a_failed_seed_read_withholds_the_series() -> None:
+    """The accumulator is known incomplete, and the merge replaces a sent key whole.
+
+    Sending it would overwrite the stored history with the fraction of it this
+    process happens to have. Omitting the key leaves the history standing, which
+    costs this run's curves and is the recoverable half of the trade.
+    """
+    reporter = _UnreadableReporter()
+    callback = _make_callback(reporter)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4})
+
+    assert all("metrics" not in report for report in reporter.reports)
+
+
+def test_a_failed_seed_read_still_reports_progress_and_current_values() -> None:
+    """Only the accumulated curves are withheld; the scalars merge harmlessly."""
+    reporter = _UnreadableReporter()
+    _make_callback(reporter).report_train_step(step=7, epoch=2, metrics={"loss": 0.5, "lr": 5e-06})
+
+    report = reporter.reports[-1]
+    assert report["step"] == 7
+    assert report["epoch"] == 2
+    assert report["train_loss"] == 0.5
+    assert report["train_lr"] == 5e-06
+
+
+def test_an_empty_seed_read_still_reports_the_series(reporter: _RecordingReporter) -> None:
+    """The other half of the distinction: nothing stored is safe to write over."""
+    _make_callback(reporter).report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
 
 
 def test_series_are_snapshots_not_live_references(reporter: _RecordingReporter) -> None:

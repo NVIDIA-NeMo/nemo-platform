@@ -14,6 +14,29 @@ def _epoch_from_value(raw_epoch: float | int, num_epochs: int) -> int:
     return max(1, min(num_epochs, math.ceil(float(raw_epoch))))
 
 
+def _as_float(value: Any) -> Any:
+    """Coerce a logged value to a float, leaving it alone if it will not go.
+
+    The Trainer does not promise a builtin: some paths log ``grad_norm`` as a
+    0-dim tensor rather than calling ``.item()`` on it, and a tensor is not a
+    ``numbers.Real``, so the callback's chartable filter drops it and the curve
+    silently never appears. ``float()`` converts anything with ``__float__``,
+    which covers those.
+
+    A value it cannot convert is passed through rather than raised on or dropped
+    here: deciding what belongs in a series is the callback's job, and it already
+    drops what it cannot chart. ``None`` goes through untouched for the same
+    reason -- the trainer omits ``learning_rate`` and ``grad_norm`` on some
+    steps, and that is not an error.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def create_hf_trainer_progress_callback(
     progress_callback: TrainingProgressCallback,
     *,
@@ -54,9 +77,9 @@ def create_hf_trainer_progress_callback(
                 # so the series is `train_lr` regardless of who reported it. The
                 # callback drops whichever of these the trainer did not produce.
                 metrics={
-                    "loss": float(logs["loss"]),
-                    "lr": logs.get("learning_rate"),
-                    "grad_norm": logs.get("grad_norm"),
+                    "loss": _as_float(logs["loss"]),
+                    "lr": _as_float(logs.get("learning_rate")),
+                    "grad_norm": _as_float(logs.get("grad_norm")),
                 },
                 backend=self._backend,
             )
@@ -76,7 +99,7 @@ def create_hf_trainer_progress_callback(
             self._progress.report_validation(
                 step=int(state.global_step),
                 epoch=_epoch_from_value(epoch_raw, self._num_epochs),
-                metrics={"loss": float(metrics["eval_loss"])},
+                metrics={"loss": _as_float(metrics["eval_loss"])},
                 backend=self._backend,
             )
 

@@ -14,7 +14,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import pytest
+from nemo_platform_plugin.client.errors import (
+    InternalServerError,
+    NemoHTTPError,
+    NemoTransportError,
+    NotFoundError,
+)
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
 
 SERIES: dict[str, list[dict[str, Any]]] = {
@@ -65,7 +72,7 @@ class _Reporter(JobsServiceProgressReporter):
 
 
 class _Task:
-    def __init__(self, status_details: dict[str, Any]) -> None:
+    def __init__(self, status_details: Any) -> None:
         self.status_details = status_details
 
     def data(self) -> "_Task":
@@ -77,8 +84,12 @@ class _Jobs:
 
     def __init__(self) -> None:
         self.sent: list[dict[str, Any]] = []
-        self.stored: dict[str, Any] = {}
+        #: Typed loosely on purpose: several tests store a blob no annotation
+        #: describes honestly, because that is what a corrupted read returns.
+        self.stored: Any = {}
         self.fetches = 0
+        #: Raised by the read instead of answering, for the failure cases.
+        self.fetch_error: Exception | None = None
 
     def client(self) -> Any:
         harness = self
@@ -89,6 +100,8 @@ class _Jobs:
 
             def get_job_step_task(self, **kwargs: Any) -> _Task:
                 harness.fetches += 1
+                if harness.fetch_error is not None:
+                    raise harness.fetch_error
                 return _Task(harness.stored)
 
         return _Client()
@@ -186,12 +199,16 @@ def test_fetch_current_metrics_drops_non_list_values(jobs: _Jobs) -> None:
     """A malformed blob must not poison the accumulator."""
     stored = {"metrics": {"train_loss": [{"step": 1, "epoch": 1, "value": 1.0}], "junk": 3}}
 
-    assert set(_reporter(jobs, stored).fetch_current_metrics()) == {"train_loss"}
+    seeded = _reporter(jobs, stored).fetch_current_metrics()
+
+    assert seeded is not None
+    assert set(seeded) == {"train_loss"}
 
 
 def test_fetch_current_metrics_copies_the_point_lists(jobs: _Jobs) -> None:
     """The caller appends to what it gets back; it must not alias the response."""
     seeded = _reporter(jobs, STORED).fetch_current_metrics()
+    assert seeded is not None
     seeded["train_loss"].append({"step": 20, "epoch": 2, "value": 0.4})
 
     assert len(SERIES["train_loss"]) == 1
@@ -200,6 +217,66 @@ def test_fetch_current_metrics_copies_the_point_lists(jobs: _Jobs) -> None:
 def test_fetch_current_metrics_survives_an_unseeded_task(jobs: _Jobs) -> None:
     """First run: the task has no stored details, which is not an error."""
     assert _reporter(jobs, {}).fetch_current_metrics() == {}
+
+
+# --------------------------------------------------------------------------- #
+# A read that failed is not a read that found nothing
+# --------------------------------------------------------------------------- #
+
+
+def _response(status: int) -> httpx.Response:
+    return httpx.Response(status, request=httpx.Request("GET", "http://jobs/task"))
+
+
+def test_a_missing_task_seeds_from_nothing(jobs: _Jobs) -> None:
+    """A 404 is the one failure that genuinely means "nothing stored"."""
+    jobs.fetch_error = NotFoundError(_response(404))
+
+    assert _reporter(jobs, STORED).fetch_current_metrics() == {}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        NemoTransportError(httpx.ConnectError("connection refused")),
+        InternalServerError(_response(500)),
+        NemoHTTPError(_response(503)),
+    ],
+    ids=["transport", "500", "503"],
+)
+def test_a_failed_read_is_not_reported_as_an_empty_one(jobs: _Jobs, error: Exception) -> None:
+    """None, not {}: a caller told "nothing stored" overwrites what it could not read.
+
+    A distributed launch racing a briefly unreachable Jobs service lands here,
+    not on the 404, and the merge replaces a sent key wholesale -- so the two
+    cases have to be distinguishable at the call site.
+    """
+    jobs.fetch_error = error
+
+    assert _reporter(jobs, STORED).fetch_current_metrics() is None
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        ["not", "an", "object"],
+        "junk",
+        {"metrics": ["not", "an", "object"]},
+        {"metrics": "junk"},
+        {"metrics": 3},
+    ],
+    ids=["list-blob", "str-blob", "list-metrics", "str-metrics", "int-metrics"],
+)
+def test_a_malformed_blob_seeds_nothing_instead_of_raising(jobs: _Jobs, stored: Any) -> None:
+    """This runs from the callback's constructor, which backends build outside any try.
+
+    Raising here kills the training process over a blob that only ever cost its
+    own points. ``{}`` rather than ``None``: the read succeeded and the data is
+    unusable, so overwriting it is the repair, not the damage.
+    """
+    jobs.stored = stored
+
+    assert _Reporter().fetch_current_metrics() == {}
 
 
 # --------------------------------------------------------------------------- #

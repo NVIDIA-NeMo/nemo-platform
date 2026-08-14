@@ -13,6 +13,16 @@ from nmp.unsloth.tasks.training.backends.hf_trainer_callback import (
 )
 
 
+class _FloatLike:
+    """Converts under float() but is not a numbers.Real -- a 0-dim tensor's shape."""
+
+    def __init__(self, value: float) -> None:
+        self._value = value
+
+    def __float__(self) -> float:
+        return self._value
+
+
 class TestEpochFromValue:
     def test_fractional_epoch_maps_to_one(self):
         assert _epoch_from_value(0.01314, 1) == 1
@@ -79,3 +89,45 @@ class TestHfTrainerProgressCallback:
         assert kwargs["phase"] == "validation"
         assert kwargs["val_loss"] == 1.75
         assert kwargs["metrics"]["val_loss"][-1]["value"] == 1.75
+
+    def test_non_builtin_scalars_are_coerced(self, progress: tuple[TrainingProgressCallback, MagicMock]) -> None:
+        """Some Trainer paths log a 0-dim tensor rather than calling .item() on it.
+
+        A tensor is not a numbers.Real, so the callback's chartable filter drops
+        it and the curve never appears -- with no log line saying why. Anything
+        with __float__ converts, which covers those.
+        """
+        callback, reporter = progress
+        hf_callback = create_hf_trainer_progress_callback(callback)
+
+        args = MagicMock(num_train_epochs=1)
+        state = MagicMock(max_steps=77, global_step=8, epoch=0.1)
+        hf_callback.on_train_begin(args, state, MagicMock())
+
+        hf_callback.on_log(
+            args,
+            state,
+            MagicMock(),
+            logs={"loss": 2.89, "learning_rate": _FloatLike(5e-5), "grad_norm": _FloatLike(10.6), "epoch": 0.1},
+        )
+
+        kwargs = reporter.report_running.call_args.kwargs
+        assert kwargs["train_lr"] == 5e-5
+        assert kwargs["train_grad_norm"] == 10.6
+
+    def test_a_value_that_will_not_convert_costs_only_its_own_curve(
+        self, progress: tuple[TrainingProgressCallback, MagicMock]
+    ) -> None:
+        """Deciding what belongs in a series is the callback's job, not the bridge's."""
+        callback, reporter = progress
+        hf_callback = create_hf_trainer_progress_callback(callback)
+
+        args = MagicMock(num_train_epochs=1)
+        state = MagicMock(max_steps=77, global_step=8, epoch=0.1)
+        hf_callback.on_train_begin(args, state, MagicMock())
+
+        hf_callback.on_log(args, state, MagicMock(), logs={"loss": 2.89, "grad_norm": "oops", "epoch": 0.1})
+
+        kwargs = reporter.report_running.call_args.kwargs
+        assert kwargs["train_loss"] == 2.89
+        assert "train_grad_norm" not in kwargs
