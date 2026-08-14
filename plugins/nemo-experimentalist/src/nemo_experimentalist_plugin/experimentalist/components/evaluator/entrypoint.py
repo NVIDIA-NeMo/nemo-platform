@@ -15,11 +15,16 @@ DEFAULT_AGENT_IMPORT_PATH = "harbor_wrapper:WrappedAgent"
 
 
 def split_import_path(import_path: str) -> tuple[str, str]:
-    """Split ``module:attribute``, the only form the evaluator can import."""
+    """Split ``module:attribute``, the only form the evaluator can import.
+
+    The evaluator reaches the attribute with ``getattr``, so a name that is not
+    an identifier — absent, dotted, or holding a second ``:`` — can never
+    resolve.
+    """
     module_name, _, attribute = import_path.partition(":")
     module_name = module_name.strip().lstrip(".")
     attribute = attribute.strip()
-    if not module_name or not attribute:
+    if not module_name or not attribute.isidentifier():
         raise ValueError("import_path must be <module>:<attribute>")
     return module_name, attribute
 

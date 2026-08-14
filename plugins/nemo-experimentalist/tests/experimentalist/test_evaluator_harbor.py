@@ -1292,7 +1292,10 @@ def test_safe_identifier_normal():
     assert _safe_identifier("hello world") == "hello_world"
 
 
-@pytest.mark.parametrize("import_path", [":SomeClass", "harbor_wrapper", "harbor_wrapper:"])
+@pytest.mark.parametrize(
+    "import_path",
+    [":SomeClass", "harbor_wrapper", "harbor_wrapper:", "harbor_wrapper:WrappedAgent:extra"],
+)
 def test_scoped_import_path_requires_module_and_attribute(tmp_path, import_path):
     with pytest.raises(ValueError, match="import_path must be <module>:<attribute>"):
         _scoped_import_path(tmp_path, import_path)
