@@ -21,16 +21,10 @@ from typing import Any, Self
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.entities import MetricTarget
-from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilderConfig
-from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
 from nemo_experimentalist_plugin.experimentalist.components.models import (  # noqa: F401 - re-exported
     has_metric_dimensions,
     pareto_objectives,
 )
-from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
-from nemo_experimentalist_plugin.experimentalist.components.selector import SelectorConfig
-from nemo_experimentalist_plugin.experimentalist.components.terminator import TerminatorConfig
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -150,9 +144,13 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default="pareto-diversity",
         description="Registered 'selector' component choosing survivors and the winner.",
     )
-    selector_config: SelectorConfig = Field(default_factory=SelectorConfig, description="Tuning for the selector.")
-    terminator_config: TerminatorConfig = Field(
-        default_factory=TerminatorConfig, description="Tuning for the terminator."
+    selector_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the selector named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    terminator_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the terminator named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
     )
     builder: str = Field(
         default="code-edit",
@@ -189,14 +187,22 @@ class EvolutionaryOptimizerConfig(BaseModel):
     )
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
-    trajectory_scorer_config: GoalTreeConfig = Field(
-        default_factory=GoalTreeConfig, description="Tuning for the trajectory scorer."
+    trajectory_scorer_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the trajectory-scorer named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
     )
-    builder_config: CodeEditBuilderConfig = Field(
-        default_factory=CodeEditBuilderConfig, description="Tuning for the builder."
+    builder_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the builder named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
     )
-    analyzer_config: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
-    proposer_config: ProposerConfig = Field(default_factory=ProposerConfig)
+    analyzer_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the root-cause-analyzer named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    proposer_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the proposer named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
     outcome_evaluator_config: dict[str, Any] = Field(
         default_factory=dict,
         description="Config for the selected 'evaluation' component; its own model validates it.",

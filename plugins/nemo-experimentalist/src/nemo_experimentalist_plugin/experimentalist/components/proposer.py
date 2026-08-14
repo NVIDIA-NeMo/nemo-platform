@@ -111,6 +111,8 @@ class ProposerConfig(BaseModel):
 class CodeChangeProposer(Agent, roles.Proposer):
     """Propose the next round's isolated optimization candidates."""
 
+    config_type = ProposerConfig
+
     name = "code-change"
     produces: ClassVar[frozenset[str]] = frozenset({CODE_CHANGE})
 

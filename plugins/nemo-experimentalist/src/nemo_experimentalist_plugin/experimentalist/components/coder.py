@@ -585,6 +585,8 @@ class ArchitectureSkill(Skill):
 class CodeEditBuilder(Agent, roles.Builder):
     """Create and modify agent source code as part of the optimization loop."""
 
+    config_type = CodeEditBuilderConfig
+
     name = "code-edit"
     accepts = frozenset({CODE_CHANGE})
 

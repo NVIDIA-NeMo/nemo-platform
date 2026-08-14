@@ -64,6 +64,8 @@ class GroupLeafScore(BaseModel):
 class GoalTreeTrajectoryScorer(Agent, roles.TrajectoryScorer):
     """Score a group of agent traces against a goal-tree leaf node."""
 
+    config_type = GoalTreeConfig
+
     name = "goal-tree"
 
     def __init__(

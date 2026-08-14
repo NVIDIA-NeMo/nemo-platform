@@ -814,11 +814,8 @@ def test_config_unknown_top_level_key_is_tolerated(tmp_path: Path) -> None:
     [
         {"storage": {"publish_winer": True}},
         {"source": {"clone_dept": 1}},
-        {"builder_config": {"max_fix_atempts": 1}},
-        {"analyzer_config": {"rationalizer": {"max_summary_token": 100}}},
-        {"trajectory_scorer_config": {"max_dept": 2}},
     ],
-    ids=["storage", "source", "builder_config", "deep-analyzer", "trajectory_scorer_config"],
+    ids=["storage", "source"],
 )
 def test_config_unknown_typed_nested_key_is_tolerated(tmp_path: Path, config_payload: dict) -> None:
     profile = load_profile(make_profile_tree(tmp_path))
@@ -932,16 +929,51 @@ def test_run_config_takes_no_environment_override(monkeypatch) -> None:
     assert EvolutionaryOptimizerConfig.model_validate({"max_rounds": 15}).max_rounds == 15
 
 
-def test_component_configs_are_the_component_owned_classes() -> None:
-    """The tree must hold the components' own classes, not re-declared twins."""
-    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
-    from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-    from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilderConfig
-    from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
-    from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+def test_a_components_settings_are_validated_against_its_own_model() -> None:
+    """Each `<role>_config` is a plain mapping, validated by the component that reads it.
 
-    cfg = EvolutionaryOptimizerConfig()
-    assert type(cfg.builder_config) is CodeEditBuilderConfig
-    assert type(cfg.analyzer_config) is AnalyzerConfig
-    assert type(cfg.proposer_config) is ProposerConfig
-    assert type(cfg.trajectory_scorer_config) is GoalTreeConfig
+    Pinning these fields to first-party classes made a third-party component selectable
+    but not configurable: `builder: acme-random` resolved, and there was no way to pass
+    acme's settings, because the run-config schema decided the type. The component owns
+    its schema instead, and declares it as `config_type`.
+    """
+    from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, load_plugins
+
+    load_plugins()
+    config = EvolutionaryOptimizerConfig()
+    for field in ("builder_config", "analyzer_config", "proposer_config", "trajectory_scorer_config"):
+        assert isinstance(getattr(config, field), dict), f"{field} must stay open for a third-party component"
+
+    undeclared = {
+        f"{role}:{name}"
+        for (role, name), cls in Component._registry.items()
+        if cls.__module__.startswith("nemo_experimentalist_plugin.") and cls.config_type is None
+    }
+    # `import` is the one component that genuinely takes no settings: it forks the agent
+    # under test and commits it unchanged.
+    assert undeclared == {"builder:import"}, f"components with settings but no config_type: {undeclared}"
+
+
+def test_a_third_party_components_settings_reach_it_unchanged() -> None:
+    """The point of the mapping: a component this schema has never heard of is configurable."""
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, get_component
+    from pydantic import BaseModel
+
+    class AcmeSettings(BaseModel):
+        beam_width: int = 1
+
+    class AcmeSelector(Component):
+        role = "selector"
+        name = "acme-beam"
+        config_type = AcmeSettings
+
+        def __init__(self, config: AcmeSettings | None = None) -> None:
+            self.config = config
+
+    try:
+        built = get_component("selector", "acme-beam", config={"beam_width": 7})
+        assert isinstance(built.config, AcmeSettings), "settings were not validated by the component's own model"
+        assert built.config.beam_width == 7
+    finally:
+        Component._registry.pop(("selector", "acme-beam"), None)

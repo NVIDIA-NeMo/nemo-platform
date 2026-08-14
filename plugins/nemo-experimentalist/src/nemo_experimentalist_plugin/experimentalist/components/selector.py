@@ -42,6 +42,8 @@ class SelectorConfig(BaseModel):
 class ParetoDiversitySelector(Agent, roles.Selector):
     """Pareto-rank on the configured objectives, then pick diverse survivors with a model."""
 
+    config_type = SelectorConfig
+
     name = "pareto-diversity"
 
     def __init__(

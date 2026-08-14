@@ -56,6 +56,8 @@ class TerminationDecision(BaseModel):
 class ConvergenceTerminator(Agent, roles.Terminator):
     """Decides when the evolutionary optimization loop should stop."""
 
+    config_type = TerminatorConfig
+
     name = "convergence"
 
     def __init__(

@@ -27,8 +27,11 @@ Two behaviours are deliberately different:
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from importlib.metadata import entry_points
 from typing import Any, ClassVar
+
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,12 @@ class Component:
 
     role: ClassVar[str] = ""
     name: ClassVar[str] = ""
+
+    #: Pydantic model this component's ``<role>_config`` slice is validated against.
+    #: Declared by the component because the component owns its settings: the run config
+    #: carries that slice as a plain mapping, so a component from another package is
+    #: configurable without this repo knowing its fields. ``None`` means it takes none.
+    config_type: ClassVar[type[BaseModel] | None] = None
 
     #: Every registered component, keyed by ``(role, name)``. Private: mutating it
     #: from outside ``__init_subclass__`` is how a name silently stops meaning what
@@ -147,10 +156,15 @@ def resolve(role: str, name: str) -> type[Component]:
 def get_component(role: str, name: str, **kwargs: Any) -> Any:
     """Resolve *(role, name)* and construct it.
 
-    Construction arguments are the consuming strategy's business, not the registry's: a
-    component's interface is owned by whatever resolves it, so this passes *kwargs*
-    through untouched. Config arrives here as an already-validated model rather than as
-    a mapping read off the context — a typo in a component's config then fails while the
-    run is still starting, not at round three an hour of image builds later.
+    Construction arguments are the consuming strategy's business, not the registry's, so
+    *kwargs* pass through untouched — except ``config``, which is validated against the
+    resolved component's own ``config_type``. That is what lets the run config keep each
+    ``<role>_config`` as a plain mapping: a third-party component validates its settings
+    with its own model, and a typo still fails while the run is starting rather than at
+    round three, an hour of image builds later.
     """
-    return resolve(role, name)(**kwargs)
+    component = resolve(role, name)
+    config = kwargs.get("config")
+    if component.config_type is not None and isinstance(config, Mapping):
+        kwargs["config"] = component.config_type.model_validate(dict(config))
+    return component(**kwargs)

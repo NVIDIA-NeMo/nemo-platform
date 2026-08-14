@@ -237,6 +237,8 @@ class AgentAnalysis(BaseModel):
 class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
 
+    config_type = AnalyzerConfig
+
     name = "trace"
 
     def __init__(

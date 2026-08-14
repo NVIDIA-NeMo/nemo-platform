@@ -200,6 +200,9 @@ class AnalysisSkill(Skill):
 class EvolutionaryStrategy(Agent, roles.Strategy):
     """Merge each round's per-agent analyses, and write the run's optimization report."""
 
+    #: This strategy's settings are the run config itself, not a slice of it.
+    config_type = EvolutionaryOptimizerConfig
+
     name = "evolutionary"
 
     #: This loop resumes from its own round-analysis files plus ``ctx.candidates()``,
