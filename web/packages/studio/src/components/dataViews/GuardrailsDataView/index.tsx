@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getErrorMessage } from '@nemo/common/src/api/common/utils';
+import { withOperators } from '@nemo/common/src/api/filterOperators';
+import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
@@ -10,13 +12,18 @@ import { EntityEmptyState } from '@nemo/common/src/components/EntityEmptyState';
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { getSortParam } from '@nemo/common/src/utils/query';
 import { useGuardrailsListGuardrailConfigs } from '@nemo/sdk/generated/platform/api';
 import type {
   GuardrailConfig,
+  GuardrailConfigFilter,
   GuardrailsListGuardrailConfigsParams,
 } from '@nemo/sdk/generated/platform/schema';
-import { Text } from '@nvidia/foundations-react-core';
-import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
+import { Badge, Button, Flex, Text } from '@nvidia/foundations-react-core';
+import {
+  getMainModelName,
+  getRailCounts,
+} from '@studio/components/dataViews/GuardrailsDataView/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Copy, Trash } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
@@ -28,6 +35,7 @@ export interface GuardrailsDataViewProps {
   onRequestDelete?: (config: GuardrailConfig) => void;
   /** Opens the create-guardrail flow from the first-use empty state. */
   onCreate?: () => void;
+  onRequestBulkDelete?: (configs: GuardrailConfig[]) => void;
 }
 
 export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
@@ -36,25 +44,29 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
   onRequestDuplicate,
   onRequestDelete,
   onCreate,
+  onRequestBulkDelete,
 }) => {
   const dataViewState = useStudioDataViewState({
     defaultSort: [{ id: 'created_at', desc: true }],
+    columnVisibility: { created_at: false },
   });
-
-  const sortState = dataViewState.sorting.state[0];
-  const sortParam = (
-    sortState ? `${sortState.desc ? '-' : ''}${sortState.id}` : 'created_at'
-  ) as GuardrailsListGuardrailConfigsParams['sort'];
 
   const { data, isFetching, error } = useGuardrailsListGuardrailConfigs(
     workspace,
     {
       page: dataViewState.pagination.state.pageIndex + 1,
       page_size: dataViewState.pagination.state.pageSize,
-      sort: sortParam,
-      ...(dataViewState.debouncedSearchBar
-        ? { filter: { name: { $like: dataViewState.debouncedSearchBar } } }
-        : {}),
+      sort: getSortParam(
+        dataViewState.sorting.state
+      ) as GuardrailsListGuardrailConfigsParams['sort'],
+      filter: {
+        ...((dataViewState.apiFilter.filter ?? {}) as GuardrailConfigFilter),
+        ...(dataViewState.apiFilter.searchText
+          ? withOperators<GuardrailConfigFilter>({
+              name: { $like: dataViewState.apiFilter.searchText },
+            })
+          : {}),
+      },
     },
     {
       query: { placeholderData: keepPreviousData },
@@ -65,51 +77,76 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
 
   const makeColumns: ComponentProps<typeof StudioDataView<GuardrailConfig>>['makeColumns'] =
     useCallback(
-      ({ accessor }, { rowActionsColumn }) => [
+      ({ accessor }, { rowSelectionColumn, rowActionsColumn }) => [
+        rowSelectionColumn(),
         accessor('name', {
           header: 'Name',
-          enableSorting: false,
+          enableSorting: true,
           size: 180,
           cell({ row }) {
             return <Text className="font-bold">{row.original.name}</Text>;
           },
         }),
-        accessor('description', {
-          header: 'Description',
+        accessor('data', {
+          id: 'models',
+          header: 'Main Model',
           enableSorting: false,
           cell({ row }) {
+            const name = getMainModelName(row.original.data);
             return (
-              <Text className="truncate" title={row.original.description ?? ''}>
-                {row.original.description ?? '—'}
+              <Text className="truncate" title={name}>
+                {name ?? ''}
               </Text>
             );
           },
         }),
         accessor('data', {
-          id: 'models',
-          header: 'Models',
+          id: 'flows',
+          header: 'Flows',
           enableSorting: false,
-          size: 80,
+          size: 140,
           cell({ row }) {
-            return <Text>{row.original.data?.models?.length ?? 0}</Text>;
-          },
-        }),
-        accessor('data', {
-          id: 'rails',
-          header: 'Rails',
-          enableSorting: false,
-          size: 80,
-          cell({ row }) {
-            return <Text>{countRails(row.original.data)}</Text>;
+            const { input, output } = getRailCounts(row.original.data);
+            return (
+              <Flex gap="1">
+                {input > 0 && (
+                  <Badge kind="solid" color="gray">
+                    Input
+                  </Badge>
+                )}
+                {output > 0 && (
+                  <Badge kind="solid" color="gray">
+                    Output
+                  </Badge>
+                )}
+              </Flex>
+            );
           },
         }),
         accessor('updated_at', {
           header: 'Updated',
-          enableSorting: false,
-          size: 140,
+          enableSorting: true,
+          meta: {
+            filter: dateTimeFilter('Updated At'),
+          },
           cell({ row }) {
             return row.original.updated_at ? (
               <RelativeTime datetime={row.original.updated_at} />
+            ) : (
+              <Text>—</Text>
+            );
+          },
+        }),
+        accessor('created_at', {
+          id: 'created_at',
+          header: 'Created',
+          enableSorting: true,
+          meta: {
+            filter: dateTimeFilter('Created At'),
+          },
+          cell({ row }) {
+            return row.original.created_at ? (
+              <RelativeTime datetime={row.original.created_at} />
             ) : (
               <Text>—</Text>
             );
@@ -141,6 +178,18 @@ export const GuardrailsDataView: FC<GuardrailsDataViewProps> = ({
       dataViewState={dataViewState}
       searchField="name"
       makeColumns={makeColumns}
+      renderBulkActions={({ selectedRows, table }) => (
+        <Button
+          kind="tertiary"
+          aria-label="Delete selected guardrails"
+          onClick={() => {
+            onRequestBulkDelete?.(selectedRows);
+            table.resetRowSelection();
+          }}
+        >
+          <Trash /> Delete
+        </Button>
+      )}
       onRowClick={(row: GuardrailConfig) => onRowClick(row)}
       attributes={{
         DataViewSearchBar: { placeholder: 'Search Guardrail Configs...' },
