@@ -3,7 +3,7 @@
 
 # Import MLflow traces
 
-The importer calls `mlflow.search_traces(..., return_type="list")`. It maps every `Trace.data.span`,
+The importer calls `mlflow.search_traces(..., return_type="list")`. It maps every `Trace.data.spans`,
 then imports `Trace.info.assessments`: LLM/code feedback becomes evaluator results, human feedback
 becomes annotations, and expectations become metadata annotations. The complete native assessment
 and unmodeled trace fields remain under `mlflow.signals` and `mlflow.raw`.

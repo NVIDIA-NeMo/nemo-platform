@@ -32,6 +32,7 @@ from _import_common import (
 )
 
 SOURCE = "braintrust"
+MAX_PAGES = 1000
 EVENT_FIELDS = {
     "id",
     "span_id",
@@ -212,8 +213,9 @@ def fetch_braintrust(args: argparse.Namespace) -> dict[str, Any]:
     url = f"{base_url}/v1/project_logs/{quote(args.project, safe='')}/fetch"
     events: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
+    seen_cursors: set[str] = set()
     cursor: str | None = None
-    while True:
+    for _ in range(MAX_PAGES):
         params: dict[str, str | int] = {"limit": 1000}
         if cursor:
             params["cursor"] = cursor
@@ -226,10 +228,17 @@ def fetch_braintrust(args: argparse.Namespace) -> dict[str, Any]:
         )
         if response.status_code != 200:
             raise RuntimeError(f"Braintrust GET returned {response.status_code}: {response.text[:2000]}")
-        payload = response.json()
-        page = [_object(item, "Braintrust event") for item in payload.get("events", [])]
+        payload = _object(response.json(), "Braintrust response")
+        page_value = payload.get("events", [])
+        if not isinstance(page_value, list):
+            raise ValueError("Braintrust response `events` must be an array")
+        page = [_object(item, "Braintrust event") for item in page_value]
+        if not page:
+            break
         for event in page:
             event_id = str(event.get("id") or "")
+            if not event_id:
+                raise ValueError("Braintrust events require `id`")
             if event_id in seen_ids:
                 continue
             seen_ids.add(event_id)
@@ -237,9 +246,16 @@ def fetch_braintrust(args: argparse.Namespace) -> dict[str, Any]:
             created_at = _as_datetime(event.get("created") if event.get("created") is not None else metrics_start)
             if args.since <= created_at < args.until:
                 events.append(event)
-        cursor = payload.get("cursor")
-        if not cursor:
+        next_cursor = payload.get("cursor")
+        if not next_cursor:
             break
+        next_cursor = str(next_cursor)
+        if next_cursor in seen_cursors:
+            raise RuntimeError("Braintrust pagination returned a repeated cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+    else:
+        raise RuntimeError(f"Braintrust fetch exceeded {MAX_PAGES} pages")
     return {"events": events}
 
 

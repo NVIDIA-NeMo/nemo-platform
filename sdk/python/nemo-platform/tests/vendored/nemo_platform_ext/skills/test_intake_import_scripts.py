@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+import httpx
 import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -114,6 +115,80 @@ def test_braintrust_fetch_does_not_assume_created_time_page_order(monkeypatch: p
     assert get.call_count == 2
 
 
+def test_braintrust_fetch_rejects_missing_event_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("import_braintrust")
+    monkeypatch.setattr(
+        module.requests,
+        "get",
+        Mock(return_value=_Response({"events": [{"created": "2026-08-01T12:00:00Z"}]})),
+    )
+    monkeypatch.setenv("BRAINTRUST_API_KEY", "test-key")
+
+    with pytest.raises(ValueError, match=r"Braintrust events require `id`"):
+        module.fetch_braintrust(_braintrust_args())
+
+
+def test_braintrust_fetch_rejects_repeated_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("import_braintrust")
+    get = Mock(
+        side_effect=[
+            _Response({"events": [{"id": "one", "created": "2026-08-01T12:00:00Z"}], "cursor": "same"}),
+            _Response({"events": [{"id": "two", "created": "2026-08-01T13:00:00Z"}], "cursor": "same"}),
+        ]
+    )
+    monkeypatch.setattr(module.requests, "get", get)
+    monkeypatch.setenv("BRAINTRUST_API_KEY", "test-key")
+
+    with pytest.raises(RuntimeError, match="Braintrust pagination returned a repeated cursor"):
+        module.fetch_braintrust(_braintrust_args())
+
+    assert get.call_count == 2
+
+
+def test_braintrust_fetch_stops_on_empty_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("import_braintrust")
+    get = Mock(return_value=_Response({"events": [], "cursor": "unused"}))
+    monkeypatch.setattr(module.requests, "get", get)
+    monkeypatch.setenv("BRAINTRUST_API_KEY", "test-key")
+
+    payload = module.fetch_braintrust(_braintrust_args())
+
+    assert payload == {"events": []}
+    assert get.call_count == 1
+
+
+def test_phoenix_fetch_pages_reads_multiple_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("import_phoenix")
+    get = Mock(
+        side_effect=[
+            _Response({"data": [{"spanId": "one"}], "next_cursor": "next"}),
+            _Response({"data": [{"spanId": "two"}]}),
+        ]
+    )
+    monkeypatch.setattr(module.requests, "get", get)
+
+    results = module._fetch_pages("https://phoenix.example.com/v1/spans", headers={}, params={})
+
+    assert [item["spanId"] for item in results] == ["one", "two"]
+    assert get.call_count == 2
+
+
+def test_phoenix_fetch_pages_rejects_repeated_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = importlib.import_module("import_phoenix")
+    get = Mock(
+        side_effect=[
+            _Response({"data": [{"spanId": "one"}], "next_cursor": "same"}),
+            _Response({"data": [{"spanId": "two"}], "next_cursor": "same"}),
+        ]
+    )
+    monkeypatch.setattr(module.requests, "get", get)
+
+    with pytest.raises(RuntimeError, match="Phoenix pagination returned a repeated cursor"):
+        module._fetch_pages("https://phoenix.example.com/v1/spans", headers={}, params={})
+
+    assert get.call_count == 2
+
+
 def test_mlflow_native_trace_id_fallback_is_canonicalized() -> None:
     payload = _payload("mlflow")
     native_trace_id = bytes(range(16))
@@ -126,6 +201,26 @@ def test_mlflow_native_trace_id_fallback_is_canonicalized() -> None:
 
     assert {span["trace_id"] for span in bundle.spans} == {native_trace_id.hex()}
     assert bundle.evaluator_results[0]["span_id"] in {span["span_id"] for span in bundle.spans}
+
+
+@pytest.mark.parametrize(
+    ("provider", "field", "message"),
+    [
+        ("mlflow", "start_time_unix_nano", "MLflow spans require start_time_unix_nano"),
+        ("langsmith", "start_time", "LangSmith runs require start_time"),
+    ],
+)
+def test_provider_mapper_reports_missing_required_start_time(provider: str, field: str, message: str) -> None:
+    payload = _payload(provider)
+    if provider == "mlflow":
+        del payload["traces"][0]["data"]["spans"][0][field]
+    else:
+        del payload["runs"][0][field]
+    module = importlib.import_module(f"import_{provider}")
+    mapper = getattr(module, f"map_{provider}_export")
+
+    with pytest.raises(ValueError, match=message):
+        mapper(payload, project="fixture", include_feedback=False)
 
 
 def test_intake_writer_uses_sdk_factory_for_context_and_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,14 +251,92 @@ def test_intake_writer_uses_sdk_factory_for_context_and_oauth(monkeypatch: pytes
     sdk.close.assert_called_once_with()
 
 
+def test_intake_writer_reports_only_new_annotation_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    common = importlib.import_module("_import_common")
+    annotation = {
+        "kind": "note",
+        "span_id": "span-1",
+        "session_id": "session-1",
+        "text": "already imported",
+    }
+    session = Mock()
+    session.request.side_effect = [
+        _Response({}, status_code=201),
+        _Response({"data": [annotation], "pagination": {"page": 1, "total_pages": 1}}),
+    ]
+    writer = common.IntakeWriter(
+        base_url="https://platform.example.com",
+        workspace="default",
+        session=session,
+    )
+    monkeypatch.setattr(writer, "_verify_spans", Mock())
+    bundle = common.ImportBundle(
+        source="langsmith",
+        spans=[{"span_id": "span-1", "trace_id": "trace-1"}],
+        annotations=[annotation],
+    )
+
+    summary = writer.write(bundle, batch_size=500)
+
+    assert summary["annotations"] == 0
+    assert session.request.call_count == 2
+    assert session.request.call_args_list[0].args[0] == "POST"
+    assert session.request.call_args_list[1].args[0] == "GET"
+
+
+def test_sdk_session_uses_public_sdk_request_methods() -> None:
+    common = importlib.import_module("_import_common")
+    client = Mock()
+    adapter = common._SdkSession(client)
+
+    adapter.request(
+        "GET",
+        "https://platform.example.com/apis/intake/v2/workspaces/default/spans",
+        params=[("page", 1)],
+        headers={},
+        timeout=60,
+        allow_redirects=False,
+    )
+    adapter.request(
+        "POST",
+        "https://platform.example.com/apis/intake/v2/workspaces/default/annotations",
+        json={"kind": "note"},
+        headers={},
+        timeout=60,
+        allow_redirects=False,
+    )
+
+    client.get.assert_called_once_with(
+        "https://platform.example.com/apis/intake/v2/workspaces/default/spans",
+        cast_to=httpx.Response,
+        options={"params": [("page", 1)], "headers": {}, "timeout": 60, "follow_redirects": False},
+    )
+    client.post.assert_called_once_with(
+        "https://platform.example.com/apis/intake/v2/workspaces/default/annotations",
+        cast_to=httpx.Response,
+        body={"kind": "note"},
+        options={"headers": {}, "timeout": 60, "follow_redirects": False},
+    )
+
+
 class _Response:
-    def __init__(self, payload: dict[str, Any]) -> None:
+    def __init__(self, payload: dict[str, Any], *, status_code: int = 200) -> None:
         self._payload = payload
-        self.status_code = 200
+        self.status_code = status_code
         self.text = json.dumps(payload)
+        self.content = self.text.encode()
 
     def json(self) -> dict[str, Any]:
         return self._payload
+
+
+def _braintrust_args() -> argparse.Namespace:
+    return argparse.Namespace(
+        braintrust_base_url="https://api.braintrust.dev",
+        project="project-id",
+        since=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        until=datetime(2026, 8, 2, tzinfo=timezone.utc),
+    )
 
 
 def _json(name: str) -> dict[str, Any]:

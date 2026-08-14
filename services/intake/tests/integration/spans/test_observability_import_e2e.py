@@ -52,7 +52,8 @@ def test_provider_fixture_full_import_is_lossless_and_replay_safe(client: TestCl
     first = writer.write(bundle, batch_size=2)
     second = writer.write(bundle, batch_size=2)
 
-    assert first == second
+    assert first["annotations"] == len(golden["annotation_kinds"])
+    assert second == {**first, "annotations": 0}
     spans_response = client.get(SPANS_URL, params={"filter[source]": provider, "page_size": 1000})
     assert spans_response.status_code == 200, spans_response.text
     spans = spans_response.json()["data"]

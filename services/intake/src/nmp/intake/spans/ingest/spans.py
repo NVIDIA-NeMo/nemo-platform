@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from nmp.intake.config import DEFAULT_SPAN_RETENTION_DAYS
 from nmp.intake.spans.api.dependencies import DenormalizerDep, SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus, TraceBatch
-from nmp.intake.spans.span_attribute_bags import DIRECT_INGEST_RAW_ATTRIBUTES_KEY, SpanAttributeBags
+from nmp.intake.spans.span_attribute_bags import DIRECT_INGEST_RAW_ATTRIBUTES_KEY
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, utc_now
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
@@ -20,7 +20,10 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, m
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
 
-NonEmptyString = Annotated[str, Field(min_length=1)]
+DIRECT_SPAN_IDENTIFIER_MAX_LENGTH = 1024
+DIRECT_SPAN_NAME_MAX_LENGTH = 1024
+DirectSpanIdentifier = Annotated[str, Field(min_length=1, max_length=DIRECT_SPAN_IDENTIFIER_MAX_LENGTH)]
+DirectSpanName = Annotated[str, Field(max_length=DIRECT_SPAN_NAME_MAX_LENGTH)]
 SourceName = Annotated[
     str,
     Field(
@@ -37,11 +40,11 @@ class DirectSpanInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    span_id: NonEmptyString
-    trace_id: NonEmptyString
-    session_id: NonEmptyString | None = None
-    parent_span_id: NonEmptyString | None = None
-    name: str = ""
+    span_id: DirectSpanIdentifier
+    trace_id: DirectSpanIdentifier
+    session_id: DirectSpanIdentifier | None = None
+    parent_span_id: DirectSpanIdentifier | None = None
+    name: DirectSpanName = ""
     kind: SpanKind = SpanKind.UNKNOWN
     status: SpanStatus = SpanStatus.UNKNOWN
     started_at: datetime
@@ -119,7 +122,7 @@ async def ingest_spans(
                 "before importing older data."
             ),
         )
-    spans = [
+    converted = [
         direct_span_to_domain(
             workspace=workspace,
             source=body.source,
@@ -128,13 +131,10 @@ async def ingest_spans(
         )
         for span in body.spans
     ]
+    spans = [item for item, _ in converted]
     await service.ingest_batch(TraceBatch(spans=spans))
     if denormalizer is not None:
-        evaluation_names = {
-            semantic.evaluation_id
-            for item in spans
-            if (semantic := SpanSemanticAttributes.from_bags(_attribute_bags(item))).evaluation_id
-        }
+        evaluation_names = {semantic.evaluation_id for _, semantic in converted if semantic.evaluation_id}
         for evaluation_name in evaluation_names:
             denormalizer.mark_dirty(workspace=workspace, evaluation_id=evaluation_name)
     return Response(status_code=status.HTTP_201_CREATED)
@@ -146,13 +146,13 @@ def direct_span_to_domain(
     source: str,
     span: DirectSpanInput,
     ingested_at: datetime,
-) -> IntakeSpan:
+) -> tuple[IntakeSpan, SpanSemanticAttributes]:
     semantic_attributes, consumed_keys = SpanSemanticAttributes.from_source_attributes(span.attributes)
     attribute_bags = semantic_attributes.to_bags()
     raw_attributes = {key: value for key, value in span.attributes.items() if key not in consumed_keys}
     if raw_attributes:
         attribute_bags.put_json(DIRECT_INGEST_RAW_ATTRIBUTES_KEY, raw_attributes)
-    return IntakeSpan(
+    intake_span = IntakeSpan(
         workspace=workspace,
         session_id=span.session_id or span.trace_id,
         trace_id=span.trace_id,
@@ -171,11 +171,4 @@ def direct_span_to_domain(
         output="" if span.output is None else json_dumps_preserve(span.output),
         event_ts=ingested_at,
     )
-
-
-def _attribute_bags(span: IntakeSpan) -> SpanAttributeBags:
-    return SpanAttributeBags.from_domain_maps(
-        attributes_string=span.attributes_string,
-        attributes_number=span.attributes_number,
-        attributes_bool=span.attributes_bool,
-    )
+    return intake_span, semantic_attributes

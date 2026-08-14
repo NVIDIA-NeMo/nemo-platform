@@ -33,6 +33,7 @@ from _import_common import (
 )
 
 SOURCE = "phoenix"
+MAX_PAGES = 1000
 SPAN_FIELDS = {
     "traceId",
     "trace_id",
@@ -209,18 +210,28 @@ def _fetch_pages(
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     cursor: str | None = None
-    while True:
+    seen_cursors: set[str] = set()
+    for _ in range(MAX_PAGES):
         page_params = list(params.items()) if isinstance(params, dict) else list(params)
         if cursor:
             page_params.append(("cursor", cursor))
         response = requests.get(url, headers=headers, params=page_params, timeout=60, allow_redirects=False)
         if response.status_code != 200:
             raise RuntimeError(f"Phoenix GET returned {response.status_code}: {response.text[:2000]}")
-        payload = response.json()
-        results.extend(_object(item, "Phoenix response item") for item in payload.get("data", []))
-        cursor = payload.get("next_cursor")
-        if not cursor:
+        payload = _object(response.json(), "Phoenix response")
+        data = payload.get("data", [])
+        if not isinstance(data, list):
+            raise ValueError("Phoenix response `data` must be an array")
+        results.extend(_object(item, "Phoenix response item") for item in data)
+        next_cursor = payload.get("next_cursor")
+        if not next_cursor:
             return results
+        next_cursor = str(next_cursor)
+        if next_cursor in seen_cursors:
+            raise RuntimeError("Phoenix pagination returned a repeated cursor")
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
+    raise RuntimeError(f"Phoenix pagination exceeded {MAX_PAGES} pages")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -238,10 +249,17 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     validate_common_arguments(parser, args)
-    payload = load_json(args.input) if args.input else fetch_phoenix(args)
+    payload = _object(load_json(args.input) if args.input else fetch_phoenix(args), "Phoenix export")
     if args.annotations_input:
         annotation_payload = load_json(args.annotations_input)
-        payload["annotations"] = annotation_payload.get("annotations", annotation_payload)
+        annotations = (
+            annotation_payload.get("annotations", annotation_payload)
+            if isinstance(annotation_payload, dict)
+            else annotation_payload
+        )
+        if not isinstance(annotations, list):
+            raise ValueError("Phoenix annotations input must be an array or an object containing `annotations`")
+        payload["annotations"] = annotations
     bundle = map_phoenix_export(payload, project=args.project, include_feedback=args.include_feedback)
     return run_import(bundle, args)
 

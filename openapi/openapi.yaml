@@ -10526,22 +10526,27 @@ components:
       properties:
         span_id:
           type: string
+          maxLength: 1024
           minLength: 1
           title: Span Id
         trace_id:
           type: string
+          maxLength: 1024
           minLength: 1
           title: Trace Id
         session_id:
           title: Session Id
           type: string
+          maxLength: 1024
           minLength: 1
         parent_span_id:
           title: Parent Span Id
           type: string
+          maxLength: 1024
           minLength: 1
         name:
           type: string
+          maxLength: 1024
           title: Name
           default: ''
         kind:
@@ -13432,6 +13437,7 @@ components:
       title: JobExecutionProfileConfig
     JsonValue:
       title: JsonValue
+      x-stainless-any: true
     JsonWebKey:
       properties: {}
       additionalProperties: true

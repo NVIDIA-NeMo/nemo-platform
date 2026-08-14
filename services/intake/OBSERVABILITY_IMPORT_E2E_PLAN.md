@@ -306,7 +306,7 @@ available.
 Verified on 2026-08-14:
 
 - The focused endpoint, attribute-catalog, migration, adapter, and four-provider ClickHouse suites
-  pass: 75 tests.
+  pass: 90 tests, including provider pagination/error regressions and replay write-count checks.
 - Ruff formatting/lint, targeted `ty`, and the pre-commit `ty` hook pass.
 - The repository OpenAPI generator passes and all three checked-in platform specifications contain
   the direct-ingest operation. Static auth maps it to the existing `intake.ingest.create`
@@ -334,6 +334,12 @@ Verified on 2026-08-14:
 - Provider APIs can add fields or event variants. Importers preserve unmodeled JSON under
   `<provider>.raw`/`<provider>.signals`; the checked-in official snapshots make mapping drift
   reviewable, but they do not replace periodic fixture refreshes against current provider docs.
+- Direct span IDs, session IDs, parent IDs, trace IDs, and names are capped at 1024 characters to
+  keep a 1000-span request bounded. Provider records beyond that limit fail validation and must be
+  normalized explicitly rather than being silently truncated.
+- Braintrust and Phoenix live pagination fails after 1000 pages or a repeated cursor; Braintrust
+  also stops on an empty page. This makes provider API stalls visible instead of hanging an import,
+  but imports above the cap must be split into smaller time windows.
 
 ## Definition of done
 

@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import quote, urlparse
 from uuid import UUID
 
+import httpx
 from nemo_platform.client.factory import create_client
 
 JsonObject = dict[str, Any]
@@ -469,7 +470,7 @@ class IntakeWriter:
                 expected={201},
             )
         existing_signatures: set[str] = set()
-        annotation_signatures = {_annotation_signature(item) for item in bundle.annotations}
+        written_annotations = 0
         for annotation in bundle.annotations:
             signature = _annotation_signature(annotation)
             if signature in existing_signatures:
@@ -484,12 +485,13 @@ class IntakeWriter:
                 expected={201},
             )
             existing_signatures.add(signature)
+            written_annotations += 1
         self._verify_spans(bundle.spans, source=bundle.source)
         return {
             "source": bundle.source,
             "spans": len(bundle.spans),
             "evaluator_results": len(bundle.evaluator_results),
-            "annotations": len(annotation_signatures),
+            "annotations": written_annotations,
         }
 
     def _existing_annotation_signatures(self, annotation: JsonObject) -> set[str]:
@@ -615,8 +617,21 @@ class _SdkSession:
         self.client = client
 
     def request(self, method: str, url: str, **kwargs: Any) -> Any:
-        allow_redirects = bool(kwargs.pop("allow_redirects", False))
-        return self.client._client.request(method, url, follow_redirects=allow_redirects, **kwargs)
+        options = {
+            "params": kwargs.pop("params", None),
+            "headers": kwargs.pop("headers", None),
+            "timeout": kwargs.pop("timeout", None),
+            "follow_redirects": bool(kwargs.pop("allow_redirects", False)),
+        }
+        options = {key: value for key, value in options.items() if value is not None}
+        json_body = kwargs.pop("json", None)
+        if kwargs:
+            raise TypeError(f"Unsupported SDK request options: {sorted(kwargs)}")
+        if method == "GET":
+            return self.client.get(url, cast_to=httpx.Response, options=options)
+        if method == "POST":
+            return self.client.post(url, cast_to=httpx.Response, body=json_body, options=options)
+        raise ValueError(f"Unsupported Intake request method: {method}")
 
 
 def _validated_base_url(value: str) -> str:

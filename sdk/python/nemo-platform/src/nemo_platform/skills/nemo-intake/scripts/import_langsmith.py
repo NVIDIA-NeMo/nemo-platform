@@ -68,6 +68,8 @@ def map_langsmith_export(payload: Any, *, project: str | None, include_feedback:
         trace_id = str(run.get("trace_id") or run_id)
         if not run_id:
             raise ValueError("LangSmith runs require `id`")
+        if run.get("start_time") is None:
+            raise ValueError("LangSmith runs require start_time")
         extra = _object(run.get("extra") or {}, "LangSmith run extra")
         metadata = _object(extra.get("metadata") or {}, "LangSmith run metadata")
         session_id = str(metadata.get("session_id") or metadata.get("thread_id") or run.get("session_id") or trace_id)
@@ -208,10 +210,17 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     validate_common_arguments(parser, args)
-    payload = load_json(args.input) if args.input else fetch_langsmith(args)
+    payload = _object(load_json(args.input) if args.input else fetch_langsmith(args), "LangSmith export")
     if args.feedback_input:
         feedback_payload = load_json(args.feedback_input)
-        payload["feedback"] = feedback_payload.get("feedback", feedback_payload)
+        feedback = (
+            feedback_payload.get("feedback", feedback_payload)
+            if isinstance(feedback_payload, dict)
+            else feedback_payload
+        )
+        if not isinstance(feedback, list):
+            raise ValueError("LangSmith feedback input must be an array or an object containing `feedback`")
+        payload["feedback"] = feedback
     bundle = map_langsmith_export(payload, project=args.project, include_feedback=args.include_feedback)
     return run_import(bundle, args)
 

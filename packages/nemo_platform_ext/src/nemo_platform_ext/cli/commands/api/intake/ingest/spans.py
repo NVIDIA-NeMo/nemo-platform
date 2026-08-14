@@ -42,10 +42,10 @@ def create_spans(
     [bold red]Required fields:[/] source, spans
 
     [green]Examples:[/]
-    nemo intake ingest spans create --input-file config.json
-    nemo intake ingest spans create --input-data '{"source": "value", "spans": {}}'
-    echo '{"json": "data"}' | nemo intake ingest spans create --input-file -
-    nemo intake ingest spans create --<option> "value"
+    nemo intake ingest spans create --input-file spans.json
+    nemo intake ingest spans create --input-data '{"source":"langsmith","spans":[{"span_id":"span-1","trace_id":"trace-1","started_at":"2026-08-14T00:00:00Z"}]}'
+    echo '{"source":"langsmith","spans":[{"span_id":"span-1","trace_id":"trace-1","started_at":"2026-08-14T00:00:00Z"}]}' | nemo intake ingest spans create --input-file -
+    nemo intake ingest spans create --source langsmith --spans '[{"span_id":"span-1","trace_id":"trace-1","started_at":"2026-08-14T00:00:00Z"}]'
     """
     # Read base input (optional if all fields provided via flags)
     if input_file or input_data:

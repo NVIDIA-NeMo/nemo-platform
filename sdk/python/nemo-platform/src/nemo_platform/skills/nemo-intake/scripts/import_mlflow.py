@@ -90,6 +90,8 @@ def map_mlflow_export(payload: Any, *, project: str | None, include_feedback: bo
             external_trace_id = trace_id or _mlflow_trace_id(native.get("trace_id"))
             if not external_span_id or not external_trace_id:
                 raise ValueError("MLflow spans require trace_id and span_id")
+            if native.get("start_time_unix_nano") is None:
+                raise ValueError("MLflow spans require start_time_unix_nano")
             if mapped_trace_id and mapped_trace_id != external_trace_id:
                 raise ValueError("MLflow trace contains spans with different trace IDs")
             mapped_trace_id = external_trace_id

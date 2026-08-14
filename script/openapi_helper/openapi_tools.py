@@ -854,6 +854,18 @@ def update_object_type(spec: dict) -> dict:
     return spec
 
 
+def mark_direct_span_json_value_for_stainless(spec: dict) -> dict:
+    """Mark the direct-span API's intentionally unconstrained JsonValue for Stainless."""
+
+    schemas = spec.get("components", {}).get("schemas", {})
+    if "DirectSpanInput" not in schemas:
+        return spec
+    json_value = schemas.get("JsonValue")
+    if isinstance(json_value, dict):
+        json_value["x-stainless-any"] = True
+    return spec
+
+
 @app.command(name="fix-schema")
 def fix_schema(
     spec_file: str = typer.Argument(..., help="Path to OpenAPI specification file (YAML or JSON)"),
