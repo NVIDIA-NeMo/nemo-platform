@@ -299,9 +299,7 @@ def test_materialize_dataset_requires_source_rows(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="gym_row_extras"):
         _materialize_dataset([no_extras], tmp_path / "gym_input.jsonl")
     # the other half of the split is equally required
-    no_params = tasks[0].model_copy(
-        update={"metadata": {k: v for k, v in tasks[0].metadata.items() if k != "gym_row"}}
-    )
+    no_params = tasks[0].model_copy(update={"metadata": {k: v for k, v in tasks[0].metadata.items() if k != "gym_row"}})
     with pytest.raises(ValueError, match="gym_row"):
         _materialize_dataset([no_params], tmp_path / "gym_input.jsonl")
 
