@@ -56,10 +56,15 @@ def app():
     return cli.ExperimentalistCLI().get_cli()
 
 
+def write_harbor_wrapper(agent_dir: Path) -> None:
+    (agent_dir / "harbor_wrapper.py").write_text("class WrappedAgent:\n    pass\n", encoding="utf-8")
+
+
 @pytest.fixture()
 def profile_tree(tmp_path: Path) -> Path:
     for sub in ("evals/task_template", "evals/train", "evals/val"):
         (tmp_path / sub).mkdir(parents=True)
+    write_harbor_wrapper(tmp_path)
     (tmp_path / "optimizer.yaml").write_text(
         "agent: flight-planner\n"
         "task_template: ./evals/task_template\n"
@@ -134,6 +139,7 @@ def test_experiment_all_flags_no_profile_still_works(app, tmp_path: Path, monkey
     monkeypatch.setattr(cli, "_PREFLIGHT_PROBES", quiet_probes())
     for sub in ("agent", "t", "v"):
         (tmp_path / sub).mkdir()
+    write_harbor_wrapper(tmp_path / "agent")
     monkeypatch.chdir(tmp_path)
     result = runner.invoke(
         app,
@@ -246,6 +252,7 @@ def test_profileless_implicit_experiment_dirs_retry_collisions_and_stay_unique(
     monkeypatch.setattr(cli, "run_experimentalist", recorder)
     for sub in ("agent", "t", "v"):
         (tmp_path / sub).mkdir()
+    write_harbor_wrapper(tmp_path / "agent")
     monkeypatch.chdir(tmp_path)
     args = [
         "run",
@@ -1042,6 +1049,29 @@ def test_doctor_validates_full_effective_experiment_config(
 
     assert result.exit_code == 1
     assert expected in result.output
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize("command", ["run", "doctor"])
+def test_missing_evaluator_entrypoint_blocks_both_commands(
+    app,
+    profile_tree: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+) -> None:
+    """Doctor reports the same missing wrapper that stops a run, not a clean bill."""
+    write_task_toml(profile_tree)
+    (profile_tree / "harbor_wrapper.py").unlink()
+    monkeypatch.setattr(cli, "run_experimentalist", RunRecorder())
+    monkeypatch.chdir(profile_tree)
+    args = [command]
+    if command == "run":
+        args += ["--no-insight", "-o", str(profile_tree / "out")]
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    assert "evaluator cannot import 'harbor_wrapper'" in result.output
     assert "Traceback" not in result.output
 
 

@@ -52,6 +52,10 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
     EvaluatorType,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.entrypoint import (
+    DEFAULT_AGENT_IMPORT_PATH,
+    split_import_path,
+)
 from pydantic import Field
 
 
@@ -187,7 +191,7 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     environment_build_timeout_multiplier: float | None = Field(default=1.0)
     artifacts: list[str] = Field(default=[])
     retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
-    import_path: str = Field(default="harbor_wrapper:WrappedAgent")
+    import_path: str = Field(default=DEFAULT_AGENT_IMPORT_PATH)
     trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
     trace_format: Literal["otlp", "atif"] = Field(
         default="otlp",
@@ -392,17 +396,10 @@ def _ensure_package(name: str, search_path: Path | None = None) -> None:
 
 
 def _scoped_import_path(agent_path: Path, import_path: str) -> tuple[str, str]:
-    module_name, separator, attribute = import_path.partition(":")
-    module_name = module_name.strip().lstrip(".")
-    if not module_name:
-        raise ValueError("import_path module is required")
-
+    module_name, attribute = split_import_path(import_path)
     package_name = _agent_import_package(agent_path)
     _ensure_package(package_name, search_path=agent_path)
-    scoped = f"{package_name}.{module_name}"
-    if separator:
-        scoped = f"{scoped}:{attribute}"
-    return scoped, package_name
+    return f"{package_name}.{module_name}:{attribute}", package_name
 
 
 def _cleanup_scoped_imports(package_name: str) -> None:
