@@ -48,7 +48,11 @@ from nemo_evaluator_sdk.metrics.protocol import (
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.resilience.api import run_indexed_tasks, use_resilience_session
 from nemo_evaluator_sdk.resilience.errors import get_evaluation_error
-from nemo_evaluator_sdk.structured_output import structured_output_mode_session
+from nemo_evaluator_sdk.session import begin_evaluation_session
+from nemo_evaluator_sdk.structured_output import (
+    InferenceStructuredOutput,
+    detect_structured_output_mode,
+)
 from nemo_evaluator_sdk.templates import render_request
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -265,25 +269,11 @@ async def resolve_target_structured_output_mode(
     inference_fn: inference.InferenceFn,
     params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None,
 ) -> None:
-    """Probe the target endpoint so generation uses an encoding it actually honours.
+    """Probe the target endpoint and set the generation hook's encoding.
 
-    The judge has its own preflight; target generation had none, and previously relied on the
-    model's ``format`` label to pick an encoding. That label is deprecated and ignored, so without
-    this probe a target that only accepts ``nvext.guided_json`` would be sent ``response_format``
-    and either reject the request or silently drop the constraint.
-
-    Only the hook built from ``params.structured_output`` is retuned. A caller that hand-builds an
-    InferenceStructuredOutput and splices it in via ``preprocess_hooks`` has chosen a mode
-    deliberately, and silently overriding that choice would be surprising; ``_merge_online_hooks``
-    places the run-level hook ahead of caller-supplied ones, so the first match is ours.
-
-    Like the judge's own preflight, this runs before ``use_resilience_session()`` opens, so probe
-    attempts use the process-global scheduler and do not appear in the session summary. Detection
-    itself is cached per endpoint for the run, so a Model used as both target and judge is probed
-    once, not once per role.
+    Only the hook built from ``params.structured_output`` is retuned; a caller that supplies its own
+    InferenceStructuredOutput has chosen a mode deliberately.
     """
-    from nemo_evaluator_sdk.structured_output import InferenceStructuredOutput, detect_structured_output_mode
-
     if not (isinstance(params, RunConfigOnlineModel) and params.structured_output):
         return
 
@@ -308,13 +298,7 @@ def _maybe_set_default_max_tokens(
     request: dict[str, Any],
     params: RunConfigOnlineModel | None,
 ) -> None:
-    """Apply the default max token cap when neither params nor request set one.
-
-    This was previously applied only to ``nim``-format models. Model format is deprecated and no
-    longer distinguishes endpoints, so the cap is unconditional: an unbounded generation against a
-    reasoning-capable judge is a cost risk on any endpoint, and callers that want more can set
-    ``max_tokens`` or ``max_completion_tokens`` explicitly.
-    """
+    """Apply the default max token cap when neither params nor request set one."""
     inference_params = params.inference if isinstance(params, RunConfigOnlineModel) else None
     if inference_params is not None and (
         inference_params.max_tokens is not None or inference_params.max_completion_tokens is not None
@@ -868,9 +852,7 @@ async def evaluate_metric(
         log.warning("No rows found in dataset, returning empty evaluation result")
         return empty_evaluation_result()
 
-    # Scope endpoint structured-output detection to this run so probes are cached across rows
-    # without leaking a result (or a transient failure) into the next run.
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         return await _evaluate_metric_in_session(
             metric=metric,
             rows=rows,
@@ -892,7 +874,6 @@ async def _evaluate_metric_in_session(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None,
 ) -> EvaluationResult:
-    """Body of :func:`evaluate_metric`, run inside a structured-output detection session."""
     params = resolve_params(params, target)
 
     client_close_fn = None

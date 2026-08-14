@@ -51,7 +51,7 @@ from nemo_platform.beta.evaluator.execution.metric_execution import (
     resolve_target_structured_output_mode,
     run_sync,
 )
-from nemo_platform.beta.evaluator.structured_output import structured_output_mode_session
+from nemo_platform.beta.evaluator.session import begin_evaluation_session
 from nemo_platform.beta.evaluator.execution.samples import build_metric_input
 from nemo_platform.beta.evaluator.inference import InferenceFn
 from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricWithPreflight, validate_metric_result
@@ -166,10 +166,7 @@ class AgentEvaluator:
         runtime_config = resolved_config.model_copy(update={"run_id": run_id})
         started_at = datetime.now(UTC)
 
-        # One detection session for the whole run: generation probes the target and scoring probes
-        # any judge model, and imported-trial runs still score, so scoping this to generation alone
-        # would leave judges probing per call.
-        async with structured_output_mode_session():
+        async with begin_evaluation_session():
             # Branch on which seam was supplied so the type checker can narrow ``target`` to a
             # concrete ``AgentEvalTarget`` without a cast.
             if trials is not None:
@@ -248,18 +245,7 @@ class AgentEvaluator:
             if not task.metrics:
                 raise ValueError(f"task {task.id!r} does not declare any metrics")
 
-        # Agent-eval scores metrics directly rather than through prepare_metric_for_execution, so
-        # nothing else runs their preflight. An LLM judge detects its endpoint's structured-output
-        # encoding there; without this it would score using the provisional guess from new_hooks.
-        # Deduplicated by identity because the same metric object is scored once per trial. The run
-        # session would collapse repeat probes to one request anyway; this just avoids the repeated
-        # awaits. Identity is stable here: `tasks` holds every metric for the duration of the loop.
-        preflighted: set[int] = set()
-        for task in tasks:
-            for metric in task.metrics:
-                if isinstance(metric, MetricWithPreflight) and id(metric) not in preflighted:
-                    preflighted.add(id(metric))
-                    await metric.preflight()
+        await _preflight_task_metrics(tasks)
 
         semaphore = asyncio.Semaphore(config.parallelism)
 
@@ -333,8 +319,6 @@ class AgentEvaluator:
         params = _resolve_live_params(config, target)
         prompt_template = config.prompt_template or _default_prompt_template(target)
         semaphore = asyncio.Semaphore(params.parallelism)
-        # Hooks are built per row below; the run-level session opened by run() is what keeps the
-        # endpoint probe to one round trip for the whole pass instead of one per row.
 
         # Use the injected transport client when provided; otherwise build a default for the
         # resolved target type and close it when generation finishes.
@@ -402,6 +386,20 @@ class AgentEvaluator:
                 await close_client()
 
 
+async def _preflight_task_metrics(tasks: Sequence[AgentEvalTask]) -> None:
+    """Run each distinct metric's preflight once.
+
+    Agent-eval scores metrics directly rather than through ``prepare_metric_for_execution``, so
+    nothing else runs their preflight.
+    """
+    preflighted: set[int] = set()
+    for task in tasks:
+        for metric in task.metrics:
+            if isinstance(metric, MetricWithPreflight) and id(metric) not in preflighted:
+                preflighted.add(id(metric))
+                await metric.preflight()
+
+
 async def _generate_sample(
     *,
     target: Model | Agent,
@@ -423,8 +421,6 @@ async def _generate_sample(
         model_inference_fn = (
             cast(InferenceFn, inference_fn) if inference_fn is not None else inference.make_inference_request
         )
-        # Hooks are built per row here, so this relies on detection being cached per endpoint:
-        # without the probe the request would carry whichever encoding new_hooks guessed.
         await resolve_target_structured_output_mode(
             preprocess_hooks=preprocess_hooks,
             model=target,

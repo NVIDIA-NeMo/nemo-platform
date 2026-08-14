@@ -200,14 +200,8 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         await resolve_model_refs(self, model_resolver)
         self._client = None
         self._api_key = None
-        # `_preflight_lock` is deliberately NOT reset here. Clearing it would split preflight
-        # synchronisation while a concurrent compute_scores() is mid-probe: a second scorer would
-        # build a new lock, and an in-flight scorer could then render through the freshly rebuilt
-        # unresolved hook and send a guessed encoding with only a warning. A lock retained from a
-        # previous event loop instead fails loudly on its next contended acquire, and both cases
-        # require resolving models while scoring with the same metric object, which is unsupported:
-        # resolution is preparation-time, before evaluation starts. A loud failure beats a silent
-        # unprobed request in a change whose whole purpose is removing silent degradation.
+        # `_preflight_lock` is deliberately not reset: clearing it mid-run would split preflight
+        # synchronisation and let an in-flight scorer send an unprobed request.
         self._ensure_default_prompt_template()
         preprocess_hooks, postprocess_hooks = new_hooks(self)
         self.with_hooks(preprocess=preprocess_hooks, postprocess=postprocess_hooks)
@@ -250,11 +244,7 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         _logger.info("Structured output mode selected for %s: %s", model.name, mode.value)
 
     def _require_preflight_lock(self) -> asyncio.Lock:
-        """Return this metric's preflight lock, created on first use.
-
-        Built lazily rather than as a field default so the metric stays deep-copyable and does not
-        bind a lock to an event loop at construction time.
-        """
+        """Return this metric's preflight lock, created lazily to keep the metric deep-copyable."""
         if self._preflight_lock is None:
             self._preflight_lock = asyncio.Lock()
         return self._preflight_lock
@@ -357,13 +347,8 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
 
     async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output for one item/sample pair."""
-        # Executors call preflight() before scoring, but this is public API: a caller can build the
-        # metric and score with it directly, and then nothing would have probed the endpoint. Detect
-        # on first use so the encoding is never a guess.
-        #
-        # Locked and re-checked because a direct caller may gather many compute_scores() at once
-        # with no run session to cache detection: without this, every one of them would see an
-        # unresolved hook and probe the same endpoint concurrently.
+        # Public API: a caller may score without an executor having run preflight. Locked because
+        # concurrent direct callers would otherwise each probe the same endpoint.
         if self._has_unresolved_structured_output_hook():
             async with self._require_preflight_lock():
                 if self._has_unresolved_structured_output_hook():

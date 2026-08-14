@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_evaluator_sdk.enums import ModelFormat
+from nemo_evaluator_sdk.session import begin_evaluation_session
 from nemo_evaluator_sdk.structured_output import (
     InferenceStructuredOutput,
     Model,
@@ -16,7 +17,6 @@ from nemo_evaluator_sdk.structured_output import (
     _looks_like_unsupported_guided_json_error,
     default_structured_output_mode,
     detect_structured_output_mode,
-    structured_output_mode_session,
 )
 from pydantic import ValidationError
 
@@ -344,7 +344,7 @@ async def test_detection_is_cached_per_endpoint_within_a_session():
         calls.append(request)
         return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
 
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         first = await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
         second = await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
 
@@ -382,14 +382,14 @@ async def test_unsupported_is_cached_within_a_run_but_re_probed_by_the_next():
             raise RuntimeError("Error code: 429 - rate limited")
         return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
 
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         first = await detect_structured_output_mode(model=_test_model(), inference_fn=flaky_inference_fn, api_key=None)
         repeat = await detect_structured_output_mode(model=_test_model(), inference_fn=flaky_inference_fn, api_key=None)
 
     assert first == repeat == StructuredOutputMode.UNSUPPORTED
     assert attempts["n"] == 3, "the negative must be cached within the run, not re-probed per caller"
 
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         later = await detect_structured_output_mode(model=_test_model(), inference_fn=flaky_inference_fn, api_key=None)
 
     assert later == StructuredOutputMode.OPENAI_RESPONSE_FORMAT, "a new run must re-probe"
@@ -445,7 +445,7 @@ async def test_concurrent_detections_in_one_session_probe_the_endpoint_once():
         await asyncio.sleep(0.01)  # widen the window for a stampede
         return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
 
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         modes = await asyncio.gather(
             *(
                 detect_structured_output_mode(model=_test_model(), inference_fn=slow_inference_fn, api_key=None)
@@ -470,9 +470,9 @@ async def test_nested_sessions_are_re_entrant_and_share_one_cache():
         calls.append(request)
         return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
 
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
-        async with structured_output_mode_session():
+        async with begin_evaluation_session():
             await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
         await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
 
@@ -488,9 +488,9 @@ async def test_separate_runs_do_not_share_a_cache():
         calls.append(request)
         return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
 
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
-    async with structured_output_mode_session():
+    async with begin_evaluation_session():
         await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
 
     assert len(calls) == 2
@@ -512,7 +512,7 @@ async def test_concurrent_runs_get_isolated_caches():
             await asyncio.sleep(0.01)
             return {"choices": [{"message": {"content": '{"__nmp_probe_score": 1}'}}]}
 
-        async with structured_output_mode_session():
+        async with begin_evaluation_session():
             return await detect_structured_output_mode(model=_test_model(), inference_fn=inference_fn, api_key=None)
 
     modes = await asyncio.gather(run_one("a"), run_one("b"))
