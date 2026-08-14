@@ -10,6 +10,7 @@ Wraps nemo_automodel recipes with Jobs-service progress reporting (SFT, KD, embe
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 from nemo_automodel.components.checkpoint.checkpointing import Checkpointer
@@ -69,6 +70,24 @@ class AutomodelRecipe(Protocol):
     ) -> None:
         """Save a checkpoint."""
         ...
+
+
+def strip_val_prefix(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop the ``val_`` the Automodel recipes already put on a metric name.
+
+    The shared callback's naming rule is that the backend supplies its
+    framework's own name and the phase supplies the prefix, so a name that
+    arrives pre-prefixed comes back doubled. Stripping is what makes ``val_loss``
+    land as ``val_loss`` rather than ``val_val_loss``.
+
+    It applies to every name, not just ``val_loss``, because the recipes are
+    inconsistent about which metrics they prefix: ``train_ft`` reports
+    ``val_loss`` alongside a bare ``lr`` and ``num_label_tokens``, and
+    ``train_bi_encoder`` adds ``val_acc1`` and ``val_mrr``. Only the callback
+    should be deciding the phase, so the prefix comes off wherever the recipe
+    happened to put one.
+    """
+    return {name.removeprefix("val_"): value for name, value in metrics.items()}
 
 
 class AutomodelRecipeWrapper:
@@ -171,11 +190,7 @@ class AutomodelRecipeWrapper:
                 self.callback.report_validation(
                     step=getattr(log_data, "step", 0) + 1,  # Convert to 1-based
                     epoch=getattr(log_data, "epoch", 0) + 1,  # Convert to 1-based
-                    # Automodel names it `val_loss`; renaming to `loss` lets the
-                    # phase prefix produce `val_loss` the way it does elsewhere.
-                    # An absent one now yields no point, where it used to chart
-                    # a fabricated 0.0.
-                    metrics={("loss" if name == "val_loss" else name): value for name, value in metrics.items()},
+                    metrics=strip_val_prefix(metrics),
                 )
             except Exception as e:
                 logger.warning(f"Failed to report validation progress: {e}")
