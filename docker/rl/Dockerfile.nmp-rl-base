@@ -48,6 +48,8 @@ ADD ${NEMO_RL_REPO}#${NEMO_RL_REF} /
 
 # ---- base: cuda-dl-base + system deps + cmake + uv + python 3.13 (mirrors RL's own base stage) ----
 FROM ${BASE_IMAGE} AS base
+ARG BUILD_UID=2000
+ARG BUILD_GID=2000
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
 RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages.txt
@@ -86,12 +88,22 @@ ARG PYTHON_VERSION
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_PYTHON=${PYTHON_VERSION} \
     PATH="/usr/local/bin:/root/.local/bin:${PATH}"
-RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
+RUN umask 022 && \
+    curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
     cp /root/.local/bin/uv /usr/local/bin/uv && \
     uv python install "${PYTHON_VERSION}"
 COPY docker/scripts/collect-apt-sources.sh \
     docker/scripts/collect-python-sdists.py \
     /usr/local/bin/
+
+# Heavy Python artifacts are built by a non-runtime user. The runtime UID can read them via
+# umask 022, but cannot rewrite the shared uv cache that the symlinked venvs execute from.
+RUN groupadd --gid "${BUILD_GID}" nmp-build && \
+    useradd --uid "${BUILD_UID}" --gid "${BUILD_GID}" --home-dir /home/nmp-build \
+        --create-home --shell /bin/bash nmp-build && \
+    mkdir -p /opt/nemo-rl /opt/nemo_rl_venv /opt/uv_cache /opt/ray_venvs /opt/gym_venvs && \
+    chown -R "${BUILD_UID}:${BUILD_GID}" \
+        /home/nmp-build /opt/nemo-rl /opt/nemo_rl_venv /opt/uv_cache /opt/ray_venvs /opt/gym_venvs
 
 # Ray / NeMo-RL runtime behavior (affects the running container, not the build):
 #   RAY_USAGE_STATS_ENABLED=0        - no telemetry phone-home.
@@ -112,6 +124,8 @@ ENV RAY_USAGE_STATS_ENABLED=0 \
 # and automodel extras are deliberately EXCLUDED: alternative training backends the customizer does
 # not use, and the only source of Transformer-Engine (the longest CUDA compile).
 FROM base AS builder
+ARG BUILD_UID=2000
+ARG BUILD_GID=2000
 WORKDIR /opt/nemo-rl
 
 # Arch knobs + cuDNN wiring (mirrors RL's own hermetic stage). The arch flags only affect the
@@ -151,6 +165,7 @@ ENV NVTE_BUILD_MAX_JOBS=${NVTE_BUILD_MAX_JOBS} \
     TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST} \
     CUDA_HOME=/usr/local/cuda \
     CPLUS_INCLUDE_PATH=/usr/local/cuda/include/cccl \
+    HOME=/home/nmp-build \
     UV_PROJECT_ENVIRONMENT=/opt/nemo_rl_venv \
     UV_CACHE_DIR=/opt/uv_cache \
     CUDNN_HOME=/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn \
@@ -164,11 +179,13 @@ ENV NVTE_BUILD_MAX_JOBS=${NVTE_BUILD_MAX_JOBS} \
 # TensorRT-LLM is excluded (we never build the trtllm extra). Megatron-Bridge must stay, even though
 # the mcore extra is not built: `uv run` validates the lock, which needs metadata for every path
 # source, so removing it fails the prefetch step below.
-COPY --from=nemo-rl pyproject.toml uv.lock ./
-COPY --from=nemo-rl nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
-COPY --from=nemo-rl --exclude=TensorRT-LLM-workspace --exclude=TensorRT-LLM-workspace/** \
+COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} pyproject.toml uv.lock ./
+COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} nemo_rl/__init__.py nemo_rl/package_info.py ./nemo_rl/
+COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=TensorRT-LLM-workspace --exclude=TensorRT-LLM-workspace/** \
      --exclude=**/.git 3rdparty/ ./3rdparty/
-COPY --from=nemo-rl research/ ./research/
+COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} research/ ./research/
+
+USER ${BUILD_UID}:${BUILD_GID}
 
 # Default --frozen (reproducible). Gym is RL's own submodule, so its pin is always in lockstep with
 # RL's uv.lock. Set to "" to relock if you bump RL to a commit whose lock has drifted.
@@ -184,6 +201,7 @@ ARG UV_SYNC_MODE=--frozen
 # --no-install-project installs dependencies but not nemo-rl itself; the root package is added
 # editable in a cheap step after the full-source COPY.
 RUN <<"EOF" bash -exu
+umask 022
 # Symlink the base venv into the uv cache (see UV_CACHE_DIR/UV_LINK_MODE note above). Scoped to
 # this command rather than the image ENV so downstream `--no-cache` installs are unaffected.
 export UV_LINK_MODE=symlink
@@ -225,12 +243,12 @@ EOF
 #
 # --exclude=**/.git: the ADD drops only the top-level .git, so each submodule still carries its own.
 # Excluding here keeps them out of this layer - removing them later would leave them extractable.
-COPY --from=nemo-rl --exclude=**/.git . /opt/nemo-rl
+COPY --from=nemo-rl --chown=${BUILD_UID}:${BUILD_GID} --exclude=**/.git . /opt/nemo-rl
 
 # Install the workspace ROOT (nemo-rl) editable. --no-install-project above installed every
 # DEPENDENCY and workspace MEMBER (incl. nemo-gym) but skipped the root; this adds it with --no-deps
 # (deps already present). .git is on disk now, so nemo_rl.__version__ picks up its +<sha> suffix.
-RUN uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps -e /opt/nemo-rl
+RUN umask 022 && uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps -e /opt/nemo-rl
 
 # ---- Per-worker Ray venvs (the venvs training actually runs in) ----
 # Workers do not run in the base venv - each Ray actor gets its own venv under /opt/ray_venvs.
@@ -251,6 +269,7 @@ RUN uv pip install --python /opt/nemo_rl_venv/bin/python --no-deps -e /opt/nemo-
 # NOT prefetched: automodel, mcore, sglang, trtllm, modelopt-quant
 # and the async-GRPO bookkeeping actors; those build on the node if a config selects them.
 RUN <<"EOF" bash -exu
+umask 022
 export UV_LINK_MODE=symlink
 uv run nemo_rl/utils/prefetch_venvs.py \
     dtensor_policy_worker.DTensorPolicyWorker \
@@ -296,6 +315,7 @@ ARG NEMO_GYM_CUDA=cu130
 ARG NEMO_GYM_VLLM_VERSION=0.20.0
 ARG TARGETARCH
 RUN <<"EOF" bash -exu
+umask 022
 export UV_LINK_MODE=symlink
 mkdir -p /opt/gym_venvs
 if [ -n "${NEMO_GYM_PREFETCH_CONFIGS:-}" ]; then
@@ -334,6 +354,8 @@ if [ -d "${GYM_CACHE}" ]; then
 fi
 EOF
 
+USER root
+
 # Container fingerprint (matches NeMo-RL's release stage). With NRL_CONTAINER=1 set, nemo_rl's
 # import-time check compares this against the current source to detect drift between the baked
 # venvs and the code; without the file it logs a warning on every import instead.
@@ -345,6 +367,8 @@ RUN /opt/nemo_rl_venv/bin/python tools/generate_fingerprint.py \
 
 # ---- publish base (inherits builder FS; keeps the uv-managed python valid - see header NOTE) ----
 FROM builder AS nmp-rl-base
+ARG RUNTIME_UID=1000
+ARG RUNTIME_GID=1000
 
 # setuptools CVEs (GHSA-58pv-8j8x-9vj2, GHSA-8rrh-rw8j-w5fx, in its vendored jaraco.context/wheel):
 # Megatron-Bridge pins `setuptools<80.0.0` for its build, and PEP 517 build environments resolve
@@ -390,27 +414,37 @@ ENV VIRTUAL_ENV=/opt/nemo_rl_venv \
 
 # The venv's python symlinks to the uv-managed interpreter under /opt/uv, nemo_rl is installed
 # editable from /opt/nemo-rl, and the worker/Gym venvs symlink their packages into /opt/uv_cache.
-# Make all of it world-readable/traversable so the non-root runtime (training image drops to UID
-# 1000) can load Python's stdlib, import nemo_rl / nemo_gym, and resolve those package symlinks.
-RUN chmod -R a+rX /opt/uv /opt/uv_cache /opt/nemo_rl_venv /opt/nemo-rl /opt/gym_venvs /opt/ray_venvs
+# Build steps create these trees with umask 022 so the non-root runtime can load Python's stdlib,
+# import nemo_rl / nemo_gym, and resolve package symlinks without a late recursive chmod layer.
+RUN <<"EOF" bash -eu
+for path in /opt/uv /opt/uv_cache /opt/nemo_rl_venv /opt/nemo-rl /opt/gym_venvs /opt/ray_venvs; do
+    blocked="$(find "${path}" \
+        \( -type d ! -perm -005 -o -type f ! -perm -004 -o -type f -perm /111 ! -perm -001 \) \
+        -print -quit)"
+    if [ -n "${blocked}" ]; then
+        echo "ERROR: ${blocked} is not readable/traversable by the runtime UID." >&2
+        echo "       Ensure build steps create Python artifacts with umask 022." >&2
+        exit 1
+    fi
+done
+EOF
 
 # Runtime writability, deliberately minimal. NeMo-RL and Gym create ADDITIONAL venvs at runtime
 # (user Gym FileSet environments; any actor that was not prefetched), so the two venv PARENT
-# directories must be writable by the non-root runtime user. Only the top-level directories are
-# chowned - NOT -R - so the layer stays tiny and the prefetched venvs underneath stay root-owned.
+# directories must be writable by the non-root runtime user. Only the top-level directories get group
+# write + sticky mode, so the layer stays tiny and prefetched venvs stay build-owned/read-only.
 #
 # /opt/uv_cache is deliberately left read-only: it holds the actual code the trainer executes, and
 # this container also runs user-authored Gym environment code, which must not be able to rewrite
 # it. Downstream images point uv at a writable per-user cache (see Dockerfile.nmp-rl-training).
-ARG RUNTIME_UID=1000
-ARG RUNTIME_GID=1000
-RUN chown ${RUNTIME_UID}:${RUNTIME_GID} /opt/ray_venvs /opt/gym_venvs
+RUN chown root:${RUNTIME_GID} /opt/ray_venvs /opt/gym_venvs && \
+    chmod 1775 /opt/ray_venvs /opt/gym_venvs
 
 # NeMo-RL patches vLLM in place at worker startup (models/generation/vllm/patches.py), which
-# symlinking breaks two ways: the venvs are root-owned so the patch lock fails with EACCES as UID
-# 1000, and every vLLM venv symlinks to ONE copy in /opt/uv_cache while the patch writes a per-venv
-# py_executable into it. Giving each venv a private vllm/ fixes both. Scoped to vllm/ (~506 MB x 3)
-# rather than UV_LINK_MODE=copy globally (~56 GB) - see README.md, "Link mode".
+# symlinking breaks two ways: the venvs are build-owned/read-only for the runtime UID, so the patch
+# lock fails with EACCES, and every vLLM venv symlinks to ONE copy in /opt/uv_cache while the patch
+# writes a per-venv py_executable into it. Giving each venv a private vllm/ fixes both. Scoped to vllm/
+# (~506 MB x 3) rather than UV_LINK_MODE=copy globally (~56 GB) - see README.md, "Link mode".
 RUN <<"EOF" bash -exu
 privatized=0
 for sp in /opt/ray_venvs/*/lib/python*/site-packages; do
@@ -457,7 +491,7 @@ done
 EOF
 
 # Gym falls back to this in-tree cache when a process does not inherit NRL_CONTAINER / UV_CACHE_DIR
-# (the sandboxed Gym host's per-app servers), and fails with EACCES on a root-owned tree. Keeping
+# (the sandboxed Gym host's per-app servers), and fails with EACCES on the build-owned tree. Keeping
 # the fallback writable is the safety net; the real fix is env propagation, which lives in NeMo-RL.
 RUN mkdir -p /opt/nemo-rl/3rdparty/Gym-workspace/Gym/cache && \
     chown ${RUNTIME_UID}:${RUNTIME_GID} /opt/nemo-rl/3rdparty/Gym-workspace/Gym/cache
