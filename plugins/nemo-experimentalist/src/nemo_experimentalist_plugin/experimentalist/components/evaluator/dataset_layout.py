@@ -21,7 +21,7 @@ _TASK_TEMPLATE_DIRNAME = "task_template"
 
 def is_task_dir(path: Path) -> bool:
     """Return whether *path* is a Harbor task directory."""
-    return path.is_dir() and (path / TASK_CONFIG_FILENAME).exists()
+    return path.is_dir() and (path / TASK_CONFIG_FILENAME).is_file()
 
 
 def find_task_dirs(dataset_path: Path) -> list[Path]:

@@ -517,6 +517,11 @@ def test_harbor_dataset_rejects_invalid_refs_and_paths(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="contains no Harbor task directories"):
         HarborDataset.from_path(empty_dir)
 
+    # Harbor reads task.toml as a file, so a directory by that name is no task of ours either.
+    (empty_dir / "task-a" / "task.toml").mkdir(parents=True)
+    with pytest.raises(ValueError, match="contains no Harbor task directories"):
+        HarborDataset.from_path(empty_dir)
+
     with pytest.raises(ValueError, match="metadata field 'id' must be a string"):
         HarborDataset.from_ref(DatasetRef(uri=str(tmp_path), metadata={"id": 1}))
 
