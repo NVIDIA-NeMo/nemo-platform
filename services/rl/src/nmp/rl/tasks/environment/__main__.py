@@ -36,6 +36,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--hub-id", required=True, help="Hub slug, e.g. primeintellect/ascii-tree")
     parser.add_argument(
+        "--hub-version",
+        default=None,
+        help=(
+            "Exact hub package version to vendor, e.g. 0.1.5. Unset resolves to whatever the "
+            "index offers, which can change under you: a new release that narrows "
+            "Requires-Python will fail the download, and one that still installs may not run "
+            "on the training image's Python. Pin this to make a conversion reproducible."
+        ),
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         required=True,
@@ -107,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     vf_env_args = json.loads(args.vf_env_args)
     spec = ConvertEnvironmentSpec(
         hub_id=args.hub_id,
+        hub_version=args.hub_version,
         out_dir=args.out_dir.resolve(),
         dataset_dir=args.dataset_dir.resolve() if args.dataset_dir else None,
         vf_env_id=args.vf_env_id,

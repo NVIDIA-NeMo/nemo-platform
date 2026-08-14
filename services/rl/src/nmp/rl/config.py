@@ -94,6 +94,19 @@ class RlConfig(create_service_config_class("rl")):  # type: ignore[misc]  # ty: 
         ),
     )
 
+    sandbox_server_protocol: str | None = Field(
+        default=None,
+        description=(
+            "Scheme the cluster's OpenSandbox server speaks (http or https). Sets "
+            "env.nemo_gym.sandbox.host_provider_options.connection.protocol, which NeMo-RL "
+            "applies to both the SDK connection and the health/rollout proxy URLs. Leave "
+            "unset to take NeMo-RL's default (https). Set it to http for a server that "
+            "does not terminate TLS -- NeMo-Gym's own shipped provider config assumes "
+            "http for the in-cluster service -- otherwise every health poll stalls in the "
+            "TLS handshake and the job fails after ready_timeout_s with a bare timeout."
+        ),
+    )
+
     sandbox_cluster_capable: bool = Field(
         default=False,
         description=(

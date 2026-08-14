@@ -127,6 +127,10 @@ class TrainingStepConfig(BaseModel):
         gym_runtime_image: str | None = None
         allow_internet: bool = False
         public_dns_allow: list[str] = Field(default_factory=list)
+        # Scheme the cluster's OpenSandbox server speaks. Operator-scoped like the egress
+        # settings; resolved by the compiler because RlConfig is not readable from the
+        # training pod. None takes NeMo-RL's default.
+        sandbox_server_protocol: str | None = None
 
     class ScheduleConfig(BaseModel):
         epochs: int = 1

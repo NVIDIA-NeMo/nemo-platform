@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +56,12 @@ class SandboxConfig(BaseModel):
     ttl_s: int = 14_400
     network_policy: SandboxNetworkPolicy = Field(default_factory=SandboxNetworkPolicy)
     resources: dict[str, str] | None = None
+    # Forwarded verbatim to NeMo-RL's host provider constructor (connection / create /
+    # probe / operations). ``connection.protocol`` is the one that matters in practice:
+    # it sets the scheme for BOTH the OpenSandbox SDK connection and the health/rollout
+    # proxy URLs, and NeMo-RL defaults it to https. Against a plain-HTTP in-cluster
+    # server the health poll then stalls in the TLS handshake until ready_timeout_s.
+    host_provider_options: dict[str, Any] = Field(default_factory=dict)
     # PVC claim + sub-path triples. The sandbox mounts the same job-storage claim the
     # training container uses, so the environment and dataset it reads are the ones the
     # file_io download step already materialized.

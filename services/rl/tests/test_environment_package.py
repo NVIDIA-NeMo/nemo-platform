@@ -313,3 +313,347 @@ def test_config_paths_containment_rejects_sibling_prefix_dir(tmp_path: Path) -> 
     manifest = load_manifest(env_root)
     with pytest.raises(EnvironmentPackageValidationError, match="escapes environment root"):
         validate_package_layout(env_root, manifest)
+
+
+def test_download_hub_wheels_resolves_before_downloading(tmp_path: Path, monkeypatch) -> None:
+    """The closure must be resolved first, then fetched with --no-deps.
+
+    `pip download` resolves while it fetches and keeps every candidate it pulled,
+    including versions it later backtracked away from, so a one-shot download can leave
+    two versions of one distribution in wheels/. The cluster-side installer then gets
+    contradictory pins and dies with `you require xxhash==3.8.1 and xxhash==4.0.0 ...`
+    minutes into the job. Resolving to a pinned file and downloading it with --no-deps is
+    what makes the output one-file-per-distribution.
+    """
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    commands: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        if "compile" in cmd:
+            Path(cmd[cmd.index("--output-file") + 1]).write_text("ascii-tree==0.1.5\nxxhash==4.0.0\n", encoding="utf-8")
+        else:
+            dest = Path(cmd[cmd.index("--dest") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+        return None
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+
+    spec = convert_mod.ConvertEnvironmentSpec(
+        hub_id="primeintellect/ascii-tree",
+        out_dir=tmp_path / "env",
+    )
+    convert_mod.download_hub_wheels(spec, work_dir=tmp_path / "work")
+
+    compile_cmd, download_cmd = commands
+    assert compile_cmd[:3] == ["uv", "pip", "compile"]
+    # pip merges indexes; uv's default first-index would silently repin.
+    assert compile_cmd[compile_cmd.index("--index-strategy") + 1] == "unsafe-best-match"
+
+    assert download_cmd[1:4] == ["-m", "pip", "download"]
+    assert "--no-deps" in download_cmd
+    pinned = Path(download_cmd[download_cmd.index("-r") + 1])
+    assert pinned.read_text(encoding="utf-8").splitlines() == [
+        "ascii-tree==0.1.5",
+        "xxhash==4.0.0",
+    ]
+
+
+def test_download_hub_wheels_requirements_in_lists_env_and_verifiers(tmp_path: Path, monkeypatch) -> None:
+    """Both roots have to reach the resolver, or the closure is missing one of them."""
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    seen: dict[str, str] = {}
+
+    def _fake_run(cmd, **kwargs):
+        if "compile" in cmd:
+            seen["in"] = Path(cmd[3]).read_text(encoding="utf-8")
+            Path(cmd[cmd.index("--output-file") + 1]).write_text("", encoding="utf-8")
+        else:
+            dest = Path(cmd[cmd.index("--dest") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+        return None
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+
+    convert_mod.download_hub_wheels(
+        convert_mod.ConvertEnvironmentSpec(
+            hub_id="primeintellect/ascii-tree",
+            out_dir=tmp_path / "env",
+            extra_wheels=("some-extra",),
+        ),
+        work_dir=tmp_path / "work",
+    )
+
+    assert seen["in"].splitlines() == [
+        convert_mod.DEFAULT_VERIFIERS_SPEC,
+        "ascii_tree",
+        "some-extra",
+    ]
+
+
+def test_duplicate_wheel_distributions_reports_only_repeats(tmp_path: Path) -> None:
+    """Normalized per PEP 503, so `charset_normalizer` and `charset-normalizer` are one."""
+    from nmp.rl.tasks.environment.validate import duplicate_wheel_distributions
+
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    for name in (
+        "ascii_tree-0.1.5-py3-none-any.whl",
+        "xxhash-3.8.1-py3-none-any.whl",
+        "xxhash-4.0.0-py3-none-any.whl",
+        "charset_normalizer-3.4.9-py3-none-any.whl",
+        "charset_normalizer-3.5.0-py3-none-any.whl",
+    ):
+        (wheels / name).write_bytes(b"PK\x03\x04")
+
+    assert duplicate_wheel_distributions(wheels) == {
+        "xxhash": ["3.8.1", "4.0.0"],
+        "charset-normalizer": ["3.4.9", "3.5.0"],
+    }
+
+
+def test_validate_package_layout_warns_on_duplicate_wheels(tmp_path: Path, caplog) -> None:
+    """A package that does not pin its own closure must say so at validation time."""
+    import logging
+
+    from nmp.rl.tasks.environment.package import write_adapter_wheels_package
+
+    src = tmp_path / "prebuilt"
+    src.mkdir()
+    for name in ("xxhash-3.8.1-py3-none-any.whl", "xxhash-4.0.0-py3-none-any.whl"):
+        (src / name).write_bytes(b"PK\x03\x04")
+
+    out = tmp_path / "env"
+    with caplog.at_level(logging.WARNING):
+        write_adapter_wheels_package(
+            out_dir=out,
+            hub_id="primeintellect/ascii-tree",
+            wheels_src=src,
+        )
+
+    assert "2 versions of xxhash" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("hub_version", "expected"),
+    [(None, "ascii_tree"), ("0.1.5", "ascii_tree==0.1.5")],
+)
+def test_download_hub_wheels_honours_hub_version(
+    tmp_path: Path, monkeypatch, hub_version: str | None, expected: str
+) -> None:
+    """An unpinned hub package is a moving target the conversion cannot control.
+
+    ascii-tree 0.1.6 shipped `Requires-Python: >=3.11,<3.13` where 0.1.5 declared none,
+    so an unpinned conversion that worked one day fails the next with
+    `requires a different Python`, and a release that still installs may not match the
+    training image's interpreter. --hub-version makes the vendored release explicit.
+    """
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    seen: dict[str, str] = {}
+
+    def _fake_run(cmd, **kwargs):
+        if "compile" in cmd:
+            seen["in"] = Path(cmd[3]).read_text(encoding="utf-8")
+            Path(cmd[cmd.index("--output-file") + 1]).write_text("", encoding="utf-8")
+        else:
+            dest = Path(cmd[cmd.index("--dest") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+        return None
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+
+    convert_mod.download_hub_wheels(
+        convert_mod.ConvertEnvironmentSpec(
+            hub_id="primeintellect/ascii-tree",
+            hub_version=hub_version,
+            out_dir=tmp_path / "env",
+        ),
+        work_dir=tmp_path / "work",
+    )
+
+    assert seen["in"].splitlines()[1] == expected
+
+
+def test_convert_cli_threads_hub_version_into_the_spec(monkeypatch, tmp_path: Path) -> None:
+    """The flag is useless if it stops at argparse."""
+    from nmp.rl.tasks.environment import __main__ as cli
+
+    captured: dict = {}
+
+    def _fake_convert(spec):
+        captured["spec"] = spec
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "convert_prime_environment", _fake_convert)
+
+    with pytest.raises(SystemExit):
+        cli.main(
+            [
+                "--hub-id",
+                "primeintellect/ascii-tree",
+                "--hub-version",
+                "0.1.5",
+                "--out-dir",
+                str(tmp_path / "env"),
+            ]
+        )
+
+    assert captured["spec"].hub_version == "0.1.5"
+
+
+def test_write_adapter_package_clears_stale_wheels(tmp_path: Path) -> None:
+    """Re-running into the same out_dir must replace the closure, not union with it.
+
+    The copy overwrites by filename, so a wheel from an earlier run survives whenever the
+    new resolution picked a different version of that project — and the package then ships
+    two. It validates fine locally and only fails on the cluster, as
+    `you require uvicorn==0.52.1 and uvicorn==0.52.3 ... unsatisfiable`.
+    """
+    out = tmp_path / "env"
+    stale = out / "wheels"
+    stale.mkdir(parents=True)
+    (stale / "uvicorn-0.52.1-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+    (stale / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"OLD")
+
+    src = tmp_path / "fresh"
+    src.mkdir()
+    (src / "uvicorn-0.52.3-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+    (src / "ascii_tree-0.1.5-py3-none-any.whl").write_bytes(b"NEW")
+
+    write_adapter_wheels_package(
+        out_dir=out,
+        hub_id="primeintellect/ascii-tree",
+        wheels_src=src,
+    )
+
+    assert sorted(p.name for p in (out / "wheels").glob("*.whl")) == [
+        "ascii_tree-0.1.5-py3-none-any.whl",
+        "uvicorn-0.52.3-py3-none-any.whl",
+    ]
+    # Same-named wheels must still be refreshed, not merely left in place.
+    assert (out / "wheels" / "ascii_tree-0.1.5-py3-none-any.whl").read_bytes() == b"NEW"
+
+
+def test_download_targets_the_training_image_not_the_host(tmp_path: Path, monkeypatch) -> None:
+    """Resolve and download for linux x86_64 / py3.13, whatever the conversion host is.
+
+    A macOS host otherwise vendors arm64 wheels and the cluster install dies with
+    `cffi==2.1.1 has no wheels with a matching platform tag (e.g. manylinux_2_39_x86_64)`.
+    Markers are evaluated at resolve time too, so the compile has to target the same
+    platform or the closure is wrong before anything is fetched.
+    """
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    commands: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        if "compile" in cmd:
+            Path(cmd[cmd.index("--output-file") + 1]).write_text("cffi==2.1.1\n", encoding="utf-8")
+        else:
+            dest = Path(cmd[cmd.index("--dest") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "cffi-2.1.1-cp313-cp313-manylinux_2_17_x86_64.whl").write_bytes(b"PK\x03\x04")
+        return None
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+
+    convert_mod.download_hub_wheels(
+        convert_mod.ConvertEnvironmentSpec(hub_id="primeintellect/ascii-tree", out_dir=tmp_path / "env"),
+        work_dir=tmp_path / "work",
+    )
+
+    compile_cmd, download_cmd = commands
+    assert compile_cmd[compile_cmd.index("--python-platform") + 1] == convert_mod.TARGET_UV_PLATFORM
+    assert compile_cmd[compile_cmd.index("--python-version") + 1] == convert_mod.TARGET_PYTHON_VERSION
+    # Resolving for the host would silently reintroduce the bug.
+    assert "--python" not in compile_cmd
+
+    assert download_cmd[download_cmd.index("--python-version") + 1] == convert_mod.TARGET_PYTHON_VERSION
+    requested = [download_cmd[i + 1] for i, a in enumerate(download_cmd) if a == "--platform"]
+    assert requested == list(convert_mod.TARGET_WHEEL_PLATFORMS)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "cffi-2.1.1-cp313-cp313-macosx_11_0_arm64.whl",
+        "charset_normalizer-3.5.0-cp313-cp313-macosx_10_13_universal2.whl",
+        "foo-1.0-cp313-cp313-win_amd64.whl",
+    ],
+)
+def test_assert_wheels_target_platform_rejects_foreign_wheels(tmp_path: Path, filename: str) -> None:
+    """Catch it here, not as an opaque resolver failure minutes into a cluster job."""
+    from nmp.rl.tasks.environment.convert import assert_wheels_target_platform
+
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    (wheels / filename).write_bytes(b"PK\x03\x04")
+
+    with pytest.raises(RuntimeError, match="not installable on the training image"):
+        assert_wheels_target_platform(wheels)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "ascii_tree-0.1.5-py3-none-any.whl",
+        "verifiers-0.1.14-py2.py3-none-any.whl",
+        "cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "numpy-2.5.2-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "cryptography-50.0.0-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "old-1.0-cp313-cp313-linux_x86_64.whl",
+    ],
+)
+def test_assert_wheels_target_platform_accepts_portable_wheels(tmp_path: Path, filename: str) -> None:
+    """Pure-Python and any linux x86_64 build installs on the training image.
+
+    Compound tags count if ANY component matches: pip emits e.g.
+    `manylinux2014_x86_64.manylinux_2_17_x86_64` for one file.
+    """
+    from nmp.rl.tasks.environment.convert import assert_wheels_target_platform
+
+    wheels = tmp_path / "wheels"
+    wheels.mkdir()
+    (wheels / filename).write_bytes(b"PK\x03\x04")
+
+    assert_wheels_target_platform(wheels)
+
+
+def test_compile_ignores_this_repo_dependency_policy(tmp_path: Path, monkeypatch) -> None:
+    """The closure is a user's environment, not a nemo-platform dependency set.
+
+    uv discovers the nearest pyproject.toml and applies its [tool.uv] policy. This repo's
+    override-dependencies exist for its own CVE posture, and an override REPLACES a
+    declared requirement rather than narrowing it — `openai>=2.26.0` strips the `<3` upper
+    bound that openai-agents declares. The closure then vendors openai 3.0.0, and the
+    cluster, where no overrides apply, cannot install it.
+    """
+    from nmp.rl.tasks.environment import convert as convert_mod
+
+    commands: list[list[str]] = []
+
+    def _fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        if "compile" in cmd:
+            Path(cmd[cmd.index("--output-file") + 1]).write_text("openai==2.54.0\n", encoding="utf-8")
+        else:
+            dest = Path(cmd[cmd.index("--dest") + 1])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / "openai-2.54.0-py3-none-any.whl").write_bytes(b"PK\x03\x04")
+        return None
+
+    monkeypatch.setattr(convert_mod.subprocess, "run", _fake_run)
+
+    convert_mod.download_hub_wheels(
+        convert_mod.ConvertEnvironmentSpec(hub_id="primeintellect/ascii-tree", out_dir=tmp_path / "env"),
+        work_dir=tmp_path / "work",
+    )
+
+    assert "--no-config" in commands[0]

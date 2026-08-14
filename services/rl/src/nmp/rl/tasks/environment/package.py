@@ -134,11 +134,15 @@ def write_adapter_wheels_package(
     wheels_dir.mkdir(exist_ok=True)
 
     if wheels_src is not None:
+        # Clear first. Copying overwrites by FILENAME, so a wheel left from an earlier run
+        # of the same out_dir survives whenever the new closure resolved that project to a
+        # different version -- and the package then vendors both. Nothing rejects that
+        # locally, so it surfaces on the cluster as `you require uvicorn==0.52.1 and
+        # uvicorn==0.52.3, we can conclude that your requirements are unsatisfiable`.
+        for stale in wheels_dir.glob("*.whl"):
+            stale.unlink()
         for whl in wheels_src.glob("*.whl"):
-            dest = wheels_dir / whl.name
-            if dest.exists():
-                dest.unlink()
-            dest.write_bytes(whl.read_bytes())
+            (wheels_dir / whl.name).write_bytes(whl.read_bytes())
 
     agent_yaml = build_verifiers_agent_yaml(vf_env_id, vf_env_args)
     (out_dir / "configs" / "verifiers_agent.yaml").write_text(

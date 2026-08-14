@@ -67,9 +67,11 @@ def _maybe_bootstrap_environment(config: MasterConfig) -> None:
     # Validate the package here; install nothing. The venvs a Gym server actually runs
     # from live under NEMO_GYM_VENV_DIR and do not exist until RunHelper.start, so an
     # install at this point can only land somewhere no server reads. NeMo-RL installs the
-    # wheel closure into those venvs once they exist, and puts the package on Gym's
-    # search root for native-v1 (install_environment_wheels /
-    # register_environment_search_root in nemo_rl.environments.sandbox.gym_host_runtime).
+    # wheel closure into those venvs once they exist, and puts the package on Gym's search
+    # root for native-v1: install_environment_wheels / register_environment_search_root in
+    # nemo_rl.environments.gym_env_package, called by the colocated actor
+    # (nemo_rl.environments.nemo_gym) and, in mode B, by the in-sandbox host
+    # (nemo_rl.environments.sandbox.gym_host_runtime).
     result = bootstrap_environment_package(root, install_wheels=False)
     logger.info(
         "Validated environment format=%s image_config_root=%s",

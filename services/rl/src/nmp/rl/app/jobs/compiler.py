@@ -314,6 +314,7 @@ def _build_grpo_training_step_config(job_spec: RlJobOutput, *, trust_remote_code
             gym_runtime_image=config.gym_runtime_image or get_training_image(),
             allow_internet=config.sandbox_allow_internet,
             public_dns_allow=config.sandbox_public_dns_allow,
+            sandbox_server_protocol=config.sandbox_server_protocol,
         ),
         training=TrainingStepConfig.TrainingConfig(
             training_type=TrainingType.GRPO,
