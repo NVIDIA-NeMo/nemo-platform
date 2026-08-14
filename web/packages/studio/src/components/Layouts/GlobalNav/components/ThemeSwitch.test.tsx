@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ThemeSwitch } from '@studio/routes/PageLayout/ThemeSwitch';
+import { ThemeSwitch } from '@studio/components/Layouts/GlobalNav/components/ThemeSwitch';
 import { render, screen, waitFor } from '@studio/tests/util/render';
 import { UI_THEME } from '@studio/util/localStorage';
 import userEvent from '@testing-library/user-event';
