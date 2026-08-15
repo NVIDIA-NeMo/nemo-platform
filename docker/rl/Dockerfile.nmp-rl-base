@@ -85,8 +85,13 @@ ARG PYTHON_VERSION
 # UV_PYTHON pins the interpreter for every uv call, at build and at runtime (node-built venvs too).
 # Required, not cosmetic: RL ships a `.python-version` that otherwise wins, so bumping PYTHON_VERSION
 # alone leaves every venv on RL's patch release and the requested one unused on disk.
+# Raise uv's HTTP retry budget and cap concurrent downloads for large GitHub-hosted wheels like vLLM,
+# which can hit transient HTTP/2 refused-stream failures under BuildKit.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
     UV_PYTHON=${PYTHON_VERSION} \
+    UV_HTTP_TIMEOUT=120 \
+    UV_HTTP_RETRIES=8 \
+    UV_CONCURRENT_DOWNLOADS=4 \
     PATH="/usr/local/bin:/root/.local/bin:${PATH}"
 RUN umask 022 && \
     curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh && \
@@ -243,6 +248,10 @@ uv sync ${UV_SYNC_MODE} --all-groups      --no-install-project   # build/test/et
 # in this cached compile layer (the editable ROOT install moves below, after the full-source COPY).
 uv pip install --python /opt/nemo_rl_venv/bin/python "opensandbox>=0.1.9" "tenacity>=9.1.4"
 
+# W&B ships a scanner-visible Go binary. Keep it above the fixed go-git/grpc
+# and Go stdlib floors even when NeMo-RL's lock has an older wheel.
+uv pip install --python /opt/nemo_rl_venv/bin/python "wandb==0.28.2"
+
 # CVE GHSA-mqqc-3gqh-h2x8: drop ray's bundled old aiohttp from the uv cache.
 find "${UV_CACHE_DIR}" -type d -path "*ray/_private/runtime_env/agent/thirdparty_files/aiohttp*" -exec rm -rf {} + || true
 
@@ -376,6 +385,21 @@ if [ -d "${GYM_CACHE}" ]; then
     fi
     echo "in-tree Gym cache is ${GYM_CACHE_MB} MB (metadata only) - ok"
 fi
+
+# Some actor/env venvs may contain W&B depending on the selected NeMo-RL extras.
+# Upgrade those in place, then drop any now-unreferenced older W&B cache archive
+# so scanners do not report stale wandb-core binaries under /opt/uv_cache.
+for py in /opt/ray_venvs/*/bin/python /opt/gym_venvs/*/bin/python; do
+    [ -x "${py}" ] || continue
+    if "${py}" -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("wandb") else 1)'; then
+        uv pip install --python "${py}" "wandb==0.28.2"
+    fi
+done
+for d in "${UV_CACHE_DIR}"/archive-v0/*/; do
+    ls "${d}"wandb-*.dist-info >/dev/null 2>&1 || continue
+    find /opt/nemo_rl_venv /opt/ray_venvs /opt/gym_venvs -lname "*$(basename "${d}")*" -print -quit 2>/dev/null | grep -q . && continue
+    rm -rf "${d}"
+done
 EOF
 
 USER root

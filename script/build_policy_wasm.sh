@@ -15,6 +15,11 @@
 #   OPA_VERSION    - OPA release to use. Default: v1.8.0
 #   OPA_BIN        - Optional explicit OPA binary path. Must match OPA_VERSION.
 #   OPA_CACHE_DIR  - Directory for downloaded OPA binaries. Default: .cache/opa
+#   OPA_DOWNLOAD_BASE_URLS
+#                  - Space-separated OPA download roots to try in order.
+#                    Default: official OPA downloads, then GitHub releases.
+#   OPA_DOWNLOAD_BASE_URL
+#                  - Legacy single download root override.
 set -eu
 
 # --- Configuration ---
@@ -22,7 +27,13 @@ REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel)}"
 OPA_VERSION="${OPA_VERSION:-v1.8.0}"
 OPA_VERSION_NO_V="${OPA_VERSION#v}"
 OPA_CACHE_DIR="${OPA_CACHE_DIR:-${REPO_ROOT}/.cache/opa}"
-OPA_DOWNLOAD_BASE_URL="${OPA_DOWNLOAD_BASE_URL:-https://openpolicyagent.org/downloads}"
+if [ -n "${OPA_DOWNLOAD_BASE_URLS:-}" ]; then
+  RESOLVED_OPA_DOWNLOAD_BASE_URLS="${OPA_DOWNLOAD_BASE_URLS}"
+elif [ -n "${OPA_DOWNLOAD_BASE_URL:-}" ]; then
+  RESOLVED_OPA_DOWNLOAD_BASE_URLS="${OPA_DOWNLOAD_BASE_URL}"
+else
+  RESOLVED_OPA_DOWNLOAD_BASE_URLS="https://openpolicyagent.org/downloads https://github.com/open-policy-agent/opa/releases/download"
+fi
 
 POLICY_DIR="${REPO_ROOT}/services/core/auth/src/nmp/core/auth/app/policies"
 OUTPUT_DIR="${OUTPUT_DIR:-${REPO_ROOT}/services/core/auth/src/nmp/core/auth/assets}"
@@ -112,24 +123,30 @@ download_opa() {
   }
   trap cleanup_download EXIT
 
-  url="${OPA_DOWNLOAD_BASE_URL}/${OPA_VERSION}/${asset}"
-  sha_url="${url}.sha256"
-  echo "Downloading OPA ${OPA_VERSION} from ${url}..." >&2
   # Bound both a single attempt (--max-time) and the whole retry window (--retry-max-time).
-  # --max-time RESETS on each retry, so without --retry-max-time the aggregate is unbounded: 4
-  # attempts could run for minutes. That matters because callers impose their own ceiling —
-  # embedded_pdp/policy_wasm.py runs this script with DEFAULT_BUILD_TIMEOUT_SECONDS=120 — and would
-  # kill the build mid-retry. Budget: <=45s aggregate + <=30s final attempt here, <=15s + <=10s for
-  # the checksum, leaving headroom for the `opa build` itself inside 120s.
-  if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-      --connect-timeout 10 --max-time 30 --retry-max-time 45 "${url}" -o "${tmp_bin}"; then
-    echo "Failed to download OPA binary from ${url}." >&2
-    print_opa_help "${asset}"
-    exit 1
-  fi
-  if ! curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-      --connect-timeout 10 --max-time 10 --retry-max-time 15 "${sha_url}" -o "${tmp_sha}"; then
-    echo "Failed to download OPA checksum from ${sha_url}." >&2
+  # --max-time RESETS on each retry, so without --retry-max-time the aggregate is unbounded. That
+  # matters because callers impose their own ceiling — embedded_pdp/policy_wasm.py runs this script
+  # with DEFAULT_BUILD_TIMEOUT_SECONDS=120 — and would kill the build mid-retry. Keep each download
+  # root bounded so the default official+GitHub fallback still leaves headroom for `opa build`.
+  downloaded=0
+  for base_url in ${RESOLVED_OPA_DOWNLOAD_BASE_URLS}; do
+    url="${base_url%/}/${OPA_VERSION}/${asset}"
+    sha_url="${url}.sha256"
+    echo "Downloading OPA ${OPA_VERSION} from ${url}..." >&2
+
+    if curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+        --connect-timeout 10 --max-time 30 --retry-max-time 45 "${url}" -o "${tmp_bin}" && \
+      curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+        --connect-timeout 10 --max-time 10 --retry-max-time 15 "${sha_url}" -o "${tmp_sha}"; then
+      downloaded=1
+      break
+    fi
+
+    echo "Failed to download OPA from ${base_url}; trying next source if configured." >&2
+    rm -f "${tmp_bin}" "${tmp_sha}"
+  done
+
+  if [ "${downloaded}" != "1" ]; then
     print_opa_help "${asset}"
     exit 1
   fi

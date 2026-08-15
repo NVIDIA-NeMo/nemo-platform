@@ -43,7 +43,7 @@ ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
 ENV PATH="/app/.venv/bin:$PATH"
 USER 0
 COPY docker/scripts/cve-cleanup.sh /bin/
-RUN bash /bin/cve-cleanup.sh
+RUN sh /bin/cve-cleanup.sh
 ENTRYPOINT ["nemo-platform"]
 # Override CMD with "run" in orchestration (e.g., Helm, docker-compose)
 CMD ["--help"]
