@@ -231,6 +231,7 @@
 {"name": "numpy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-ml-py", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "nvidia-nat-atif", "license": "APACHE-2.0", "compatible": true}
+{"name": "nvidia-nat-config-optimizer", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-core", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-eval", "license": "APACHE-2.0", "compatible": true}
 {"name": "nvidia-nat-langchain", "license": "APACHE-2.0", "compatible": true}
