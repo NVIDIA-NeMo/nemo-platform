@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import datetime
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
@@ -78,6 +79,26 @@ def _output(row: RowScore) -> AgentOutput | None:
     if output_text is None and response is None:
         return None
     return AgentOutput(output_text=output_text, response=response)
+
+
+def _token_metadata(row: RowScore) -> dict[str, int]:
+    """Project the generation response's OpenAI ``usage`` block onto the trial-metadata token keys.
+
+    A row's generation response is the only place its token usage survives: ``row.requests`` mixes
+    the generation call with each metric's judge calls, so summing that would credit judge tokens to
+    the agent. ``total_tokens`` is left unset — Intake recomputes it from the parts.
+    """
+    response = row.sample.get("response")
+    usage = response.get("usage") if isinstance(response, Mapping) else None
+    if not isinstance(usage, Mapping):
+        return {}
+    details = usage.get("prompt_tokens_details")
+    captured = {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "cache_read_tokens": details.get("cached_tokens") if isinstance(details, Mapping) else None,
+    }
+    return {key: value for key, value in captured.items() if isinstance(value, int) and not isinstance(value, bool)}
 
 
 def _scores(row: RowScore, *, run_id: str, task_id: str, trial_id: str) -> list[AgentEvalTaskScore]:
@@ -152,6 +173,7 @@ def row_result_to_agent_eval_result(
                 task_id=task_id,
                 status=AgentEvalTrialStatus.COMPLETED if output is not None else AgentEvalTrialStatus.FAILED,
                 output=output,
+                metadata=_token_metadata(row),
             )
         )
         scores.extend(_scores(row, run_id=run_id, task_id=task_id, trial_id=trial_id))
