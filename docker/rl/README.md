@@ -433,7 +433,8 @@ readable by the non-root user. Hence `UV_CACHE_DIR=/opt/uv_cache`:
 - It cannot be a BuildKit `--mount=type=cache` — those never enter the image, so every
   symlink would dangle.
 - It cannot sit at uv's default `~/.cache/uv`, because `/root` is mode `700` and the
-  training image runs as UID 1000 (the same reason the managed Python lives under `/opt`).
+  training image runs as a configured non-root UID (1000 by default, the same reason the
+  managed Python lives under `/opt`).
 - **`/opt/uv_cache` must never be deleted** — pruning it breaks every venv that points into
   it. The prune step in the publish stage deliberately leaves it alone.
 
@@ -456,15 +457,15 @@ rewrites `v1/executor/ray_executor.py`, `model_executor/models/llama_eagle3.py` 
 `tool_parsers/hermes_tool_parser.py`, taking a `<file>.patch_lock` beside each). Symlinking breaks
 that in two independent ways, both observed on the shipped image:
 
-1. **Permission** — the prefetched venvs are root-owned and the runtime is UID 1000, so creating
-   `ray_executor.py.patch_lock` fails with `EACCES` and the `VllmAsyncGenerationWorker` actor dies
-   in its creation task.
+1. **Permission** — the prefetched venvs are build-owned/read-only for the configured runtime UID
+   (1000 by default), so creating `ray_executor.py.patch_lock` fails with `EACCES` and the
+   `VllmAsyncGenerationWorker` actor dies in its creation task.
 2. **Sharing** — every vLLM-tier venv symlinks that file to *one* physical copy in `/opt/uv_cache`.
    The patch writes a **per-venv `py_executable`** into it, so two venvs cannot share it. No amount
    of `chown` fixes this; the file must not be shared at all.
 
-So the publish stage replaces `site-packages/vllm/` with a real, private, UID-1000-owned copy in
-each vLLM-tier venv.
+So the publish stage replaces `site-packages/vllm/` with a real, private, runtime-owned copy in each
+vLLM-tier venv.
 
 The two need separate fixes: **ownership** solves (1), **private copies** solve (2). Running as root
 would silence the `EACCES` but leaves the sharing intact — the first venv to patch wins and the next
@@ -535,4 +536,5 @@ every import.
 | `NVTE_CUDA_ARCHS` | `90;100` | Archs for Transformer-Engine. Inert today (TE is only in the unused `automodel`/`mcore` extras); kept for when either is enabled. |
 | `UV_SYNC_MODE` | `--frozen` | Reproducible sync. Set to empty to relock if a bumped RL commit's lock has drifted. |
 | `NEMO_GYM_PREFETCH_CONFIGS` | *(empty — prefetch off)* | Space-separated Gym config paths whose environment venvs are baked into `/opt/gym_venvs`. Empty means every environment installs at runtime on first use. Set to `examples/nemo_gym/prefetch_super_all_envs.yaml` to bake NeMo-RL's curated set back in. |
-
+| `BUILD_UID` / `BUILD_GID` | `2000` / `2000` | Non-runtime owner for `/opt/uv_cache`, `/opt/nemo_rl_venv`, `/opt/nemo-rl`, and prefetched venvs. Build steps use `umask 022` so the configured runtime UID can read/traverse these trees without a late recursive chmod layer. |
+| `RUNTIME_UID` / `RUNTIME_GID` | `1000` / `1000` | Non-root identity for published `nmp-rl-base`. `RUNTIME_UID` owns the private vLLM copies; `/opt/ray_venvs` and `/opt/gym_venvs` are owned by root with `RUNTIME_GID` as the writable group. Keep `nmp-rl-training`'s `USER_UID` / `USER_GID` aligned if overriding the defaults. |
