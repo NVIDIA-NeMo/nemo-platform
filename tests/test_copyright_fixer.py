@@ -46,10 +46,18 @@ def test_supported_file_does_not_treat_shebang_as_universal_override(tmp_path: P
 
 
 def test_add_header_uses_syntax_safe_styles_for_missing_osrb_file_types(tmp_path: Path) -> None:
+    chart_template = tmp_path / "chart" / "templates" / "serviceaccount.yaml"
+    chart_template.parent.mkdir(parents=True)
+    (tmp_path / "chart" / "Chart.yaml").write_text("apiVersion: v2\nname: test\nversion: 0.1.0\n", encoding="utf-8")
+
     files = {
         "test_case.py": ('print("ok")\n', copyright_fixer._HASH_HEADER + "\n"),
         "nemo-helm-readme.md.gotmpl": ("# title\n", copyright_fixer._HELM_TEMPLATE_HEADER + "\n"),
-        "helm-template.yaml": ("apiVersion: v1\n", copyright_fixer._HASH_HEADER + "\n"),
+        "values.yaml": ("apiVersion: v1\n", copyright_fixer._HASH_HEADER + "\n"),
+        "chart/templates/serviceaccount.yaml": (
+            "{{- if .Values.enabled -}}\napiVersion: v1\n{{- end }}\n",
+            copyright_fixer._HELM_TEMPLATE_HEADER + "\n",
+        ),
         "Brewfile": ('brew "uv"\n', copyright_fixer._HASH_HEADER + "\n"),
         "publish-pypi": (
             "#!/usr/bin/env bash\nset -e\n",
@@ -66,6 +74,31 @@ def test_add_header_uses_syntax_safe_styles_for_missing_osrb_file_types(tmp_path
 
         assert copyright_fixer._add_header(str(path))
         assert path.read_text(encoding="utf-8").startswith(expected_prefix)
+
+
+def test_fix_style_converts_helm_template_yaml_to_non_rendering_comment(tmp_path: Path) -> None:
+    chart_template = tmp_path / "chart" / "templates" / "serviceaccount.yaml"
+    chart_template.parent.mkdir(parents=True)
+    (tmp_path / "chart" / "Chart.yaml").write_text("apiVersion: v2\nname: test\nversion: 0.1.0\n", encoding="utf-8")
+    chart_template.write_text(
+        copyright_fixer._HASH_HEADER
+        + "\n{{- if .Values.enabled -}}\napiVersion: v1\nkind: ServiceAccount\n{{- end }}\n",
+        encoding="utf-8",
+    )
+
+    assert copyright_fixer._needs_style_fix(str(chart_template))
+    assert copyright_fixer._fix_header_style(str(chart_template))
+    assert chart_template.read_text(encoding="utf-8").startswith(copyright_fixer._HELM_TEMPLATE_HEADER + "\n")
+
+
+def test_plain_yaml_keeps_hash_comment_header(tmp_path: Path) -> None:
+    values = tmp_path / "chart" / "values.yaml"
+    values.parent.mkdir()
+    (tmp_path / "chart" / "Chart.yaml").write_text("apiVersion: v2\nname: test\nversion: 0.1.0\n", encoding="utf-8")
+    values.write_text("enabled: true\n", encoding="utf-8")
+
+    assert copyright_fixer._add_header(str(values))
+    assert values.read_text(encoding="utf-8").startswith(copyright_fixer._HASH_HEADER + "\n")
 
 
 def test_helm_template_header_keeps_spdx_identifier_on_own_line() -> None:
