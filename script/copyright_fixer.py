@@ -114,8 +114,10 @@ _JINJA_HEADER = (
 )
 
 _HELM_TEMPLATE_HEADER = (
-    f"{{{{/* SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}}}}\n"
-    "{{/* SPDX-License-Identifier: Apache-2.0 */}}\n"
+    "{{/*\n"
+    f"SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
+    "SPDX-License-Identifier: Apache-2.0\n"
+    "*/}}\n"
 )
 
 # Cheap substring checks — no regex needed
@@ -180,8 +182,10 @@ _CORRECT_SPDX_JINJA_RE = re.compile(
     rf"{{# SPDX-License-Identifier: {_APACHE_2} #}}\n"
 )
 _CORRECT_SPDX_HELM_RE = re.compile(
-    rf"{{{{/\* SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} \*/}}}}\n"
-    rf"{{{{/\* SPDX-License-Identifier: {_APACHE_2} \*/}}}}\n"
+    rf"{{{{/\*\n"
+    rf"\s*SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT}\n"
+    rf"\s*SPDX-License-Identifier: {_APACHE_2}\n"
+    rf"\s*\*/}}}}\n"
 )
 
 _CORRECT_SPDX_PATTERNS = (
@@ -233,8 +237,10 @@ _ANY_SPDX_JINJA_RE = re.compile(
     r"{# SPDX-License-Identifier:[^\n]* #}\n"
 )
 _ANY_SPDX_HELM_RE = re.compile(
-    r"{{/\* SPDX-FileCopyrightText:[^\n]* \*/}}\n"
-    r"{{/\* SPDX-License-Identifier:[^\n]* \*/}}\n"
+    r"{{/\*\n"
+    r"\s*SPDX-FileCopyrightText:[^\n]*\n"
+    r"\s*SPDX-License-Identifier:[^\n]*\n"
+    r"\s*\*/}}\n"
 )
 
 # -- legacy / proprietary patterns (not SPDX at all) --
@@ -462,11 +468,6 @@ def _has_frontmatter(content: str) -> bool:
     return content.startswith("---\n") or content.startswith("---\r\n")
 
 
-def _is_helm_template_file(path: Path) -> bool:
-    parts = path.parts
-    return path.suffix in {".yaml", ".yml"} and "helm" in parts and "templates" in parts
-
-
 def _get_header_for_ext(ext: str) -> str:
     """Return the appropriate copyright header for the given file extension."""
     if ext in _SLASH_EXTENSIONS:
@@ -491,9 +492,6 @@ def _get_header_for_file(filepath: str, content: str) -> str:
     path = Path(filepath)
     name = path.name
     ext = path.suffix
-
-    if _is_helm_template_file(path):
-        return _HELM_TEMPLATE_HEADER + "\n"
 
     if name in _HTML_FILENAMES:
         return _HTML_HEADER + "\n"
