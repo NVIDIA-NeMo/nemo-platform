@@ -1,8 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    // Matches web/packages/{studio,sdk,storybook}: this config also typechecks the @nemo/common
+    // sources it maps to, and those use ES2023 APIs (e.g. Array.prototype.findLastIndex).
+    "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
