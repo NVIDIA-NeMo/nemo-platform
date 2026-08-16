@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import yaml
 from _doubles import make_sdk
+from nemo_iron_swarm_plugin.cli import _shared
 from nemo_iron_swarm_plugin.jobs.defenses import defense_ids, select_defense_ids
 from typer.testing import CliRunner
 
@@ -93,11 +94,11 @@ def test_cli_sanity_check_selects_and_submits(tmp_path: Path, monkeypatch: pytes
     fake_sdk = SimpleNamespace(
         iron_swarm=SimpleNamespace(sanity_check=lambda **kwargs: captured.update(kwargs) or {"name": "job-x"})
     )
-    monkeypatch.setattr(cli_main.checks, "require_preflight", lambda _c: None)
-    monkeypatch.setattr(cli_main, "make_sdk", lambda _u: fake_sdk)
-    monkeypatch.setattr(cli_main, "base_url", lambda: "http://localhost:8080")
+    monkeypatch.setattr(_shared.checks, "require_preflight", lambda _c: None)
+    monkeypatch.setattr(_shared, "make_sdk", lambda _u: fake_sdk)
+    monkeypatch.setattr(_shared, "base_url", lambda: "http://localhost:8080")
     monkeypatch.setattr(
-        cli_main.IronSwarmConfig, "get", classmethod(lambda _cls: SimpleNamespace(default_workspace="default"))
+        _shared.IronSwarmConfig, "get", classmethod(lambda _cls: SimpleNamespace(default_workspace="default"))
     )
 
     app = cli_main.IronSwarmCLI().get_cli()
@@ -128,9 +129,9 @@ def test_cli_sanity_check_rejects_keep_and_exclude_together(tmp_path: Path, monk
 
     mitigations_file = tmp_path / "mitigations.json"
     mitigations_file.write_text(json.dumps(_mitigations()), encoding="utf-8")
-    monkeypatch.setattr(cli_main.checks, "require_preflight", lambda _c: None)
+    monkeypatch.setattr(_shared.checks, "require_preflight", lambda _c: None)
     monkeypatch.setattr(
-        cli_main.IronSwarmConfig, "get", classmethod(lambda _cls: SimpleNamespace(default_workspace="default"))
+        _shared.IronSwarmConfig, "get", classmethod(lambda _cls: SimpleNamespace(default_workspace="default"))
     )
 
     app = cli_main.IronSwarmCLI().get_cli()

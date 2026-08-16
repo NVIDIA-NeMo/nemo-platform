@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from _doubles import make_async_sdk, make_sdk
+from nemo_iron_swarm_plugin.cli import _shared, war_game
 from typer.testing import CliRunner
 
 
@@ -101,12 +102,12 @@ def _patch_cli(cli_main: Any, monkeypatch: pytest.MonkeyPatch, captured: dict[st
     fake_sdk = SimpleNamespace(
         iron_swarm=SimpleNamespace(run=lambda **kwargs: captured.update(kwargs) or {"status": "completed"})
     )
-    monkeypatch.setattr(cli_main.checks, "require_preflight", lambda _c: None)
-    monkeypatch.setattr(cli_main, "make_sdk", lambda _u: fake_sdk)
-    monkeypatch.setattr(cli_main, "base_url", lambda: "http://localhost:8080")
-    monkeypatch.setattr(cli_main, "missing_secrets", lambda _p, env_files: [])
+    monkeypatch.setattr(_shared.checks, "require_preflight", lambda _c: None)
+    monkeypatch.setattr(_shared, "make_sdk", lambda _u: fake_sdk)
+    monkeypatch.setattr(_shared, "base_url", lambda: "http://localhost:8080")
+    monkeypatch.setattr(war_game, "missing_secrets", lambda _p, env_files: [])
     monkeypatch.setattr(
-        cli_main.IronSwarmConfig,
+        _shared.IronSwarmConfig,
         "get",
         classmethod(lambda _cls: SimpleNamespace(default_workspace="default", operator_env_file=Path(".env"))),
     )
@@ -141,3 +142,201 @@ def test_cli_run_rejects_missing_benign_suite(tmp_path: Path, monkeypatch: pytes
     assert result.exit_code == 1
     assert "not found" in result.output
     assert captured == {}  # bailed before invoking the SDK
+
+
+def test_sdk_run_puts_per_run_overrides_in_spec(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-launch overrides reach the job spec so a run can deviate without editing the manifest."""
+    from nemo_iron_swarm_plugin import sdk as sdk_module
+
+    captured: dict[str, Any] = {}
+
+    class _Scheduler:
+        def run_local(self, _job: Any, spec: dict, **kwargs: Any) -> dict:
+            captured["spec"] = spec
+            return {"status": "completed"}
+
+    monkeypatch.setattr(sdk_module, "NemoJobScheduler", _Scheduler)
+
+    resource = sdk_module.IronSwarmPluginResource(make_sdk())
+    resource.run(
+        manifest_id="finance",
+        rounds=3,
+        port=9000,
+        defenders=["guardrails"],
+        attack_intensity="thorough",
+        replay_hitlog_fileset="ws/hits",
+    )
+
+    spec = captured["spec"]
+    assert spec["rounds"] == 3
+    assert spec["port"] == 9000
+    assert spec["defenders"] == ["guardrails"]
+    assert spec["attack_intensity"] == "thorough"
+    assert spec["replay_hitlog_fileset"] == "ws/hits"
+
+
+def test_sdk_run_omits_unset_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unset override must stay absent, so the manifest's stored default still wins."""
+    from nemo_iron_swarm_plugin import sdk as sdk_module
+
+    captured: dict[str, Any] = {}
+
+    class _Scheduler:
+        def run_local(self, _job: Any, spec: dict, **kwargs: Any) -> dict:
+            captured["spec"] = spec
+            return {"status": "completed"}
+
+    monkeypatch.setattr(sdk_module, "NemoJobScheduler", _Scheduler)
+    sdk_module.IronSwarmPluginResource(make_sdk()).run(manifest_id="finance")
+
+    for key in ("rounds", "port", "defenders", "attack_intensity", "replay_hitlog_fileset"):
+        assert key not in captured["spec"]
+
+
+def test_sdk_run_rejects_manifest_overrides_with_local_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These overlay a materialized manifest, so with --config the job would silently discard them."""
+    from nemo_iron_swarm_plugin import sdk as sdk_module
+
+    class _Scheduler:
+        def run_local(self, _job: Any, spec: dict, **kwargs: Any) -> dict:  # pragma: no cover - must not run
+            raise AssertionError("launch should have been rejected before scheduling")
+
+    monkeypatch.setattr(sdk_module, "NemoJobScheduler", _Scheduler)
+    resource = sdk_module.IronSwarmPluginResource(make_sdk())
+
+    with pytest.raises(ValueError, match="cannot be combined with a local 'config' manifest"):
+        resource.run(config="iron-swarm.yaml", port=9000)
+
+
+def test_sdk_run_allows_rounds_with_local_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """rounds is an `iron-swarm run` argument, not a manifest field, so it applies to both paths."""
+    from nemo_iron_swarm_plugin import sdk as sdk_module
+
+    captured: dict[str, Any] = {}
+
+    class _Scheduler:
+        def run_local(self, _job: Any, spec: dict, **kwargs: Any) -> dict:
+            captured["spec"] = spec
+            return {"status": "completed"}
+
+    monkeypatch.setattr(sdk_module, "NemoJobScheduler", _Scheduler)
+    sdk_module.IronSwarmPluginResource(make_sdk()).run(config="iron-swarm.yaml", rounds=5)
+
+    assert captured["spec"]["rounds"] == 5
+
+
+def test_cli_run_forwards_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured)
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--manifest-id",
+            "finance",
+            "--rounds",
+            "3",
+            "--defender",
+            "guardrails",
+            "--defender",
+            "openshell",
+            "--attack-intensity",
+            "thorough",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["rounds"] == 3
+    assert captured["defenders"] == ["guardrails", "openshell"]
+    assert captured["attack_intensity"] == "thorough"
+
+
+def test_cli_run_rejects_unknown_attack_intensity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unknown preset is read as 'standard' downstream, so it must not reach the job."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured)
+    result = CliRunner().invoke(app, ["run", "--manifest-id", "finance", "--attack-intensity", "heavy"])
+
+    assert result.exit_code == 1
+    assert "light, standard, thorough" in result.output
+    assert captured == {}
+
+
+def test_cli_run_rejects_unknown_defender(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unknown defender key leaves iron-swarm's full default set in place — never silently."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured)
+    result = CliRunner().invoke(app, ["run", "--manifest-id", "finance", "--defender", "bogus"])
+
+    assert result.exit_code == 1
+    assert "bogus" in result.output
+    assert captured == {}
+
+
+def test_cli_run_reports_override_config_conflict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The SDK's ValueError surfaces as a clean CLI error, not a traceback."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    config = tmp_path / "iron-swarm.yaml"
+    config.write_text("agent: {}\n", encoding="utf-8")
+
+    def _raise(**_kwargs: Any) -> dict:
+        raise ValueError("port cannot be combined with a local 'config' manifest")
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured)
+    monkeypatch.setattr(_shared, "make_sdk", lambda _u: SimpleNamespace(iron_swarm=SimpleNamespace(run=_raise)))
+    result = CliRunner().invoke(app, ["run", "--config", str(config), "--port", "9000"])
+
+    assert result.exit_code == 1
+    assert "cannot be combined" in result.output
+
+
+def test_cli_run_forwards_model_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured)
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--manifest-id",
+            "finance",
+            "--attack-model",
+            "atk/model",
+            "--attack-base-url",
+            "https://atk/v1",
+            "--attack-key-secret",
+            "atk-key",
+            "--analysis-model",
+            "ana/model",
+            "--safety-model",
+            "guard-1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["models"] == {
+        "attack": {"model": "atk/model", "base_url": "https://atk/v1", "api_key_secret": "atk-key"},
+        "analysis": {"model": "ana/model"},
+        "safety": {"model": "guard-1"},
+    }
+
+
+def test_cli_run_omits_models_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty selection must stay absent so the manifest's stored models still apply."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(cli_main, monkeypatch, captured)
+    result = CliRunner().invoke(app, ["run", "--manifest-id", "finance"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["models"] is None

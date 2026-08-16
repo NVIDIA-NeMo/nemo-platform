@@ -47,6 +47,12 @@ def _run_war_game(
     env_file: str | None,
     workspace: str,
     benign_suite: str | None,
+    rounds: int | None = None,
+    port: int | None = None,
+    defenders: list[str] | None = None,
+    attack_intensity: str | None = None,
+    replay_hitlog_fileset: str | None = None,
+    models: dict[str, Any] | None = None,
 ) -> dict:
     """Blocking war-game launch shared by the sync and async resources.
 
@@ -56,10 +62,30 @@ def _run_war_game(
 
     Pass a local ``config`` manifest path or a saved ``manifest_id`` (which materializes the manifest and
     reuses its cached benign suite). Exactly one is required.
+
+    The per-run overrides are applied over the materialized manifest without persisting it, mirroring
+    Studio's launch dialog: a run may deviate from the saved baseline without editing the frozen target.
+    ``port``/``defenders``/``attack_intensity`` need a manifest to overlay, so they are rejected
+    alongside ``config`` rather than silently dropped; ``rounds`` is an ``iron-swarm run`` argument and
+    applies to both paths.
     """
     if not (config or manifest_id):
         raise ValueError("iron-swarm run requires a 'config' manifest path or a 'manifest_id'.")
+    overlay = {"port": port, "defenders": defenders, "attack_intensity": attack_intensity}
+    unsupported = sorted(key for key, value in overlay.items() if value is not None)
+    if config and unsupported:
+        raise ValueError(
+            f"{', '.join(unsupported)} cannot be combined with a local 'config' manifest — "
+            "set them in the manifest's own `overrides:` block instead."
+        )
     spec: dict[str, Any] = {"config": config, "manifest_id": manifest_id, "env_file": env_file}
+    spec.update({key: value for key, value in overlay.items() if value is not None})
+    if rounds is not None:
+        spec["rounds"] = rounds
+    if replay_hitlog_fileset:
+        spec["replay_hitlog_fileset"] = replay_hitlog_fileset
+    if models:
+        spec["models"] = models
     if benign_suite:
         spec["benign_suite_fileset"] = upload_file_to_fileset(sync_sdk, Path(benign_suite), workspace=workspace)
     return NemoJobScheduler().run_local(IronSwarmRunJob, spec, workspace=workspace, sdk=sync_sdk)
@@ -117,6 +143,10 @@ class _ManifestsResource:
     def list(self, *, workspace: str = "default", limit: int = 20) -> Sequence[dict[str, Any]]:
         return _list_newest(self._platform, IRON_SWARM_MANIFEST_TYPE, workspace=workspace, limit=limit)
 
+    def get(self, name: str, *, workspace: str = "default") -> dict[str, Any]:
+        """Read one saved manifest (``GET /manifests/{name}``)."""
+        return self._platform.get(f"{self._base(workspace)}/{name}", cast_to=dict[str, Any])
+
     def create(self, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
         """Create a manifest (``POST /manifests``); *body* is a ``ManifestInit``."""
         return self._platform.post(self._base(workspace), body=body, cast_to=dict[str, Any])
@@ -164,12 +194,21 @@ class IronSwarmPluginResource:
         env_file: str | None = None,
         workspace: str | None = None,
         benign_suite: str | None = None,
+        rounds: int | None = None,
+        port: int | None = None,
+        defenders: list[str] | None = None,
+        attack_intensity: str | None = None,
+        replay_hitlog_fileset: str | None = None,
+        models: dict[str, Any] | None = None,
     ) -> dict:
         """Run the war-game locally against a local ``config`` manifest or a saved ``manifest_id``.
 
         A saved ``manifest_id`` materializes the manifest and reuses its cached benign suite (from a prior
         ``synth_benign``). ``benign_suite`` is a local CSV (tool,payload,label,rationale,persona) uploaded
         as a fileset and passed to iron-swarm via ``--benign-suite``, overriding the cached suite.
+
+        ``rounds``/``port``/``defenders``/``attack_intensity``/``replay_hitlog_fileset`` are per-run
+        overrides applied without persisting them on the manifest.
         """
         return _run_war_game(
             self._platform,
@@ -178,6 +217,12 @@ class IronSwarmPluginResource:
             env_file=env_file,
             workspace=workspace or "default",
             benign_suite=benign_suite,
+            rounds=rounds,
+            port=port,
+            defenders=defenders,
+            attack_intensity=attack_intensity,
+            replay_hitlog_fileset=replay_hitlog_fileset,
+            models=models,
         )
 
     def synth_benign(
@@ -268,6 +313,12 @@ class AsyncIronSwarmPluginResource:
         env_file: str | None = None,
         workspace: str | None = None,
         benign_suite: str | None = None,
+        rounds: int | None = None,
+        port: int | None = None,
+        defenders: list[str] | None = None,
+        attack_intensity: str | None = None,
+        replay_hitlog_fileset: str | None = None,
+        models: dict[str, Any] | None = None,
     ) -> dict:
         """Async twin of :meth:`IronSwarmPluginResource.run`.
 
@@ -286,6 +337,12 @@ class AsyncIronSwarmPluginResource:
             env_file=env_file,
             workspace=workspace or "default",
             benign_suite=benign_suite,
+            rounds=rounds,
+            port=port,
+            defenders=defenders,
+            attack_intensity=attack_intensity,
+            replay_hitlog_fileset=replay_hitlog_fileset,
+            models=models,
         )
 
     async def synth_benign(

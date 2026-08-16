@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import yaml
 from _doubles import make_job_context, make_sdk
+from nemo_iron_swarm_plugin.cli import _shared, lifecycle, war_game
 from nemo_platform_plugin.job_context import JobContext
 from typer.testing import CliRunner
 
@@ -371,12 +372,12 @@ def _patch_cli(monkeypatch: pytest.MonkeyPatch, captured: dict[str, Any]) -> Any
         run=lambda **kw: captured.update(run=kw) or {"status": "completed"},
         synth_benign=lambda **kw: captured.update(synth=kw) or {"status": "completed", "suite_size": 4},
     )
-    monkeypatch.setattr(cli_main.checks, "require_preflight", lambda _c: None)
-    monkeypatch.setattr(cli_main, "make_sdk", lambda _u: SimpleNamespace(iron_swarm=fake_iron))
-    monkeypatch.setattr(cli_main, "base_url", lambda: "http://localhost:8080")
-    monkeypatch.setattr(cli_main, "missing_secrets", lambda _p, env_files: [])
+    monkeypatch.setattr(_shared.checks, "require_preflight", lambda _c: None)
+    monkeypatch.setattr(_shared, "make_sdk", lambda _u: SimpleNamespace(iron_swarm=fake_iron))
+    monkeypatch.setattr(_shared, "base_url", lambda: "http://localhost:8080")
+    monkeypatch.setattr(war_game, "missing_secrets", lambda _p, env_files: [])
     monkeypatch.setattr(
-        cli_main.IronSwarmConfig,
+        _shared.IronSwarmConfig,
         "get",
         classmethod(lambda _cls: SimpleNamespace(default_workspace="default", operator_env_file=Path(".env"))),
     )
@@ -446,11 +447,11 @@ def _patch_cli_context(
     monkeypatch: pytest.MonkeyPatch, cli_main: Any, sdk: Any, *, bin_path: Path | None = None
 ) -> None:
     """Stub the `_command_context` preamble so an init test never touches a host or a real binary."""
-    monkeypatch.setattr(cli_main.checks, "require_preflight", lambda _c: None)
-    monkeypatch.setattr(cli_main, "make_sdk", lambda _u: sdk)
-    monkeypatch.setattr(cli_main, "base_url", lambda: "http://localhost:8080")
+    monkeypatch.setattr(_shared.checks, "require_preflight", lambda _c: None)
+    monkeypatch.setattr(_shared, "make_sdk", lambda _u: sdk)
+    monkeypatch.setattr(_shared, "base_url", lambda: "http://localhost:8080")
     monkeypatch.setattr(
-        cli_main.IronSwarmConfig,
+        _shared.IronSwarmConfig,
         "get",
         classmethod(
             lambda _cls: SimpleNamespace(
@@ -521,8 +522,8 @@ def test_cli_init_project_dir_runs_iron_swarm_then_uploads(tmp_path: Path, monke
 
     sdk = SimpleNamespace(iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=_create)))
     _patch_cli_context(monkeypatch, cli_main, sdk, bin_path=tmp_path / "iron-swarm")
-    monkeypatch.setattr(cli_main.provisioning, "run_subprocess", _fake_subprocess)
-    monkeypatch.setattr(cli_main, "upload_project_dir", lambda _sdk, _dir, *, workspace: f"{workspace}/fs-1")
+    monkeypatch.setattr(lifecycle.provisioning, "run_subprocess", _fake_subprocess)
+    monkeypatch.setattr(lifecycle, "upload_project_dir", lambda _sdk, _dir, *, workspace: f"{workspace}/fs-1")
 
     app = cli_main.IronSwarmCLI().get_cli()
     result = CliRunner().invoke(app, ["init", "--project-dir", str(project), "--egress", "example.com"])
@@ -555,8 +556,8 @@ def test_cli_init_yes_forwards_to_iron_swarm(tmp_path: Path, monkeypatch: pytest
         iron_swarm=SimpleNamespace(manifests=SimpleNamespace(create=lambda **_k: {"name": "my-agent"}))
     )
     _patch_cli_context(monkeypatch, cli_main, sdk, bin_path=tmp_path / "iron-swarm")
-    monkeypatch.setattr(cli_main.provisioning, "run_subprocess", _fake_subprocess)
-    monkeypatch.setattr(cli_main, "upload_project_dir", lambda _sdk, _dir, *, workspace: f"{workspace}/fs-1")
+    monkeypatch.setattr(lifecycle.provisioning, "run_subprocess", _fake_subprocess)
+    monkeypatch.setattr(lifecycle, "upload_project_dir", lambda _sdk, _dir, *, workspace: f"{workspace}/fs-1")
 
     app = cli_main.IronSwarmCLI().get_cli()
     result = CliRunner().invoke(app, ["init", "--project-dir", str(project), "--yes"])

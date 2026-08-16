@@ -941,3 +941,18 @@ def test_stored_env_reaches_both_sources(
 
     assert env["BACKEND_URL"] == "http://host.docker.internal:8086"
     assert env["KEEP"] == "overridden", "stored env wins over what was baked in at init"
+
+
+def test_prepare_invocation_forwards_rounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The native (CLI) path must be able to ask for multi-round hardening, not just the service path."""
+    manifest = tmp_path / "iron-swarm.yaml"
+    manifest.write_text("agent:\n  name: clockbot\n", encoding="utf-8")
+    cfg = _provisioned_config(tmp_path)
+    monkeypatch.setattr(run_module._common, "build_subprocess_env", lambda _c, _e=None: {})
+    monkeypatch.setattr(run_module._common, "check_victim_secrets", lambda *a, **k: None)
+
+    multi, _ = execution._prepare_invocation(str(manifest), None, cfg, None, None, None, 3)
+    assert multi[multi.index("--rounds") + 1] == "3"
+
+    single, _ = execution._prepare_invocation(str(manifest), None, cfg, None, None, None, 1)
+    assert "--rounds" not in single  # iron-swarm's own default; only emitted when asked for

@@ -303,6 +303,9 @@ class IronSwarmRunJob(NemoJob):
             rounds = int(config["rounds"]) if config.get("rounds") else _manifest_rounds(sdk, manifest_id, ctx)
         elif config.get("config"):
             manifest = str(config["config"])
+            # No manifest record to read a stored default from, so the spec is the only source. Resolved
+            # here rather than left at 1: rounds is an `iron-swarm run` argument, not a manifest field.
+            rounds = int(config["rounds"]) if config.get("rounds") else 1
         else:
             raise ValueError("iron-swarm war-game requires a 'manifest_id' or a 'config' manifest path in the spec.")
 
@@ -359,7 +362,14 @@ class IronSwarmRunJob(NemoJob):
                 benign_suite.write_suite(suite_csv, cached_suite)
                 suite_for_run = str(suite_csv)
             outcome = _run_one_shot(
-                manifest, env_file, plugin_config, ctx, replay_args, benign_suite=suite_for_run, model_env=model_env
+                manifest,
+                env_file,
+                plugin_config,
+                ctx,
+                replay_args,
+                benign_suite=suite_for_run,
+                model_env=model_env,
+                rounds=rounds,
             )
 
         # A validate-only run generates no mitigations (defenders: []); it produces the sanity-check

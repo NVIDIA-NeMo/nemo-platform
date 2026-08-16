@@ -131,10 +131,16 @@ def _prepare_invocation(
     replay_args: list[str] | None = None,
     benign_suite: str | None = None,
     model_env: dict[str, str] | None = None,
+    rounds: int = 1,
 ) -> tuple[list[str], dict[str, str]]:
     """Build the `iron-swarm run` command + subprocess env, failing fast on missing victim secrets."""
     cmd = _run_command(
-        plugin_config.iron_swarm_bin, manifest, benign_suite=benign_suite, env_file=env_file, replay_args=replay_args
+        plugin_config.iron_swarm_bin,
+        manifest,
+        benign_suite=benign_suite,
+        env_file=env_file,
+        rounds=rounds,
+        replay_args=replay_args,
     )
     env = _common.build_subprocess_env(plugin_config, model_env)
     _common.check_victim_secrets(manifest, env, env_file)
@@ -149,6 +155,7 @@ def _run_one_shot(
     replay_args: list[str] | None = None,
     benign_suite: str | None = None,
     model_env: dict[str, str] | None = None,
+    rounds: int = 1,
 ) -> RunOutcome:
     """The default path: one `iron-swarm run`, which consumes a benign suite but never generates one.
 
@@ -156,8 +163,11 @@ def _run_one_shot(
     before infrastructure startup when no suite is supplied, and never prompts). So a ``benign_suite``
     CSV must be passed as ``--benign-suite`` — from an upload, or from the manifest's cached suite
     written out by the caller. Generating one is ``synth-benign``'s job, not this path's.
+
+    ``rounds`` is honoured here too: iterative hardening is a property of the war-game, not of the
+    driver, so the native (CLI) path is not limited to a single round.
     """
-    cmd, env = _prepare_invocation(manifest, env_file, plugin_config, replay_args, benign_suite, model_env)
+    cmd, env = _prepare_invocation(manifest, env_file, plugin_config, replay_args, benign_suite, model_env, rounds)
     log_path = ctx.storage.persistent / "iron-swarm.log"
     completed, log_text, log_ref, failure = _run_iron_swarm(cmd, env, log_path, ctx, artifact_name="iron-swarm-log")
     return _outcome(completed, log_text, log_ref, None, failure)
