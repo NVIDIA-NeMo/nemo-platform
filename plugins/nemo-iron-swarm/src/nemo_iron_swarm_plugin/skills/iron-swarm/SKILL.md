@@ -128,12 +128,26 @@ putting an API key in `--env`.
 
 ## Notes
 
-- Models default to iron-swarm's built-ins and the victim's own LLM resolves through the platform
-  Inference Gateway. Three overridable groups: **attack** (garak red-team + detector), **analysis**
-  (defenders + the benign validator's synth suite-generation and judge), and **agent** (the victim's
-  own LLM). Set them as the manifest's stored default or per-run; a custom endpoint's key is supplied
-  by name from the Secrets store. A chosen model is preflighted before the sandbox spins up, and the
-  run fails fast (listing the reachable models) on a bad name/key/URL.
+- Models default to iron-swarm's built-ins. Three overridable groups: **attack** (garak red-team +
+  detector), **analysis** (defenders + the benign validator's synth suite-generation and judge), and
+  **safety** (the LLM the generated guardrail screens traffic with). Set them as the manifest's stored
+  default (`manifest set` / `init`) or per-run (`run`); a custom endpoint's key is supplied by name from
+  the Secrets store via `--attack-key-secret` / `--analysis-key-secret`. A chosen model is preflighted
+  before the sandbox spins up, and the run fails fast (listing the reachable models) on a bad name/key/URL.
+- The victim's own LLM is deliberately **not** a group. In NAT it is declared in the workflow YAML, so
+  overriding it would mean rewriting the target — the war-game measures the agent rather than editing it.
+  Change it in the project's workflow and re-upload.
+- `--safety-model` names the model only; iron-swarm pins that LLM's endpoint and key to NVIDIA's when it
+  generates the guardrail. To run the guardrail on **your own provider**, declare `llms.safety_llm`
+  yourself in the workflow — a pre-declared one is left untouched, and `--safety-model` is then ignored:
+
+  ```yaml
+  llms:
+    safety_llm: { _type: inference_nim, model: my/guard, base_url: https://my-endpoint/v1, api_key: ${GUARD_API_KEY} }
+  ```
+
+  Its key must reach the sandbox, so name it in the manifest's `secrets` (`init --secrets GUARD_API_KEY`)
+  and allow the host with `--egress my-endpoint`, or the call hangs until the defender's 300s timeout.
 - Workflow `model_name` values must be entity names the platform knows (lowercase letters, digits,
   hyphens) — a provider id like `vendor/model-name` is rejected for the slash.
 - After a run produces mitigations, freeze a chosen subset and replay the recorded attacks:
