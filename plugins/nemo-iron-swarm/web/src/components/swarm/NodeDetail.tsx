@@ -4,6 +4,7 @@
 import {
   GROUP_COLOR,
   NODES,
+  type NodeGroup,
   type NodeStatus,
   type SwarmNode,
   type SwarmState,
@@ -35,6 +36,10 @@ const STATUS_LABEL: Record<NodeStatus, string> = {
 
 const statusColorOf = (status: NodeStatus, base: string): string =>
   status === 'failed' ? '#ff3855' : status === 'blocked' ? '#ffab40' : base;
+
+// These groups' `llm_call` events are internal judging/rating calls (e.g. an analyst prompt scoring an
+// attack), not attacker↔victim content — keep them out of the node inspector.
+const HIDDEN_LLM_CALL_GROUPS: NodeGroup[] = ['defender', 'validator', 'analyzer'];
 
 const SectionLabel: FC<{ children: string }> = ({ children }) => (
   <Text kind="body/semibold/sm" className="uppercase tracking-wide text-subtle">
@@ -101,7 +106,9 @@ export const NodeDetail: FC<NodeDetailProps> = ({ node, swarm }) => {
   const status = swarm.statuses[node.id] ?? 'pending';
   const logs = swarm.nodeLogs[node.id] ?? [];
   const exchanges = swarm.nodeExchanges[node.id] ?? [];
-  const llmCalls = swarm.nodeLlmCalls[node.id] ?? [];
+  const llmCalls = HIDDEN_LLM_CALL_GROUPS.includes(node.group)
+    ? []
+    : (swarm.nodeLlmCalls[node.id] ?? []);
   const header = (
     <Stack gap="density-sm">
       <Text kind="body/semibold/lg">{node.title}</Text>
