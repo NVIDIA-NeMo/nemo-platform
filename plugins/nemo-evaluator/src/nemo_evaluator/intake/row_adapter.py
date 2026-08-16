@@ -86,10 +86,16 @@ def _output(row: RowScore) -> AgentOutput | None:
 
 
 def _first_int(usage: Mapping[str, Any], *keys: str) -> int | None:
-    """First key in ``keys`` holding a real int, or ``None``. Bools are not counts."""
+    """First key in ``keys`` holding a token count, or ``None``.
+
+    A count is a non-negative int that is not a bool. Negatives are rejected because they are used
+    as an unknown-value sentinel rather than a measurement, and nothing downstream would catch one:
+    Intake's ``total_prompt_tokens`` is an unconstrained ``int | None``, so a negative would be
+    summed into the evaluation rollup and shown as a real total.
+    """
     for key in keys:
         value = usage.get(key)
-        if isinstance(value, int) and not isinstance(value, bool):
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
             return value
     return None
 

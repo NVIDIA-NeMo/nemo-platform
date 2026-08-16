@@ -283,6 +283,16 @@ def test_booleans_are_not_counted_as_token_counts() -> None:
     assert _usage_metadata({"prompt_tokens": True, "completion_tokens": 38}) == {"completion_tokens": 38}
 
 
+def test_negative_counts_are_rejected_rather_than_summed_into_a_total() -> None:
+    # -1 is an unknown-value sentinel, not a measurement, and Intake's token fields carry no ge=0
+    # constraint — so publishing one would deflate the evaluation rollup with no error anywhere.
+    assert _usage_metadata({"prompt_tokens": -1, "completion_tokens": 38}) == {"completion_tokens": 38}
+
+
+def test_a_negative_falls_through_to_the_next_known_key() -> None:
+    assert _usage_metadata({"prompt_tokens": -1, "input_tokens": 500})["prompt_tokens"] == 500
+
+
 def test_a_row_without_a_response_records_no_tokens() -> None:
     assert _adapt([_row(sample={"output_text": "4"})]).trials[0].metadata == {}
 
