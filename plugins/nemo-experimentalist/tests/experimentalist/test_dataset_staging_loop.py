@@ -101,7 +101,7 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
         backend=backend,
         workspace="default",
         config=config,
-        evaluator_type="harbor",
+        evaluator_type="harbor_native",
         train_dataset=DatasetRef(uri=str(train)),
         validation_dataset=DatasetRef(uri=str(validation)),
         task_template=DatasetRef(uri=str(template)),
