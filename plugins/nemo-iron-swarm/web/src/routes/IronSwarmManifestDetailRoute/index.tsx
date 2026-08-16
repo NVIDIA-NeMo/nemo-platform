@@ -23,6 +23,18 @@ import {
 import type { IronSwarmRun, WarGameModels } from '@iron-swarm/generated/schema';
 import { useBreadcrumbs, useNotify, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
+import {
+  BENIGN_SOURCE_LABEL,
+  INTENSITY_LABEL,
+  REPLAY_SOURCE_LABEL,
+} from '@iron-swarm/routes/IronSwarmManifestDetailRoute/constants';
+import type {
+  AttackIntensity,
+  BenignSource,
+  DefenderSelection,
+  ReplaySource,
+} from '@iron-swarm/routes/IronSwarmManifestDetailRoute/types';
+import { toRequestsCsv } from '@iron-swarm/routes/IronSwarmManifestDetailRoute/utils';
 import { FEEDBACK } from '@iron-swarm/theme';
 import { AccessibleTitle, AccordionSection, ConfirmationModal, FileUpload, FormModal, triggerDownload } from '@nemo/common';
 import {
@@ -46,46 +58,6 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
-
-type AttackIntensity = 'light' | 'standard' | 'thorough';
-const INTENSITY_LABEL: Record<AttackIntensity, string> = {
-  light: 'Light',
-  standard: 'Standard',
-  thorough: 'Thorough',
-};
-
-type ReplaySource = 'last' | 'upload';
-const REPLAY_SOURCE_LABEL: Record<ReplaySource, string> = {
-  last: 'Last run',
-  upload: 'Upload hitlog',
-};
-
-type BenignSource = 'manifest' | 'upload';
-const BENIGN_SOURCE_LABEL: Record<BenignSource, string> = {
-  manifest: 'Manifest default',
-  upload: 'Upload CSV',
-};
-interface DefenderSelection {
-  guardrails: boolean;
-  openshell: boolean;
-}
-
-// iron-swarm's benign requests.csv column order (mirrors jobs/benign_suite.py SUITE_FIELDS).
-const CSV_FIELDS = [
-  'tool',
-  'payload',
-  'label',
-  'rationale',
-  'persona',
-] as const satisfies readonly (keyof SuiteRow)[];
-const escapeCsv = (value: string): string =>
-  /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-const toRequestsCsv = (rows: SuiteRow[]): string => {
-  const body = rows.map((row) =>
-    CSV_FIELDS.map((field) => escapeCsv(String(row[field] ?? ''))).join(',')
-  );
-  return [CSV_FIELDS.join(','), ...body].join('\n');
-};
 
 export const IronSwarmManifestDetailRoute: FC = () => {
   const workspace = useWorkspace();
