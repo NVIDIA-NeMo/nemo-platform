@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.trials import (
-    LEGACY_ERROR_TYPE_METADATA_KEY,
     AgentEvalTrial,
     AgentEvalTrialStatus,
     TrialError,
@@ -119,58 +118,24 @@ def test_trial_error_round_trips_every_field_through_json() -> None:
     reloaded = AgentEvalTrial.model_validate(trial.model_dump(mode="json"))
 
     assert reloaded.error == trial.error
-    # Re-validating a dump must be idempotent: the legacy lift below must not fire on it.
     assert AgentEvalTrial.model_validate(reloaded.model_dump(mode="json")).error == trial.error
 
 
-def test_a_bundle_predating_the_typed_field_still_rolls_up() -> None:
-    # Old trials.jsonl rows carry the type as a metadata string. Without the lift, read_trials on a
-    # shipped bundle yields a summary reporting zero errors while every trial records one.
+def test_error_is_read_only_from_the_typed_field() -> None:
+    # `error` is the single carrier. A bundle written before it existed recorded the type in
+    # free-form metadata, and that is deliberately NOT interpreted: metadata stays opaque, so a
+    # pre-TrialError bundle re-scores with no error rollup rather than a guessed one.
     trial = AgentEvalTrial.model_validate(
         {
             "id": "t0",
             "task_id": "task-a",
             "status": "partial",
-            "metadata": {LEGACY_ERROR_TYPE_METADATA_KEY: "TimeoutError", "reward": 0.0},
-        }
-    )
-
-    assert trial.error is not None
-    assert trial.error.type == "TimeoutError"
-    # metadata is left intact: _trial_sample spreads it into metric inputs.
-    assert trial.metadata[LEGACY_ERROR_TYPE_METADATA_KEY] == "TimeoutError"
-
-
-def test_an_explicit_error_is_never_overridden_by_legacy_metadata() -> None:
-    trial = AgentEvalTrial.model_validate(
-        {
-            "id": "t0",
-            "task_id": "task-a",
-            "status": "partial",
-            "error": {"type": "RuntimeError", "message": "the real one"},
-            "metadata": {LEGACY_ERROR_TYPE_METADATA_KEY: "TimeoutError"},
-        }
-    )
-
-    assert trial.error is not None
-    assert trial.error.type == "RuntimeError"
-    assert trial.error.message == "the real one"
-
-
-@pytest.mark.parametrize("legacy", [17, "", "   ", None, {"type": "RuntimeError"}])
-def test_an_unusable_legacy_value_leaves_the_trial_loadable(legacy: object) -> None:
-    # The lift is best-effort: anything it cannot read is simply not lifted. It must never make a
-    # previously-loadable row fail to load.
-    trial = AgentEvalTrial.model_validate(
-        {
-            "id": "t0",
-            "task_id": "task-a",
-            "status": "partial",
-            "metadata": {LEGACY_ERROR_TYPE_METADATA_KEY: legacy},
+            "metadata": {"exception_type": "TimeoutError", "reward": 0.0},
         }
     )
 
     assert trial.error is None
+    assert trial.metadata["exception_type"] == "TimeoutError"  # kept verbatim, just not read
 
 
 def test_a_trial_without_any_error_signal_loads_unchanged() -> None:

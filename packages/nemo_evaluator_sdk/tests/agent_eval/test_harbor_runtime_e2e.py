@@ -63,10 +63,9 @@ async def test_sdk_runs_harbor_hello_world_natively(tmp_path: Path) -> None:
         pytest.skip("Docker daemon is required to run a Harbor job")
 
     # The whole caller side: a config and one call — no JobConfig, no harbor import.
-    # Pin hello-world explicitly: the dataset also ships an opt-in error fixture.
     jobs_dir = tmp_path / "jobs"
     config = HarborRuntimeConfig(jobs_dir=jobs_dir, agent_name="oracle")
-    result = await run_harbor_eval(config, _DATASET_DIR, task_names=[_TASK_NAME])
+    result = await run_harbor_eval(config, _DATASET_DIR)
 
     # The oracle agent writes hello.txt, so the verifier reward is 1.0 and the
     # trial completes cleanly through the SDK's Harbor adapter.
@@ -126,7 +125,7 @@ async def test_harbor_resumes_a_partial_job_with_a_custom_agent_dir(tmp_path: Pa
         n_attempts=2,
     )
 
-    first = await run_harbor_eval(config, _DATASET_DIR, task_names=[_TASK_NAME])
+    first = await run_harbor_eval(config, _DATASET_DIR)
     assert [trial.status for trial in first.trials] == [AgentEvalTrialStatus.COMPLETED] * 2
 
     job_dir = jobs_dir / "resume-job"
@@ -139,7 +138,7 @@ async def test_harbor_resumes_a_partial_job_with_a_custom_agent_dir(tmp_path: Pa
     # its config.json) in place — the exact state that used to raise FileExistsError.
     (dropped / "result.json").unlink()
 
-    second = await run_harbor_eval(config, _DATASET_DIR, task_names=[_TASK_NAME])
+    second = await run_harbor_eval(config, _DATASET_DIR)
 
     # The point of the test: the completed attempt was *resumed*, not re-run. Harbor
     # suffixes each trial dir with a shortuuid, so a discarded job dir would come back

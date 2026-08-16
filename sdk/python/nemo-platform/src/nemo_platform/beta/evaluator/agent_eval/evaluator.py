@@ -693,9 +693,8 @@ def _metric_row(task: AgentEvalTask, trial: AgentEvalTrial) -> dict[str, Any]:
             "id": trial.id,
             "task_id": trial.task_id,
             "status": trial.status.value,
-            # The typed replacement for the legacy metadata["exception_type"] convention: a metric
-            # that grades on how a trial failed reads this rather than fishing in free-form metadata.
-            # None when the producer reported no failure.
+            # How the trial failed, for a metric that grades on it - a typed field rather than a
+            # convention buried in free-form metadata. None when the producer reported no failure.
             "error": trial.error.model_dump(mode="json") if trial.error is not None else None,
             "metadata": trial.metadata,
         },

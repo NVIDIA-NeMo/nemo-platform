@@ -7,7 +7,7 @@ the standard evidence-key builder)."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -66,15 +66,9 @@ class AgentOutput(BaseModel):
     )
 
 
-# Type recorded when a producer reported a failure but named no usable type. The SDK's own fallback,
-# not Harbor's - Harbor's `ExceptionInfo.exception_type` is required and always populated, so this
+# Type recorded when a producer reported a failure but named no usable type. This
 # fires only for hand-built or malformed payloads.
 UNKNOWN_ERROR_TYPE = "UnknownException"
-
-# The pre-:class:`TrialError` convention: the Harbor adapter used to stamp the type string onto
-# ``AgentEvalTrial.metadata`` under this key. Read on load so bundles written before the typed field
-# still roll up; no longer written. Kept indefinitely -- bundles on disk are permanent.
-LEGACY_ERROR_TYPE_METADATA_KEY = "exception_type"
 
 
 class TrialError(BaseModel):
@@ -171,30 +165,6 @@ class AgentEvalTrial(BaseModel):
         if not value:
             raise ValueError("trial id and task_id must not be empty")
         return value
-
-    @model_validator(mode="before")
-    @classmethod
-    def _lift_legacy_error_type(cls, data: Any) -> Any:
-        """Read a pre-:class:`TrialError` bundle's ``metadata['exception_type']`` as a typed error.
-
-        Not about loadability - ``error`` defaults to ``None``, so an old row loads either way. It is
-        about *meaning*: without this, :func:`read_trials` on a shipped Harbor bundle yields a summary
-        reporting zero errors while every trial visibly records one.
-
-        Narrow on purpose. Only the Harbor key is lifted; ``error_type``/``error``/``gym_failure``
-        belong to runtimes whose semantics have not been reviewed (``gym_failure`` holds a *message*,
-        not a type). ``metadata`` is left untouched - ``_trial_sample`` spreads it into metric inputs.
-        An explicit ``error`` always wins, so a producer setting both is never overridden.
-        """
-        if not isinstance(data, Mapping) or data.get("error") is not None:
-            return data
-        metadata = data.get("metadata")
-        if not isinstance(metadata, Mapping):
-            return data
-        legacy = metadata.get(LEGACY_ERROR_TYPE_METADATA_KEY)
-        if not isinstance(legacy, str) or not legacy.strip():
-            return data
-        return {**data, "error": TrialError(type=legacy)}
 
     @model_validator(mode="after")
     def _completed_trial_requires_output(self) -> AgentEvalTrial:
