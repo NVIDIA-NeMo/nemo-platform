@@ -66,6 +66,16 @@ def test_harbor_dataset_add_tasks_copies_task_directories(tmp_path: Path) -> Non
     assert Path(train_dataset.get_task("insight-task").uri.removeprefix("file://")) == destination_root / "insight-task"
 
 
+def test_harbor_dataset_allows_an_empty_split_only_when_requested(tmp_path: Path) -> None:
+    """Check that an empty split is accepted only for an Insight-generated suite."""
+    with pytest.raises(ValueError, match="contains no Harbor task directories"):
+        HarborDataset.from_path(tmp_path)
+
+    dataset = HarborDataset.from_path(tmp_path, allow_empty=True)
+
+    assert dataset.list_tasks() == []
+
+
 def test_harbor_dataset_add_tasks_preserves_existing_task_when_replacement_is_invalid(tmp_path: Path) -> None:
     source_root = tmp_path / "insight-suite"
     destination_root = tmp_path / "train"

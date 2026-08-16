@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Studio link destinations and MCP tool helpers for the copilot bridge."""
+"""Studio link destinations and MCP tool helpers for the assistant bridge."""
 
 from collections.abc import Mapping
 from copy import deepcopy
@@ -32,10 +32,10 @@ STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("workspace_home", "workspace_index"),
     ),
     "dashboard": StudioLinkDestination("Workspace dashboard", "/workspaces/{workspace}/dashboard"),
-    "copilot": StudioLinkDestination(
-        "NeMo Copilot",
-        "/workspaces/{workspace}/dashboard/copilot",
-        aliases=("claude_code", "claude_code_chat", "copilot_chat"),
+    "assistant": StudioLinkDestination(
+        "NeMo Assistant",
+        "/workspaces/{workspace}/dashboard/assistant",
+        aliases=("claude_code", "claude_code_chat", "assistant_chat"),
     ),
     "agents": StudioLinkDestination(
         "Agents",
@@ -358,7 +358,6 @@ _STUDIO_LINK_ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
-    "copilot": ("copilot_studio_enabled",),
     "agents": ("agents_enabled",),
     "agent": ("agents_enabled",),
     "agent_chat": ("agents_enabled",),
@@ -419,7 +418,8 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
 }
 
 _STUDIO_LINK_DESTINATION_ANY_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
-    "dashboard": ("dashboard_enabled", "copilot_studio_enabled"),
+    "assistant": ("assistant_studio_enabled", "copilot_studio_enabled"),
+    "dashboard": ("dashboard_enabled", "assistant_studio_enabled", "copilot_studio_enabled"),
 }
 
 _STUDIO_FEATURE_FLAG_MAPPINGS = {

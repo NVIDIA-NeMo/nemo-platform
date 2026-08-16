@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Metric Results"
 description: ""
 ---
@@ -6,7 +9,7 @@ description: ""
 
 When a metric job completes, the platform automatically creates a **metric job result** — a persistent, queryable entity that captures the outcome of that run. Each result is created exactly once per completed job and shares the job's name.
 
-Evaluator plugin SDK executions return an `EvaluationResult`. Synchronous local runs return it directly from `evaluator.run(...)`; durable remote jobs return it from `job.get_result()` after the job completes.
+Evaluator plugin SDK executions return an `EvaluationResult` from `job.get_result()` once the submitted job completes.
 
 An `EvaluationResult` contains:
 
@@ -15,24 +18,14 @@ An `EvaluationResult` contains:
 
 ## Get Results from a Local Run
 
-
 ```python
-import os
-
-from nemo_evaluator.sdk import Evaluator
-from nemo_platform import NeMoPlatform
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
 from nemo_evaluator_sdk import ExactMatchMetric
-
-sdk = NeMoPlatform(
-    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-    workspace="default",
-)
-evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 
-result = evaluator.run(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"expected": "Paris", "output": "Paris"},
         {"expected": "Berlin", "output": "Munich"},
@@ -40,13 +33,20 @@ result = evaluator.run(
 )
 ```
 
-
 ## Get Results from a Submitted Job
 
-
-
 ```python
+import os
+
+from nemo_evaluator.sdk import Evaluator
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
+from nemo_platform import NeMoPlatform
+
+sdk = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 
@@ -60,8 +60,6 @@ job = evaluator.submit(
 )
 job.wait_until_done()
 ```
-
-
 
 ### Get Results in Memory
 
@@ -152,7 +150,6 @@ uv add pandas
 ```python
 import pandas as pd
 
-
 df_agg = pd.DataFrame(
     score.model_dump(mode="json", exclude_none=True)
     for score in result.aggregate_scores.scores
@@ -164,7 +161,6 @@ print(df_agg[["name", "score_type", "mean", "std_dev", "min", "max", "count"]])
 
 ```python
 import pandas as pd
-
 
 rows = []
 for row in result.row_scores:

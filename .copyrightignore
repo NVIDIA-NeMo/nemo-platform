@@ -1,8 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # will be removed shortly
 web/vendor/
 release/
 .agents/skills/
 e2e/
+skills/
+third_party/
+LICENSE*
+NOTICE*
+DCO
+LICENSES/
+*.lock
+pnpm-lock.yaml
+openapi/
+docs/fern/openapi/
+plugins/*/openapi/
+web/packages/studio/src/generated/
+plugins/nemo-experimentalist/examples/smoke-agent/dataset/_shared/records.json
+plugins/nemo-experimentalist/examples/smoke-agent/dataset/task-template/instruction.md
+plugins/nemo-experimentalist/examples/smoke-agent/dataset/task-template/records.json
+plugins/nemo-experimentalist/examples/smoke-agent/dataset/task-template/tests/expected.txt
 packages/garak_api/garakapi/_config.py
 packages/garak_api/garakapi/_plugins.py
 packages/garak_api/garakapi/exception.py
+services/guardrails/callouts/internal/server/callout_server.go
+services/guardrails/callouts/internal/server/callout_server_test.go

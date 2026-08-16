@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Test that the `nemo` CLI on PATH actually works.
 #
 # Install-method agnostic: whatever put `nemo` on PATH (`uv tool install` from
@@ -52,7 +55,20 @@ done
 
 echo "----- nemo on PATH -----"
 command -v nemo
-nemo --version
+version_output="$(nemo --version)"
+echo "${version_output}"
+# A bare `0.0.0` is the CLI's fallback when its importlib.metadata lookup
+# misses the distribution it was installed from, which is invisible unless the
+# output is asserted. Match it exactly: nightly wheels are stamped with a
+# sentinel `0.0.0.dev<timestamp>` that is a legitimate version string. The
+# pattern is the subset of PEP 440 this project stamps — release, optional
+# pre-release, any number of .post/.dev segments, optional local version.
+version="${version_output#nemo version }"
+if [[ "${version}" == "0.0.0" ]] ||
+  [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?(\.(post|dev)[0-9]+)*(\+[0-9a-z.]+)?$ ]]; then
+  echo "::error::nemo --version did not report an installed version: ${version_output}" >&2
+  exit 1
+fi
 
 # Import-time checks for commands that ship in the bundled wrapper. We don't
 # call `nemo services --help` here because `nemo services run` below is a

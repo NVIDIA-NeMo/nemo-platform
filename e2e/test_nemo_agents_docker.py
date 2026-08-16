@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """E2E test for docker-mode agent deployments.
 
 Unlike ``test_nemo_agents.py`` (backend-agnostic API/SDK surface, plus

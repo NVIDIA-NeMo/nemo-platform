@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "About Models and Inference"
 description: ""
 ---
@@ -56,7 +59,6 @@ By default, the platform pre-configures an external provider for NVIDIA Build na
 The example below demonstrates how to recreate it in your own workspace.
 For disambiguation purposes, this example names the manually-created version `my-nvidia-build`.
 
-
 <Tabs>
 
 <Tab title="CLI">
@@ -109,7 +111,6 @@ response = client.inference.gateway.provider.post(
 
 </Tabs>
 #### OpenAI
-
 
 <Tabs>
 
@@ -256,7 +257,6 @@ provider_name = "my-provider"
 workspace = "default"
 oai_client = client.models.get_openai_client()
 
-
 # Get base URLs for different routing patterns
 client.models.get_openai_route_base_url()
 
@@ -289,6 +289,36 @@ curl -s http://localhost:8080/health/ready
 `/v1/health/ready` and `/v1/health/live` are **NIM** endpoints, not gateway
 endpoints. If a probe at `/v1/health/...` against the gateway returns 404 it's
 working as designed — use `/health/ready` instead.
+
+---
+
+## Troubleshooting
+
+### Function tools require disabled reasoning
+
+If an OpenAI-compatible Chat Completions request using function tools fails
+with an error like this:
+
+```text
+Function tools with reasoning_effort are not supported for <model> in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.
+```
+
+set `reasoning_effort` in the affected provider's default request body. Replace
+`<provider_name>` and `<workspace>` with the provider and workspace used for
+the request:
+
+```bash
+nemo inference providers update <provider_name> \
+  --workspace <workspace> \
+  --default-extra-body '{"reasoning_effort":"none"}'
+```
+
+Provider requirements differ. Configure only the parameters required by the
+provider and model you use; `--default-extra-body` applies them to requests
+routed through that provider and can be overridden by an individual request.
+For function-tool requests to Chat Completions, any per-request
+`reasoning_effort` override must remain `"none"`; another value causes the
+error described above.
 
 ---
 

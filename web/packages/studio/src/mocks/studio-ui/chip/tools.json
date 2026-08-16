@@ -18,7 +18,7 @@
             "ghw-ci",
             "ghw-display",
             "ghw-fbhub",
-            "ghw-fs-copilot",
+            "ghw-fs-assistant",
             "ghw-fuse",
             "ghw-mpc-gcc",
             "ghw-msd",
@@ -44,14 +44,14 @@
             "hwteg-info",
             "hwteg-soul",
             "vlsi-asicpd-lodi",
-            "vlsi-clocks-knowledge-copilot",
+            "vlsi-clocks-knowledge-assistant",
             "vlsi-dft-productization",
             "vlsi-dfx-assistant",
             "vlsi-hwgpu-sysdesign",
-            "vlsi-socd-meth-copilot",
+            "vlsi-socd-meth-assistant",
             "w"
           ],
-          "description": "The context to route the user's question to. This parameter determines which specialized NVIDIA copilot or tool will handle the query. The available contexts cover various domains including:\n- Hardware Architecture (CPU, GPU, Tegra)\n- Design Verification and Testing\n- Infrastructure and Tools\n- Software Development\n- VLSI and ASIC Design\n- System Design and Integration\n- Performance Analysis\n- Documentation and Support\n\nEach context is a specialized AI assistant trained on specific NVIDIA internal documentation, tools, and workflows. The contexts are organized by domain prefixes:\n- atg-*: ATG CAD and PRM related tools\n- cpu-*: CPU architecture and infrastructure\n- ghw-*: GPU hardware and architecture\n- hwinf-*: Hardware infrastructure and tools\n- hwip-*: Hardware IP and StepStone\n- hwteg-*: Tegra hardware and SOC\n- hwt-*: Hardware testing\n- swauto-*: Software automation\n- swrobotics-*: Robotics software\n- swteg-*: Tegra software\n- vlsi-*: VLSI and ASIC design\n\nEach context has specific expertise in its domain and can provide detailed answers about tools, workflows, documentation, and best practices within its scope."
+          "description": "The context to route the user's question to. This parameter determines which specialized NVIDIA assistant or tool will handle the query. The available contexts cover various domains including:\n- Hardware Architecture (CPU, GPU, Tegra)\n- Design Verification and Testing\n- Infrastructure and Tools\n- Software Development\n- VLSI and ASIC Design\n- System Design and Integration\n- Performance Analysis\n- Documentation and Support\n\nEach context is a specialized AI assistant trained on specific NVIDIA internal documentation, tools, and workflows. The contexts are organized by domain prefixes:\n- atg-*: ATG CAD and PRM related tools\n- cpu-*: CPU architecture and infrastructure\n- ghw-*: GPU hardware and architecture\n- hwinf-*: Hardware infrastructure and tools\n- hwip-*: Hardware IP and StepStone\n- hwteg-*: Tegra hardware and SOC\n- hwt-*: Hardware testing\n- swauto-*: Software automation\n- swrobotics-*: Robotics software\n- swteg-*: Tegra software\n- vlsi-*: VLSI and ASIC design\n\nEach context has specific expertise in its domain and can provide detailed answers about tools, workflows, documentation, and best practices within its scope."
         }
       },
       "required": ["s_context_name"]

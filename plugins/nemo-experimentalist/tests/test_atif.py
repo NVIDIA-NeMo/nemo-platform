@@ -70,7 +70,7 @@ def test_read_session_id_raises_on_empty_string(tmp_path):
 def test_build_ingest_payload_stamps_evaluation_context(tmp_path):
     payload = build_ingest_payload(
         _ref(tmp_path, _trajectory()),
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         task_id="tau3-airline/case-a",
         agent_attrs={},
     )
@@ -83,7 +83,7 @@ def test_build_ingest_payload_stamps_evaluation_context(tmp_path):
 def test_build_ingest_payload_preserves_producer_fields(tmp_path):
     payload = build_ingest_payload(
         _ref(tmp_path, _trajectory()),
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         task_id="case-a",
         agent_attrs={},
     )
@@ -96,7 +96,7 @@ def test_build_ingest_payload_fills_only_blank_agent_fields(tmp_path):
     # Producer set name and version; model_name is absent.
     payload = build_ingest_payload(
         _ref(tmp_path, _trajectory()),
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         task_id="case-a",
         agent_attrs=AGENT_ATTRS,
     )
@@ -110,7 +110,7 @@ def test_build_ingest_payload_fills_missing_agent_block(tmp_path):
     del trajectory["agent"]
     payload = build_ingest_payload(
         _ref(tmp_path, trajectory),
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         task_id="case-a",
         agent_attrs=AGENT_ATTRS,
     )
@@ -124,7 +124,7 @@ def test_build_ingest_payload_fills_missing_agent_block(tmp_path):
 def test_build_ingest_payload_does_not_inject_verifier_result(tmp_path):
     payload = build_ingest_payload(
         _ref(tmp_path, _trajectory()),
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         task_id="case-a",
         agent_attrs=AGENT_ATTRS,
     )

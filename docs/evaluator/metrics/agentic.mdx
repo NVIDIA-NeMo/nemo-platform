@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Agentic Evaluation Metrics"
 description: ""
 ---
@@ -64,16 +67,16 @@ Agentic metrics evaluate different aspects of agent behavior:
 
 | Metric | Use Case | Requires Judge | Plugin SDK Execution |
 |--------|----------|----------------|----------------------|
-| [**Tool Call Accuracy**](#tool-call-accuracy) | Evaluates tool/function call correctness | No | `run` + `submit` |
-| [**Tool Calling** (template)](#tool-calling-template) | Evaluates tool/function call correctness using Jinja templates | No | `run` + `submit` |
-| [**Topic Adherence**](#topic-adherence) | Measures topic focus in multi-turn conversations | Yes | `run` + `submit` |
-| [**Agent Goal Accuracy**](#agent-goal-accuracy) | Assesses goal completion, with or without reference. | Yes | `run` + `submit` |
-| [**Answer Accuracy**](#answer-accuracy) | Checks factual correctness | Yes | `run` + `submit` |
+| [**Tool Call Accuracy**](#tool-call-accuracy) | Evaluates tool/function call correctness | No | `submit` |
+| [**Tool Calling** (template)](#tool-calling-template) | Evaluates tool/function call correctness using Jinja templates | No | `submit` |
+| [**Topic Adherence**](#topic-adherence) | Measures topic focus in multi-turn conversations | Yes | `submit` |
+| [**Agent Goal Accuracy**](#agent-goal-accuracy) | Assesses goal completion, with or without reference. | Yes | `submit` |
+| [**Answer Accuracy**](#answer-accuracy) | Checks factual correctness | Yes | `submit` |
 | [**Trajectory Evaluation**](#trajectory-evaluation) | Evaluates decision-making across action sequence | Yes | Not exposed as a typed plugin SDK metric |
 
 <Note>
 
-Use `evaluator.run(...)` for local in-process evaluation and `evaluator.submit(...)` for durable remote platform jobs. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
+Use `evaluator.submit(...)` for durable platform jobs. For local in-process evaluation without the platform, use `nemo_evaluator_sdk.Evaluator` directly. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
 
 </Note>
 ## Prerequisites
@@ -82,14 +85,13 @@ Before running agentic evaluations:
 
 1. **Workspace**: Have a workspace created. All remote resources, including secrets and jobs, are scoped to a workspace.
 2. **Judge LLM endpoint** *(for most metrics)*: Have access to an LLM that will serve as your judge.
-3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](/documentation/get-started/core-concepts/manage-secrets) to store the API key. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](/documentation/get-started/core-concepts/manage-secrets) to store the API key. For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 4. **Initialize the SDK**:
 
 ```python
 import os
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -135,7 +137,7 @@ from nemo_evaluator_sdk import (
 )
 ```
 
-Use `dataset=[...]` for inline rows. For offline scoring options, use `config=RunConfig(parallelism=...)`. Whenever outputs must be generated before scoring, pass `target=Model(...)` or `target=Agent(...)` plus the corresponding online parameters. Use the same `dataset`, `config`, and `target` arguments for both `evaluator.run(...)` and `evaluator.submit(...)`; durable jobs follow the identical pattern as local runs and only differ in waiting for and fetching results.
+Use `dataset=[...]` for inline rows. For offline scoring options, use `config=RunConfig(parallelism=...)`. Whenever outputs must be generated before scoring, pass `target=Model(...)` or `target=Agent(...)` plus the corresponding online parameters. Pass `dataset`, `config`, and `target` to `evaluator.submit(...)`, then wait for the job and fetch its result.
 
 ---
 
@@ -193,13 +195,13 @@ Evaluates whether the agent invoked the correct tools with the correct arguments
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
 metric = ToolCallAccuracyMetric()
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -219,6 +221,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -366,15 +370,14 @@ Data must use OpenAI-compliant tool calling format:
 </Note>
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
-
 
 from nemo_evaluator_sdk import ToolCallingMetric
 metric = ToolCallingMetric(reference="{{item.tool_calls}}")
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -420,6 +423,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -531,13 +536,13 @@ Measures how well the agent maintained focus on assigned topics throughout a con
 
 <Note>
 
-Topic Adherence is a multi-turn metric: it scores a complete conversation supplied as a `user_input` message list. Online target generation produces a single response from a single prompt and cannot construct a multi-turn conversation, so it is not supported for this metric. Use the offline **Run Locally** or **Submit Job** modes with a pre-built multi-turn conversation.
+Topic Adherence is a multi-turn metric: it scores a complete conversation supplied as a `user_input` message list. Online target generation produces a single response from a single prompt and cannot construct a multi-turn conversation, so it is not supported for this metric. Use the offline **Offline Scoring** or **Submit Job** modes with a pre-built multi-turn conversation.
 
 </Note>
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import InferenceParams, Model, SecretRef
@@ -557,7 +562,7 @@ metric = TopicAdherenceMetric(
     inference=InferenceParams.model_validate({"temperature": 0, "response_format": {"type": "json_object"}}),
 )
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -572,6 +577,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -701,7 +708,7 @@ Compare the agent's outcome against a known reference:
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
@@ -714,7 +721,7 @@ judge_model = Model(
 )
 metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -735,6 +742,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -848,7 +857,7 @@ The judge LLM infers the goal from the conversation context:
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
@@ -861,7 +870,7 @@ judge_model = Model(
 )
 metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -890,6 +899,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -963,7 +974,7 @@ Evaluates the factual correctness of an agent's answer by comparing it against a
 
 <Tabs>
 
-<Tab title="Run Locally">
+<Tab title="Offline Scoring">
 
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
@@ -976,7 +987,7 @@ judge_model = Model(
 )
 metric = AnswerAccuracyMetric(judge_model=judge_model)
 
-result = evaluator.run(
+job = evaluator.submit(
     metric=metric,
     dataset=[
         {
@@ -986,6 +997,8 @@ result = evaluator.run(
         }
     ],
 )
+job.wait_until_done()
+result = job.get_result()
 print(result.aggregate_scores)
 ```
 
@@ -1168,7 +1181,6 @@ Most agentic metrics require a judge LLM. Configure the judge model in the metri
 ```python
 from nemo_evaluator_sdk import Model, SecretRef
 
-
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
     name="meta/llama-3.1-70b-instruct",
@@ -1187,7 +1199,6 @@ For models that support extended reasoning, such as `nvidia/llama-3.3-nemotron-s
 
 ```python
 from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model, ReasoningParams, SecretRef
-
 
 judge_model = Model(
     url="https://integrate.api.nvidia.com/v1/chat/completions",
@@ -1220,7 +1231,7 @@ judge_model = Model(
 
 For more details on secret management, refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets).
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ---
 

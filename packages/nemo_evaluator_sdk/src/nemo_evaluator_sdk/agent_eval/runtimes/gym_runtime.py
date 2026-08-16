@@ -28,10 +28,14 @@ rollout record, giving a total, order-independent ``index → task`` map. This a
 means a caller can run a **subset** of tasks without Gym rolling out the rest.
 
 **Execution** is the two-step Gym flow (the one that reads a dataset directly
-without triggering Gym's split-driven data-prep): ``gym env start`` brings up the
-resources-server + agent + model servers, then ``gym eval run --no-serve --input
-<materialized dataset>`` collects rollouts against them. The runtime shells out
-to the ``gym`` CLI on PATH, so this SDK never imports ``nemo_gym``. Subprocess
+without triggering Gym's split-driven data-prep), preceded by a pre-flight:
+``gym env validate`` merges the composed config and reports unset ``???`` values,
+bad paths, and dangling cross-references without starting anything; then ``gym env
+start`` brings up the resources-server + agent + model servers, and ``gym eval run
+--no-serve --input <materialized dataset>`` collects rollouts against them. Both
+commands receive the identical selection arguments, so what is validated is what
+runs. The runtime shells out to the ``gym`` CLI on PATH, so this SDK never imports
+``nemo_gym``. Subprocess
 output is streamed to log files under the run's work dir *and* mirrored to this
 module's logger at ``DEBUG``, so callers choose terminal visibility through
 ordinary ``logging`` configuration.
@@ -59,6 +63,11 @@ Gym runtime whose deps are installed (each Gym env ships its own
 ``requirements.txt``), and for handing a *ready-to-run* dataset file (``--no-serve
 --input`` bypasses Gym's prompt-templating/materialization). Service-side
 provisioning (docker/k8s, Ray) is out of scope here — that is the plugin's job.
+
+A consequence of that bypass: an environment whose rows carry no rendered prompt
+(``responses_create_params.input == []``, the prompt supplied by data-prep or by the
+environment's own agent) is still supported — the row travels through this runtime intact
+and the task simply has no ``inputs['instruction']``. See :func:`discover_gym_tasks`.
 """
 
 from __future__ import annotations
@@ -95,6 +104,11 @@ DEFAULT_REWARD_KEY = "reward"
 #: once, and that path is what the subprocesses run — so a child whose PATH differs from ours cannot
 #: end up executing a different Gym.
 _GYM_CLI = "gym"
+#: Bound on `gym env validate`. It merges config without starting anything and returns in about a
+#: second; this only exists so a wedged invocation cannot stall the run before it begins.
+_VALIDATE_TIMEOUT_S = 120.0
+#: Where Gym's Hydra run directories are redirected, relative to the run's work dir.
+_HYDRA_SUBDIR = "gym_hydra"
 #: Gym's index fields on each rollout record. ``_ng_task_index`` is the only join back to the input
 #: rows that survives a round-trip: Gym mutates ``responses_create_params`` (even the prompt) and
 #: copies only a fixed allowlist of row keys onto the result, so no field we invent comes back. Gym
@@ -107,32 +121,175 @@ _RUNTIME_KEYS = frozenset({NG_TASK_INDEX, NG_ROLLOUT_INDEX})
 _LOG_TAIL_LINES = 40
 
 
-#: Substrings that mark a Hydra override key as carrying a credential. Matched case-insensitively
-#: against the key half of ``+key=value``.
+#: Substrings that mark an override as carrying a credential. Matched case-insensitively against the
+#: full dotted path, so nesting cannot hide one behind an innocuous leaf name.
 _SECRET_KEY_MARKERS = ("api_key", "apikey", "token", "secret", "password", "passwd", "credential")
 #: Stand-in written in place of a redacted override value.
 _REDACTED = "<redacted>"
 
 
-def _redact_env_overrides(overrides: Sequence[str]) -> list[str]:
-    """Redact credential-looking values from Hydra overrides before they are recorded as provenance.
+#: Dict keys Hydra reads back unchanged. Its ``dictKey`` rule accepts no quoting, so a key is
+#: whatever the lexer makes of the bare text — this is deliberately narrower than what parses.
+_HYDRA_DICT_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*\Z")
+#: Bare words the lexer types rather than reading as text, so they cannot serve as string keys.
+_HYDRA_KEY_LITERALS = frozenset({"true", "false", "null", "inf", "nan"})
 
-    ``env_overrides`` is a free-form escape hatch forwarded verbatim to ``gym env start``, so nothing
-    stops a caller passing ``+model.api_key=sk-...``. ``RunnerInfo.config`` is persisted into the run
-    bundle, so a value that looks like a credential must not be written there.
+
+def _hydra_dict(value: Mapping[str, Any]) -> str:
+    """Render a mapping as a Hydra dict container, ``{key:value,...}``.
+
+    Reached for a mapping nested inside a container — ``[{"b": 1}]`` — where there is no dotted path
+    to flatten onto, so the dict has to be spelled inline. Values recurse, so the typed spellings
+    below hold at any depth.
+
+    Keys are emitted bare, because Hydra's ``dictKey`` rule has no quoted form: ``{'b':1}`` does not
+    parse at all. That leaves the key at the mercy of the lexer, which types it — ``{true:1}`` keys
+    on the boolean ``True``, ``{1.5:1}`` on a float — and rejects ``:``, ``,``, brackets, and quotes
+    outright. Anything outside the conservative shape above therefore raises here rather than
+    silently keying the config on something the caller did not write.
+    """
+    rendered = []
+    for key, item in value.items():
+        if not isinstance(key, str) or not _HYDRA_DICT_KEY.match(key) or key.casefold() in _HYDRA_KEY_LITERALS:
+            raise ValueError(
+                f"Gym config override has dict key {key!r}, which Hydra's override grammar cannot "
+                "express as a string: keys are unquoted, so only a leading letter or underscore "
+                "followed by letters, digits, '_', '.', or '-' survives the round trip. Set this "
+                "key through the override path instead of nesting it inside a list."
+            )
+        rendered.append(f"{key}:{_hydra_scalar(item)}")
+    return "{" + ",".join(rendered) + "}"
+
+
+def _hydra_scalar(value: Any) -> str:
+    """Render a leaf value the way Hydra's override grammar reads it back.
+
+    Hydra's grammar is typed, so an unquoted string is not necessarily a string: ``true`` parses as a
+    boolean, ``null`` as ``None``, ``1.5`` as a float, ``a,b`` as a *sweep*, and ``A[B`` fails to
+    parse outright. Strings are therefore always single-quoted, which round-trips every one of those
+    (verified against ``hydra.core.override_parser``). Interpolations survive quoting — the override
+    sets the literal text and OmegaConf resolves it on read — so ``${policy_base_url}`` still works.
+
+    Only ``'`` is escaped. Hydra does **not** decode ``\\\\`` inside a quoted value: escaping
+    backslashes doubles them, so they are passed through raw.
+
+    ``None`` and booleans get their own spellings, since ``str()`` would emit ``"None"``/``"True"``
+    and Hydra reads those back as text. Containers recurse for the same reason: ``str()`` on a dict
+    emits Python's repr, whose quoted keys Hydra rejects outright.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, Mapping):
+        return _hydra_dict(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_hydra_scalar(item) for item in value) + "]"
+    if isinstance(value, str):
+        # A trailing backslash would escape the closing quote and leave the value unterminated, and
+        # there is no spelling that avoids it — better to say so than to emit something unparseable.
+        if value.endswith("\\"):
+            raise ValueError(
+                f"Gym config override value {value!r} ends with a backslash, which Hydra's override "
+                "grammar cannot express: it escapes the closing quote."
+            )
+        return "'" + value.replace("'", "\\'") + "'"
+    return str(value)
+
+
+def _flatten_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> list[str]:
+    """Flatten a nested override mapping into Hydra ``++dotted.path=value`` arguments.
+
+    Callers describe overrides as structured data — ``{"a": {"b": 1}}`` — rather than as
+    pre-serialized Hydra strings, so the config survives being sent somewhere as JSON. Hydra itself
+    only speaks the flat form, so the translation happens here, at the point of invocation.
+
+    ``++`` rather than ``+``: it sets a key whether or not it already exists, which is what an
+    override means. A bare ``+`` fails on a key the merged config already defines.
+    """
+    arguments: list[str] = []
+    for key, value in overrides.items():
+        path = f"{_prefix}{key}"
+        # An empty mapping has no leaves to descend to, so recursing would drop the override
+        # entirely. It is still a value the caller asked to set: emit it as ``++path={}``, which
+        # clears the subtree.
+        if isinstance(value, Mapping) and value:
+            arguments.extend(_flatten_overrides(value, f"{path}."))
+        else:
+            arguments.append(f"++{path}={_hydra_scalar(value)}")
+    return arguments
+
+
+def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> dict[str, Any]:
+    """Redact credential-looking values from overrides before they are recorded as provenance.
+
+    ``env_overrides`` is a free-form escape hatch forwarded to Gym, so nothing stops a caller passing
+    ``{"model": {"api_key": "sk-..."}}``. ``RunnerInfo.config`` is persisted into the run bundle, so a
+    value that looks like a credential must not be written there.
 
     The *key* is always kept — knowing that a run overrode ``model.api_key`` is useful provenance;
-    knowing the value is a leak. Overrides that don't parse as ``key=value`` are kept verbatim: they
-    carry no value to leak.
+    knowing the value is a leak. Matching is on the full dotted path, so a marker anywhere in it
+    redacts, and nesting cannot hide a credential behind an innocuous leaf name.
+
+    Lists are walked too, since a mapping inside one — ``{"models": [{"api_key": "sk-..."}]}`` —
+    reaches Gym just as a nested mapping does. The index contributes no path segment: what marks a
+    value as a credential is the key it sits under, not where in a list it happens to fall.
     """
-    redacted: list[str] = []
-    for override in overrides:
-        key, sep, _ = override.partition("=")
-        if sep and any(marker in key.casefold() for marker in _SECRET_KEY_MARKERS):
-            redacted.append(f"{key}={_REDACTED}")
+    redacted: dict[str, Any] = {}
+    for key, value in overrides.items():
+        path = f"{_prefix}{key}"
+        if isinstance(value, Mapping):
+            redacted[key] = _redact_env_overrides(value, f"{path}.")
+        elif any(marker in path.casefold() for marker in _SECRET_KEY_MARKERS):
+            redacted[key] = _REDACTED
+        elif isinstance(value, (list, tuple)):
+            redacted[key] = [_redact_list_item(item, path) for item in value]
         else:
-            redacted.append(override)
+            redacted[key] = value
     return redacted
+
+
+def _redact_list_item(item: Any, path: str) -> Any:
+    """Redact inside one element of a list-valued override. See :func:`_redact_env_overrides`."""
+    if isinstance(item, Mapping):
+        return _redact_env_overrides(item, f"{path}.")
+    if isinstance(item, (list, tuple)):
+        return [_redact_list_item(nested, path) for nested in item]
+    return item
+
+
+def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
+    """The environment/agent/model selection passed to Gym.
+
+    Built once and handed verbatim to both ``gym env validate`` and ``gym env start``, so what is
+    validated is exactly what runs — a pre-flight against a different config would be worse than
+    none.
+    """
+    selection = [
+        "--config",
+        config.agent_config,
+        "--model-type",
+        config.model_type,
+        "--resources-server",
+        config.resources_server,
+    ]
+    if config.bind_resources_server:
+        # Composable (Pattern-A) agents leave resources_server.name unbound ('???'); bind it to the
+        # env we're running. Assumes the agent config's top-level key equals the agent name (the
+        # simple_agent convention) *and* that the resources-server is registered under the
+        # environment's own name — not universally true, so self-contained or differently-named
+        # servers set bind_resources_server=False and bind themselves via env_overrides.
+        selection.append(
+            f"+{config.agent}.responses_api_agents.{config.agent}.resources_server.name={config.resources_server}"
+        )
+    selection.extend(_flatten_overrides(config.env_overrides))
+    # Gym is a Hydra app, so each invocation writes a timestamped run directory — by default
+    # `outputs/<date>/<time>/` under the *current* directory. Since the subprocesses inherit this
+    # process's cwd (so Gym can find env.yaml), the default would litter whatever directory the
+    # caller happened to run from. Redirect it under the run's work dir, with the rest of the run's
+    # artifacts. Applies to every Gym entry point, `gym list` included.
+    selection.append(f"hydra.run.dir={work_dir / _HYDRA_SUBDIR}")
+    return selection
 
 
 def _canonical_row_hash(row: Mapping[str, Any]) -> str:
@@ -169,15 +326,22 @@ def _content_text(content: Any) -> str:
     return ""
 
 
-def _render_instruction(responses_create_params: Any) -> str:
-    """Derive a non-empty instruction from a row's ``responses_create_params``.
+def _render_instruction(responses_create_params: Mapping[str, Any]) -> str:
+    """Derive a task instruction from a row's ``responses_create_params``, or ``""`` when it carries none.
 
     Uses ``instructions`` (system prompt, when present) + ``input`` (a plain string
-    or an OpenAI message list). ``instruction`` is required on every task, so a row
-    that cannot produce one fails loudly rather than yielding a task with no prompt.
+    or an OpenAI message list).
+
+    An empty result is *not* an error. A whole class of Gym environments ships
+    ``"responses_create_params": {"input": []}`` and keeps the task elsewhere — ``gdpval``
+    in a top-level ``prompt``, ``legal_agent_bench`` in an ``instance_id`` its own agent
+    resolves, ``aviary``/``toolsandbox`` in nothing but a ``task_idx``. Their prompt is
+    materialized by Gym's data-preparation step or by the environment's agent, neither of
+    which this runner drives (``--no-serve --input`` hands Gym a ready-to-run dataset by
+    design). Nothing here can reconstruct it, and no single row field generalizes across
+    them, so the honest answer is no instruction rather than a guess. See
+    :func:`discover_gym_tasks` for what that means downstream.
     """
-    if not isinstance(responses_create_params, Mapping):
-        raise ValueError("row has no 'responses_create_params' mapping to render an instruction from")
     parts: list[str] = []
     instructions = responses_create_params.get("instructions")
     if isinstance(instructions, str) and instructions.strip():
@@ -191,10 +355,7 @@ def _render_instruction(responses_create_params: Any) -> str:
                 text = _content_text(item.get("content"))
                 if text:
                     parts.append(text)
-    instruction = "\n\n".join(part for part in parts if part).strip()
-    if not instruction:
-        raise ValueError("could not derive a non-empty instruction from responses_create_params.input")
-    return instruction
+    return "\n\n".join(part for part in parts if part).strip()
 
 
 def _read_jsonl(path: str | Path, *, tolerant: bool = False) -> list[dict[str, Any]]:
@@ -242,10 +403,13 @@ class GymRuntimeConfig(BaseModel):
         "(the composable/Pattern-A agent case, e.g. simple_agent whose config leaves it '???'). Set False for "
         "self-contained agents that already bind their own resources-server.",
     )
-    env_overrides: list[str] = Field(
-        default_factory=list,
-        description="Extra Hydra '+key=value' overrides for `gym env start` (escape hatch; applied after the "
-        "auto-derived resources-server binding).",
+    env_overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Nested config overrides merged into Gym's config, applied after the auto-derived "
+        "resources-server binding. Structured rather than pre-serialized Hydra strings so the config "
+        "travels as JSON — `{'a': {'b': 1}}` becomes `++a.b=1` at invocation. This is the escape "
+        "hatch for what Gym does not standardize: an environment whose resources-server is registered "
+        "under a different name, or which references a model server no shipped config defines.",
     )
     num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
     concurrency: int = Field(
@@ -273,18 +437,22 @@ class GymRuntimeConfig(BaseModel):
 def _gym_executable() -> str:
     """Locate the ``gym`` CLI on PATH, or fail saying what to do about it.
 
-    Gym is expected to be installed in the same environment as this SDK — there is deliberately no
-    config field pointing at a checkout or another venv, because these runner configs become
-    serialized job specs and a local filesystem path cannot cross that boundary. Resolving here
-    rather than at spawn time turns a missing Gym into one legible error instead of an ``ENOENT``
-    out of ``create_subprocess_exec`` after the run has already started.
+    Deliberately PATH-only, with no config field pointing at a checkout or a particular venv: these
+    runner configs become serialized job specs, and a local filesystem path cannot cross that
+    boundary. Resolving here rather than at spawn time turns a missing Gym into one legible error
+    instead of an ``ENOENT`` out of ``create_subprocess_exec`` after the run has already started.
+
+    Note that Gym generally cannot live in this SDK's own environment: it imports Ray at module load,
+    and nemo-platform excludes Ray by constraint over an unfixed CVE. Install Gym separately and put
+    its ``bin`` on PATH; in a job image, the image owns PATH and this resolves normally.
     """
     resolved = shutil.which(_GYM_CLI)
     if resolved is None:
         raise RuntimeError(
-            f"The {_GYM_CLI!r} CLI was not found on PATH. NeMo Gym must be installed in the same Python "
-            "environment as this SDK: `pip install nemo-gym`, plus the target environment's own "
-            "dependencies (each resources-server ships a requirements.txt)."
+            f"The {_GYM_CLI!r} CLI was not found on PATH. Install NeMo Gym in its own environment "
+            "(it needs Ray, which nemo-platform excludes over an unfixed CVE, so it cannot share this "
+            "one) and put that environment's `bin` directory on PATH. Each resources-server also "
+            "ships its own requirements.txt, installed from that server's directory."
         )
     return resolved
 
@@ -320,8 +488,8 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     """Build one :class:`AgentEvalTask` per distinct row in a Gym dataset (jsonl).
 
     Each task's id is the content hash of the row; its ``instruction`` is rendered
-    from ``responses_create_params.input``; the raw params are stashed under
-    ``inputs['gym_row']`` for provenance; and it is scored by a
+    from ``responses_create_params.input`` *when the row carries one*; the raw params
+    are stashed under ``inputs['gym_row']`` for provenance; and it is scored by a
     :class:`GymRewardMetric`. The dataset path is stamped on
     ``metadata['gym_dataset_path']``, and every *other* row key (the verifier's
     ground-truth fields, ``agent_ref``, and so on) on ``metadata['gym_row_extras']``.
@@ -335,24 +503,51 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     so they are by definition the same task) and are reported as a warning: repeated
     attempts are a run-level concern — ``GymRuntimeConfig.num_repeats`` — not something
     a dataset expresses by repeating a row, so duplicates almost always mean bad data.
+
+    **A row need not carry a prompt.** A sweep of the 106 built-in environments shipping example
+    data found 5 — ``aviary``, ``gdpval``, ``legal_agent_bench``, ``scicode`` and ``toolsandbox``
+    — whose every row ships ``responses_create_params.input == []``, letting Gym's data-prep step
+    or the environment's own agent materialize the prompt instead (see
+    :func:`_render_instruction`). Such a row yields a task with **no** ``inputs['instruction']``
+    key rather than a fabricated one, and is counted in a summary log line. This costs the
+    Gym path nothing: the runner never reads ``instruction`` — it re-materializes the source
+    row from ``inputs['gym_row']`` + ``metadata['gym_row_extras']`` and hands *that* to Gym,
+    and ``intent`` is a dataset label either way. It stays absent (not ``""``) so that
+    :meth:`AgentEvalTask.agent_prompt` still fails loudly for the runners that *do* need a
+    prompt — an instruction-less task must not reach an agent as an empty one.
+
+    ``responses_create_params`` itself remains required: Gym indexes into it unconditionally
+    (``rollout_collection._preprocess_rows_from_config``), so a row without it is rejected here
+    rather than crashing Gym mid-collection.
     """
     dataset = Path(dataset)
     tasks: list[AgentEvalTask] = []
     seen: set[str] = set()
     duplicates = 0
-    for row in _read_jsonl(dataset):
+    promptless = 0
+    for position, row in enumerate(_read_jsonl(dataset), 1):
+        params = row.get("responses_create_params")
+        if not isinstance(params, Mapping):
+            raise ValueError(
+                f"row {position} of {dataset} has no 'responses_create_params' mapping; Gym requires that key "
+                "on every dataset row"
+            )
         task_id = _canonical_row_hash(row)
         if task_id in seen:
             duplicates += 1
             continue
         seen.add(task_id)
+        instruction = _render_instruction(params)
+        if not instruction:
+            promptless += 1
         tasks.append(
             AgentEvalTask(
                 id=task_id,
                 intent=f"Gym row from {dataset.name}",
                 inputs={
-                    "instruction": _render_instruction(row.get("responses_create_params")),
-                    "gym_row": row.get("responses_create_params"),
+                    # Absent, not empty, when the row carries no prompt — see the docstring.
+                    **({"instruction": instruction} if instruction else {}),
+                    "gym_row": params,
                 },
                 metrics=list(metrics) if metrics is not None else [GymRewardMetric()],
                 metadata={
@@ -374,6 +569,16 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
             duplicates,
             dataset,
             len(tasks),
+        )
+    if promptless:
+        logger.info(
+            "%d of %d task(s) in %s carry no prompt in responses_create_params and were discovered without an "
+            "inputs['instruction']. Expected for environments whose prompt is built by Gym's data-prep step or by "
+            "their own agent (e.g. aviary, gdpval, legal_agent_bench, scicode, toolsandbox); the Gym runner does "
+            "not read the instruction. A runner that hands the task straight to an agent will reject these tasks.",
+            promptless,
+            len(tasks),
+            dataset,
         )
     if not tasks:
         raise ValueError(f"no rows found in Gym dataset {dataset}")
@@ -471,6 +676,54 @@ class GymAgentTaskRunner:
         _require_full_coverage(tasks, covered_task_ids={trial.task_id for trial in trials}, rollouts_path=rollouts_path)
         return trials
 
+    async def _validate_config(
+        self, gym: str, selection: Sequence[str], subprocess_env: Mapping[str, str], work_dir: Path
+    ) -> None:
+        """Pre-flight the composed Gym config with ``gym env validate`` before starting anything.
+
+        Gym does not publish what configuration an environment requires — the typed
+        ``*ResourcesServerConfig`` classes cover behavioural knobs, while the model wiring lives in
+        each environment's YAML under names that vary per environment. ``gym env validate`` is the
+        only way to find out short of running: it merges configs, flags, and overrides, then reports
+        unresolved ``???`` values, bad paths, and cross-references to servers that are not defined —
+        without Ray and without starting a server.
+
+        Running it every time is worth the second it costs. A config mistake otherwise surfaces after
+        ``gym env start`` has brought up a Ray cluster and several uvicorn servers, as a readiness
+        timeout up to ``startup_timeout_s`` (240s by default) whose message says nothing about the
+        actual problem.
+        """
+        proc = await asyncio.create_subprocess_exec(
+            gym,
+            "env",
+            "validate",
+            *selection,
+            env=dict(subprocess_env),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            # Its own process group, like the other two Gym invocations. `_terminate` signals the
+            # group via `killpg`, so without this a validate timeout would signal *our* group — the
+            # SDK process included.
+            start_new_session=True,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_VALIDATE_TIMEOUT_S)
+        except TimeoutError:
+            await _terminate(proc, grace_s=self._config.shutdown_grace_s)
+            raise RuntimeError(
+                f"`gym env validate` did not finish within {_VALIDATE_TIMEOUT_S}s for resources-server "
+                f"{self._config.resources_server!r}"
+            ) from None
+
+        report = stdout.decode("utf-8", errors="replace").strip()
+        (work_dir / "gym_validate.log").write_text(report, encoding="utf-8")
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"Gym rejected the composed config for resources-server {self._config.resources_server!r} "
+                f"before any server started. `gym env validate` said:\n\n{report}"
+            )
+        logger.debug("gym env validate: %s", report)
+
     async def _run_two_step(self, input_path: Path, output_path: Path, work_dir: Path) -> None:
         """Start the Gym servers, collect against them with ``--no-serve``, then tear them down."""
         cfg = self._config
@@ -483,25 +736,11 @@ class GymAgentTaskRunner:
         # hook is wrong for Gym (servers manage their own deps), so disable it for the subprocesses.
         subprocess_env = {**os.environ, "RAY_ENABLE_UV_RUN_RUNTIME_ENV": "0"}
 
-        env_cmd = [
-            gym,
-            "env",
-            "start",
-            "--config",
-            cfg.agent_config,
-            "--model-type",
-            cfg.model_type,
-            "--resources-server",
-            cfg.resources_server,
-        ]
-        if cfg.bind_resources_server:
-            # Composable (Pattern-A) agents leave resources_server.name unbound ('???'); bind it to the
-            # env we're running. Assumes the agent config's top-level key equals the agent name (the
-            # simple_agent convention). Self-contained agents set bind_resources_server=False.
-            env_cmd.append(
-                f"+{cfg.agent}.responses_api_agents.{cfg.agent}.resources_server.name={cfg.resources_server}"
-            )
-        env_cmd.extend(cfg.env_overrides)
+        selection = _selection_args(cfg, work_dir)
+
+        await self._validate_config(gym, selection, subprocess_env, work_dir)
+
+        env_cmd = [gym, "env", "start", *selection]
         # start_new_session=True puts `gym env start` in its own process group so teardown can signal
         # the *whole* Ray-cluster + uvicorn tree, not just the direct child (else they orphan).
         # stderr is merged into stdout here (unlike `eval run`, which splits them) because readiness

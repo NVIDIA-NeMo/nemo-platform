@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: e2e-test
 description: End-to-end testing workflow with Playwright. Use when writing, running, or debugging E2E tests for Studio user flows.
 ---

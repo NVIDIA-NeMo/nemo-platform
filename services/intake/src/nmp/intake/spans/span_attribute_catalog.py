@@ -36,7 +36,7 @@ class SpanAttributeField(StrEnum):
     AGENT_VERSION = "agent_version"
     TOOL_NAME = "tool_name"
     PROJECT = "project"
-    EVALUATION_ID = "evaluation_id"
+    EVALUATION_NAME = "evaluation_id"
     TEST_CASE_ID = "test_case_id"
     ERROR_TYPE = "error_type"
     ERROR_MESSAGE = "error_message"
@@ -148,10 +148,14 @@ ATTRIBUTE_SPECS = (
         ),
     ),
     AttributeSpec(
-        field=SpanAttributeField.EVALUATION_ID,
+        field=SpanAttributeField.EVALUATION_NAME,
         bag=AttributeBag.STRING,
-        bag_key="nemo.experiment.id",
-        source_keys=("nemo.experiment.id",),
+        # Canonical key is ``nemo.evaluation.name`` (renamed from ``nemo.experiment.id`` in the
+        # Experiment->Evaluation rename). The legacy ``nemo.experiment.id`` is still accepted on ingest
+        # and normalized to the canonical key, so producers can migrate independently without dropping
+        # their evaluation association.
+        bag_key="nemo.evaluation.name",
+        source_keys=("nemo.evaluation.name", "nemo.experiment.id"),
     ),
     AttributeSpec(
         field=SpanAttributeField.TEST_CASE_ID,

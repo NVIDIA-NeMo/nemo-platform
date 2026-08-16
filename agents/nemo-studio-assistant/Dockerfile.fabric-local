@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Managed by `nemo agents package` — safe to delete if you take ownership.
+ARG BASE_IMAGE_URL=nvcr.io/nvidia/base/ubuntu
+ARG BASE_IMAGE_TAG=noble-20260217
+ARG BASE_IMAGE_DIGEST=sha256:57a7daab5579d4b4cfbe25b59dc9d22d0c4cec24e5608523e77fd5f12e9da51a
+ARG PYTHON_VERSION=3.13
+FROM ${BASE_IMAGE_URL}:${BASE_IMAGE_TAG}@${BASE_IMAGE_DIGEST}
+ARG PYTHON_VERSION
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.14@sha256:fef8e5fb8809f4b57069e919ffcd1529c92b432a2c8d8ad1768087b0b018d840 /uv /uvx /bin/
+
+ENV PYTHONDONTWRITEBYTECODE=1
+
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    UV_LINK_MODE=copy
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends g++ gcc ca-certificates curl && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Claude and Codex Relay integration launches this external CLI. Authenticate
+# the immutable installer before root execution; it separately verifies the
+# pinned release binary before placing it on the global runtime PATH.
+RUN curl -fsSL https://raw.githubusercontent.com/NVIDIA/NeMo-Relay/40c5990361afc26ae8b901ff1f49c2b03ddd9ede/install.sh -o /tmp/install-nemo-relay.sh && \
+    echo "ba2585a32e568643819992fa66b750004328351fce422b979d8c11cfc8bbfadb  /tmp/install-nemo-relay.sh" | sha256sum -c - && \
+    NEMO_RELAY_VERSION=0.6.0 sh /tmp/install-nemo-relay.sh --install-dir /usr/local/bin && \
+    rm /tmp/install-nemo-relay.sh && \
+    nemo-relay --version
+
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+
+WORKDIR /workspace
+
+# Preserve the complete agent bundle so paths in agent.yaml continue to resolve
+# relative to the packaged config directory.
+COPY ./ /workspace
+
+# Fabric resolves skill sources against the bundle, while Deep Agents reads
+# those resolved paths through the isolated virtual workspace backend.
+RUN mkdir -p /workspace/workspace/workspace && \
+    cp -R /workspace/skills /workspace/workspace/workspace/skills
+
+# Install the release-matched NeMo Agents runtime and the packaged project in
+# one resolution so incompatible project constraints fail during image build.
+RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \
+    uv venv --python ${PYTHON_VERSION} /workspace/.venv && \
+    . /workspace/.venv/bin/activate && \
+    uv pip install --no-sources --constraint /workspace/constraints.fabric-local.txt \
+      "/workspace/wheelhouse/nemo_platform-0.3.0.post217.dev0+b6f22880a-py3-none-any.whl[nemo-agents-plugin]" \
+      "nemo-fabric==0.1.1" . && \
+    chmod -R a+rX /opt/uv /workspace/.venv
+
+
+LABEL org.opencontainers.image.title="nemo-studio-assistant" \
+      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.authors="Danielle Ali" \
+      org.opencontainers.image.created="2026-08-05T19:39:51Z" \
+      org.opencontainers.image.description="NeMo Studio Assistant — a Fabric Deep Agents assistant for NeMo Platform tasks." \
+      org.opencontainers.image.revision="ca85d0febce9ced44a8d7dfbb2e3391d829697f9" \
+      org.opencontainers.image.source="https://github.com/NVIDIA-NeMo/nemo-platform.git" \
+      com.nemo.agent.id="c9acc9e1c696" \
+      com.nemo.agent.framework="nemo_platform_agent" \
+      com.nemo.agent.contract-version="0.3.0.post91.dev0+2eb952f2c"
+
+ENV AGENT_CONFIG_PATH=/workspace/agent.yaml
+ENV PORT=8000
+ENV PATH="/workspace/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+
+
+RUN if getent passwd 1000 >/dev/null; then userdel -rf "$(getent passwd 1000 | cut -d: -f1)" 2>/dev/null || true; fi && \
+    if getent group  1000 >/dev/null; then groupdel -f "$(getent group  1000 | cut -d: -f1)" 2>/dev/null || true; fi && \
+    groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \
+    chown -R agent:agent /workspace
+USER agent
+
+ENV VIRTUAL_ENV=/workspace/.venv
+ENTRYPOINT ["sh", "-c", "exec python -m nemo_agents_plugin.fabric.server --agent-config \"$AGENT_CONFIG_PATH\" --host 0.0.0.0 --port \"$PORT\""]

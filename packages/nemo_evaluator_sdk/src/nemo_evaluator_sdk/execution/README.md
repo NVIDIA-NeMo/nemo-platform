@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Execution Architecture
 
 The execution package exposes a single public entrypoint:
@@ -22,7 +25,7 @@ The execution package exposes a single public entrypoint:
 # Local SDK execution
 evaluator = Evaluator()
 result = await evaluator.run(
-    metrics=ExactMatchMetric(reference="{{item.reference}}"),
+    metrics=[ExactMatchMetric(reference="{{item.reference}}")],
     dataset=[{"reference": "Paris", "output_text": "Paris"}],
 )
 ```

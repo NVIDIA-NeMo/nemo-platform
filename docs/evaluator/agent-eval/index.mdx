@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Agent Evaluation"
 description: "The task-driven evaluation model — define tasks, run an agent to produce trials, and score each trial (output and trajectory) with per-task metrics."
 ---
@@ -17,8 +20,8 @@ got there*. Each task carries its own metrics, so a single suite can grade heter
 - Use `await AgentEvaluator().run(tasks=..., target=...)` for local task-driven SDK runs
 that do not require running nemo-platform.
 - Use the Evaluator plugin's `uv run nemo evaluator agent-evaluate submit` job for durable runs with inline
-tasks or stored tasksets. The high-level `client.evaluator.run/submit` interfaces
-above remain dataset-driven only.
+tasks or stored tasksets. The high-level `client.evaluator.submit` interface
+above remains dataset-driven only.
 
 </Note>
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Universal NCCL configuration (helm NCCL test + multicloud baseline)
 export NCCL_DEBUG=INFO
 export NCCL_DEBUG_SUBSYS=ALL

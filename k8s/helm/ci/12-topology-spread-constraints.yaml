@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Test that topologySpreadConstraints are correctly templated for API and core controller deployments.
 # CI validates by running: helm template nemo-platform . -f ci/12-topology-spread-constraints.yaml
 # The rendered output must include topologySpreadConstraints in both deployment pod specs.

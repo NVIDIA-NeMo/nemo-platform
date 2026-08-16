@@ -16,6 +16,7 @@
     "test:ci": "vitest run --coverage",
     "test:watch": "vitest watch",
     "test:once": "vitest --run",
+    "types:plugin": "tsx scripts/build-plugin-types.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -57,6 +58,8 @@
     "p-limit": "catalog:",
     "react-dropzone": "catalog:",
     "react-hook-form": "catalog:",
+    "rolldown": "^1.2.2",
+    "rolldown-plugin-dts": "^0.28.2",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

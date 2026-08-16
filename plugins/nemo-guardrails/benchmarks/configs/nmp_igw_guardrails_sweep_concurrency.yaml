@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Benchmark NMP IGW VirtualModel with nemo-guardrails request/response middleware.
 
 batch_name: nmp_igw_guardrails_sweep_concurrency

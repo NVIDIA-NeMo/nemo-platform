@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Script: collect_k8s_logs.sh
 # Description: Collects Kubernetes pod logs and diagnostics, writing to files for archiving.
 #              Safe to call even if the cluster is partially degraded — individual failures are ignored.

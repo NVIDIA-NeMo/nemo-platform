@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # nmp-unsloth training image — single GPU image used for all four steps of
 # an unsloth customization job (file_io download, training, file_io upload,
 # model_entity).
@@ -13,10 +16,10 @@
 #      bitsandbytes, xformers, etc.). `--overrides preserve_base_torch.txt`
 #      blocks uv from installing/upgrading torch into the venv so the NGC
 #      base's PyTorch + CUDA remain the runtime stack.
-#   1b. bitsandbytes — compiled from source against NGC CUDA 13.2 (same pattern
+#   1b. bitsandbytes — compiled from source against the NGC base CUDA (same pattern
 #       as docker/automodel/Dockerfile.nmp-automodel-base). PyPI wheels only ship through
 #       cuda130; source build replaces the wheel from step 1.
-#   1c. mamba-ssm + causal-conv1d — prebuilt cu13.2 / cp312 wheels (shared with
+#   1c. mamba-ssm + causal-conv1d — prebuilt cu13.3 / cp312 wheels (shared with
 #       docker/automodel/Dockerfile.nmp-automodel-base).
 #   1d. flash-attn — optional for unsloth and currently NOT installed (see the
 #       commented TODO below). Without it Unsloth falls back when xformers is
@@ -28,10 +31,10 @@
 # Publish target: nmp-unsloth-training
 # Default tag:    `local` (override via BAKE_TAG at build time).
 
-# NGC PyTorch base. 26.05-py3 ships PyTorch 2.12 + CUDA 13.2 + Python 3.12 (aligned with
+# NGC PyTorch base. 26.07-py3 ships PyTorch + CUDA 13.3 + Python 3.12 (aligned with
 # docker/automodel/Dockerfile.nmp-automodel-base). Override at build time:
 # --set nmp-unsloth-training.args.PYTORCH_BASE=...
-ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.05-py3
+ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.07-py3
 
 # Prebuilt CUDA-extension wheels (mamba-ssm + causal-conv1d), shared with
 # docker/automodel/Dockerfile.nmp-automodel-base. The bake `nmp-unsloth-training` target
@@ -46,7 +49,12 @@ FROM ${PYTORCH_BASE} AS base
 WORKDIR /opt
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+COPY docker/scripts/collect-apt-sources.sh \
+    docker/scripts/collect-python-sdists.py \
+    /usr/local/bin/
 ENV PATH="/bin:${PATH}"
+
+RUN dpkg-query -W -f='${binary:Package}\t${Version}\n' > /tmp/base-dpkg-packages.txt
 
 ENV VIRTUAL_ENV=/opt/venv \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
@@ -105,11 +113,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     transformers==${TRANSFORMERS_VERSION} \
     huggingface-hub==${HF_HUB_VERSION}
 
-# Step 1b: bitsandbytes from source — matches automodel base (CUDA 13.2 nvcc).
+# Step 1b: bitsandbytes from source — matches automodel base CUDA.
 RUN --mount=type=cache,target=/root/.cache/uv \
     git clone https://github.com/bitsandbytes-foundation/bitsandbytes.git /tmp/bitsandbytes && \
     cd /tmp/bitsandbytes && \
     git checkout ${BITSANDBYTES_VERSION} && \
+    mkdir -p /usr/share/nemo-platform/source-distributions/nmp-unsloth-training/git && \
+    git archive --format=tar.gz --output /usr/share/nemo-platform/source-distributions/nmp-unsloth-training/git/bitsandbytes-${BITSANDBYTES_VERSION}.tar.gz HEAD && \
     cmake -DCOMPUTE_CAPABILITY="75;80;86;87;89;90;100;103;110;120;121" -DCOMPUTE_BACKEND=cuda -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -S . && \
     make -j${BNB_MAX_JOBS} && \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache scikit-build-core --no-deps && \
@@ -117,12 +127,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip uninstall --python ${VIRTUAL_ENV}/bin/python scikit-build-core && \
     rm -rf /tmp/bitsandbytes
 
-# Step 1c: mamba-ssm + causal-conv1d — cu13.2 / cp312 wheels shared with automodel base.
+# Step 1c: mamba-ssm + causal-conv1d — cu13.3 / cp312 wheels shared with automodel base.
 RUN --mount=from=causal-conv1d-wheel-src,target=/tmp/causal-conv1d-wheel-src,readonly \
     --mount=from=mamba-ssm-wheel-src,target=/tmp/mamba-ssm-wheel-src,readonly \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps \
-    /tmp/causal-conv1d-wheel-src/wheels/cu13.2/causal_conv1d-*cp312*.whl \
-    /tmp/mamba-ssm-wheel-src/wheels/cu13.2/mamba_ssm-2.3.0-cp312*.whl
+    /tmp/causal-conv1d-wheel-src/wheels/cu13.3/causal_conv1d-*cp312*.whl \
+    /tmp/mamba-ssm-wheel-src/wheels/cu13.3/mamba_ssm-2.3.0-cp312*.whl
 
 # TODO: Step 1d: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
 # /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
@@ -180,9 +190,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "mistune>=3.3.3,<4" \
     "pillow>=12.3.0,<13" \
     "soupsieve>=2.8.4,<3" \
+    "GitPython>=3.1.58,<4" \
     "mlflow-skinny>=3.11.1,<3.12.0"
 
-# Stale NGC system site-packages (verified on nvcr.io/nvidia/pytorch:26.05-py3).
+# Stale NGC system site-packages (verified on nvcr.io/nvidia/pytorch:26.07-py3).
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade openssl libssl3t64 && \
     rm -rf /var/lib/apt/lists/*
@@ -222,10 +233,22 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/soupsieve-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/jupyter_server \
     /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/jupyterlab \
+    /usr/local/lib/python3.12/dist-packages/jupyterlab-*.dist-info \
     /usr/local/cuda/NsightSystems-cli-*  \
     /usr/local/bin/nsys \
     /usr/local/cuda/bin/nsys
 
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    bash /usr/local/bin/collect-apt-sources.sh \
+        /usr/share/nemo-platform/source-distributions/nmp-unsloth-training/apt \
+        --changed-from /tmp/base-dpkg-packages.txt && \
+    python /usr/local/bin/collect-python-sdists.py \
+        --python ${VIRTUAL_ENV}/bin/python \
+        --output /usr/share/nemo-platform/source-distributions/nmp-unsloth-training \
+        --label app-venv
 
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.unsloth.tasks.training", "--help"]

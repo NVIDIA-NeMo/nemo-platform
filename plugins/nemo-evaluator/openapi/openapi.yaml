@@ -3778,12 +3778,13 @@ components:
             Set False for self-contained agents that already bind their own resources-server.
           default: true
         env_overrides:
-          items:
-            type: string
-          type: array
+          additionalProperties: true
+          type: object
           title: Env Overrides
-          description: Extra Hydra '+key=value' overrides for `gym env start` (applied
-            after the auto-derived resources-server binding).
+          description: "Extra config overrides for `gym env start`, as nested data\
+            \ \u2014 {'model': {'temperature': 0.7}} rather than pre-serialized Hydra\
+            \ strings \u2014 so a spec survives being sent as JSON. Flattened to Hydra's\
+            \ grammar at invocation, after the auto-derived resources-server binding."
         num_repeats:
           type: integer
           minimum: 1.0
@@ -5502,6 +5503,12 @@ components:
           type: array
           title: Tasks
           description: References to the member tasks (set semantics; duplicates rejected).
+        files_ref:
+          title: Files Ref
+          description: "Files reference to the taskset's own files \u2014 shared by\
+            \ its members, owned by none."
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'
@@ -5585,6 +5592,15 @@ components:
             change underneath you when a member republishes. Because membership is
             a set, the stored order is canonical rather than the submitted order:
             reordering the same members is not a content change and publishes no revision.'
+        files_ref:
+          title: Files Ref
+          description: "Files reference to the taskset's own files \u2014 shared by\
+            \ its members, owned by none. Upload them to the Files service first and\
+            \ point here ('workspace/fileset#prefix'). The reference is part of the\
+            \ taskset's content, so repointing it publishes a revision; pin the content\
+            \ by referencing a location that is not rewritten."
+          type: string
+          pattern: ^[\w\-.]+/[\w\-.]+#[\w\-./]+$
         metadata:
           items:
             $ref: '#/components/schemas/MetadataItem'

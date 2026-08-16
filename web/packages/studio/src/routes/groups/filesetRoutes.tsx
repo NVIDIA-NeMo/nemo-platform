@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { DATASETS_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateDatasetsRoutes, gateFilesetDetailsRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import {
+  gateDatasetsRoutes,
+  gateFilesetDetailsRoutes,
+  getWorkspaceFilesetsRoute,
+} from '@studio/routes/utils';
+import { FileStack } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -50,3 +57,15 @@ export const filesetRoutes: RouteObject[] = gateDatasetsRoutes([
     },
   ]),
 ]);
+
+export const getFilesetSideNavItems = (workspace: string) =>
+  DATASETS_ENABLED
+    ? [
+        {
+          id: 'datasets',
+          slotIcon: <FileStack className={iconColorClass} />,
+          slotLabel: 'Filesets',
+          href: getWorkspaceFilesetsRoute(workspace),
+        },
+      ]
+    : [];

@@ -4,7 +4,9 @@
 import { ErrorPanel } from '@nemo/common/src/components/ErrorPanel';
 import { MODEL_COMPARE_ENABLED } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
-import { gateModelCompareRoutes } from '@studio/routes/utils';
+import { iconColorClass } from '@studio/routes/constants';
+import { gateModelCompareRoutes, getModelCompareRoute } from '@studio/routes/utils';
+import { CirclePlay } from 'lucide-react';
 import { lazy } from 'react';
 import type { RouteObject } from 'react-router';
 
@@ -23,3 +25,15 @@ export const modelCompareRoutes: RouteObject[] = gateModelCompareRoutes([
     errorElement: <ErrorPanel title="Chat" />,
   },
 ]);
+
+export const getModelCompareSideNavItems = (workspace: string) =>
+  MODEL_COMPARE_ENABLED
+    ? [
+        {
+          id: 'playground',
+          slotIcon: <CirclePlay className={iconColorClass} />,
+          slotLabel: 'Playground',
+          href: getModelCompareRoute(workspace),
+        },
+      ]
+    : [];

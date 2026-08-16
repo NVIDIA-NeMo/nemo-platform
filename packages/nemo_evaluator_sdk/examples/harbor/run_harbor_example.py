@@ -21,6 +21,7 @@ Running either mode requires ``harbor`` installed and a working Docker daemon.
 Run it as a module from the repository root::
 
     python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
+    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --n-attempts 2
     python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
 """
 
@@ -45,9 +46,17 @@ logger = logging.getLogger(__name__)
 HELLO_WORLD_DATASET_DIR = Path(__file__).resolve().parent / "hello_world_dataset"
 
 
-async def _main(mode: str, jobs_dir: Path) -> None:
+async def _main(mode: str, jobs_dir: Path, *, n_attempts: int, job_name: str | None) -> None:
     # The entire caller-side plumbing: a config and one call.
-    config = HarborRuntimeConfig(jobs_dir=jobs_dir, agent_name="oracle")
+    # n_attempts>1 runs the same verifier criteria per attempt so summary can emit pass@k.
+    config = HarborRuntimeConfig(
+        jobs_dir=jobs_dir,
+        job_name=job_name,
+        agent_name="oracle",
+        n_attempts=n_attempts,
+        n_concurrent_trials=1,
+        quiet=False,
+    )
     result = await run_harbor_eval(config, HELLO_WORLD_DATASET_DIR)
 
     if mode == "optimizer":
@@ -78,5 +87,16 @@ if __name__ == "__main__":
         default=Path(__file__).resolve().parent / "harbor-example-output",
         help="Directory Harbor writes its job results into.",
     )
+    parser.add_argument(
+        "--n-attempts",
+        type=int,
+        default=1,
+        help="Harbor trials per task (same verifier criteria each attempt; enables pass@k when >1).",
+    )
+    parser.add_argument(
+        "--job-name",
+        default=None,
+        help="Pin a stable Harbor job name to reuse the job-dir cache across debug runs.",
+    )
     args = parser.parse_args()
-    asyncio.run(_main(args.mode, args.jobs_dir))
+    asyncio.run(_main(args.mode, args.jobs_dir, n_attempts=args.n_attempts, job_name=args.job_name))

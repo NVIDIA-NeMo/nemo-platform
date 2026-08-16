@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Vendored Switchyard (lib + telemetry)
 
 Snapshot of [NVIDIA-dev/switchyard](https://github.com/NVIDIA-dev/switchyard) at commit

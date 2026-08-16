@@ -52,6 +52,14 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
     EvaluatorType,
 )
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.dataset_layout import (
+    find_task_dirs,
+    is_task_dir,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.entrypoint import (
+    DEFAULT_AGENT_IMPORT_PATH,
+    split_import_path,
+)
 from pydantic import Field
 
 
@@ -187,7 +195,7 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     environment_build_timeout_multiplier: float | None = Field(default=1.0)
     artifacts: list[str] = Field(default=[])
     retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
-    import_path: str = Field(default="harbor_wrapper:WrappedAgent")
+    import_path: str = Field(default=DEFAULT_AGENT_IMPORT_PATH)
     trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
     trace_format: Literal["otlp", "atif"] = Field(
         default="otlp",
@@ -392,17 +400,10 @@ def _ensure_package(name: str, search_path: Path | None = None) -> None:
 
 
 def _scoped_import_path(agent_path: Path, import_path: str) -> tuple[str, str]:
-    module_name, separator, attribute = import_path.partition(":")
-    module_name = module_name.strip().lstrip(".")
-    if not module_name:
-        raise ValueError("import_path module is required")
-
+    module_name, attribute = split_import_path(import_path)
     package_name = _agent_import_package(agent_path)
     _ensure_package(package_name, search_path=agent_path)
-    scoped = f"{package_name}.{module_name}"
-    if separator:
-        scoped = f"{scoped}:{attribute}"
-    return scoped, package_name
+    return f"{package_name}.{module_name}:{attribute}", package_name
 
 
 def _cleanup_scoped_imports(package_name: str) -> None:
@@ -952,7 +953,7 @@ class HarborDataset(Dataset):
         )
 
     @classmethod
-    def from_ref(cls, ref: DatasetRef, **options: Any) -> HarborDataset:
+    def from_ref(cls, ref: DatasetRef, *, allow_empty: bool = False, **options: Any) -> HarborDataset:
         """Build a Harbor dataset from a local dataset reference."""
         dataset_path = local_path_from_uri(ref.uri, context="Harbor dataset reference")
         dataset_id = ref.metadata.get("id")
@@ -962,6 +963,7 @@ class HarborDataset(Dataset):
         dataset = cls.from_path(
             dataset_path,
             dataset_id=dataset_id,
+            allow_empty=allow_empty,
             **options,
         )
         return dataset.subset(task_ids) if task_ids is not None else dataset
@@ -985,18 +987,31 @@ class HarborDataset(Dataset):
         dataset_path: Path,
         *,
         dataset_id: str | None = None,
+        allow_empty: bool = False,
+        single_task: bool = False,
         **_ignored_options: Any,
     ) -> HarborDataset:
-        """Build a Harbor dataset from a local Harbor task collection."""
+        """Build a Harbor dataset from a local Harbor task collection.
+
+        A dataset holds task directories, which is the only shape Harbor's job
+        config enumerates. ``single_task`` additionally reads *dataset_path*
+        itself as one task — the shape of a task template, which is a task
+        rather than a collection of them.
+        """
         dataset_path = dataset_path.expanduser().resolve()
         if not dataset_path.exists():
             raise FileNotFoundError(f"Harbor dataset path not found: {dataset_path}")
         if not dataset_path.is_dir():
             raise ValueError(f"Harbor dataset path is not a directory: {dataset_path}")
 
-        task_dirs = cls._find_task_dirs(dataset_path)
-        if not task_dirs:
-            raise ValueError(f"Harbor dataset path contains no Harbor task directories: {dataset_path}")
+        task_dirs = [dataset_path] if single_task and is_task_dir(dataset_path) else find_task_dirs(dataset_path)
+        if not task_dirs and not allow_empty:
+            detail = (
+                " (it is itself a task directory; point the dataset at the directory holding it)"
+                if is_task_dir(dataset_path)
+                else ""
+            )
+            raise ValueError(f"Harbor dataset path contains no Harbor task directories: {dataset_path}{detail}")
 
         tasks = [cls._from_task_dir(task_dir) for task_dir in task_dirs]
         return cls(
@@ -1006,16 +1021,6 @@ class HarborDataset(Dataset):
                 description="Harbor dataset root directory.",
             ),
             tasks=tasks,
-        )
-
-    @staticmethod
-    def _find_task_dirs(dataset_path: Path) -> list[Path]:
-        if dataset_path.is_dir() and (dataset_path / "task.toml").exists():
-            return [dataset_path]
-        return sorted(
-            path
-            for path in dataset_path.iterdir()
-            if path.is_dir() and path.name != "task_template" and (path / "task.toml").exists()
         )
 
     @classmethod

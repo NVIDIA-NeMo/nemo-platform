@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 vi.hoisted(() => {
-  vi.stubEnv('VITE_FF_MONITOR_ENABLED', 'true');
+  vi.stubEnv('VITE_FF_INTAKE_ENABLED', 'true');
 });
 
 import { ROUTES } from '@studio/constants/routes';
@@ -18,7 +18,10 @@ const workspace = workspace1.workspace;
 const renderDetail = () =>
   renderRoute(undefined, {
     history: getAgentDetailRoute(workspace, agentName),
-    routes: [{ path: ROUTES.workspace.agentDetail, element: <AgentDetailRoute /> }],
+    routes: [
+      { path: ROUTES.workspace.agentDetail, element: <AgentDetailRoute /> },
+      { path: ROUTES.workspace.intakeTraces, element: <div>intake-traces-page</div> },
+    ],
   });
 
 describe('AgentDetailRoute', () => {
@@ -40,6 +43,15 @@ describe('AgentDetailRoute', () => {
     expect(screen.getByRole('button', { name: 'Run evaluation' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('navigates to intake traces when Open traces is clicked', async () => {
+    const user = userEvent.setup();
+    renderDetail();
+
+    await user.click(await screen.findByRole('button', { name: 'Open traces' }));
+
+    expect(await screen.findByText('intake-traces-page')).toBeInTheDocument();
   });
 
   it('switches to the chat tab', async () => {

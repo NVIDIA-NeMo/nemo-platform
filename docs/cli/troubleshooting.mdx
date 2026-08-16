@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Troubleshooting"
 description: ""
 ---
@@ -21,6 +24,25 @@ If you installed `nemo-platform` with `pip` or `uv pip`, it was installed in a v
 Activate the virtual environment where you installed the package:
 ```bash
 source /path/to/venv/bin/activate
+```
+
+## Installation Issues
+
+### Install Fails Building a Dependency
+
+**Symptoms:**
+- `uv tool install "nemo-platform[all]"` fails while building a dependency, often on a missing C header such as `omp.h`
+
+**Cause:**
+
+NeMo Platform supports Python 3.12 and 3.13, but uv [picks the interpreter itself](https://docs.astral.sh/uv/concepts/tools/#python-versions), so an install can land on Python 3.14.
+
+**Solution:**
+
+Name a supported interpreter. uv downloads one if you do not have it:
+
+```bash
+uv tool install --python 3.13 "nemo-platform[all]"
 ```
 
 ## Connection Issues

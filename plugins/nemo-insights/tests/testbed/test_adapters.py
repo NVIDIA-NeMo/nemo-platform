@@ -332,7 +332,7 @@ async def test_benchmark_produce_records_run_without_analyzing(monkeypatch, tmp_
     assert len(exported) == 4  # 2 sims x 2 workspaces
     # Every exported span is tagged with the run id.
     for _ws, _sid, spans in exported:
-        assert all(s["attributes"]["nemo.experiment.id"] == record["experiment_id"] for s in spans)
+        assert all(s["attributes"]["nemo.evaluation.name"] == record["experiment_id"] for s in spans)
     assert all("EVALUATOR" not in _kinds(spans) for ws, _, spans in exported if ws == "tau2-airline")
     assert all("EVALUATOR" in _kinds(spans) for ws, _, spans in exported if ws == "tau2-airline-oracle")
     assert len(evals) == 2

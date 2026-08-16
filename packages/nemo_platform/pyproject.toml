@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # =============================================================================
 # Wrapper distribution for NeMo Platform.
 #
@@ -85,7 +88,7 @@ core-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.8.0",
+  "data-designer==0.9.1",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -219,8 +222,8 @@ models-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-agents-example-calculator = [
-  "nvidia-nat-core>=1.8.0,<1.9",
-  "nvidia-nat-langchain>=1.8.0,<1.9",
+  "nvidia-nat-core>=1.9.0a20260811,<1.10",
+  "nvidia-nat-langchain>=1.9.0a20260811,<1.10",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -228,8 +231,12 @@ nemo-agents-plugin = [
   "nemo-platform-plugin",
   "nemo-optimization-plugin",
   "nemo-agents-example-calculator",
-  "nvidia-nat-core>=1.8.0,<1.9",
-  "nvidia-nat-langchain>=1.8.0,<1.9",
+  "nvidia-nat-core>=1.9.0a20260811,<1.10",
+  "nvidia-nat-langchain>=1.9.0a20260811,<1.10",
+  "nvidia-nat-atif>=1.9.0a20260811,<1.10",
+  "nvidia-nat-config-optimizer>=1.9.0a20260811,<1.10",
+  "nvidia-nat-eval>=1.9.0a20260811,<1.10",
+  "nvidia-nat-opentelemetry>=1.9.0a20260811,<1.10",
   "langchain-aws==1.1.0",
   "boto3>=1.40.46,<1.40.62",
   "botocore>=1.40.46,<1.40.62",
@@ -244,8 +251,8 @@ nemo-agents-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-anonymizer-plugin = [
   "nemo-platform-plugin",
-  "nemo-anonymizer>=0.3.1",
-  "data-designer==0.8.0",
+  "nemo-anonymizer==0.3.3",
+  "data-designer==0.9.1",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",
@@ -266,7 +273,7 @@ nemo-auditor-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
-  "data-designer==0.8.0",
+  "data-designer==0.9.1",
   "data-designer-nemo",
   "httpx>=0.27",
   "fastapi",

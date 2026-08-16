@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Intake Export to File - Harbor Eval (CLI)
 
 Tests the agent's ability to use the NeMo Platform Intake service to collect LLM interaction data

@@ -164,7 +164,7 @@ def test_local_backend_execution_resolves_registered_model_ref() -> None:
     metric = ModelBackedMetric(model=ModelRef(root="workspace/judge"))
 
     result = evaluator.run_sync(
-        metrics=metric,
+        metrics=[metric],
         dataset=[{"output_text": "hello"}],
     )
 
@@ -177,6 +177,6 @@ def test_evaluator_local_execution_fails_for_unregistered_model_ref() -> None:
 
     with pytest.raises(ValueError, match="workspace/missing.*not registered"):
         evaluator.run_sync(
-            metrics=ModelBackedMetric(model=ModelRef(root="workspace/missing")),
+            metrics=[ModelBackedMetric(model=ModelRef(root="workspace/missing"))],
             dataset=[{"output_text": "hello"}],
         )

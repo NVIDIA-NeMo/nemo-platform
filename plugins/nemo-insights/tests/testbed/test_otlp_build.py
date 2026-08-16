@@ -16,7 +16,7 @@ def _spans(sim, *, include_rewards=False, task=None, agent_llm="openai/m"):
         agent_name="tau2-airline",
         agent_version="v1",
         session_id=_SESSION,
-        experiment_id="tau2-airline-20260626-000000-abcd",
+        evaluation_name="tau2-airline-20260626-000000-abcd",
         task=task,
         include_rewards=include_rewards,
         agent_llm=agent_llm,
@@ -92,7 +92,7 @@ def test_base_ns_is_honored_when_provided():
         agent_name="a",
         agent_version="v",
         session_id="s",
-        experiment_id="run-x",
+        evaluation_name="run-x",
         task=None,
         include_rewards=False,
         agent_llm="m",
@@ -107,24 +107,24 @@ def test_base_ns_is_honored_when_provided():
 
 def test_session_id_basic():
     sim = {"task_id": "7", "trial": 0}
-    assert session_id_for(sim, experiment_id="tau2-airline-x") == "tau2-airline-x-task7-t0"
+    assert session_id_for(sim, evaluation_name="tau2-airline-x") == "tau2-airline-x-task7-t0"
 
 
-def test_session_id_slugs_experiment_and_task():
+def test_session_id_slugs_evaluation_and_task():
     sim = {"task_id": "set[1]/odd", "trial": 0}
-    assert session_id_for(sim, experiment_id="tau2/airline") == "tau2-airline-taskset-1-odd-t0"
+    assert session_id_for(sim, evaluation_name="tau2/airline") == "tau2-airline-taskset-1-odd-t0"
 
 
 def test_session_id_trial_none_defaults_to_zero():
-    assert session_id_for({"task_id": "0", "trial": None}, experiment_id="a").endswith("-t0")
+    assert session_id_for({"task_id": "0", "trial": None}, evaluation_name="a").endswith("-t0")
 
 
 def test_session_id_is_run_unique():
     sim = {"task_id": "7", "trial": 0}
-    a = session_id_for(sim, experiment_id="run-A")
-    b = session_id_for(sim, experiment_id="run-B")
+    a = session_id_for(sim, evaluation_name="run-A")
+    b = session_id_for(sim, evaluation_name="run-B")
     assert a != b  # different runs -> different session ids
-    assert a == session_id_for(sim, experiment_id="run-A")  # same run -> stable (twins correlate)
+    assert a == session_id_for(sim, evaluation_name="run-A")  # same run -> stable (twins correlate)
 
 
 # --- AGENT root ------------------------------------------------------------
@@ -345,19 +345,19 @@ def test_task_evaluation_criteria_gated_by_include_rewards():
     assert oracle_task["evaluation_criteria"]["actions"][0]["name"] == "book_reservation"
 
 
-def test_every_span_carries_experiment_and_test_case_tags():
+def test_every_span_carries_evaluation_and_test_case_tags():
     sim = _basic_sim([{"role": "user", "content": "hi"}], task_id="7")
     spans = sim_to_spans(
         sim,
         agent_name="tau2-airline",
         agent_version="v1",
         session_id=_SESSION,
-        experiment_id="tau2-airline-20260626-000000-abcd",
+        evaluation_name="tau2-airline-20260626-000000-abcd",
         include_rewards=True,
     )
     assert spans  # at least the AGENT root + EVALUATOR
     for s in spans:
-        assert s["attributes"]["nemo.experiment.id"] == "tau2-airline-20260626-000000-abcd"
+        assert s["attributes"]["nemo.evaluation.name"] == "tau2-airline-20260626-000000-abcd"
         assert s["attributes"]["nemo.test_case.id"] == "7"
 
 
@@ -367,13 +367,13 @@ def test_tags_identical_across_realistic_and_oracle_twins():
         agent_name="tau2-airline",
         agent_version="v1",
         session_id=_SESSION,
-        experiment_id="run-1",
+        evaluation_name="run-1",
     )
     realistic = sim_to_spans(sim, include_rewards=False, **common)
     oracle = sim_to_spans(sim, include_rewards=True, **common)
 
     def tag(s):
-        return (s["attributes"]["nemo.experiment.id"], s["attributes"]["nemo.test_case.id"])
+        return (s["attributes"]["nemo.evaluation.name"], s["attributes"]["nemo.test_case.id"])
 
     assert {tag(s) for s in realistic} == {("run-1", "7")}
     assert {tag(s) for s in oracle} == {("run-1", "7")}

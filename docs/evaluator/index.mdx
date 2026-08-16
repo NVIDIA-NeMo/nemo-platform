@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluate Agents & Models"
 description: "Score agents and models in NeMo Platform — dataset-driven metrics over labeled data and task-driven agent evaluation — with the same scoring interface across local and platform execution."
 ---
@@ -85,14 +88,13 @@ config = RunConfig(limit_samples=100, parallelism=8)
 
 ### 2. Run it — three dataset-driven modes
 
-The same `metric`, `dataset`, and `config` run in three places. What changes is the **caller** — a
-bare SDK evaluator for local iteration, or the platform's `client.evaluator` resource for
-plugin-backed and durable execution.
+The same `metric`, `dataset`, and `config` run in two places. What changes is the **caller** — a
+bare SDK evaluator for local iteration, or the platform's `client.evaluator` resource for durable
+execution.
 
 | Mode | Caller | Call | Best for |
 |------|--------|------|----------|
-| **Local SDK** | `Evaluator()` (`nemo_evaluator_sdk`) | `await evaluator.run(metrics=metric, dataset=dataset, config=config)` | Fast in-process iteration with no platform services. |
-| **Local plugin** | `client.evaluator` | `evaluator.run(metric=metric, dataset=dataset, config=config)` | Local runs through the platform runtime and Inference Gateway. |
+| **Local SDK** | `Evaluator()` (`nemo_evaluator_sdk`) | `await evaluator.run(metrics=[metric], dataset=dataset, config=config)` | Fast in-process iteration with no platform services. |
 | **Remote job** | `client.evaluator` | `evaluator.submit(metric=metric, dataset=dataset, config=config)` | Durable, monitored platform jobs for production and regressions. |
 
 The platform caller is mounted on a `NeMoPlatform` client:
@@ -109,9 +111,6 @@ client = NeMoPlatform(
 )
 evaluator: Evaluator = client.evaluator
 
-# Fast local iteration through the plugin runtime.
-local_result = evaluator.run(metric=metric, dataset=dataset, config=config)
-
 # Production evaluation as a durable platform job.
 job = evaluator.submit(metric=metric, dataset=dataset, config=config)
 job.wait_until_done()
@@ -124,8 +123,8 @@ result = job.get_result()
 - Use `await AgentEvaluator().run(tasks=..., target=...)` for local task-driven SDK runs
 that do not require running nemo-platform.
 - Use the Evaluator plugin's `uv run nemo evaluator agent-evaluate submit` job for durable runs with inline
-tasks or stored tasksets. The high-level `client.evaluator.run/submit` interfaces
-above remain dataset-driven only.
+tasks or stored tasksets. The high-level `client.evaluator.submit` interface
+above remains dataset-driven only.
 
 </Note>
 
@@ -136,7 +135,7 @@ the same and execution gains platform capabilities:
 
 | Capability | Local SDK | Platform (`client.evaluator`) |
 |------------|-----------|-------------------------------|
-| **Execution** | Local in-process run | Local plugin runs, plus durable platform jobs |
+| **Execution** | Local in-process run | Durable platform jobs |
 | **Inference** | Direct model or agent endpoint calls | The same, and can route through the NeMo Platform [Inference Gateway](/documentation/models-and-inference) and platform-managed endpoints |
 | **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
 | **Results** | Returned in memory | Platform artifact storage with typed result download |

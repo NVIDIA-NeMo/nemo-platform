@@ -23,7 +23,7 @@ class AgentEvalScoreStatus(str, Enum):
 
 #: Diagnostic detail key stamped when a score is ``FAILED`` because the *trial* failed — the agent
 #: produced nothing to score — rather than because the metric itself raised. Both are reported as
-#: ``FAILED``, but they mean different things to a reader: a failed trial is a failed *attempt*, a
+#: ``FAILED``, but they mean different things to a reader: a failed trial did not pass, a
 #: failed metric is a failed *measurement*. Consumers that must tell them apart read this key via
 #: :func:`is_trial_failure`.
 TRIAL_STATUS_DETAIL = "trial_status"

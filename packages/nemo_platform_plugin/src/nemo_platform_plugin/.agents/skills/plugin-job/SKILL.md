@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: plugin-job
 description: Creates schedulable NemoJob surfaces for NeMo Platform plugins. Use when adding a job, declaring spec_schema / input_spec_schema / to_spec / compile, mounting job routes with add_job_routes, understanding the three CLI verbs (run / submit / explain), or running jobs in containers. Trigger keywords - job, NemoJob, spec_schema, input_spec_schema, to_spec, compile, add_job_routes, nemo_platform_plugin.jobs, three verbs, run, submit, explain, NemoJobScheduler.
 ---
@@ -24,11 +27,9 @@ from typing import ClassVar
 from nemo_platform_plugin.job import NemoJob
 from pydantic import BaseModel
 
-
 class GenerateSpec(BaseModel):
     num_records: int
     model: str
-
 
 class GenerateJob(NemoJob):
     name: ClassVar[str] = "generate"                     # suffix only — NOT "data-designer.generate"
@@ -169,7 +170,6 @@ class GenerateSpec(BaseModel):
         if self.num_records <= 0:
             raise ValueError("num_records must be positive")
         return self
-
 
 class GenerateJob(NemoJob):
     name = "generate"

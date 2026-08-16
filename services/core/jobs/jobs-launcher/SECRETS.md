@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Secrets Injection Feature
 
 The jobs-launcher now supports automatic secret injection from the NeMo Platform Secrets API into subprocess environment variables.

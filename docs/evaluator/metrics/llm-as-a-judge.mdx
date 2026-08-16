@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluate with LLM-as-a-Judge"
 description: ""
 ---
@@ -18,7 +21,6 @@ NeMo Evaluator supports two execution modes through the Evaluator plugin SDK:
 
 | Mode | Use Case | SDK Call |
 |------|----------|----------|
-| **Local execution** | Rapid prototyping, metric development, and synchronous workflows | `evaluator.run(metric=metric, dataset=dataset)` |
 | **Durable remote job** | Production workloads that should run as platform jobs | `evaluator.submit(metric=metric, dataset=dataset)` |
 
 ## Prerequisites
@@ -35,7 +37,6 @@ import os
 
 from nemo_evaluator.sdk import Evaluator
 from nemo_platform import NeMoPlatform
-
 
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
@@ -59,8 +60,9 @@ Live evaluation is designed for rapid iteration when developing and refining you
 
 Evaluate responses using numerical range scores, such as a 1-5 scale:
 
-
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
 from nemo_evaluator_sdk import (
     InferenceParams,
     JSONScoreParser,
@@ -70,7 +72,6 @@ from nemo_evaluator_sdk import (
     LLMJudgeMetric
 )
 from nemo_evaluator_sdk.enums import ModelFormat
-
 
 metric = LLMJudgeMetric(
     model=Model(
@@ -113,9 +114,8 @@ metric = LLMJudgeMetric(
     },
 )
 
-
-result = evaluator.run(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "input": "What is the capital of France?",
@@ -134,7 +134,6 @@ for score in result.aggregate_scores.scores:
 for row in result.row_scores:
     print(row.row_index, row.item, row.metrics)
 ```
-
 
 The result includes aggregate scores and row scores. Row scores are useful when you are debugging the prompt or parser because they show how each individual row was scored.
 
@@ -168,11 +167,11 @@ The result includes aggregate scores and row scores. Row scores are useful when 
 
 Use rubric scores when you want categorical labels with explicit descriptions:
 
-
 ```python
 from nemo_evaluator_sdk import JSONScoreParser, Model, RubricScore, LLMJudgeMetric
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.values import Rubric
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
 
 metric = LLMJudgeMetric(
     model=Model(
@@ -222,8 +221,8 @@ metric = LLMJudgeMetric(
     },
 )
 
-result = evaluator.run(
-    metric=metric,
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {
             "input": "Tell me a joke",
@@ -237,15 +236,15 @@ result = evaluator.run(
 print(result.aggregate_scores.model_dump(exclude_none=True))
 ```
 
-
 ### Custom Aggregate Fields
 
 By default, aggregate scores include `count`, `mean`, `min`, and `max`. Request additional statistics with `aggregate_fields`:
 
-
 ```python
-result = evaluator.run(
-    metric=metric,
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
+
+result = LocalEvaluator().run_sync(
+    metrics=[metric],
     dataset=[
         {"input": "What is the capital of France?", "output": "Paris."},
         {"input": "What is 2 + 2?", "output": "4."},
@@ -272,13 +271,11 @@ Requesting `percentiles` or `histogram` for a rubric score has no effect, and th
 
 </Note>
 
-
 ---
 
 ## Durable Remote Jobs
 
 For production workloads, submit the same metric and dataset as a durable platform job. The SDK returns a job resource that can wait for completion and download the final `EvaluationResult`.
-
 
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
@@ -317,7 +314,6 @@ metric = LLMJudgeMetric(
     },
 )
 
-
 job = evaluator.submit(
     metric=metric,
     dataset=[
@@ -337,7 +333,6 @@ result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}, count={score.count}")
 ```
-
 
 ---
 
@@ -462,10 +457,8 @@ Customize the judge prompt to match your evaluation criteria. Use Jinja2 templat
 
 LLM judge prompt variables define the fields required from the evaluation context:
 
-
 - Prefer canonical evaluator variables such as `{{input}}`, `{{output}}`, `{{context}}`, and `{{reference}}` for reusable metrics.
 - Raw dataset variables such as `{{item.question}}`, `{{item.response}}`, `{{question}}`, or `{{sample.output_text}}` continue to work for backward compatibility.
-
 
 When your dataset uses different field names, keep the metric prompt stable and map dataset columns at job or benchmark submission time with `field_mapping`:
 
@@ -496,14 +489,12 @@ With the mapping above, a dataset row like this:
 
 renders the prompt template variables as:
 
-
 - `{{input}}` -> `question` -> `"What is the capital of France?"`
 - `{{output}}` -> `response` -> `"Paris"`
 
 Custom prompt variables are also allowed. For example, `{{input}} {{output}} {{custom_value}}` produces a required schema with all three fields, and `field_mapping.custom.custom_value` can bind that prompt variable to a dataset column when needed.
 
 When no `field_mapping` is provided, prompt variable names are matched directly against dataset columns. That means a prompt using `{{question}}` and `{{response}}` expects dataset rows with `question` and `response` fields unless you remap them explicitly.
-
 
 If a prompt field should be available when present but not required in every row, add it to `optional_fields` on the metric. This is useful for prompts that can use `reference` when available but should still validate against datasets that only provide `input` and `output`.
 
@@ -591,7 +582,7 @@ metric = {
 
 If your judge model endpoint requires an API key, store it as a secret. The secret is automatically resolved from the same workspace as your evaluation.
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
+For `nemo_evaluator_sdk.Evaluator` versus submitted-job behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ### Create a Secret
 

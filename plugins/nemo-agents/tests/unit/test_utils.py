@@ -34,6 +34,7 @@ from nemo_agents_plugin.utils import (
     merge_agent_config,
     preflight_validate_llm_models,
     rebase_optimize_outputs,
+    rebind_intake_ingest_workspace,
     temp_injected_config,
     validate_llm_models,
 )
@@ -200,6 +201,114 @@ class TestInjectFabricGatewayUrl:
         assert "base_url" not in result["models"]["default"]["settings"]
         assert "base_url" not in config["models"]["default"]
         assert config["models"]["default"]["settings"]["base_url"] == "http://legacy:8080/v1"
+
+    def test_rebinds_atif_ingest_workspace(self) -> None:
+        config = {
+            "telemetry": {
+                "atif": {
+                    "storage": [
+                        {
+                            "type": "http",
+                            "endpoint": "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                        }
+                    ]
+                }
+            }
+        }
+
+        result = inject_fabric_gateway_url(config, "test-workspace", base_url="http://platform:8080")
+
+        assert result["telemetry"]["atif"]["storage"][0]["endpoint"] == (
+            "http://127.0.0.1:8080/apis/intake/v2/workspaces/test-workspace/ingest/atif"
+        )
+        assert config["telemetry"]["atif"]["storage"][0]["endpoint"] == (
+            "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif"
+        )
+
+
+class TestRebindIntakeIngestWorkspace:
+    def test_leaves_non_intake_and_non_http_endpoints_alone(self) -> None:
+        config = {
+            "telemetry": {
+                "atif": {
+                    "storage": [
+                        {"type": "http", "endpoint": "http://collector:4318/v1/traces"},
+                        {"type": "file", "endpoint": "http://x/apis/intake/v2/workspaces/default/ingest/atif"},
+                    ]
+                }
+            }
+        }
+
+        rebind_intake_ingest_workspace(config, "test-workspace")
+
+        storage = config["telemetry"]["atif"]["storage"]
+        assert storage[0]["endpoint"] == "http://collector:4318/v1/traces"
+        assert storage[1]["endpoint"] == "http://x/apis/intake/v2/workspaces/default/ingest/atif"
+
+    def test_ignores_intake_pattern_outside_the_path(self) -> None:
+        endpoint = "http://collector:4318/v1/traces?forward=/apis/intake/v2/workspaces/default/ingest/atif"
+        config = {"telemetry": {"atif": {"storage": [{"type": "http", "endpoint": endpoint}]}}}
+
+        rebind_intake_ingest_workspace(config, "test-workspace")
+
+        assert config["telemetry"]["atif"]["storage"][0]["endpoint"] == endpoint
+
+    def test_preserves_query_and_fragment_when_rewriting_the_path(self) -> None:
+        config = {
+            "telemetry": {
+                "atif": {
+                    "storage": [
+                        {
+                            "type": "http",
+                            "endpoint": (
+                                "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif?retries=2#frag"
+                            ),
+                        }
+                    ]
+                }
+            }
+        }
+
+        rebind_intake_ingest_workspace(config, "test-workspace")
+
+        assert config["telemetry"]["atif"]["storage"][0]["endpoint"] == (
+            "http://127.0.0.1:8080/apis/intake/v2/workspaces/test-workspace/ingest/atif?retries=2#frag"
+        )
+
+    def test_rebinds_workspace_containing_regex_metacharacters(self) -> None:
+        config = {
+            "telemetry": {
+                "atif": {
+                    "storage": [
+                        {
+                            "type": "http",
+                            "endpoint": "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/ingest/atif",
+                        }
+                    ]
+                }
+            }
+        }
+
+        rebind_intake_ingest_workspace(config, r"ws\1+x")
+
+        assert config["telemetry"]["atif"]["storage"][0]["endpoint"] == (
+            "http://127.0.0.1:8080/apis/intake/v2/workspaces/ws\\1+x/ingest/atif"
+        )
+
+    @pytest.mark.parametrize(
+        "telemetry",
+        [
+            {},
+            {"atif": None},
+            {"atif": {}},
+            {"atif": {"storage": None}},
+            {"atif": {"storage": [{"type": "http"}]}},
+        ],
+    )
+    def test_tolerates_absent_or_malformed_storage(self, telemetry: dict[str, Any]) -> None:
+        config = {"telemetry": telemetry}
+
+        assert rebind_intake_ingest_workspace(config, "test-workspace") is config
 
 
 class TestGetInternalBaseUrl:

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform
 
 [![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE)
@@ -21,15 +24,23 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 **Prerequisites:** Python 3.12–3.13 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
 
-The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. Install just the SDK and CLI, or install everything needed to run the platform locally:
+The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. The `all` extra adds the platform services; drop it for the SDK and CLI alone.
+
+Recommended — one command, `nemo` available everywhere, nothing to activate:
 
 ```bash
-# SDK + CLI only
-pip install nemo-platform
-
-# SDK + CLI + all platform services and default plugins (recommended)
-pip install "nemo-platform[all]"
+uv tool install "nemo-platform[all]"
 ```
+
+Use a virtual environment instead when you also import the SDK from your own code. `nemo` then works only while the environment is active:
+
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install "nemo-platform[all]"
+```
+
+Plain `pip install "nemo-platform[all]"` works in an environment you manage yourself.
 
 Then bring up the platform:
 

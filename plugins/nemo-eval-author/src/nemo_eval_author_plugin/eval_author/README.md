@@ -1,7 +1,5 @@
-<!--
-SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-SPDX-License-Identifier: Apache-2.0
--->
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 # Eval Author
 
@@ -87,7 +85,6 @@ from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_eval_author_plugin.eval_author.run import run_eval_author
 from nemo_experimentalist_plugin.entities import DatasetRef
 
-
 async def main() -> None:
     result = await run_eval_author(
         insight="insight-id",
@@ -100,7 +97,6 @@ async def main() -> None:
         config=EvalAuthorConfig(),
     )
     print(result.summary)
-
 
 asyncio.run(main())
 ```

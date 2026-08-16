@@ -194,7 +194,7 @@ def test_summary_header_lists_only_the_statuses_the_run_produced() -> None:
 
 
 def test_summary_separates_a_failed_trial_from_a_failed_metric() -> None:
-    # Both surface as FAILED but mean different things: a failed trial is an attempt the agent is
+    # Both surface as FAILED but mean different things: a failed trial is one the agent is
     # answerable for, a failed metric is a measurement that never happened. Each label is asserted
     # against the score it describes -- checking only that both strings appear would still pass if
     # the two were swapped.

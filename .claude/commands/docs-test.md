@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Testing Documentation Notebooks
 
 You can test documentation from the repository root using `docs/fern/scripts/run_notebooks.py`, which executes notebooks marked with `@nemo-nb: process`.

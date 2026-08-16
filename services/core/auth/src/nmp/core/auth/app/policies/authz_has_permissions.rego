@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Check Permissions API
 # Separate endpoint for checking if a principal has specific permissions in a workspace
 # This is called by services that need to verify permissions outside of the request flow

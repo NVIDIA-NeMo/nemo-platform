@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Files Service Agentic Flows
 
 The Files service provides artifact storage through filesets. This replaces the old HuggingFace datastore functionality and supports file uploads, downloads, and directory operations.

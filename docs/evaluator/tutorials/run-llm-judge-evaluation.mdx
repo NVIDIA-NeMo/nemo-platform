@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Evaluate Response Quality with LLM-as-a-Judge"
 description: ""
 ---
@@ -60,7 +63,7 @@ Before you begin, here is a quick overview of the resources you will use:
 - **Fileset**: A dataset registered with NeMo Platform. The evaluator plugin SDK accepts fileset references directly, so this tutorial passes the registered HelpSteer2 split to evaluations as a `FilesetRef`.
 - **Workspace**: A workspace that isolates your resources. Secrets, filesets, and jobs belong to a workspace.
 - **Job**: A durable remote platform task created with `evaluator.submit(...)`.
-- **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.run(...)` for local in-process execution, `evaluator.submit(...)` for durable jobs
+- **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.submit(...)` for durable jobs, or `nemo_evaluator_sdk.Evaluator` for local in-process execution
 
 ---
 
@@ -163,7 +166,7 @@ from nemo_evaluator.sdk import FilesetRef
 JUDGE_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 JUDGE_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
 
-# Local evaluator.run() resolves this value from os.environ["NVIDIA_API_KEY"].
+# `nemo_evaluator_sdk.Evaluator` resolves this name from your local environment.
 LOCAL_JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
@@ -288,7 +291,6 @@ def create_helpfulness_metric(prompt_template: str, judge_model: Model) -> LLMJu
         ignore_request_failure=True,
     )
 
-
 # Version 1: A basic, minimal prompt.
 PROMPT_V1 = """You are an evaluator. Rate the response's helpfulness from 0-4.
 Respond with JSON only: {"helpfulness": <0-4>}"""
@@ -307,12 +309,13 @@ Use low temperature for evaluation tasks. Low or zero temperature produces outpu
 
 ## 6. Test with Local Evaluation
 
-Before running a durable job, test your metric with a few examples using `evaluator.run(...)`. This runs locally in-process and returns results immediately, which is useful for prompt iteration.
+Before running a durable job, test your metric with a few examples using `nemo_evaluator_sdk.Evaluator`. It runs locally in-process and returns results immediately, which is useful for prompt iteration.
 
 ```python
+from nemo_evaluator_sdk import Evaluator as LocalEvaluator
 
-quick_test_result = evaluator.run(
-    metric=metric_v1_local,
+quick_test_result = LocalEvaluator().run_sync(
+    metrics=[metric_v1_local],
     dataset=[
         {
             "prompt": "What is the capital of France?",
@@ -326,7 +329,6 @@ quick_test_result = evaluator.run(
     config=RunConfig(parallelism=1),
 )
 
-
 def score_value(row_score, score_name: str) -> float | None:
     """Return one named score from an evaluator row result."""
     for metric_result in row_score.metrics.values():
@@ -338,7 +340,6 @@ def score_value(row_score, score_name: str) -> float | None:
                 except (TypeError, ValueError):
                     return None
     return None
-
 
 print("Quick test results:")
 for row in quick_test_result.row_scores:
@@ -369,7 +370,6 @@ sample_config = RunConfig(
     limit_samples=5,
 )
 
-
 def wait_for_job(label: str, job):
     """Wait for a remote evaluator job and download its result."""
     try:
@@ -388,7 +388,6 @@ def wait_for_job(label: str, job):
     print(f"{label} job finished successfully!")
     print(result.aggregate_scores.scores)
     return result
-
 
 job_v1 = evaluator.submit(
     metric=metric_v1_remote,
@@ -411,7 +410,6 @@ Row-level results contain the original dataset item, captured requests, and extr
 ```python
 import numpy as np
 
-
 def extract_dimension_scores(result, dimension: str):
     """Return judge scores, human scores, and failure count for one dimension."""
     judge_scores = []
@@ -432,7 +430,6 @@ def extract_dimension_scores(result, dimension: str):
     print(f"Total skipped rows: {failed_rows}")
     return np.array(judge_scores), np.array(human_scores)
 
-
 judge_scores, human_scores = extract_dimension_scores(result_v1, "helpfulness")
 print(f"Evaluated: {len(judge_scores)} samples")
 ```
@@ -450,7 +447,6 @@ To measure judge quality, we compare its scores against human annotations using 
 ```python
 from scipy import stats
 
-
 def correlation_summary(human_scores, judge_scores):
     """Return Pearson, Spearman, and MAE for valid score arrays."""
     if len(human_scores) < 2 or len(judge_scores) < 2:
@@ -460,7 +456,6 @@ def correlation_summary(human_scores, judge_scores):
     spearman, _ = stats.spearmanr(human_scores, judge_scores)
     mae = abs(human_scores - judge_scores).mean()
     return pearson, spearman, mae
-
 
 pearson_v1, spearman_v1, mae_v1 = correlation_summary(human_scores, judge_scores)
 
@@ -656,7 +651,7 @@ To delete the workspace, you must first delete all resources within it. Delete j
 ```python
 from nemo_platform import NotFoundError
 
-# Delete remote evaluation jobs. Local evaluator.run() results are in-memory
+# Delete remote evaluation jobs. Local SDK results are in-memory
 # objects and do not create platform jobs.
 for job_name in [job_v1.name, job_v2.name]:
     try:

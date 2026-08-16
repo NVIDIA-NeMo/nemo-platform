@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # SDK Maintenance Tools
 
 This package contains repo-local commands for keeping the generated Python SDK, Stainless config, generated CLI, vendored packages, and license metadata in sync.

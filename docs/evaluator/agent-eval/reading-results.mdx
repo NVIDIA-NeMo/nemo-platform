@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Reading Results"
 description: "Reference for what a run returns — the in-memory AgentEvalResult (summary, per-metric scores, trials, run id) — and the on-disk run bundle you get by calling persist(), including the browsable HTML report."
 ---
@@ -37,6 +40,52 @@ result = await AgentEvaluator().run(tasks=..., target=...)
 
 - **`summary.metric_coverage`** — per metric output, how many trials were `total` / `scored` / failed /
   missing, so you can tell a low mean from low coverage.
+- **`summary.task_metric_values`** — per task, the individual trial values behind those means, keyed
+  `<metric.type>.<output>`. Each record carries the `trial_id` that produced it and its metric `value`, so
+  you can answer "which tasks were flaky, and on which trial?" without regrouping `result.scores`
+  yourself:
+
+  ```python
+  for task_id, by_output in result.summary.task_metric_values.items():
+      # .get: keys are per task, so a task scored by a different metric simply has none.
+      print(task_id, [(a.trial_id, a.value) for a in by_output.get("reward.score", [])])
+  ```
+
+  A `value` of `None` is a trial that died before scoring — a trial that did not pass. A trial
+  whose *metric* failed is absent entirely, because that leaves it unmeasured rather than
+  unsuccessful. Look up by `trial_id` rather than by position: the two rules above mean lists for
+  different outputs of one task need not be the same length.
+
+  Values keep the type the metric produced them in — a count stays an `int`, a flag stays a `bool`,
+  and a judge's verdict stays a `str`. Each record's `value_type` says which it is (`number`,
+  `label` or `missing`), which is what tells a real `NaN` apart from a label that reads `"NaN"`, since
+  strict JSON has no NaN literal and both travel as strings. Before doing arithmetic, project with
+  `numeric_metric_values`, which drops labels and keeps a dead trial's `None`:
+
+  ```python
+  from nemo_evaluator_sdk.agent_eval.results import numeric_metric_values
+
+  records = result.summary.task_metric_values["task-47"]["reward.score"]
+  scores = numeric_metric_values(records)   # [1.0, None, 0.0]
+  ```
+
+- **`summary.task_outcomes(metric_name=None)`** — the same data as models rather than nested dicts,
+  sorted by task then metric, each naming its own `task_id` and `metric_name`. Pass a
+  `"<metric.type>.<output>"` to narrow to one metric, which is what a report over a single metric
+  wants:
+
+  ```python
+  for per_task in result.summary.task_outcomes("reward.score"):
+      for outcome in per_task.outcomes:
+          values = numeric_metric_values(outcome.trials)
+          print(per_task.task_id, outcome.metric_name, values)
+  ```
+
+  - When you narrow, a task the metric never measured is **dropped** — it was scored by a different
+    metric, so listing it would invent missing coverage.
+  - A task that declared the metric but produced no usable value keeps its entry with an empty
+    `trials` list, because there the coverage really is missing.
+  - Unfiltered, every task is returned.
 - **`summary.task_count`**, **`summary.trial_count`**, **`summary.score_count`**.
 
 ### Per-metric scores

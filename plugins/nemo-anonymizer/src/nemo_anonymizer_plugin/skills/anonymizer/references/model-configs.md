@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Model Configs
 
 `model_configs` is a YAML list that defines the model aliases the plugin resolves through NeMo Platform. `selected_models` can bind those aliases to Anonymizer library roles. The [NVIDIA NeMo Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) and library skills own the full role list and model-selection semantics.
