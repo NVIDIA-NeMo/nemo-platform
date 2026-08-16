@@ -41,13 +41,15 @@ type CredentialedGroup = 'attack' | 'analysis';
 const GROUP_LABEL: Record<keyof WarGameModels, string> = {
   attack: 'Attack model',
   analysis: 'Analysis model',
-  agent: 'Agent model',
+  safety: 'Safety model',
 };
 const GROUP_HELP: Record<keyof WarGameModels, string> = {
   attack: 'The garak red-team + detector models that probe the agent.',
   analysis:
     'The defenders and the benign validator — both its suite generation (synth) and judging — one shared model.',
-  agent: "Override the victim agent's own LLM (routes through the Inference Gateway).",
+  safety:
+    "The LLM the generated guardrail uses to screen the agent's traffic. Leave blank to reuse the agent's " +
+    'own model, which makes guardrail quality depend on the model being attacked.',
 };
 
 const NO_SECRET = '';
@@ -113,14 +115,15 @@ export const ModelGroupFields: FC<ModelGroupFieldsProps> = ({
       defaultBaseUrl={defaults?.analysis.base_url}
       divider
     />
-    {/* Agent (victim) model: name only — the endpoint + key come from the Inference Gateway. */}
-    <GroupSection label={GROUP_LABEL.agent} help={GROUP_HELP.agent} divider>
-      <FormField name="agent-model" slotLabel="Model">
+    {/* Safety (guardrail) model: name only — iron-swarm pins the endpoint + key when it writes the
+        guardrail into the victim's workflow, so a base URL or secret here would never be read. */}
+    <GroupSection label={GROUP_LABEL.safety} help={GROUP_HELP.safety} divider>
+      <FormField name="safety-model" slotLabel="Model">
         <TextInput
-          value={value.agent?.model ?? ''}
-          placeholder="Use the agent's configured model"
+          value={value.safety?.model ?? ''}
+          placeholder="Reuse the agent's own model"
           onChange={(e) =>
-            onChange(withGroup(value, 'agent', { model: e.target.value || undefined }))
+            onChange(withGroup(value, 'safety', { model: e.target.value || undefined }))
           }
         />
       </FormField>

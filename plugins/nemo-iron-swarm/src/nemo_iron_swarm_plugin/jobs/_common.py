@@ -66,7 +66,8 @@ def build_subprocess_env(plugin_config: IronSwarmConfig, extra_env: dict[str, st
 
 # Map each model group to iron-swarm's native env knobs. attack → garak's red-team + detector (name/uri
 # + NIM_API_KEY); analysis → the shared llm factory default (IRON_SWARM_MODEL/BASE_URL + INFERENCE_API_KEY).
-# The agent (victim) model is not an env knob — it rewrites the victim's manifest LLMs instead.
+# The safety (guardrail) model is not an env knob — it travels in the manifest, as the guardrails
+# defender entry's `config`, because a defender consumes it rather than the iron-swarm process.
 _ATTACK_MODEL_ENVVARS = ("GARAK_RED_TEAM_MODEL_NAME", "GARAK_DETECTOR_MODEL_NAME")
 _ATTACK_BASE_URL_ENVVARS = ("GARAK_RED_TEAM_MODEL_URI", "GARAK_DETECTOR_MODEL_URI")
 _ATTACK_KEY_ENVVAR = "NIM_API_KEY"  # pragma: allowlist secret

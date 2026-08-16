@@ -254,6 +254,7 @@ export const ironSwarmCreateJob = (
 
 
 
+
 export const getIronSwarmCreateJobMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmCreateJob>>, TError,{workspace: string;data: WarGameJobRequest}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmCreateJob>>, TError,{workspace: string;data: WarGameJobRequest}, TContext> => {
@@ -983,6 +984,7 @@ export const ironSwarmDeleteJob = (
 
 
 
+
 export const getIronSwarmDeleteJobMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmDeleteJob>>, TError,{workspace: string;name: string}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmDeleteJob>>, TError,{workspace: string;name: string}, TContext> => {
@@ -1043,6 +1045,7 @@ export const ironSwarmCancelJob = (
     },
       );
     }
+
 
 
 
@@ -1767,6 +1770,7 @@ export const ironSwarmCreateManifest = (
 
 
 
+
 export const getIronSwarmCreateManifestMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmCreateManifest>>, TError,{workspace: string;data: ManifestInit}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmCreateManifest>>, TError,{workspace: string;data: ManifestInit}, TContext> => {
@@ -1836,6 +1840,7 @@ export const ironSwarmInspectProject = (
 
 
 
+
 export const getIronSwarmInspectProjectMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectProject>>, TError,{workspace: string;data: InspectProjectRequest}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmInspectProject>>, TError,{workspace: string;data: InspectProjectRequest}, TContext> => {
@@ -1901,6 +1906,7 @@ export const ironSwarmInspectManifestsInspectAgentEndpoint = (
     },
       );
     }
+
 
 
 
@@ -2135,6 +2141,7 @@ export const ironSwarmUpdateManifest = (
 
 
 
+
 export const getIronSwarmUpdateManifestMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmUpdateManifest>>, TError,{workspace: string;name: string;data: ManifestUpdate}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmUpdateManifest>>, TError,{workspace: string;name: string;data: ManifestUpdate}, TContext> => {
@@ -2181,7 +2188,7 @@ export const useIronSwarmUpdateManifest = <TError = ErrorType<HTTPValidationErro
     }
 
 /**
- * Delete a saved manifest by name, along with the victim bundle it owns.
+ * Delete a saved manifest by name, along with the victim bundle the service created for it.
  * @summary Delete Manifest
  */
 export const ironSwarmDeleteManifest = (
@@ -2196,6 +2203,7 @@ export const ironSwarmDeleteManifest = (
     },
       );
     }
+
 
 
 
@@ -2267,6 +2275,7 @@ export const ironSwarmRefreshManifest = (
     },
       );
     }
+
 
 
 
@@ -2485,6 +2494,7 @@ export const ironSwarmValidateModelConfig = (
     },
       );
     }
+
 
 
 
@@ -2875,6 +2885,7 @@ export const ironSwarmDeleteRun = (
 
 
 
+
 export const getIronSwarmDeleteRunMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmDeleteRun>>, TError,{workspace: string;name: string}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmDeleteRun>>, TError,{workspace: string;name: string}, TContext> => {
@@ -2942,6 +2953,7 @@ export const ironSwarmApplyMitigation = (
     },
       );
     }
+
 
 
 
@@ -3015,6 +3027,7 @@ export const ironSwarmComposeDefenseRoute = (
 
 
 
+
 export const getIronSwarmComposeDefenseRouteMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmComposeDefenseRoute>>, TError,{workspace: string;name: string;data: ComposeDefenseRequest}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmComposeDefenseRoute>>, TError,{workspace: string;name: string;data: ComposeDefenseRequest}, TContext> => {
@@ -3079,6 +3092,7 @@ export const ironSwarmIngestEvent = (
     },
       );
     }
+
 
 
 
@@ -3321,6 +3335,7 @@ export const ironSwarmCreateSynthBenignJob = (
     },
       );
     }
+
 
 
 
@@ -4053,6 +4068,7 @@ export const ironSwarmDeleteSynthBenignJob = (
 
 
 
+
 export const getIronSwarmDeleteSynthBenignJobMutationOptions = <TError = ErrorType<HTTPValidationError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>, TError,{workspace: string;name: string}, TContext>, }
 ): UseMutationOptions<Awaited<ReturnType<typeof ironSwarmDeleteSynthBenignJob>>, TError,{workspace: string;name: string}, TContext> => {
@@ -4113,6 +4129,7 @@ export const ironSwarmCancelSynthBenignJob = (
     },
       );
     }
+
 
 
 

@@ -32,10 +32,14 @@ INTENSITY_GARAK: dict[str, dict[str, int]] = {
 }
 
 # Defender override entries mirroring iron_swarm.manifest._default_defenders (name + implementation +
-# capabilities — iron-swarm's SessionConfig validator requires a non-empty `capabilities`). The entry's
-# `config` is unused by the defense stage (the callable gets only its DefenderInput, and the victim policy
-# comes from the sandbox), so it's omitted. Selecting a subset replaces the default defender list via the
-# manifest's `overrides.defenders` (iron-swarm merges overrides with lists replacing).
+# capabilities — iron-swarm's SessionConfig validator requires a non-empty `capabilities`). Selecting a
+# subset replaces the default defender list via the manifest's `overrides.defenders` (iron-swarm merges
+# overrides with lists replacing).
+#
+# An entry's `config` is NOT inert: iron-swarm's defenders manager builds each defender's context as
+# `{**enriched_context, **defender.config}`, so keys placed here arrive in its `DefenderInput.context`.
+# That is how the user's `safety` model reaches the guardrails defender — see `_safety_llm_entries`.
+# No entry declares a static `config`; it is attached per-run.
 DEFENDER_ENTRIES: dict[str, dict[str, Any]] = {
     "openshell": {
         "name": "openshell-policy-defender",
@@ -59,11 +63,26 @@ DEFENDER_ENTRIES: dict[str, dict[str, Any]] = {
 }
 
 
-def _agent_model_override(data: dict[str, Any]) -> str | None:
-    """The user's chosen victim ("agent" group) model, if any — used to rewrite the victim's IGW LLMs."""
-    agent = (data.get("models") or {}).get("agent")
-    model = agent.get("model") if isinstance(agent, dict) else None
+def _safety_model(data: dict[str, Any]) -> str | None:
+    """The user's chosen guardrail ("safety" group) model, if any."""
+    safety = (data.get("models") or {}).get("safety")
+    model = safety.get("model") if isinstance(safety, dict) else None
     return str(model) if model else None
+
+
+def _with_safety_llm(entries: list[dict[str, Any]], safety_model: str) -> list[dict[str, Any]]:
+    """Attach *safety_model* to the guardrails entry's ``config``, which becomes its DefenderInput context.
+
+    Copies each entry rather than mutating it: ``DEFENDER_ENTRIES`` is module-level, so an in-place edit
+    would leak one run's choice into every later run in the same process.
+    """
+    guardrails_name = DEFENDER_ENTRIES["guardrails"]["name"]
+    return [
+        {**entry, "config": {**entry.get("config", {}), "safety_llm": safety_model}}
+        if entry["name"] == guardrails_name
+        else entry
+        for entry in entries
+    ]
 
 
 def _apply_manifest_overrides(manifest: dict[str, Any], data: dict[str, Any]) -> None:
@@ -80,12 +99,30 @@ def _apply_manifest_overrides(manifest: dict[str, Any], data: dict[str, Any]) ->
     # leave the port the agent resolver derived from the running deployment.
     if data.get("port"):
         manifest.setdefault("agent", {})["port"] = int(data["port"])
+    safety_model = _safety_model(data)
     enabled = [key for key in (data.get("defenders") or []) if key in DEFENDER_ENTRIES]
     if not enabled:
+        # No selection means iron-swarm's own defender defaults, which carry no `config` for us to
+        # attach to — say so rather than dropping the choice quietly.
+        if safety_model:
+            logger.warning(
+                "safety model %r not applied: no defender selection to attach it to (iron-swarm's "
+                "defaults are in force). Enable the guardrails defender to use it.",
+                safety_model,
+            )
         return
     # Guardrails only applies when the agent has a workflow (iron-swarm gates it the same way).
     has_workflow = bool(manifest.get("agent", {}).get("workflow"))
     entries = [DEFENDER_ENTRIES[key] for key in enabled if key != "guardrails" or has_workflow]
+    if safety_model:
+        if any(entry["name"] == DEFENDER_ENTRIES["guardrails"]["name"] for entry in entries):
+            entries = _with_safety_llm(entries, safety_model)
+        else:
+            logger.warning(
+                "safety model %r not applied: the guardrails defender is %s.",
+                safety_model,
+                "not enabled" if "guardrails" not in enabled else "unavailable (the agent has no workflow)",
+            )
     if entries:
         manifest.setdefault("overrides", {})["defenders"] = entries
 
@@ -199,7 +236,6 @@ def _materialize_legacy_agent_manifest(
         manifest_dir=manifest_dir,
         egress=data.get("egress") or None,
         secrets=data.get("secrets") or None,
-        model_override=_agent_model_override(data),
     )
     _persist_upgraded_bundle(sdk, manifest_id, ctx, record, resolved)
     _apply_manifest_overrides(resolved.manifest, data)

@@ -3,12 +3,20 @@
 
 """User-selectable model configuration for a war-game.
 
-Iron Swarm's five model-driven roles collapse into three user-facing groups:
+Iron Swarm's model-driven roles collapse into three user-facing groups:
 
 - ``attack``   — garak's red-team + detector models (the adversary).
 - ``analysis`` — the defenders + the benign validator (both its synth suite-generation and its judge)
   — one shared "analysis" model.
-- ``agent``    — the victim agent's own LLM (an optional override of what its workflow declares).
+- ``safety``   — the guardrail middleware the guardrails defender installs on the victim.
+
+The victim's own LLM is deliberately *not* a group. In NAT it is declared in the workflow YAML, so
+overriding it would mean rewriting the target's own config — the war-game measures the agent rather
+than editing it. Change it in the project's workflow and re-upload.
+
+``attack`` and ``analysis`` reach iron-swarm as subprocess env vars; ``safety`` travels in the
+manifest instead (``overrides.defenders`` → the guardrails entry's ``config``), because it is consumed
+by a defender rather than by the iron-swarm process.
 
 Each group is a :class:`ModelChoice` (model name, optional custom ``base_url``, optional Secrets
 name for a custom provider key). ``None`` anywhere means "use the built-in default", so an unset
@@ -50,7 +58,11 @@ class WarGameModels(BaseModel):
     analysis: ModelChoice | None = Field(
         default=None, description="Defenders + benign validator (synth suite-generation + judge) model."
     )
-    agent: ModelChoice | None = Field(default=None, description="Victim agent LLM override (model only).")
+    safety: ModelChoice | None = Field(
+        default=None,
+        description="Guardrail middleware LLM (iron-swarm's `safety_llm`); unset copies the victim's own LLM. "
+        "Only `model` applies — iron-swarm pins this LLM's endpoint and key when it writes the guardrail.",
+    )
 
 
 class ModelGroupDefault(BaseModel):

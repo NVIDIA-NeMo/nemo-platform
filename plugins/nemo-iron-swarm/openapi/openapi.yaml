@@ -2983,10 +2983,12 @@ components:
           - $ref: '#/components/schemas/ModelChoice'
           description: Defenders + benign validator (synth suite-generation + judge)
             model.
-        agent:
+        safety:
           allOf:
           - $ref: '#/components/schemas/ModelChoice'
-          description: Victim agent LLM override (model only).
+          description: "Guardrail middleware LLM (iron-swarm's `safety_llm`); unset\
+            \ copies the victim's own LLM. Only `model` applies \u2014 iron-swarm\
+            \ pins this LLM's endpoint and key when it writes the guardrail."
       type: object
       title: WarGameModels
       description: The three model groups for a war-game. An unset group uses iron-swarm's

@@ -96,14 +96,23 @@ def _effective_models(sdk: Any, config: dict, ctx: JobContext) -> WarGameModels 
     built-in defaults stay in force and nothing is injected).
     """
     stored_raw = _manifest_models(sdk, str(config["manifest_id"]), ctx) if config.get("manifest_id") else {}
+    # `agent` was a group before the victim's LLM was ruled out of scope (it lives in the target's own
+    # workflow). Stored values validate away silently, so say why they stopped applying.
+    for source in (stored_raw, config.get("models") or {}):
+        if isinstance(source, dict) and source.get("agent"):
+            logger.warning(
+                "the 'agent' model group was removed — the victim's LLM is set in its workflow, not by the "
+                "war-game. Ignoring it; use the 'safety' group for the guardrail model."
+            )
+            break
     stored = WarGameModels.model_validate(stored_raw)
     override = WarGameModels.model_validate(config.get("models") or {})
     merged = WarGameModels(
         attack=_merge_choice(stored.attack, override.attack),
         analysis=_merge_choice(stored.analysis, override.analysis),
-        agent=_merge_choice(stored.agent, override.agent),
+        safety=_merge_choice(stored.safety, override.safety),
     )
-    return merged if (merged.attack or merged.analysis or merged.agent) else None
+    return merged if (merged.attack or merged.analysis or merged.safety) else None
 
 
 def _preflight_models(models: WarGameModels | None, *, sdk: Any, workspace: str, default_key: str | None) -> None:
@@ -112,8 +121,9 @@ def _preflight_models(models: WarGameModels | None, *, sdk: Any, workspace: str,
     Only groups the user explicitly configured (a model name and/or a custom ``base_url``) are probed —
     the built-in defaults are known-good and left untouched. On a bad credential or a wrong model name we
     raise a classified :class:`IronSwarmRunError` whose message lists the models those credentials *can*
-    reach, so the user can correct the choice instead of guessing. The victim ("agent") group routes
-    through the Inference Gateway and is validated interactively in Studio, not here.
+    reach, so the user can correct the choice instead of guessing. The guardrail ("safety") group is not
+    probed: it is consumed inside the victim by NAT middleware against the endpoint iron-swarm's
+    ``_ensure_safety_llm`` hardcodes, so a probe here would test an endpoint the run never uses.
     """
     if models is None:
         return
@@ -281,8 +291,9 @@ class IronSwarmRunJob(NemoJob):
             key: config[key] for key in ("port", "defenders", "attack_intensity") if config.get(key) is not None
         }
         # Effective model selection = the manifest's stored default merged with the per-run override. Drives
-        # both the victim-LLM rewrite (agent group, threaded via the manifest) and the subprocess env knobs
-        # (attack/analysis groups). Resolved once here so materialize + env stay consistent.
+        # both the subprocess env knobs (attack/analysis groups) and the guardrail model, which travels in
+        # the manifest as the guardrails defender's config (safety group). Resolved once here so materialize
+        # + env stay consistent.
         models = _effective_models(sdk, config, ctx)
         if models is not None:
             config_overrides["models"] = models.model_dump(mode="json")

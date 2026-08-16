@@ -21,7 +21,7 @@ Design constraints (both deliberate):
   ``nemo_agents_plugin.utils.inject_gateway_url``. That copy originally existed to avoid a
   cross-plugin dependency; that rationale is obsolete (``nemo-agents-plugin`` is now a declared
   dependency and ``api/v2/runs.py`` imports ``Agent`` from it), so the copy is free to drift from
-  upstream — it has already grown a ``model_override`` parameter the original lacks.
+  upstream.
 
 Models resolve through the Inference Gateway (the platform standard): the victim workflow's
 OpenAI/NIM LLMs get the IGW ``base_url`` injected, so no raw model keys are needed.
@@ -85,16 +85,13 @@ def parse_agent_ref(ref: str, default_workspace: str) -> tuple[str, str]:
     return default_workspace, ref
 
 
-def inject_gateway_url(
-    config: dict[str, Any], workspace: str, base_url: str, model_override: str | None = None
-) -> dict[str, Any]:
+def inject_gateway_url(config: dict[str, Any], workspace: str, base_url: str) -> dict[str, Any]:
     """Deep-copy *config* and point OpenAI/NIM LLMs at the Inference Gateway.
 
     A local copy of ``nemo_agents_plugin.utils.inject_gateway_url`` (see the module docstring — the
     copy predates the plugin taking a dependency on ``nemo-agents-plugin``). Uses ``setdefault`` so
-    explicit values in the config are preserved. When ``model_override`` is set (the user's "agent"
-    model choice), it *replaces* the model on every openai/nim LLM — including one that kept its own
-    explicit ``base_url`` and so is not actually gateway-bound.
+    explicit values in the config are preserved: the victim's own model is the target under test and
+    is never rewritten here — changing it belongs in the project's workflow, not in the war-game.
     """
     base = base_url.rstrip("/")
     gateway_url = f"{base}/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1"
@@ -103,8 +100,6 @@ def inject_gateway_url(
         if isinstance(llm_cfg, dict) and llm_cfg.get("_type") in _IGW_LLM_TYPES:
             llm_cfg.setdefault("base_url", gateway_url)
             llm_cfg.setdefault("api_key", "not-used")
-            if model_override:
-                llm_cfg["model"] = model_override
     return config
 
 
@@ -355,7 +350,6 @@ def resolve_agent_to_manifest(
     egress: list[str] | None = None,
     port: int | None = None,
     secrets: list[str] | None = None,
-    model_override: str | None = None,
 ) -> ResolvedManifest:
     """Resolve a deployed-agent reference into a ready Iron Swarm manifest.
 
@@ -384,7 +378,7 @@ def resolve_agent_to_manifest(
             "in the stored config. Re-run with --project-dir pointing at the agent's NAT project."
         )
 
-    injected = inject_gateway_url(agent_config, workspace, base_url, model_override)
+    injected = inject_gateway_url(agent_config, workspace, base_url)
 
     if project_dir is not None:
         # The user's project supplies its own dependencies, so any telemetry it declares is theirs

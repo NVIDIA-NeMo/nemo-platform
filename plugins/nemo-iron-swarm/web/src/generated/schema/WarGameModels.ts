@@ -16,6 +16,6 @@ export interface WarGameModels {
   attack?: ModelChoice;
   /** Defenders + benign validator (synth suite-generation + judge) model. */
   analysis?: ModelChoice;
-  /** Victim agent LLM override (model only). */
-  agent?: ModelChoice;
+  /** Guardrail middleware LLM (iron-swarm's `safety_llm`); unset copies the victim's own LLM. Only `model` applies — iron-swarm pins this LLM's endpoint and key when it writes the guardrail. */
+  safety?: ModelChoice;
 }

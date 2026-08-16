@@ -44,9 +44,10 @@ def test_build_model_env_maps_attack_and_analysis_groups() -> None:
     assert env["INFERENCE_API_KEY"] == "NK"
 
 
-def test_build_model_env_skips_unset_fields_and_agent_group() -> None:
-    # Only a model name for analysis; no base_url/secret, and the agent group is never an env knob.
-    models = WarGameModels(analysis=ModelChoice(model="ana/model"), agent=ModelChoice(model="victim/model"))
+def test_build_model_env_skips_unset_fields_and_safety_group() -> None:
+    # Only a model name for analysis; no base_url/secret. Safety is never an env knob — it travels in
+    # the manifest, as the guardrails defender entry's `config`.
+    models = WarGameModels(analysis=ModelChoice(model="ana/model"), safety=ModelChoice(model="guard/model"))
     env = _common.build_model_env(models, sdk=_sdk({}), workspace="default")
     assert env == {"IRON_SWARM_MODEL": "ana/model"}
 
@@ -73,17 +74,12 @@ def test_effective_models_none_when_nothing_selected(tmp_path: Path) -> None:
     assert run_module._effective_models(sdk, config, ctx=make_job_context(tmp_path)) is None
 
 
-def test_inject_gateway_url_overrides_victim_model_when_set() -> None:
+def test_inject_gateway_url_never_rewrites_the_victims_model() -> None:
+    """The victim's LLM is the target under test; the war-game binds its endpoint, never its model."""
     config = {"llms": {"main": {"_type": "openai", "model": "orig"}, "other": {"_type": "nim", "model": "orig2"}}}
-    injected = inject_gateway_url(config, "default", "https://gw", model_override="chosen/model")
-    assert injected["llms"]["main"]["model"] == "chosen/model"
-    assert injected["llms"]["other"]["model"] == "chosen/model"
+    injected = inject_gateway_url(config, "default", "https://gw")
+    assert injected["llms"]["main"]["model"] == "orig"
+    assert injected["llms"]["other"]["model"] == "orig2"
     # base_url/api_key are still gateway-bound.
     assert "/apis/inference-gateway/" in injected["llms"]["main"]["base_url"]
     assert injected["llms"]["main"]["api_key"] == "not-used"
-
-
-def test_inject_gateway_url_keeps_model_when_no_override() -> None:
-    config = {"llms": {"main": {"_type": "openai", "model": "orig"}}}
-    injected = inject_gateway_url(config, "default", "https://gw")
-    assert injected["llms"]["main"]["model"] == "orig"
