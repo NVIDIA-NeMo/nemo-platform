@@ -5,11 +5,15 @@ import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataV
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
+import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
+import { useLiveSeconds } from '@nemo/common/src/hooks/useLiveSeconds';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
+import { formatDurationMs, formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { Text } from '@nvidia/foundations-react-core';
 import {
   EVAL_JOB_KIND_LABEL,
   type EvalJobRow,
+  evalDurationMs,
   evalJobDetailRoute,
 } from '@studio/api/evaluation/utils';
 import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
@@ -17,6 +21,20 @@ import { getEvaluationDetailRoute } from '@studio/routes/utils';
 import { ListChecks } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback } from 'react';
 import { useNavigate } from 'react-router';
+
+/** Elapsed time for one job row: a live counter while it runs, the published run's recorded
+ *  duration once it finished, and an em dash for a job that ended without publishing.
+ *
+ *  A completed job's own `updated_at` is not an end time — the job row is written at create and on
+ *  rerun only, never on a status transition — so the duration has to come from the evaluation. */
+const DurationCell: FC<{ row: EvalJobRow; durationMs?: number }> = ({ row, durationMs }) => {
+  const isTerminal = PlatformJobTerminalStatuses.some((status) => status === row.status);
+  const liveSeconds = useLiveSeconds({
+    startDate: isTerminal ? undefined : utcToLocalDate(row.created_at),
+  });
+  if (!isTerminal) return <Text>{formatTimeInSeconds(liveSeconds)}</Text>;
+  return <Text>{formatDurationMs(durationMs)}</Text>;
+};
 
 interface JobsTableProps {
   workspace: string;
@@ -46,6 +64,16 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
     [workspace, evaluations]
   );
 
+  const durationMsFor = useCallback(
+    (row: EvalJobRow): number | undefined => {
+      const published = row.evaluationName
+        ? evaluations.find((evaluation) => evaluation.name === row.evaluationName)
+        : undefined;
+      return evalDurationMs(published?.metadata);
+    },
+    [evaluations]
+  );
+
   const makeColumns: ComponentProps<typeof StudioDataView<EvalJobRow>>['makeColumns'] = useCallback(
     ({ accessor }) => [
       accessor('name', {
@@ -73,8 +101,18 @@ export const JobsTable: FC<JobsTableProps> = ({ workspace, jobs, evaluations }) 
         cell: ({ row }) =>
           row.original.created_at ? <RelativeTime datetime={row.original.created_at} /> : '—',
       }),
+      // A just-finished run stays on '—' here for up to a minute: the evaluations it reads are
+      // filtered by `agent_name`, which Intake denormalizes on an interval after publish.
+      accessor(durationMsFor, {
+        id: 'duration',
+        header: 'Duration',
+        enableSorting: false,
+        cell: ({ row, getValue }) => (
+          <DurationCell row={row.original} durationMs={getValue<number | undefined>()} />
+        ),
+      }),
     ],
-    []
+    [durationMsFor]
   );
 
   return (
