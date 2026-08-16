@@ -135,6 +135,12 @@ export const IronSwarmRunDetailsRoute: FC = () => {
   useEffect(() => {
     if (hitlPending) setTab('interview');
   }, [hitlPending]);
+  // Jump to the Harden tab the moment its data lands — but never steal focus from a pending
+  // interview, and only jump once (this fires only when `hasMitigations` flips to true, so a user
+  // who navigates back to Swarm afterward isn't forced back).
+  useEffect(() => {
+    if (hasMitigations && !hitlPending) setTab('mitigations');
+  }, [hasMitigations, hitlPending]);
 
   const swarmView = (
     <Grid cols={{ base: 1, xl: 2 }} gap="density-xl">
