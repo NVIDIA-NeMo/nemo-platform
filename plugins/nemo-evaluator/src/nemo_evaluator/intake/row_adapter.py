@@ -20,6 +20,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import (
@@ -81,24 +82,43 @@ def _output(row: RowScore) -> AgentOutput | None:
     return AgentOutput(output_text=output_text, response=response)
 
 
+def _first_int(usage: Mapping[str, Any], *keys: str) -> int | None:
+    """First key in ``keys`` holding a real int, or ``None``. Bools are not counts."""
+    for key in keys:
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
+
+
 def _token_metadata(row: RowScore) -> dict[str, int]:
-    """Project the generation response's OpenAI ``usage`` block onto the trial-metadata token keys.
+    """Project the generation response's ``usage`` block onto the trial-metadata token keys.
 
     A row's generation response is the only place its token usage survives: ``row.requests`` mixes
     the generation call with each metric's judge calls, so summing that would credit judge tokens to
     the agent. ``total_tokens`` is left unset — Intake recomputes it from the parts.
+
+    Both usage schemas a target can return are read, OpenAI's first: a ``GenericAgent`` points at an
+    arbitrary URL, so the response is whatever that endpoint emits, and an Anthropic-shaped block
+    would otherwise be dropped whole. Note the two disagree on whether cache reads are already
+    counted in the prompt total (OpenAI includes them, Anthropic does not); the values are recorded
+    as reported rather than reconciled, since nothing downstream adds them together.
     """
     response = row.sample.get("response")
     usage = response.get("usage") if isinstance(response, Mapping) else None
     if not isinstance(usage, Mapping):
         return {}
     details = usage.get("prompt_tokens_details")
+    cache_read = _first_int(details, "cached_tokens") if isinstance(details, Mapping) else None
+    if cache_read is None:
+        cache_read = _first_int(usage, "cache_read_input_tokens")
     captured = {
-        "prompt_tokens": usage.get("prompt_tokens"),
-        "completion_tokens": usage.get("completion_tokens"),
-        "cache_read_tokens": details.get("cached_tokens") if isinstance(details, Mapping) else None,
+        "prompt_tokens": _first_int(usage, "prompt_tokens", "input_tokens"),
+        "completion_tokens": _first_int(usage, "completion_tokens", "output_tokens"),
+        "cache_read_tokens": cache_read,
+        "cache_creation_tokens": _first_int(usage, "cache_creation_input_tokens"),
     }
-    return {key: value for key, value in captured.items() if isinstance(value, int) and not isinstance(value, bool)}
+    return {key: value for key, value in captured.items() if value is not None}
 
 
 def _scores(row: RowScore, *, run_id: str, task_id: str, trial_id: str) -> list[AgentEvalTaskScore]:
