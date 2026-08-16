@@ -131,7 +131,7 @@ def test_manifest_set_merges_models_over_stored(monkeypatch: pytest.MonkeyPatch)
         captured["body"] = body
         return {"name": name}
 
-    manifests = SimpleNamespace(get=lambda name, *, workspace: stored, update=_update)
+    manifests = _manifests(get=lambda name, *, workspace: stored, update=_update)
     app = _patch_cli(cli_main, monkeypatch, manifests)
     result = CliRunner().invoke(app, ["manifest", "set", "finance", "--safety-model", "guard-1"])
 
@@ -150,7 +150,7 @@ def test_manifest_set_merges_within_a_group(monkeypatch: pytest.MonkeyPatch) -> 
     stored = {"models": {"attack": {"model": "old", "base_url": "https://stored/v1"}}}
     captured: dict[str, Any] = {}
 
-    manifests = SimpleNamespace(
+    manifests = _manifests(
         get=lambda name, *, workspace: stored,
         update=lambda name, *, workspace, **body: captured.update(body) or {"name": name},
     )
@@ -169,9 +169,7 @@ def test_manifest_set_without_model_flags_skips_the_read(monkeypatch: pytest.Mon
         raise AssertionError("manifest should not be read when no model flag was passed")
 
     captured: dict[str, Any] = {}
-    manifests = SimpleNamespace(
-        get=_get, update=lambda name, *, workspace, **body: captured.update(body) or {"name": name}
-    )
+    manifests = _manifests(get=_get, update=lambda name, *, workspace, **body: captured.update(body) or {"name": name})
     app = _patch_cli(cli_main, monkeypatch, manifests)
     result = CliRunner().invoke(app, ["manifest", "set", "finance", "--rounds", "2"])
 
@@ -184,7 +182,7 @@ def test_cli_init_sends_model_selection(monkeypatch: pytest.MonkeyPatch) -> None
     from nemo_iron_swarm_plugin.cli import main as cli_main
 
     captured: dict[str, Any] = {}
-    manifests = SimpleNamespace(
+    manifests = _manifests(
         create=lambda *, workspace, **body: captured.update(body) or {"name": body["name"]},
     )
     app = _patch_cli(cli_main, monkeypatch, manifests)
@@ -201,7 +199,7 @@ def test_cli_init_omits_models_when_unset(monkeypatch: pytest.MonkeyPatch) -> No
     from nemo_iron_swarm_plugin.cli import main as cli_main
 
     captured: dict[str, Any] = {}
-    manifests = SimpleNamespace(
+    manifests = _manifests(
         create=lambda *, workspace, **body: captured.update(body) or {"name": body["name"]},
     )
     app = _patch_cli(cli_main, monkeypatch, manifests)
@@ -209,3 +207,84 @@ def test_cli_init_omits_models_when_unset(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert result.exit_code == 0, result.output
     assert "models" not in captured
+
+
+def _manifests(*, ok: bool = True, probes: list | None = None, **extra: Any) -> Any:
+    """Manifest resource double; `validate_model` stands in for `POST /model-config/validate`."""
+    verdict = (
+        {"ok": True}
+        if ok
+        else {"ok": False, "reason": "auth", "detail": "key not allowed", "available": ["good/model"]}
+    )
+
+    def _validate_model(*, workspace: str, **body: Any) -> dict:
+        if probes is not None:
+            probes.append(body)
+        return verdict
+
+    extra.setdefault("get", lambda name, *, workspace: {"models": {}})
+    return SimpleNamespace(validate_model=_validate_model, **extra)
+
+
+def test_manifest_set_rejects_an_unusable_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stored default is only exercised at run time, so an unreachable one must not be written."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    def _update(*_a: Any, **_k: Any) -> dict:  # pragma: no cover - must not run
+        raise AssertionError("an unusable model must not be stored")
+
+    app = _patch_cli(cli_main, monkeypatch, _manifests(ok=False, update=_update))
+    result = CliRunner().invoke(app, ["manifest", "set", "finance", "--safety-model", "bad/model"])
+
+    assert result.exit_code == 1
+    assert "not usable" in result.output
+    assert "good/model" in result.output  # the reachable list is what makes the error actionable
+
+
+def test_manifest_set_stores_a_usable_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    captured: dict[str, Any] = {}
+    app = _patch_cli(
+        cli_main,
+        monkeypatch,
+        _manifests(update=lambda name, *, workspace, **body: captured.update(body) or {"name": name}),
+    )
+    result = CliRunner().invoke(app, ["manifest", "set", "finance", "--safety-model", "good/model"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["models"]["safety"] == {"model": "good/model"}
+
+
+def test_manifest_set_probes_each_group_against_its_own_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The probe must target the endpoint the run will use, or it verifies the wrong thing."""
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+    from nemo_iron_swarm_plugin.model_config import ANALYSIS_DEFAULT_BASE_URL, ATTACK_DEFAULT_BASE_URL
+
+    probes: list[dict[str, Any]] = []
+    app = _patch_cli(
+        cli_main, monkeypatch, _manifests(probes=probes, update=lambda name, *, workspace, **body: {"name": name})
+    )
+    result = CliRunner().invoke(
+        app,
+        ["manifest", "set", "finance", "--analysis-model", "a", "--safety-model", "s"],
+    )
+
+    assert result.exit_code == 0, result.output
+    by_url = {p["model"]: p["base_url"] for p in probes}
+    assert by_url["a"] == ANALYSIS_DEFAULT_BASE_URL
+    # iron-swarm pins the guardrail LLM to the attack endpoint, not the analysis one.
+    assert by_url["s"] == ATTACK_DEFAULT_BASE_URL
+
+
+def test_cli_init_rejects_an_unusable_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_iron_swarm_plugin.cli import main as cli_main
+
+    def _create(*_a: Any, **_k: Any) -> dict:  # pragma: no cover - must not run
+        raise AssertionError("an unusable model must not be stored")
+
+    app = _patch_cli(cli_main, monkeypatch, _manifests(ok=False, create=_create))
+    result = CliRunner().invoke(app, ["init", "--agent", "react-agent", "--attack-model", "bad/model"])
+
+    assert result.exit_code == 1
+    assert "not usable" in result.output

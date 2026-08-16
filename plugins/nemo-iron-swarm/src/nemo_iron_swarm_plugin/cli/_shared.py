@@ -18,6 +18,7 @@ from nemo_iron_swarm_plugin.cli.client import base_url, make_sdk
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.entities import IronSwarmManifest
 from nemo_iron_swarm_plugin.jobs.manifest import DEFENDER_ENTRIES
+from nemo_iron_swarm_plugin.model_config import ANALYSIS_DEFAULT_BASE_URL, ATTACK_DEFAULT_BASE_URL
 
 # The entity's own Literal is the single source of truth for the valid presets.
 ATTACK_INTENSITIES: tuple[str, ...] = get_args(IronSwarmManifest.model_fields["attack_intensity"].annotation)
@@ -106,6 +107,49 @@ def models_from_flags(
     }
     selected = {group: fields for group, fields in chosen.items() if fields}
     return selected or None
+
+
+def preflight_models(ctx: CommandContext, chosen: dict[str, dict[str, str]]) -> None:
+    """Reject an unreachable model before it is stored, using the same probe Studio's "Test connection" runs.
+
+    A stored default is only exercised when someone later launches a run — possibly days later, possibly
+    someone else — so an unreachable one is discovered far from where it was set. The run itself preflights
+    too (``jobs.run._preflight_models``); this is the earlier, cheaper failure.
+
+    Delegates to ``POST /model-config/validate`` rather than probing locally, so the CLI, Studio's "Test
+    connection", and the run all share one probe and one credential-resolution rule. Each group is sent its
+    own default endpoint, matching what the run will actually use.
+    """
+    endpoints = {
+        "attack": ATTACK_DEFAULT_BASE_URL,
+        "analysis": ANALYSIS_DEFAULT_BASE_URL,
+        # iron-swarm pins the guardrail LLM to the attack endpoint; see `_ensure_safety_llm`.
+        "safety": ATTACK_DEFAULT_BASE_URL,
+    }
+    for group, fields in chosen.items():
+        if not (fields.get("model") or fields.get("base_url")):
+            continue
+        base_url = fields.get("base_url") or endpoints[group]
+        try:
+            verdict = ctx.sdk.iron_swarm.manifests.validate_model(
+                workspace=ctx.workspace,
+                model=fields.get("model"),
+                base_url=base_url,
+                api_key_secret=fields.get("api_key_secret"),
+            )
+        except Exception as exc:  # the check is best-effort; never block a write on the checker itself
+            typer.secho(f"  ! could not verify the {group} model ({exc}); storing it unchecked.", fg="yellow")
+            continue
+        if verdict.get("ok"):
+            continue
+        available = ", ".join((verdict.get("available") or [])[:10]) or "none"
+        typer.secho(
+            f"Error: the {group} model {fields.get('model')!r} is not usable at {base_url} "
+            f"({verdict.get('reason') or 'unknown'}: {verdict.get('detail') or 'no detail'}).\n"
+            f"Models these credentials can reach: {available}",
+            fg="red",
+        )
+        raise typer.Exit(code=1)
 
 
 def merge_models(stored: Any, chosen: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:

@@ -121,15 +121,20 @@ def _preflight_models(models: WarGameModels | None, *, sdk: Any, workspace: str,
     Only groups the user explicitly configured (a model name and/or a custom ``base_url``) are probed —
     the built-in defaults are known-good and left untouched. On a bad credential or a wrong model name we
     raise a classified :class:`IronSwarmRunError` whose message lists the models those credentials *can*
-    reach, so the user can correct the choice instead of guessing. The guardrail ("safety") group is not
-    probed: it is consumed inside the victim by NAT middleware against the endpoint iron-swarm's
-    ``_ensure_safety_llm`` hardcodes, so a probe here would test an endpoint the run never uses.
+    reach, so the user can correct the choice instead of guessing.
+
+    The guardrail ("safety") group is probed against :data:`ATTACK_DEFAULT_BASE_URL` because that is the
+    endpoint iron-swarm's ``guardrails_defender_v2.nodes.yaml_writer._ensure_safety_llm`` hardcodes when it
+    writes ``llms.safety_llm`` — with ``${INFERENCE_API_KEY}``, the same provisioned key ``default_key`` holds.
+    Worth probing precisely because its failure is silent: an unreachable safety model does not error, it
+    hangs the guardrails defender until its 300s timeout, which reads as "ran, proposed no change".
     """
     if models is None:
         return
     groups = (
         ("attack", models.attack, ATTACK_DEFAULT_BASE_URL),
         ("analysis", models.analysis, ANALYSIS_DEFAULT_BASE_URL),
+        ("safety", models.safety, ATTACK_DEFAULT_BASE_URL),
     )
     for label, choice, default_base_url in groups:
         if choice is None or not (choice.model or choice.base_url):
@@ -304,7 +309,9 @@ class IronSwarmRunJob(NemoJob):
             models,
             sdk=sdk,
             workspace=ctx.workspace,
-            default_key=_common.build_subprocess_env(plugin_config).get("INFERENCE_API_KEY"),
+            # Same resolver the validate endpoint uses, so a run is never preflighted against a
+            # different credential than it runs with.
+            default_key=_common.resolve_model_key(sdk, None, workspace=ctx.workspace),
         )
         validate_only = bool(config.get("validate_only"))
         if config.get("manifest_id"):

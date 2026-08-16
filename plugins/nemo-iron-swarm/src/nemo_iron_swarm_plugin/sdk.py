@@ -147,6 +147,14 @@ class _ManifestsResource:
         """Read one saved manifest (``GET /manifests/{name}``)."""
         return self._platform.get(f"{self._base(workspace)}/{name}", cast_to=dict[str, Any])
 
+    def validate_model(self, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
+        """Probe a model choice (``POST /model-config/validate``); *body* is a ``ValidateModelRequest``.
+
+        Backs Studio's "Test connection" button and the CLI's set-time model preflight.
+        """
+        base = f"/apis/iron-swarm/v2/workspaces/{workspace}/model-config/validate"
+        return self._platform.post(base, body=body, cast_to=dict[str, Any])
+
     def create(self, *, workspace: str = "default", **body: Any) -> dict[str, Any]:
         """Create a manifest (``POST /manifests``); *body* is a ``ManifestInit``."""
         return self._platform.post(self._base(workspace), body=body, cast_to=dict[str, Any])

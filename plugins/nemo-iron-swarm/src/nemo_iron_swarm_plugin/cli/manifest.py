@@ -18,6 +18,7 @@ from nemo_iron_swarm_plugin.cli._shared import (
     merge_models,
     models_from_flags,
     parse_env_pairs,
+    preflight_models,
     validated_defenders,
     validated_intensity,
 )
@@ -127,6 +128,8 @@ def build_app() -> typer.Typer:
             raise typer.Exit(code=1)
 
         ctx = command_context(workspace, preflight=False)
+        if chosen_models:
+            preflight_models(ctx, chosen_models)
         try:
             if chosen_models:
                 # PATCH replaces `models` wholesale, so merge over the stored selection first — otherwise

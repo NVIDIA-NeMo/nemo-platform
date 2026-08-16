@@ -83,3 +83,91 @@ def test_inject_gateway_url_never_rewrites_the_victims_model() -> None:
     # base_url/api_key are still gateway-bound.
     assert "/apis/inference-gateway/" in injected["llms"]["main"]["base_url"]
     assert injected["llms"]["main"]["api_key"] == "not-used"
+
+
+def test_preflight_probes_the_safety_group(monkeypatch: Any) -> None:
+    """An unreachable safety model hangs the guardrails defender to its timeout, so fail fast instead."""
+    import pytest
+    from nemo_iron_swarm_plugin.jobs.errors import IronSwarmRunError
+    from nemo_iron_swarm_plugin.model_config import ATTACK_DEFAULT_BASE_URL
+
+    probed: list[tuple[str | None, str | None]] = []
+
+    def _validate(model: str | None, base_url: str | None, key: str | None) -> Any:
+        probed.append((model, base_url))
+        return SimpleNamespace(ok=False, reason="auth", detail="key not allowed", available=["good/model"])
+
+    monkeypatch.setattr(run_module, "validate_choice", _validate)
+    models = WarGameModels(safety=ModelChoice(model="bad/model"))
+
+    with pytest.raises(IronSwarmRunError, match="safety model"):
+        run_module._preflight_models(models, sdk=None, workspace="default", default_key="k")
+
+    # Probed against the endpoint iron-swarm pins for the guardrail LLM, not a made-up one.
+    assert probed == [("bad/model", ATTACK_DEFAULT_BASE_URL)]
+
+
+class _Secrets:
+    """Secrets double: `access` raises for an unknown name, as the real client does."""
+
+    def __init__(self, values: dict[str, str], *, reachable: bool = True) -> None:
+        self._values, self._reachable = values, reachable
+
+    def access(self, name: str, *, workspace: str) -> Any:
+        if not self._reachable:
+            raise RuntimeError("secrets store unreachable")
+        if name not in self._values:
+            raise KeyError(name)
+        return SimpleNamespace(value=self._values[name])
+
+
+def _config_double(monkeypatch: Any, dotenv_key: str | None) -> None:
+    from nemo_iron_swarm_plugin.jobs import _common as common
+
+    monkeypatch.setattr(
+        common.IronSwarmConfig,
+        "get",
+        classmethod(lambda _cls: SimpleNamespace(inference_secret_name="iron-swarm-inference-key")),
+    )
+    monkeypatch.setattr(
+        common, "build_subprocess_env", lambda _c, _e=None: {"INFERENCE_API_KEY": dotenv_key} if dotenv_key else {}
+    )
+
+
+def test_resolve_model_key_prefers_the_named_secret(monkeypatch: Any) -> None:
+    from nemo_iron_swarm_plugin.jobs import _common as common
+
+    _config_double(monkeypatch, "from-dotenv")
+    sdk = SimpleNamespace(secrets=_Secrets({"my-key": "chosen", "iron-swarm-inference-key": "provisioned"}))
+
+    assert common.resolve_model_key(sdk, "my-key", workspace="default") == "chosen"
+
+
+def test_resolve_model_key_falls_back_to_the_provisioned_secret(monkeypatch: Any) -> None:
+    """A null api_key_secret means "the platform's provisioned iron-swarm key" — the documented default."""
+    from nemo_iron_swarm_plugin.jobs import _common as common
+
+    _config_double(monkeypatch, "from-dotenv")
+    sdk = SimpleNamespace(secrets=_Secrets({"iron-swarm-inference-key": "provisioned"}))
+
+    assert common.resolve_model_key(sdk, None, workspace="default") == "provisioned"
+
+
+def test_resolve_model_key_falls_back_to_the_dotenv(monkeypatch: Any) -> None:
+    """The offline path: no such secret (or no store) still resolves the key `setup` wrote."""
+    from nemo_iron_swarm_plugin.jobs import _common as common
+
+    _config_double(monkeypatch, "from-dotenv")
+
+    absent = SimpleNamespace(secrets=_Secrets({}))
+    assert common.resolve_model_key(absent, None, workspace="default") == "from-dotenv"
+
+    unreachable = SimpleNamespace(secrets=_Secrets({}, reachable=False))
+    assert common.resolve_model_key(unreachable, None, workspace="default") == "from-dotenv"
+
+
+def test_resolve_model_key_none_when_nothing_resolves(monkeypatch: Any) -> None:
+    from nemo_iron_swarm_plugin.jobs import _common as common
+
+    _config_double(monkeypatch, None)
+    assert common.resolve_model_key(SimpleNamespace(secrets=_Secrets({})), None, workspace="default") is None

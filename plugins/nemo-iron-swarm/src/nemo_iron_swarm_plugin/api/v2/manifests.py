@@ -48,6 +48,7 @@ from nemo_iron_swarm_plugin.cli.client import base_url
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.entities import IronSwarmManifest
 from nemo_iron_swarm_plugin.filesets import delete_fileset, download_and_extract_project, upload_project_dir
+from nemo_iron_swarm_plugin.jobs._common import resolve_model_key
 from nemo_iron_swarm_plugin.model_config import ModelConfigDefaults, WarGameModels, model_config_defaults
 from nemo_iron_swarm_plugin.model_preflight import validate_choice
 from nemo_platform_plugin.authz import CallerKind, path_rule
@@ -173,10 +174,10 @@ async def validate_model_config(workspace: str, body: ValidateModelRequest) -> V
     sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
 
     def _validate() -> ValidateModelResponse:
-        api_key: str | None = None
-        if body.api_key_secret:
-            secret = sdk.secrets.access(body.api_key_secret, workspace=workspace)
-            api_key = getattr(secret, "value", None)
+        # Falls back to the provisioned iron-swarm key when no Secret is named — the documented meaning of
+        # a null `api_key_secret`. Probing with no key at all reported 401 for every model that a run would
+        # in fact reach, which made this endpoint (and Studio's "Test connection") reject valid choices.
+        api_key = resolve_model_key(sdk, body.api_key_secret, workspace=workspace)
         verdict = validate_choice(body.model, body.base_url, api_key)
         return ValidateModelResponse(
             ok=verdict.ok, reason=verdict.reason, available=verdict.available, detail=verdict.detail

@@ -564,3 +564,51 @@ def test_patch_updates_env(client, mock_entity_client) -> None:
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["env"] == {"NEW": "2"}
+
+
+def test_validate_model_uses_the_provisioned_key_when_no_secret_is_named(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A null api_key_secret means the provisioned iron-swarm key, not "no key".
+
+    Probing unauthenticated reported 401 for every model a run would in fact reach, so this endpoint —
+    and Studio's "Test connection" — rejected valid choices.
+    """
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        manifests_module, "resolve_model_key", lambda _sdk, secret, *, workspace: seen.setdefault("secret", secret)
+    )
+    monkeypatch.setattr(
+        manifests_module,
+        "validate_choice",
+        lambda model, base_url, key: seen.update(key=key) or MagicMock(ok=True, reason="", available=[], detail=""),
+    )
+
+    response = client.post(
+        f"{PREFIX}/model-config/validate",
+        json={"model": "some/model", "base_url": "https://x/v1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert seen["secret"] is None  # the resolver is asked, and decides the fallback
+
+
+def test_validate_model_passes_a_named_secret_through(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        manifests_module, "resolve_model_key", lambda _sdk, secret, *, workspace: seen.setdefault("secret", secret)
+    )
+    monkeypatch.setattr(
+        manifests_module, "validate_choice", lambda *_a: MagicMock(ok=True, reason="", available=[], detail="")
+    )
+
+    response = client.post(
+        f"{PREFIX}/model-config/validate",
+        json={"model": "m", "base_url": "https://x/v1", "api_key_secret": "my-key"},
+    )
+
+    assert response.status_code == 200
+    assert seen["secret"] == "my-key"

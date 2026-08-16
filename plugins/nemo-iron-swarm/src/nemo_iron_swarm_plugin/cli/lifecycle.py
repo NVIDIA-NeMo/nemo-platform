@@ -13,7 +13,13 @@ from pathlib import Path
 
 import typer
 from nemo_iron_swarm_plugin.cli import checks, credentials, provisioning
-from nemo_iron_swarm_plugin.cli._shared import CommandContext, command_context, models_from_flags, parse_env_pairs
+from nemo_iron_swarm_plugin.cli._shared import (
+    CommandContext,
+    command_context,
+    models_from_flags,
+    parse_env_pairs,
+    preflight_models,
+)
 from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.filesets import upload_project_dir
 
@@ -232,6 +238,7 @@ def register(app: typer.Typer) -> None:
             safety_model=safety_model,
         )
         if models:
+            preflight_models(ctx, models)
             body["models"] = models
         try:
             manifest = ctx.sdk.iron_swarm.manifests.create(workspace=ctx.workspace, **body)

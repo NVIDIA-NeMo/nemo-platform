@@ -19,6 +19,7 @@ from typing import Any
 import yaml
 from nemo_iron_swarm_plugin.config import (
     GARAK_PYTHON_ENVVAR,
+    INFERENCE_API_KEY_ENVVAR,
     IronSwarmConfig,
     missing_secrets,
     read_env_file,
@@ -83,6 +84,28 @@ def _resolve_secret(sdk: Any, name: str, workspace: str) -> str | None:
     secret = sdk.secrets.access(name, workspace=workspace)
     value = getattr(secret, "value", None)
     return str(value) if value else None
+
+
+def resolve_model_key(sdk: Any, api_key_secret: str | None, *, workspace: str) -> str | None:
+    """The key a model choice will actually use: its named Secret, else the provisioned iron-swarm key.
+
+    One rule, shared by the run's preflight and the ``model-config/validate`` endpoint, so a choice is
+    never validated against a different credential than the run will use. Mirrors the order
+    :func:`~nemo_iron_swarm_plugin.cli.credentials.resolve_inference_key` establishes — the Secrets store
+    is authoritative, the operator dotenv is the offline fallback — rather than inventing a second policy.
+
+    Secrets are tried before the dotenv so the rule also holds on a deployed platform, where the server
+    has no operator dotenv and that branch simply yields ``None``.
+    """
+    if api_key_secret:
+        # Explicitly chosen: a failure here is the user's to see, so it is not swallowed.
+        return _resolve_secret(sdk, api_key_secret, workspace)
+    config = IronSwarmConfig.get()
+    try:
+        provisioned = _resolve_secret(sdk, config.inference_secret_name, workspace)
+    except Exception:  # absent secret / unreachable store — expected, the dotenv is the fallback
+        provisioned = None
+    return provisioned or build_subprocess_env(config).get(INFERENCE_API_KEY_ENVVAR)
 
 
 def build_model_env(models: WarGameModels | None, *, sdk: Any, workspace: str) -> dict[str, str]:
