@@ -6,6 +6,7 @@ import { useAgentsForSelect } from '@iron-swarm/api/agents';
 import { useInspectAgent } from '@iron-swarm/api/filesets';
 import { ModelGroupFields } from '@iron-swarm/components/ModelGroupFields';
 import { ProjectManifestWizard } from '@iron-swarm/components/ProjectManifestWizard';
+import { parseEnvPairs, splitList } from '@iron-swarm/formValues';
 import {
   getIronSwarmListManifestsQueryKey,
   useIronSwarmCreateManifest,
@@ -46,24 +47,6 @@ const schema = z.object({
   secrets: z.string().trim().optional(),
 });
 type FormData = z.infer<typeof schema>;
-
-/** Split a comma-separated field into a trimmed, non-empty list. */
-/** Parse `KEY=VALUE` pairs; only the first `=` splits, so values may contain `=`. */
-const parseEnvPairs = (value: string | undefined): Record<string, string> =>
-  Object.fromEntries(
-    splitList(value)
-      .map((entry) => {
-        const at = entry.indexOf('=');
-        return at > 0 ? [entry.slice(0, at).trim(), entry.slice(at + 1).trim()] : null;
-      })
-      .filter((pair): pair is [string, string] => pair !== null)
-  );
-
-const splitList = (value: string | undefined): string[] =>
-  (value ?? '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 
 type Source = 'agent' | 'project';
 

@@ -4,6 +4,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useUploadProjectFileset } from '@iron-swarm/api/filesets';
 import { ModelGroupFields } from '@iron-swarm/components/ModelGroupFields';
+import { parseEnvPairs, splitList } from '@iron-swarm/formValues';
 import {
   useIronSwarmGetModelConfigDefaults,
   useIronSwarmInspectProject,
@@ -26,6 +27,7 @@ export interface ProjectManifestValues {
   secrets_file: string;
   egress: string[];
   backends: string[];
+  env: Record<string, string>;
   models: WarGameModels;
 }
 
@@ -130,14 +132,9 @@ const reviewSchema = z.object({
   secretsFile: z.string().trim(),
   egress: z.string().trim(),
   backends: z.string().trim(),
+  env: z.string().trim(),
 });
 type ReviewData = z.infer<typeof reviewSchema>;
-
-const splitList = (value: string): string[] =>
-  value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 
 interface ProjectReviewFormProps {
   detection: InspectProjectResponse;
@@ -169,6 +166,8 @@ const ProjectReviewForm: FC<ProjectReviewFormProps> = ({
       secretsFile: detection.secrets_file ?? '',
       egress: (detection.egress ?? []).join(', '),
       backends: (detection.backend_ports ?? []).map((port) => `backend-${port}:${port}`).join(', '),
+      // Nothing to seed: `iron-swarm inspect` reports no env, so this is the operator's to fill.
+      env: '',
     },
   });
 
@@ -182,6 +181,7 @@ const ProjectReviewForm: FC<ProjectReviewFormProps> = ({
       secrets_file: data.secretsFile,
       egress: splitList(data.egress),
       backends: splitList(data.backends),
+      env: parseEnvPairs(data.env),
       models,
     })
   );
@@ -216,6 +216,15 @@ const ProjectReviewForm: FC<ProjectReviewFormProps> = ({
           formFieldProps={{
             slotLabel: 'Secrets File (optional)',
             slotHelp: 'Dotenv path within the project.',
+          }}
+        />
+        <ControlledTextInput
+          useControllerProps={{ control, name: 'env' }}
+          formFieldProps={{
+            slotLabel: 'Environment Variables (optional)',
+            slotHelp:
+              'Comma-separated KEY=VALUE for non-secret settings the agent reads. ' +
+              'Credentials belong in Secret Names — values here are stored in plain text.',
           }}
         />
         <ControlledTextInput
