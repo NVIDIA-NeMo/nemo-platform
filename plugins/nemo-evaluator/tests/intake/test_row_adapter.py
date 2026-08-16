@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -284,3 +285,18 @@ def test_booleans_are_not_counted_as_token_counts() -> None:
 
 def test_a_row_without_a_response_records_no_tokens() -> None:
     assert _adapt([_row(sample={"output_text": "4"})]).trials[0].metadata == {}
+
+
+def test_an_unrecognized_usage_schema_is_logged_with_its_keys(caplog: pytest.LogCaptureFixture) -> None:
+    # No key list covers every provider, so the one thing that must not happen is a silent blank:
+    # the log has to name the real keys, which is what tells us what to add.
+    with caplog.at_level(logging.WARNING, logger="nemo_evaluator.intake.row_adapter"):
+        assert _usage_metadata({"promptTokenCount": 12, "candidatesTokenCount": 34}) == {}
+    assert "promptTokenCount" in caplog.text
+    assert "candidatesTokenCount" in caplog.text
+
+
+def test_a_recognized_usage_block_logs_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING, logger="nemo_evaluator.intake.row_adapter"):
+        _usage_metadata({"prompt_tokens": 1, "completion_tokens": 2})
+    assert caplog.text == ""

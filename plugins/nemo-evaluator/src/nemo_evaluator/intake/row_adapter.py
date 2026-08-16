@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
@@ -33,6 +34,8 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialS
 from nemo_evaluator_sdk.values.dataset_schemas import _KNOWN_BINDING_FIELDS
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult, RowScore
+
+logger = logging.getLogger(__name__)
 
 #: Key ``sample`` carries when generation itself failed, rather than the metric.
 _INFERENCE_ERROR = "inference_error"
@@ -103,6 +106,10 @@ def _token_metadata(row: RowScore) -> dict[str, int]:
     would otherwise be dropped whole. Note the two disagree on whether cache reads are already
     counted in the prompt total (OpenAI includes them, Anthropic does not); the values are recorded
     as reported rather than reconciled, since nothing downstream adds them together.
+
+    No key list covers every provider, and a renamed key would fail the same silent way this
+    function exists to fix, so a usage block that yields nothing is logged with the keys it actually
+    carried. An unrecognized schema is then a log line naming what to add, not an unexplained blank.
     """
     response = row.sample.get("response")
     usage = response.get("usage") if isinstance(response, Mapping) else None
@@ -118,7 +125,13 @@ def _token_metadata(row: RowScore) -> dict[str, int]:
         "cache_read_tokens": cache_read,
         "cache_creation_tokens": _first_int(usage, "cache_creation_input_tokens"),
     }
-    return {key: value for key, value in captured.items() if value is not None}
+    recorded = {key: value for key, value in captured.items() if value is not None}
+    if not recorded:
+        logger.warning(
+            "No token counts recognized in the generation response's usage block; keys present: %s",
+            sorted(str(key) for key in usage),
+        )
+    return recorded
 
 
 def _scores(row: RowScore, *, run_id: str, task_id: str, trial_id: str) -> list[AgentEvalTaskScore]:
