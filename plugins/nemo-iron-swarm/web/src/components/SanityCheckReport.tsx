@@ -5,10 +5,74 @@ import type {
   ValidationAttackRow,
   ValidationBenignRow,
   ValidationReport,
+  ValidationSummary,
 } from '@iron-swarm/components/useSanityCheck';
 import { FEEDBACK } from '@iron-swarm/theme';
 import { Badge, Card, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { FC } from 'react';
+
+/**
+ * Scorecard tallies.
+ *
+ * `ok` is the good outcome (attack blocked / benign still complied), `bad` the actionable
+ * failure, and `errored` the items that produced neither — the run could not decide. Those are
+ * counted apart on purpose: folding them into `ok` overstates how well the defenses held, which
+ * for a security tool is the wrong direction to be wrong in.
+ */
+export interface ScorecardCounts {
+  ok: number;
+  bad: number;
+  errored: number;
+  total: number;
+}
+
+const tally = (statuses: (string | undefined)[], okStatus: string, badStatus: string): number[] => [
+  statuses.filter((s) => s === okStatus).length,
+  statuses.filter((s) => s === badStatus).length,
+];
+
+export const countBenign = (
+  rows: ValidationBenignRow[],
+  summary: ValidationSummary
+): ScorecardCounts => {
+  // A truncated artifact still has a summary, so fall back to it rather than rendering 0/0.
+  if (rows.length === 0) {
+    const total = summary.benign_total ?? 0;
+    const bad = summary.benign_false_positives ?? 0;
+    return { ok: Math.max(total - bad, 0), bad, errored: 0, total };
+  }
+  const statuses = rows.map((row) => row.status);
+  const [ok, bad] = tally(statuses, 'passed', 'refused');
+  // Anything that is neither passed nor refused — including a missing status — is inconclusive.
+  return { ok, bad, errored: rows.length - ok - bad, total: rows.length };
+};
+
+export const countAttacks = (
+  rows: ValidationAttackRow[],
+  summary: ValidationSummary
+): ScorecardCounts => {
+  if (rows.length === 0) {
+    const total = summary.attacks_total ?? 0;
+    const ok = summary.attacks_blocked ?? 0;
+    return { ok, bad: Math.max(total - ok, 0), errored: 0, total };
+  }
+  const statuses = rows.map((row) => row.status);
+  const [ok, bad] = tally(statuses, 'blocked', 'not_blocked');
+  return { ok, bad, errored: rows.length - ok - bad, total: rows.length };
+};
+
+const plural = (count: number, noun: string): string =>
+  `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+/** `7 / 9 · 1 false positive · 1 error` — trailing segments appear only when non-zero. */
+export const formatCounts = (counts: ScorecardCounts, badNoun: string): string =>
+  [
+    `${counts.ok} / ${counts.total}`,
+    counts.bad > 0 ? plural(counts.bad, badNoun) : '',
+    counts.errored > 0 ? plural(counts.errored, 'error') : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
 // Maps a per-item status to a badge (green = good, yellow = bad, gray = error/neutral).
 const attackBadge = (status?: string) =>
@@ -83,24 +147,23 @@ interface SanityCheckReportProps {
 // requests they wrongly block (false positives), with a per-item breakdown.
 export const SanityCheckReport: FC<SanityCheckReportProps> = ({ report }) => {
   const { summary, attacks, benign } = report;
-  const attacksGood = summary.attacks_blocked === summary.attacks_total;
-  const benignGood = summary.benign_false_positives === 0;
+  const attackCounts = countAttacks(attacks, summary);
+  const benignCounts = countBenign(benign, summary);
+  // An errored item means the check could not decide, so it must not read as green.
+  const attacksGood = attackCounts.ok === attackCounts.total && attackCounts.errored === 0;
+  const benignGood = benignCounts.bad === 0 && benignCounts.errored === 0;
 
   return (
     <Stack gap="density-xl">
       <Flex gap="density-md">
         <Stat
           label="Attacks blocked"
-          value={`${summary.attacks_blocked} / ${summary.attacks_total}`}
+          value={formatCounts(attackCounts, 'not blocked')}
           good={attacksGood}
         />
         <Stat
           label="Benign preserved"
-          value={
-            summary.benign_false_positives === 0
-              ? `${summary.benign_total} / ${summary.benign_total}`
-              : `${summary.benign_total - summary.benign_false_positives} / ${summary.benign_total} · ${summary.benign_false_positives} false positive${summary.benign_false_positives === 1 ? '' : 's'}`
-          }
+          value={formatCounts(benignCounts, 'false positive')}
           good={benignGood}
         />
       </Flex>
