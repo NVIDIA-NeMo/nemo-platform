@@ -106,7 +106,7 @@ export const IronSwarmRunDetailsRoute: FC = () => {
     defenses,
     isLoading: mitigationsLoading,
     hasMitigations,
-  } = useMitigations(workspace, jobName);
+  } = useMitigations(workspace, jobName, job?.status);
 
   useBreadcrumbs({
     items: [
@@ -243,12 +243,16 @@ export const IronSwarmRunDetailsRoute: FC = () => {
                 <Card className="p-6" style={{ minHeight: HARDEN_MIN_HEIGHT }}>
                   {interview ? (
                     <InterviewPanel
+                      // Remount per round: the panel seeds its answers on mount, so without this a
+                      // round that arrives while the panel stays mounted reuses the previous answers.
+                      key={interview.round}
                       prompt={interview}
                       loading={patch.isPending}
                       onSubmit={onInterview}
                     />
                   ) : review ? (
                     <ReviewPanel
+                      key={review.round}
                       suite={review.suite}
                       loading={patch.isPending}
                       onSubmit={onReview}

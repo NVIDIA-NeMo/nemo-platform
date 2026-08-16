@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  ironSwarmDownloadJobResult,
-  useIronSwarmListJobResults,
-} from '@iron-swarm/generated/api';
-import { JOB_POLLING_INTERVAL_MS } from '@nemo/common';
-import { useQuery } from '@tanstack/react-query';
+import { parseJson, useJobArtifact } from '@iron-swarm/components/useJobArtifact';
+import type { PlatformJobStatus } from '@iron-swarm/generated/schema';
 import { parse } from 'yaml';
 
 // The war-game writes a `mitigations` job result bundling the defenders' before/after policy + workflow.
@@ -195,36 +191,27 @@ const changedLineCount = (before: string, after: string): number => {
 
 // Fetches the run's mitigations artifact via the job results API (not the event bus): poll the result list
 // until it appears, then download + parse it once. Recommendations are derived client-side from the diffs.
-export const useMitigations = (workspace: string, jobName: string): UseMitigationsResult => {
-  const { data: results } = useIronSwarmListJobResults(workspace, jobName, {
-    query: {
-      enabled: Boolean(jobName),
-      refetchInterval: (query) =>
-        query.state.data?.data?.some((result) => result.name === MITIGATIONS_RESULT)
-          ? false
-          : JOB_POLLING_INTERVAL_MS,
-    },
-  });
-  const hasMitigations = Boolean(
-    results?.data?.some((result) => result.name === MITIGATIONS_RESULT)
+// `status` stops the poll on a failed/cancelled job, which would otherwise never write the artifact.
+export const useMitigations = (
+  workspace: string,
+  jobName: string,
+  status?: PlatformJobStatus
+): UseMitigationsResult => {
+  const artifact = useJobArtifact<Mitigations>(
+    workspace,
+    jobName,
+    MITIGATIONS_RESULT,
+    parseJson,
+    status
   );
 
-  const query = useQuery({
-    queryKey: ['iron-swarm-mitigations', workspace, jobName],
-    enabled: hasMitigations,
-    queryFn: async () => {
-      const blob = await ironSwarmDownloadJobResult(workspace, jobName, MITIGATIONS_RESULT);
-      return JSON.parse(await blob.text()) as Mitigations;
-    },
-  });
-
   return {
-    mitigations: query.data,
+    mitigations: artifact.data,
     // Server-provided attack→defense pairs when present; fall back to the client-derived recommendations
     // for older artifacts that predate the enriched `defenses[]`.
-    recommendations: deriveRecommendations(query.data),
-    defenses: query.data?.defenses ?? [],
-    isLoading: hasMitigations && query.isLoading,
-    hasMitigations,
+    recommendations: deriveRecommendations(artifact.data),
+    defenses: artifact.data?.defenses ?? [],
+    isLoading: artifact.isLoading,
+    hasMitigations: artifact.present,
   };
 };

@@ -2,14 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { customFetch } from '@iron-swarm/api/fetcher';
+import { parseJson, parseText, useJobArtifact } from '@iron-swarm/components/useJobArtifact';
 import type { Mitigations } from '@iron-swarm/components/useMitigations';
-import {
-  ironSwarmDownloadJobResult,
-  ironSwarmListRuns,
-  useIronSwarmCreateJob,
-  useIronSwarmListJobResults,
-} from '@iron-swarm/generated/api';
-import type { IronSwarmRun } from '@iron-swarm/generated/schema';
+import { ironSwarmListRuns, useIronSwarmCreateJob } from '@iron-swarm/generated/api';
+import type { IronSwarmRun, PlatformJobStatus } from '@iron-swarm/generated/schema';
 import { JOB_POLLING_INTERVAL_MS } from '@nemo/common';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
@@ -97,62 +93,35 @@ export const useSubmitSanityCheck = (workspace: string) => {
 };
 
 // Poll the sanity-check job's results until `validation.json` lands, then download + parse it once.
-export const useSanityCheckResult = (workspace: string, jobName: string | undefined) => {
-  const { data: results } = useIronSwarmListJobResults(workspace, jobName ?? '', {
-    query: {
-      enabled: Boolean(jobName),
-      refetchInterval: (query) =>
-        query.state.data?.data?.some((result) => result.name === VALIDATION_RESULT)
-          ? false
-          : JOB_POLLING_INTERVAL_MS,
-    },
-  });
-  const hasReport = Boolean(results?.data?.some((result) => result.name === VALIDATION_RESULT));
-
-  const query = useQuery({
-    queryKey: ['iron-swarm-validation', workspace, jobName],
-    enabled: hasReport && Boolean(jobName),
-    queryFn: async (): Promise<ValidationReport> => {
-      const blob = await ironSwarmDownloadJobResult(workspace, jobName ?? '', VALIDATION_RESULT);
-      return JSON.parse(await blob.text()) as ValidationReport;
-    },
-  });
-
-  return { report: query.data, isLoading: Boolean(jobName) && !hasReport, hasReport };
+// `status` stops the poll on a failed/cancelled job, which would otherwise never write the result.
+export const useSanityCheckResult = (
+  workspace: string,
+  jobName: string | undefined,
+  status?: PlatformJobStatus
+) => {
+  const artifact = useJobArtifact<ValidationReport>(
+    workspace,
+    jobName,
+    VALIDATION_RESULT,
+    parseJson,
+    status
+  );
+  return {
+    report: artifact.data,
+    isLoading: artifact.isLoading,
+    hasReport: artifact.present,
+    missingReport: artifact.missing,
+  };
 };
 
 // Recover the composed workflow a sanity check validated (its `composed-workflow` result), so "Apply to Agent"
 // stays enabled after a reload when the in-memory copy is gone.
 export const useSanityCheckComposedWorkflow = (
   workspace: string,
-  jobName: string | undefined
-): string | undefined => {
-  const { data: results } = useIronSwarmListJobResults(workspace, jobName ?? '', {
-    query: {
-      enabled: Boolean(jobName),
-      refetchInterval: (query) =>
-        query.state.data?.data?.some((result) => result.name === COMPOSED_WORKFLOW_RESULT)
-          ? false
-          : JOB_POLLING_INTERVAL_MS,
-    },
-  });
-  const hasComposed = Boolean(
-    results?.data?.some((result) => result.name === COMPOSED_WORKFLOW_RESULT)
-  );
-  const query = useQuery({
-    queryKey: ['iron-swarm-composed-workflow', workspace, jobName],
-    enabled: hasComposed && Boolean(jobName),
-    queryFn: async (): Promise<string> => {
-      const blob = await ironSwarmDownloadJobResult(
-        workspace,
-        jobName ?? '',
-        COMPOSED_WORKFLOW_RESULT
-      );
-      return blob.text();
-    },
-  });
-  return query.data ?? undefined;
-};
+  jobName: string | undefined,
+  status?: PlatformJobStatus
+): string | undefined =>
+  useJobArtifact(workspace, jobName, COMPOSED_WORKFLOW_RESULT, parseText, status).data;
 
 // The run entity carries `source_run` (set on validate-only sanity checks); the generated type predates it.
 type RunWithSource = IronSwarmRun & { source_run?: string; job_id?: string; name?: string };
@@ -164,7 +133,9 @@ export const useLatestSanityCheckJob = (workspace: string, runName: string): str
   const { data } = useQuery({
     queryKey: ['iron-swarm-sanity-lookup', workspace, runName],
     enabled: Boolean(runName),
-    refetchInterval: JOB_POLLING_INTERVAL_MS,
+    // Stop once a job is found; re-attaching only needs the lookup until then. Polling forever kept
+    // a request every 5s running for the whole time the Harden tab stayed open.
+    refetchInterval: (query) => (query.state.data ? false : JOB_POLLING_INTERVAL_MS),
     queryFn: async (): Promise<string | undefined> => {
       const res = await ironSwarmListRuns(workspace, { sort: '-created_at', page_size: 50 });
       const runs = (res.data ?? []) as RunWithSource[];

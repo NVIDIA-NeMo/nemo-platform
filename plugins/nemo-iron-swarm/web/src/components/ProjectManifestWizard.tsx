@@ -249,7 +249,7 @@ const ProjectReviewForm: FC<ProjectReviewFormProps> = ({
           <Button color="brand" type="submit" disabled={isCreating}>
             {isCreating ? 'Creating…' : 'Create Manifest'}
           </Button>
-          <Button kind="tertiary" onClick={onReset}>
+          <Button kind="tertiary" type="button" onClick={onReset}>
             Upload a Different Project
           </Button>
         </Flex>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { usePlatformSdk } from '@iron-swarm/api/platform';
 import { SanityCheckReport } from '@iron-swarm/components/SanityCheckReport';
 import {
   cleanAttackPrompt,
@@ -19,7 +20,7 @@ import { YamlDiff } from '@iron-swarm/components/YamlDiff';
 import { useIronSwarmApplyMitigation } from '@iron-swarm/generated/api';
 import { useNotify, useToast } from '@iron-swarm/host';
 import { ACCENT, tint } from '@iron-swarm/theme';
-import { AccordionSection, ConfirmationModal } from '@nemo/common';
+import { AccordionSection, ConfirmationModal, getJobRefetchInterval } from '@nemo/common';
 import {
   AccordionRoot,
   Badge,
@@ -178,9 +179,27 @@ export const HardenPanel: FC<HardenPanelProps> = ({
   // the scorecard survives a reload / re-visit.
   const persistedJob = useLatestSanityCheckJob(workspace, runName);
   const effectiveSanityJob = sanityJob ?? persistedJob;
-  const { report, isLoading: reportLoading } = useSanityCheckResult(workspace, effectiveSanityJob);
+  // The sanity job's status is what tells us a check died without writing a report — without it a
+  // failed job leaves this panel spinning forever.
+  const { useJobsGetJob } = usePlatformSdk();
+  const { data: sanityJobDetail } = useJobsGetJob(workspace, effectiveSanityJob ?? '', {
+    query: {
+      enabled: Boolean(effectiveSanityJob),
+      refetchInterval: (query) => getJobRefetchInterval(query.state.data?.status),
+    },
+  });
+  const sanityStatus = sanityJobDetail?.status;
+  const {
+    report,
+    isLoading: reportLoading,
+    missingReport,
+  } = useSanityCheckResult(workspace, effectiveSanityJob, sanityStatus);
   // After a reload the in-memory composed workflow is gone; recover it from the sanity run so Apply still works.
-  const recoveredComposedWorkflow = useSanityCheckComposedWorkflow(workspace, effectiveSanityJob);
+  const recoveredComposedWorkflow = useSanityCheckComposedWorkflow(
+    workspace,
+    effectiveSanityJob,
+    sanityStatus
+  );
   const effectiveComposedWorkflow = composedWorkflow ?? recoveredComposedWorkflow;
   const [preview, setPreview] = useState<{ workflow?: string }>();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -415,6 +434,13 @@ export const HardenPanel: FC<HardenPanelProps> = ({
                 </Button>
               </Flex>
             </>
+          ) : missingReport ? (
+            <Flex align="center" gap="density-sm" className="p-4">
+              <Text kind="body/regular/md" className="text-feedback-danger">
+                The sanity check finished without producing a report — it may have failed or been
+                cancelled. Try running it again.
+              </Text>
+            </Flex>
           ) : (
             <Flex align="center" gap="density-sm" className="p-4">
               <Spinner size="small" aria-label="Running sanity check" />

@@ -24,7 +24,7 @@ import type { IronSwarmRun, WarGameModels } from '@iron-swarm/generated/schema';
 import { useBreadcrumbs, useNotify, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
 import { FEEDBACK } from '@iron-swarm/theme';
-import { AccessibleTitle, AccordionSection, ConfirmationModal, FileUpload, FormModal } from '@nemo/common';
+import { AccessibleTitle, AccordionSection, ConfirmationModal, FileUpload, FormModal, triggerDownload } from '@nemo/common';
 import {
   AccordionRoot,
   Button,
@@ -106,7 +106,8 @@ export const IronSwarmManifestDetailRoute: FC = () => {
     query: { enabled: Boolean(ironSwarmManifestName) },
   });
 
-  // Seed the editable state once the manifest loads (the query isn't polled, so this runs once).
+  // Seed the editable state once the manifest loads. The `seeded` ref below is what keeps this
+  // one-shot — the query does get refetched, since saving the manifest invalidates its key.
   const [suite, setSuite] = useState<SuiteRow[]>([]);
   const [port, setPort] = useState('');
   const [defenders, setDefenders] = useState<DefenderSelection>({
@@ -141,30 +142,6 @@ export const IronSwarmManifestDetailRoute: FC = () => {
       }))
     );
   }, [manifest]);
-
-  // Re-seed the launch dialog's config from the manifest default each time it opens, so per-run tweaks
-  // are ephemeral (they never persist unless the user hits "Save as default").
-  useEffect(() => {
-    if (!runDialogOpen) return;
-    setPort(manifest?.port ? String(manifest.port) : '');
-    // Empty stored list means iron-swarm defaults (all defenders) — reflect that as both checked.
-    const saved = manifest?.defenders ?? [];
-    setDefenders(
-      saved.length
-        ? { guardrails: saved.includes('guardrails'), openshell: saved.includes('openshell') }
-        : { guardrails: true, openshell: true }
-    );
-    setIntensity((manifest?.attack_intensity as AttackIntensity | undefined) ?? 'standard');
-    setRounds(manifest?.rounds ? String(manifest.rounds) : '1');
-    setModels(manifest?.models ?? {});
-    setMode('live');
-    setReplaySource('last');
-    setHitlogFile(undefined);
-    setHitlogFileset(undefined);
-    setBenignSource('manifest');
-    setBenignFile(undefined);
-    setBenignFileset(undefined);
-  }, [runDialogOpen, manifest]);
 
   const updateManifest = useIronSwarmUpdateManifest({
     mutation: {
@@ -297,13 +274,11 @@ export const IronSwarmManifestDetailRoute: FC = () => {
   };
 
   const downloadCsv = () => {
-    const blob = new Blob([toRequestsCsv(suite)], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${ironSwarmManifestName}-requests.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    // Keep the Blob explicit so its text/csv type survives into the download.
+    triggerDownload(
+      new Blob([toRequestsCsv(suite)], { type: 'text/csv' }),
+      `${ironSwarmManifestName}-requests.csv`
+    );
   };
 
   // The table edits the saved suite directly: each row save/delete/add persists immediately (auto-save).
@@ -343,6 +318,27 @@ export const IronSwarmManifestDetailRoute: FC = () => {
       toast.error('No benign suite yet — generate it first, then run the war-game.');
       return;
     }
+    // Seed the dialog's config from the manifest default here rather than in an effect: keying off
+    // `manifest` meant any refetch while the dialog was open (e.g. "Save as default" invalidating
+    // the query) wiped whatever the user had typed. Per-run tweaks stay ephemeral either way.
+    setPort(manifest?.port ? String(manifest.port) : '');
+    // Empty stored list means iron-swarm defaults (all defenders) — reflect that as both checked.
+    const saved = manifest?.defenders ?? [];
+    setDefenders(
+      saved.length
+        ? { guardrails: saved.includes('guardrails'), openshell: saved.includes('openshell') }
+        : { guardrails: true, openshell: true }
+    );
+    setIntensity((manifest?.attack_intensity as AttackIntensity | undefined) ?? 'standard');
+    setRounds(manifest?.rounds ? String(manifest.rounds) : '1');
+    setModels(manifest?.models ?? {});
+    setMode('live');
+    setReplaySource('last');
+    setHitlogFile(undefined);
+    setHitlogFileset(undefined);
+    setBenignSource('manifest');
+    setBenignFile(undefined);
+    setBenignFileset(undefined);
     setRunDialogOpen(true);
   };
 
@@ -440,12 +436,16 @@ export const IronSwarmManifestDetailRoute: FC = () => {
               />
               {gen.interview ? (
                 <InterviewPanel
+                  // Remount per round: the panel seeds its answers on mount, so without this a
+                  // round that arrives while the panel stays mounted reuses the previous answers.
+                  key={gen.interview.round}
                   prompt={gen.interview}
                   loading={gen.isResponding}
                   onSubmit={gen.submitInterview}
                 />
               ) : gen.review ? (
                 <ReviewPanel
+                  key={gen.review.round}
                   suite={gen.review.suite}
                   loading={gen.isResponding}
                   onSubmit={gen.submitReview}
@@ -541,7 +541,10 @@ export const IronSwarmManifestDetailRoute: FC = () => {
         title="Edit Environment Variables"
         submitButtonText="Save"
         loading={clearManifest.isPending}
-        onSubmit={() => void saveEnv()}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void saveEnv();
+        }}
         onClose={() => setEnvDialogOpen(false)}
       >
         <Stack gap="density-md">
@@ -579,7 +582,10 @@ export const IronSwarmManifestDetailRoute: FC = () => {
               : !lastHitlogFileset)) ||
           (benignSource === 'upload' && (!benignFileset || uploadBenign.isPending))
         }
-        onSubmit={() => start()}
+        onSubmit={(e) => {
+          e.preventDefault();
+          start();
+        }}
         onClose={() => setRunDialogOpen(false)}
       >
         <Stack gap="density-md">
