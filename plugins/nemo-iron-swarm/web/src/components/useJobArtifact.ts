@@ -5,6 +5,11 @@ import { ironSwarmDownloadJobResult, useIronSwarmListJobResults } from '@iron-sw
 import type { PlatformJobStatus } from '@iron-swarm/generated/schema';
 import { CJobTerminalStatuses, JOB_POLLING_INTERVAL_MS } from '@nemo/common';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+
+// A job flips to a terminal status before iron-swarm has finished uploading its results, so keep
+// polling briefly past that point — otherwise a list fetched in the gap sticks as "no artifact".
+const ARTIFACT_GRACE_MS = 20_000;
 
 export interface JobArtifact<T> {
   /** Parsed artifact, once it has been downloaded. */
@@ -37,19 +42,30 @@ export const useJobArtifact = <T>(
   status?: PlatformJobStatus
 ): JobArtifact<T> => {
   const terminal = Boolean(status && CJobTerminalStatuses.includes(status));
+  // Only give up once the job has been terminal for the grace period without the artifact showing.
+  const [graceExpired, setGraceExpired] = useState(false);
 
   const { data: results } = useIronSwarmListJobResults(workspace, jobName ?? '', {
     query: {
       enabled: Boolean(jobName),
       refetchInterval: (query) => {
         const found = query.state.data?.data?.some((result) => result.name === resultName);
-        // A terminal job will not produce anything further, so stop either way.
-        return found || terminal ? false : JOB_POLLING_INTERVAL_MS;
+        if (found) return false;
+        return terminal && graceExpired ? false : JOB_POLLING_INTERVAL_MS;
       },
     },
   });
 
   const present = Boolean(results?.data?.some((result) => result.name === resultName));
+
+  useEffect(() => {
+    if (!terminal || present) {
+      setGraceExpired(false);
+      return;
+    }
+    const timer = setTimeout(() => setGraceExpired(true), ARTIFACT_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [terminal, present, jobName, resultName]);
 
   const query = useQuery({
     queryKey: ['iron-swarm-job-artifact', workspace, jobName, resultName],
@@ -60,8 +76,8 @@ export const useJobArtifact = <T>(
   return {
     data: query.data,
     present,
-    isLoading: Boolean(jobName) && !present && !terminal,
-    missing: Boolean(jobName) && terminal && !present,
+    isLoading: Boolean(jobName) && !present && (!terminal || !graceExpired),
+    missing: Boolean(jobName) && terminal && !present && graceExpired,
   };
 };
 
