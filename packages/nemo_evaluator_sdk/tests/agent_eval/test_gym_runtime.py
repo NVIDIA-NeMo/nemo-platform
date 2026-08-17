@@ -37,6 +37,7 @@ from nemo_evaluator_sdk.agent_eval.runtimes.gym.process import (
     _LOG_TAIL_LINES,
     _drain_pumps,
     _gym_executable,
+    _gym_invocation_env,
     _pending_servers,
     _pump_stream,
 )
@@ -769,7 +770,7 @@ def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_pat
     selection = _selection_args(
         _config(
             bind_resources_server=False,
-            env_overrides={
+            hydra_params={
                 "simple_agent": {"responses_api_agents": {"simple_agent": {"resources_server": {"name": "other"}}}}
             },
         ),
@@ -846,6 +847,34 @@ async def test_validate_config_raises_with_gyms_own_report(tmp_path: Path) -> No
 
     assert complaint in str(excinfo.value)
     assert "mcqa" in str(excinfo.value)
+
+
+def test_invocation_env_inherits_the_process_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Gym honours ordinary variables a caller expects to carry over — proxies, HF_TOKEN — so the
+    # parent environment is the base layer rather than being replaced.
+    monkeypatch.setenv("A485_INHERITED", "from-parent")
+    assert _gym_invocation_env(_config())["A485_INHERITED"] == "from-parent"
+
+
+def test_invocation_env_disables_rays_uv_hook_by_default() -> None:
+    # Gym launches each server from its own subdir with its own .venv; Ray's uv-project replication
+    # asserts the driver's cwd holds the pyproject and aborts startup.
+    assert _gym_invocation_env(_config())["RAY_ENABLE_UV_RUN_RUNTIME_ENV"] == "0"
+
+
+def test_env_vars_win_over_the_inherited_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The point of the field: naming a variable in the run config makes it a property of the
+    # environment being run, not of whoever launched the runner.
+    monkeypatch.setenv("WMT_TRANSLATION_COMET_PY_CACHE", "/whatever-the-launcher-had")
+    env = _gym_invocation_env(_config(env_vars={"WMT_TRANSLATION_COMET_PY_CACHE": "/from-the-run-config"}))
+    assert env["WMT_TRANSLATION_COMET_PY_CACHE"] == "/from-the-run-config"
+
+
+def test_env_vars_can_restore_rays_uv_hook() -> None:
+    # The Ray default exists to make Gym work, not as an invariant — someone debugging that hook
+    # needs a way to put it back, so an explicit value has to outrank it.
+    env = _gym_invocation_env(_config(env_vars={"RAY_ENABLE_UV_RUN_RUNTIME_ENV": "1"}))
+    assert env["RAY_ENABLE_UV_RUN_RUNTIME_ENV"] == "1"
 
 
 def test_gym_executable_reports_how_to_install_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
