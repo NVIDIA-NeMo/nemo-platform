@@ -197,6 +197,29 @@ def _coerce(value: object) -> float | int:
     return int(real) if isinstance(real, numbers.Integral) else float(real)
 
 
+def _thin(points: list[dict[str, float | int]], max_points: int) -> list[dict[str, float | int]]:
+    """At most ``max_points`` of ``points``, evenly spaced, always keeping the last.
+
+    The stride is chosen from the overshoot so one pass suffices however far over
+    budget the list is -- see :meth:`TrainingProgressCallback._decimate` for why
+    that matters more than it looks.
+
+    Selection counts back from the end, so the newest point survives and the
+    oldest is the one dropped when the stride does not divide the length. A curve
+    that lost its leading edge would report a step behind the one its own report
+    states.
+    """
+    stride = _ceil_div(len(points), max_points)
+    if stride <= 1:
+        return points
+    return points[len(points) - 1 :: -stride][::-1]
+
+
+def _ceil_div(numerator: int, denominator: int) -> int:
+    """``ceil(numerator / denominator)`` without going through a float."""
+    return -(-numerator // denominator)
+
+
 def _point_step(point: object) -> float | int | None:
     """The step a stored series point records, or ``None`` if it records none.
 
@@ -249,10 +272,24 @@ class _PathGate:
     #: dataloaders, which is the bug this replaces.
     decision: tuple[float | int, bool] | None = field(default=None, repr=False)
 
-    #: The last report this gate withheld, replayed by ``close()`` so a run's
-    #: final step is never lost to a throttle. At most one: a newer held report
-    #: supersedes an older one, since only the latest is still current.
-    pending: dict[str, Any] | None = field(default=None, repr=False)
+    #: Reports this gate withheld, replayed by ``close()`` so a run's final step
+    #: is never lost to a throttle. Keyed by the set of series the report writes,
+    #: which is what says whether a later report *supersedes* an earlier one or
+    #: merely *accompanies* it.
+    #:
+    #: One slot per gate was wrong, and wrong in the case the ``decision`` field
+    #: above exists to serve. ``validate()`` logs once per dataloader at a single
+    #: step, and those reports carry different series -- they are not successive
+    #: versions of one thing. Holding one meant that when the final validation
+    #: pass was withheld, ``close()`` flushed whichever dataloader happened to
+    #: iterate last and silently dropped the rest, so the primary validation set
+    #: could end a run missing the very point ``val_at_end`` exists to produce.
+    #:
+    #: Bounded by the number of distinct series-sets a path reports, which is the
+    #: number of validation dataloaders (one, in every config this repo compiles).
+    #: A backend whose metric names vary step to step would grow it, so it is
+    #: capped -- see ``_hold``.
+    pending: dict[frozenset[str], dict[str, Any]] = field(default_factory=dict, repr=False)
 
     def admit(self, step: float | int) -> bool:
         """Whether to record and send a report at ``step``.
@@ -278,6 +315,47 @@ class _PathGate:
         if admitted:
             self.last_admitted = step
         return admitted
+
+
+class DatasetQualifier:
+    """Fold a dataset's name into its metric names, past the first dataset seen.
+
+    Both LLM backends validate over a *dict* of dataloaders and log once per
+    entry, every call at the same step: NeMo-RL over ``val_dataloader.items()``,
+    automodel over ``val_dataloaders``. Forwarded as-is, two datasets' ``loss``
+    become two points at one step in a single ``val_loss`` series -- the
+    collision the ``<phase>_`` rule exists to prevent, one level further down,
+    and an invisible one because Studio keys its chart by step so one silently
+    wins.
+
+    The first dataset seen keeps the bare names, so ``val_loss`` stays
+    ``val_loss`` on the ordinary single-dataset run; both frameworks name that
+    dataloader too, so keying on "did a name arrive" would rename the common case
+    and take Studio's curve with it. Iteration order over a dict is stable within
+    a run and across a resume of the same config, so a dataset keeps whichever
+    naming it started with.
+
+    Shared because it was implemented for one backend and not the other, and the
+    absence was silent: automodel's wrapper discarded the ``val_name`` its recipe
+    passes, so every dataloader reported as ``val_loss``.
+    """
+
+    def __init__(self) -> None:
+        self._primary: str | None = None
+
+    def qualify(self, key: str, label: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
+        """Qualify ``metrics`` for the dataset identified by ``key``.
+
+        ``key`` identifies the dataset (whatever the backend has to hand -- a
+        prefix, a name); ``label`` is what gets folded into the metric names.
+        They differ for NeMo-RL, whose key is the whole ``validation-<name>``
+        prefix while only ``<name>`` belongs in the series.
+        """
+        if self._primary is None:
+            self._primary = key
+        if key == self._primary:
+            return dict(metrics)
+        return {f"{label}_{name}": value for name, value in metrics.items()}
 
 
 class TrainingProgressCallback:
@@ -389,10 +467,25 @@ class TrainingProgressCallback:
             return gate
 
         gate.last_admitted = _point_step(points[-1])
-        if len(points) > 1:
-            span = cast(float, _point_step(points[-1])) - cast(float, _point_step(points[0]))
-            gate.interval = max(int(span // (len(points) - 1)), 1)
+        gate.interval = max(self._observed_spacing(phase), 1)
         return gate
+
+    def _observed_spacing(self, phase: str) -> int:
+        """The average step gap of the longest curve on ``phase``, or 0 if it has none.
+
+        Rounded *up*. A curve of N points spanning S steps was written at a
+        cadence of ``S / (N - 1)``, and flooring that systematically returns one
+        less than the interval actually in force -- 99 for a curve written every
+        100 steps whose last point is a flush. Nowhere does an interval one step
+        too small help, and where this number is load-bearing (a decimated curve,
+        §_decimate) too small is what compounds.
+        """
+        points = self._anchor(phase)
+        if len(points) < 2:
+            return 0
+        span = cast(float, _point_step(points[-1])) - cast(float, _point_step(points[0]))
+        gaps = len(points) - 1
+        return max(int(-(-span // gaps)), 0)
 
     def _anchor(self, phase: str) -> list[dict[str, float | int]]:
         """The longest series on ``phase``, which is the one present from step one.
@@ -407,31 +500,57 @@ class TrainingProgressCallback:
         return max(candidates, default=(0, "", []))[2]
 
     def _decimate(self, phase: str) -> None:
-        """Halve any curve on ``phase`` that has outgrown ``max_points``.
+        """Thin any curve on ``phase`` that has outgrown ``max_points``, in one pass.
 
         The backstop behind the interval seeded from ``max_steps``, and expected
         never to fire on a configuration we ship: it costs a resolution step-down
         where a wrong run length would otherwise cost an unbounded series. What it
         buys is that the guarantee stops depending on an input we do not control --
-        a run that overshoots its stated length, or a backend added later whose
-        schedule nobody audited.
+        a run that overshoots its stated length, a backend added later whose
+        schedule nobody audited, or a task whose stored series was written by a
+        version of this code that had no cap at all.
 
-        Every other point goes, counting back from the end so the most recent one
-        is always kept: a curve may lose resolution, never its leading edge.
+        **To the budget in one step, not by halving.** Halving trims by a fixed
+        factor however far over budget the curve is, so a curve k halvings over
+        costs k passes -- and the old implementation raised the interval once per
+        pass, making the *future* cadence 2^k coarser as a function of how much
+        *past* data it inherited. Resuming a task written by the uncapped version
+        of this callback (10,000 points, one per step) took the interval from 100
+        to 6,400 and reduced the entire second half of a 20,000-step run to two
+        reported points. Choosing the stride from the overshoot removes the
+        coupling: one pass, whatever the size of the seed.
+
+        **The interval follows the curve, rather than being multiplied.** After
+        thinning, the stored points *are* a record of the cadence now in force, so
+        the gate reads it off them (never downward -- a thinned curve cannot imply
+        a finer cadence than the one already configured). Multiplying instead was
+        wrong twice over: it compounded with the seed size as above, and it
+        compounded with the number of reports at a single step, since each
+        validation dataloader is a separate call. Two dataloaders took a
+        25-step validation cadence to 100 rather than 50, three would have taken
+        it to 200, for a reason unconnected to the budget.
+
+        Points are dropped counting back from the end, so the most recent one is
+        always kept: a curve may lose resolution, never its leading edge.
         Rewriting the stored series is free, the Jobs merge being wholesale per
         key -- a shorter list simply replaces the longer one.
         """
         prefix = f"{phase}_"
-        trimmed = False
-        for name, points in self._series.items():
-            if name.startswith(prefix) and len(points) > self._max_points:
-                self._series[name] = points[(len(points) - 1) % 2 :: 2]
-                trimmed = True
-        if trimmed:
-            gate = self._gates[phase]
-            gate.interval *= 2
+        over_budget = [
+            name for name, points in self._series.items() if name.startswith(prefix) and len(points) > self._max_points
+        ]
+        if not over_budget:
+            return
+
+        for name in over_budget:
+            self._series[name] = _thin(self._series[name], self._max_points)
+
+        gate = self._gates[phase]
+        widened = max(gate.interval, self._observed_spacing(phase), 1)
+        if widened != gate.interval:
+            gate.interval = widened
             logger.info(
-                "Halved the %s curves to stay within %d points; reporting every %d steps from here.",
+                "Thinned the %s curves to stay within %d points; reporting every %d steps from here.",
                 phase,
                 self._max_points,
                 gate.interval,
@@ -489,17 +608,41 @@ class TrainingProgressCallback:
         recorded = self._time_series_subset(qualified)
         gate = self._gates[phase]
         if not gate.admit(step):
-            gate.pending = {
-                "phase": phase,
-                "report_phase": report_phase,
-                "step": step,
-                "epoch": epoch,
-                "qualified": qualified,
-                "recorded": recorded,
-                "backend": backend,
-            }
+            self._hold(
+                gate,
+                {
+                    "phase": phase,
+                    "report_phase": report_phase,
+                    "step": step,
+                    "epoch": epoch,
+                    "qualified": qualified,
+                    "recorded": recorded,
+                    "backend": backend,
+                },
+            )
             return
         self._record_and_send(phase, report_phase, step, epoch, qualified, recorded, backend)
+
+    #: How many distinct series-sets one path may hold withheld reports for. Far
+    #: above any real dataloader count; it exists so a backend whose metric names
+    #: vary from step to step cannot grow the dict without bound.
+    _MAX_PENDING_PER_PATH: ClassVar[int] = 8
+
+    @staticmethod
+    def _hold(gate: _PathGate, report: dict[str, Any]) -> None:
+        """Withhold ``report``, superseding an earlier one that writes the same series.
+
+        Keying on the series set is what separates the two cases that a single
+        slot conflated: the same dataloader reporting again at a later step
+        (supersedes -- only the newest is still current) and a second dataloader
+        reporting at the same step (accompanies -- a different curve entirely).
+        """
+        gate.pending[frozenset(report["qualified"])] = report
+        while len(gate.pending) > TrainingProgressCallback._MAX_PENDING_PER_PATH:
+            # Drop the oldest, which is the one a later report is likeliest to
+            # have made stale anyway. Bounded rather than unbounded is the point.
+            oldest = min(gate.pending, key=lambda key: gate.pending[key]["step"])
+            del gate.pending[oldest]
 
     def _time_series_subset(self, qualified: dict[str, float | int]) -> dict[str, float | int]:
         """The entries of ``qualified`` that get a stored series, not just a value.
@@ -620,11 +763,16 @@ class TrainingProgressCallback:
         if not self._seed_unavailable and recorded:
             details["metrics"] = self._build_metrics_summary()
         # Both retired here rather than by the caller, so that a flushed report
-        # leaves the same state an admitted one does: anything the gate was
-        # holding is now stale, superseded by a report that actually landed, and
-        # this step is the one the next elapsed check measures from.
+        # leaves the same state an admitted one does: what the gate was holding
+        # for *these* series is now stale, superseded by a report that actually
+        # landed, and this step is the one the next elapsed check measures from.
+        #
+        # Only this report's own series-set is retired. Another dataloader's held
+        # report is not made stale by this one landing -- it covers a different
+        # curve, and dropping it here is how the primary set used to lose its
+        # final point.
         gate = self._gates[phase]
-        gate.pending = None
+        gate.pending.pop(frozenset(qualified), None)
         gate.last_admitted = step
         self._send(report_phase, details, backend)
 
@@ -771,30 +919,32 @@ class TrainingProgressCallback:
         self._reporter.close()
 
     def _flush_pending(self) -> None:
-        """Report the last step each gate held back, oldest first.
+        """Report everything the gates held back, oldest step first.
 
         Without this a throttled run ends on stale values: the final train step
         and the final validation pass rarely land on an interval, so the last
         thing a reader sees is whenever the cadence last happened to fire.
 
+        Every held report, not one per path: a validation pass with two
+        dataloaders withholds two, covering different curves, and flushing only
+        one leaves the other's series short of the run's final pass.
+
         Step order so points are appended in the order they were produced, rather
-        than in whichever order the paths happen to iterate.
+        than in whichever order the paths and their held reports happen to
+        iterate.
 
         Reachable from a shutdown path, so failures are logged rather than
         propagated -- the reporter already swallows transport errors, and this
         guards the rest.
         """
         held = sorted(
-            (gate.pending for gate in self._gates.values() if gate.pending is not None),
+            (report for gate in self._gates.values() for report in gate.pending.values()),
             key=lambda report: report["step"],
         )
+        for gate in self._gates.values():
+            gate.pending = {}
         for report in held:
-            gate = self._gates[report["phase"]]
-            gate.pending = None
-            # Defensive against a double flush: a report admitted after this one
-            # was held would already have retired it, so this can only fire if
-            # something replayed the flush.
-            if gate.last_admitted is not None and report["step"] <= gate.last_admitted:
+            if self._already_recorded(report):
                 continue
             try:
                 self._record_and_send(
@@ -809,3 +959,24 @@ class TrainingProgressCallback:
                 )
             except Exception as exc:  # pragma: no cover - defensive, shutdown path
                 logger.warning(f"Failed to flush the final {report['phase']} report: {exc}")
+
+    def _already_recorded(self, report: dict[str, Any]) -> bool:
+        """Whether this report's points are already on the curves it writes.
+
+        Per series rather than per path. The step alone is the wrong question:
+        two validation dataloaders report at one step, so "this path already
+        recorded that step" is true for the second one while its own curve is
+        still missing the point -- which is how the primary set lost the final
+        pass that ``val_at_end`` exists to produce.
+
+        Only reachable if a flush were replayed: ``pending`` is emptied before
+        the flush loop and ``close()`` is guarded by ``_closed``. Kept because a
+        duplicate point is invisible downstream -- Studio keys its chart by step,
+        so one of the two silently wins.
+        """
+        if not report["recorded"]:
+            return False
+        return all(
+            (points := self._series.get(name)) and _point_step(points[-1]) == report["step"]
+            for name in report["recorded"]
+        )

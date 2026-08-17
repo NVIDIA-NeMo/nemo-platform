@@ -1364,3 +1364,107 @@ def test_the_two_bounds_multiply(reporter: _RecordingReporter) -> None:
     metrics = reporter.reports[-1]["metrics"]
     assert set(metrics) == {"train_loss", "val_loss"}
     assert len(metrics["train_loss"]) <= 11
+
+
+# --------------------------------------------------------------------------- #
+# Ship-blockers found by independent review
+#
+# Every test below fails on the implementation that preceded it. They are
+# grouped because they share a cause: the gate was written for one report per
+# step per path, and validation produces one report per *dataloader* per step.
+# --------------------------------------------------------------------------- #
+
+
+def test_every_dataloaders_final_validation_pass_survives_the_flush(reporter: _RecordingReporter) -> None:
+    """One pending slot per path dropped all but the last dataloader's last point.
+
+    `validate()` logs once per dataloader at a single step, so two held reports
+    are not successive versions of one thing -- they are different curves. The
+    primary set used to end the run missing the final pass that `val_at_end`
+    exists to produce, and which one survived depended on dict iteration order.
+    """
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    for step in (1, 400):
+        for dataset in ("", "heldout_"):
+            callback.report_validation(step=step, epoch=1, metrics={f"{dataset}loss": float(step)})
+    callback.close()
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert [p["step"] for p in metrics["val_loss"]] == [1, 400]
+    assert [p["step"] for p in metrics["val_heldout_loss"]] == [1, 400]
+
+
+def test_a_held_report_is_superseded_only_by_its_own_series(reporter: _RecordingReporter) -> None:
+    """The other half of the same rule: a later report on one curve must not
+    retire another curve's held report."""
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.1})
+    callback.report_validation(step=1, epoch=1, metrics={"heldout_loss": 0.2})
+    # Held (interval 500), then the primary set reports again and is admitted.
+    callback.report_validation(step=300, epoch=1, metrics={"heldout_loss": 0.3})
+    callback.report_validation(step=600, epoch=1, metrics={"loss": 0.4})
+    callback.close()
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert [p["step"] for p in metrics["val_heldout_loss"]] == [1, 300], "held point kept, not retired by val_loss"
+
+
+def test_an_oversized_seed_does_not_destroy_the_cadence() -> None:
+    """Decimating by halving coupled the future cadence to the size of the past.
+
+    A task whose series was written by a version of this callback with no cap --
+    one point per step, which is what shipped before this branch -- seeds ~10,000
+    points. Halving once per call, and raising the interval once per call, took
+    the interval from a configured 100 to 6,400 and reduced the whole second half
+    of the run to two reported points. Thinning to budget in one pass decouples
+    them: the cost is a resolution step-down, not a cadence collapse.
+    """
+    prior = {"train_loss": [{"step": s, "epoch": 1, "value": 0.5} for s in range(1, 10_001)]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=20_000, num_epochs=1)
+
+    for step in range(10_001, 20_001):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert callback._gates["train"].interval <= 400, "the configured cadence, not a multiple of the seed size"
+    assert len(_train_steps(reporter)) >= 50, "the second half of the run still draws a curve"
+    assert len(reporter.reports[-1]["metrics"]["train_loss"]) <= 201
+
+
+def test_thinning_does_not_compound_across_dataloaders(reporter: _RecordingReporter) -> None:
+    """Raising the interval per *call* multiplied it by 2^N for N dataloaders.
+
+    Each dataloader's report is a separate `_record_and_send`, so each one used
+    to trim its own curve and double the interval again -- a validation cadence
+    4x coarser with two datasets, 8x with three, for a reason unconnected to the
+    budget.
+    """
+
+    def run(n_dataloaders: int) -> int:
+        rep = _RecordingReporter()
+        callback = _make_callback(rep, max_points=20)
+        callback.report_training_start(max_steps=200, num_epochs=1)  # understated, so thinning fires
+        for step in range(25, 2_001, 25):
+            for i in range(n_dataloaders):
+                prefix = "" if i == 0 else f"ds{i}_"
+                callback.report_validation(step=step, epoch=1, metrics={f"{prefix}loss": 0.4})
+        return callback._gates["val"].interval
+
+    assert run(2) == run(1), "a second dataset must not coarsen the first's cadence"
+    assert run(3) == run(1)
+
+
+def test_thinning_reaches_the_budget_in_one_pass(reporter: _RecordingReporter) -> None:
+    """Halving trimmed by a fixed factor however far over budget the curve was."""
+    prior = {"train_loss": [{"step": s, "epoch": 1, "value": 0.5} for s in range(1, 5_001)]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=100)
+    callback.report_training_start(max_steps=10_000, num_epochs=1)
+    callback.report_train_step(step=5_100, epoch=1, metrics={"loss": 0.4})
+
+    stored = reporter.reports[-1]["metrics"]["train_loss"]
+    assert len(stored) <= 101, "one report brought a 5,000-point seed inside the budget"
+    assert stored[-1]["step"] == 5_100, "and kept the newest point"

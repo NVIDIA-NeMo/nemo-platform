@@ -21,7 +21,7 @@ from nemo_automodel.recipes.llm.train_ft import TrainFinetuneRecipeForNextTokenP
 from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderRecipe
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.callbacks import TrainingProgressCallback
+from nmp.customization_common.training.callbacks import DatasetQualifier, TrainingProgressCallback
 from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS, DIAGNOSTIC_TIME_SERIES
 
 logger = logging.getLogger(__name__)
@@ -187,6 +187,9 @@ class AutomodelRecipeWrapper:
         self.max_steps = self._recipe.step_scheduler.max_steps
         self.num_epochs = getattr(self._recipe.step_scheduler, "num_epochs", None) or 1
 
+        #: Keeps a second validation dataset's metrics out of the first's series.
+        self._val_datasets = DatasetQualifier()
+
         self.callback = TrainingProgressCallback(
             self._reporter,
             max_points=_resolve_max_points(recipe),
@@ -256,20 +259,30 @@ class AutomodelRecipeWrapper:
         # LLM signature: (val_name, log_data, metric_logger=None) -> log_data is args[1]
         # VLM/biencoder signature: (log_data) -> log_data is args[0]
         log_data = None
+        val_name = None
         if len(args) >= 2:
             # LLM/KD style: (val_name, log_data, ...)
-            log_data = args[1]
+            val_name, log_data = args[0], args[1]
         elif len(args) == 1:
             # VLM/biencoder style: (log_data)
             log_data = args[0]
 
         if self.callback and log_data:
             try:
-                metrics = getattr(log_data, "metrics", {})
+                metrics = strip_val_prefix(getattr(log_data, "metrics", {}))
+                # `run_train_validation_loop` iterates `val_dataloaders` and calls
+                # this once per entry, all at one step. `val_name` is the only
+                # thing distinguishing them, and discarding it made every dataset
+                # report as `val_loss` -- two datasets interleaved as two points
+                # at one step in one series, with Studio's step-keyed chart
+                # silently picking a winner. The first dataset keeps the bare
+                # names so the ordinary single-dataset run is unchanged.
+                if val_name is not None:
+                    metrics = self._val_datasets.qualify(str(val_name), str(val_name), metrics)
                 self.callback.report_validation(
                     step=getattr(log_data, "step", 0) + 1,  # Convert to 1-based
                     epoch=getattr(log_data, "epoch", 0) + 1,  # Convert to 1-based
-                    metrics=strip_val_prefix(metrics),
+                    metrics=metrics,
                 )
             except Exception as e:
                 logger.warning(f"Failed to report validation progress: {e}")

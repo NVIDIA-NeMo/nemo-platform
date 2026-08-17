@@ -16,6 +16,7 @@ import logging
 import sys
 from collections.abc import Iterator
 from types import ModuleType
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -232,3 +233,74 @@ def test_an_unusable_list_falls_back_to_the_default_and_says_so(
         assert finetune._resolve_time_series_metrics(recipe) == finetune.DIAGNOSTIC_TIME_SERIES
 
     assert "time_series_metrics" in caplog.text
+
+
+# --------------------------------------------------------------------------- #
+# Validation over more than one dataset
+# --------------------------------------------------------------------------- #
+
+
+class _LogData:
+    def __init__(self, step: int, epoch: int, metrics: dict[str, float]) -> None:
+        self.step, self.epoch, self.metrics = step, epoch, metrics
+
+
+class _RecordingCallback:
+    def __init__(self) -> None:
+        self.validations: list[dict[str, object]] = []
+
+    def report_validation(self, step: int, epoch: int, metrics: dict[str, float]) -> None:
+        self.validations.append({"step": step, "metrics": metrics})
+
+
+def _wrapper_with(finetune: ModuleType, callback: _RecordingCallback) -> Any:
+    """An AutomodelRecipeWrapper with only the collaborators _log_val_metrics touches.
+
+    Built without __init__ because the real one calls recipe.setup() and builds a
+    live reporter; what is under test is the validation-reporting path alone.
+    """
+    wrapper = finetune.AutomodelRecipeWrapper.__new__(finetune.AutomodelRecipeWrapper)
+    wrapper.callback = callback
+    wrapper._original_log_val_metrics = lambda *a, **k: None
+    wrapper._val_datasets = finetune.DatasetQualifier()
+    return wrapper
+
+
+def test_a_second_validation_dataset_does_not_share_the_first_ones_series(finetune: ModuleType) -> None:
+    """`run_train_validation_loop` iterates `val_dataloaders` and logs once per entry.
+
+    The wrapper discarded `val_name`, so every dataset reported as `val_loss` --
+    two datasets interleaved as two points at one step in one series. Studio keys
+    its loss chart by step, so one silently won and the chart showed whichever
+    dataset iterated last, with no indication the other existed.
+    """
+    callback = _RecordingCallback()
+    wrapper = _wrapper_with(finetune, callback)
+
+    wrapper._log_val_metrics("train_ds", _LogData(step=99, epoch=0, metrics={"val_loss": 0.4}))
+    wrapper._log_val_metrics("heldout", _LogData(step=99, epoch=0, metrics={"val_loss": 0.9}))
+
+    assert callback.validations[0]["metrics"] == {"loss": 0.4}, "the first dataset keeps the bare names"
+    assert callback.validations[1]["metrics"] == {"heldout_loss": 0.9}
+
+
+def test_one_validation_dataset_keeps_the_bare_metric_names(finetune: ModuleType) -> None:
+    """The ordinary run must be untouched -- automodel names that dataloader too,
+    so keying on "a name arrived" would rename val_loss and take Studio's curve."""
+    callback = _RecordingCallback()
+    wrapper = _wrapper_with(finetune, callback)
+
+    for step in (99, 199):
+        wrapper._log_val_metrics("train_ds", _LogData(step=step, epoch=0, metrics={"val_loss": 0.4}))
+
+    assert [v["metrics"] for v in callback.validations] == [{"loss": 0.4}, {"loss": 0.4}]
+
+
+def test_a_recipe_that_passes_no_dataset_name_is_unchanged(finetune: ModuleType) -> None:
+    """The VLM/biencoder signature is (log_data) with no val_name to qualify by."""
+    callback = _RecordingCallback()
+    wrapper = _wrapper_with(finetune, callback)
+
+    wrapper._log_val_metrics(_LogData(step=99, epoch=0, metrics={"val_loss": 0.4, "val_acc1": 0.8}))
+
+    assert callback.validations[0]["metrics"] == {"loss": 0.4, "acc1": 0.8}
