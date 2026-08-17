@@ -113,8 +113,9 @@ def _eval_duration_sec(result: AgentEvalResult) -> float | None:
         return result.metadata.duration_sec
     if result.metadata.started_at is not None:
         # A row-eval result carries only a start time (see ``intake.row_adapter``), so its length is
-        # measured here instead. That slightly overcounts: it also covers persisting the bundle
-        # between the run finishing and this publish.
+        # measured here instead. Call this before publishing, not after, or the run duration swallows
+        # the publish it is meant to be reported alongside. It still slightly overcounts: it covers
+        # persisting the bundle between the run finishing and this call.
         return (datetime.now(UTC) - result.metadata.started_at).total_seconds()
     return None
 
@@ -150,6 +151,9 @@ async def _publish(
     model_name: str | None,
 ) -> PublishReport:
     """Check the Evaluation exists, publish under it, then record how long both took."""
+    # Measured before the publish so the two durations stay disjoint — for a result that carries only
+    # a start time, reading this afterwards would fold the whole publish into the run's own length.
+    eval_duration_sec = _eval_duration_sec(result)
     # The Evaluation must pre-exist — ATIF ingest rejects an unknown one per trial, so without this
     # a typo would surface as N failed writes after a partial publish instead of one clear stop.
     # This reads the entity store, so it says nothing about whether Intake's span storage is up;
@@ -172,7 +176,7 @@ async def _publish(
             evaluation=evaluation,
             spec=spec,
             workspace=workspace,
-            eval_duration_sec=_eval_duration_sec(result),
+            eval_duration_sec=eval_duration_sec,
             publish_duration_sec=publish_duration_sec,
         )
     except Exception:

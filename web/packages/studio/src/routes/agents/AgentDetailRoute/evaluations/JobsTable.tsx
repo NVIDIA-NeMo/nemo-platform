@@ -29,8 +29,12 @@ import { useNavigate } from 'react-router';
  *  rerun only, never on a status transition — so the duration has to come from the evaluation. */
 const DurationCell: FC<{ row: EvalJobRow; durationMs?: number }> = ({ row, durationMs }) => {
   const isTerminal = PlatformJobTerminalStatuses.some((status) => status === row.status);
+  // `enabled` is what actually stops the timer: the hook's interval effect keys off its *locked*
+  // start date, so clearing `startDate` alone leaves a row that finished mid-poll ticking (and
+  // re-rendering the table) once a second forever.
   const liveSeconds = useLiveSeconds({
     startDate: isTerminal ? undefined : utcToLocalDate(row.created_at),
+    enabled: !isTerminal,
   });
   if (!isTerminal) return <Text>{formatTimeInSeconds(liveSeconds)}</Text>;
   return <Text>{formatDurationMs(durationMs)}</Text>;

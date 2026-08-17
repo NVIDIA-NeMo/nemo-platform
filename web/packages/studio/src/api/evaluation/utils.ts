@@ -81,8 +81,11 @@ export const EVAL_DURATION_METADATA_KEY = 'eval_duration_sec';
  *  Metadata values are strings server-side, so a non-numeric one reads the same as an absent one. */
 export const evalDurationMs = (metadata?: Record<string, string> | null): number | undefined => {
   const raw = metadata?.[EVAL_DURATION_METADATA_KEY];
-  const seconds = raw == null ? NaN : Number(raw);
-  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+  // Metadata is free-form and hand-editable, so treat anything that is not a non-negative number as
+  // absent. `Number('')` is 0, which would otherwise render as a confident "0ms".
+  if (raw == null || raw.trim() === '') return undefined;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : undefined;
 };
 
 export const publishedEvaluationName = (job: PlatformJobResponse): string | null => {
