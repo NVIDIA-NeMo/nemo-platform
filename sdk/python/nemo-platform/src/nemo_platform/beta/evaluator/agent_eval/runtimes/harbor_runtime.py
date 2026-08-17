@@ -115,9 +115,6 @@ _SPDX_HTML_COMMENT_RE = re.compile(r"<!--\s*SPDX-(?:FileCopyrightText|License-Id
 _DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", ".mypy_cache", ".pytest_cache"})
 _DIGEST_CHUNK_BYTES = 1 << 20
 
-# Cap on the traceback carried into a trial. Bundles are portable and a traceback is diagnostic
-# text, not data anyone joins on, so it is bounded rather than faithful. A real Harbor traceback is
-# ~1.2 KB, so this keeps whole ones while refusing a pathological payload.
 _MAX_TRACEBACK_CHARS = 8192
 
 RunJob = Callable[[], Awaitable[None]]
