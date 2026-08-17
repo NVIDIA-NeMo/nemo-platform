@@ -137,6 +137,7 @@ const NameFieldForm: FC<NameFieldFormProps> = ({
         <TextInput
           value={value}
           disabled={disabled}
+          autoComplete="off"
           onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.currentTarget.value)}
           onBlur={onBlur}
         />
