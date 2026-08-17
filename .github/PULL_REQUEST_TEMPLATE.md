@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- markdownlint-disable MD041 -->
 ## Summary
 <!-- In 1-3 plain sentences, explain what changes and why. Describe before-and-after behavior when it applies. -->

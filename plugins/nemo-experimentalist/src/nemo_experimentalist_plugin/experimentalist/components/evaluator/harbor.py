@@ -1,34 +1,30 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Harbor dataset adapter for evaluator-domain task objects."""
+"""Shared Harbor dataset, dependency, input, and result adapters."""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib.machinery
 import json
 import logging
 import os
 import re
 import shutil
-import sys
 import tempfile
 import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType, TracebackType
-from typing import Any, Literal, TypeAlias, TypedDict
+from types import TracebackType
+from typing import Any, Protocol, TypeAlias, TypedDict
 from uuid import uuid4
 
 from harbor.constants import MAIN_SERVICE_NAME
 from harbor.environments.base import BaseEnvironment
 from harbor.environments.factory import EnvironmentFactory
-from harbor.job import DatasetConfig, Job, JobConfig
 from harbor.models.environment_type import EnvironmentType
-from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
 from harbor.models.task.task import Task as HarborTaskModel
 from harbor.models.trial.config import ServiceVolumeConfig
 from harbor.models.trial.paths import EnvironmentPaths, TrialPaths
@@ -47,12 +43,10 @@ from nemo_experimentalist_plugin.entities import (
     run_dependency_command,
     subset_dataset_id,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    Evaluator,
-    EvaluatorConfig,
-    EvaluatorType,
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.dataset_layout import (
+    find_task_dirs,
+    is_task_dir,
 )
-from pydantic import Field
 
 
 class HarborResourceSpec(TypedDict):
@@ -110,12 +104,9 @@ _TASK_TREE_RESOURCES: tuple[TreeResourceSpec, ...] = (
     (_ORACLE_DIRNAME, "oracle_dir", ()),
     (_STEPS_DIRNAME, "steps_dir", ()),
 )
-_TRACE_ARTIFACT_SOURCE = "/app/traces"
-_TRACE_ARTIFACT_DESTINATION = "traces"
+DEFAULT_TRACE_ARTIFACT_SOURCE = "/app/traces"
 _ATIF_TRACE_SUFFIX = ".atif.json"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
-_AGENT_IMPORT_ROOT = "_nemo_experimentalist_eval_agents"
-_IDENTIFIER_RE = re.compile(r"\W+")
 _TRIAL_LOG_DESCRIPTIONS = {
     "agent/oracle.txt": "Oracle-agent log captured when Harbor runs the reference solution.",
     "agent/setup/stdout.txt": "Agent setup stdout captured while Harbor uploads the agent and installs dependencies.",
@@ -166,36 +157,6 @@ class _VerifierSyntaxFailure:
     error: str
     line: int | None = None
     column: int | None = None
-
-
-class HarborEvaluatorConfig(EvaluatorConfig):
-    """Configuration for Harbor evaluator."""
-
-    job_name: str | None = Field(
-        default=None, description="Name of the job to run. If not provided, a default name will be generated."
-    )
-    jobs_dir: Path = Field(
-        default=Path("eval-and-optimize") / "results",
-        description="Directory to store job results, resolved relative to the experiment directory.",
-    )
-    n_attempts: int = Field(default=1)
-    n_concurrent_trials: int = Field(default=os.cpu_count() or 4)
-    quiet: bool = Field(default=False)
-    verifier_timeout_multiplier: float | None = Field(default=1.0)
-    agent_timeout_multiplier: float | None = Field(default=1.0)
-    agent_setup_timeout_multiplier: float | None = Field(default=1.0)
-    environment_build_timeout_multiplier: float | None = Field(default=1.0)
-    artifacts: list[str] = Field(default=[])
-    retry: RetryConfig = Field(default=RetryConfig(exclude_exceptions=set()))
-    import_path: str = Field(default="harbor_wrapper:WrappedAgent")
-    trace_dir: str = Field(default=_TRACE_ARTIFACT_SOURCE)
-    trace_format: Literal["otlp", "atif"] = Field(
-        default="otlp",
-        description=(
-            "Which trace artifact becomes the trial's trace. Both are still collected and "
-            "exposed in resources; this only selects the one that gets uploaded and analysed."
-        ),
-    )
 
 
 class HarborDependencyRuntime(DependencyRuntime):
@@ -354,76 +315,6 @@ def _chmod_path_chain(path: Path, stop_at: Path) -> None:
 
 
 HarborDataValue: TypeAlias = DataValue | ResourceRef
-
-
-def _safe_identifier(value: str) -> str:
-    identifier = _IDENTIFIER_RE.sub("_", value).strip("_")
-    if not identifier:
-        identifier = "path"
-    if not identifier[0].isalpha() and identifier[0] != "_":
-        identifier = f"_{identifier}"
-    return identifier
-
-
-def _agent_import_package(agent_path: Path) -> str:
-    path_parts = [_safe_identifier(part) for part in agent_path.parts if part not in {"", agent_path.anchor}]
-    tail = path_parts[-6:] or ["agent"]
-    digest = hashlib.sha256(str(agent_path).encode("utf-8")).hexdigest()[:12]
-    tail[-1] = f"{tail[-1]}_{digest}"
-    return ".".join([_AGENT_IMPORT_ROOT, *tail])
-
-
-def _ensure_package(name: str, search_path: Path | None = None) -> None:
-    parts = name.split(".")
-    for idx in range(1, len(parts) + 1):
-        package_name = ".".join(parts[:idx])
-        package = sys.modules.get(package_name)
-        if package is None:
-            package = ModuleType(package_name)
-            package.__package__ = package_name
-            package.__spec__ = importlib.machinery.ModuleSpec(package_name, loader=None, is_package=True)
-            package.__path__ = []  # type: ignore[attr-defined]
-            sys.modules[package_name] = package
-            if idx > 1:
-                parent_name = ".".join(parts[: idx - 1])
-                setattr(sys.modules[parent_name], parts[idx - 1], package)
-        if search_path is not None and idx == len(parts):
-            package.__path__ = [str(search_path)]  # type: ignore[attr-defined]
-
-
-def _scoped_import_path(agent_path: Path, import_path: str) -> tuple[str, str]:
-    module_name, separator, attribute = import_path.partition(":")
-    module_name = module_name.strip().lstrip(".")
-    if not module_name:
-        raise ValueError("import_path module is required")
-
-    package_name = _agent_import_package(agent_path)
-    _ensure_package(package_name, search_path=agent_path)
-    scoped = f"{package_name}.{module_name}"
-    if separator:
-        scoped = f"{scoped}:{attribute}"
-    return scoped, package_name
-
-
-def _cleanup_scoped_imports(package_name: str) -> None:
-    package = sys.modules.get(package_name)
-    for module_name in list(sys.modules):
-        if module_name == package_name or module_name.startswith(f"{package_name}."):
-            sys.modules.pop(module_name, None)
-    parent_name, _, child_name = package_name.rpartition(".")
-    parent = sys.modules.get(parent_name)
-    if parent is not None and getattr(parent, child_name, None) is package:
-        delattr(parent, child_name)
-    parts = package_name.split(".")
-    for idx in range(len(parts) - 1, 0, -1):
-        module_name = ".".join(parts[:idx])
-        if any(name.startswith(f"{module_name}.") for name in sys.modules):
-            break
-        package = sys.modules.pop(module_name, None)
-        parent_name, _, child_name = module_name.rpartition(".")
-        parent = sys.modules.get(parent_name)
-        if parent is not None and getattr(parent, child_name, None) is package:
-            delattr(parent, child_name)
 
 
 def _resolve_verifier_dir(task_dir: Path, config: dict[str, Any]) -> Path:
@@ -588,18 +479,6 @@ def _is_trial_log_path(relative_path: str) -> bool:
     return len(parts) == 3 and parts[0] == "agent" and parts[1].startswith("command-") and parts[2] == "stdout.txt"
 
 
-def _with_trace_artifact(artifacts: Sequence[str | ArtifactConfig], trace_source: str) -> list[str | ArtifactConfig]:
-    for artifact in artifacts:
-        if isinstance(artifact, ArtifactConfig):
-            if artifact.source == trace_source or artifact.destination == _TRACE_ARTIFACT_DESTINATION:
-                return list(artifacts)
-        elif isinstance(artifact, str) and artifact in {trace_source, _TRACE_ARTIFACT_DESTINATION}:
-            return list(artifacts)
-
-    trace_artifact = ArtifactConfig(source=trace_source, destination=_TRACE_ARTIFACT_DESTINATION)
-    return [trace_artifact, *artifacts]
-
-
 def _trial_error(exception_info: Any) -> dict[str, DataValue] | None:
     if exception_info is None:
         return None
@@ -737,6 +616,172 @@ def _trial_resources(
             f"trace_format='{found}' if the agent under test emits {found.upper()}."
         )
     return resources, selected
+
+
+class HarborJobOptions(Protocol):
+    """The two fields any Harbor-backed evaluator config must supply to locate a run.
+
+    Declared structurally so :func:`resolve_harbor_run_inputs` can serve both
+    evaluator configs without importing either — the SDK-backed one lives in a
+    module that already imports this one.
+    """
+
+    jobs_dir: Path
+    job_name: str | None
+
+
+@dataclass(frozen=True)
+class HarborRunInputs:
+    """Validated inputs both Harbor-backed evaluators resolve the same way.
+
+    ``dataset`` is carried through already narrowed to :class:`HarborDataset` so
+    callers need no second ``isinstance`` check to satisfy a type checker — the
+    validation happened once, in :func:`resolve_harbor_run_inputs`.
+    """
+
+    dataset: HarborDataset
+    dataset_path: Path
+    agent_path: Path
+    jobs_dir: Path
+    job_name: str
+
+    @property
+    def job_dir(self) -> Path:
+        """Directory Harbor writes this run's per-trial results into."""
+        return self.jobs_dir / self.job_name
+
+
+async def resolve_harbor_run_inputs(
+    agent: Path,
+    dataset: Dataset,
+    options: HarborJobOptions,
+    experiment_dir: Path | None,
+) -> HarborRunInputs:
+    """Validate an evaluation request and resolve the paths Harbor needs.
+
+    The counterpart to :func:`trials_from_job_dir`: that one owns reading results
+    back, this one owns getting in. Both evaluator types must agree on what "the
+    same inputs" means — if one tightened its agent-path check or moved the
+    verifier preflight, the A/B parity tests would still pass while the two
+    silently diverged. Keeping the entry symmetric with the exit is what stops that.
+
+    Verifier syntax is validated here, before any caller starts Docker: a typo in
+    ``tests/test.sh`` is far cheaper to catch now than after an image build.
+
+    Args:
+        agent: Candidate directory to evaluate.
+        dataset: Must be a :class:`HarborDataset` with a resolvable source.
+        options: Evaluator options supplying ``jobs_dir`` and optional ``job_name``.
+        experiment_dir: Experiment root that ``jobs_dir`` resolves against; the
+            current working directory when ``None``.
+
+    Returns:
+        HarborRunInputs: Resolved dataset/agent paths and the run's job location.
+
+    Raises:
+        ValueError: If the dataset is not a Harbor dataset or has no source.
+        FileNotFoundError: If the agent directory does not exist.
+        DatasetValidationError: If a selected task's verifier fails preflight.
+    """
+    if not isinstance(dataset, HarborDataset):
+        raise ValueError("Dataset must be a Harbor dataset")
+    if dataset.source is None:
+        raise ValueError("Harbor dataset source is required")
+
+    agent_path = agent.expanduser().resolve()
+    if not agent_path.is_dir():
+        raise FileNotFoundError(f"Harbor agent path not found: {agent_path}")
+
+    await dataset.validate()
+
+    return HarborRunInputs(
+        dataset=dataset,
+        dataset_path=local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve(),
+        agent_path=agent_path,
+        jobs_dir=(experiment_dir or Path.cwd()) / options.jobs_dir,
+        # Derived from the *resolved* directory, not the caller's spelling of it.
+        # `job_name` is the cache identity, and the SDK's scoped agent import derives
+        # its package name from the resolved dir too — the two must agree or a job dir
+        # can be reused for a different agent (`--agent .` has an empty `.name`; a
+        # symlink keeps its own name while resolving elsewhere).
+        job_name=options.job_name or f"{agent_path.name}-{dataset.id}",
+    )
+
+
+def trials_from_job_dir(
+    job_dir: Path,
+    tasks: Sequence[Task],
+    *,
+    trace_format: str = "otlp",
+) -> list[TrialResult]:
+    """Adapt a finished Harbor job directory into evaluator-domain trial results.
+
+    The job directory is the authoritative source for both Harbor-backed
+    evaluators: it carries every verifier metric (not just the primary reward),
+    the attempt index, the trial's error shape, and the on-disk trace and
+    artifact references that the Analyzer and the Coder read. Whoever
+    orchestrated the run — Harbor's ``Job`` directly or the SDK's
+    ``HarborAgentTaskRunner`` — writes the same tree, so both evaluators share
+    this adapter and produce equivalent :class:`TrialResult` objects.
+
+    Args:
+        job_dir: Harbor job directory holding one ``<trial>/result.json`` per attempt.
+        tasks: Dataset tasks the run was asked to cover, used to resolve each
+            trial back to its short Experimentalist task id and metric spec.
+        trace_format: Trace artifact format selected as the trial's primary trace.
+
+    Returns:
+        list[TrialResult]: One result per trial directory that wrote a ``result.json``.
+
+    Raises:
+        FileNotFoundError: If the job directory does not exist. Returning no trials
+            would be aggregated as an empty-but-valid result and read as a run that
+            legitimately scored nothing, so an orchestrator that produced no job
+            directory at all is surfaced instead of swallowed.
+    """
+    if not job_dir.is_dir():
+        raise FileNotFoundError(
+            f"Harbor job directory not found: {job_dir}. The run produced no results — "
+            "check the orchestrator's logs for a job that failed before writing any trial."
+        )
+
+    task_map = {task.id: task for task in tasks}
+    trials: list[TrialResult] = []
+    for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
+        result_path = trial_dir / "result.json"
+        if not result_path.is_file():
+            continue
+
+        trial_data = json.loads(result_path.read_text(encoding="utf-8"))
+        trial_id = trial_data.get("trial_name")
+        if not isinstance(trial_id, str) or not trial_id:
+            trial_id = trial_dir.name
+
+        task_id = _resolve_trial_task_id(trial_id, trial_data, task_map)
+        task = task_map.get(task_id)
+        # Prefer the dataset's own spec, but only when it points at a verifier;
+        # a ref-less spec carries no more than the one derived from the trial dir.
+        metric_spec = task.metric_specs.get("reward") if task is not None else None
+        if metric_spec is None or metric_spec.ref is None:
+            metric_spec = _trial_metric_spec(trial_dir, trial_data)
+
+        exception_info = trial_data.get("exception_info")
+        resources, trace = _trial_resources(trial_dir, trace_format=trace_format)
+
+        trials.append(
+            TrialResult(
+                id=trial_id,
+                task_id=task_id,
+                attempt=_trial_attempt(trial_id),
+                status="completed" if exception_info is None else "failed",
+                error=_trial_error(exception_info),
+                trace=trace,
+                outputs={},
+                resources=resources,
+                metrics=_trial_metrics(trial_dir, trial_data, metric_spec),
+            )
+        )
+    return trials
 
 
 class HarborDataset(Dataset):
@@ -952,7 +997,7 @@ class HarborDataset(Dataset):
         )
 
     @classmethod
-    def from_ref(cls, ref: DatasetRef, **options: Any) -> HarborDataset:
+    def from_ref(cls, ref: DatasetRef, *, allow_empty: bool = False, **options: Any) -> HarborDataset:
         """Build a Harbor dataset from a local dataset reference."""
         dataset_path = local_path_from_uri(ref.uri, context="Harbor dataset reference")
         dataset_id = ref.metadata.get("id")
@@ -962,6 +1007,7 @@ class HarborDataset(Dataset):
         dataset = cls.from_path(
             dataset_path,
             dataset_id=dataset_id,
+            allow_empty=allow_empty,
             **options,
         )
         return dataset.subset(task_ids) if task_ids is not None else dataset
@@ -985,18 +1031,31 @@ class HarborDataset(Dataset):
         dataset_path: Path,
         *,
         dataset_id: str | None = None,
+        allow_empty: bool = False,
+        single_task: bool = False,
         **_ignored_options: Any,
     ) -> HarborDataset:
-        """Build a Harbor dataset from a local Harbor task collection."""
+        """Build a Harbor dataset from a local Harbor task collection.
+
+        A dataset holds task directories, which is the only shape Harbor's job
+        config enumerates. ``single_task`` additionally reads *dataset_path*
+        itself as one task — the shape of a task template, which is a task
+        rather than a collection of them.
+        """
         dataset_path = dataset_path.expanduser().resolve()
         if not dataset_path.exists():
             raise FileNotFoundError(f"Harbor dataset path not found: {dataset_path}")
         if not dataset_path.is_dir():
             raise ValueError(f"Harbor dataset path is not a directory: {dataset_path}")
 
-        task_dirs = cls._find_task_dirs(dataset_path)
-        if not task_dirs:
-            raise ValueError(f"Harbor dataset path contains no Harbor task directories: {dataset_path}")
+        task_dirs = [dataset_path] if single_task and is_task_dir(dataset_path) else find_task_dirs(dataset_path)
+        if not task_dirs and not allow_empty:
+            detail = (
+                " (it is itself a task directory; point the dataset at the directory holding it)"
+                if is_task_dir(dataset_path)
+                else ""
+            )
+            raise ValueError(f"Harbor dataset path contains no Harbor task directories: {dataset_path}{detail}")
 
         tasks = [cls._from_task_dir(task_dir) for task_dir in task_dirs]
         return cls(
@@ -1006,16 +1065,6 @@ class HarborDataset(Dataset):
                 description="Harbor dataset root directory.",
             ),
             tasks=tasks,
-        )
-
-    @staticmethod
-    def _find_task_dirs(dataset_path: Path) -> list[Path]:
-        if dataset_path.is_dir() and (dataset_path / "task.toml").exists():
-            return [dataset_path]
-        return sorted(
-            path
-            for path in dataset_path.iterdir()
-            if path.is_dir() and path.name != "task_template" and (path / "task.toml").exists()
         )
 
     @classmethod
@@ -1312,96 +1361,3 @@ class HarborDataset(Dataset):
             tasks=tasks,
             metadata=dict(self.metadata),
         )
-
-
-class HarborEvaluator(Evaluator):
-    """Run Harbor evaluations and return parsed reward payloads."""
-
-    evaluator_type: EvaluatorType = "harbor"
-
-    def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
-        super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)
-
-    async def _run(self, agent: Path, dataset: Dataset, options: HarborEvaluatorConfig) -> Sequence[TrialResult]:
-        if not isinstance(dataset, HarborDataset):
-            raise ValueError("Dataset must be a Harbor dataset")
-
-        if dataset.source is None:
-            raise ValueError("Harbor dataset source is required")
-        dataset_path = local_path_from_uri(dataset.source.uri, context="Harbor dataset reference").resolve()
-
-        options_dict = options.model_dump()
-        experiment_dir = self.experiment_dir or Path.cwd()
-        options_dict["jobs_dir"] = experiment_dir / options.jobs_dir
-        options_dict["job_name"] = options.job_name or f"{agent.name}-{dataset.id}"
-        import_path: str = options_dict.pop("import_path")
-        trace_dir: str = options_dict.pop("trace_dir", _TRACE_ARTIFACT_SOURCE)
-        # Harbor's JobConfig forbids unknown keys, so this must not survive into it.
-        trace_format: str = options_dict.pop("trace_format", "otlp")
-        options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
-        force_rerun: bool = options_dict.pop("force_rerun", False)
-
-        agent_path = agent.expanduser().resolve()
-
-        if not agent_path.is_dir():
-            raise FileNotFoundError(f"Harbor agent path not found: {agent_path}")
-
-        await dataset.validate()
-
-        scoped_import_path, scoped_package = _scoped_import_path(agent_path, import_path)
-        agents_config = [AgentConfig(import_path=scoped_import_path)]
-        datasets_config = [DatasetConfig(path=dataset_path, task_names=[task.id for task in dataset.tasks])]
-        job_config = JobConfig(**options_dict, agents=agents_config, datasets=datasets_config)
-        if force_rerun:
-            job_dir = job_config.jobs_dir / job_config.job_name
-            if job_dir.exists():
-                shutil.rmtree(job_dir)
-
-        try:
-            job = await Job.create(job_config)
-            await job.run()
-        finally:
-            _cleanup_scoped_imports(scoped_package)
-
-        trials = await self._trials_from_dir(job.job_dir, dataset.tasks, trace_format=trace_format)
-        return trials
-
-    async def _trials_from_dir(
-        self, job_dir: Path, tasks: Sequence[Task], *, trace_format: str = "otlp"
-    ) -> Sequence[TrialResult]:
-        task_map = {task.id: task for task in tasks}
-        trials: list[TrialResult] = []
-        for trial_dir in sorted(path for path in job_dir.iterdir() if path.is_dir()):
-            result_path = trial_dir / "result.json"
-            if not result_path.is_file():
-                continue
-
-            trial_data = json.loads(result_path.read_text(encoding="utf-8"))
-            trial_id = trial_data.get("trial_name")
-            if not isinstance(trial_id, str) or not trial_id:
-                trial_id = trial_dir.name
-
-            task_id = _resolve_trial_task_id(trial_id, trial_data, task_map)
-            task = task_map.get(task_id)
-            metric_spec = task.metric_specs["reward"] if task is not None and "reward" in task.metric_specs else None
-            if metric_spec is not None and metric_spec.ref is None:
-                metric_spec = None
-            metric_spec = metric_spec or _trial_metric_spec(trial_dir, trial_data)
-
-            exception_info = trial_data.get("exception_info")
-            resources, trace = _trial_resources(trial_dir, trace_format=trace_format)
-
-            trials.append(
-                TrialResult(
-                    id=trial_id,
-                    task_id=task_id,
-                    attempt=_trial_attempt(trial_id),
-                    status="completed" if exception_info is None else "failed",
-                    error=_trial_error(exception_info),
-                    trace=trace,
-                    outputs={},
-                    resources=resources,
-                    metrics=_trial_metrics(trial_dir, trial_data, metric_spec),
-                )
-            )
-        return trials

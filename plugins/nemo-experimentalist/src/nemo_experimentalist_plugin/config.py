@@ -12,20 +12,19 @@ record of what ran. It is therefore a plain ``BaseModel`` with no environment bi
 The optimizer's own default/fast model pair is selected by ``nemo setup`` and
 stored in the active Platform CLI context.
 
-Component-owned slices (``CoderConfig``, ``AnalyzerConfig``, ...) are imported from the
-components that consume them rather than redeclared here -- ``resolve.py`` used to carry a
-second copy of each because importing a component module required credentials, which it no
-longer does.
+Component-owned slices (``CodeEditBuilderConfig``, ``AnalyzerConfig``, ...) are imported from the
+components that consume them rather than redeclared here.
 """
 
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Self
 
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
-from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
-from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
-from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
-from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
+from nemo_experimentalist_plugin.entities import MetricTarget
+from nemo_experimentalist_plugin.experimentalist.components.models import (  # noqa: F401 - re-exported
+    has_metric_dimensions,
+    pareto_objectives,
+)
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -50,55 +49,6 @@ class CandidateStorageConfig(BaseModel):
     pr_labels: list[str] = Field(default_factory=list)
 
 
-class MetricTarget(BaseModel):
-    """One evaluator-produced metric and the desired direction of change."""
-
-    name: str = Field(min_length=1, description="Exact metric name emitted by the evaluator.")
-    direction: Literal["maximize", "minimize"] = Field(
-        description="Whether higher or lower values are better for this target."
-    )
-    target: float | None = Field(
-        default=None,
-        description=(
-            "Value at which this objective counts as satisfied, in the metric's own "
-            "units. When every targeted objective is met the run stops, so a solved "
-            "problem stops paying for rounds. Unset means no such stop: metrics are not "
-            "required to be normalized, so there is no value that means 'as good as "
-            "possible' for an arbitrary one."
-        ),
-    )
-
-    def is_satisfied_by(self, value: float | None) -> bool:
-        """Whether *value* meets this target. False when either side is absent.
-
-        A missing measurement is not evidence of success, and a target that was never
-        configured must not end a run.
-        """
-        if value is None or self.target is None:
-            return False
-        return value >= self.target if self.direction == "maximize" else value <= self.target
-
-
-def pareto_objectives(metrics: dict[str, float], objective_function: list[MetricTarget]) -> dict[str, float]:
-    """Project evaluator metrics onto the configured objectives for Pareto ranking.
-
-    The generic Pareto utility maximizes every dimension. Minimized objective
-    values are sign-inverted here; regression metrics are intentionally absent.
-    """
-    objectives: dict[str, float] = {}
-    for target in objective_function:
-        value = metrics.get(target.name)
-        if value is None:
-            return {}
-        objectives[target.name] = float(value) if target.direction == "maximize" else -float(value)
-    return objectives
-
-
-def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
-    """Return whether an evaluator result contains every required metric target."""
-    return all(target.name in metrics for target in targets)
-
-
 class EvolutionaryOptimizerConfig(BaseModel):
     """Parameters for one optimizer run, read from ``--config`` and nothing else.
 
@@ -106,6 +56,9 @@ class EvolutionaryOptimizerConfig(BaseModel):
     named explicitly on the command line, and are recorded in ``config_snapshot`` as the
     account of what ran. Letting an ambient environment variable override them would make
     that account wrong. Agent model settings live in the active Platform CLI context.
+
+    Unknown keys are tolerated, so a key that was *removed* has to be rejected explicitly
+    below — silently ignoring one would change what the run does.
     """
 
     @model_validator(mode="before")
@@ -115,12 +68,105 @@ class EvolutionaryOptimizerConfig(BaseModel):
             return data
         if "curator" in data:
             raise ValueError("'curator' was renamed to 'eval_author'; update the optimizer configuration")
+
+        # A step is turned off by choosing no implementation of its role.
+        for removed, replacement in (
+            ("disable_convergence_check", "terminator"),
+            ("disable_trajectory_scoring", "trajectory_scorer"),
+        ):
+            if removed in data:
+                raise ValueError(
+                    f"{removed!r} is no longer a run-config key; write '{replacement}: null' instead. "
+                    "Turning a step off is how you choose no implementation of its role."
+                )
+
+        # The role key now names a component, so its tuning moved under '<role>_config'.
+        # A string is a component name and stays valid; only a config block is legacy.
+        for removed, replacement in (("analyzer", "analyzer_config"), ("proposer", "proposer_config")):
+            if isinstance(data.get(removed), dict):
+                raise ValueError(
+                    f"{removed!r} now names the component to run, so its settings moved to {replacement!r}."
+                )
+
+        # Renamed outright. These are not fields at all, so any value here is legacy and
+        # would otherwise be dropped in silence — changing what the run does.
+        for removed, role, config_key in (
+            ("evaluator", "outcome_evaluator", "outcome_evaluator_config"),
+            ("evaluation", "outcome_evaluator", "outcome_evaluator_config"),
+            ("evaluation_config", "outcome_evaluator", "outcome_evaluator_config"),
+            ("coder", "builder", "builder_config"),
+            ("goal_config", "trajectory_scorer", "trajectory_scorer_config"),
+        ):
+            if removed in data:
+                raise ValueError(
+                    f"{removed!r} is no longer a run-config key; the role is {role!r} and its settings "
+                    f"belong under {config_key!r}."
+                )
         if "models" in data:
             raise ValueError(
                 "'models' is no longer a run-config key. Run `nemo setup` to select the default and fast agent models."
             )
+
+        # `harbor` shipped as an evaluator_type before the evaluator was split into two
+        # implementations, so configs in the wild carry it.
+        if data.get("outcome_evaluator") == "harbor":
+            raise ValueError(
+                "outcome_evaluator: 'harbor' was split into 'harbor-native' (the default) and "
+                "'harbor-runner', which drives Harbor through the NeMo Evaluator SDK."
+            )
         return data
 
+    strategy: str = Field(
+        default="evolutionary",
+        description=(
+            "Registered 'strategy' component the runner runs. Ours is resolved by name "
+            "like any other, so a strategy shipped by another package is selected here "
+            "with no code change."
+        ),
+    )
+    # Every step the strategy delegates to is named here, so swapping one is configuration.
+    # A null means "no such step": turning a step off is the degenerate case of choosing a
+    # different implementation, which is why there are no disable_* booleans.
+    analyzer: str | None = Field(
+        default="trace",
+        description="Registered 'root-cause-analyzer'. Null skips diagnosis and the train eval feeding it.",
+    )
+    outcome_evaluator: str = Field(
+        default="harbor-native",
+        description=(
+            "Registered 'outcome-evaluator' measuring what a candidate achieved. Named for "
+            "the outcome because the trajectory-scorer measures the process of the same run."
+        ),
+    )
+    proposer: str = Field(default="code-change", description="Registered 'proposer' emitting each round's Proposals.")
+    terminator: str | None = Field(
+        default="convergence",
+        description="Registered 'terminator'. Null stops only on max_rounds.",
+    )
+    trajectory_scorer: str | None = Field(
+        default="goal-tree",
+        description="Registered 'trajectory-scorer'. Null skips step scoring and the goal tree it needs.",
+    )
+    selector: str = Field(
+        default="pareto-diversity",
+        description="Registered 'selector' component choosing survivors and the winner.",
+    )
+    selector_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the selector named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    terminator_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the terminator named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    builder: str = Field(
+        default="code-edit",
+        description=(
+            "Registered 'builder' component that turns a Proposal into a Candidate. "
+            "Swap it for one shipped by another package to change how candidates are "
+            "built without touching the loop."
+        ),
+    )
     max_rounds: int = Field(default=15, description="Hard ceiling on optimization rounds.")
     min_rounds_before_stopping: int = Field(
         default=3, description="Rounds that must complete before the convergence check may stop the run."
@@ -136,12 +182,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     model_catalog_path: Path | None = Field(
         default=None, description="Model catalog overriding the packaged assets/models.yaml."
     )
-    disable_trajectory_scoring: bool = Field(
-        default=False, description="Skip goal-tree trajectory scoring and the goal tree it needs."
-    )
-    disable_convergence_check: bool = Field(
-        default=False, description="Stop only on max_rounds, never on the terminator's convergence judgement."
-    )
+
     objective_function: list[MetricTarget] = Field(
         default_factory=lambda: [MetricTarget(name="reward", direction="maximize")],
         min_length=1,
@@ -153,11 +194,26 @@ class EvolutionaryOptimizerConfig(BaseModel):
     )
     source: AgentSourceConfig = Field(default_factory=AgentSourceConfig)
     storage: CandidateStorageConfig = Field(default_factory=CandidateStorageConfig)
-    goal_config: GoalTreeConfig = Field(default_factory=GoalTreeConfig)
-    coder: CoderConfig = Field(default_factory=CoderConfig)
-    analyzer: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
-    proposer: ProposerConfig = Field(default_factory=ProposerConfig)
-    evaluator: dict[str, Any] = Field(default_factory=dict)
+    trajectory_scorer_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the trajectory-scorer named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    builder_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the builder named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    analyzer_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the root-cause-analyzer named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    proposer_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Settings for the proposer named above, validated against *that component's* `config_type` when it is built — so a component from another package is configurable without this schema knowing its fields.",
+    )
+    outcome_evaluator_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Config for the selected 'evaluation' component; its own model validates it.",
+    )
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
 
     @model_validator(mode="after")
@@ -188,3 +244,25 @@ class EvolutionaryOptimizerConfig(BaseModel):
             f"Do not regress these metric(s): {regressions}. "
             "Metric values, including aggregates, are produced by the evaluator; do not invent formulas or weights."
         )
+
+
+def with_insight_objective(
+    config: "EvolutionaryOptimizerConfig", metric_keys: tuple[str, ...]
+) -> "EvolutionaryOptimizerConfig":
+    """Make insight metrics objectives and preserve all configured targets as guardrails."""
+    if not metric_keys:
+        return config
+    insight_metric_names = set(metric_keys)
+    objective = [MetricTarget(name=metric_key, direction="maximize") for metric_key in metric_keys]
+    regression_by_name = {
+        target.name: target
+        for target in [*config.objective_function, *config.regression_metrics]
+        if target.name not in insight_metric_names
+    }
+    return EvolutionaryOptimizerConfig.model_validate(
+        config.model_dump(mode="python")
+        | {
+            "objective_function": [target.model_dump(mode="python") for target in objective],
+            "regression_metrics": [target.model_dump(mode="python") for target in regression_by_name.values()],
+        }
+    )

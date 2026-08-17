@@ -18,7 +18,11 @@ import {
 } from '@studio/routes/guardrails/GuardrailChecksTab/constants';
 import { GuardrailConfigTab } from '@studio/routes/guardrails/GuardrailConfigTab';
 import { GuardrailDetailRoute } from '@studio/routes/guardrails/GuardrailDetailRoute';
-import { getGuardrailChecksRoute, getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
+import {
+  getGuardrailChecksRoute,
+  getGuardrailChecksSubTabRoute,
+  getGuardrailConfigRoute,
+} from '@studio/routes/utils';
 import { XL_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { renderRoute, screen } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
@@ -220,6 +224,63 @@ describe('GuardrailChecksTab', () => {
           }
         )
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('run target', () => {
+    /** Dirty the form via the real Configuration tab, then return to Test and Validate. */
+    const dirtyThenOpenChecks = async () => {
+      const user = userEvent.setup();
+      renderChecks('pii-filter', getGuardrailConfigRoute(WORKSPACE, 'pii-filter'));
+      await user.type(
+        await screen.findByRole(
+          'textbox',
+          { name: 'General instruction' },
+          { timeout: XL_SELECTOR_TIMEOUT }
+        ),
+        'Be extremely cautious.'
+      );
+      await user.click(screen.getByRole('tab', { name: 'Test and Validate' }));
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+      return user;
+    };
+
+    it('offers only the saved config while the form is pristine', async () => {
+      renderChecks('pii-filter');
+      await screen.findByText('Guardrail Test Cases', undefined, { timeout: XL_SELECTOR_TIMEOUT });
+
+      expect(screen.getByRole('radio', { name: 'Saved' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Draft' })).toBeDisabled();
+    });
+
+    it('selects Draft once there are unsaved edits and sends the config inline', async () => {
+      const user = await dirtyThenOpenChecks();
+
+      expect(screen.getByRole('radio', { name: 'Draft' })).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: /Run 2 Tests/ }));
+      await screen.findByText('Ran 2 test(s) successfully', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
+
+      const [sent] = recordedCheckRequests;
+      expect(sent?.guardrails).not.toHaveProperty('config_ids');
+      const inline = sent?.guardrails?.config;
+      expect(typeof inline === 'object' ? inline.instructions : undefined).toContainEqual(
+        expect.objectContaining({ content: expect.stringContaining('Be extremely cautious.') })
+      );
+    });
+
+    it('runs against the saved config when the user picks Saved on a dirty form', async () => {
+      const user = await dirtyThenOpenChecks();
+
+      await user.click(screen.getByRole('radio', { name: 'Saved' }));
+      await user.click(screen.getByRole('button', { name: /Run 2 Tests/ }));
+      await screen.findByText('Ran 2 test(s) successfully', undefined, {
+        timeout: XL_SELECTOR_TIMEOUT,
+      });
+
+      expect(recordedCheckRequests[0]?.guardrails).toEqual({ config_ids: ['pii-filter'] });
     });
   });
 

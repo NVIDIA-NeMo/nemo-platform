@@ -7,11 +7,11 @@ max_survivors: 1
 max_candidates: 1
 max_trajectory_tasks: 2
 train_batch_seed: 20260727
-disable_trajectory_scoring: true
-disable_convergence_check: true
+trajectory_scorer: null
+terminator: null
 storage:
   archive_candidates: true
-evaluator:
+outcome_evaluator_config:
   n_attempts: 1
   quiet: true
   agent_setup_timeout_multiplier: 2.0

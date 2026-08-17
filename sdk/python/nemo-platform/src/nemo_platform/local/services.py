@@ -21,6 +21,7 @@ from typing import Any, Literal, Protocol, Self, runtime_checkable
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.local import process
+from nemo_platform.local.install import services_extra_install_command
 from nemo_platform.local.transport import (
     EMBEDDED_BASE_URL,
     UDS_BASE_URL,
@@ -407,7 +408,7 @@ class EmbeddedServiceHandle:
 def require_services_extra() -> None:
     if importlib.util.find_spec("pyleak") is not None:
         return
-    raise ServicesExtraRequiredError("Install service dependencies with `pip install 'nemo-platform[all]'`.")
+    raise ServicesExtraRequiredError(f"Install service dependencies with `{services_extra_install_command()}`.")
 
 
 def _validate_socket_path_length(socket_path: Path) -> None:

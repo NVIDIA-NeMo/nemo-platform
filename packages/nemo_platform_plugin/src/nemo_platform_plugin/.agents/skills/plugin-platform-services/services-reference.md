@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Platform Services Quick Reference
 
 **Contents:** [Entity Store](#entity-store) · [Jobs Service](#jobs-service) · [Files Service](#files-service-filesets) · [Secrets Service](#secrets-service) · [Models Service](#models-service) · [Inference Gateway](#inference-gateway) · [Auth Service](#auth-service)

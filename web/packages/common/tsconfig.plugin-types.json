@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
+    "allowImportingTsExtensions": true,
+    "rootDir": "..",
+    "outDir": "./dist/plugin-types",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src/plugin.ts"],
+  "exclude": []
+}

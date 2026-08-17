@@ -3,10 +3,11 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, ClassVar, Literal, cast, get_args
 
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, Proposal, local_path_from_uri
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.models import (
-    EvolutionTree,
     OptimizationType,
 )
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
@@ -25,24 +26,25 @@ from .util import load_framework_skills
 logger = logging.getLogger(__name__)
 
 
-class Improvement(BaseModel):
-    """A proposed single-change improvement for a specific ancestor agent."""
+#: What this Proposer produces and the built-in CodeEditBuilder accepts. An opaque
+#: discriminator, not a global enumeration — it only has to match a Builder.
+CODE_CHANGE = "code-change"
 
-    ancestor: str
+
+class CodeChange(BaseModel):
+    """The ``code-change`` payload schema, owned by this Proposer and the CodeEditBuilder.
+
+    Nothing here belongs on ``Candidate``: it is what the Builder was *asked* to
+    produce, which the committed Candidate keeps as ``generated_from`` provenance
+    alongside the artifact it actually produced.
+    """
+
     root_cause: str = Field(
         min_length=1,
         description=(
             "The diagnosed cause of poor performance from the analysis — WHY the agent fails, "
             "not what would fix it. Must complete: 'The agent underperforms because...' "
             "Do not mention the proposed change or any remedy here."
-        ),
-    )
-    optimization: str = Field(
-        min_length=1,
-        description=(
-            "Graph-level description of the change in terms of the architecture diagram: "
-            "which node is added, removed, or modified; which edge changes; which prompt is rewritten. "
-            "Must NOT reference source file paths, line numbers, or implementation details."
         ),
     )
     optimization_type: OptimizationType
@@ -57,6 +59,46 @@ class Improvement(BaseModel):
     )
 
 
+class Improvement(BaseModel):
+    """One proposed change, as the LLM returns it, before it becomes a Proposal."""
+
+    ancestor: str = Field(description="Candidate id to branch from.")
+    optimization: str = Field(
+        min_length=1,
+        description=(
+            "Graph-level description of the change in terms of the architecture diagram: "
+            "which node is added, removed, or modified; which edge changes; which prompt is rewritten. "
+            "Must NOT reference source file paths, line numbers, or implementation details."
+        ),
+    )
+    root_cause: str = Field(
+        min_length=1,
+        description=(
+            "The diagnosed cause of poor performance from the analysis — WHY the agent fails, "
+            "not what would fix it. Must complete: 'The agent underperforms because...' "
+            "Do not mention the proposed change or any remedy here."
+        ),
+    )
+    optimization_type: OptimizationType
+    task_ids: list[str] = Field(
+        default_factory=list,
+        description="Task ids whose failure evidence is caused by `root_cause`.",
+    )
+
+    def as_proposal(self) -> Proposal:
+        """The Layer A message a Builder receives, with this pair's payload inside it."""
+        return Proposal(
+            ancestor=self.ancestor,
+            description=self.optimization,
+            kind=CODE_CHANGE,
+            payload=CodeChange(
+                root_cause=self.root_cause,
+                optimization_type=self.optimization_type,
+                task_ids=self.task_ids,
+            ).model_dump(),
+        )
+
+
 class ProposerConfig(BaseModel):
     """Configuration for Proposer tuning parameters."""
 
@@ -66,18 +108,27 @@ class ProposerConfig(BaseModel):
     )
 
 
-class Proposer(Agent):
+class CodeChangeProposer(Agent, roles.Proposer):
     """Propose the next round's isolated optimization candidates."""
+
+    config_type = ProposerConfig
+
+    name = "code-change"
+    produces: ClassVar[frozenset[str]] = frozenset({CODE_CHANGE})
 
     def __init__(
         self,
         workspace: Path,
         config: ProposerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
         **kwargs: Any,
     ):
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or ProposerConfig()
+        self._objective_metrics = objective_metrics or []
+        self._regression_metrics = regression_metrics or []
         self._workspace_path = workspace.resolve()
         self.workspace = WorkspaceTool(workspace=self._workspace_path)
         self.context["workspace_tool_documentation"] = doc(WorkspaceTool)
@@ -93,62 +144,72 @@ class Proposer(Agent):
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
 
+    @staticmethod
+    def _evolution_table(candidates: list[Candidate]) -> str:
+        """Render the population as the markdown table the prompt reads."""
+        if not candidates:
+            return "(none yet — this is the first round)"
+        rows = ["| agent | generation | ancestor | validation reward |", "| --- | --- | --- | --- |"]
+        for c in sorted(candidates, key=lambda c: (c.generation, c.label)):
+            reward = c.rewards["validation"].metrics or {}
+            ancestor = next((o.label for o in candidates if o.id == c.ancestor), "—")
+            rows.append(f"| {c.label} | {c.generation} | {ancestor} | {reward or '—'} |")
+        return "\n".join(rows)
+
     async def run(
         self,
+        *,
         analysis: str,
-        evolution_history: str,
-        evolution_tree: EvolutionTree,
+        candidates: list[Candidate],
         round_num: int,
-        phase: Literal["exploration", "exploitation"],
         max_candidates: int,
-        objective_metrics: list[dict[str, Any]],
-        regression_metrics: list[dict[str, Any]],
-    ) -> list[Improvement]:
+        hint: str | None = None,
+    ) -> list[Proposal]:
         """Return up to max_candidates targeted improvement proposals.
 
         Args:
             analysis: merged round analysis markdown with root causes already enumerated.
-            evolution_history: markdown table of prior rounds for context.
-            evolution_tree: live tree used to derive survivors and tried optimization types.
-            round_num: current optimization round number; used to filter survivors.
-            phase: "exploration" for novel directions, "exploitation" to refine the best.
-            max_candidates: maximum number of Improvement objects to return.
-            objective_metrics: Evaluator metric dimensions this round must improve.
-            regression_metrics: Evaluator metric dimensions this round must preserve.
+            candidates: the scored population to propose against; lineage is on each one.
+            round_num: the round these Proposals are for.
+            max_candidates: maximum number of Proposals to return.
+            hint: optional steer from the strategy, e.g. to explore rather than refine.
 
         Returns:
-            list[Improvement]: up to max_candidates targeted improvement proposals.
+            list[Proposal]: up to max_candidates build requests, each routed to a
+            Builder by its ``kind``.
 
         """
         all_types = set(get_args(OptimizationType))
         tried_types = sorted(
             {
-                n.optimization_type
-                for n in evolution_tree.nodes.values()
-                if n.optimization_type and n.optimization_type in all_types
+                kind
+                for c in candidates
+                if (kind := (c.generated_from.payload or {}).get("optimization_type")) in all_types
             }
         )
         available_types = sorted(all_types - set(tried_types))
-        proposal_survivors = evolution_tree.survivors(round_num)
+        proposal_survivors = [c for c in candidates if c.killed_generation is None]
 
-        agents_dir = self._workspace_path / "eval-and-optimize" / "agents"
         survivor_context: list[dict[str, Any]] = []
         for s in proposal_survivors:
-            arch_path = agents_dir / s.label / "architecture.md"
-            try:
-                arch_text = arch_path.read_text()
-            except OSError:
-                arch_text = f"(architecture.md missing for {s.label})"
+            # Through the artifact the record addresses, never `agents/<label>/`: the
+            # label is a display handle and nothing may derive storage from it.
+            arch_text = f"(architecture.md missing for {s.label})"
+            meta: dict[str, Any] = {}
             try:
                 candidate = self.workspace.get_metadata(s.label)
                 meta = candidate.slim().model_dump()
-            except Exception:  # noqa: BLE001
-                meta = {}
+                artifact = local_path_from_uri(candidate.artifact.uri)
+                artifact = artifact if artifact.is_dir() else artifact.parent
+                arch_text = (artifact / "architecture.md").read_text()
+            except Exception:  # noqa: BLE001 - a survivor without a readable doc is still proposable
+                pass
             survivor_context.append(
                 {
-                    "id": s.label,
-                    "metrics": s.reward("validation").metrics or {},
-                    "trajectory_reward": s.reward("validation-trajectory").metrics or {},
+                    "id": s.id,
+                    "label": s.label,
+                    "reward": s.rewards["validation"].metrics or {},
+                    "trajectory_reward": s.rewards["validation-trajectory"].metrics or {},
                     "metadata": meta,
                     "architecture": arch_text,
                 }
@@ -156,41 +217,78 @@ class Proposer(Agent):
 
         improvements = await self._run_with_context(
             analysis=analysis,
-            evolution_history=evolution_history,
+            evolution_history=self._evolution_table(candidates),
             tried_types=tried_types,
             available_types=available_types,
             survivors=survivor_context,
             cards_index=doc(self.optimize),
-            phase=phase,
+            phase=cast("Literal['exploration', 'exploitation']", hint or "exploration"),
             max_candidates=max_candidates,
-            objective_metrics=objective_metrics,
-            regression_metrics=regression_metrics,
+            objective_metrics=[t.model_dump() for t in self._objective_metrics],
+            regression_metrics=[t.model_dump() for t in self._regression_metrics],
         )
-        # allowed_types is every type, not just the untried ones. available_types
-        # still reaches the prompt, so novelty stays a *preference*: a type that
-        # worked in an earlier round can be used again when it is the right tool.
-        return self._filter_improvements(
-            improvements=improvements,
-            max_candidates=max_candidates,
+        # allowed_types is every type, not just the untried ones (#1163). available_types
+        # still reaches the prompt, so novelty stays a *preference*: a type that worked in
+        # an earlier round can be used again when it is the right tool.
+        usable = self._usable_improvements(
+            improvements,
+            known_ancestors={c.id for c in proposal_survivors},
             allowed_types=all_types,
         )
+        kept = self._validate_improvements(improvements=usable, max_candidates=max_candidates)
+        return [improvement.as_proposal() for improvement in kept]
 
     @staticmethod
-    def _filter_improvements(
-        *,
-        improvements: list[Improvement],
-        max_candidates: int,
-        allowed_types: set[str],
+    def _usable_improvements(
+        improvements: list[Improvement], *, known_ancestors: set[str], allowed_types: set[str]
     ) -> list[Improvement]:
-        """Return at most ``max_candidates`` usable improvements, dropping the rest.
+        """Keep the improvements a Builder could actually build, dropping the rest.
 
-        An improvement is dropped when its ``optimization_type`` is outside
-        ``allowed_types`` or its optimization text repeats one already kept; a
-        repeated ``optimization_type`` is fine. Every drop is logged, so a Proposer
-        emitting consistently unusable output cannot look healthy.
+        Two ways a model gets this wrong, and neither is worth a run. ``ancestor`` is a
+        candidate id while survivors carry both id and label, so a plausible "agent-2" is
+        exactly what comes back. And ``optimization_type`` has twenty valid values, so a
+        near-miss like "edit_method" for "edit_concrete_method" is equally likely.
 
-        Raises:
-            ValueError: if no usable improvement remains, which leaves nothing to build.
+        Both checks run *after* the CodeAct loop, so raising buys no retry: it unwinds
+        through the strategy and ends a run that has already spent hours. Same policy as
+        the Builder — one bad proposal is not a bad round.
+        """
+        usable: list[Improvement] = []
+        for improvement in improvements:
+            if improvement.ancestor not in known_ancestors:
+                logger.warning(
+                    "Dropping a proposal whose ancestor %r is not a survivor id (%s): %s",
+                    improvement.ancestor,
+                    sorted(known_ancestors),
+                    improvement.optimization,
+                )
+            elif improvement.optimization_type not in allowed_types:
+                logger.warning(
+                    "Dropping a proposal with unusable optimization_type %r (allowed: %s): %s",
+                    improvement.optimization_type,
+                    sorted(allowed_types),
+                    improvement.optimization,
+                )
+            else:
+                usable.append(improvement)
+        if improvements and not usable:
+            raise ValueError(
+                f"None of the Proposer's {len(improvements)} improvements were usable: every one named "
+                f"an ancestor outside {sorted(known_ancestors)} or a type outside {sorted(allowed_types)}"
+            )
+        return usable
+
+    @staticmethod
+    def _validate_improvements(*, improvements: list[Improvement], max_candidates: int) -> list[Improvement]:
+        """Reject a batch that is malformed as a whole, and return the ones worth building.
+
+        Deduplicates by optimization text and truncates to the round's budget — the cut
+        falls on the kept list, since a surplus improvement past it may be the only
+        usable one.
+
+        A repeated ``optimization_type`` is fine (#1163): there are twenty of them and
+        two genuinely different changes to the same method share one, so it is not
+        evidence of a malformed batch. Duplicate *text* is, and is dropped below.
         """
         if not improvements:
             raise ValueError("Proposer returned no improvements")
@@ -198,15 +296,6 @@ class Proposer(Agent):
         kept: list[Improvement] = []
         seen_descriptions: set[str] = set()
         for improvement in improvements:
-            optimization_type = improvement.optimization_type
-            if optimization_type not in allowed_types:
-                logger.warning(
-                    "dropping improvement with disallowed optimization_type %r; allowed: %s",
-                    optimization_type,
-                    sorted(allowed_types),
-                )
-                continue
-
             description = improvement.optimization.strip()
             if description in seen_descriptions:
                 logger.warning("dropping improvement with duplicate optimization text: %r", description)

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 openapi: 3.1.0
 info:
   title: Nemo Platform API
@@ -227,8 +230,10 @@ paths:
         schema:
           type: integer
           minimum: 1
+          description: Page number to retrieve.
           default: 1
           title: Page
+        description: Page number to retrieve.
       - name: page_size
         in: query
         required: false
@@ -236,8 +241,10 @@ paths:
           type: integer
           maximum: 100
           minimum: 1
+          description: Number of keys to retrieve per page.
           default: 100
           title: Page Size
+        description: Number of keys to retrieve per page.
       responses:
         '200':
           description: Successful Response
@@ -273,12 +280,12 @@ paths:
       - name: jti
         in: path
         required: true
-        description: Stable JWT ID of the Scoped Access Key to revoke.
         schema:
           type: string
           pattern: ^ak_[0-9a-f]{32}$
           description: Stable JWT ID of the Scoped Access Key to revoke.
           title: Jti
+        description: Stable JWT ID of the Scoped Access Key to revoke.
       responses:
         '200':
           description: Successful Response

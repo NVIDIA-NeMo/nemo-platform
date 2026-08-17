@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # This file defines rules for converting low-level training exceptions
 # into user-friendly CustomizerTrainingError subclasses.
 # Rules for all backends are present in the same yaml file.

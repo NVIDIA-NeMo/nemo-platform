@@ -9,7 +9,7 @@ import pytest
 from click.testing import Result
 from nemo_experimentalist_plugin import cli
 from nemo_experimentalist_plugin.entities import DatasetRef
-from nemo_experimentalist_plugin.experimentalist.components.loop import EvolutionaryOptimizerConfig
+from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes
 from nemo_platform import AsyncNeMoPlatform
 from typer.testing import CliRunner
@@ -137,8 +137,10 @@ def _make_paths(tmp_path: Path) -> ExperimentCliPaths:
     template = _make_dir(tmp_path / "template")
     (template / "task.toml").write_text('[task]\nname = "org/test-template"\n', encoding="utf-8")
     (template / "instruction.md").write_text("Test task instructions.\n", encoding="utf-8")
+    agent = _make_dir(tmp_path / "agent")
+    (agent / "harbor_wrapper.py").write_text("class WrappedAgent:\n    pass\n", encoding="utf-8")
     return ExperimentCliPaths(
-        agent=_make_dir(tmp_path / "agent"),
+        agent=agent,
         train=_make_dir(tmp_path / "train"),
         validation=_make_dir(tmp_path / "validation"),
         template=template,
@@ -170,8 +172,10 @@ def test_cli_help_exposes_only_run_and_doctor() -> None:
     ("config_body", "expected_config", "expected_output"),
     [
         pytest.param(
-            "max_rounds: 2\nevaluator:\n  max_attempts: 3\n",
-            EvolutionaryOptimizerConfig.model_validate({"max_rounds": 2, "evaluator": {"max_attempts": 3}}),
+            "max_rounds: 2\noutcome_evaluator_config:\n  max_attempts: 3\n",
+            EvolutionaryOptimizerConfig.model_validate(
+                {"max_rounds": 2, "outcome_evaluator_config": {"max_attempts": 3}}
+            ),
             "configured-summary",
             id="with-config",
         ),

@@ -5,7 +5,7 @@ import { getErrorMessage } from '@nemo/common/src/api/common/utils';
 import { LoadingButton } from '@nemo/common/src/components/LoadingButton';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
+import { Flex, SegmentedControl, Stack, Tabs, Text } from '@nvidia/foundations-react-core';
 import { useCreateGuardrailCheck, useRunGuardrailChecks } from '@studio/api/guardrail-checks/hooks';
 import type { GuardrailCheckEntity } from '@studio/api/guardrail-checks/types';
 import { GuardrailChecksDataView } from '@studio/components/dataViews/GuardrailChecksDataView';
@@ -16,15 +16,22 @@ import { GuardrailChecksSubTab } from '@studio/routes/guardrails/GuardrailChecks
 import { GuardrailTestCard } from '@studio/routes/guardrails/GuardrailChecksTab/GuardrailTestCard';
 import { getGuardrailChecksSubTabRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
-import { ListChecks, Plus, Settings } from 'lucide-react';
-import { type FC, useCallback, useRef, useState } from 'react';
+import { ListChecks, Plus } from 'lucide-react';
+import { type FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
+
+/** Which config a run is dispatched against. */
+type RunTarget = 'draft' | 'saved';
 
 interface GuardrailTestCasesEditorProps {
   readonly workspace: string;
   readonly configId: string;
   /** The config's rails, used by the result panel to list guardrail coverage. */
   readonly configData: RailsConfig | undefined;
+  /** Whether the Configuration tab holds unsaved edits. Gates the Draft run target. */
+  readonly isDirty: boolean;
+  /** Server config with live form edits applied — what a Draft run sends inline. */
+  readonly draftConfig: RailsConfig;
   readonly checks: GuardrailCheckEntity[];
   /** Which sub-tab to show. The route owns this; an unknown segment redirects upstream. */
   readonly subTab: GuardrailChecksSubTab;
@@ -34,6 +41,8 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
   workspace,
   configId,
   configData,
+  isDirty,
+  draftConfig,
   checks,
   subTab,
 }) => {
@@ -43,6 +52,14 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
   // Per-card flushers, keyed by check name; see `handleRunAll`.
   const flushersRef = useRef(new Map<string, () => Promise<GuardrailCheckEntity>>());
   const [isFlushing, setIsFlushing] = useState(false);
+
+  // Null means "follow the form": a pristine form can only mean Saved, and saving from the
+  // Configuration tab flips the target back on its own. Only an explicit choice is stored.
+  const [targetOverride, setTargetOverride] = useState<RunTarget | null>(null);
+  const runTarget: RunTarget = isDirty ? (targetOverride ?? 'draft') : 'saved';
+
+  // A choice made for one config must not follow the user to the next one.
+  useEffect(() => setTargetOverride(null), [configId]);
 
   const runMutation = useRunGuardrailChecks({
     onSuccess: (results) => {
@@ -87,7 +104,11 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
       const fresh = await Promise.all(
         checks.map((check) => flushersRef.current.get(check.name)?.() ?? Promise.resolve(check))
       );
-      runMutation.mutate({ workspace, checks: fresh });
+      runMutation.mutate({
+        workspace,
+        checks: fresh,
+        draftConfig: runTarget === 'draft' ? draftConfig : undefined,
+      });
     } finally {
       setIsFlushing(false);
     }
@@ -111,9 +132,22 @@ export const GuardrailTestCasesEditor: FC<GuardrailTestCasesEditorProps> = ({
       <Flex align="center" justify="between" gap="density-md">
         <Text kind="label/bold/lg">Guardrail Test Cases</Text>
         <Flex align="center" gap="density-sm">
-          <Button kind="tertiary" color="neutral" size="small" disabled aria-label="Settings">
-            <Settings size={16} />
-          </Button>
+          <SegmentedControl
+            aria-label="Run against"
+            size="small"
+            value={runTarget}
+            onValueChange={(value) => setTargetOverride(value as RunTarget)}
+            items={[
+              {
+                value: 'draft',
+                children: 'Draft',
+                disabled: !isDirty,
+                // Only useful as an explanation while it is unselectable.
+                title: isDirty ? undefined : 'No unsaved changes to test',
+              },
+              { value: 'saved', children: 'Saved' },
+            ]}
+          />
           <LoadingButton
             kind="primary"
             height={32}

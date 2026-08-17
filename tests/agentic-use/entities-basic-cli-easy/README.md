@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Entity CRUD Operations - CLI Eval
 
 Tests that a coding agent can perform basic entity CRUD operations using the NeMo Platform CLI.

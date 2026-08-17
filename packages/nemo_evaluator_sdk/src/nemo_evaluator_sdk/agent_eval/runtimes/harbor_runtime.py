@@ -103,6 +103,9 @@ _HARBOR_RESUME_REFUSALS = ("resumed with a different config", "does not match th
 # Cap on each value rendered into the "what differed" log line: enough for a scalar
 # like `n_concurrent_trials`, bounded for a whole nested `agents` list.
 _DRIFT_VALUE_CHARS = 80
+# Markdown instruction files may carry repository license comments. Those are file metadata, not
+# agent-facing task instructions.
+_SPDX_HTML_COMMENT_RE = re.compile(r"<!--\s*SPDX-(?:FileCopyrightText|License-Identifier):[^>]*-->\s*")
 # Derived/VCS noise skipped when digesting a directory. Deliberately NOT skipped:
 # `node_modules` and other vendored dependency trees, which ship with the agent and
 # change what it does. `.venv`/`.uv` stay skipped because they are environment, not
@@ -1236,6 +1239,14 @@ def _harbor_task_dirs(dataset_path: Path) -> list[Path]:
     )
 
 
+def _strip_leading_spdx_html_comments(text: str) -> str:
+    """Remove leading SPDX HTML comments from Markdown prompt content."""
+    position = 0
+    while match := _SPDX_HTML_COMMENT_RE.match(text, position):
+        position = match.end()
+    return text[position:]
+
+
 def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
     """Build one :class:`AgentEvalTask` per Harbor task folder in ``dataset_path``.
 
@@ -1261,7 +1272,9 @@ def discover_harbor_tasks(dataset_path: str | Path) -> list[AgentEvalTask]:
         instruction_path = task_dir / "instruction.md"
         try:
             instruction = (
-                instruction_path.read_text(encoding="utf-8").strip() if instruction_path.is_file() else task_name
+                _strip_leading_spdx_html_comments(instruction_path.read_text(encoding="utf-8")).strip()
+                if instruction_path.is_file()
+                else task_name
             )
         except (OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"unreadable Harbor instruction at {instruction_path}: {exc}") from exc

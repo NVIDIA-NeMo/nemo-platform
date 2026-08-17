@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { EntitiesListEntitiesParams } from '@nemo/sdk/generated/platform/schema';
+import type { EntitiesListEntitiesParams, RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import {
   createGuardrailCheck,
   type CreateGuardrailCheckInput,
@@ -158,7 +158,7 @@ export type UseRunGuardrailCheckOptions = Omit<
   UseMutationOptions<
     Awaited<ReturnType<typeof runGuardrailCheck>>,
     Error,
-    { workspace: string; check: GuardrailCheckEntity }
+    { workspace: string; check: GuardrailCheckEntity; draftConfig?: RailsConfig }
   >,
   'mutationFn'
 >;
@@ -167,7 +167,8 @@ export type UseRunGuardrailCheckOptions = Omit<
 export const useRunGuardrailCheck = (options?: UseRunGuardrailCheckOptions) =>
   useMutation({
     ...options,
-    mutationFn: ({ workspace, check }) => runGuardrailCheck(workspace, check),
+    mutationFn: ({ workspace, check, draftConfig }) =>
+      runGuardrailCheck(workspace, check, draftConfig),
     onSuccess: (...args) => {
       const [, variables] = args;
       invalidateGuardrailChecksCaches(variables.workspace, variables.check.name);
@@ -179,7 +180,7 @@ export type UseRunGuardrailChecksOptions = Omit<
   UseMutationOptions<
     Awaited<ReturnType<typeof runGuardrailChecks>>,
     Error,
-    { workspace: string; checks: GuardrailCheckEntity[] }
+    { workspace: string; checks: GuardrailCheckEntity[]; draftConfig?: RailsConfig }
   >,
   'mutationFn'
 >;
@@ -188,7 +189,8 @@ export type UseRunGuardrailChecksOptions = Omit<
 export const useRunGuardrailChecks = (options?: UseRunGuardrailChecksOptions) =>
   useMutation({
     ...options,
-    mutationFn: ({ workspace, checks }) => runGuardrailChecks(workspace, checks),
+    mutationFn: ({ workspace, checks, draftConfig }) =>
+      runGuardrailChecks(workspace, checks, draftConfig),
     onSuccess: (...args) => {
       const [, variables] = args;
       invalidateGuardrailChecksCaches(variables.workspace);

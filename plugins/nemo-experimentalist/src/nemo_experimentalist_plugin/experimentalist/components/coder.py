@@ -5,14 +5,24 @@ import ast  # noqa: D100, F401
 import json
 import random
 import re  # noqa: F401
+import shlex
 import shutil
 from collections import Counter, defaultdict  # noqa: F401
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from nemo_experimentalist_plugin.entities import Candidate, Dataset, EvaluationResult, Task, TrialResult
-from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator, EvaluatorConfig
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
+    Dataset,
+    EvaluationResult,
+    Proposal,
+    Task,
+    TrialResult,
+)
+from nemo_experimentalist_plugin.experimentalist import roles
+from nemo_experimentalist_plugin.experimentalist.components.evaluator import Evaluator
+from nemo_experimentalist_plugin.experimentalist.seam import BuilderContext
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -25,12 +35,13 @@ from nooa.tools import Match, TodoManager
 from pydantic import BaseModel, Field
 
 from .cards import Optimize
+from .proposer import CODE_CHANGE, CodeChange
 from .tools import GuardedShellTools
 from .util import load_framework_skills
 
 
-class CoderConfig(BaseModel):
-    """Store tuning parameters for Coder optimization."""
+class CodeEditBuilderConfig(BaseModel):
+    """Store tuning parameters for CodeEditBuilder optimization."""
 
     max_summary_tokens: int = Field(
         default=80_000,
@@ -567,22 +578,40 @@ class ArchitectureSkill(Skill):
     """
 
 
-class Coder(Agent):
+# Keeps its own Evaluator rather than using ctx.evaluate: its smoke checks run against an
+# artifact that is deliberately not yet a Candidate, and ctx.evaluate exists to associate a
+# result with one. An internal check has nothing to associate and must not be recorded
+# against the run.
+class CodeEditBuilder(Agent, roles.Builder):
     """Create and modify agent source code as part of the optimization loop."""
+
+    config_type = CodeEditBuilderConfig
+
+    name = "code-edit"
+    accepts = frozenset({CODE_CHANGE})
 
     def __init__(
         self,
         workspace: Path,
-        config: CoderConfig | None = None,
+        config: CodeEditBuilderConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        *,
+        evaluator: Evaluator | None = None,
+        dataset: Dataset | None = None,
+        source_path: str | None = None,
+        entrypoint: str | None = None,
         **kwargs: Any,
     ):
         """Initialize the coder for the given workspace."""
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         # Architecture extraction requires the same quality-oriented model as
         # the rest of the coding work.
+        self._evaluator = evaluator
+        self._dataset = dataset
+        self._source_path = source_path
+        self._entrypoint = entrypoint
         self._architecture_model = get_default_model()
-        self._config = config or CoderConfig()
+        self._config = config or CodeEditBuilderConfig()
         self._workspace_path = workspace.resolve()
         self.shell = GuardedShellTools(cwd=self._workspace_path)
         self.todos = TodoManager()
@@ -593,8 +622,8 @@ class Coder(Agent):
         load_framework_skills(self.skills, framework_skills_dirs or [])
         self.skills.register("ext.architecture_skill", ArchitectureSkill())
         # Attach the optimization-card index so apply_change / wire_up_change
-        # can consult the card matching candidate.optimization_type. Without
-        # this, the Coder only sees the proposer's prose and the framework
+        # can consult the card matching change.optimization_type. Without
+        # this, the CodeEditBuilder only sees the proposer's prose and the framework
         # skill -- the optimize cards never reach it (gitlab #148).
         self.optimize = Optimize(model_catalog_path=self._config.model_catalog_path)
         self.skills.register("ext.optimize", self.optimize)
@@ -604,6 +633,10 @@ class Coder(Agent):
             llm=get_fast_model(),
             config=TokenBudgetConfig(max_tokens=self._config.max_summary_tokens),
         )
+
+    async def describe(self, artifact: Path) -> None:
+        """Document the artifact's architecture, for the next round's proposal to read."""
+        await self.create_architecture_doc(artifact, source_path=self._source_path, entrypoint=self._entrypoint)
 
     async def list_available_models(self) -> list[str]:
         """Return the curated model IDs allowed for agent-under-test mutations.
@@ -615,70 +648,73 @@ class Coder(Agent):
         catalog = self.optimize.optimize_model_capability.read_model_catalog()
         return [model.model_id for model in catalog.models]
 
-    async def run(
-        self,
-        candidate: Candidate,
-        dataset: Dataset,
-        evaluator: Evaluator,
-        evaluator_options: EvaluatorConfig | None = None,
-        source_path: str | None = None,
-        entrypoint: str | None = None,
-    ) -> None:
-        """Implement the improvement described in candidate and verify it integrates cleanly.
+    async def build(self, ctx: BuilderContext, proposal: Proposal, *, generation: int) -> Candidate:
+        """Implement *proposal*, verify it integrates, and commit the Candidate for it.
 
         Args:
-            candidate: The agent variant to implement. Identifies the agent directory,
-                carries the optimization description, and links to its ancestor.
-            dataset: The dataset to use for the evaluation.
-            evaluator: The evaluator to use for the evaluation.
-            evaluator_options: The options to pass to the evaluator.
-            source_path: The path to the agent source code, relative to the agent directory.
-            entrypoint: The file that the evaluation harness invokes to run the agent, relative to the agent directory.
+            ctx: Reserve a working copy, commit the result — the only two verbs a Builder gets.
+            proposal: What to change, and what to change it from.
+            generation: Strategy-supplied grouping index, stamped onto the Candidate.
+
+        Returns:
+            Candidate: committed, with its artifact validated. A failed build returns
+            nothing at all, because it raises.
 
         Raises:
-            RuntimeError: if no training tasks are available for integration_check.
-            IntegrationCheckFailed: if the candidate cannot pass a smoke eval after the
+            RuntimeError: if the CodeEditBuilder was constructed without an evaluator or dataset,
+                or if no tasks are available for the integration check.
+            IntegrationCheckFailed: if the build cannot pass a smoke eval after the
                 bounded number of fix attempts.
 
         """
-        await self.apply_change(candidate)
-        await self.wire_up_change(candidate)
-        await self.run_pyright(candidate.name)
-        await self.optimize_subproblem(candidate, dataset, evaluator, evaluator_options)
-        await self.run_pyright(candidate.name)
-        if not await self.integration_check(candidate, dataset, evaluator, evaluator_options):
-            raise IntegrationCheckFailed(f"{candidate.name} smoke eval failed after fix attempts")
-        if candidate.ancestor:
-            ancestor_arch = (
-                self._workspace_path / "eval-and-optimize" / "agents" / candidate.ancestor / "architecture.md"
-            )
-            candidate_arch = self._workspace_path / "eval-and-optimize" / "agents" / candidate.name / "architecture.md"
-            if ancestor_arch.exists() and not candidate_arch.exists():
-                shutil.copy2(ancestor_arch, candidate_arch)
-        await self.create_architecture_doc(candidate.name, source_path=source_path, entrypoint=entrypoint)
+        if self._evaluator is None or self._dataset is None:
+            raise RuntimeError("CodeEditBuilder needs an evaluator and a dataset to verify a build; none were injected")
+        change = CodeChange.model_validate(proposal.payload)
+        fork = await ctx.fork(proposal)
+
+        await self.apply_change(fork.workdir, proposal.description, change)
+        await self.wire_up_change(fork.workdir, proposal.description, change)
+        await self.run_pyright(fork.workdir)
+        await self.optimize_subproblem(fork.workdir, proposal.description, change, self._dataset, self._evaluator)
+        await self.run_pyright(fork.workdir)
+        if not await self.integration_check(fork.workdir, self._dataset, self._evaluator, task_ids=change.task_ids):
+            raise IntegrationCheckFailed(f"{fork.workdir.name} smoke eval failed after fix attempts")
+
+        # Seeded only now, after the change is final: during editing the ancestor's
+        # architecture doc would describe an agent that no longer exists, and the fork
+        # deliberately leaves it out for that reason. Here it becomes the base to edit.
+        if fork.upstream is not None:
+            upstream_doc = fork.upstream / "architecture.md"
+            own_doc = fork.workdir / "architecture.md"
+            if upstream_doc.exists() and not own_doc.exists():
+                shutil.copy2(upstream_doc, own_doc)
+        await self.describe(fork.workdir)
+
+        return await ctx.commit_candidate(proposal=proposal, artifact=fork.workdir, generation=generation)
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def apply_change(self, candidate: Candidate) -> None:
-        """Apply the ONE change from candidate.optimization.
+    async def apply_change(self, workdir: Path, optimization: str, change: CodeChange) -> None:
+        """Apply the ONE change described by `optimization`.
 
         Args:
-        - candidate (Candidate): the agent variant being built. Identifies
-          which agent directory to modify, describes the change to apply, and
-          carries lineage info from its ancestor
+        - workdir (Path): the agent directory to modify. Every file you touch is under here.
+        - optimization (str): graph-level description of the change to make.
+        - change (CodeChange): why this change was proposed — `change.root_cause` is the
+          diagnosed reason the agent underperforms, `change.optimization_type` says which
+          optimization card covers it, and `change.task_ids` are the tasks that exercise it.
 
         ## Pre-staged destination — DO NOT re-copy from the ancestor
-        The destination directory ``agents/{candidate.id}/`` has ALREADY been
-        populated by the framework with a copy of the ancestor's source files
-        (everything except generated framework artifacts: ``metadata.json`` and
-        ``architecture.md``). Runtime harness files are inherited when present
-        but are not part of the agent behavior being optimized.
+        {workdir} has ALREADY been populated with a copy of the ancestor's source files
+        (everything except ``architecture.md``, which describes the ancestor and is
+        re-seeded and rewritten after you are done). Runtime harness files are inherited
+        when present but are not part of the agent behavior being optimized.
         Open and modify files in place. You do NOT need to copy anything in.
 
         ## Required reading before editing
         - The framework skill — how to write agents in the target framework (NeMo OO, LangChain, etc.).
         - The optimization card for this change. First run `print(doc(self.optimize))`
           to see the decision tree mapping optimization types to cards. Find which
-          card covers `candidate.optimization_type` (e.g. `add_concrete_method` is
+          card covers `change.optimization_type` (e.g. `add_concrete_method` is
           covered by `optimize_execution`), then load that card's details with
           `print(doc(self.optimize.optimize_execution))`. The card lists approved approaches,
           code examples, and success criteria.
@@ -687,13 +723,11 @@ class Coder(Agent):
           for chunking patterns that avoid `max_param_chars` truncation errors.
 
         ## Constraints
-        - Make one change matching candidate.optimization
+        - Make one change matching `optimization`, addressing `change.root_cause`.
         - No hardcoded knowledge (keyword lists, lookup tables, if/elif on task-specific strings). This applies to BOTH code AND skill edits: skill additions must improve generalizable methodology (process steps, classification rules, evidence requirements), never add dataset-specific facts about specific libraries, frameworks, CVEs, or package internals — that is memorization of training data, not domain knowledge.
-        - NEVER read from, copy from, or overwrite files in any OTHER agent
-          directory (``agents/agent-N/`` for N != candidate.id). The pre-staged
-          files in your own directory are the only source you should edit.
-        - NEVER modify ``metadata.json`` in any agent directory. It is owned by
-          the framework and carries the correct agent id, lineage, and scores.
+        - NEVER read from, copy from, or overwrite files in any OTHER agent directory.
+          {workdir} is yours; its sibling directories belong to other candidates and the
+          pre-staged files inside it are the only source you should edit.
         - VERIFY INTEGRATION: In the integration test, check traces to confirm new code is actually
           called by the agent. Code that exists but isn't invoked is useless.
         - If the change involves editing an LLM model id, call
@@ -703,16 +737,16 @@ class Coder(Agent):
         ...
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def wire_up_change(self, candidate: Candidate) -> None:
+    async def wire_up_change(self, workdir: Path, optimization: str, change: CodeChange) -> None:
         """Wire up the change to the agent such that it is called by the agent. Load the framework skill and use it to understand how to wire up the change.
 
         Args:
-        - candidate (Candidate): the agent variant being built. Identifies
-          which agent directory to modify, describes the change to apply, and
-          carries lineage info from its ancestor
+        - workdir (Path): the agent directory to modify.
+        - optimization (str): the change that was just applied.
+        - change (CodeChange): why it was proposed, and which optimization card covers it.
 
         Consult `doc(self.optimize)` to find which card covers
-        `candidate.optimization_type`, then read that card via
+        `change.optimization_type`, then read that card via
         `doc(self.optimize.optimize_<type>)` for what "wired" means in the target framework.
         (e.g. for `add_skill` covered by `optimize_domain_knowledge`, the new skill
         must be reachable by the agent at runtime — a file that is never imported or
@@ -723,37 +757,38 @@ class Coder(Agent):
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=200, cell_timeout=3600.0)))
     async def optimize_subproblem(
         self,
-        candidate: Candidate,
+        workdir: Path,
+        optimization: str,
+        change: CodeChange,
         dataset: Dataset,
         evaluator: Evaluator,
-        evaluator_options: EvaluatorConfig | None = None,
     ) -> None:
         """Validate and iteratively refine the subproblem fix until the agent's behavior improves.
 
         Args:
-        - candidate (Candidate): the agent variant being built. Identifies
-          which agent directory to modify, describes the change to apply, and
-          carries lineage info from its ancestor
+        - workdir (Path): the agent directory being refined.
+        - optimization (str): graph-level description of the change that was applied.
+        - change (CodeChange): `change.root_cause` is the diagnosed reason the agent
+          underperforms, and `change.task_ids` are the tasks that exercise it.
         - dataset (Dataset): The dataset to use for the evaluation.
         - evaluator (Evaluator): The evaluator to use for the evaluation.
-        - evaluator_options (EvaluatorConfig): The options to pass to the evaluator.
 
         ## Workflow
 
         1. **Pick test tasks**:
-           - **Target tasks**: use `candidate.task_ids` — the tasks the Proposer flagged as
-             most directly exercising this candidate's root cause. The fix must improve these.
-             Only if `candidate.task_ids` is empty, fall back to picking 2-3 representative
+           - **Target tasks**: use `change.task_ids` — the tasks the Proposer flagged as
+             most directly exercising `change.root_cause`. The fix must improve these.
+             Only if `change.task_ids` is empty, fall back to picking 2-3 representative
              tasks that exercise the subproblem yourself.
            - **Regression tasks**: also pick 2-3 tasks the ancestor/baseline already handled
              correctly and that are unrelated to this subproblem. The fix must NOT regress
              these — they guard against the change breaking previously-working behavior.
-           - Consider `candidate.optimization` to understand what was changed
+           - Consider `optimization` to understand what was changed
 
         2. **Isolate the subproblem**:
            - Read the agent's architecture.md to understand the agent's behavior
-           - Read the optimization card for `candidate.optimization_type` to understand what was changed
-           - Read `candidate.optimization` to understand the specific subproblem being fixed
+           - Read the optimization card for `change.optimization_type` to understand what was changed
+           - Read `optimization` and `change.root_cause` to understand the specific subproblem being fixed
            - Run the subproblem fix on the tasks and inspect the results.
              E.g. if the subproblem was the behavior of a single method, call that method on the tasks
              and inspect the results. If it was a single tool, run that tool directly.
@@ -804,24 +839,26 @@ class Coder(Agent):
 
     async def integration_check(
         self,
-        candidate: Candidate,
+        workdir: Path,
         dataset: Dataset,
         evaluator: Evaluator,
-        evaluator_options: EvaluatorConfig | None = None,
         max_fix_attempts: int | None = None,
+        task_ids: Sequence[str] | None = None,
     ) -> bool:
-        """Smoke-test the candidate and attempt bounded LLM repairs if it fails.
+        """Smoke-test the build and attempt bounded LLM repairs if it fails.
 
         Args:
-            candidate: The agent variant to smoke-test.
+            workdir: The agent directory to smoke-test.
             dataset: The dataset to use for the evaluation.
             evaluator: The evaluator to use for the evaluation.
-            evaluator_options: The options to pass to the evaluator.
             max_fix_attempts: Maximum repair iterations; defaults to
                 ``self._config.max_fix_attempts``.
+            task_ids: The tasks the change claims to fix. Checking these is what makes a
+                failure informative — a random task the change does not touch passes on
+                the first attempt, and the repair loop below never runs.
 
         Returns:
-            bool: True if the candidate passes the smoke eval, False otherwise.
+            bool: True if the build passes the smoke eval, False otherwise.
 
         Raises:
             RuntimeError: if no training tasks are available.
@@ -832,14 +869,18 @@ class Coder(Agent):
         all_tasks = list(dataset.list_tasks())
         if not all_tasks:
             raise RuntimeError("No tasks available for integration_check")
-        # One task to keep smoke wall time low; seeded by candidate.name so retries hit the same task.
-        tasks = [random.Random(candidate.name).choice(all_tasks)]
+        # The tasks the Proposal named as evidence, so a build that does not repair what
+        # it claimed fails here and gets the repair attempts below. Falling back to one
+        # random task — seeded by the directory name so retries hit the same one — keeps
+        # the old "does it run at all" check for a Proposal that names none.
+        targeted = [task for task in all_tasks if task.id in set(task_ids or ())]
+        tasks = targeted or [random.Random(workdir.name).choice(all_tasks)]
         for attempt in range(_max_fix_attempts + 1):
-            evaluation = await self.run_smoke_eval(candidate.name, tasks, dataset, evaluator, evaluator_options)
+            evaluation = await self.run_smoke_eval(workdir, tasks, dataset, evaluator)
             if self._is_smoke_results_healthy(evaluation, tasks):
                 return True
             if attempt < _max_fix_attempts:
-                await self._fix_runtime_issues(candidate, evaluation)
+                await self._fix_runtime_issues(workdir, evaluation)
         return False
 
     def _is_smoke_results_healthy(self, evaluation: EvaluationResult, tasks: Sequence[Task]) -> bool:
@@ -872,13 +913,11 @@ class Coder(Agent):
         return trial.status == "completed"
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)))
-    async def _fix_runtime_issues(self, candidate: Candidate, evaluation: EvaluationResult) -> None:
+    async def _fix_runtime_issues(self, workdir: Path, evaluation: EvaluationResult) -> None:
         """Diagnose and repair runtime failures surfaced by the most recent smoke eval.
 
         Args:
-        - candidate (Candidate): the agent variant being repaired. Identifies
-          which agent directory to modify, describes the change that was applied,
-          and carries lineage info from its ancestor
+        - workdir (Path): the agent directory being repaired. Every file you touch is under here.
         - evaluation (EvaluationResult): the smoke evaluation result. Use its
           trials, metrics, outputs, resources, errors, and metadata as failure evidence.
 
@@ -903,9 +942,8 @@ class Coder(Agent):
 
         ## What to fix
 
-        Edit files in `eval-and-optimize/agents/{candidate.id}/` — the same files
-        `apply_change` and `wire_up_change` produced. Common runtime failure modes
-        and their fixes:
+        Edit files in {workdir} — the same files `apply_change` and `wire_up_change`
+        produced. Common runtime failure modes and their fixes:
 
         - **TypeError / wrong signature** — tool/function called with bad kwargs.
           Match the call to the definition.
@@ -922,7 +960,6 @@ class Coder(Agent):
 
         ## Constraints
 
-        - Do NOT modify `metadata.json`.
         - Do NOT touch optimizer infrastructure: `init_structure.py`,
           `optimize_agent.py`, anything under `.claude/skills/`.
         - Do NOT call `run_smoke_eval` — the orchestrator re-runs it after you finish.
@@ -930,18 +967,18 @@ class Coder(Agent):
         """
         ...
 
-    async def run_pyright(self, agent_id: str) -> str:
+    async def run_pyright(self, workdir: Path) -> str:
         """Run pyright on the agent's directory and return diagnostic lines.
 
         Args:
-            agent_id: The agent directory under eval-and-optimize/agents/ to check.
+            workdir: The agent directory to check.
 
         Returns:
             str: newline-separated error and warning lines, or an empty string
                 if pyright reports no issues.
 
         """
-        r = await self.shell.run(f"pyright --outputjson eval-and-optimize/agents/{agent_id} 2>/dev/null || true")
+        r = await self.shell.run(f"pyright --outputjson {shlex.quote(str(workdir))} 2>/dev/null || true")
         output = (r.stdout or "").strip()
         try:
             data = json.loads(output)
@@ -963,20 +1000,21 @@ class Coder(Agent):
 
     async def run_smoke_eval(
         self,
-        agent_id: str,
+        workdir: Path,
         tasks: Sequence[Task],
         dataset: Dataset,
         evaluator: Evaluator,
-        evaluator_options: EvaluatorConfig | None = None,
     ) -> EvaluationResult:
         """Run smoke evaluation against a specific subset of tasks.
 
+        Unrecorded by design: this measures work in progress, which is not yet a
+        Candidate, so there is nothing for the run to associate a result with.
+
         Args:
-            agent_id: The agent directory under eval-and-optimize/agents/ to evaluate.
+            workdir: The agent directory to evaluate.
             tasks: Non-empty task objects to evaluate.
             dataset: The dataset to use for the evaluation.
             evaluator: The evaluator to use for the evaluation.
-            evaluator_options: The options to pass to the evaluator.
 
         Returns:
             EvaluationResult: smoke evaluation result.
@@ -989,11 +1027,16 @@ class Coder(Agent):
             raise ValueError("run_smoke_eval requires at least one task")
 
         smoke_dataset = dataset.subset([task.id for task in tasks])
-        base_options = evaluator_options if evaluator_options is not None else evaluator.options
-        smoke_options = base_options.model_copy(update={"force_rerun": True})
-        agent_path = self._workspace_path / "eval-and-optimize" / "agents" / agent_id
+        base_options = evaluator.options
+        # A configured job_name would otherwise be shared: builds run concurrently, and
+        # `force_rerun` deletes the results directory that name points at, so one builder's
+        # smoke check would clear another's mid-read. The workdir and the task subset are
+        # what make this check distinct, so they name it.
+        smoke_options = base_options.model_copy(
+            update={"force_rerun": True, "job_name": f"smoke-{workdir.name}-{smoke_dataset.id}"}
+        )
         return await evaluator.run(
-            agent=agent_path,
+            agent=workdir,
             dataset=smoke_dataset,
             options=smoke_options,
         )
@@ -1003,12 +1046,12 @@ class Coder(Agent):
         llm=lambda self: self._architecture_model,
     )
     async def create_architecture_doc(
-        self, agent_id: str, source_path: str | None = None, entrypoint: str | None = None
+        self, workdir: Path, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:
         """Update (or, only if absent, create) architecture.md for the given agent.
 
         Args:
-        - agent_id (str): identifies which agent directory under {self._workspace_path}/eval-and-optimize/agents/ to document
+        - workdir (Path): the agent directory to document. Its architecture.md is at {workdir}/architecture.md
         - source_path (str | None): directory containing the agent source code, relative to the
           agent directory (e.g. "app/"). Read .py files from here when following imports.
           When absent, infer the source root from AGENT-SPEC.md or the directory structure.
@@ -1021,7 +1064,7 @@ class Coder(Agent):
 
         ## Edit in place — do NOT regenerate from scratch
         For any candidate with an ancestor, the framework has ALREADY seeded
-        {self._workspace_path}/eval-and-optimize/agents/{agent_id}/architecture.md with a
+        {workdir}/architecture.md with a
         byte-for-byte copy of the ancestor's architecture.md. Open the existing file and edit it
         in place to reflect the FINAL state of the candidate source (after all automated repairs),
         not just its originally declared change. Compare the final source against the ancestor and

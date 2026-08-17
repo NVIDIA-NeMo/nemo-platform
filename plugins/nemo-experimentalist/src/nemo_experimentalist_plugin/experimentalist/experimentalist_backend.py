@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import subprocess
 import uuid
@@ -31,6 +32,7 @@ from nemo_experimentalist_plugin.entities import (
     ExperimentRun,
     ResourceRef,
     TrialResult,
+    local_path_from_uri,
 )
 from nemo_experimentalist_plugin.experimentalist.atif import build_ingest_payload, read_session_id
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
@@ -58,7 +60,7 @@ async def _upload_trace_otlp(
     workspace: str,
     ref: ResourceRef,
     *,
-    experiment_id: str,
+    evaluation_name: str,
     trial_id: str,
     task_id: str,
     extra_attrs: dict[str, str] | None = None,
@@ -67,7 +69,7 @@ async def _upload_trace_otlp(
 
     path = Path(urlparse(ref.uri).path)
     attrs: dict[str, str] = {
-        "nemo.experiment.id": experiment_id,
+        "nemo.evaluation.name": evaluation_name,
         "nemo.test_case.id": task_id,
         "nemo.trial.id": trial_id,
         **(extra_attrs or {}),
@@ -87,7 +89,7 @@ async def _upload_trace_atif(
     workspace: str,
     ref: ResourceRef,
     *,
-    experiment_id: str,
+    evaluation_name: str,
     task_id: str,
     extra_attrs: dict[str, str] | None = None,
 ) -> None:
@@ -100,7 +102,7 @@ async def _upload_trace_atif(
 
     payload = build_ingest_payload(
         ref,
-        experiment_id=experiment_id,
+        evaluation_name=evaluation_name,
         task_id=task_id,
         agent_attrs=extra_attrs or {},
     )
@@ -180,8 +182,13 @@ class ExperimentalistBackend(ABC):
         ...
 
     @abstractmethod
-    async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
-        """Return all Candidates that belong to a given ExperimentRun."""
+    async def list_candidates(self, *, workspace: str, run_id: str, include_discarded: bool = False) -> list[Candidate]:
+        """Return the Candidates belonging to an ExperimentRun.
+
+        Discarded candidates are excluded unless asked for: a rolled-back candidate is
+        still on disk, and a consumer that got one back would evaluate, rank or publish
+        work the run has already abandoned.
+        """
         ...
 
     # -- Result persistence --------------------------------------------------
@@ -206,16 +213,16 @@ class ExperimentalistBackend(ABC):
     ) -> None:
         """Persist traces and metrics for a completed evaluation.
 
-        Derives experiment_id internally from candidate × split, ensuring the
-        Experiment entity exists before stamping traces.
+        Derives the Evaluation name internally from candidate × split, ensuring
+        the Evaluation exists before stamping traces.
         """
         ...
 
     @abstractmethod
-    async def get_experiment_id(self, *, workspace: str, candidate: Candidate, split: str) -> str:
-        """Best-effort native Experiment id for *candidate* × *split* in *workspace*.
+    async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
+        """Best-effort Evaluation name for *candidate* × *split* in *workspace*.
 
-        Returns "" when there is no projection (offline) or it fails — the id only
+        Returns "" when there is no projection (offline) or it fails — the name only
         tags Intake resource attributes, so a run must not break on it.
         """
         ...
@@ -278,9 +285,9 @@ class ExperimentalistBackend(ABC):
 
 
 def load_candidate(path: Path) -> Candidate:
-    """Deserialize a ``metadata.json`` file into a :class:`Candidate`.
+    """Deserialize one stored candidate record into a :class:`Candidate`.
 
-    Free function rather than a backend method: read-only callers (the Coder's
+    Free function rather than a backend method: read-only callers (the CodeEditBuilder's
     workspace tool) need the deserialization without constructing a backend,
     which would create directories and projection state as a side effect.
     """
@@ -291,6 +298,46 @@ def load_candidate(path: Path) -> Candidate:
     if entity_id:
         candidate._id = entity_id  # type: ignore[attr-defined]
     return candidate
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write *text* to *path* so a reader never sees a partial file.
+
+    ``os.replace`` is atomic within a filesystem, so a crash leaves either the previous
+    contents or the new ones — never a truncated file.
+    """
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def load_winner(run_dir: Path) -> Candidate:
+    """The winning Candidate of a finished run, read from its stored record.
+
+    Here so consumers do not rebuild the run layout themselves. ``run.json`` names the
+    winner by **label** — 'agent-3', the form every artifact path in the run is built
+    from — while the records under ``candidates/`` are filed by id, so this resolves one
+    to the other. The winner's location then comes from its own artifact reference,
+    which stays true even if candidates move off local disk.
+
+    Args:
+        run_dir: The run's directory — the one holding ``run.json`` and ``candidates/``.
+
+    Raises:
+        FileNotFoundError: if the run or the record it names is missing.
+        ValueError: if the run completed without selecting a winner.
+    """
+    document = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    winner_label = document.get("winner_agent")
+    if not isinstance(winner_label, str) or not winner_label:
+        raise ValueError(f"Run at {run_dir} completed without a selected winner")
+    for record in sorted((run_dir / "candidates").glob("*.json")):
+        candidate = load_candidate(record)
+        if candidate.label == winner_label:
+            return candidate
+    raise FileNotFoundError(
+        f"Run at {run_dir} names winner {winner_label!r}, but no candidate record carries that label"
+    )
 
 
 def _load_entity(cls: type[_ModelT], path: Path) -> _ModelT:
@@ -313,11 +360,12 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
           eval-and-optimize/
             insight.json          ← loaded via get_insight(insight_id=path)
             run.json              ← ExperimentRun state
+            candidates/
+              <candidate-id>.json ← Candidate metadata and measurements
+              ...
             agents/
-              agent-0/
-                metadata.json     ← Candidate fields
+              agent-0/            ← the candidates' artifacts
               agent-1/
-                metadata.json
               ...
             analysis/
               round-0.md
@@ -340,7 +388,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         super().__init__(client, path, storage)
         self.path = path
         self._eo = path / "eval-and-optimize"
-        for subdir in ("agents", "analysis", "results"):
+        for subdir in ("agents", "analysis", "candidates", "results"):
             (self._eo / subdir).mkdir(parents=True, exist_ok=True)
         # Best-effort, one-way projection onto native platform Experiments. Active only when
         # a platform client is present (offline/local-only runs leave it a no-op); mirrors are
@@ -428,8 +476,17 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return f"{self.storage.candidate_branch_prefix}/{candidate.run_id}/{candidate.label}"
 
     def _candidate_code_dir(self, candidate: Candidate) -> Path:
-        """Local directory holding *candidate*'s code (the per-candidate agent dir)."""
-        return self._eo / "agents" / candidate.label
+        """Local directory holding *candidate*'s code, read off its artifact reference.
+
+        Raises:
+            ValueError: if the artifact does not exist. Falling back to the parent would
+                resolve to the shared candidate root and push every candidate's code as
+                this one's.
+        """
+        path = local_path_from_uri(candidate.artifact.uri, context="Candidate artifact")
+        if not path.exists():
+            raise ValueError(f"Candidate {candidate.label!r} ({candidate.id}) has no artifact at {path}")
+        return path if path.is_dir() else path.parent
 
     async def archive_candidate(self, *, workspace: str, candidate: Candidate) -> str | None:
         """Git implementation: push ``<prefix>/<run-id>/<label>`` (subtree at the agent's
@@ -442,7 +499,8 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         checkout, branch = self._agent_checkout, self._candidate_branch(candidate)
         code_dir = self._candidate_code_dir(candidate)
         message = (
-            f"Experimentalist candidate {candidate.label} (round {candidate.round}): {candidate.optimization}\n\n"
+            f"Experimentalist candidate {candidate.label} "
+            f"(generation {candidate.generation}): {candidate.description}\n\n"
             f"Candidate-Id: {candidate.id}"
         )
         pushed = await asyncio.to_thread(
@@ -471,9 +529,14 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if src is None or self._agent_checkout is None:
             return None
         checkout, branch = self._agent_checkout, self._candidate_branch(candidate)
-        title = (
-            self.storage.pr_title
-            or f"Experimentalist: candidate {candidate.label} ({candidate.optimization_type or 'improvement'})"
+        # A PR title is one line, and `description` is the Proposer's graph-level prose —
+        # often several sentences, sometimes with newlines — which forges truncate or
+        # reject, and which `_compose_pr_body` already puts in the body. The optimization
+        # type is the short handle, and lives in the payload the Proposer and Builder own.
+        payload = candidate.generated_from.payload if candidate.generated_from is not None else {}
+        kind = payload.get("optimization_type")
+        title = self.storage.pr_title or (
+            f"Experimentalist: candidate {candidate.label} ({kind if isinstance(kind, str) and kind else 'improvement'})"
         )
         body = self.storage.pr_body or await self._compose_pr_body(workspace=workspace, candidate=candidate)
         code_dir = self._candidate_code_dir(candidate)
@@ -507,7 +570,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             if sib.label == _BASELINE_AGENT_LABEL:
                 continue
             marker = " (winner)" if sib.label == candidate.label else ""
-            metrics = sib.reward("validation").metrics or sib.reward("train").metrics or {}
+            metrics = sib.rewards["validation"].metrics or sib.rewards["train"].metrics or {}
             lines.append(f"- `{sib.label}`{marker}: `{self._candidate_branch(sib)}` — metrics={metrics}")
         return summary + "\n" + "\n".join(lines) + "\n"
 
@@ -528,44 +591,55 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     async def create_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
         if not run.id:
             run._id = str(uuid.uuid4())  # type: ignore[attr-defined]
-        (self._eo / "run.json").write_text(run.model_dump_json(indent=2))
+        _atomic_write(self._eo / "run.json", run.model_dump_json(indent=2))
         await self._project_best_effort(workspace, lambda m: m.ensure_group(run))
         return run
 
     async def update_run(self, *, workspace: str, run: ExperimentRun) -> ExperimentRun:
-        (self._eo / "run.json").write_text(run.model_dump_json(indent=2))
+        # Written through a temp file and renamed, because this is rewritten on every
+        # progress report and it is the only record of which run owns the candidates on
+        # disk. A plain write_text truncates first, so killing the process mid-round leaves
+        # a half-written file that resume cannot parse.
+        _atomic_write(self._eo / "run.json", run.model_dump_json(indent=2))
         await self._project_best_effort(workspace, lambda m: m.update_group(run))
         return run
 
     # ------------------------------------------------------------------
-    # Candidate CRUD  (eval-and-optimize/agents/{label}/metadata.json)
+    # Candidate CRUD  (eval-and-optimize/candidates/{id}.json)
     #
-    # The candidate ``label`` is the agent directory name (e.g. "agent-0").
-    # Locally we use it as the entity id so lookup is O(1); remotely the store
-    # assigns the id and auto-slugs ``name`` (identity is the id, as for every
-    # entity in this plugin).
+    # Metadata lives in a store the runner owns, keyed by the candidate's durable
+    # id — never inside the artifact it describes. Listing therefore reads the
+    # store rather than walking a directory layout, so a strategy that does not
+    # produce one directory per candidate can still store, list and resume.
     # ------------------------------------------------------------------
 
-    def _candidate_path(self, label: str) -> Path:
-        if not label:
-            raise ValueError("Label is required")
-        return self._eo / "agents" / label / "metadata.json"
+    def _candidate_path(self, candidate_id: str) -> Path:
+        """Where *candidate_id*'s record lives, refusing an id that is not one name.
 
-    def _load_candidate(self, path: Path) -> Candidate:
-        """Deserialize a current-schema ``metadata.json`` file into a Candidate."""
-        return load_candidate(path)
+        The id is interpolated into a path, so one containing a separator escapes the
+        candidates directory: ``../run`` lands on ``eval-and-optimize/run.json`` and a
+        candidate write would overwrite the run. Ids are minted as uuids here, but a
+        Candidate can arrive from a component this repo did not write -- which is the
+        point of the registry -- so the check belongs at the path, not at the mint.
+        """
+        if not candidate_id:
+            raise ValueError("Candidate id is required")
+        if candidate_id != Path(candidate_id).name or candidate_id in {".", ".."}:
+            raise ValueError(f"Candidate id must be a single path component, got {candidate_id!r}")
+        return self._eo / "candidates" / f"{candidate_id}.json"
+
+    def _write_candidate(self, candidate: Candidate) -> None:
+        path = self._candidate_path(candidate.id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic for the same reason as run.json: this runs on every record_reward, and a
+        # truncated candidates/<id>.json makes list_candidates raise, which leaves the whole
+        # run unresumable rather than losing one record.
+        _atomic_write(path, json.dumps({**candidate.model_dump(), "id": candidate.id}, indent=2))
 
     async def create_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
         if not candidate.id:
-            candidate._id = candidate.label or str(uuid.uuid4())  # type: ignore[attr-defined]
-        p = self._candidate_path(candidate.label)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(
-            json.dumps(
-                {**candidate.model_dump(), "id": candidate.id},
-                indent=2,
-            )
-        )
+            candidate._id = str(uuid.uuid4())  # type: ignore[attr-defined]
+        self._write_candidate(candidate)
         await self._project_best_effort(
             workspace,
             lambda m: m.project_candidate(
@@ -577,13 +651,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return candidate
 
     async def update_candidate(self, *, workspace: str, candidate: Candidate) -> Candidate:
-        p = self._candidate_path(candidate.label)
-        p.write_text(
-            json.dumps(
-                {**candidate.model_dump(), "id": candidate.id},
-                indent=2,
-            )
-        )
+        self._write_candidate(candidate)
         await self._project_best_effort(
             workspace,
             lambda m: m.project_candidate(
@@ -595,19 +663,15 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         return candidate
 
     async def get_candidate(self, *, workspace: str, candidate_id: str) -> Candidate:
-        # In local mode the store id equals the candidate label (e.g. "agent-0"),
-        # which is also the agent directory name.
-        p = self._candidate_path(candidate_id)
-        return self._load_candidate(p)
+        return load_candidate(self._candidate_path(candidate_id))
 
-    async def list_candidates(self, *, workspace: str, run_id: str) -> list[Candidate]:
-        results: list[Candidate] = []
-        agents_dir = self._eo / "agents"
-        for meta in sorted(agents_dir.glob("*/metadata.json")):
-            c: Candidate = self._load_candidate(meta)
-            if c.run_id == run_id:
-                results.append(c)
-        return results
+    async def list_candidates(self, *, workspace: str, run_id: str, include_discarded: bool = False) -> list[Candidate]:
+        store = self._eo / "candidates"
+        if not store.is_dir():
+            return []
+        candidates = [load_candidate(path) for path in sorted(store.glob("*.json"))]
+        live = (c for c in candidates if c.run_id == run_id and (include_discarded or not c.discarded))
+        return sorted(live, key=lambda c: (c.generation, c.label))
 
     # ------------------------------------------------------------------
     # Result persistence  (eval-and-optimize/OPTIMIZATION.md)
@@ -630,9 +694,8 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if self.client is None:
             return  # pure-offline run: traces stay on local disk
 
-        # Derive experiment_id internally (ensures entity exists, returns deterministic name)
-        experiment_id = await self.get_experiment_id(workspace=workspace, candidate=candidate, split=split)
-        if not experiment_id:
+        evaluation_name = await self.get_evaluation_name(workspace=workspace, candidate=candidate, split=split)
+        if not evaluation_name:
             return  # projection failed (shouldn't happen, but defensive)
 
         agent_attrs = {
@@ -649,13 +712,13 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                 continue
             try:
                 await self._persist_trial(
-                    trial, workspace=workspace, experiment_id=experiment_id, agent_attrs=agent_attrs
+                    trial, workspace=workspace, evaluation_name=evaluation_name, agent_attrs=agent_attrs
                 )
             except Exception as exc:  # noqa: BLE001 - Intake persistence is best-effort
                 logger.warning(f"[INTAKE] persist_evaluation failed for trial {trial.id}: {exc}")
 
     async def _persist_trial(
-        self, trial: TrialResult, *, workspace: str, experiment_id: str, agent_attrs: dict[str, str]
+        self, trial: TrialResult, *, workspace: str, evaluation_name: str, agent_attrs: dict[str, str]
     ) -> None:
         assert trial.trace is not None
         assert self.client is not None
@@ -664,7 +727,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
             trace_id = uri.removeprefix("intake://traces/")
             trace = await self._retrieve_trace_with_retry(trace_id, workspace=workspace)
             ctx = getattr(trace, "evaluation_context", None)
-            if ctx is None or getattr(ctx, "evaluation_id", None) != experiment_id:
+            if ctx is None or getattr(ctx, "evaluation_id", None) != evaluation_name:
                 rows: list[dict] = []
                 async for span in self.client.intake.spans.list(
                     workspace=workspace,
@@ -674,7 +737,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                 ):
                     rows.append(span.model_dump(mode="json", exclude_none=True))
                 attrs = {
-                    "nemo.experiment.id": experiment_id,
+                    "nemo.evaluation.name": evaluation_name,
                     "nemo.test_case.id": trial.task_id,
                     "nemo.trial.id": trial.id,
                     **agent_attrs,
@@ -702,7 +765,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     self.client,
                     workspace,
                     trial.trace,
-                    experiment_id=experiment_id,
+                    evaluation_name=evaluation_name,
                     task_id=trial.task_id,
                     extra_attrs=agent_attrs,
                 )
@@ -711,7 +774,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     self.client,
                     workspace,
                     trial.trace,
-                    experiment_id=experiment_id,
+                    evaluation_name=evaluation_name,
                     trial_id=trial.id,
                     task_id=trial.task_id,
                     extra_attrs=agent_attrs,
@@ -755,7 +818,7 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
                     delay *= 2  # Exponential backoff
         raise last_exc
 
-    async def get_experiment_id(self, *, workspace: str, candidate: Candidate, split: str) -> str:
+    async def get_evaluation_name(self, *, workspace: str, candidate: Candidate, split: str) -> str:
         if self.client is None:
             return ""
         mirror = self._mirrors.get(workspace)
@@ -777,11 +840,11 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
         if run_path.exists():
             run: ExperimentRun = _load_entity(ExperimentRun, run_path)
             run.status = "completed"
-            run.rounds_completed = result.rounds_completed
+            run.progress_completed = result.progress_completed
             run.summary = result.summary  # so publish_candidate's _compose_pr_body reads the real summary
             if result.winner is not None:
-                run.winner_agent = result.winner.id
-            run_path.write_text(run.model_dump_json(indent=2))
+                run.winner_agent = result.winner.label
+            _atomic_write(run_path, run.model_dump_json(indent=2))
         await self._project_best_effort(
             workspace,
             lambda m: m.finalize(

@@ -139,9 +139,9 @@ def test_jsonl_parent_span_hex_becomes_bytes(tmp_path):
 
 def test_jsonl_injects_extra_resource_attrs(tmp_path):
     p = _write(tmp_path / "t.jsonl", {"resourceSpans": [{"scopeSpans": [{"spans": [{"traceId": TRACE_HEX}]}]}]})
-    req = _merge(jsonl_to_protobuf(p, {"nemo.experiment.id": "exp-1", "nemo.trial.id": "t1"}))
+    req = _merge(jsonl_to_protobuf(p, {"nemo.evaluation.name": "exp-1", "nemo.trial.id": "t1"}))
     attrs = _resource_attrs(req.resource_spans[0])
-    assert attrs["nemo.experiment.id"].string_value == "exp-1"
+    assert attrs["nemo.evaluation.name"].string_value == "exp-1"
     assert attrs["nemo.trial.id"].string_value == "t1"
 
 
@@ -155,25 +155,25 @@ def test_jsonl_preserves_existing_resource_attrs(tmp_path):
         ]
     }
     p = _write(tmp_path / "t.jsonl", line)
-    attrs = _resource_attrs(_merge(jsonl_to_protobuf(p, {"nemo.experiment.id": "exp-1"})).resource_spans[0])
+    attrs = _resource_attrs(_merge(jsonl_to_protobuf(p, {"nemo.evaluation.name": "exp-1"})).resource_spans[0])
     assert attrs["hostname"].string_value == "h1"  # original kept
-    assert attrs["nemo.experiment.id"].string_value == "exp-1"  # new added
+    assert attrs["nemo.evaluation.name"].string_value == "exp-1"  # new added
 
 
 def test_jsonl_extra_attr_overrides_duplicate_key(tmp_path):
     line = {
         "resourceSpans": [
             {
-                "resource": {"attributes": [{"key": "nemo.experiment.id", "value": {"stringValue": "old"}}]},
+                "resource": {"attributes": [{"key": "nemo.evaluation.name", "value": {"stringValue": "old"}}]},
                 "scopeSpans": [{"spans": [{"traceId": TRACE_HEX}]}],
             }
         ]
     }
     p = _write(tmp_path / "t.jsonl", line)
-    rs = _merge(jsonl_to_protobuf(p, {"nemo.experiment.id": "new"})).resource_spans[0]
+    rs = _merge(jsonl_to_protobuf(p, {"nemo.evaluation.name": "new"})).resource_spans[0]
     keys = [a.key for a in rs.resource.attributes]
-    assert keys.count("nemo.experiment.id") == 1  # not duplicated
-    assert _resource_attrs(rs)["nemo.experiment.id"].string_value == "new"  # overridden
+    assert keys.count("nemo.evaluation.name") == 1  # not duplicated
+    assert _resource_attrs(rs)["nemo.evaluation.name"].string_value == "new"  # overridden
 
 
 def test_jsonl_chunks_split_and_merge_back(tmp_path):
@@ -190,7 +190,7 @@ def test_jsonl_chunks_split_and_merge_back(tmp_path):
 def test_jsonl_empty_file_yields_no_payloads(tmp_path):
     p = tmp_path / "empty.jsonl"
     p.write_text("")
-    assert jsonl_to_protobuf(p, {"nemo.experiment.id": "exp-1"}) == []
+    assert jsonl_to_protobuf(p, {"nemo.evaluation.name": "exp-1"}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -206,9 +206,9 @@ def test_spans_builds_valid_protobuf_with_ids_and_name():
 
 
 def test_spans_injects_resource_attrs():
-    req = _merge(spans_to_protobuf([_span_row()], {"nemo.experiment.id": "exp-42", "nemo.test_case.id": "task1"}))
+    req = _merge(spans_to_protobuf([_span_row()], {"nemo.evaluation.name": "exp-42", "nemo.test_case.id": "task1"}))
     attrs = _resource_attrs(req.resource_spans[0])
-    assert attrs["nemo.experiment.id"].string_value == "exp-42"
+    assert attrs["nemo.evaluation.name"].string_value == "exp-42"
     assert attrs["nemo.test_case.id"].string_value == "task1"
 
 
@@ -286,4 +286,4 @@ def test_spans_each_row_becomes_splittable_resource_spans():
 
 
 def test_spans_empty_rows_yield_no_payloads():
-    assert spans_to_protobuf([], {"nemo.experiment.id": "exp-1"}) == []
+    assert spans_to_protobuf([], {"nemo.evaluation.name": "exp-1"}) == []

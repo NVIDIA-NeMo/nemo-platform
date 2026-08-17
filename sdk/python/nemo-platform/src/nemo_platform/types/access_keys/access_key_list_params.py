@@ -24,5 +24,7 @@ __all__ = ["AccessKeyListParams"]
 
 class AccessKeyListParams(TypedDict, total=False):
     page: int
+    """Page number to retrieve."""
 
     page_size: int
+    """Number of keys to retrieve per page."""

@@ -4,6 +4,8 @@
 """Tests for the WASM policy engine."""
 
 from pathlib import Path
+from queue import Queue
+from threading import Thread
 from typing import ClassVar
 
 import pytest
@@ -67,14 +69,12 @@ def minimal_authz_data():
 
 @pytest.fixture(autouse=True)
 def reset_policy():
-    """Reset policy singleton between tests."""
+    """Reset policy state between tests."""
     import nmp.core.auth.app.embedded_pdp.engine as pe
 
-    pe._policy = None
-    pe._policy_data = {}
+    pe._reset_policy_state_for_testing()
     yield
-    pe._policy = None
-    pe._policy_data = {}
+    pe._reset_policy_state_for_testing()
 
 
 class TestEntrypointValidation:
@@ -106,10 +106,49 @@ class TestPolicyLoading:
         assert policy is not None
         assert isinstance(policy, OPAPolicy)
 
-    def test_policy_singleton(self):
+    def test_policy_reused_within_thread(self):
         policy1 = get_policy()
         policy2 = get_policy()
         assert policy1 is policy2
+
+    def test_policy_runtime_is_thread_local(self, minimal_authz_data):
+        set_policy_data(minimal_authz_data)
+        main_policy = get_policy()
+        policies = Queue()
+        errors = Queue()
+
+        def load_policy_in_thread():
+            try:
+                policies.put(get_policy())
+            except BaseException as exc:
+                errors.put(exc)
+
+        thread = Thread(target=load_policy_in_thread)
+        thread.start()
+        thread.join()
+
+        assert errors.empty(), errors.get()
+        worker_policy = policies.get_nowait()
+        assert worker_policy is not main_policy
+        assert worker_policy._owner_thread_id != main_policy._owner_thread_id
+
+    def test_policy_runtime_rejects_cross_thread_use(self):
+        policy = get_policy()
+        errors = Queue()
+
+        def evaluate_leaked_policy():
+            try:
+                policy.evaluate({})
+            except BaseException as exc:
+                errors.put(exc)
+
+        thread = Thread(target=evaluate_leaked_policy)
+        thread.start()
+        thread.join()
+
+        error = errors.get_nowait()
+        assert isinstance(error, RuntimeError)
+        assert "OPAPolicy used from a different thread" in str(error)
 
     def test_policy_load_forwards_auto_build_config(self, monkeypatch: pytest.MonkeyPatch):
         import nmp.core.auth.app.embedded_pdp.engine as pe
@@ -325,21 +364,26 @@ class TestResourceLimits:
     def test_fuel_exhaustion_raises_policy_error(self, minimal_authz_data):
         """Verify that an absurdly low fuel limit triggers PolicyEngineError."""
         import nmp.core.auth.app.embedded_pdp.engine as pe
+        from nmp.common.config import Configuration
+        from nmp.core.auth.config import AuthServiceConfig
 
-        pe._policy = None
-        path = Path(__file__).parent.parent / "src/nmp/core/auth/assets/policy.wasm"
-        pe._policy = OPAPolicy(str(path), fuel_limit=100, memory_limit_mb=32)
-        pe._policy.set_data(minimal_authz_data)
+        Configuration.set_override(AuthServiceConfig(embedded_pdp_cpu_limit=0, embedded_pdp_memory_limit_mb=32))
+        try:
+            pe.reload_policy()
+            set_policy_data(minimal_authz_data)
 
-        with pytest.raises(PolicyEngineError, match="exceeded fuel limit"):
-            evaluate(
-                "allow",
-                {
-                    "principal_id": "test@example.com",
-                    "path": "/apis/models/v2/workspaces/test-workspace/models",
-                    "method": "GET",
-                },
-            )
+            with pytest.raises(PolicyEngineError, match="exceeded fuel limit"):
+                evaluate(
+                    "allow",
+                    {
+                        "principal_id": "test@example.com",
+                        "path": "/apis/models/v2/workspaces/test-workspace/models",
+                        "method": "GET",
+                    },
+                )
+        finally:
+            Configuration.clear_override(AuthServiceConfig)
+            pe._reset_policy_state_for_testing()
 
     def test_default_fuel_allows_normal_evaluation(self, minimal_authz_data):
         """Verify that the default fuel limit is sufficient for normal evaluations."""
@@ -364,20 +408,25 @@ class TestResourceLimits:
     def test_custom_fuel_limit(self, minimal_authz_data):
         """Verify that a custom fuel limit works when sufficient."""
         import nmp.core.auth.app.embedded_pdp.engine as pe
+        from nmp.common.config import Configuration
+        from nmp.core.auth.config import AuthServiceConfig
 
-        pe._policy = None
-        path = Path(__file__).parent.parent / "src/nmp/core/auth/assets/policy.wasm"
-        pe._policy = OPAPolicy(str(path), fuel_limit=50_000_000, memory_limit_mb=32)
-        pe._policy.set_data(minimal_authz_data)
+        Configuration.set_override(AuthServiceConfig(embedded_pdp_cpu_limit=50, embedded_pdp_memory_limit_mb=32))
+        try:
+            pe.reload_policy()
+            set_policy_data(minimal_authz_data)
 
-        result = evaluate(
-            "allow",
-            {
-                "principal_id": "test@example.com",
-                "path": "/apis/models/v2/workspaces/test-workspace/models",
-                "method": "GET",
-            },
-        )
+            result = evaluate(
+                "allow",
+                {
+                    "principal_id": "test@example.com",
+                    "path": "/apis/models/v2/workspaces/test-workspace/models",
+                    "method": "GET",
+                },
+            )
+        finally:
+            Configuration.clear_override(AuthServiceConfig)
+            pe._reset_policy_state_for_testing()
         assert result["allowed"] is True
 
 

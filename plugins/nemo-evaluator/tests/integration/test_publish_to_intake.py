@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 import os
+import shutil
 import socket
 import subprocess
 import time
@@ -104,30 +105,73 @@ def _wait_for_ready(base_url: str, *, timeout: float) -> None:
     raise RuntimeError(f"platform at {base_url} not ready within {timeout}s")
 
 
+#: Stable, not per-session: `--remove` only matches containers whose data directory equals the one
+#: being asked for, so a per-session path leaves a stranded container unremovable.
+_CLICKHOUSE_DATA_DIR = REPO_ROOT / "tmp" / "evaluator-intake-clickhouse"
+
+
+#: Bounds one provisioner call, so a wedged Docker fails this fixture instead of the worker.
+_CLICKHOUSE_SCRIPT_TIMEOUT_ENV = "NMP_EVALUATOR_CLICKHOUSE_SCRIPT_TIMEOUT"
+
+
+def _script_timeout_seconds() -> float:
+    """Resolve the provisioner timeout. Zero and negative time out immediately; ``inf`` never."""
+    raw = os.getenv(_CLICKHOUSE_SCRIPT_TIMEOUT_ENV)
+    if raw is None:
+        return 300.0
+    try:
+        seconds = float(raw)
+    except ValueError:
+        raise ValueError(f"{_CLICKHOUSE_SCRIPT_TIMEOUT_ENV} must be a number of seconds, got {raw!r}") from None
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError(f"{_CLICKHOUSE_SCRIPT_TIMEOUT_ENV} must be a positive, finite number of seconds, got {raw!r}")
+    return seconds
+
+
+_CLICKHOUSE_SCRIPT_TIMEOUT_SECONDS = _script_timeout_seconds()
+
+
+def _run_clickhouse_script(*args: str, env: dict[str, str], check: bool) -> int:
+    """Invoke the local ClickHouse provisioner script and return its exit status."""
+    return subprocess.run(
+        ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh"), *args],
+        check=check,
+        cwd=REPO_ROOT,
+        env=env,
+        timeout=_CLICKHOUSE_SCRIPT_TIMEOUT_SECONDS,
+    ).returncode
+
+
 @pytest.fixture(scope="session")
-def _clickhouse(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+def _clickhouse() -> Iterator[None]:
     if not _docker_available():
         pytest.skip("Docker not available; required for ClickHouse-backed Intake")
-    clickhouse_env = {
-        **os.environ,
-        "CLICKHOUSE_DATA_DIR": str(tmp_path_factory.mktemp("evaluator-intake-clickhouse")),
-    }
+    clickhouse_env = {**os.environ, "CLICKHOUSE_DATA_DIR": str(_CLICKHOUSE_DATA_DIR)}
+    # Reclaim anything a previous session left behind. Not check=True: usually there is nothing to
+    # remove, and a failure here must not mask the provisioning error below.
     try:
-        subprocess.run(
-            ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh")],
-            check=True,
-            cwd=REPO_ROOT,
-            env=clickhouse_env,
-        )
+        reclaimed = _run_clickhouse_script("--remove", env=clickhouse_env, check=False)
+    except subprocess.TimeoutExpired:
+        reclaimed = -1
+    # The directory is bind-mounted read-write, so only wipe it once removal succeeded — otherwise
+    # a still-running ClickHouse loses its data underneath it.
+    if reclaimed == 0:
+        # Not ignore_errors: a partial delete leaves the session running against state it believes
+        # is empty.
+        try:
+            shutil.rmtree(_CLICKHOUSE_DATA_DIR)
+        except FileNotFoundError:
+            pass
+    try:
+        _run_clickhouse_script(env=clickhouse_env, check=True)
         _wait_for_tcp("localhost", 8123, timeout=60)
         yield
     finally:
-        subprocess.run(
-            ["bash", str(REPO_ROOT / "services/intake/scripts/spans/run_clickhouse.sh"), "--remove"],
-            check=True,
-            cwd=REPO_ROOT,
-            env=clickhouse_env,
-        )
+        # Best effort: setup reclaims on its own, so this must not mask a real test failure.
+        try:
+            _run_clickhouse_script("--remove", env=clickhouse_env, check=False)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 @pytest.fixture(scope="session")

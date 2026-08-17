@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform Fern Docs
 
 This directory holds the Fern **configuration** for the NeMo Platform documentation site. The page content (`.mdx`) lives in the parent `docs/` tree (e.g. `docs/get-started/setup.mdx`); this `docs/fern/` directory holds the navigation, theme, components, snippets, and OpenAPI wiring. The nav references pages with relative paths (`../../<area>/<page>.mdx`).

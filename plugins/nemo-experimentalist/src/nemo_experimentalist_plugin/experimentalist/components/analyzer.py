@@ -11,14 +11,23 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
-from nemo_experimentalist_plugin.entities import Dataset, EvaluationResult, Task, TrialResult
+from nemo_experimentalist_plugin.entities import (
+    Candidate,
+    Dataset,
+    EvaluationResult,
+    MetricTarget,
+    Task,
+    TrialResult,
+    local_path_from_uri,
+)
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import (  # noqa: F401
     Diagnostic,
     TraceAnalyzer,
     TraceAnalyzerConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.trace_explorer import TraceExplorer  # noqa: F401
-from nemo_platform import AsyncNeMoPlatform
+from nemo_experimentalist_plugin.experimentalist.seam import TraceLoader
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -38,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyzerConfig(BaseModel):
-    """Configure tuning parameters for AgentAnalyzer."""
+    """Configure tuning parameters for TraceRootCauseAnalyzer."""
 
     max_summary_tokens: int = Field(
         default=80_000,
@@ -225,14 +234,21 @@ class AgentAnalysis(BaseModel):
         return "\n\n".join(sections)
 
 
-class AgentAnalyzer(Agent):
+class TraceRootCauseAnalyzer(Agent, roles.Analyzer):
     """Analyze an agent's trace and failure patterns for a single optimization round."""
+
+    config_type = AnalyzerConfig
+
+    name = "trace"
 
     def __init__(
         self,
         workspace: Path,
         config: AnalyzerConfig | None = None,
         framework_skills_dirs: list[Path] | None = None,
+        load_trace: TraceLoader | None = None,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
         **kwargs: Any,
     ):
         """Initialize the analyzer for the given workspace.
@@ -241,12 +257,17 @@ class AgentAnalyzer(Agent):
             workspace: Absolute path to the eval-and-optimize workspace root.
             config: Tuning parameters; defaults to ``AnalyzerConfig()`` if ``None``.
             framework_skills_dirs: Optional list of directories containing framework skills to load.
+            load_trace: Resolves a trace reference to a TraceExplorer. Taken from the
+                context so this signature names no platform type.
             **kwargs: Forwarded to ``Agent.__init__``.
 
         """
         super().__init__(llm=kwargs.pop("llm", None) or get_default_model(), **kwargs)
         self._config = config or AnalyzerConfig()
         self._workspace_path = workspace
+        self._load_trace = load_trace
+        self._objective_metrics = objective_metrics or []
+        self._regression_metrics = regression_metrics or []
         self._framework_skills_dirs: list[Path] = framework_skills_dirs or []
         self.shell = GuardedShellTools(cwd=workspace)
         # Two generation methods run on the fast tier. Resolved here, like every other
@@ -632,68 +653,55 @@ class AgentAnalyzer(Agent):
         """
         ...
 
-    def _agent_id_and_path(self, agent: Path | str) -> tuple[str, Path]:
-        """Return stable agent id and local path for analyzer calls."""
-        if isinstance(agent, Path):
-            return agent.name, agent
-        return agent, self._workspace_path / "eval-and-optimize" / "agents" / agent
-
     def _tasks_by_id(self, dataset: Dataset) -> dict[str, Task]:
         """Return dataset tasks keyed by id."""
         return {task.id: task for task in dataset.list_tasks()}
 
     async def run(
         self,
-        agent: Path | str,
+        *,
+        candidate: Candidate,
         dataset: Dataset,
         evaluation: EvaluationResult,
-        round: int | None = None,  # noqa: A002
         peer_evaluations: dict[str, EvaluationResult] | None = None,
-        client: AsyncNeMoPlatform | None = None,
-        nmp_workspace: str | None = None,
+        round_num: int | None = None,
         agent_spec: Path | None = None,
-        objective_metrics: list[dict[str, Any]] | None = None,
-        regression_metrics: list[dict[str, Any]] | None = None,
     ) -> AgentAnalysis:
         """Run the full analysis pipeline for one agent in one optimization round.
 
         Args:
-            agent: The agent path or stable agent id to analyze.
+            candidate: The candidate to analyze; its artifact is where the code lives.
             dataset: The dataset to analyze.
             evaluation: The evaluation result to analyze.
-            round: Current optimization round number, if available.
             peer_evaluations: Optional peer evaluation results keyed by agent id.
-            client: NeMo Platform client used to load ``intake://`` trial traces.
-                When ``None``, Intake traces cannot be loaded and are skipped.
-            nmp_workspace: NeMo Platform (Intake) workspace *name* — the request
-                context for ``intake://`` trace lookups. Distinct from the
-                constructor's ``workspace: Path`` (the filesystem eval dir).
-            objective_metrics: Active metrics to improve.
-            regression_metrics: Active metrics to preserve.
+            round_num: Current optimization round number, if available.
+            agent_spec: Markdown description of the agent under test, when the run has one.
 
         Returns:
             AgentAnalysis: per-trial diagnostics, failure classification, and peer
             comparison for the given agent.
 
         """
-        agent_id, agent_path = self._agent_id_and_path(agent)
-        round_key = f":round:{round}" if round is not None else ""
+        agent_id, agent_path = candidate.label, local_path_from_uri(candidate.artifact.uri)
+        round_key = f":round:{round_num}" if round_num is not None else ""
         # Fold intake availability into the key: when no client/workspace is
         # supplied, intake:// trial traces are skipped and the analysis is
         # trace-starved. Keying on availability prevents such a degraded result
         # from being replayed on a later run that *can* load those traces.
-        intake_key = ":intake:1" if client is not None and nmp_workspace is not None else ":intake:0"
-        objective_metrics = objective_metrics or []
-        regression_metrics = regression_metrics or []
+        intake_key = ":intake:1" if self._load_trace is not None else ":intake:0"
+        # The objectives are part of the question asked, so a change of objective must not
+        # replay an analysis produced under the old one.
         cache_key = cache.agent_hash(
             f"{agent_id}:evaluation:{evaluation.id}{round_key}{intake_key}:"
-            f"objective-metrics:{objective_metrics}:regression-metrics:{regression_metrics}"
+            f"objective-metrics:{self._objective_metrics}:regression-metrics:{self._regression_metrics}"
         )
         cached = cache.load(self._workspace_path, cache_key, AgentAnalysis)
         if cached is not None:
             return cached
 
-        selections = await self.select_trials(agent_id, dataset, evaluation, objective_metrics, regression_metrics)
+        objectives = [t.model_dump() for t in self._objective_metrics]
+        regressions = [t.model_dump() for t in self._regression_metrics]
+        selections = await self.select_trials(agent_id, dataset, evaluation, objectives, regressions)
         trials_by_id = {trial.id: trial for trial in evaluation.trials}
         selected_trials: list[tuple[TrialResult, str]] = []
         for selection in selections:
@@ -756,10 +764,9 @@ class AgentAnalyzer(Agent):
                     agent_path=agent_path,
                     rationale=rationales.get(task.id),
                     selection_reason=selection_reason,
-                    objective_metrics=objective_metrics,
-                    regression_metrics=regression_metrics,
-                    client=client,
-                    workspace=nmp_workspace,
+                    objective_metrics=objectives,
+                    regression_metrics=regressions,
+                    load_trace=self._load_trace,
                 )
                 for trial, task, selection_reason in trial_tasks
             ],
@@ -803,16 +810,16 @@ class AgentAnalyzer(Agent):
                 agent_id,
                 diagnoses,
                 [trial for trial, _ in selected_trials],
-                objective_metrics,
-                regression_metrics,
+                objectives,
+                regressions,
             ),
             self.compare_with_peers(
                 agent_id,
                 evaluation,
                 diagnoses,
                 peer_evaluations,
-                objective_metrics,
-                regression_metrics,
+                objectives,
+                regressions,
             ),
         )
 

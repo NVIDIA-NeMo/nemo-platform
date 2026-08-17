@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-build-agent
 description: End-to-end NeMo Platform agent implementation from an approved agent spec. Registers and deploys the agent, generates evaluation data, runs evaluation, and signs off. Use for full spec-to-deployed-agent work, including builds from an existing legacy NAT workflow.
 triggers:

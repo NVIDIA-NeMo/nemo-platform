@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # rl backend — Kubernetes job execution requirement
 
 The `rl` (DPO) backend runs **each job step as a Kubernetes pod** via the

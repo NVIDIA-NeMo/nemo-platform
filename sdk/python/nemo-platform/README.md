@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Platform Python SDK
 
 [![PyPI version](https://img.shields.io/pypi/v/nemo-platform.svg?label=pypi%20(stable))](https://pypi.org/project/nemo-platform/)

@@ -1,5 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+
 #
 # Multi-stage image for FabricContainerRuntime. The builder compiles nemo-fabric (maturin/Rust) into
 # an isolated venv AND builds Fabric's own `fabric` CLI (the runtime execs `fabric run` to kick off

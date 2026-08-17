@@ -227,8 +227,10 @@ paths:
         schema:
           type: integer
           minimum: 1
+          description: Page number to retrieve.
           default: 1
           title: Page
+        description: Page number to retrieve.
       - name: page_size
         in: query
         required: false
@@ -236,8 +238,10 @@ paths:
           type: integer
           maximum: 100
           minimum: 1
+          description: Number of keys to retrieve per page.
           default: 100
           title: Page Size
+        description: Number of keys to retrieve per page.
       responses:
         '200':
           description: Successful Response

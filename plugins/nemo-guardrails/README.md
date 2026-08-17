@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # NeMo Guardrails Inference Middleware Plugin
 
 A NeMo Inference Middleware plugin that runs input and output rails on chat-completions traffic handled by the Inference Gateway (IGW). The plugin can be configured to apply **input** rails before the backend model is invoked and **output** rails on the model response (non-streaming or streaming).

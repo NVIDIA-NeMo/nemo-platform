@@ -15,10 +15,10 @@ from nemo_eval_author_plugin.eval_author.agent import EvalAuthor
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.client import make_client
 from nemo_experimentalist_plugin.entities import DatasetValidationError, local_path_from_uri
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborDataset,
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborNativeOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
 from nemo_insights_plugin.entities import Insight
@@ -399,7 +399,7 @@ async def test_eval_author_metric_scores_known_failing_harbor_baseline_low(
 
     assert summary.summary
     await insight_suite.validate()
-    evaluator = HarborEvaluator(experiment_dir=tmp_path)
+    evaluator = HarborNativeOutcomeEvaluator(experiment_dir=tmp_path)
     result = await asyncio.wait_for(
         evaluator.run(
             agent=agent_dir,
@@ -528,7 +528,7 @@ async def test_eval_author_metric_discriminates_controlled_harbor_tool_evidence(
 
     assert summary.summary
     await insight_suite.validate()
-    evaluator = HarborEvaluator(experiment_dir=tmp_path)
+    evaluator = HarborNativeOutcomeEvaluator(experiment_dir=tmp_path)
 
     async def run_agent(agent_dir: Path, job_name: str):
         return await asyncio.wait_for(

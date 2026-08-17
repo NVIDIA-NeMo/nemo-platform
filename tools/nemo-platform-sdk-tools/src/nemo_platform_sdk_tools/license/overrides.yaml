@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # License Overrides for osv-scanner
 #
 # This file provides manual license overrides for packages where osv-scanner
@@ -103,7 +106,7 @@ overrides:
   amqp: BSD-3-Clause # AMQP protocol implementation
   billiard: BSD-3-Clause # Multiprocessing pool (used by Celery)
   flower: BSD-3-Clause # Celery monitoring tool
-  psycopg2-binary: LGPL # PostgreSQL adapter
+  psycopg2-binary: LGPL-3.0-or-later WITH openvpn-openssl-exception # PostgreSQL adapter
   pyarrow: Apache-2.0 # Apache Arrow Python bindings
   vine: BSD-3-Clause # Promises/futures library for Celery
 
@@ -169,7 +172,7 @@ overrides:
 
   # NLP / AI Evaluation
   fastembed: Apache-2.0 # Fast text embedding
-  langchain-oci: MIT # LangChain Oracle Cloud Infrastructure integration
+  langchain-oci: UPL-1.0 # LangChain Oracle Cloud Infrastructure integration
   ragas: Apache-2.0 # RAG evaluation framework
   range-regex: BSD-3-Clause # Regex for ranges
   ratelimit: MIT # API rate limiting
@@ -228,12 +231,12 @@ overrides:
 
   # Licenses not automatically approved
   aiohappyeyeballs: PSF-2.0
-  certifi: LGPL
+  certifi: MPL-2.0
   datetime: ZPL-2.0
   email-validator: Unlicense
   filelock: Unlicense
   nvidia-cutlass-dsl: NVIDIA-Software-End-User-License-Agreement
-  pathspec: LGPL
+  pathspec: MPL-2.0
   pillow: MIT-CMU
   pycountry: LGPL-2.1
   python-gitlab: LGPL-3.0
@@ -247,9 +250,12 @@ overrides:
 
   backports-zstd: PSF-2.0
   dspy: MIT
+  greenlet: MIT AND Python-2.0
   narwhals: MIT
+  regex: Apache-2.0 AND CNRI-Python
   rpds-py: MIT
   sqlite-vec: MIT # https://pypi.org/project/sqlite-vec/
+  tqdm: MIT AND MPL-2.0
   uuid-utils: BSD-3-Clause
 
   # Auth service

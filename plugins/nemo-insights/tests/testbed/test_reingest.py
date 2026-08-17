@@ -36,7 +36,7 @@ class _StubCatalog:
         _Spec(_Field("model"), ("gen_ai.request.model", "gen_ai.response.model", "llm.model_name")),
         _Spec(_Field("agent_name"), ("gen_ai.agent.name", "llm.agent.name", "agent.name")),
         _Spec(_Field("agent_version"), ("gen_ai.agent.version", "agent.version")),
-        _Spec(_Field("evaluation_id"), ("nemo.experiment.id",)),
+        _Spec(_Field("evaluation_id"), ("nemo.evaluation.name", "nemo.experiment.id")),
         _Spec(_Field("test_case_id"), ("nemo.test_case.id",)),
         _Spec(_Field("input_tokens"), ("gen_ai.usage.input_tokens", "llm.token_count.prompt")),
         _Spec(_Field("prompt_cache_write_tokens"), ("llm.token_count.prompt_details.cache_write",)),
@@ -137,7 +137,7 @@ def test_agent_doc_golden():
         "output.value": "ok",
         # catalog inversion: semantic columns re-emitted under their top-precedence source key
         "gen_ai.agent.name": "smoke-20260626-121437-5559",
-        "nemo.experiment.id": "smoke-20260626-121437-5559-20260626-121438-a833",
+        "nemo.evaluation.name": "smoke-20260626-121437-5559-20260626-121438-a833",
         "nemo.test_case.id": "1",
     }
 

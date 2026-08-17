@@ -83,7 +83,10 @@ class TestAccessKeys:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_list_with_all_params(self, client: NeMoPlatform) -> None:
-        access_key = client.access_keys.list(page=2, page_size=25)
+        access_key = client.access_keys.list(
+            page=1,
+            page_size=1,
+        )
         assert_matches_type(AccessKeyListResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -112,7 +115,7 @@ class TestAccessKeys:
     @parametrize
     def test_method_delete(self, client: NeMoPlatform) -> None:
         access_key = client.access_keys.delete(
-            "jti",
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
         )
         assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
@@ -120,7 +123,7 @@ class TestAccessKeys:
     @parametrize
     def test_raw_response_delete(self, client: NeMoPlatform) -> None:
         response = client.access_keys.with_raw_response.delete(
-            "jti",
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
         )
 
         assert response.is_closed is True
@@ -132,7 +135,7 @@ class TestAccessKeys:
     @parametrize
     def test_streaming_response_delete(self, client: NeMoPlatform) -> None:
         with client.access_keys.with_streaming_response.delete(
-            "jti",
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -203,7 +206,10 @@ class TestAsyncAccessKeys:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_list_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        access_key = await async_client.access_keys.list(page=2, page_size=25)
+        access_key = await async_client.access_keys.list(
+            page=1,
+            page_size=1,
+        )
         assert_matches_type(AccessKeyListResponse, access_key, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -232,7 +238,7 @@ class TestAsyncAccessKeys:
     @parametrize
     async def test_method_delete(self, async_client: AsyncNeMoPlatform) -> None:
         access_key = await async_client.access_keys.delete(
-            "jti",
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
         )
         assert_matches_type(AccessKeyRevokeResponse, access_key, path=["response"])
 
@@ -240,7 +246,7 @@ class TestAsyncAccessKeys:
     @parametrize
     async def test_raw_response_delete(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.access_keys.with_raw_response.delete(
-            "jti",
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
         )
 
         assert response.is_closed is True
@@ -252,7 +258,7 @@ class TestAsyncAccessKeys:
     @parametrize
     async def test_streaming_response_delete(self, async_client: AsyncNeMoPlatform) -> None:
         async with async_client.access_keys.with_streaming_response.delete(
-            "jti",
+            "ak_ecc2efdd09bd231a9ad9bd2aada37aa7",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"

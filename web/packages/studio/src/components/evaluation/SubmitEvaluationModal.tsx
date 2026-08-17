@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ControlledDatasetFileSelect } from '@nemo/common/src/components/DatasetFileSelect/ControlledDatasetFileSelect';
-import { parseFilesetLocation } from '@nemo/common/src/components/DatasetFileSelect/parseFilesetLocation';
 import { ControlledSelect } from '@nemo/common/src/components/form/ControlledSelect';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
-import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getEntityNameError } from '@nemo/common/src/utils/entityName';
@@ -19,22 +16,26 @@ import type {
   EvaluateJobRequest,
 } from '@nemo/sdk/generated/evaluator/schema';
 import {
+  createExperiment,
+  deleteEvaluation,
+  deleteExperiment,
   filesCreateFileset,
   filesDeleteFileset,
   filesDownloadFile,
   filesUploadFile,
+  useListExperiments,
 } from '@nemo/sdk/generated/platform/api';
-import {
-  Anchor,
-  Flex,
-  RadioGroupRoot,
-  SegmentedControl,
-  Stack,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { fetchSampleText } from '@studio/api/agents/fetchSampleText';
 import { submitAgentEvalJob } from '@studio/api/evaluation/agent-evaluations';
 import { isConflictError, type EvalSeedFile } from '@studio/api/evaluation/eval-config-fileset';
+import {
+  createRunEvaluation,
+  EVAL_CONFIG_FILENAME,
+  EVAL_CONFIG_FILESET_KEY,
+  experimentConfigError,
+  experimentFilesetName,
+} from '@studio/components/evaluation/experimentEvalConfig';
 import { JudgeModelSelect } from '@studio/components/evaluation/JudgeModelSelect';
 import {
   bareName,
@@ -42,25 +43,18 @@ import {
   buildDatasetEvalRequestBody,
   buildPersistedSpec,
   type EvalSpec,
+  filesetNameForExperiment,
   injectJudgeModel,
   type InlineMetricBundle,
   isDatasetEvalSpec,
   generateEvalConfigName,
   MODE_DEFAULT,
-  MODE_FILESET,
+  MODE_EXPERIMENT,
   parseEvalConfig,
 } from '@studio/components/evaluation/submitEvaluationJob';
-import { LINK_EVAL_DOCS_APPROACHES } from '@studio/constants/links';
-import {
-  DEFAULT_EVAL_CONFIG_KEY,
-  EVAL_CONFIG_SAMPLES,
-  getEvalConfigSample,
-} from '@studio/constants/sampleAgents';
+import { DATASET_EVAL_CONFIG_KEY, getEvalConfigSample } from '@studio/constants/sampleAgents';
 import { useJudgeModels } from '@studio/hooks/evaluation/useJudgeModels';
-import {
-  getAgentEvaluationDetailRoute,
-  getEvaluationResultDetailsRoute,
-} from '@studio/routes/utils';
+import { getAgentEvaluationsTabRoute } from '@studio/routes/utils';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type FC, useEffect, useRef, useState } from 'react';
 import { FormProvider, type SubmitHandler, useForm, useWatch } from 'react-hook-form';
@@ -69,13 +63,17 @@ import { z } from 'zod';
 
 const EVAL_CONFIG_MODE_ITEMS = [
   { value: MODE_DEFAULT, children: 'Use Example' },
-  { value: MODE_FILESET, children: 'Choose Fileset' },
+  { value: MODE_EXPERIMENT, children: 'Choose Experiment' },
 ];
 
-/** Flat filename the reusable config is stored as inside its fileset. */
-const EVAL_CONFIG_FILENAME = 'eval-config.json';
 const DATASET_FILENAME = 'dataset.jsonl';
+
+/** Backend caps page_size at 100; the picker shows the most recent page. */
+const EXPERIMENT_PAGE_SIZE = 100;
 const README_FILENAME = 'README.md';
+
+const NO_EXPERIMENTS_MESSAGE =
+  'No experiments yet. Run one from "Use Example" first — it creates the experiment and its eval config, which you can then re-run here.';
 
 const NO_DEPLOYMENT_MESSAGE = 'This agent has no active deployment.';
 const DEPLOYMENT_CHECK_FAILED_MESSAGE =
@@ -84,10 +82,14 @@ const DEPLOYMENT_CHECK_FAILED_MESSAGE =
 const submitEvaluationBaseSchema = z.object({
   agent: z.string().min(1, 'Agent is required'),
   judgeModel: z.string(),
-  mode: z.enum([MODE_DEFAULT, MODE_FILESET]),
+  mode: z.enum([MODE_DEFAULT, MODE_EXPERIMENT]),
   exampleKey: z.string(),
+  /** Name of the experiment to create in "Use Example" mode. */
   newName: z.string(),
-  configFile: z.string().nullable(),
+  /** Fileset created alongside it, holding eval-config.json and any data artifacts. */
+  filesetName: z.string(),
+  /** Name of the experiment to re-run in "Choose Experiment" mode. */
+  experimentName: z.string(),
 });
 
 type SubmitEvaluationFormData = z.infer<typeof submitEvaluationBaseSchema>;
@@ -110,12 +112,20 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
           path: ['newName'],
         });
       }
+      const filesetError = getEntityNameError(data.filesetName.trim());
+      if (filesetError) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: filesetError,
+          path: ['filesetName'],
+        });
+      }
     }
-    if (data.mode === MODE_FILESET && !parseFilesetLocation(data.configFile ?? '')?.objectPath) {
+    if (data.mode === MODE_EXPERIMENT && !data.experimentName) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Pick an eval-config.json inside an existing fileset',
-        path: ['configFile'],
+        message: 'Pick an experiment to run',
+        path: ['experimentName'],
       });
     }
   });
@@ -128,14 +138,18 @@ const makeSubmitEvaluationSchema = (requiresJudgeModel: () => boolean) =>
 const runningDeploymentsQuery = (agent: string): AgentsListDeploymentsParams =>
   ({ filter: { agent: bareName(agent), status: 'running' } }) as AgentsListDeploymentsParams;
 
-const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => ({
-  agent: agent ?? '',
-  judgeModel: '',
-  mode: MODE_DEFAULT,
-  exampleKey: DEFAULT_EVAL_CONFIG_KEY,
-  newName: generateEvalConfigName(),
-  configFile: null,
-});
+const makeDefaultValues = (agent?: string): SubmitEvaluationFormData => {
+  const newName = generateEvalConfigName();
+  return {
+    agent: agent ?? '',
+    judgeModel: '',
+    mode: MODE_DEFAULT,
+    exampleKey: DATASET_EVAL_CONFIG_KEY,
+    newName,
+    filesetName: filesetNameForExperiment(newName),
+    experimentName: '',
+  };
+};
 
 interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
@@ -145,17 +159,59 @@ interface SubmitEvaluationModalProps extends Pick<FormModalProps, 'open' | 'onCl
   onSubmitted?: (jobName: string) => void;
 }
 
+interface SeededEntities {
+  filesetName?: string;
+  experimentName?: string;
+  evaluationName?: string;
+}
+
+/** Undo what a failed submit created, and return the error to raise.
+ *
+ *  Deleting the Experiment soft-deletes the Evaluations whose only membership was that group, so
+ *  the evaluation is only deleted on its own when the experiment pre-existed this submit and is
+ *  therefore being kept. Names are freed either way, since the API renames on delete. When a
+ *  delete itself fails the returned error names what to remove by hand. */
+const discardSeeded = async (
+  workspace: string,
+  seeded: SeededEntities,
+  cause: unknown
+): Promise<unknown> => {
+  const leftovers: string[] = [];
+  const signal = new AbortController().signal;
+  if (seeded.experimentName) {
+    await deleteExperiment(workspace, seeded.experimentName, signal).catch(() =>
+      leftovers.push(`experiment "${seeded.experimentName}"`)
+    );
+  } else if (seeded.evaluationName) {
+    await deleteEvaluation(workspace, seeded.evaluationName, signal).catch(() =>
+      leftovers.push(`evaluation "${seeded.evaluationName}"`)
+    );
+  }
+  if (seeded.filesetName) {
+    await filesDeleteFileset(workspace, seeded.filesetName, signal).catch(() =>
+      leftovers.push(`fileset "${seeded.filesetName}"`)
+    );
+  }
+  if (leftovers.length === 0) return cause;
+  const causeDetail = cause instanceof Error ? cause.message : String(cause);
+  return new Error(
+    `${causeDetail} — ${leftovers.join(' and ')} could not be removed; delete manually before retrying under the same name.`,
+    { cause }
+  );
+};
+
 /** Resolves the persisted yardstick spec for this submission. In "Use Example" mode
  *  it builds the spec from the sample template (fanning the metric onto every task with
  *  the picked judge baked in) and seeds it into a new fileset; in "Choose Fileset" mode
  *  it reads the saved spec back verbatim (no re-fan, no judge re-pick). */
 const loadPersistedSpec = async (
   workspace: string,
-  formData: SubmitEvaluationFormData
+  formData: SubmitEvaluationFormData,
+  experimentFileset: string | null
 ): Promise<EvalSpec> => {
   if (formData.mode === MODE_DEFAULT) {
     const signal = new AbortController().signal;
-    const name = formData.newName.trim();
+    const name = formData.filesetName.trim();
     const example = getEvalConfigSample(formData.exampleKey);
     const template = parseEvalConfig(await fetchSampleText(example.configPath));
     const files: EvalSeedFile[] = [];
@@ -217,30 +273,18 @@ const loadPersistedSpec = async (
         );
       }
     } catch (uploadErr) {
-      try {
-        await filesDeleteFileset(workspace, name, signal);
-      } catch (cleanupErr) {
-        const uploadDetail = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-        const cleanupDetail = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
-        throw new Error(
-          `${uploadDetail} — the partially created fileset "${name}" could not be removed (${cleanupDetail}); delete it before retrying.`,
-          { cause: uploadErr }
-        );
-      }
-      throw uploadErr;
+      throw await discardSeeded(workspace, { filesetName: name }, uploadErr);
     }
     return spec;
   }
-  // Choose-fileset mode: read the saved yardstick spec out of its fileset, as-is.
-  const parsed = parseFilesetLocation(formData.configFile ?? '');
-  if (!parsed?.objectPath) throw new Error('No eval-config.json selected');
+  if (!experimentFileset) throw new Error('The selected experiment has no eval config fileset');
   const blob = await filesDownloadFile(
     workspace,
-    parsed.name,
-    parsed.objectPath,
+    experimentFileset,
+    EVAL_CONFIG_FILENAME,
     new AbortController().signal
   );
-  if (!blob) throw new Error('Failed to read the selected eval config');
+  if (!blob) throw new Error("Failed to read the selected experiment's eval config");
   return parseEvalConfig(await blob.text());
 };
 
@@ -274,11 +318,11 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
   });
   const {
     control,
+    register,
     reset: resetForm,
     setValue,
     getValues,
     handleSubmit,
-    setError,
     clearErrors,
     formState,
   } = methods;
@@ -309,6 +353,36 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
 
   const agentFieldError = errors.agent?.message ?? deploymentError;
   const exampleKey = useWatch({ control, name: 'exampleKey' });
+  const experimentName = useWatch({ control, name: 'experimentName' });
+
+  const { data: experimentsResponse, isLoading: isExperimentsLoading } = useListExperiments(
+    workspace,
+    { page_size: EXPERIMENT_PAGE_SIZE, sort: '-created_at' },
+    { query: { enabled: open && mode === MODE_EXPERIMENT } }
+  );
+  const experiments = experimentsResponse?.data ?? [];
+  const selectedExperiment = experiments.find((item) => item.name === experimentName);
+  const hasNoExperiments = mode === MODE_EXPERIMENT && !isExperimentsLoading && !experiments.length;
+  const latestExperimentName = experiments[0]?.name;
+
+  useEffect(() => {
+    if (mode !== MODE_EXPERIMENT || experimentName || !latestExperimentName) return;
+    setValue('experimentName', latestExperimentName, { shouldValidate: true });
+  }, [mode, experimentName, latestExperimentName, setValue]);
+
+  const { data: experimentConfigIssue, isFetching: isValidatingExperiment } = useQuery({
+    queryKey: ['experiment-eval-config', workspace, experimentName],
+    queryFn: ({ signal }) =>
+      selectedExperiment ? experimentConfigError(workspace, selectedExperiment, signal) : null,
+    enabled: open && mode === MODE_EXPERIMENT && !!selectedExperiment,
+  });
+
+  const experimentFileset = selectedExperiment ? experimentFilesetName(selectedExperiment) : null;
+  const experimentFieldError = errors.experimentName?.message ?? experimentConfigIssue ?? undefined;
+
+  const canRunSelectedExperiment =
+    mode !== MODE_EXPERIMENT ||
+    (!isValidatingExperiment && !!selectedExperiment && !experimentConfigIssue);
 
   // Fetch and parse the selected example config early to detect metric type and default model.
   const { data: exampleConfig } = useQuery({
@@ -365,34 +439,58 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
     reset: resetMutation,
   } = useMutation({
     mutationFn: async (formData: SubmitEvaluationFormData) => {
-      const spec = await loadPersistedSpec(workspace, formData);
-      const filesetName =
-        formData.mode === MODE_DEFAULT
-          ? formData.newName.trim()
-          : (parseFilesetLocation(formData.configFile ?? '')?.name ?? undefined);
-      const selections = { workspace, agent: formData.agent, filesetName };
-      const created = isDatasetEvalSpec(spec)
-        ? await evaluatorCreateEvaluateJob(
-            workspace,
-            buildDatasetEvalRequestBody(spec, selections, null) as EvaluateJobRequest
-          )
-        : await submitAgentEvalJob(
-            workspace,
-            buildAgentEvalRequestBody(spec, selections) as AgentEvaluateJobRequest
-          );
-      if (!created?.name) throw new Error('Submission did not return a job name');
-      return { name: created.name, isDataset: isDatasetEvalSpec(spec) };
+      const spec = await loadPersistedSpec(workspace, formData, experimentFileset);
+
+      const isNew = formData.mode === MODE_DEFAULT;
+      const filesetName = isNew ? formData.filesetName.trim() : (experimentFileset ?? '');
+
+      const seeded: SeededEntities = isNew ? { filesetName } : {};
+
+      try {
+        const experiment = isNew
+          ? await createExperiment(workspace, {
+              name: formData.newName.trim(),
+              metadata: { [EVAL_CONFIG_FILESET_KEY]: filesetName },
+            })
+          : selectedExperiment;
+        if (!experiment) throw new Error('No experiment to run this evaluation under');
+        if (isNew) seeded.experimentName = experiment.name;
+
+        const evaluationId = await createRunEvaluation(workspace, {
+          experimentId: experiment.id,
+          experimentName: experiment.name,
+          filesetName,
+        });
+        seeded.evaluationName = evaluationId;
+
+        const selections = {
+          workspace,
+          agent: formData.agent,
+          filesetName,
+          experimentName: experiment.name,
+          evaluationId,
+        };
+        const created = isDatasetEvalSpec(spec)
+          ? await evaluatorCreateEvaluateJob(
+              workspace,
+              buildDatasetEvalRequestBody(spec, selections, null) as EvaluateJobRequest
+            )
+          : await submitAgentEvalJob(
+              workspace,
+              buildAgentEvalRequestBody(spec, selections) as AgentEvaluateJobRequest
+            );
+        if (!created?.name) throw new Error('Submission did not return a job name');
+        return { name: created.name };
+      } catch (err) {
+        throw await discardSeeded(workspace, seeded, err);
+      }
     },
-    onSuccess: ({ name, isDataset }) => {
+    onSuccess: ({ name }, formData) => {
       toast.success(`Evaluation "${name}" submitted`);
-      void queryClient.invalidateQueries({ queryKey: ['agent-eval-jobs', workspace] });
+      void queryClient.invalidateQueries({ queryKey: ['evaluator-jobs', workspace] });
       onSubmitted?.(name);
       resetAndClose();
-      navigate(
-        isDataset
-          ? getEvaluationResultDetailsRoute(workspace, name)
-          : getAgentEvaluationDetailRoute(workspace, name)
-      );
+      navigate(getAgentEvaluationsTabRoute(workspace, bareName(formData.agent)));
     },
   });
 
@@ -435,7 +533,7 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
       submitButtonText="Submit"
       onSubmit={handleSubmit(onSubmit)}
       disabled={isPending}
-      submitDisabled={!deploymentVerified}
+      submitDisabled={!deploymentVerified || !canRunSelectedExperiment}
       loading={isPending}
       errorText={errorMessage}
       className="w-[690px]! max-w-[95vw]!"
@@ -475,51 +573,17 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                 className="w-full [&_button]:flex-1"
                 value={mode}
                 onValueChange={(v) => {
-                  setValue('mode', v as typeof MODE_DEFAULT | typeof MODE_FILESET, {
+                  setValue('mode', v as typeof MODE_DEFAULT | typeof MODE_EXPERIMENT, {
                     shouldValidate: false,
                   });
-                  clearErrors('configFile');
+                  clearErrors('experimentName');
                 }}
                 items={EVAL_CONFIG_MODE_ITEMS}
               />
 
               {mode === MODE_DEFAULT ? (
                 <>
-                  <Stack gap="density-sm">
-                    <RadioGroupRoot
-                      name="eval-config-template"
-                      orientation="horizontal"
-                      className="w-full"
-                      aria-label="Eval config template"
-                      value={exampleKey}
-                      onValueChange={(key) => setValue('exampleKey', key, { shouldValidate: true })}
-                    >
-                      <Flex gap="density-md" className="w-full *:flex-1">
-                        {EVAL_CONFIG_SAMPLES.map((sample) => (
-                          <RadioCard
-                            key={sample.key}
-                            value={sample.key}
-                            label={sample.displayName}
-                            description={sample.description}
-                            showIndicator={false}
-                          />
-                        ))}
-                      </Flex>
-                    </RadioGroupRoot>
-                    <Text kind="body/regular/md" color="secondary">
-                      Learn more about{' '}
-                      <Anchor
-                        kind="inline"
-                        textKind="body/regular/md"
-                        href={LINK_EVAL_DOCS_APPROACHES}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Dataset-Driven vs Task-Driven evaluation
-                      </Anchor>
-                      .
-                    </Text>
-                  </Stack>
+                  <input type="hidden" {...register('exampleKey')} />
                   {isLlmJudge && (
                     <JudgeModelSelect<SubmitEvaluationFormData>
                       formFieldName="judgeModel"
@@ -530,32 +594,44 @@ export const SubmitEvaluationModal: FC<SubmitEvaluationModalProps> = ({
                     useControllerProps={{ control, name: 'newName' }}
                     selectOnFocus
                     formFieldProps={{
-                      slotLabel: 'New Fileset Name',
-                      slotHelp: 'Saves a reusable eval-config.json you can select for future runs.',
+                      slotLabel: 'New Experiment Name',
+                      slotHelp:
+                        'Groups this run and future ones against the same config. Select it later to re-run.',
                       slotError: errors.newName?.message,
+                    }}
+                  />
+                  <ControlledTextInput
+                    useControllerProps={{ control, name: 'filesetName' }}
+                    selectOnFocus
+                    formFieldProps={{
+                      slotLabel: 'Fileset Name',
+                      slotHelp: `Stores this experiment's ${EVAL_CONFIG_FILENAME} and any data files.`,
+                      slotError: errors.filesetName?.message,
                     }}
                   />
                 </>
               ) : (
-                <ControlledDatasetFileSelect
-                  useControllerProps={{
-                    control,
-                    name: 'configFile',
-                    rules: { required: 'Pick an eval-config.json inside an existing fileset' },
-                  }}
-                  acceptedFileTypes={['.json']}
-                  invalidFileMode="disable"
-                  setError={(error) => setError('configFile', error)}
-                  clearError={() => clearErrors('configFile')}
-                  workspace={workspace}
-                  inline
-                  autoCommit
-                  autoSelectFirstAcceptable
-                  showUpdatedAt
-                  filesetPurpose="generic"
-                  datasetLabel="Fileset"
-                  formFieldProps={{ slotError: errors.configFile?.message }}
-                />
+                <>
+                  {hasNoExperiments ? (
+                    <Text kind="body/regular/md" color="secondary">
+                      {NO_EXPERIMENTS_MESSAGE}
+                    </Text>
+                  ) : (
+                    <ControlledSelect
+                      useControllerProps={{ control, name: 'experimentName' }}
+                      loading={isExperimentsLoading}
+                      items={experiments.flatMap((item) =>
+                        item.name ? [{ value: item.name, children: item.name }] : []
+                      )}
+                      formFieldProps={{
+                        slotLabel: 'Experiment',
+                        slotHelp: `Runs the ${EVAL_CONFIG_FILENAME} in the experiment's fileset.`,
+                        slotError: experimentFieldError,
+                        status: experimentFieldError ? 'error' : undefined,
+                      }}
+                    />
+                  )}
+                </>
               )}
             </Stack>
           ) : null}

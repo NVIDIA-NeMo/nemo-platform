@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # hadolint global ignore=DL3059
 # The final image copies BusyBox shell utilities for parity with the task runtime.
 
@@ -22,6 +25,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+COPY docker/scripts/collect-python-sdists.py /usr/local/bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -88,11 +92,31 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "cryptography>=50.0.0,<51" \
     "nltk>=3.10.0"
 
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv run --no-project --python /app/.venv/bin/python \
+        /usr/local/bin/collect-python-sdists.py \
+        --python /app/.venv/bin/python \
+        --output /source-distributions/auditor-tasks \
+        --lock-file /app/uv.lock \
+        --label app-venv && \
+    uv run --no-project --python /app/.garak_venv/bin/python \
+        /usr/local/bin/collect-python-sdists.py \
+        --python /app/.garak_venv/bin/python \
+        --output /source-distributions/auditor-tasks \
+        --lock-file /app/uv.lock \
+        --label garak-venv
+
 FROM ${AUDITOR_PYTHON_IMAGE} AS base
 ARG USERNAME=nvs
 ARG USER_UID=1000
 ARG USER_GID=1000
 WORKDIR /app
+COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /bin/uv
+COPY docker/scripts/collect-apt-sources.sh \
+    docker/scripts/collect-cpython-source.py \
+    /usr/local/bin/
 RUN apt-get update && apt-get upgrade -y && \
     list_installed_perl_cve_packages() { \
     dpkg-query -W -f='${binary:Package} ${db:Status-Abbrev}\n' \
@@ -150,8 +174,16 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy installed packages and application
 COPY --chown=nvs:nvs --from=py-builder /app /app
+COPY --chown=nvs:nvs --from=py-builder /source-distributions/auditor-tasks/ /usr/share/nemo-platform/source-distributions/auditor-tasks/
 ARG CACHE_HOME
 COPY --chown=nvs:nvs --from=py-builder ${CACHE_HOME} ${CACHE_HOME}
+ARG NMP_COLLECT_SOURCES=0
+ENV NMP_COLLECT_SOURCES=${NMP_COLLECT_SOURCES}
+RUN bash /usr/local/bin/collect-apt-sources.sh /usr/share/nemo-platform/source-distributions/auditor-tasks/apt --installed && \
+    uv run --no-project --python /usr/local/bin/python \
+        /usr/local/bin/collect-cpython-source.py \
+        --python /usr/local/bin/python \
+        --output /usr/share/nemo-platform/source-distributions/auditor-tasks
 
 ENV USERNAME=nvs \
     HOME=/home/nvs

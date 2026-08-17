@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "nemo-platform-sdk-tools"
 description = "SDK and license maintenance tooling for NeMo Platform"

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 set -uo pipefail
 # Regenerate the TypeScript web SDK (web/packages/sdk) from the current OpenAPI spec.
 # Skips locally when pnpm is absent (mirrors lint-web-sdk.sh); hard-fails under CI.

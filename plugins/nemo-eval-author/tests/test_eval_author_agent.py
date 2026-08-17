@@ -186,10 +186,9 @@ def _install_pipeline(
             task: Task,
             agent_path: Path,
             insight: Insight,
-            client: Any,
-            workspace: str,
+            load_trace: Any,
         ) -> Diagnostic:
-            del task, agent_path, insight, client, workspace
+            del task, agent_path, insight, load_trace
             ref = cast(str, trial.metadata["trace_ref"])
             calls.analyzed_refs.append(ref)
             outcome = outcomes[self.index]
@@ -262,7 +261,6 @@ def _install_pipeline(
     monkeypatch.setattr(eval_author_module, "TraceAnalyzer", FakeTraceAnalyzer)
     monkeypatch.setattr(eval_author_module, "validate_metric_contracts", validate_metric_contracts)
 
-    monkeypatch.setattr(eval_author_module.cache, "store", lambda *args: None)
     monkeypatch.setattr(eval_author_module, "doc", lambda *_args, **_kwargs: "dataset docs")
     return calls
 

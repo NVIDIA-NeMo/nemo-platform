@@ -566,10 +566,10 @@ def seed_cancelled_trace(seeder: Seeder) -> None:
 
 
 def seed_eval_context_trace(seeder: Seeder) -> None:
-    """Trace tagged with nemo.experiment.* so evaluation_context/experiment_context populate."""
+    """Trace tagged with the evaluation identity so evaluation_context/experiment_context populate."""
     session = "showcase-eval-run"
     experiment_attrs = {
-        "nemo.experiment.id": "exp-type-showcase",
+        "nemo.evaluation.name": "exp-type-showcase",
         "nemo.experiment.run_id": "run-01",
         "nemo.experiment.sha": "a1b2c3d4",
         "nemo.test_case.id": "case-0007",

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Zero-Config LLM-as-a-Judge Evaluation - CLI Eval
 
 Tests that a coding agent can set up and run an LLM-as-a-Judge evaluation using only minimal configuration (model + scores) via the NeMo Platform CLI, letting the system auto-generate prompt templates, parsers, and structured output schemas.

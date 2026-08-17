@@ -14,15 +14,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-# Imported from `resolve` rather than `.loop`, which merely re-exports it: `loop` imports
-# this module, so going through it would be circular.
-from nemo_experimentalist_plugin.config import (
-    EvolutionaryOptimizerConfig,
-    MetricTarget,
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
+from nemo_experimentalist_plugin.experimentalist import roles
+from nemo_experimentalist_plugin.experimentalist.components.models import (
     has_metric_dimensions,
+    pareto_front,
     pareto_objectives,
 )
-from nemo_experimentalist_plugin.experimentalist.components.models import EvolutionTree, pareto_front
 from nemo_experimentalist_plugin.skills import skills_dir
 from nemo_platform_plugin.nooa_model_client import get_fast_model
 from nooa import Agent, CodeActStrategy, TextSkill, hidden, strategy
@@ -31,6 +29,16 @@ from nooa.config import CodeActConfig
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class TerminatorConfig(BaseModel):
+    """Tuning parameters for early stopping.
+
+    ``min_rounds_before_stopping`` is deliberately absent: it sits on the run config
+    beside ``max_rounds``, and reaches this component through the constructor, the same
+    way the objective and regression targets do. Two homes for one value is what made it
+    silently ignorable.
+    """
 
 
 class TerminationDecision(BaseModel):
@@ -45,11 +53,27 @@ class TerminationDecision(BaseModel):
     reason: str = ""
 
 
-class Terminator(Agent):
+class ConvergenceTerminator(Agent, roles.Terminator):
     """Decides when the evolutionary optimization loop should stop."""
 
-    def __init__(self, **kwargs: Any) -> None:
+    config_type = TerminatorConfig
+
+    name = "convergence"
+
+    def __init__(
+        self,
+        *,
+        config: TerminatorConfig | None = None,
+        min_rounds_before_stopping: int = 3,
+        objective_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(llm=kwargs.pop("llm", None) or get_fast_model(), **kwargs)
+        self._config = config or TerminatorConfig()
+        self._min_rounds_before_stopping = min_rounds_before_stopping
+        self._objective_metrics = objective_metrics or [MetricTarget(name="reward", direction="maximize")]
+        self._regression_metrics = regression_metrics or []
         self.terminator_skill = TextSkill(path=skills_dir() / "terminator")
 
     @hidden
@@ -57,165 +81,123 @@ class Terminator(Agent):
         self,
         *,
         round_num: int,
-        evolution_tree: EvolutionTree,
-        prior_analysis: str | None,
-        config: EvolutionaryOptimizerConfig,
+        candidates: list[Candidate],
+        prior_analysis: str | None = None,
     ) -> TerminationDecision:
         """Canonical termination decision, consulted once per round at the top of the loop.
 
-        Stops when the round budget is exhausted; otherwise stops when the
-        optimization has converged. Composes :meth:`assess_round_budget` and
-        :meth:`assess_convergence` (budget first — it is cheap and deterministic,
-        so an exhausted budget avoids the qualitative LLM call).
+        Early stopping only: the round budget belongs to the loop, so a terminator that
+        never stops still cannot produce an unbounded run.
 
         Args:
             round_num: Rounds completed so far.
-            evolution_tree: Live tree of scored candidates across rounds.
+            candidates: The scored population; convergence is judged from their rewards.
             prior_analysis: Markdown analysis from the previous round, if any.
-            config: Active optimizer config (read-only).
 
         Returns:
             A :class:`TerminationDecision`.
         """
-        reached = self.assess_objective_reached(evolution_tree=evolution_tree, config=config)
+        reached = self.assess_objective_reached(candidates)
         if reached.stop:
             return reached
-        budget = self.assess_round_budget(round_num=round_num, config=config)
-        if budget.stop:
-            return budget
-        return await self.assess_convergence(
-            evolution_tree=evolution_tree,
-            prior_analysis=prior_analysis,
-            config=config,
-        )
+        return await self.assess_convergence(candidates=candidates, prior_analysis=prior_analysis)
 
     @hidden
-    def assess_objective_reached(
-        self,
-        *,
-        evolution_tree: EvolutionTree,
-        config: EvolutionaryOptimizerConfig,
-    ) -> TerminationDecision:
-        """Stop when a candidate that could win already satisfies every targeted objective.
+    def assess_objective_reached(self, candidates: list[Candidate]) -> TerminationDecision:
+        """Stop when a live candidate already satisfies every targeted objective.
 
         Convergence asks whether progress has stalled; this asks whether any is left to
-        make. Not gated by ``disable_convergence_check``: that disables a judgement about
-        stagnation, this is a threshold the caller stated. To keep going, set no target.
+        make. It is not part of that judgement, so selecting no terminator does not
+        disable it -- a target is a threshold the caller stated, not an opinion about
+        stagnation. To keep going, set no target.
 
-        Consulted before every round, so a baseline that already qualifies costs nothing.
-        Only survivors and the round-0 baseline count, mirroring finalization -- a killed
-        candidate would end the run in favour of a winner that never reaches the target.
+        Only what finalization would consider counts: a live candidate, or the
+        generation-0 baseline even if survivor selection killed it — the same
+        re-admission the selector makes when deciding whether anything beat doing
+        nothing. Otherwise the run could end in favour of a winner that never reaches
+        the target, or fail to end when shipping nothing already satisfies it.
         """
-        targets = [target for target in config.objective_function if target.target is not None]
+        targets = [target for target in self._objective_metrics if target.target is not None]
         if not targets:
             return TerminationDecision(stop=False)
-        for node in evolution_tree.nodes.values():
-            if not node.val_reward or not (node.is_survivor or node.round == 0):
+        for candidate in candidates:
+            if candidate.killed_generation is not None and candidate.generation != 0:
                 continue
-            if all(target.is_satisfied_by(node.val_reward.get(target.name)) for target in targets):
-                summary = ", ".join(f"{target.name}={node.val_reward.get(target.name)}" for target in targets)
-                return TerminationDecision(stop=True, reason=f"objective reached by {node.label} ({summary})")
+            metrics = candidate.rewards["validation"].metrics or {}
+            if all(target.is_satisfied_by(metrics.get(target.name)) for target in targets):
+                summary = ", ".join(f"{target.name}={metrics.get(target.name)}" for target in targets)
+                return TerminationDecision(stop=True, reason=f"objective reached by {candidate.label} ({summary})")
         return TerminationDecision(stop=False)
 
     @hidden
     async def assess_convergence(
         self,
         *,
-        evolution_tree: EvolutionTree,
+        candidates: list[Candidate],
         prior_analysis: str | None,
-        config: EvolutionaryOptimizerConfig,
     ) -> TerminationDecision:
         """Decide whether to early-stop before running another round.
 
-        Mirrors the original top-of-loop gating: returns ``stop=False`` immediately
-        when there is no prior analysis to reason about or when the convergence
-        check is disabled. Otherwise consults :meth:`_has_converged`.
+        Returns ``stop=False`` without consulting a model when there is no prior round
+        to compare against. Otherwise consults :meth:`_has_converged`.
 
         Args:
-            evolution_tree: Live tree of scored candidates across rounds.
+            candidates: The scored population.
             prior_analysis: Markdown analysis from the previous round, if any.
-            config: Active optimizer config (read-only).
 
         Returns:
             A :class:`TerminationDecision`.
         """
-        if prior_analysis is None or config.disable_convergence_check:
+        if prior_analysis is None:
             return TerminationDecision(stop=False)
         converged = await self._has_converged(
-            evolution_tree=evolution_tree,
+            candidates=candidates,
             prior_analysis=prior_analysis,
-            min_rounds_before_stopping=config.min_rounds_before_stopping,
-            objective_metrics=config.objective_function,
-            regression_metrics=config.regression_metrics,
+            min_rounds_before_stopping=self._min_rounds_before_stopping,
+            objective_metrics=self._objective_metrics,
+            regression_metrics=self._regression_metrics,
         )
         if converged:
             return TerminationDecision(stop=True, reason="optimization converged (Pareto front stagnated)")
         return TerminationDecision(stop=False)
 
     @hidden
-    def assess_round_budget(
-        self,
-        *,
-        round_num: int,
-        config: EvolutionaryOptimizerConfig,
-    ) -> TerminationDecision:
-        """Decide whether the round budget is exhausted.
-
-        Args:
-            round_num: The number of rounds completed so far.
-            config: Active optimizer config (read-only).
-
-        Returns:
-            A :class:`TerminationDecision` that stops when
-            ``round_num >= config.max_rounds``.
-        """
-        if round_num >= config.max_rounds:
-            return TerminationDecision(stop=True, reason=f"reached max_rounds ({config.max_rounds})")
-        return TerminationDecision(stop=False)
-
-    @hidden
     async def _has_converged(
         self,
         *,
-        evolution_tree: EvolutionTree,
+        candidates: list[Candidate],
         prior_analysis: str,
         min_rounds_before_stopping: int,
         objective_metrics: list[MetricTarget] | None = None,
-        regression_metrics: list[MetricTarget] | None = None,
+        regression_metrics: list[MetricTarget],
     ) -> bool:
         """Return True if the optimization has converged and should stop early."""
-        # Truthy check (not ``is not None``): ``EvolutionNode.val_reward`` returns ``{}`` for
-        # unscored nodes, so ``is not None`` would pull them in and skew the round cutoff /
-        # Pareto front. Match ``EvolutionTree.get_best()``.
-        scored = [n for n in evolution_tree.nodes.values() if n.val_reward]
-        rounds = sorted({n.round for n in scored})
+        # Truthy check, not ``is not None``: an unscored candidate has an empty metrics
+        # dict, and counting those would skew both the round cutoff and the front.
+        scored = [c for c in candidates if c.rewards["validation"].metrics]
+        rounds = sorted({n.generation for n in scored})
         if len(rounds) < min_rounds_before_stopping:
             return False
         cutoff_round = rounds[-min_rounds_before_stopping]
-        old = [n for n in scored if n.round <= cutoff_round]
+        old = [n for n in scored if n.generation <= cutoff_round]
         if not old:
             return False
-        active_objectives = objective_metrics or EvolutionaryOptimizerConfig().objective_function
-        active_regressions = regression_metrics or []
-        scored = [node for node in scored if has_metric_dimensions(node.val_reward, active_objectives)]
+        objectives = objective_metrics or []
+        scored = [c for c in scored if has_metric_dimensions(c.rewards["validation"].metrics or {}, objectives)]
         if not scored:
             return False
-        old = [node for node in old if node in scored]
+        old = [c for c in old if c in scored]
         if not old:
             return False
-        old_front_ids = {
-            node.label for node in pareto_front(old, lambda node: pareto_objectives(node.val_reward, active_objectives))
-        }
-        full_front_ids = {
-            node.label
-            for node in pareto_front(scored, lambda node: pareto_objectives(node.val_reward, active_objectives))
-        }
+        ranked = lambda c: pareto_objectives(c.rewards["validation"].metrics or {}, objectives)  # noqa: E731
+        old_front_ids = {c.id for c in pareto_front(old, ranked)}
+        full_front_ids = {c.id for c in pareto_front(scored, ranked)}
         if full_front_ids.issubset(old_front_ids):
             return True
         return await self.qualitative_stop_check(
             prior_analysis,
-            active_objectives,
-            active_regressions,
+            objectives,
+            regression_metrics,
         )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=5)))
@@ -224,7 +206,7 @@ class Terminator(Agent):
         analysis: str,
         objective_metrics: list[MetricTarget],
         regression_metrics: list[MetricTarget],
-    ) -> bool:  # pyright: ignore[reportReturnType]  # ty: ignore[invalid-return-type]
+    ) -> bool:  # ty: ignore[invalid-return-type]  # pyright: ignore[reportReturnType]
         """Decide whether the optimization has qualitatively plateaued; return True to stop.
 
         Judge the round ``analysis`` text against the terminator skill's stop

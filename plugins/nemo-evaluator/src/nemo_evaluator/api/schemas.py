@@ -55,6 +55,9 @@ from nemo_evaluator.api.fields import (
     TaskRefList as TaskRefList,
 )
 from nemo_evaluator.api.fields import (
+    TasksetFilesRef as TasksetFilesRef,
+)
+from nemo_evaluator.api.fields import (
     TasksetRef as TasksetRef,
 )
 from nemo_evaluator.api.fields import (
@@ -301,6 +304,10 @@ class Taskset(BaseModel):
     tasks: TaskRefList = Field(
         default_factory=list, description="References to the member tasks (set semantics; duplicates rejected)."
     )
+    files_ref: TasksetFilesRef | None = Field(
+        default=None,
+        description="Files reference to the taskset's own files — shared by its members, owned by none.",
+    )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
     revision: int = Field(
         description="Ordinal of the published revision this content corresponds to. Every stored "
@@ -333,6 +340,13 @@ class TasksetInput(BaseModel):
         "when stored, so the grouping cannot change underneath you when a member republishes. "
         "Because membership is a set, the stored order is canonical rather than the submitted order: "
         "reordering the same members is not a content change and publishes no revision.",
+    )
+    files_ref: TasksetFilesRef | None = Field(
+        default=None,
+        description="Files reference to the taskset's own files — shared by its members, owned by none. "
+        "Upload them to the Files service first and point here ('workspace/fileset#prefix'). The "
+        "reference is part of the taskset's content, so repointing it publishes a revision; pin the "
+        "content by referencing a location that is not rewritten.",
     )
     metadata: TaskMetadataList = Field(default_factory=list, description="Key/value annotations for the taskset.")
     tags: list[str] = Field(

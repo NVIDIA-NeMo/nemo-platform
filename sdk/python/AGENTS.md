@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # SDK Code — Do Not Edit Directly
 
 Code in `sdk/python/nemo-platform/` is **generated and vendored**. Do not edit it directly — your changes will be overwritten.

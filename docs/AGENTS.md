@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Documentation (Fern)
 
 The docs site is built with **[Fern](https://buildwithfern.com)**, not MkDocs/Sphinx. Pages are `.mdx` under `docs/`; the Fern config lives in `docs/fern/`. Read `docs/fern/README.md` for the full guide — this file is the short version for anyone (human or agent) editing docs.
