@@ -118,6 +118,19 @@ SCENARIOS = (
         verifier_behaviour="One task writes a reward and another does not.",
         trials=(_trial("task-a", reward_text="1.0"), _trial("task-b")),
     ),
+    Scenario(
+        name="thin-denominator",
+        verifier_behaviour=(
+            "One easy task scores 1.0 and three harder tasks crash before their verifier runs. "
+            "The reward survives; the sample it was averaged over does not."
+        ),
+        trials=(
+            _trial("task-easy", reward_text="1.0"),
+            _trial("task-hard-1", exception_type="AgentTimeoutError"),
+            _trial("task-hard-2", exception_type="AgentTimeoutError"),
+            _trial("task-hard-3", exception_type="NonZeroAgentExitCodeError"),
+        ),
+    ),
 )
 
 
