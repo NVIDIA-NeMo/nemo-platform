@@ -55,13 +55,14 @@ from nemo_evaluator_sdk.agent_eval.runtimes.fabric.skills import (
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput, RunnerInfo
 from nemo_evaluator_sdk.agent_eval.workspace_seeds import SEED_FILES_INPUT_KEY, seed_workspace
+from nemo_evaluator_sdk.values.atif import FinalMetrics
 from nemo_evaluator_sdk.values.evidence import (
     EVIDENCE_FORMAT_ATIF,
     EVIDENCE_TRACE,
     CandidateEvidence,
     EvidenceDescriptor,
 )
-from pydantic import JsonValue
+from pydantic import JsonValue, ValidationError
 
 if TYPE_CHECKING:
     # Annotations use nemo_fabric's real types (single source of truth). nemo_fabric is an optional
@@ -358,9 +359,13 @@ class FabricAgentRuntime:
                         raise
                     hook_extras = None
         except TimeoutError as exc:
-            return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
+            return self._failed_trial(
+                task, evidence_dir, exc, extra_metadata=self._failed_metadata(skill_provenances, evidence_dir)
+            )
         except Exception as exc:  # noqa: BLE001 - a task failure must not abort the whole run
-            return self._failed_trial(task, evidence_dir, exc, extra_metadata=self._skill_metadata(skill_provenances))
+            return self._failed_trial(
+                task, evidence_dir, exc, extra_metadata=self._failed_metadata(skill_provenances, evidence_dir)
+            )
         finally:
             if self._task_hook is not None:
                 try:
@@ -396,6 +401,18 @@ class FabricAgentRuntime:
         """
         return {"skill": provenances[0] if len(provenances) == 1 else None, "skills": provenances}
 
+    @staticmethod
+    def _failed_metadata(provenances: list[SkillProvenance], evidence_dir: Path) -> dict[str, Any]:
+        """Trial metadata for a timed-out/errored task: skill provenance plus whatever tokens Relay flushed.
+
+        Timeouts never reach ``_to_trial``, and there is no ``RunResult`` here, so the trajectory is read
+        straight from the relay dir — these are the long, expensive rows the token count matters most for.
+        """
+        return {
+            **FabricAgentRuntime._skill_metadata(provenances),
+            **_atif_token_metadata(_relay_atif_path(evidence_dir)),
+        }
+
     def _to_trial(
         self,
         task: AgentEvalTask,
@@ -421,6 +438,9 @@ class FabricAgentRuntime:
             # Skill provenance (name + content hash + injection mode) for the A/B diff.
             **self._skill_metadata(skill_provenances or []),
             **extras,
+            # Token usage from the Relay ATIF trajectory; Fabric's RunResult carries no usage of its
+            # own. Merged last so a hook extra can't shadow it.
+            **_atif_token_metadata(_atif_artifact_path(result)),
         }
 
         if result.status != "succeeded":
@@ -713,6 +733,83 @@ def _result_error(result: RunResult) -> Mapping[str, Any]:
     if error is None:
         return {"code": result.status, "message": "Fabric run did not succeed"}
     return {"stage": error.stage, "code": error.code, "message": error.message}
+
+
+def _atif_artifact_path(result: RunResult) -> Path | None:
+    """Path of the ATIF trajectory Fabric promoted as an artifact, if any."""
+    for artifact in result.artifacts.artifacts:
+        if artifact.kind == _ATIF_ARTIFACT_KIND:
+            return Path(artifact.path)
+    return None
+
+
+def _relay_atif_path(evidence_dir: Path) -> Path | None:
+    """Path of the Relay-written ATIF trajectory, used when no ``RunResult`` exists (timeout/error).
+
+    Relay's filename template is per-session, so more than one file can land when subagents emit
+    their own sessions. Picking one under-reports and summing double-counts a root that already
+    aggregates, so anything other than a single match reports nothing rather than a wrong number.
+    """
+    matches = sorted((evidence_dir / _RELAY_SUBDIR).glob(_ATIF_FILENAME_TEMPLATE.format(session_id="*")))
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        logger.warning("Fabric token capture: %d ATIF trajectories under %s; skipping", len(matches), evidence_dir)
+    return None
+
+
+def _atif_token_metadata(path: Path | None) -> dict[str, int]:
+    """Project an ATIF trajectory's token totals onto the trial-metadata ``TOKEN_KEYS``.
+
+    Each token field is resolved on its own: the trajectory-level ``final_metrics`` aggregate when it
+    reports that field, else the sum of the matching per-step ``metrics``. Every ``final_metrics``
+    field is optional, so a block carrying only ``total_steps`` or a cost — or one that fails to
+    validate — must not suppress counts the steps do carry. That partial shape is likeliest on the
+    timeout path, where the trajectory was flushed mid-run and the counts matter most.
+
+    ``total_tokens`` and ``cache_creation_tokens`` have no ATIF source and stay unset — Intake
+    recomputes the total. A missing or unreadable trajectory yields ``{}``: an absent token count
+    must not fail the trial.
+    """
+    if path is None:
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("Fabric token capture: unreadable ATIF trajectory %s (%s)", path, exc)
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+
+    totals = FinalMetrics()
+    final_metrics = payload.get("final_metrics")
+    if isinstance(final_metrics, Mapping):
+        try:
+            totals = FinalMetrics.model_validate(final_metrics)
+        except ValidationError as exc:
+            logger.warning("Fabric token capture: invalid final_metrics in %s (%s)", path, exc)
+
+    captured = {
+        "prompt_tokens": (totals.total_prompt_tokens, "prompt_tokens"),
+        "completion_tokens": (totals.total_completion_tokens, "completion_tokens"),
+        "cache_read_tokens": (totals.total_cached_tokens, "cached_tokens"),
+    }
+    resolved = {
+        key: total if total is not None else _sum_step_metric(payload, step_key)
+        for key, (total, step_key) in captured.items()
+    }
+    return {key: value for key, value in resolved.items() if value is not None}
+
+
+def _sum_step_metric(payload: Mapping[str, Any], key: str) -> int | None:
+    """Sum one per-step ATIF metric across the trajectory, or ``None`` when no step reported it."""
+    total: int | None = None
+    for step in payload.get("steps") or []:
+        metrics = step.get("metrics") if isinstance(step, Mapping) else None
+        value = metrics.get(key) if isinstance(metrics, Mapping) else None
+        if isinstance(value, int) and not isinstance(value, bool):
+            total = value if total is None else total + value
+    return total
 
 
 def _safe_path_name(value: str) -> str:

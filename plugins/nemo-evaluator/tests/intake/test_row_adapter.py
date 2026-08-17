@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -218,3 +219,94 @@ def test_a_metric_error_does_not_fail_the_trial_itself() -> None:
     # The agent answered; only scoring failed. The trajectory is still worth publishing.
     result = _adapt([_row(metric_errors={"exact_match": "judge timed out"})])
     assert result.trials[0].status == AgentEvalTrialStatus.COMPLETED
+
+
+# --- token usage ------------------------------------------------------------
+
+
+def _usage_metadata(usage: object) -> dict[str, Any]:
+    return _adapt([_row(sample={"output_text": "4", "response": {"usage": usage}})]).trials[0].metadata
+
+
+def test_openai_usage_becomes_trial_token_measurements() -> None:
+    # Publishing reads these keys off trial metadata, so the names are the contract with
+    # TrialMeasurements.from_metadata; total_tokens is deliberately absent (Intake recomputes it).
+    metadata = _usage_metadata(
+        {
+            "prompt_tokens": 22635,
+            "completion_tokens": 2949,
+            "total_tokens": 25584,
+            "prompt_tokens_details": {"cached_tokens": 1200},
+        }
+    )
+    assert metadata == {"prompt_tokens": 22635, "completion_tokens": 2949, "cache_read_tokens": 1200}
+
+
+def test_anthropic_usage_is_read_under_its_own_key_names() -> None:
+    # A GenericAgent can target any endpoint, so an Anthropic-shaped block must not be dropped whole.
+    metadata = _usage_metadata(
+        {
+            "input_tokens": 358,
+            "output_tokens": 19324,
+            "cache_read_input_tokens": 3984621,
+            "cache_creation_input_tokens": 512,
+        }
+    )
+    assert metadata == {
+        "prompt_tokens": 358,
+        "completion_tokens": 19324,
+        "cache_read_tokens": 3984621,
+        "cache_creation_tokens": 512,
+    }
+
+
+def test_openai_keys_win_when_a_response_carries_both_schemas() -> None:
+    metadata = _usage_metadata({"prompt_tokens": 10, "input_tokens": 999, "completion_tokens": 20})
+    assert metadata["prompt_tokens"] == 10
+
+
+@pytest.mark.parametrize("usage", [None, {}, "1000", {"prompt_tokens": None}, {"prompt_tokens": "22635"}])
+def test_unusable_usage_records_no_tokens(usage: object) -> None:
+    # A missing count must stay missing rather than land as a wrong number.
+    assert _usage_metadata(usage) == {}
+
+
+def test_zero_counts_are_recorded_rather_than_dropped() -> None:
+    # NAT reports prompt_tokens=0; 0 is a reported measurement and must survive a truthiness filter.
+    assert _usage_metadata({"prompt_tokens": 0, "completion_tokens": 38}) == {
+        "prompt_tokens": 0,
+        "completion_tokens": 38,
+    }
+
+
+def test_booleans_are_not_counted_as_token_counts() -> None:
+    assert _usage_metadata({"prompt_tokens": True, "completion_tokens": 38}) == {"completion_tokens": 38}
+
+
+def test_negative_counts_are_rejected_rather_than_summed_into_a_total() -> None:
+    # -1 is an unknown-value sentinel, not a measurement, and Intake's token fields carry no ge=0
+    # constraint — so publishing one would deflate the evaluation rollup with no error anywhere.
+    assert _usage_metadata({"prompt_tokens": -1, "completion_tokens": 38}) == {"completion_tokens": 38}
+
+
+def test_a_negative_falls_through_to_the_next_known_key() -> None:
+    assert _usage_metadata({"prompt_tokens": -1, "input_tokens": 500})["prompt_tokens"] == 500
+
+
+def test_a_row_without_a_response_records_no_tokens() -> None:
+    assert _adapt([_row(sample={"output_text": "4"})]).trials[0].metadata == {}
+
+
+def test_an_unrecognized_usage_schema_is_logged_with_its_keys(caplog: pytest.LogCaptureFixture) -> None:
+    # No key list covers every provider, so the one thing that must not happen is a silent blank:
+    # the log has to name the real keys, which is what tells us what to add.
+    with caplog.at_level(logging.WARNING, logger="nemo_evaluator.intake.row_adapter"):
+        assert _usage_metadata({"promptTokenCount": 12, "candidatesTokenCount": 34}) == {}
+    assert "promptTokenCount" in caplog.text
+    assert "candidatesTokenCount" in caplog.text
+
+
+def test_a_recognized_usage_block_logs_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING, logger="nemo_evaluator.intake.row_adapter"):
+        _usage_metadata({"prompt_tokens": 1, "completion_tokens": 2})
+    assert caplog.text == ""
