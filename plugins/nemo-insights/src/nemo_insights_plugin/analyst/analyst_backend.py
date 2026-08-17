@@ -27,9 +27,9 @@ failing a run whose platform writes already succeeded.
 
 :class:`LocalAnalystBackend` never touches the plugin API, listing from and
 persisting to the file alone. It is **maintainer tooling, not a user-facing
-mode**: the insights testbed treats the YAML as the artifact under test and runs
+mode**: the insights evaluation treats the YAML as the artifact under test and runs
 against subjects that expose Intake but not the Insights plugin (see
-``testbed/README.md``). There is no CLI flag for it; only ``make_analyst_backend``'s
+``evaluation/README.md``). There is no CLI flag for it; only ``make_analyst_backend``'s
 ``local_only`` argument selects it.
 
 :func:`make_analyst_backend` picks one. The client's lifecycle is owned by the
@@ -46,7 +46,7 @@ import httpx
 import yaml
 from nemo_insights_plugin.analyst.result import AnalystResult
 from nemo_insights_plugin.entities import Insight, InsightStatus
-from nemo_insights_plugin.schema import InsightPage
+from nemo_insights_plugin.schema import InsightListItem, InsightPage
 from nemo_platform import AsyncNeMoPlatform, omit
 from nemo_platform_plugin.schema import PaginationData
 
@@ -553,8 +553,8 @@ class RemoteAnalystBackend(AnalystBackend):
 class LocalAnalystBackend(AnalystBackend):
     """Persist the analyst's result to a local YAML file only.
 
-    Maintainer tooling for the insights testbed, not a user-facing mode — no CLI
-    flag reaches it. The testbed treats the YAML as the artifact under test
+    Maintainer tooling for the insights evaluation, not a user-facing mode — no CLI
+    flag reaches it. The evaluation treats the YAML as the artifact under test
     (checked in, hashed, diffed across runs) and analyzes subjects that expose
     Intake but not the Insights plugin, so its runs must neither require nor
     touch platform Insight rows.
@@ -628,7 +628,11 @@ class LocalAnalystBackend(AnalystBackend):
         agent: str | None,
         status: InsightStatus | None,
     ) -> InsightPage:
-        items = [_record_to_insight(r) for r in self.store.read_records() if r.get("workspace") == workspace]
+        items = [
+            InsightListItem.model_validate(_record_to_insight(r).model_dump())
+            for r in self.store.read_records()
+            if r.get("workspace") == workspace
+        ]
         if agent:
             items = [i for i in items if i.agent == agent]
         if status is not None:
@@ -659,7 +663,7 @@ def make_analyst_backend(
 
     Results are written through the Insights plugin API on *client*, and
     *insights_output* (when set) additionally receives a mirror of what the
-    platform stored. *local_only* is reserved for the insights testbed: it skips
+    platform stored. *local_only* is reserved for the insights evaluation: it skips
     the platform and makes *insights_output* the sole store, so a path is
     required. No CLI flag sets it. Reads always go through *client*.
     """

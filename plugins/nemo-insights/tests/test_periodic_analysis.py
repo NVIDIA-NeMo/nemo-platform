@@ -232,8 +232,8 @@ def test_make_analyst_backend_always_writes_to_the_platform(tmp_path: Path) -> N
     assert mirrored.mirror is not None and mirrored.mirror.path == tmp_path / "insights.yaml"
 
 
-def test_local_only_is_testbed_plumbing_and_requires_a_path(tmp_path: Path) -> None:
-    """``local_only`` stays reachable for the testbed, which no CLI flag sets."""
+def test_local_only_is_evaluation_plumbing_and_requires_a_path(tmp_path: Path) -> None:
+    """``local_only`` stays reachable for the evaluation, which no CLI flag sets."""
     client = SimpleNamespace()
 
     platform_client = cast(AsyncNeMoPlatform, client)
