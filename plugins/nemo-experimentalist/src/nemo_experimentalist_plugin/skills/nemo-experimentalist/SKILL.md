@@ -260,7 +260,7 @@ to select the winner.
 | `builder_config.max_fix_attempts` | `1` | `2` (default) | Maximum repair iterations when a candidate fails its integration check. |
 | `outcome_evaluator_config.n_attempts` | `1` | `1`; increase only when task results are noisy | Repeats each evaluation trial. |
 | `eval_author.max_traces` | `3` | `10` | Representative Insight traces deeply analyzed in Insight-driven mode. |
-| `eval_author.reasoning_effort` | `"medium"` | `"medium"` | OpenAI-shaped effort for Author clients. Set `null` to omit (provider default). |
+| `eval_author.reasoning_effort` | `"medium"` | `"medium"` or `"high"` | OpenAI-shaped effort for Author clients. **Must be `medium` or higher** for consistent discriminating metrics; do not use `null` / `minimal` / `low` except when testing failure modes. |
 | `eval_author.completion_params` | `{}` | `{}` | Extra `CompletionClient` kwargs for non-OpenAI backends or other knobs. |
 
 A small explicit smoke configuration looks like this:
@@ -283,6 +283,7 @@ outcome_evaluator_config:
   n_attempts: 1
 eval_author:
   max_traces: 3
+  # medium or higher — required for consistent Author metrics
   reasoning_effort: medium
 ```
 

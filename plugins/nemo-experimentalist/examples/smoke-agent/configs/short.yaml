@@ -94,4 +94,5 @@ outcome_evaluator_config:
 # shapes recorded for every smoke-agent group.
 eval_author:
   max_traces: 5
+  # medium or higher — required for consistent Author metrics
   reasoning_effort: medium

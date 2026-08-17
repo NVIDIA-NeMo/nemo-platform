@@ -56,8 +56,10 @@ For non-interactive and isolated environments, `NEMO_DEFAULT_MODEL` and
 `NEMO_FAST_MODEL` can override the stored selections. Values must still use
 `workspace/model-name` and refer to Model Entities on the target Platform.
 
-Completion options (not model IDs) live on `EvalAuthorConfig`:
-`reasoning_effort` defaults to `"medium"`, and `completion_params` can pass
+Completion options (not model IDs) live on `EvalAuthorConfig`.
+`reasoning_effort` defaults to `"medium"` and **must stay at `medium` or
+higher** for consistent metric authoring; weaker settings (or omitting the
+field) often produce flat authored metrics. `completion_params` can pass
 backend-specific kwargs. See
 [`eval_author/README.md`](src/nemo_eval_author_plugin/eval_author/README.md#evalauthorconfig-model-and-completion-options).
 

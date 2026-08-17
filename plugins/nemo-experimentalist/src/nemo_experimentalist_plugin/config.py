@@ -218,8 +218,8 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default_factory=EvalAuthorConfig,
         description=(
             "Insight-mode Eval Author settings. Defaults match EvalAuthorConfig, including "
-            "reasoning_effort='medium' and empty completion_params. Override in run YAML under "
-            "eval_author; set reasoning_effort to null to omit the field (provider default)."
+            "reasoning_effort='medium'. Keep reasoning_effort at medium or higher for "
+            "consistent discriminating metrics; weaker values often author flat metrics."
         ),
     )
 

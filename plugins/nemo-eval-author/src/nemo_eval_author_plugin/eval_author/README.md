@@ -42,12 +42,19 @@ The preset includes the run inputs needed by `run_eval_author(...)`:
 
 ### `EvalAuthorConfig` (model and completion options)
 
+**Use `reasoning_effort` of `medium` or higher** (`high`, and any stronger
+provider value your model accepts). Below `medium` — including `minimal`,
+`low`, `none`, or omitting the field so the provider picks a weak default —
+Eval Author often authors flat, non-discriminating metrics that look fine on a
+broken baseline. The default is `"medium"` for that reason. Prefer raising
+effort over lowering it when Author quality is inconsistent.
+
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `max_summary_tokens` | `80000` | Token budget for the fast-model summarizer. |
 | `max_traces` | `10` | Insight `trace_refs` to analyze in depth. |
 | `max_validation_repair_attempts` | `5` | Repair attempts after Insight verifier validation fails. |
-| `reasoning_effort` | `"medium"` | OpenAI-shaped effort passed into `CompletionClient`. Set to `null` to omit the field (provider default). |
+| `reasoning_effort` | `"medium"` | OpenAI-shaped effort for Author clients. Keep at `medium` or higher for consistent metric authoring; do not set `null` / `minimal` / `low` unless you are deliberately testing failure modes. |
 | `completion_params` | `{}` | Extra kwargs forwarded to `CompletionClient` (non-OpenAI backends or other OpenAI knobs). An explicit `reasoning_effort` wins over the same key here. |
 
 Standalone `run_eval_author(...)` builds clients with these options. In
@@ -60,7 +67,7 @@ Example override in Experimentalist `--config` YAML:
 ```yaml
 eval_author:
   max_traces: 5
-  reasoning_effort: medium   # default; use null to omit
+  reasoning_effort: medium   # required floor for consistent Author metrics; use high if needed
   # completion_params:
   #   thinking:
   #     type: enabled

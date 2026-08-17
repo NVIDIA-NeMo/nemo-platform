@@ -69,7 +69,9 @@ class EvalAuthorConfig(BaseModel):
         default="medium",
         description=(
             "OpenAI-shaped reasoning_effort passed to CompletionClient. "
-            "Default medium. Set to None to omit the field (provider default)."
+            "Default medium. Keep at medium or higher for consistent metric "
+            "authoring; weaker values (or None, which omits the field) often "
+            "produce flat authored metrics."
         ),
     )
     completion_params: dict[str, Any] = Field(
