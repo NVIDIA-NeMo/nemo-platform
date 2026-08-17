@@ -96,10 +96,12 @@ class TestSubShapesIndependently:
         with pytest.raises(ValidationError):
             ScheduleSpec(progress_reporting={"max_points": 0})
 
-    def test_the_charted_metrics_default_to_all_of_them(self) -> None:
+    def test_the_time_series_metrics_default_to_the_backends_choice(self) -> None:
         """Narrowing is opt-in, so adding the knob changed nobody's curves."""
-        assert ScheduleSpec().progress_reporting.curves is None
-        assert ScheduleSpec(progress_reporting={"curves": ["loss"]}).progress_reporting.curves == ["loss"]
+        assert ScheduleSpec().progress_reporting.time_series_metrics is None
+        assert ScheduleSpec(
+            progress_reporting={"time_series_metrics": ["*_loss"]}
+        ).progress_reporting.time_series_metrics == ["*_loss"]
 
     def test_training_defaults(self) -> None:
         t = TrainingSpec()

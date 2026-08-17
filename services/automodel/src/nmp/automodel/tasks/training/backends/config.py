@@ -242,7 +242,7 @@ def compile_automodel_config(
     # AutomodelRecipeWrapper reads it back off `recipe.cfg`.
     cfg["_progress_reporting"] = {
         "max_points": customizer_config.schedule.progress_reporting.max_points,
-        "curves": customizer_config.schedule.progress_reporting.curves,
+        "time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
     }
 
     val_every_steps = compute_val_check_interval(

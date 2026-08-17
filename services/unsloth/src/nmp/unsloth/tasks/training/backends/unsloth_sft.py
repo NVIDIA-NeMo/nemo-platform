@@ -26,7 +26,7 @@ from typing import Any, Literal
 
 from nemo_platform_plugin.job_context import JobContext
 from nmp.customization_common.service.context import NMPJobContext
-from nmp.customization_common.training.reporting import ProgressReportingConfig
+from nmp.customization_common.training.reporting import DIAGNOSTIC_TIME_SERIES, ProgressReportingConfig
 from nmp.unsloth.integrations.hf_bridge import apply_integrations_to_sft_config
 from nmp.unsloth.schemas import UnslothJobOutput
 from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
@@ -371,11 +371,25 @@ def train_sft(
 
 
 def _create_progress_callback(reporting: ProgressReportingConfig) -> TrainingProgressCallback:
-    """Build a Jobs-service progress callback from platform env vars."""
+    """Build a Jobs-service progress callback from platform env vars.
+
+    unsloth's default is the shared diagnostic set, and for this backend that is
+    a no-op: `create_hf_trainer_progress_callback` reports `loss`, `lr` and
+    `grad_norm` on the train path and `loss` on validation, so all four qualified
+    names match and nothing is left out. Stated anyway rather than left as None,
+    so the policy is written down in the same place as the other two backends'
+    and a metric added to that hook later is a deliberate decision rather than a
+    silent new curve.
+
+    ``is None`` and not a falsy check: an explicit empty list means "record no
+    series at all", which is a different request from "use the default".
+    """
     return TrainingProgressCallback(
         JobsServiceProgressReporter(NMPJobContext.from_env()),
         max_points=reporting.max_points,
-        curves=reporting.curves,
+        time_series_metrics=(
+            DIAGNOSTIC_TIME_SERIES if reporting.time_series_metrics is None else reporting.time_series_metrics
+        ),
     )
 
 

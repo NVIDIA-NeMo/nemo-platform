@@ -77,7 +77,7 @@ class _RecordingCallback:
         #: The reporting config the logger built us with, so the plumbing from
         #: the job config down to the gate is assertable from this side.
         self.max_points: int | None = None
-        self.curves: Any = None
+        self.time_series_metrics: Any = None
 
     def report_training_start(self, max_steps: int, num_epochs: int) -> None:
         self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
@@ -104,10 +104,10 @@ def callback(monkeypatch: pytest.MonkeyPatch) -> _RecordingCallback:
         _reporter: Any,
         *,
         max_points: int | None = None,
-        curves: Any = None,
+        time_series_metrics: Any = None,
     ) -> _RecordingCallback:
         recorder.max_points = max_points
-        recorder.curves = curves
+        recorder.time_series_metrics = time_series_metrics
         return recorder
 
     monkeypatch.setattr(nemo_rl_logger, "JobsServiceProgressReporter", lambda *a, **k: object())
@@ -360,20 +360,69 @@ def test_a_config_without_a_reporting_budget_takes_the_shared_default(callback: 
 
 
 def test_the_charted_metric_names_reach_the_callback(callback: _RecordingCallback) -> None:
-    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100, curves=["loss", "accuracy"])
+    NemoRLLogger.for_schedule(
+        max_steps=20_000, num_epochs=1, val_period=100, time_series_metrics=["*_loss", "*_accuracy"]
+    )
 
-    assert callback.curves == ["loss", "accuracy"]
+    assert callback.time_series_metrics == ["*_loss", "*_accuracy"]
 
 
-def test_absent_curves_stay_absent_rather_than_becoming_a_default(callback: _RecordingCallback) -> None:
-    """Unlike max_points there is no default to substitute: None means everything.
+def test_an_absent_list_takes_the_backend_default(callback: _RecordingCallback) -> None:
+    """Absent means NeMo-RL's default set, not everything.
 
-    Turning it into a list here would quietly stop charting whatever was not on
-    that list, which is the one failure mode this knob has.
+    A config compiled before this knob existed omits it, and a user who wants
+    every metric asks with ``["*"]`` -- the two are now different requests.
     """
     NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
 
-    assert callback.curves is None
+    assert callback.time_series_metrics == nemo_rl_logger.DEFAULT_TIME_SERIES_METRICS
+
+
+def test_an_empty_list_is_honoured_rather_than_defaulted(callback: _RecordingCallback) -> None:
+    """The one value a truthiness check would flip into its opposite."""
+    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100, time_series_metrics=[])
+
+    assert callback.time_series_metrics == []
+
+
+def test_the_default_set_covers_dpos_diagnostics_and_drops_its_counters() -> None:
+    """Pinned against DPO's real metric names, read out of NeMo-RL.
+
+    Train comes from `dpo.py` plus the dtensor worker's `loss_metrics`;
+    validation from `DPOValMetrics`. If NeMo-RL adds a metric, this says whether
+    it lands in the default set.
+    """
+    from fnmatch import fnmatchcase
+
+    train = (
+        "loss",
+        "grad_norm",
+        "lr",
+        "sft_loss",
+        "preference_loss",
+        "accuracy",
+        "rewards_chosen_mean",
+        "rewards_rejected_mean",
+        "num_valid_samples",
+        "global_valid_seqs",
+        "global_valid_toks",
+    )
+    val = tuple(name for name in train if name not in ("grad_norm", "lr"))
+    qualified = [f"train_{n}" for n in train] + [f"val_{n}" for n in val]
+
+    kept = [name for name in qualified if any(fnmatchcase(name, p) for p in nemo_rl_logger.DEFAULT_TIME_SERIES_METRICS)]
+    dropped = sorted(set(qualified) - set(kept))
+
+    assert len(qualified) == 20, "the measured series count"
+    assert len(kept) == 14
+    assert dropped == [
+        "train_global_valid_seqs",
+        "train_global_valid_toks",
+        "train_num_valid_samples",
+        "val_global_valid_seqs",
+        "val_global_valid_toks",
+        "val_num_valid_samples",
+    ]
 
 
 def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _RecordingCallback) -> None:

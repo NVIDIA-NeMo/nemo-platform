@@ -1118,22 +1118,23 @@ def test_a_budget_below_one_is_rejected(reporter: _RecordingReporter, max_points
 
 
 # --------------------------------------------------------------------------- #
-# Which metrics get a curve
+# Which metrics get a stored time series
 #
 # The other bound on the payload, and on most backends the larger one: what is
-# stored is `curves x max_points`.
+# stored is `series x max_points`. Patterns match the qualified name, the one
+# that appears in status_details, so what a user writes is what they read back.
 # --------------------------------------------------------------------------- #
 
 
-def test_every_metric_is_charted_by_default(reporter: _RecordingReporter) -> None:
-    """Narrowing is opt-in. Landing the mechanism changed nobody's curves."""
+def test_every_metric_is_recorded_by_default(reporter: _RecordingReporter) -> None:
+    """None means everything at this layer; a narrower default is each backend's call."""
     _make_callback(reporter).report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
 
     assert set(reporter.reports[-1]["metrics"]) == {"train_loss", "train_tps", "val_loss"}
 
 
 def test_only_the_named_metrics_get_a_series(reporter: _RecordingReporter) -> None:
-    callback = _make_callback(reporter, curves=["loss", "lr"])
+    callback = _make_callback(reporter, time_series_metrics=["train_loss", "train_lr"])
     callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "lr": 1e-5, "tps": 4821.0, "mem": 12.5})
 
     metrics = reporter.reports[-1]["metrics"]
@@ -1148,34 +1149,88 @@ def test_an_excluded_metric_still_reports_its_current_value(reporter: _Recording
 
     That one dropped metrics outright, and DPO's `accuracy`, `sft_loss` and
     `rewards_chosen_mean` went missing for a release because nobody had added
-    them to it. Excluding a metric here costs its history, never its visibility.
+    them to it. Leaving a metric out here costs its history, never its
+    visibility.
     """
-    callback = _make_callback(reporter, curves=["loss"])
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
     callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
 
     report = reporter.reports[-1]
     assert report["train_tps"] == 4821.0, "still a current value"
-    assert "train_tps" not in report["metrics"], "just not a curve"
+    assert "train_tps" not in report["metrics"], "just no history"
 
 
-def test_a_name_is_matched_unqualified_so_it_covers_both_phases(reporter: _RecordingReporter) -> None:
-    """`loss` means the training and validation curves both, not one of them."""
-    callback = _make_callback(reporter, curves=["loss"])
-    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "accuracy": 0.1})
-    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4, "accuracy": 0.9})
+def test_a_qualified_name_selects_one_phase(reporter: _RecordingReporter) -> None:
+    """What qualification buys that unqualified names could not express at all."""
+    callback = _make_callback(reporter, time_series_metrics=["train_loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4})
+
+    train_report, val_report = reporter.reports
+    assert train_report["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
+    assert train_report["metrics"]["val_loss"] == []
+    # The validation pass recorded nothing, so it says nothing about the series
+    # rather than resending them -- it still reports its current value.
+    assert val_report["val_loss"] == 0.4
+    assert "metrics" not in val_report
+
+
+def test_a_wildcard_covers_both_phases_and_the_whole_family(reporter: _RecordingReporter) -> None:
+    """`*_loss` is how one entry says what `loss` used to, and more.
+
+    It picks up the algorithm-specific members of the family too, which is what
+    keeps a default set short for a backend like DPO.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "sft_loss": 0.1, "accuracy": 0.9})
+    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4, "preference_loss": 0.2})
 
     metrics = reporter.reports[-1]["metrics"]
-    assert metrics["train_loss"] and metrics["val_loss"]
-    assert "train_accuracy" not in metrics and "val_accuracy" not in metrics
+    assert {"train_loss", "train_sft_loss", "val_loss", "val_preference_loss"} <= set(metrics)
+    assert "train_accuracy" not in metrics
 
 
-def test_a_report_with_no_charted_metric_omits_the_series(reporter: _RecordingReporter) -> None:
+def test_a_wildcard_reaches_a_dataset_qualified_name(reporter: _RecordingReporter) -> None:
+    """The caveat that qualification removed rather than documented.
+
+    NeMo-RL folds the dataloader name into the metric names of every validation
+    set past the first, so a second set's loss arrives as `val_heldout_loss`. No
+    unqualified spelling could reach it; `*_loss` does, without anyone having to
+    know the dataset's name.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
+    callback.report_validation(step=1, epoch=1, metrics={"heldout_loss": 0.4})
+
+    assert reporter.reports[-1]["metrics"]["val_heldout_loss"] == [{"step": 1, "epoch": 1, "value": 0.4}]
+
+
+def test_a_star_records_everything(reporter: _RecordingReporter) -> None:
+    """The explicit spelling of the default, and how a user opts out of a backend's set."""
+    callback = _make_callback(reporter, time_series_metrics=["*"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
+
+    assert {"train_loss", "train_tps"} <= set(reporter.reports[-1]["metrics"])
+
+
+def test_matching_is_case_sensitive(reporter: _RecordingReporter) -> None:
+    """fnmatchcase, not fnmatch: the latter normalises case per platform.
+
+    A pattern that matched on Linux and not on macOS would be a genuinely
+    horrible bug to chase.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["TRAIN_LOSS"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert "metrics" not in reporter.reports[-1]
+
+
+def test_a_report_with_no_recorded_metric_omits_the_series(reporter: _RecordingReporter) -> None:
     """Nothing was added, so the stored copy already matches and is left standing.
 
     Resending it would pay the full payload to say nothing, which is the same
     rule an all-unchartable report already follows.
     """
-    callback = _make_callback(reporter, curves=["loss"])
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
     callback.report_train_step(step=1, epoch=1, metrics={"tps": 4821.0})
 
     report = reporter.reports[-1]
@@ -1183,17 +1238,21 @@ def test_a_report_with_no_charted_metric_omits_the_series(reporter: _RecordingRe
     assert "metrics" not in report
 
 
-def test_a_name_that_never_arrives_is_harmless(reporter: _RecordingReporter) -> None:
-    """A shared default set has to survive backends that produce different metrics."""
-    callback = _make_callback(reporter, curves=["loss", "rewards_chosen_mean"])
+def test_a_pattern_that_never_arrives_is_harmless(reporter: _RecordingReporter) -> None:
+    """A default set has to survive backends that produce different metrics.
+
+    unsloth never reports `rewards_chosen_mean`; NeMo-RL's default names it. The
+    same fragment has to be safe in both.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["*_loss", "*_rewards_chosen_mean"])
     callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
 
     assert set(reporter.reports[-1]["metrics"]) == {"train_loss", "val_loss"}
 
 
-def test_an_empty_curve_set_charts_nothing_but_still_reports(reporter: _RecordingReporter) -> None:
+def test_an_empty_list_records_nothing_but_still_reports(reporter: _RecordingReporter) -> None:
     """Distinct from None, and a legitimate way to ask for values without history."""
-    callback = _make_callback(reporter, curves=[])
+    callback = _make_callback(reporter, time_series_metrics=[])
     callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
 
     report = reporter.reports[-1]
@@ -1203,38 +1262,100 @@ def test_an_empty_curve_set_charts_nothing_but_still_reports(reporter: _Recordin
 
 
 def test_the_excluded_names_are_logged_once(reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture) -> None:
-    """ "Why is there no train_tps curve" needs an answer in the job log.
+    """ "Why is there no train_tps history" needs an answer in the job log.
 
     Once per name rather than once per step: this fires from the report path, and
     a 20,000-step run would otherwise say it 20,000 times.
     """
-    callback = _make_callback(reporter, curves=["loss"])
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
     with caplog.at_level(logging.INFO):
         for step in range(1, 4):
             callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
 
-    excluded = [record for record in caplog.records if "no stored curve" in record.getMessage()]
+    excluded = [r for r in caplog.records if "no stored history" in r.getMessage()]
     assert len(excluded) == 1
-    assert "tps" in excluded[0].getMessage()
+    assert "train_tps" in excluded[0].getMessage()
 
 
 def test_a_metric_that_appears_later_is_logged_when_it_does(
     reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Backends omit metrics on some steps, so the full set is not known at the first."""
-    callback = _make_callback(reporter, curves=["loss"])
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
     with caplog.at_level(logging.INFO):
         callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
         callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.5, "grad_norm": 1.2})
 
-    logged = " ".join(r.getMessage() for r in caplog.records if "no stored curve" in r.getMessage())
-    assert "tps" in logged
-    assert "grad_norm" in logged
+    logged = " ".join(r.getMessage() for r in caplog.records if "no stored history" in r.getMessage())
+    assert "train_tps" in logged
+    assert "train_grad_norm" in logged
 
 
-def test_curves_and_max_points_multiply(reporter: _RecordingReporter) -> None:
-    """The two bounds are independent, and the stored blob is their product."""
-    callback = _make_callback(reporter, max_points=10, curves=["loss"])
+# --------------------------------------------------------------------------- #
+# A pattern that matched nothing is a misconfiguration, not a preference
+# --------------------------------------------------------------------------- #
+
+
+def test_an_unqualified_name_matches_nothing_and_says_so(
+    reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The likeliest mistake once names are qualified, and it is silent without this.
+
+    `loss` selects nothing, because the metric is `train_loss`. The run then
+    reports no history and looks exactly like one configured not to.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    with caplog.at_level(logging.WARNING):
+        callback.close()
+
+    warned = [r for r in caplog.records if "matched no metric" in r.getMessage()]
+    assert len(warned) == 1
+    assert "loss" in warned[0].getMessage()
+    assert "train_loss" in warned[0].getMessage(), "names what did arrive, so the fix is obvious"
+
+
+def test_patterns_that_all_matched_say_nothing(reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture) -> None:
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    with caplog.at_level(logging.WARNING):
+        callback.close()
+
+    assert not [r for r in caplog.records if "matched no metric" in r.getMessage()]
+
+
+def test_a_pattern_matching_nothing_is_only_judged_at_the_end(
+    reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A name that has not arrived yet is not yet wrong.
+
+    Validation metrics do not exist until the first pass, so checking up front
+    would warn about `val_loss` on every run that validates late.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["*_loss", "val_accuracy"])
+    with caplog.at_level(logging.WARNING):
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+        assert not [r for r in caplog.records if "matched no metric" in r.getMessage()]
+        callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4, "accuracy": 0.9})
+        callback.close()
+
+    assert not [r for r in caplog.records if "matched no metric" in r.getMessage()]
+
+
+def test_a_run_that_reported_no_metrics_is_not_warned_about(
+    reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Every pattern trivially matched nothing; saying so is noise on a real failure."""
+    callback = _make_callback(reporter, time_series_metrics=["*_loss"])
+    with caplog.at_level(logging.WARNING):
+        callback.close()
+
+    assert not [r for r in caplog.records if "matched no metric" in r.getMessage()]
+
+
+def test_the_two_bounds_multiply(reporter: _RecordingReporter) -> None:
+    """They are independent, and the stored blob is their product."""
+    callback = _make_callback(reporter, max_points=10, time_series_metrics=["*_loss"])
     callback.report_training_start(max_steps=1_000, num_epochs=1)
     for step in range(1, 1_001):
         callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5, "lr": 1e-5, "tps": 4821.0})

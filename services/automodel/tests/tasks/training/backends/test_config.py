@@ -455,7 +455,7 @@ def test_the_reporting_block_reaches_the_recipe_config(tmp_path: Path) -> None:
     raw = json.loads(fixture.read_text())
     raw.pop("backend")
     config = TrainingStepConfig.model_validate(raw)
-    config.schedule.progress_reporting = ProgressReportingConfig(max_points=25, curves=["loss"])
+    config.schedule.progress_reporting = ProgressReportingConfig(max_points=25, time_series_metrics=["*_loss"])
 
     prepared = PreparedDataset(
         merged_dir=tmp_path,
@@ -480,4 +480,4 @@ def test_the_reporting_block_reaches_the_recipe_config(tmp_path: Path) -> None:
     # against this literal shape, so a key renamed or dropped on either side breaks
     # one of the two. A subset check here would let the writer grow a key the reader
     # never looks at, which is the same silence in a different place.
-    assert compiled["_progress_reporting"] == {"max_points": 25, "curves": ["loss"]}
+    assert compiled["_progress_reporting"] == {"max_points": 25, "time_series_metrics": ["*_loss"]}

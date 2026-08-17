@@ -122,10 +122,11 @@ import math
 import numbers
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from typing import Any, ClassVar, cast
 
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
-from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
+from nmp.customization_common.training.reporting import ALL_METRICS, DEFAULT_MAX_POINTS
 
 logger = logging.getLogger(__name__)
 
@@ -291,7 +292,7 @@ class TrainingProgressCallback:
         reporter: JobsServiceProgressReporter,
         *,
         max_points: int = DEFAULT_MAX_POINTS,
-        curves: Collection[str] | None = None,
+        time_series_metrics: Collection[str] | None = None,
     ):
         """Build the callback over ``reporter``.
 
@@ -300,9 +301,9 @@ class TrainingProgressCallback:
             max_points: Points kept on each metric curve, per path. Rejected
                 below 1 up front rather than producing a curve with no points on
                 it, which reads downstream as a run that never reported.
-            curves: Metric names to accumulate, unqualified by phase, or None to
-                accumulate every metric that arrives. The two bounds multiply --
-                the stored blob is ``curves x max_points`` -- so this is the
+            time_series_metrics: Qualified metric names or glob patterns to
+                accumulate, or None for all of them. The two bounds multiply --
+                the stored blob is ``series x max_points`` -- so this is the
                 larger lever of the two on a backend that reports many metrics.
         """
         if max_points < 1:
@@ -310,11 +311,18 @@ class TrainingProgressCallback:
 
         self._reporter = reporter
         self._max_points = max_points
-        #: None means "everything"; a frozenset means exactly these names.
-        self._curves: frozenset[str] | None = None if curves is None else frozenset(curves)
+        #: Normalised to patterns so there is one code path: None becomes "*",
+        #: which is what it already meant. An empty list stays empty and records
+        #: nothing, which is a different and equally legitimate request.
+        self._time_series_metrics: tuple[str, ...] = (
+            ALL_METRICS if time_series_metrics is None else tuple(time_series_metrics)
+        )
         #: Names already reported as current-value-only, so the explanation is
         #: logged once per name rather than once per step.
         self._excluded_seen: set[str] = set()
+        #: Patterns that have selected at least one metric, so close() can name
+        #: the ones that never did.
+        self._patterns_matched: set[str] = set()
         self._closed = False
 
         seeded = reporter.fetch_current_metrics()
@@ -478,7 +486,7 @@ class TrainingProgressCallback:
         did not send had grown.
         """
         qualified = _qualify_metric_names(phase, metrics)
-        recorded = self._curve_subset(phase, qualified)
+        recorded = self._time_series_subset(qualified)
         gate = self._gates[phase]
         if not gate.admit(step):
             gate.pending = {
@@ -493,17 +501,17 @@ class TrainingProgressCallback:
             return
         self._record_and_send(phase, report_phase, step, epoch, qualified, recorded, backend)
 
-    def _curve_subset(self, phase: str, qualified: dict[str, float | int]) -> dict[str, float | int]:
+    def _time_series_subset(self, qualified: dict[str, float | int]) -> dict[str, float | int]:
         """The entries of ``qualified`` that get a stored series, not just a value.
 
         The other bound on the payload, and on most backends the larger one: it
-        is ``curves x max_points`` that is stored, and a backend reporting twenty
-        metrics spends most of that on curves nobody reads. Throughput and
+        is ``series x max_points`` that is stored, and a backend reporting twenty
+        metrics spends most of that on histories nobody reads. Throughput and
         accounting counters -- ``tps``, ``mem``, ``num_label_tokens``,
         ``global_valid_toks`` -- are worth a number on a status page and not two
         hundred stored points each.
 
-        Excluding a metric costs its history, never its visibility: every
+        Leaving a metric out costs its history, never its visibility: every
         chartable metric is still reported as a current value on every admitted
         report. That is the distinction that makes this safe where the old
         report-time allow-list was not -- that one dropped metrics outright, and
@@ -511,30 +519,63 @@ class TrainingProgressCallback:
         for a release because nobody had added them to it. Here the same omission
         costs a chart, and says so in the log.
 
-        Names are matched unqualified, so ``loss`` covers ``train_loss`` and
-        ``val_loss`` both. One consequence worth knowing: NeMo-RL's logger folds
-        the dataloader name into the metric names of every validation set past
-        the first, so a second validation set's ``loss`` arrives as
-        ``<dataset>_loss`` and needs that spelling in ``curves`` to be charted.
-        The first set -- the only one any config we compile produces -- keeps the
-        bare names.
+        Patterns match the **qualified** name, the one that appears in
+        ``status_details``, so what a user writes is what they read back. Globs
+        via :func:`fnmatch.fnmatchcase` -- ``fnmatchcase`` and not ``fnmatch``,
+        which applies ``os.path.normcase`` and would therefore match
+        case-insensitively on some platforms and not others.
+
+        Matching the qualified name is what makes NeMo-RL's second validation set
+        expressible: its logger folds the dataloader name in, so that set's loss
+        arrives as ``val_heldout_loss``, which no unqualified spelling could
+        reach and which ``*_loss`` covers without knowing the dataset's name.
         """
-        if self._curves is None:
-            return qualified
+        keep: dict[str, float | int] = {}
+        dropped: list[str] = []
+        for name, value in qualified.items():
+            matched = [p for p in self._time_series_metrics if fnmatchcase(name, p)]
+            if matched:
+                keep[name] = value
+                self._patterns_matched.update(matched)
+            else:
+                dropped.append(name)
 
-        bare = len(phase) + 1
-        keep = {name: value for name, value in qualified.items() if name[bare:] in self._curves}
-
-        dropped = sorted({name[bare:] for name in qualified} - self._curves - self._excluded_seen)
-        if dropped:
-            self._excluded_seen.update(dropped)
+        unseen = sorted(set(dropped) - self._excluded_seen)
+        if unseen:
+            self._excluded_seen.update(unseen)
             logger.info(
-                "Reporting as current values only, with no stored curve: %s. Charting: %s. "
-                "Add a name to progress_reporting.curves to chart it too.",
-                ", ".join(dropped),
-                ", ".join(sorted(self._curves)) or "(nothing)",
+                "Reporting as current values only, with no stored history: %s. Recording a series "
+                "for anything matching: %s. Add a name or pattern to "
+                "progress_reporting.time_series_metrics to record one of these too.",
+                ", ".join(unseen),
+                ", ".join(self._time_series_metrics) or "(nothing)",
             )
         return keep
+
+    def _warn_on_patterns_that_matched_nothing(self) -> None:
+        """Say so when a configured pattern never matched a metric that arrived.
+
+        The failure this catches is a misspelling, and the likeliest one is an
+        unqualified name: ``loss`` selects nothing, because the metric is
+        ``train_loss``. Without this the run reports no history for it and looks
+        exactly like a run that was configured not to.
+
+        Left to ``close()`` rather than checked up front, because a name that has
+        not arrived yet is not yet wrong -- backends omit metrics on some steps,
+        and validation names do not appear until the first pass.
+        """
+        unmatched = [p for p in self._time_series_metrics if p not in self._patterns_matched]
+        if not unmatched or not self._excluded_seen:
+            # No metrics seen at all means the run reported nothing; that is a
+            # different problem and this would only add noise to it.
+            return
+        logger.warning(
+            "These progress_reporting.time_series_metrics entries matched no metric this run: %s. "
+            "Names are qualified by phase, so 'loss' matches nothing and 'train_loss', 'val_loss' "
+            "or '*_loss' is meant. Metrics seen without a match: %s.",
+            ", ".join(unmatched),
+            ", ".join(sorted(self._excluded_seen)),
+        )
 
     def _record_and_send(
         self,
@@ -726,6 +767,7 @@ class TrainingProgressCallback:
             return
         self._closed = True
         self._flush_pending()
+        self._warn_on_patterns_that_matched_nothing()
         self._reporter.close()
 
     def _flush_pending(self) -> None:

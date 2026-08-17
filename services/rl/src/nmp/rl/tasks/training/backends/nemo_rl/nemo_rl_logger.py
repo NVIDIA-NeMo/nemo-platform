@@ -15,7 +15,7 @@ from typing import Any, Mapping, Optional, Self
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback, is_chartable
-from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
+from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS, DIAGNOSTIC_TIME_SERIES
 from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +32,24 @@ _logger = logging.getLogger(__name__)
 # What remains is an adapter: route by prefix, qualify validation metrics by
 # dataloader, derive the epoch, and dedupe the rollout log.
 
-# NeMo-RL's metric dicts are forwarded whole. There is no allow-list: the
+#: Which of NeMo-RL's metrics get a stored series by default: the shared
+#: diagnostic set, plus the quantities a preference-learning run is actually read
+#: on. DPO reports eleven metrics on the train path and nine on validation, and
+#: the ones left out are accounting counters -- ``num_valid_samples``,
+#: ``global_valid_seqs``, ``global_valid_toks`` -- whose current value is all
+#: anyone reads. Twenty series become fourteen.
+#:
+#: Patterns rather than literal names so each entry covers both phases and the
+#: whole family: ``*_loss`` picks up ``train_sft_loss`` and ``val_preference_loss``
+#: as well as the two plain losses, and picks them up for a second validation
+#: dataloader too, whose names NeMo-RL qualifies with the dataset.
+DEFAULT_TIME_SERIES_METRICS = DIAGNOSTIC_TIME_SERIES + (
+    "*_accuracy",
+    "*_rewards_chosen_mean",
+    "*_rewards_rejected_mean",
+)
+
+# NeMo-RL's metric dicts are forwarded whole. There is no allow-list on *reporting*: the
 # callback keeps the finite scalars and drops everything else, so a metric
 # NeMo-RL adds charts itself instead of waiting on a change here. That is what
 # the old list cost -- DPO's `accuracy`, `sft_loss` and `rewards_chosen_mean`
@@ -78,7 +95,7 @@ class NemoRLLogger(LoggerInterface):
         max_steps: int | None = None,
         num_epochs: int | None = None,
         max_points: int | None = None,
-        curves: Collection[str] | None = None,
+        time_series_metrics: Collection[str] | None = None,
     ):
         """Initialize the NemoRL logger.
 
@@ -90,10 +107,12 @@ class NemoRLLogger(LoggerInterface):
             max_points: Points kept on each metric curve. None takes the shared
                 default, which is what a config compiled before this knob existed
                 resolves to.
-            curves: Metric names to accumulate, or None for every metric NeMo-RL
-                reports. Passed through unchanged -- absent and "everything" are
-                the same thing here, so unlike max_points there is no default to
-                substitute.
+            time_series_metrics: Qualified metric names or glob patterns to
+                record as a series. None takes
+                :data:`DEFAULT_TIME_SERIES_METRICS` -- absent means "the
+                backend's default", not "everything"; ``["*"]`` is how a caller
+                asks for every metric. An empty list means no series at all and
+                is honoured as written.
 
         Raises:
             ValueError: If ``steps_per_epoch`` is < 1. It divides in
@@ -112,7 +131,7 @@ class NemoRLLogger(LoggerInterface):
         self._callback = TrainingProgressCallback(
             JobsServiceProgressReporter(self._job_ctx),
             max_points=DEFAULT_MAX_POINTS if max_points is None else max_points,
-            curves=curves,
+            time_series_metrics=(DEFAULT_TIME_SERIES_METRICS if time_series_metrics is None else time_series_metrics),
         )
 
         self._closed = False
@@ -134,7 +153,7 @@ class NemoRLLogger(LoggerInterface):
         val_period: int | None = None,
         steps_per_epoch: int | None = None,
         max_points: int | None = None,
-        curves: Collection[str] | None = None,
+        time_series_metrics: Collection[str] | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
@@ -144,8 +163,8 @@ class NemoRLLogger(LoggerInterface):
                 one (DPO does); otherwise derived from max_steps and num_epochs.
             max_points: Points kept on each metric curve, from the job config.
                 None takes the shared default.
-            curves: Metric names to accumulate, from the job config. None charts
-                everything.
+            time_series_metrics: Names or patterns from the job config. None
+                takes :data:`DEFAULT_TIME_SERIES_METRICS`.
             val_period: Accepted and unused. It used to set the validation report
                 cadence, and before that the training one; both now follow from
                 run length in the shared callback. Kept in the signature so the
@@ -158,7 +177,7 @@ class NemoRLLogger(LoggerInterface):
             max_steps=max_steps,
             num_epochs=num_epochs,
             max_points=max_points,
-            curves=curves,
+            time_series_metrics=time_series_metrics,
         )
 
     def log_metrics(

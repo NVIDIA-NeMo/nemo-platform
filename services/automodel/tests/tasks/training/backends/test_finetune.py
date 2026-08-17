@@ -147,15 +147,20 @@ def test_an_unusable_budget_falls_back_rather_than_failing(finetune: ModuleType,
     assert finetune._resolve_max_points(_Recipe(cfg)) == finetune.DEFAULT_MAX_POINTS
 
 
-def test_the_compiled_curve_list_is_used(finetune: ModuleType) -> None:
-    recipe = _Recipe({"_progress_reporting": {"curves": ["loss", "lr"]}})
+def test_the_compiled_metric_list_is_used(finetune: ModuleType) -> None:
+    recipe = _Recipe({"_progress_reporting": {"time_series_metrics": ["train_loss", "*_lr"]}})
 
-    assert finetune._resolve_curves(recipe) == ["loss", "lr"]
+    assert finetune._resolve_time_series_metrics(recipe) == ["train_loss", "*_lr"]
 
 
-def test_an_empty_curve_list_is_kept_rather_than_read_as_absent(finetune: ModuleType) -> None:
-    """`[]` charts nothing and `None` charts everything; they must not collapse."""
-    assert finetune._resolve_curves(_Recipe({"_progress_reporting": {"curves": []}})) == []
+def test_an_empty_list_is_kept_rather_than_read_as_absent(finetune: ModuleType) -> None:
+    """`[]` records nothing and absent takes the default; they must not collapse.
+
+    An empty list is a legitimate request -- current values with no history at
+    all -- and it is the one value a truthiness check would silently convert into
+    its opposite.
+    """
+    assert finetune._resolve_time_series_metrics(_Recipe({"_progress_reporting": {"time_series_metrics": []}})) == []
 
 
 @pytest.mark.parametrize(
@@ -163,29 +168,67 @@ def test_an_empty_curve_list_is_kept_rather_than_read_as_absent(finetune: Module
     [
         {},  # a config compiled before the knob existed
         {"_progress_reporting": {}},
-        {"_progress_reporting": {"curves": None}},  # the default, stated explicitly
+        {"_progress_reporting": {"time_series_metrics": None}},  # stated explicitly
         None,
     ],
 )
-def test_an_absent_curve_list_charts_everything(finetune: ModuleType, cfg: object) -> None:
-    """None is a real configuration here, not only a fallback -- it is the default."""
-    assert finetune._resolve_curves(_Recipe(cfg)) is None
+def test_an_absent_list_takes_the_backend_default(finetune: ModuleType, cfg: object) -> None:
+    """Absent means the backend's default, not everything.
+
+    `["*"]` is how a user asks for every metric, which matters because the two
+    now differ: the default drops automodel's five throughput and accounting
+    counters.
+    """
+    assert finetune._resolve_time_series_metrics(_Recipe(cfg)) == finetune.DIAGNOSTIC_TIME_SERIES
+
+
+def test_the_default_keeps_the_diagnostic_metrics_and_drops_the_counters(finetune: ModuleType) -> None:
+    """Pinned against automodel's real metric names, read out of the recipes.
+
+    Train comes from `train_ft.py` `_run_train_optim_step`, validation from
+    `_run_validation_epoch` after `strip_val_prefix`. If a recipe adds a metric,
+    this says whether it lands in the default set or not.
+    """
+    from fnmatch import fnmatchcase
+
+    patterns = finetune.DIAGNOSTIC_TIME_SERIES
+    kept = {
+        name
+        for name in (
+            "train_loss",
+            "train_grad_norm",
+            "train_lr",
+            "train_mem",
+            "train_tps",
+            "train_tps_per_gpu",
+            "train_num_tokens_per_step",
+            "train_num_label_tokens",
+            "val_loss",
+            "val_lr",
+            "val_num_label_tokens",
+            "val_mem",
+        )
+        if any(fnmatchcase(name, p) for p in patterns)
+    }
+
+    assert kept == {"train_loss", "train_grad_norm", "train_lr", "val_loss", "val_lr"}
 
 
 @pytest.mark.parametrize(
-    "curves",
-    ["loss", {"loss": True}, ["loss", 3], [None], 7],
+    "names",
+    ["train_loss", {"train_loss": True}, ["train_loss", 3], [None], 7],
 )
-def test_an_unusable_curve_list_charts_everything_and_says_so(
-    finetune: ModuleType, caplog: pytest.LogCaptureFixture, curves: object
+def test_an_unusable_list_falls_back_to_the_default_and_says_so(
+    finetune: ModuleType, caplog: pytest.LogCaptureFixture, names: object
 ) -> None:
-    """Discarded whole: charting some of a malformed list is stranger than charting all.
+    """Discarded whole: half a malformed list is a silently arbitrary set of curves.
 
-    A bare string is the trap worth naming -- `curves: loss` in YAML is iterable,
-    and taken as a list it would chart the metrics `l`, `o` and `s`.
+    A bare string is the trap worth naming -- `time_series_metrics: train_loss`
+    in YAML is iterable, and taken as a list it would look for metrics named
+    `t`, `r`, `a` and so on.
     """
-    recipe = _Recipe({"_progress_reporting": {"curves": curves}})
+    recipe = _Recipe({"_progress_reporting": {"time_series_metrics": names}})
     with caplog.at_level(logging.WARNING):
-        assert finetune._resolve_curves(recipe) is None
+        assert finetune._resolve_time_series_metrics(recipe) == finetune.DIAGNOSTIC_TIME_SERIES
 
-    assert "curves" in caplog.text
+    assert "time_series_metrics" in caplog.text

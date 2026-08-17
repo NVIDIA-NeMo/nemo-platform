@@ -27,13 +27,39 @@ from pydantic import BaseModel, Field
 #: :mod:`nmp.customization_common.training.callbacks`.
 DEFAULT_MAX_POINTS = 200
 
+#: The time-series metrics every backend has in common: the loss family, the
+#: learning rate, and the gradient norm. Written as patterns rather than literal
+#: names so one entry covers both phases (``train_loss`` and ``val_loss``), the
+#: algorithm-specific members of a family (``train_sft_loss``,
+#: ``val_preference_loss``), and the dataset-qualified names NeMo-RL produces for
+#: a second validation set (``val_heldout_loss``).
+DIAGNOSTIC_TIME_SERIES = ("*_loss", "*_lr", "*_grad_norm")
+
+#: Everything, spelled explicitly. This is what a user passes to opt out of a
+#: backend's default and record a curve for every metric it emits; leaving the
+#: field unset means "the backend's default" instead.
+ALL_METRICS = ("*",)
+
 
 class ProgressReportingConfig(BaseModel):
     """How much detail training progress is reported to the Jobs service with.
 
-    Two knobs, and they multiply: the stored blob is ``curves x max_points``.
-    ``max_points`` bounds how finely each curve is sampled, ``curves`` bounds how
-    many curves there are.
+    Two knobs, and they multiply: the stored blob is
+    ``time_series_metrics x max_points``. ``max_points`` bounds how finely each
+    series is sampled; ``time_series_metrics`` bounds how many series there are.
+
+    The split the second knob expresses is that a training run produces two kinds
+    of metric. A few are worth a *history* -- the loss, the learning rate, the
+    gradient norm -- because their shape over time is the whole point. The rest
+    are throughput and accounting counters (``tps``, ``mem``, ``num_label_tokens``,
+    ``global_valid_toks``) whose *current* value is all anyone reads. Both kinds
+    are always reported; only the first kind is accumulated.
+
+    There is no second list for the scalars, and deliberately: the set of metric
+    names comes from the training framework at runtime, not from this config, so
+    any pair of lists would leave a third category of names in neither. Naming
+    the series and letting everything else be a scalar is the only partition that
+    stays correct when a framework adds a metric.
     """
 
     max_points: int = Field(
@@ -48,14 +74,17 @@ class ProgressReportingConfig(BaseModel):
             "is set to."
         ),
     )
-    curves: list[str] | None = Field(
+    time_series_metrics: list[str] | None = Field(
         default=None,
         description=(
-            "Metric names to record as charted curves, given unqualified by phase -- 'loss' "
-            "covers both the training and validation curves. Omit for every metric the backend "
-            "produces, which is the most detail and the most cost. A metric left out is still "
-            "reported as a current value on every report; only its history is dropped, so a "
-            "throughput counter like 'tps' costs one number rather than several hundred. Which "
-            "names a backend produces is listed in the job log the first time one is excluded."
+            "Which metrics are recorded as a time series, named exactly as they appear in the "
+            "job's status details and so qualified by phase: 'train_loss', 'val_accuracy'. "
+            "Glob patterns are accepted, so '*_loss' covers every loss on both phases and '*' "
+            "records everything. Omit the field to take the backend's default, which keeps the "
+            "loss, learning rate and gradient norm. "
+            "Every metric the run produces is reported either way -- one not matched here is "
+            "still sent as a current value on every report, it simply has no history, so a "
+            "throughput counter like 'train_tps' costs one number rather than several hundred. "
+            "The job log names what was matched and what was not."
         ),
     )

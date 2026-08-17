@@ -22,7 +22,7 @@ from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderReci
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback
-from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
+from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS, DIAGNOSTIC_TIME_SERIES
 
 logger = logging.getLogger(__name__)
 
@@ -135,22 +135,34 @@ def _resolve_max_points(recipe: AutomodelRecipe) -> int:
     return DEFAULT_MAX_POINTS
 
 
-def _resolve_curves(recipe: AutomodelRecipe) -> list[str] | None:
-    """Metric names to accumulate, or None for all of them.
+def _resolve_time_series_metrics(recipe: AutomodelRecipe) -> tuple[str, ...] | list[str]:
+    """Which metrics get a stored series, defaulting to the diagnostic set.
 
-    None is a real configuration here rather than only a fallback -- it is the
-    default -- so an absent block and an explicit null mean the same thing, and
-    neither is worth a warning. A non-list, or a list with anything but strings
-    in it, is discarded whole: charting some of a malformed list would be a
-    stranger outcome than charting everything.
+    Automodel is the backend this matters most for. Its recipes report eight
+    metrics on the train path and four on validation, and five of those twelve
+    are throughput and accounting counters -- ``mem``, ``tps``, ``tps_per_gpu``,
+    ``num_tokens_per_step``, ``num_label_tokens`` -- whose current value is all
+    anyone reads. Keeping the loss, learning rate and gradient norm takes the
+    stored blob from twelve series to five.
+
+    An absent or null list means "the default", not "everything": ``["*"]`` is
+    how a user asks for every metric. An empty list means no series at all and is
+    honoured as written.
+
+    A non-list, or a list with anything but strings in it, falls back to the
+    default whole. Taking the usable half of a malformed list would produce a
+    silently arbitrary set of curves, which is worse than a stated one.
     """
     block = _reporting_block(recipe)
-    curves = block.get("curves") if hasattr(block, "get") else None
-    if isinstance(curves, (list, tuple)) and all(isinstance(name, str) for name in curves):
-        return list(curves)
-    if curves is not None:
-        logger.warning(f"Ignoring an unusable progress_reporting.curves ({curves!r}); charting every metric.")
-    return None
+    names = block.get("time_series_metrics") if hasattr(block, "get") else None
+    if isinstance(names, (list, tuple)) and all(isinstance(name, str) for name in names):
+        return list(names)
+    if names is not None:
+        logger.warning(
+            f"Ignoring an unusable progress_reporting.time_series_metrics ({names!r}); "
+            f"recording the default set instead: {', '.join(DIAGNOSTIC_TIME_SERIES)}."
+        )
+    return DIAGNOSTIC_TIME_SERIES
 
 
 class AutomodelRecipeWrapper:
@@ -178,7 +190,7 @@ class AutomodelRecipeWrapper:
         self.callback = TrainingProgressCallback(
             self._reporter,
             max_points=_resolve_max_points(recipe),
-            curves=_resolve_curves(recipe),
+            time_series_metrics=_resolve_time_series_metrics(recipe),
         )
         logger.info(f"Automodel recipe wrapper initialized: max_steps={self.max_steps}, num_epochs={self.num_epochs}")
 

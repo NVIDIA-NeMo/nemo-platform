@@ -2060,15 +2060,18 @@ components:
             This can only thin what the training framework produces, never add to
             it: a run that logs 40 times reports 40 points whatever this is set to.'
           default: 200
-        curves:
-          title: Curves
-          description: Metric names to record as charted curves, given unqualified
-            by phase -- 'loss' covers both the training and validation curves. Omit
-            for every metric the backend produces, which is the most detail and the
-            most cost. A metric left out is still reported as a current value on every
-            report; only its history is dropped, so a throughput counter like 'tps'
-            costs one number rather than several hundred. Which names a backend produces
-            is listed in the job log the first time one is excluded.
+        time_series_metrics:
+          title: Time Series Metrics
+          description: 'Which metrics are recorded as a time series, named exactly
+            as they appear in the job''s status details and so qualified by phase:
+            ''train_loss'', ''val_accuracy''. Glob patterns are accepted, so ''*_loss''
+            covers every loss on both phases and ''*'' records everything. Omit the
+            field to take the backend''s default, which keeps the loss, learning rate
+            and gradient norm. Every metric the run produces is reported either way
+            -- one not matched here is still sent as a current value on every report,
+            it simply has no history, so a throughput counter like ''train_tps'' costs
+            one number rather than several hundred. The job log names what was matched
+            and what was not.'
           items:
             type: string
           type: array
@@ -2078,12 +2081,36 @@ components:
         with.
 
 
-        Two knobs, and they multiply: the stored blob is ``curves x max_points``.
+        Two knobs, and they multiply: the stored blob is
 
-        ``max_points`` bounds how finely each curve is sampled, ``curves`` bounds
-        how
+        ``time_series_metrics x max_points``. ``max_points`` bounds how finely each
 
-        many curves there are.'
+        series is sampled; ``time_series_metrics`` bounds how many series there are.
+
+
+        The split the second knob expresses is that a training run produces two kinds
+
+        of metric. A few are worth a *history* -- the loss, the learning rate, the
+
+        gradient norm -- because their shape over time is the whole point. The rest
+
+        are throughput and accounting counters (``tps``, ``mem``, ``num_label_tokens``,
+
+        ``global_valid_toks``) whose *current* value is all anyone reads. Both kinds
+
+        are always reported; only the first kind is accumulated.
+
+
+        There is no second list for the scalars, and deliberately: the set of metric
+
+        names comes from the training framework at runtime, not from this config,
+        so
+
+        any pair of lists would leave a third category of names in neither. Naming
+
+        the series and letting everything else be a scalar is the only partition that
+
+        stays correct when a framework adds a metric.'
     RlDPOTraining:
       properties:
         optimizer_type:
