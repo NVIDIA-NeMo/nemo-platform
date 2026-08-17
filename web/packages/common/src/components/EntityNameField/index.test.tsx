@@ -31,7 +31,7 @@ describe('EntityNameField', () => {
     await user.type(input, 'Foo bar');
 
     expect(input).toHaveValue('Foo bar');
-    expect(screen.getByText('Your fileset will be created as foo-bar')).toBeInTheDocument();
+    expect(screen.getByText('Your fileset will be created as foo-bar')).toHaveClass('text-primary');
 
     await user.clear(input);
     await user.type(input, 'MyProject');

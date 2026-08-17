@@ -4,7 +4,7 @@
 import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { sanitizeEntityName, toValidEntityName } from '@nemo/common/src/utils/entityName';
 import { FormField, TextInput } from '@nvidia/foundations-react-core';
-import { useEffect, useRef, useState, type FC } from 'react';
+import { useEffect, useRef, useState, type FC, type ReactNode } from 'react';
 import { useDebounce } from 'use-debounce';
 
 export interface EntityNameFieldProps {
@@ -87,7 +87,7 @@ export const EntityNameField: FC<EntityNameFieldProps> = ({
         ? `${label} must contain at least one letter or number.`
         : undefined;
 
-  let slotHelp: string | undefined;
+  let slotHelp: ReactNode;
   let slotError: string | undefined;
 
   if (checking) {
@@ -98,7 +98,11 @@ export const EntityNameField: FC<EntityNameFieldProps> = ({
     slotError = localError;
   } else {
     const preview = toValidEntityName(value, '');
-    slotHelp = preview ? `Your ${entity} will be created as ${preview}` : undefined;
+    slotHelp = preview ? (
+      <span className="text-primary">
+        Your {entity} will be created as {preview}
+      </span>
+    ) : undefined;
   }
 
   return (
