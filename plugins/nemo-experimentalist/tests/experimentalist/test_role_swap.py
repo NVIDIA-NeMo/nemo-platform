@@ -247,7 +247,7 @@ def test_an_installed_out_of_tree_package_is_discovered() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isolated_registry: None) -> None:
+async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path: Path, isolated_registry: None) -> None:
     """Discovery is half of it. This drives the installed package end to end — it imports
     a baseline, builds through `ctx.component`, scores, and returns a winner — because
     resolving without running is what let a Builder that raised on construction pass.
@@ -274,7 +274,7 @@ async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isol
     # constructor's arguments are the resolving strategy's contract, not the role's --
     # hence the cast to build it.
     strategy_class = cast(Any, resolve("strategy", "random-search"))
-    strategy = cast("Strategy", strategy_class(config=config))
+    strategy = cast("Strategy", strategy_class(working_dir=tmp_path, config=config))
 
     winner = await strategy.run(ctx)
 

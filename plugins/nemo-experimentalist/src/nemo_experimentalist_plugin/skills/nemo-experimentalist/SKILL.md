@@ -221,7 +221,7 @@ default Insight created by the former.
 
 Start with the deliberately small configuration below. The top-level options control rounds and
 candidate counts; `source` controls checkout behavior; `storage` controls
-candidate branches and PR/MR publication; `evaluator` controls trial
+candidate branches and PR/MR publication; `outcome_evaluator_config` controls trial
 execution; and `eval_author` controls Insight-driven evaluation authoring. See
 the [example-agent walkthrough](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/get-started/example-agent.mdx)
 for a complete worked optimizer configuration and run.
@@ -234,9 +234,9 @@ python -c \
   'import json; from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig; print(json.dumps(EvolutionaryOptimizerConfig.model_json_schema(), indent=2))'
 ```
 
-`evaluator` deliberately renders as an open mapping in that schema. For its
+`outcome_evaluator_config` deliberately renders as an open mapping in that schema. For its
 Harbor-specific settings, use the smoke configuration below and the plugin's
-Harbor evaluator documentation; for example, `evaluator.n_attempts` defaults
+Harbor evaluator documentation; for example, `outcome_evaluator_config.n_attempts` defaults
 to `1`.
 
 Keep model endpoint and model-tier settings out of this file; configure those

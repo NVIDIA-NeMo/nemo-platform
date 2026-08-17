@@ -987,7 +987,7 @@ def test_a_third_party_components_settings_reach_it_unchanged() -> None:
         Component._registry.pop(("selector", "acme-beam"), None)
 
 
-def test_both_construction_paths_validate_a_components_settings() -> None:
+def test_both_construction_paths_validate_a_components_settings(tmp_path: Path) -> None:
     """`get_component` and `ctx.component` must agree, or the check is decorative.
 
     The context builds components its own way -- it narrows the run-scoped arguments to
@@ -1012,11 +1012,8 @@ def test_both_construction_paths_validate_a_components_settings() -> None:
         def __init__(self, config: Strict | None = None, **_: object) -> None:
             self.config = config
 
-    import tempfile
-    from pathlib import Path
-
     try:
-        ctx = make_context(root=Path(tempfile.mkdtemp()), backend=FakeBackend())
+        ctx = make_context(root=tmp_path, backend=FakeBackend())
 
         direct = get_component("terminator", "probe-strict", config={"depth": 3})
         through_context = ctx.component("terminator", "probe-strict", config={"depth": 3})

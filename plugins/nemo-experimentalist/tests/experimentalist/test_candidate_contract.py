@@ -26,6 +26,7 @@ from nemo_experimentalist_plugin.entities import (
     Task,
     TrialResult,
 )
+from nemo_experimentalist_plugin.experimentalist.context import ExperimentContext
 
 
 def _proposal(ancestor: str | None = "agent-0") -> Proposal:
@@ -37,7 +38,7 @@ def _proposal(ancestor: str | None = "agent-0") -> Proposal:
     )
 
 
-async def _import_baseline(ctx, description: str = "baseline") -> Candidate:
+async def _import_baseline(ctx: ExperimentContext, description: str = "baseline") -> Candidate:
     """Build the baseline the way a strategy does: an import Proposal through its Builder."""
     from nemo_experimentalist_plugin.experimentalist.components.importer import ImportBuilder, import_proposal
 
