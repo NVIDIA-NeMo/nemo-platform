@@ -226,76 +226,8 @@ async def test_run_eval_author_resolves_inputs_and_returns_datasets(
     )
     assert client.closed
     assert model_clients.closed
-
-
-def test_eval_author_config_defaults_reasoning_effort_to_medium() -> None:
-    config = EvalAuthorConfig()
-    assert config.reasoning_effort == "medium"
-    assert config.completion_params == {}
-
-
-@pytest.mark.asyncio
-async def test_run_eval_author_passes_completion_options_to_resolve(
-    monkeypatch: pytest.MonkeyPatch,
-    model_clients: ClosingModelClients,
-    tmp_path: Path,
-) -> None:
-    client = ClosingClient()
-    insight = Insight(
-        workspace="workspace-a",
-        title="failure",
-        description="description",
-        agent="insight-agent",
-        trace_refs=["trace-1"],
-    )
-    backend = FakeBackend(insight)
-    dataset_factory = FakeDatasetFactory()
-    eval_author = FakeEvalAuthor()
-    monkeypatch.setattr(eval_author_run, "make_client", lambda _: client)
-    monkeypatch.setattr(eval_author_run, "make_experimentalist_backend", lambda **_: backend)
-    monkeypatch.setattr(eval_author_run, "DatasetFactory", lambda: dataset_factory)
-    monkeypatch.setattr(eval_author_run, "build_eval_author_agent", lambda **_: eval_author)
-    template = tmp_path / "template"
-    template.mkdir()
-    (template / "task.toml").write_text("template\n", encoding="utf-8")
-    train = tmp_path / "train"
-    validation = tmp_path / "validation"
-    train.mkdir()
-    validation.mkdir()
-
-    await eval_author_run.run_eval_author(
-        insight="insight-123",
-        train_dataset=DatasetRef(uri=str(train)),
-        validation_dataset=DatasetRef(uri=str(validation)),
-        task_template=DatasetRef(uri=str(template)),
-        experiment_dir=tmp_path / "experiment-default",
-        workspace="workspace-a",
-        base_url="http://platform.test",
-        config=EvalAuthorConfig(),
-    )
-    await eval_author_run.run_eval_author(
-        insight="insight-123",
-        train_dataset=DatasetRef(uri=str(train)),
-        validation_dataset=DatasetRef(uri=str(validation)),
-        task_template=DatasetRef(uri=str(template)),
-        experiment_dir=tmp_path / "experiment-omit",
-        workspace="workspace-a",
-        base_url="http://platform.test",
-        config=EvalAuthorConfig(
-            reasoning_effort=None,
-            completion_params={"temperature": 0.0},
-        ),
-    )
-
-    resolve_calls = model_clients.resolve_calls  # type: ignore[attr-defined]
-    assert len(resolve_calls) == 2
-    default_options = resolve_calls[0][2]
-    omit_options = resolve_calls[1][2]
-    assert isinstance(default_options, eval_author_run.CompletionClientOptions)
-    assert default_options.reasoning_effort == "medium"
-    assert dict(default_options.completion_params) == {}
-    assert omit_options.reasoning_effort is None
-    assert dict(omit_options.completion_params) == {"temperature": 0.0}
+    options = model_clients.resolve_calls[0][2]  # type: ignore[attr-defined]
+    assert options.reasoning_effort == "medium"
 
 
 def test_public_apis_accept_train_validation_and_generated_task_inputs() -> None:

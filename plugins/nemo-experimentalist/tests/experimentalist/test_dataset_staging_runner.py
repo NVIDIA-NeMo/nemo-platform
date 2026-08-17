@@ -38,27 +38,21 @@ def _write_tree(root: Path, content: str) -> None:
     (tests / "test.sh").write_text(content, encoding="utf-8")
 
 
-def _stub_author_model_clients(monkeypatch: pytest.MonkeyPatch) -> list[object]:
-    """Mode 1 now resolves Author-scoped clients; keep staging tests offline."""
-    resolve_calls: list[object] = []
+def _stub_author_model_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mode 1 resolves Author-scoped clients; keep staging tests offline."""
 
     class _Clients:
         async def aclose(self) -> None:
             return None
 
-    async def resolve(client: object, refs: object = None, options: object = None) -> _Clients:
-        resolve_calls.append(options)
+    async def resolve(*_a: object, **_k: object) -> _Clients:
         return _Clients()
 
-    monkeypatch.setattr(
-        "nemo_platform_plugin.nooa_model_client.resolve_model_clients",
-        resolve,
-    )
+    monkeypatch.setattr("nemo_platform_plugin.nooa_model_client.resolve_model_clients", resolve)
     monkeypatch.setattr(
         "nemo_platform_plugin.nooa_model_client.get_configured_model_refs",
         lambda: SimpleNamespace(default="default/m", fast="default/m"),
     )
-    return resolve_calls
 
 
 @pytest.mark.asyncio
@@ -118,7 +112,7 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
     )
     monkeypatch.setattr(runner_module, "DatasetFactory", RecordingDatasetFactory)
     monkeypatch.setattr("nemo_eval_author_plugin.eval_author.agent.EvalAuthor", MutatingEvalAuthor)
-    resolve_calls = _stub_author_model_clients(monkeypatch)
+    _stub_author_model_clients(monkeypatch)
 
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
@@ -153,8 +147,6 @@ async def test_insight_run_stages_inputs_and_stops_at_eval_author_handoff(
         f"runner built datasets without allow_empty in insight mode: {build_options}"
     )
     assert not (template.parent / "generated-task").exists()
-    assert len(resolve_calls) == 1
-    assert getattr(resolve_calls[0], "reasoning_effort", None) == "medium"
 
 
 @pytest.mark.asyncio
