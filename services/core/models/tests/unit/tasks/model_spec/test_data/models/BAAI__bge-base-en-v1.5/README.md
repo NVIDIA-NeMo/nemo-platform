@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 tags:
 - sentence-transformers
 - feature-extraction
@@ -2605,9 +2608,7 @@ language:
 - en
 ---
 
-
 <h1 align="center">FlagEmbedding</h1>
-
 
 <h4 align="center">
     <p>
@@ -2622,11 +2623,9 @@ language:
     <p>
 </h4>
 
-
 For more details please refer to our Github: [FlagEmbedding](https://github.com/FlagOpen/FlagEmbedding).
 
 If you are looking for a model that supports more languages, longer texts, and other retrieval methods, you can try using [bge-m3](https://huggingface.co/BAAI/bge-m3).
-
 
 [English](README.md) | [中文](https://github.com/FlagOpen/FlagEmbedding/blob/master/README_zh.md)
 
@@ -2664,7 +2663,6 @@ It is the first embedding model which supports all three retrieval methods, achi
   
 </details>
 
-
 ## Model List
 
 `bge` is short for `BAAI general embedding`.
@@ -2688,7 +2686,6 @@ It is the first embedding model which supports all three retrieval methods, achi
 |  [BAAI/bge-base-zh](https://huggingface.co/BAAI/bge-base-zh) |   Chinese |  [Inference](#usage-for-embedding-model) [Fine-tune](https://github.com/FlagOpen/FlagEmbedding/tree/master/examples/finetune) | a base-scale model but with similar ability to `bge-large-zh` | `为这个句子生成表示以用于检索相关文章：`  |
 |  [BAAI/bge-small-zh](https://huggingface.co/BAAI/bge-small-zh) |   Chinese | [Inference](#usage-for-embedding-model) [Fine-tune](https://github.com/FlagOpen/FlagEmbedding/tree/master/examples/finetune) | a small-scale model but with competitive performance | `为这个句子生成表示以用于检索相关文章：`  |
 
-
 [1\]: If you need to search the relevant passages to a query, we suggest to add the instruction to the query; in other cases, no instruction is needed, just use the original query directly. In all cases, **no instruction** needs to be added to passages.
 
 [2\]: Different from embedding model, reranker uses question and document as input and directly output similarity instead of embedding. To balance the accuracy and time cost, cross-encoder is widely used to re-rank top-k documents retrieved by other simple models. 
@@ -2696,7 +2693,6 @@ For examples, use bge embedding model to retrieve top 100 relevant documents, an
 
 All models have been uploaded to Huggingface Hub, and you can see them at https://huggingface.co/BAAI. 
 If you cannot open the Huggingface Hub, you also can download the models at https://model.baai.ac.cn/models .
-
 
 ## Frequently asked questions
 
@@ -2746,7 +2742,6 @@ In all cases, the documents/passages do not need to add the instruction.
 
 </details>
 
-
 ## Usage 
 
 ### Usage for Embedding Model
@@ -2784,7 +2779,6 @@ For the value of the argument `query_instruction_for_retrieval`, see [Model List
 
 By default, FlagModel will use all available GPUs when encoding. Please set `os.environ["CUDA_VISIBLE_DEVICES"]` to select specific GPUs.
 You also can set `os.environ["CUDA_VISIBLE_DEVICES"]=""` to make all GPUs unavailable.
-
 
 #### Using Sentence-Transformers
 
@@ -2835,7 +2829,6 @@ model = HuggingFaceBgeEmbeddings(
 model.query_instruction = "为这个句子生成表示以用于检索相关文章："
 ```
 
-
 #### Using HuggingFace Transformers
 
 With the transformers package, you can use the model like this: First, you pass your input through the transformer model, then you select the last hidden state of the first token (i.e., [CLS]) as the sentence embedding.
@@ -2865,7 +2858,6 @@ with torch.no_grad():
 sentence_embeddings = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1)
 print("Sentence embeddings:", sentence_embeddings)
 ```
-
 
 #### Usage of the ONNX files
 
@@ -2919,7 +2911,6 @@ Different from embedding model, reranker uses question and document as input and
 You can get a relevance score by inputting query and passage to the reranker. 
 The reranker is optimized based cross-entropy loss, so the relevance score is not bounded to a specific range.
 
-
 #### Using FlagEmbedding
 ```
 pip install -U FlagEmbedding
@@ -2936,7 +2927,6 @@ print(score)
 scores = reranker.compute_score([['what is panda?', 'hi'], ['what is panda?', 'The giant panda (Ailuropoda melanoleuca), sometimes called a panda bear or simply panda, is a bear species endemic to China.']])
 print(scores)
 ```
-
 
 #### Using Huggingface transformers
 
@@ -2982,8 +2972,6 @@ For more details and evaluation tools see our [scripts](https://github.com/FlagO
 | [all-mpnet-base-v2](https://huggingface.co/sentence-transformers/all-mpnet-base-v2) 	|  768 | 514 	| 57.78 | 43.81 | 43.69 | 83.04 | 59.36 | 80.28 | 27.49 | 65.07 |
 | [sgpt-bloom-7b1-msmarco](https://huggingface.co/bigscience/sgpt-bloom-7b1-msmarco) 	|  4096 | 2048 | 57.59 | 48.22 | 38.93 | 81.9 | 55.65 | 77.74 | 33.6 | 66.19 |
 
-
-
 - **C-MTEB**:  
 We create the benchmark C-MTEB for Chinese text embedding which consists of 31 datasets from 6 tasks. 
 Please refer to [C_MTEB](https://github.com/FlagOpen/FlagEmbedding/blob/master/C_MTEB/README.md) for a detailed introduction.
@@ -3006,7 +2994,6 @@ Please refer to [C_MTEB](https://github.com/FlagOpen/FlagEmbedding/blob/master/C
 | [luotuo](https://huggingface.co/silk-road/luotuo-bert-medium) | 1024 | 49.37 |  44.4 | 42.78 | 66.62 | 61 | 49.25 | 44.39 |
 | [text2vec-base](https://huggingface.co/shibing624/text2vec-base-chinese) | 768 |  47.63 | 38.79 | 43.41 | 67.41 | 62.19 | 49.45 | 37.66 |
 | [text2vec-large](https://huggingface.co/GanymedeNil/text2vec-large-chinese) | 1024 | 47.36 | 41.94 | 44.97 | 70.86 | 60.66 | 49.16 | 30.02 |
-
 
 - **Reranking**:
 See [C_MTEB](https://github.com/FlagOpen/FlagEmbedding/blob/master/C_MTEB/) for evaluation script.
@@ -3036,8 +3023,6 @@ We also provide a [pre-train example](https://github.com/FlagOpen/FlagEmbedding/
 Note that the goal of pre-training is to reconstruct the text, and the pre-trained model cannot be used for similarity calculation directly, it needs to be fine-tuned.
 More training details for bge see [baai_general_embedding](https://github.com/FlagOpen/FlagEmbedding/blob/master/FlagEmbedding/baai_general_embedding/README.md).
 
-
-
 ### BGE Reranker
 
 Cross-encoder will perform full-attention over the input pair, 
@@ -3047,11 +3032,9 @@ We train the cross-encoder on a multilingual pair data,
 The data format is the same as embedding model, so you can fine-tune it easily following our [example](https://github.com/FlagOpen/FlagEmbedding/tree/master/examples/reranker). 
 More details please refer to [./FlagEmbedding/reranker/README.md](https://github.com/FlagOpen/FlagEmbedding/tree/master/FlagEmbedding/reranker)
 
-
 ## Contact
 If you have any question or suggestion related to this project, feel free to open an issue or pull request.
 You also can email Shitao Xiao(stxiao@baai.ac.cn) and Zheng Liu(liuzheng@baai.ac.cn). 
-
 
 ## Citation
 

@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "RAG Evaluation Metrics"
 description: ""
 ---
@@ -158,8 +161,6 @@ offline_rows = [
 
 Use online arguments when the evaluator should generate the response first:
 
-
-
 ```python
 online_dataset = [
     {
@@ -181,7 +182,6 @@ online_config = RunConfigOnlineModel(
     inference=InferenceParams(temperature=0.2, max_tokens=1024),
 )
 ```
-
 
 ---
 

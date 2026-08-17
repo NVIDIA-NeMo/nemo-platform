@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Agent Evaluation Quickstart"
 description: "Evaluate a simple agent end to end with the NeMo Evaluator SDK — define tasks and a metric, run locally, and read the scores and HTML report. No platform services or API keys required."
 ---
@@ -36,7 +39,6 @@ from `input.candidate.output_text` and the task's grader-only `reference` from `
 ```python
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
-
 class KeywordMatchMetric:
     """Score 1.0 when the agent's answer contains the expected keyword, else 0.0."""
 
@@ -63,7 +65,6 @@ whoever reads or maintains the suite. It is **not** passed to the agent, which o
 
 ```python
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
-
 
 def make_tasks() -> list[AgentEvalTask]:
     return [
@@ -162,7 +163,6 @@ from nemo_evaluator_sdk.agent_eval.runtimes.callable_runtime import CallableAgen
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
-
 class KeywordMatchMetric:
     """Score 1.0 when the agent's answer contains the expected keyword, else 0.0."""
 
@@ -177,7 +177,6 @@ class KeywordMatchMetric:
         expected = str(input.row.data.get("reference", {}).get("expected", "")).lower()
         answer = (input.candidate.output_text or "").lower()
         return MetricResult(outputs=[MetricOutput(name="score", value=1.0 if expected and expected in answer else 0.0)])
-
 
 def make_tasks() -> list[AgentEvalTask]:
     return [
@@ -197,7 +196,6 @@ def make_tasks() -> list[AgentEvalTask]:
         ),
     ]
 
-
 async def my_agent(task: AgentEvalTask) -> str:
     # Stand-in agent — replace with a real model or deployed agent later.
     answers = {
@@ -205,7 +203,6 @@ async def my_agent(task: AgentEvalTask) -> str:
         "capital-japan": "The capital of Japan is Tokyo.",
     }
     return answers[task.id]
-
 
 async def main() -> None:
     result = await AgentEvaluator().run(
@@ -216,7 +213,6 @@ async def main() -> None:
     result.persist()
     for aggregate in result.summary.scores.scores:
         print(f"{aggregate.name}: {aggregate.mean}")
-
 
 asyncio.run(main())
 ```

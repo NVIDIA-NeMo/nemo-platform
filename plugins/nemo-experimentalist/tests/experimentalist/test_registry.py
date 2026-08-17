@@ -287,7 +287,7 @@ def test_a_components_class_name_is_its_component_name_plus_its_role() -> None:
       registry is for.
 
     Shortening is what makes a convention decorative, so there are no exceptions:
-    `harbor` + `outcome-evaluator` is `HarborOutcomeEvaluator`, not `HarborEvaluator`.
+    `harbor` + `outcome-evaluator` is `HarborNativeOutcomeEvaluator`, not `HarborEvaluator`.
     """
     from nemo_experimentalist_plugin.experimentalist.registry import Component, load_plugins
 

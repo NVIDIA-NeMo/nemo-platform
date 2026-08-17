@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "nemo-experimentalist-plugin"
 version = "0.1.0"
@@ -7,6 +10,7 @@ dependencies = [
     "pydantic>=2",
     "httpx",
     "harbor>=0.16",
+    "nemo-evaluator-sdk",
     "opentelemetry-proto>=1.42.1",
     "protobuf>=6.0.0",
     "nooa",
@@ -39,7 +43,8 @@ experimentalist = "nemo_experimentalist_plugin.skills:skills_dir"
 "terminator.convergence" = "nemo_experimentalist_plugin.experimentalist.components.terminator"
 "root-cause-analyzer.trace" = "nemo_experimentalist_plugin.experimentalist.components.analyzer"
 "trajectory-scorer.goal-tree" = "nemo_experimentalist_plugin.experimentalist.components.trace_scorer"
-"outcome-evaluator.harbor" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor"
+"outcome-evaluator.harbor-native" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native"
+"outcome-evaluator.harbor-runner" = "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator"
 
 [build-system]
 requires = ["hatchling"]

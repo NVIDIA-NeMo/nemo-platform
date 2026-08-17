@@ -27,25 +27,28 @@ from nemo_experimentalist_plugin.entities import (
     subset_dataset_id,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    _TRACE_ARTIFACT_DESTINATION,
-    _TRACE_ARTIFACT_SOURCE,
+    DEFAULT_TRACE_ARTIFACT_SOURCE,
     HarborDataset,
     HarborDependencyContext,
     HarborDependencyRuntime,
-    HarborEvaluatorConfig,
-    HarborOutcomeEvaluator,
     HarborVerifierValidationError,
     _chmod_path_chain,
-    _cleanup_scoped_imports,
-    _ensure_package,
     _python_syntax_failure,
-    _safe_identifier,
-    _scoped_import_path,
     _shell_syntax_failure,
     _trial_error,
     _trial_metric_spec,
     _trial_metrics,
     _trial_resources,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
+    _TRACE_ARTIFACT_DESTINATION,
+    HarborEvaluatorConfig,
+    HarborNativeOutcomeEvaluator,
+    _cleanup_scoped_imports,
+    _ensure_package,
+    _safe_identifier,
+    _scoped_import_path,
+    _validated_job_dir,
     _with_trace_artifact,
 )
 
@@ -327,7 +330,7 @@ def test_harbor_dataset_from_ref_validates_task_ids(tmp_path: Path, task_ids: ob
 
 
 def test_harbor_dataset_maps_step_edge_cases(tmp_path: Path) -> None:
-    task_dir = tmp_path / "step-edge-task"
+    task_dir = tmp_path / "dataset" / "step-edge-task"
     _write(
         task_dir / "task.toml",
         """
@@ -344,7 +347,7 @@ name = "missing-instruction"
 """.lstrip(),
     )
 
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
 
     expected_task = Task(
         uri=task_dir.resolve().as_uri(),
@@ -389,7 +392,7 @@ name = "missing-instruction"
 
 
 def test_harbor_dataset_from_ref_and_multistep_output(tmp_path: Path) -> None:
-    task_dir = tmp_path / "multi-step-task"
+    task_dir = tmp_path / "dataset" / "multi-step-task"
     _write(
         task_dir / "task.toml",
         """
@@ -414,7 +417,7 @@ timeout_sec = 5.0
 
     dataset = HarborDataset.from_ref(
         DatasetRef(
-            uri=task_dir.resolve().as_uri(),
+            uri=task_dir.parent.resolve().as_uri(),
             metadata={"id": "custom-id"},
         )
     )
@@ -492,7 +495,7 @@ timeout_sec = 5.0
 
     assert dataset.id == "custom-id"
     assert dataset.source == ResourceRef(
-        uri=task_dir.resolve().as_uri(),
+        uri=task_dir.parent.resolve().as_uri(),
         description="Harbor dataset root directory.",
     )
     assert dataset.tasks == [expected_task]
@@ -517,6 +520,11 @@ def test_harbor_dataset_rejects_invalid_refs_and_paths(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="contains no Harbor task directories"):
         HarborDataset.from_path(empty_dir)
 
+    # Harbor reads task.toml as a file, so a directory by that name is no task of ours either.
+    (empty_dir / "task-a" / "task.toml").mkdir(parents=True)
+    with pytest.raises(ValueError, match="contains no Harbor task directories"):
+        HarborDataset.from_path(empty_dir)
+
     with pytest.raises(ValueError, match="metadata field 'id' must be a string"):
         HarborDataset.from_ref(DatasetRef(uri=str(tmp_path), metadata={"id": 1}))
 
@@ -527,10 +535,25 @@ def test_harbor_dataset_rejects_invalid_refs_and_paths(tmp_path: Path) -> None:
         HarborDataset.from_ref(DatasetRef(uri="s3://bucket/dataset"))
 
 
-def test_harbor_dataset_rejects_missing_task_ids(tmp_path: Path) -> None:
-    task_dir = tmp_path / "task-a"
+def test_task_directory_is_a_template_not_a_dataset(tmp_path: Path) -> None:
+    """Harbor's job config enumerates the task directories a dataset holds, and
+    nothing else, so only a template reads its own directory as one task."""
+    task_dir = tmp_path / "train"
     _write(task_dir / "task.toml", "")
-    dataset = HarborDataset.from_path(task_dir)
+
+    with pytest.raises(ValueError, match="itself a task directory") as exc_info:
+        HarborDataset.from_path(task_dir)
+    assert str(task_dir) in str(exc_info.value)
+
+    template = HarborDataset.from_path(task_dir, single_task=True)
+
+    assert [task.id for task in template.list_tasks()] == ["train"]
+
+
+def test_harbor_dataset_rejects_missing_task_ids(tmp_path: Path) -> None:
+    task_dir = tmp_path / "dataset" / "task-a"
+    _write(task_dir / "task.toml", "")
+    dataset = HarborDataset.from_path(task_dir.parent)
 
     with pytest.raises(ValueError, match="Task id not found"):
         dataset.get_task("missing")
@@ -558,7 +581,7 @@ async def test_harbor_trial_metric_spec_uses_task_verifier_dir(tmp_path: Path) -
     )
     _write(trial_dir / "verifier" / "reward.txt", "0.5")
 
-    trials = await HarborOutcomeEvaluator()._trials_from_dir(
+    trials = await HarborNativeOutcomeEvaluator()._trials_from_dir(
         tmp_path / "job",
         [Task(id="task-a", metric_specs={"reward": MetricSpec(name="reward", description="reward")})],
     )
@@ -615,7 +638,7 @@ async def test_harbor_trial_metric_spec_uses_task_verifier_dir(tmp_path: Path) -
 
 @pytest.mark.asyncio
 async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    evaluator = HarborOutcomeEvaluator()
+    evaluator = HarborNativeOutcomeEvaluator()
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
     dataset_dir = tmp_path / "dataset"
@@ -721,7 +744,7 @@ async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeyp
         async def run(self):
             return SimpleNamespace(id="job-id", stats=FakeStats())
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", FakeJob)
 
     result = await evaluator.run(
         agent=tmp_path / "agent",
@@ -846,7 +869,7 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
 
     dataset = HarborDataset.from_path(dataset_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "preflight")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
     compile_calls = 0
     original_compile = compile
 
@@ -858,7 +881,7 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
     monkeypatch.setattr("builtins.compile", counting_compile)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
-        await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+        await HarborNativeOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     message = str(exc_info.value)
     assert "task 'task-a'" in message
@@ -962,14 +985,14 @@ async def test_harbor_evaluator_accepts_valid_python_verifier(
 ) -> None:
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
     _write(task_dir / "tests" / "check.py", "def check():\n    return True\n")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-python")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
 
-    trials = await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+    trials = await HarborNativeOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     assert trials == []
     assert fake_job.create_calls == 1
@@ -983,16 +1006,16 @@ async def test_harbor_evaluator_rejects_invalid_configured_test_sh_before_job_cr
 ) -> None:
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write_task_config(task_dir, verifier_dir="test")
     _write(task_dir / "tests" / "test.sh", "echo ignored\n")
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo broken\n")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "invalid-shell")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
-        await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+        await HarborNativeOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     message = str(exc_info.value)
     assert "task 'task-a'" in message
@@ -1009,14 +1032,14 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
 ) -> None:
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo valid\nfi\n")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-shell")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
 
-    trials = await HarborOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
+    trials = await HarborNativeOutcomeEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
     assert trials == []
     assert fake_job.create_calls == 1
@@ -1025,10 +1048,10 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
 
 @pytest.mark.asyncio
 async def test_harbor_evaluator_rejects_invalid_inputs(tmp_path: Path) -> None:
-    evaluator = HarborOutcomeEvaluator()
-    task_dir = tmp_path / "task-a"
+    evaluator = HarborNativeOutcomeEvaluator()
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
-    harbor_dataset = HarborDataset.from_path(task_dir)
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
 
     with pytest.raises(ValueError, match="Dataset must be a Harbor dataset"):
         await evaluator.run(agent=tmp_path, dataset=Dataset(id="base"), options={"import_path": "agent:Agent"})
@@ -1292,9 +1315,13 @@ def test_safe_identifier_normal():
     assert _safe_identifier("hello world") == "hello_world"
 
 
-def test_scoped_import_path_empty_module(tmp_path):
-    with pytest.raises(ValueError, match="import_path module is required"):
-        _scoped_import_path(tmp_path, ":SomeClass")
+@pytest.mark.parametrize(
+    "import_path",
+    [":SomeClass", "harbor_wrapper", "harbor_wrapper:", "harbor_wrapper:WrappedAgent:extra"],
+)
+def test_scoped_import_path_requires_module_and_attribute(tmp_path, import_path):
+    with pytest.raises(ValueError, match="import_path must be <module>:<attribute>"):
+        _scoped_import_path(tmp_path, import_path)
 
 
 def test_cleanup_scoped_imports_removes_parent_attr():
@@ -1328,8 +1355,8 @@ def test_trial_metric_spec_task_dir_verifier(tmp_path):
 def test_with_trace_artifact_already_has_source():
     from harbor.models.job.config import ArtifactConfig
 
-    existing = ArtifactConfig(source=_TRACE_ARTIFACT_SOURCE, destination="traces")
-    result = _with_trace_artifact([existing], _TRACE_ARTIFACT_SOURCE)
+    existing = ArtifactConfig(source=DEFAULT_TRACE_ARTIFACT_SOURCE, destination="traces")
+    result = _with_trace_artifact([existing], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert result == [existing]
 
 
@@ -1337,7 +1364,7 @@ def test_with_trace_artifact_already_has_destination():
     from harbor.models.job.config import ArtifactConfig
 
     existing = ArtifactConfig(source="/other", destination=_TRACE_ARTIFACT_DESTINATION)
-    result = _with_trace_artifact([existing], _TRACE_ARTIFACT_SOURCE)
+    result = _with_trace_artifact([existing], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert result == [existing]
 
 
@@ -1345,9 +1372,9 @@ def test_with_trace_artifact_adds_when_missing():
     from harbor.models.job.config import ArtifactConfig
 
     other = ArtifactConfig(source="/other", destination="other")
-    result = _with_trace_artifact([other], _TRACE_ARTIFACT_SOURCE)
+    result = _with_trace_artifact([other], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert len(result) == 2
-    assert result[0].source == _TRACE_ARTIFACT_SOURCE
+    assert result[0].source == DEFAULT_TRACE_ARTIFACT_SOURCE
 
 
 def test_trial_error_non_dict():
@@ -1374,21 +1401,21 @@ def test_trial_resources_fallback_artifact(tmp_path):
 
 
 def test_harbor_dataset_get_task_found(tmp_path):
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
-    dataset = HarborDataset.from_path(task_dir)
+    dataset = HarborDataset.from_path(task_dir.parent)
     task = dataset.get_task("task-a")
     assert task.id == "task-a"
 
 
 @pytest.mark.asyncio
 async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
-    evaluator = HarborOutcomeEvaluator()
+    evaluator = HarborNativeOutcomeEvaluator()
     agent_dir = tmp_path / "agent"
     agent_dir.mkdir()
-    task_dir = tmp_path / "task-a"
+    task_dir = tmp_path / "dataset" / "task-a"
     _write(task_dir / "task.toml", "")
-    harbor_dataset = HarborDataset.from_path(task_dir)
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
 
     jobs_dir = tmp_path / "jobs"
     job_name = f"agent-{harbor_dataset.id}"
@@ -1402,7 +1429,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
         rmtree_calls.append(path)
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.shutil.rmtree", fake_rmtree
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.shutil.rmtree", fake_rmtree
     )
 
     class FakeJob:
@@ -1420,7 +1447,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
         async def run(self):
             return SimpleNamespace(id="job-id", stats=None)
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", FakeJob)
 
     trials = await evaluator._run(
         agent=agent_dir,
@@ -1433,7 +1460,60 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
     )
     assert trials == []
     assert len(rmtree_calls) == 1
-    assert rmtree_calls[0] == job_dir
+    assert rmtree_calls[0] == job_dir.resolve()
+
+
+def test_validated_job_dir_rejects_parent_escape(tmp_path: Path) -> None:
+    jobs_dir = tmp_path / "jobs"
+    jobs_dir.mkdir()
+    with pytest.raises(ValueError, match="strict descendant"):
+        _validated_job_dir(jobs_dir, "../outside")
+
+
+@pytest.mark.asyncio
+async def test_harbor_evaluator_force_rerun_rejects_job_name_outside_jobs_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evaluator = HarborNativeOutcomeEvaluator()
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    task_dir = tmp_path / "dataset" / "task-a"
+    _write(task_dir / "task.toml", "")
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("do not delete", encoding="utf-8")
+
+    rmtree_calls: list[Path] = []
+
+    def fake_rmtree(path: Path, **kwargs: object) -> None:
+        rmtree_calls.append(path)
+
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.shutil.rmtree",
+        fake_rmtree,
+    )
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job",
+        object,
+    )
+
+    with pytest.raises(ValueError, match="strict descendant"):
+        await evaluator._run(
+            agent=agent_dir,
+            dataset=harbor_dataset,
+            options=HarborEvaluatorConfig(
+                import_path="harbor_wrapper:WrappedAgent",
+                jobs_dir=tmp_path / "jobs",
+                job_name="../outside",
+                force_rerun=True,
+            ),
+        )
+
+    assert rmtree_calls == []
+    assert marker.read_text(encoding="utf-8") == "do not delete"
 
 
 @pytest.mark.asyncio
@@ -1448,7 +1528,7 @@ async def test_harbor_trials_from_dir_trial_id_fallback(tmp_path):
         },
     )
 
-    evaluator = HarborOutcomeEvaluator()
+    evaluator = HarborNativeOutcomeEvaluator()
     trials = await evaluator._trials_from_dir(job_dir, [Task(id="task-x", metric_specs={})])
     assert trials[0].id == trial_dir.name
 
@@ -1881,12 +1961,12 @@ def test_resolve_trial_task_id_fallback_to_trial_base():
 
 
 def test_with_trace_artifact_string_match():
-    result = _with_trace_artifact([_TRACE_ARTIFACT_SOURCE], _TRACE_ARTIFACT_SOURCE)
-    assert result == [_TRACE_ARTIFACT_SOURCE]
+    result = _with_trace_artifact([DEFAULT_TRACE_ARTIFACT_SOURCE], DEFAULT_TRACE_ARTIFACT_SOURCE)
+    assert result == [DEFAULT_TRACE_ARTIFACT_SOURCE]
 
 
 def test_with_trace_artifact_string_destination_match():
-    result = _with_trace_artifact([_TRACE_ARTIFACT_DESTINATION], _TRACE_ARTIFACT_SOURCE)
+    result = _with_trace_artifact([_TRACE_ARTIFACT_DESTINATION], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert result == [_TRACE_ARTIFACT_DESTINATION]
 
 

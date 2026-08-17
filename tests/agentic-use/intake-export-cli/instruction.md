@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Export Intake Entries to File (CLI)
 
 You have access to the `nmp` CLI for NeMo Platform operations, and `curl` for HTTP requests. Note: MCP tools are not available in this environment - you must use the CLI or HTTP API.

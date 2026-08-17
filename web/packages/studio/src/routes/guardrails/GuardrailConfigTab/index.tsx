@@ -4,7 +4,7 @@
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { Badge, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { countRails } from '@studio/components/dataViews/GuardrailsDataView/guardrailUtils';
+import { countRails } from '@studio/components/dataViews/GuardrailsDataView/utils';
 import { BehaviorSection } from '@studio/routes/guardrails/GuardrailConfigTab/BehaviorSection';
 import { listConfiguredDetectors } from '@studio/routes/guardrails/GuardrailConfigTab/detectors';
 import { DetectorsSection } from '@studio/routes/guardrails/GuardrailConfigTab/DetectorsSection';

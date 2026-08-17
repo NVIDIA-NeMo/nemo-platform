@@ -13,6 +13,7 @@ import re
 import tempfile
 from pathlib import Path
 from typing import Any, Iterator
+from urllib.parse import urlsplit
 
 import yaml
 from nemo_platform import NeMoPlatform, NotFoundError
@@ -39,6 +40,10 @@ _FABRIC_IGW_MODEL_PROVIDERS = frozenset({"openai", "nvidia", "openai-compatible"
 # validator can't meaningfully look them up, and ``expand_env_vars`` already
 # logged a warning, so we skip silently rather than raising.
 _UNEXPANDED_ENV_VAR_RE = re.compile(r"\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)")
+
+# Intake reads are workspace-scoped, so a config's literal workspace must be
+# rebound to the deployment target or its traces are unreachable.
+_INTAKE_WORKSPACE_RE = re.compile(r"(/apis/intake/v\d+/workspaces/)[^/]+(/)")
 
 
 def expand_env_vars(value: Any, vars_dict: dict[str, Any]) -> Any:
@@ -277,7 +282,38 @@ def inject_fabric_gateway_url(
             continue
         model_config["base_url"] = gateway_url
 
+    rebind_intake_ingest_workspace(resolved, workspace)
+
     return resolved
+
+
+def rebind_intake_ingest_workspace(config: dict[str, Any], workspace: str) -> dict[str, Any]:
+    """Point ATIF HTTP storage endpoints at *workspace* instead of the config's literal.
+
+    Mutates *config* in place and returns it. Endpoints that are not Intake ingest
+    URLs are left alone.
+    """
+    telemetry = config.get("telemetry")
+    atif = telemetry.get("atif") if isinstance(telemetry, dict) else None
+    storage_configs = atif.get("storage", []) if isinstance(atif, dict) else []
+    if not isinstance(storage_configs, list):
+        return config
+    for storage_config in storage_configs:
+        if not isinstance(storage_config, dict) or storage_config.get("type") != "http":
+            continue
+        endpoint = storage_config.get("endpoint")
+        if not isinstance(endpoint, str):
+            continue
+        # Rewrite the path only; a query or fragment can carry the same text.
+        parts = urlsplit(endpoint)
+        path = _INTAKE_WORKSPACE_RE.sub(
+            lambda match: f"{match.group(1)}{workspace}{match.group(2)}",
+            parts.path,
+            count=1,
+        )
+        if path != parts.path:
+            storage_config["endpoint"] = parts._replace(path=path).geturl()
+    return config
 
 
 def inject_nemo_trace_fields(

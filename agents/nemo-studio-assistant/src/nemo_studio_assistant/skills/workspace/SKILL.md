@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: workspace
 description: NeMo Platform workspace CRUD playbook through `nemo_api(resource='workspaces')`. Use for workspace creation, listing, retrieval, or deletion.
 ---

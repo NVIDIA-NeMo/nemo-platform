@@ -19,10 +19,11 @@ if TYPE_CHECKING:
 
 
 def _evaluation(name: EvaluatorType) -> "type[OutcomeEvaluator]":
-    """The registered `evaluation` component called *name*.
+    """The registered `outcome-evaluator` component called *name*.
 
-    Resolved rather than looked up in a table: a table keyed on names this package knows
-    is exactly what stops `evaluation:` being swappable from config.
+    Resolved rather than looked up in a table: a table keyed on the names this package
+    knows is exactly what stops `outcome_evaluator:` being swappable from config. The
+    two Harbor-backed evaluators are entries in the registry like any other.
     """
     return cast("type[OutcomeEvaluator]", resolve("outcome-evaluator", name))
 
@@ -61,7 +62,7 @@ class DatasetFactory:
         Returns:
             Task: The built task.
         """
-        tasks = list(self.build_dataset(evaluator_type, template_ref).list_tasks())
+        tasks = list(self.build_dataset(evaluator_type, template_ref, single_task=True).list_tasks())
         if len(tasks) != 1:
             raise ValueError(f"Task template must contain exactly one {evaluator_type} task; found {len(tasks)}")
         return tasks[0]
@@ -95,5 +96,8 @@ class EvaluatorFactory:
         if isinstance(config, EvaluatorConfig):
             config = config.model_dump()
         elif not isinstance(config, dict):
-            raise TypeError(f"{evaluator_type} evaluator config must be an EvaluatorConfig or dict")
+            # Quoted rather than .capitalize()d: these names are hyphenated, so
+            # capitalizing produced "Harbor-native" — and it silently changes shape
+            # every time a component is renamed.
+            raise TypeError(f"{evaluator_type!r} evaluator config must be an EvaluatorConfig or dict")
         return component(options=component.config_type.model_validate(config), experiment_dir=experiment_dir)

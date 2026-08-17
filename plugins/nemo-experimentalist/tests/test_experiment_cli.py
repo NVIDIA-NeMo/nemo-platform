@@ -137,8 +137,10 @@ def _make_paths(tmp_path: Path) -> ExperimentCliPaths:
     template = _make_dir(tmp_path / "template")
     (template / "task.toml").write_text('[task]\nname = "org/test-template"\n', encoding="utf-8")
     (template / "instruction.md").write_text("Test task instructions.\n", encoding="utf-8")
+    agent = _make_dir(tmp_path / "agent")
+    (agent / "harbor_wrapper.py").write_text("class WrappedAgent:\n    pass\n", encoding="utf-8")
     return ExperimentCliPaths(
-        agent=_make_dir(tmp_path / "agent"),
+        agent=agent,
         train=_make_dir(tmp_path / "train"),
         validation=_make_dir(tmp_path / "validation"),
         template=template,

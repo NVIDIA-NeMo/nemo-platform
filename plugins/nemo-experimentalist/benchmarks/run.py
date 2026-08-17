@@ -23,10 +23,10 @@ from nemo_experimentalist_plugin.entities import (
     TrialResult,
     local_path_from_uri,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    HarborDataset,
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
     HarborEvaluatorConfig,
-    HarborOutcomeEvaluator,
+    HarborNativeOutcomeEvaluator,
 )
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_winner
 from nemo_experimentalist_plugin.resolve import resolve_dataset
@@ -396,7 +396,7 @@ async def _evaluate_heldout(
         environment_build_timeout_multiplier=2.0,
     )
     started = time.monotonic()
-    result = await HarborOutcomeEvaluator(experiment_dir=run_dir).run(
+    result = await HarborNativeOutcomeEvaluator(experiment_dir=run_dir).run(
         agent=agent_dir,
         dataset=dataset,
         options=options,

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Content Safety with a Task LLM
 
 Self-check rails reuse the request's main LLM. For dedicated content moderation, use a content-safety classifier (e.g. `default/nvidia-llama-3-1-nemotron-safety-guard-8b-v3`) as a separate task LLM. The `content_safety` flows reference the task LLM via `$model=content_safety`, so the `models[]` entry **is** required here.

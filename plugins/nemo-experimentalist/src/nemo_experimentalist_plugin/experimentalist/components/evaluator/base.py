@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
@@ -17,8 +18,11 @@ from nemo_experimentalist_plugin.entities import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-#: Name of a registered `evaluation` component. A plain string rather than a Literal:
-#: the set is open, and a package can add to it without editing this module.
+logger = logging.getLogger(__name__)
+
+#: Name of a registered `outcome-evaluator` component. A plain string rather than a
+#: Literal: the set is open, and a package can add to it without editing this module.
+#: `harbor-native` and `harbor-runner` are two entries in it, not the whole of it.
 EvaluatorType: TypeAlias = str
 
 
@@ -45,10 +49,13 @@ class Evaluator(ABC):
         """
         Aggregate evaluation results from multiple runs.
 
-        Defaults to averaging each metric across all trials, treating trials that
-        did not emit a metric (e.g. failed trials) as contributing 0. The denominator
-        is always ``len(results)``, not the number of trials that reported each metric,
-        so failure counts against the aggregate score.
+        Averages each metric over trials with ``status == "completed"``. Anything
+        else is excluded from both the sum and the denominator, so a crash does not
+        pull the mean down — it shrinks the sample the mean is taken over, and a
+        round with no completed trial aggregates to ``{}`` rather than to zeros.
+
+        Completed trials must all report the same metric keys; a mismatch raises
+        rather than silently averaging over different denominators per metric.
 
         Args:
             results(Sequence[TrialResult]): List of trial results to aggregate.
@@ -59,7 +66,10 @@ class Evaluator(ABC):
         if not results:
             return {}
 
-        completed = [r for r in results if r.status != "failed"]
+        # Positive predicate on purpose: `!= "failed"` is equivalent while TrialStatus
+        # is Literal["completed", "failed"], but it would silently start averaging any
+        # third status someone adds. Opt statuses in, do not opt "failed" out.
+        completed = [r for r in results if r.status == "completed"]
         if not completed:
             return {}
 

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Authorization Flow CLI Test
 
 This Harbor test verifies that Claude Code can perform authorization and role-based access control operations using the `nemo` CLI.

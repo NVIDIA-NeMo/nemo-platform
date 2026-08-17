@@ -15,6 +15,16 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import httpx
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.dataset_layout import (
+    TASK_CONFIG_FILENAME,
+    find_task_dirs,
+    is_task_dir,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.entrypoint import (
+    DEFAULT_AGENT_IMPORT_PATH,
+    find_entrypoint_module,
+    split_import_path,
+)
 from nemo_experimentalist_plugin.experimentalist.components.repository import (
     _redact_url,
     looks_like_git,
@@ -200,6 +210,7 @@ def check_artifacts(
     task_template: str | None = None,
     agent_source: str | None = None,
     storage: dict | None = None,
+    evaluator: dict | None = None,
     require_template: bool = True,
     probes: Probes | None = None,
 ) -> list[CheckResult]:
@@ -221,14 +232,20 @@ def check_artifacts(
     effective_template = task_template or (profile.task_template if profile is not None else None)
     if require_template and effective_template is not None:
         results += _check_task_template(resolve_profile_path(effective_template, base_dir))
-    results += _check_agent_source(profile, p, agent_source=agent_source, storage=storage)
+    results += _check_agent_source(profile, p, agent_source=agent_source, storage=storage, evaluator=evaluator)
     return results
 
 
-def check_datasets(profile: AgentProfile) -> list[CheckResult]:
+def check_datasets(profile: AgentProfile, *, require_tasks: bool = True) -> list[CheckResult]:
     """Classify and validate the profile's train/validation dataset refs
     (path-exists / registry-ref pass). Doctor-only: the experiment flow
-    resolves its datasets, which proves they exist."""
+    resolves its datasets, which proves they exist.
+
+    Existing is not enough to evaluate: Harbor reads the task directories a
+    dataset holds, so a directory holding none fails the run. ``require_tasks``
+    is off for an insight run, where Eval Author generates the tasks and both
+    splits legitimately start empty.
+    """
     results: list[CheckResult] = []
     for label, value in (("train", profile.datasets.train), ("validation", profile.datasets.validation)):
         try:
@@ -241,21 +258,7 @@ def check_datasets(profile: AgentProfile) -> list[CheckResult]:
             )
             continue
         if kind == "path":
-            path = resolve_profile_path(value, profile.profile_dir)
-            results.append(
-                make_check_result(
-                    f"dataset-{label}",
-                    "artifacts",
-                    path.is_dir(),
-                    "required",
-                    f"{label} dataset at {path}",
-                    (
-                        f"{label} dataset path is not a directory: {path}"
-                        if path.exists()
-                        else f"{label} dataset path missing: {path}"
-                    ),
-                )
-            )
+            results.append(_check_dataset_path(label, resolve_profile_path(value, profile.profile_dir), require_tasks))
         else:
             results.append(
                 CheckResult(
@@ -267,6 +270,36 @@ def check_datasets(profile: AgentProfile) -> list[CheckResult]:
                 )
             )
     return results
+
+
+def _check_dataset_path(label: str, path: Path, require_tasks: bool) -> CheckResult:
+    """Check one resolved local dataset directory for the tasks a run evaluates."""
+    if not path.is_dir():
+        return CheckResult(
+            name=f"dataset-{label}",
+            group="artifacts",
+            status="fail",
+            severity="required",
+            message=(
+                f"{label} dataset path is not a directory: {path}"
+                if path.exists()
+                else f"{label} dataset path missing: {path}"
+            ),
+        )
+    has_tasks = not require_tasks or bool(find_task_dirs(path))
+    return make_check_result(
+        f"dataset-{label}",
+        "artifacts",
+        has_tasks,
+        "required",
+        f"{label} dataset at {path}",
+        f"{label} dataset holds no task directories: {path}",
+        hint=(
+            f"{path} is itself a task directory; point {label} at the directory holding it"
+            if is_task_dir(path)
+            else f"each task is a subdirectory with a {TASK_CONFIG_FILENAME}"
+        ),
+    )
 
 
 def _check_task_template(tt: Path) -> list[CheckResult]:
@@ -334,6 +367,7 @@ def _check_agent_source(
     *,
     agent_source: str | None = None,
     storage: dict | None = None,
+    evaluator: dict | None = None,
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
     source = agent_source or (profile.agent_source if profile is not None else None)
@@ -366,6 +400,8 @@ def _check_agent_source(
                 f"agent source dir missing: {path}",
             )
         )
+        if path.is_dir():
+            results.append(_check_agent_entrypoint(path, evaluator))
     # Effective storage flags from the auto path (resolved config, which may come
     # from --config); doctor falls back to reading the profile's inline dict or
     # path-form experiment_config without importing the loop chain.
@@ -449,6 +485,41 @@ def _check_agent_source(
                 )
             )
     return results
+
+
+def _check_agent_entrypoint(agent_dir: Path, evaluator: dict | None) -> CheckResult:
+    """Resolve the evaluator's entrypoint inside a local agent directory.
+
+    The evaluator imports it from that directory alone, so an entrypoint it
+    cannot find there fails every trial of every candidate.
+    """
+    configured = (evaluator or {}).get("import_path")
+    import_path = DEFAULT_AGENT_IMPORT_PATH if configured is None else str(configured)
+    try:
+        module_name, attribute = split_import_path(import_path)
+    except ValueError as exc:
+        return CheckResult(
+            name="agent-entrypoint",
+            group="agent-source",
+            status="fail",
+            severity="required",
+            message=f"evaluator import_path {import_path!r} is unusable: {exc}",
+            hint="set evaluator.import_path in the experiment config to <module>:<attribute>",
+        )
+    found = find_entrypoint_module(agent_dir, module_name)
+    expected = Path(*module_name.split("."))
+    return make_check_result(
+        "agent-entrypoint",
+        "agent-source",
+        found is not None,
+        "required",
+        f"evaluator entrypoint {import_path} at {found}",
+        f"evaluator cannot import {module_name!r} from the agent source: {agent_dir}",
+        hint=(
+            f"add {expected}.py defining {attribute} to the agent directory, "
+            "or point evaluator.import_path in the experiment config at the module you have"
+        ),
+    )
 
 
 def _check_insight_file(

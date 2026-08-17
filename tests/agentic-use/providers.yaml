@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Provider seeding manifest for AUT benchmark runs.
 #
 # Only consumed when --aut-seed-providers is set (ephemeral/quickstart

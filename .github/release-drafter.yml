@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # Maps the conventional-commit type in the PR title to a same-named label;
 # .github/release.yml groups release notes by these labels. Bare prefix match
 # is safe: titles are validated by semantic-pull-requests.yaml and no type is

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Dataset-driven evaluation — Email Security Analyst
 
 This fileset holds the **dataset-driven** eval config seeded from the built-in Email

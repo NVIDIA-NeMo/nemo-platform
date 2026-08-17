@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Autopilot Workflow
 
 The user has signaled they don't want to answer questions. Make defensible decisions and keep moving. Do **not** run the full `run` job autonomously — finalize with a one-line command the user can launch.

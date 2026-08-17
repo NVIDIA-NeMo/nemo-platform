@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # nmp-rl training - DPO + GRPO training step, and the Gym environment runtime.
 #
 # FROM nmp-rl-base (NeMo-RL + NeMo-Gym built from source; venv /opt/nemo_rl_venv, Python 3.13).
@@ -50,6 +53,7 @@ RUN UV_CACHE_DIR=/root/.cache/uv \
 # UV_CACHE_DIR is overridden to the build-only mount here: the base sets it to /opt/uv_cache, which
 # this step must not write into (that cache is shipped read-only, see below).
 RUN --mount=type=cache,target=/root/.cache/uv \
+    umask 022 && \
     UV_CACHE_DIR=/root/.cache/uv \
     uv-glue pip freeze --python /opt/nemo_rl_venv/bin/python --exclude-editable \
         | grep -E '^[A-Za-z0-9._-]+==' > /tmp/base-overrides.txt && \

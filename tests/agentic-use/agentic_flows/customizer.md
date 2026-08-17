@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Customizer Service Agentic Flows
 
 The Customizer service provides model fine-tuning capabilities including LoRA, full SFT, DPO, and Knowledge Distillation. It supports distributed training across multiple nodes.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: Build nemo-platform wheel
 description: >
   Set up the build toolchain (uv, plus node/pnpm when building nemo-platform

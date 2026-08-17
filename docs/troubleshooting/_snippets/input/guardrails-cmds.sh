@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 # start-content-safety
 curl https://integrate.api.nvidia.com/v1/chat/completions \
   -H "Content-Type: application/json" \

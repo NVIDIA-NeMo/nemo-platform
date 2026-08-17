@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Data Designer Preview - Harbor Test (Easy)
 
 > **Note:** This eval uses a mix of CLI and Python SDK. The `nemo data-designer preview`

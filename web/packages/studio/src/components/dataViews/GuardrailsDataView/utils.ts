@@ -19,3 +19,22 @@ export function countRails(data?: RailsConfig): number {
     (rails.retrieval?.flows?.length ?? 0)
   );
 }
+
+/** Return the `model` field of the first model entry with type "main", or undefined. */
+export function getMainModelName(data?: RailsConfig): string | undefined {
+  return data?.models?.find((m) => m.type === 'main')?.model;
+}
+
+export interface RailCounts {
+  input: number;
+  output: number;
+}
+
+/** Return the number of configured input and output rail flows. */
+export function getRailCounts(data?: RailsConfig): RailCounts {
+  const rails = data?.rails;
+  return {
+    input: rails?.input?.flows?.length ?? 0,
+    output: rails?.output?.flows?.length ?? 0,
+  };
+}

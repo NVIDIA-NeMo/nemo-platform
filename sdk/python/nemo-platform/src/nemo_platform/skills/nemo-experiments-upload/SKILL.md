@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 name: nemo-experiments-upload
 description: End-to-end guide for getting evaluation data into NeMo Platform Intake so it shows up in the Experiments leaderboard. Create an Experiment, create an Evaluation, then log traces and evaluator results via ATIF (Harbor), chat-completions, or OTLP and view the rollups in Studio. Use when a user wants to create named evaluation runs, publish evaluation results, or compare runs in NeMo Experiments.
 triggers:

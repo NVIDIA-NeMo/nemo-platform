@@ -1,3 +1,6 @@
+{{/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}}
+{{/* SPDX-License-Identifier: Apache-2.0 */}}
+
 {{- /*
 These Kyverno policies inject cloud-specific networking and NCCL configurations
 for multi-node GPU training jobs. They are triggered by the "nmp.nvidia.com/enable-multi-node-networking"

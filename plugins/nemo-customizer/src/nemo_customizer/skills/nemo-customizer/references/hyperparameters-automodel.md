@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Automodel job JSON reference. Index + integrations + source-of-truth: `hyperparameters.md`. Batch sizing / multi-GPU / 48 GB VRAM tables: `batch-sizing.md`. -->
 
 # Automodel job JSON

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Run Safe Synthesizer Locally
 
 Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the platform `safe-synthesizer` API prefix.

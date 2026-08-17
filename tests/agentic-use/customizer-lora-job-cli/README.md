@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # LoRA Customization Job (CLI, GPU)
 
 Tests the agent's ability to set up and submit a real LoRA fine-tuning job through the **nemo-customizer** plugin with the **nmp-automodel** backend.

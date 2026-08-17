@@ -81,7 +81,7 @@ def test_a_config_using_the_current_keys_is_accepted() -> None:
         {
             "terminator": None,
             "trajectory_scorer": None,
-            "outcome_evaluator": "harbor",
+            "outcome_evaluator": "harbor-native",
             "outcome_evaluator_config": {"n_attempts": 1},
             "builder": "code-edit",
             "analyzer_config": {},
@@ -90,7 +90,7 @@ def test_a_config_using_the_current_keys_is_accepted() -> None:
     )
 
     assert config.terminator is None
-    assert config.outcome_evaluator == "harbor"
+    assert config.outcome_evaluator == "harbor-native"
     assert config.outcome_evaluator_config == {"n_attempts": 1}
 
 

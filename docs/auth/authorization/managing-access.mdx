@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Managing Access"
 description: ""
 ---
@@ -14,7 +17,6 @@ The SDK examples on this page use `NeMoPlatform()` with no arguments so that the
 Workspaces are the primary authorization boundary — all resources belong to a workspace, and access is controlled at the workspace level. When you create a workspace, you automatically become its Admin.
 
 Create separate workspaces to isolate teams (`ml-research`, `nlp-team`), environments (`dev`, `staging`, `prod`), or projects. For detailed workspace management, refer to [Workspaces](/documentation/get-started/core-concepts/workspaces).
-
 
 <Tabs>
 
@@ -61,7 +63,6 @@ When you add or change a member, the CLI and SDK wait for the change to propagat
 ### Add a Member
 
 Grant someone access to a workspace by adding them as a member with a specific role. The principal is typically an email address that identifies the user in your identity provider.
-
 
 <Tabs>
 
@@ -112,7 +113,6 @@ client.workspaces.members.create(
 ### List Members
 
 View all members of a workspace to audit access or verify permissions. The response includes each member's principal, roles, and when access was granted.
-
 
 <Tabs>
 
@@ -172,7 +172,6 @@ for member in members.data:
 
 Change a member role to adjust their permissions, for example, promoting a Viewer to Editor when they need to create resources.
 
-
 <Tabs>
 
 <Tab title="CLI">
@@ -201,7 +200,6 @@ client.workspaces.members.update(
 ### Remove a Member
 
 Revoke a member's access by removing them from the workspace. This removes all their role bindings in the workspace — they will no longer be able to access any resources unless re-added.
-
 
 <Tabs>
 
@@ -238,7 +236,6 @@ Common use cases:
 ### Make a Workspace Readable by Everyone
 
 Grant the Viewer role to `*` so all authenticated users can view resources.
-
 
 <Tabs>
 
@@ -277,7 +274,6 @@ client.workspaces.members.create(workspace="shared-models", principal="*", roles
 
 Grant the Editor role to `*` so all authenticated users can create and modify resources.
 
-
 <Tabs>
 
 <Tab title="CLI">
@@ -303,7 +299,6 @@ client.workspaces.members.create(workspace="shared-datasets", principal="*", rol
 ### Remove Public Access
 
 Remove the wildcard binding to restrict the workspace to explicit members only.
-
 
 <Tabs>
 
@@ -347,7 +342,6 @@ Every workspace must have at least one Admin to prevent orphaned workspaces. The
 - You cannot change the last Admin's role to Viewer or Editor
 
 If you need to leave a workspace where you are the only Admin, add another Admin first:
-
 
 <Tabs>
 
@@ -398,7 +392,6 @@ Admins can delete workspaces they manage. However, a workspace cannot be deleted
 ```
 
 Delete all resources in the workspace before deleting the workspace itself:
-
 
 <Tabs>
 

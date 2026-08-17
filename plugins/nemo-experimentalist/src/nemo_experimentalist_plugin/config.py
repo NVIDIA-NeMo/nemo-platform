@@ -107,6 +107,13 @@ class EvolutionaryOptimizerConfig(BaseModel):
                 "'models' is no longer a run-config key. Run `nemo setup` to select the default and fast agent models."
             )
 
+        # `harbor` shipped as an evaluator_type before the evaluator was split into two
+        # implementations, so configs in the wild carry it.
+        if data.get("outcome_evaluator") == "harbor":
+            raise ValueError(
+                "outcome_evaluator: 'harbor' was split into 'harbor-native' (the default) and "
+                "'harbor-runner', which drives Harbor through the NeMo Evaluator SDK."
+            )
         return data
 
     strategy: str = Field(
@@ -125,7 +132,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
         description="Registered 'root-cause-analyzer'. Null skips diagnosis and the train eval feeding it.",
     )
     outcome_evaluator: str = Field(
-        default="harbor",
+        default="harbor-native",
         description=(
             "Registered 'outcome-evaluator' measuring what a candidate achieved. Named for "
             "the outcome because the trajectory-scorer measures the process of the same run."

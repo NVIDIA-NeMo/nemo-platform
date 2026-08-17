@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any, get_args, get_origin
@@ -403,8 +404,14 @@ def generate_yaml(entries: list[tuple[str, Any]]) -> str:
 
 def generate_markdown(entries: list[tuple[str, Any]]) -> str:
     """Generate full markdown document: YAML-first with comments, no tables, no class names."""
+    current_year = datetime.now().year
     lines: list[str] = []
     lines.append("---")
+    lines.append(
+        f"# SPDX-FileCopyrightText: Copyright (c) 2025-{current_year} "
+        "NVIDIA CORPORATION & AFFILIATES. All rights reserved."
+    )
+    lines.append("# SPDX-License-Identifier: Apache-2.0")
     lines.append('title: "NeMo Platform configuration reference"')
     lines.append('description: ""')
     lines.append("---")

@@ -1,4 +1,7 @@
 ---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 title: "Edge Cases Test for Markdown Parsing"
 description: "Testing various messed up markdown scenarios"
 tags: ["test", "edge-cases", "robustness"]
@@ -18,10 +21,6 @@ Testing the robustness of markdown to notebook conversion with various "messed u
 (no output)
 
 ## Test 2: Excessive Blank Lines
-
-
-
-
 
 ```python
 print("After many blank lines")
@@ -211,7 +210,6 @@ x = 1 + 1
 ```
 
 <!-- @nemo-nb: output -->
-
 
 ## Test 18: Inline Code Near Fenced Code
 

@@ -117,8 +117,8 @@ async def create_access_key(
     responses=_ACCESS_KEY_LIFECYCLE_ERROR_RESPONSES,
 )
 async def list_access_keys(
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=100),
+    page: int = Query(default=1, ge=1, description="Page number to retrieve."),
+    page_size: int = Query(default=100, ge=1, le=100, description="Number of keys to retrieve per page."),
     issuer: PersistentAccessKeyIssuer = Depends(get_access_key_issuer),
 ) -> schemas.AccessKeyListResponse | JSONResponse:
     try:

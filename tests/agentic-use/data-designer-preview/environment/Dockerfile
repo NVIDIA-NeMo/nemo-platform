@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 FROM nmp-agentic-base:latest
 
 # Override entrypoint to start NeMo Platform API and pre-configure CLI auth.

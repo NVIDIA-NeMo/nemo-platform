@@ -1,93 +1,52 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
-import { Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
-import {
-  EVAL_JOB_KIND_LABEL,
-  evalJobDetailRoute,
-  type EvalJobRow,
-  hasMixedEvalKinds,
-} from '@studio/api/evaluation/utils';
-import { DetailPanel } from '@studio/routes/agents/AgentDetailRoute/overview/DetailPanel';
-import { getAgentEvaluationsListRoute } from '@studio/routes/utils';
-import type { FC } from 'react';
-import { Link } from 'react-router';
+import { SegmentedControl, Stack } from '@nvidia/foundations-react-core';
+import type { EvalJobRow } from '@studio/api/evaluation/utils';
+import { EvaluationsTable } from '@studio/routes/agents/AgentDetailRoute/evaluations/EvaluationsTable';
+import { ExperimentsTable } from '@studio/routes/agents/AgentDetailRoute/evaluations/ExperimentsTable';
+import { groupByExperiment } from '@studio/routes/agents/AgentDetailRoute/evaluations/groupByExperiment';
+import { JobsTable } from '@studio/routes/agents/AgentDetailRoute/evaluations/JobsTable';
+import type { AgentEvaluationRow } from '@studio/routes/agents/AgentDetailRoute/useAgentDetails';
+import { type FC, useMemo, useState } from 'react';
+
+const VIEW_EVALUATIONS = 'evaluations';
+const VIEW_EXPERIMENTS = 'experiments';
+const VIEW_JOBS = 'jobs';
+
+const VIEW_ITEMS = [
+  { value: VIEW_JOBS, children: 'Active Jobs' },
+  { value: VIEW_EVALUATIONS, children: 'Completed Evaluations' },
+  { value: VIEW_EXPERIMENTS, children: 'Experiments' },
+];
 
 interface EvaluationsTabProps {
   workspace: string;
-  evals: EvalJobRow[];
-  onRunEvaluation: () => void;
+  evals: AgentEvaluationRow[];
+  jobs: EvalJobRow[];
 }
 
-/** Recent evaluation jobs for the agent, linking through to each run. */
-export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, onRunEvaluation }) => {
-  const showKind = hasMixedEvalKinds(evals);
+/** Three readings of the same work: published evaluations flat, rolled up by experiment, or the
+ *  jobs that produced them. Jobs are separate because they answer a different question — what is
+ *  running right now — which Intake cannot answer until a run publishes. */
+export const EvaluationsTab: FC<EvaluationsTabProps> = ({ workspace, evals, jobs }) => {
+  const [view, setView] = useState<string>(VIEW_JOBS);
+  const experiments = useMemo(() => groupByExperiment(evals), [evals]);
 
   return (
-    <DetailPanel
-      title="Recent evaluations"
-      flush
-      slotAction={
-        <Button kind="secondary" size="small" onClick={onRunEvaluation}>
-          Run evaluation
-        </Button>
-      }
-    >
-      {evals.length === 0 ? (
-        <Stack gap="2" className="p-4">
-          <Text color="secondary">No evaluation jobs found for this agent.</Text>
-          <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
-            View all evaluations →
-          </Link>
-        </Stack>
-      ) : (
-        <Stack gap="0">
-          {evals.map((job, index) => (
-            <Link
-              key={job.id}
-              to={evalJobDetailRoute(workspace, job)}
-              className="text-inherit no-underline"
-            >
-              <Flex
-                align="center"
-                gap="2"
-                className={`px-4 py-4 hover:bg-surface-hover ${index > 0 ? 'border-t border-base' : ''}`}
-              >
-                <Stack gap="1" className="min-w-0 flex-1">
-                  <Flex align="baseline" gap="2" className="min-w-0">
-                    <Text kind="body/semibold/md" className="truncate">
-                      {job.name}
-                    </Text>
-                    {showKind && (
-                      <Text kind="body/regular/sm" color="secondary" className="shrink-0">
-                        ({EVAL_JOB_KIND_LABEL[job.kind]})
-                      </Text>
-                    )}
-                  </Flex>
-                  {job.configLabel && (
-                    <Text kind="body/regular/sm" color="secondary" className="truncate">
-                      Eval Config: {job.configLabel}
-                    </Text>
-                  )}
-                </Stack>
-                <Stack gap="1" align="end" className="shrink-0">
-                  <StatusBadge status={job.status} />
-                  <Text kind="body/regular/sm" color="secondary">
-                    {job.created_at ? <RelativeTime datetime={job.created_at} /> : '—'}
-                  </Text>
-                </Stack>
-              </Flex>
-            </Link>
-          ))}
-          <div className="border-t border-base px-4 py-3">
-            <Link to={getAgentEvaluationsListRoute(workspace)} className="text-xs">
-              View all evaluations →
-            </Link>
-          </div>
-        </Stack>
+    <Stack gap="density-lg" className="w-full">
+      <SegmentedControl
+        className="w-fit"
+        aria-label="Evaluation view"
+        value={view}
+        onValueChange={setView}
+        items={VIEW_ITEMS}
+      />
+      {view === VIEW_EXPERIMENTS && (
+        <ExperimentsTable workspace={workspace} experiments={experiments} />
       )}
-    </DetailPanel>
+      {view === VIEW_JOBS && <JobsTable workspace={workspace} jobs={jobs} evaluations={evals} />}
+      {view === VIEW_EVALUATIONS && <EvaluationsTable workspace={workspace} evaluations={evals} />}
+    </Stack>
   );
 };

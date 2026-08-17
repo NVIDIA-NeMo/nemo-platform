@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # Academic Benchmark Evaluation - CLI Harbor Test
 
 Tests the agent's ability to set up and launch an academic benchmark evaluation job using the NeMo Platform CLI.

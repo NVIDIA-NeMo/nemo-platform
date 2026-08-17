@@ -270,6 +270,7 @@ class ExperimentalistCLI(NemoCLI):
                         task_template=plan.task_template,
                         agent_source=plan.agent,
                         storage=plan.config.storage.model_dump(exclude_unset=True),
+                        evaluator=plan.config.outcome_evaluator_config,
                         require_template=plan.insight is not None,
                         probes=_PREFLIGHT_PROBES,
                     )
@@ -419,10 +420,11 @@ class ExperimentalistCLI(NemoCLI):
                             hint="fix optimizer.yaml or its referenced agent_spec/experiment_config",
                         )
                     )
+            insight_ref = effective_insight.ref if effective_insight is not None else None
             results = check_profile(profile_obj, profile_error) + env_results + plan_results + insight_results
             results += check_environment(
                 profile=profile_obj,
-                insight=effective_insight.ref if effective_insight is not None else None,
+                insight=insight_ref,
                 insight_id=effective_insight.selector if effective_insight is not None else None,
                 base_url=base_url_resolved,
                 probes=_PREFLIGHT_PROBES,
@@ -435,10 +437,11 @@ class ExperimentalistCLI(NemoCLI):
                         task_template=plan.task_template,
                         agent_source=plan.agent,
                         storage=plan.config.storage.model_dump(),
+                        evaluator=plan.config.outcome_evaluator_config,
                         require_template=plan.insight is not None,
                         probes=_PREFLIGHT_PROBES,
                     )
-                results += check_datasets(profile_obj)
+                results += check_datasets(profile_obj, require_tasks=insight_ref is None)
             typer.echo(format_report(results))
             if required_failures(results):
                 raise typer.Exit(code=1)
