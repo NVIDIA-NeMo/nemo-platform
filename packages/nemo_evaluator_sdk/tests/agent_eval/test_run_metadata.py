@@ -59,7 +59,7 @@ def test_every_shipped_runner_reports_a_stable_name_and_result_shaping_config() 
     from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import DockerSandboxAgentRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.container_runtime import FabricContainerRuntime
     from nemo_evaluator_sdk.agent_eval.runtimes.fabric.runtime import FabricAgentRuntime
-    from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
+    from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
     from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import HarborAgentTaskRunner, HarborRuntimeConfig
 
     async def _agent_fn(task):  # pragma: no cover - never called
@@ -189,7 +189,7 @@ def test_harbor_records_the_effective_agent_when_a_custom_import_path_overrides_
 def test_gym_redacts_credential_looking_env_overrides() -> None:
     # env_overrides is a free-form Hydra escape hatch forwarded to `gym env start`, and RunnerInfo.config
     # is persisted into the run bundle — so a value that looks like a credential must not be written there.
-    from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymAgentTaskRunner, GymRuntimeConfig
+    from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig
 
     runner = GymAgentTaskRunner(
         config=GymRuntimeConfig(

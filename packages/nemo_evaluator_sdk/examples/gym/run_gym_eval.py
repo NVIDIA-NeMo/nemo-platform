@@ -38,7 +38,7 @@ import tempfile
 from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import (
     GymAgentTaskRunner,
     GymRuntimeConfig,
     discover_gym_tasks,
