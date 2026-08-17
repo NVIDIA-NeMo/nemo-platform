@@ -31,6 +31,7 @@ from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import
 from nemo_experimentalist_plugin.experimentalist.components.importer import IMPORT, import_proposal
 from nemo_experimentalist_plugin.experimentalist.components.models import (
     EvolutionTree,
+    missing_objective_reason,
 )
 from nemo_experimentalist_plugin.experimentalist.components.tools import (
     GuardedShellTools,
@@ -644,10 +645,28 @@ class EvolutionaryStrategy(Agent, roles.Strategy):
         and `_evaluate_validation_candidates` only returns candidates it actually ran. A
         round-0 resume therefore has nothing to record, and indexing the map raised
         KeyError on a round-0 resume.
+
+        Raises:
+            ValueError: if the baseline measured here carries no objective metric.
+                Every later comparison is against this one measurement, so a run that
+                cannot score its own starting point has nothing to optimize toward,
+                and no later gate says so: `pareto_objectives` projects an unmeasured
+                candidate to `{}`, `_dominates` then returns False against every peer,
+                so one Pareto front holds the whole population and ranking silently
+                becomes a no-op. Failing here costs one evaluation instead of
+                `max_rounds` rounds of analysis, proposals, and builds.
         """
         measured = results.get(baseline.label)
-        if measured is not None:
-            await ctx.record_reward(baseline, channel="validation", result=measured)
+        if measured is None:
+            return
+        reason = missing_objective_reason(measured.trials, measured.aggregate_metrics, ctx.objective_metrics)
+        if reason is not None:
+            raise ValueError(
+                f"Baseline {baseline.label} produced no objective metric: {reason}. The run is scored "
+                "against this measurement, so there is nothing to optimize toward. Check that the "
+                "evaluation emits every objective metric for the unmodified agent before running again."
+            )
+        await ctx.record_reward(baseline, channel="validation", result=measured)
 
     async def _ensure_baseline(self, *, ctx: StrategyContext, config: EvolutionaryOptimizerConfig) -> None:
         """Create the baseline candidate unless this run already has one.
