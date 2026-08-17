@@ -761,10 +761,15 @@ def _relay_atif_path(evidence_dir: Path) -> Path | None:
 def _atif_token_metadata(path: Path | None) -> dict[str, int]:
     """Project an ATIF trajectory's token totals onto the trial-metadata ``TOKEN_KEYS``.
 
-    Prefers the trajectory-level ``final_metrics``, falling back to summing per-step ``metrics`` (a
-    trajectory flushed mid-run may carry steps but no aggregate block). ``total_tokens`` and
-    ``cache_creation_tokens`` have no ATIF source and stay unset — Intake recomputes the total.
-    A missing or unreadable trajectory yields ``{}``: an absent token count must not fail the trial.
+    Each token field is resolved on its own: the trajectory-level ``final_metrics`` aggregate when it
+    reports that field, else the sum of the matching per-step ``metrics``. Every ``final_metrics``
+    field is optional, so a block carrying only ``total_steps`` or a cost — or one that fails to
+    validate — must not suppress counts the steps do carry. That partial shape is likeliest on the
+    timeout path, where the trajectory was flushed mid-run and the counts matter most.
+
+    ``total_tokens`` and ``cache_creation_tokens`` have no ATIF source and stay unset — Intake
+    recomputes the total. A missing or unreadable trajectory yields ``{}``: an absent token count
+    must not fail the trial.
     """
     if path is None:
         return {}
@@ -776,25 +781,24 @@ def _atif_token_metadata(path: Path | None) -> dict[str, int]:
     if not isinstance(payload, Mapping):
         return {}
 
+    totals = FinalMetrics()
     final_metrics = payload.get("final_metrics")
     if isinstance(final_metrics, Mapping):
         try:
             totals = FinalMetrics.model_validate(final_metrics)
         except ValidationError as exc:
             logger.warning("Fabric token capture: invalid final_metrics in %s (%s)", path, exc)
-            return {}
-        captured = {
-            "prompt_tokens": totals.total_prompt_tokens,
-            "completion_tokens": totals.total_completion_tokens,
-            "cache_read_tokens": totals.total_cached_tokens,
-        }
-    else:
-        captured = {
-            "prompt_tokens": _sum_step_metric(payload, "prompt_tokens"),
-            "completion_tokens": _sum_step_metric(payload, "completion_tokens"),
-            "cache_read_tokens": _sum_step_metric(payload, "cached_tokens"),
-        }
-    return {key: value for key, value in captured.items() if value is not None}
+
+    captured = {
+        "prompt_tokens": (totals.total_prompt_tokens, "prompt_tokens"),
+        "completion_tokens": (totals.total_completion_tokens, "completion_tokens"),
+        "cache_read_tokens": (totals.total_cached_tokens, "cached_tokens"),
+    }
+    resolved = {
+        key: total if total is not None else _sum_step_metric(payload, step_key)
+        for key, (total, step_key) in captured.items()
+    }
+    return {key: value for key, value in resolved.items() if value is not None}
 
 
 def _sum_step_metric(payload: Mapping[str, Any], key: str) -> int | None:
