@@ -895,11 +895,16 @@ def test_doctor_flags_missing_aws(monkeypatch, capsys):
 def test_doctor_lists_unmet(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_load_dotenv", lambda *a, **k: None)
     monkeypatch.delenv("INFERENCE_API_KEY", raising=False)
+    monkeypatch.delenv(cli.release.ACCESS_KEY_ENV, raising=False)
+    monkeypatch.delenv(cli.release.SECRET_KEY_ENV, raising=False)
     monkeypatch.setattr("evaluation.adapters.IntakeAdapter.check", lambda self: ["config key 'agent'"])
     monkeypatch.setattr(sys, "argv", ["evaluation", "doctor", "nvq"])
     cli.main()
     out = capsys.readouterr().out
     assert "✗" in out and "config key 'agent'" in out
+    assert "CSS S3 credentials in evaluation/.env" in out
+    assert cli.release.ACCESS_KEY_ENV not in out
+    assert cli.release.SECRET_KEY_ENV not in out
     assert "INFERENCE_API_KEY" not in out
 
 
@@ -1830,6 +1835,14 @@ def test_restore_unparseable_manifest_is_not_an_evaluation_bundle(monkeypatch, t
     message = str(exc.value)
     assert "not an evaluation bundle" in message
     assert "legacy" not in message
+
+
+def test_restore_non_object_manifest_is_not_an_evaluation_bundle(monkeypatch, tmp_path, stub_reingest):
+    bundle = _make_tar_with_manifest_text(tmp_path / "array.tar.zst", "[]")
+    monkeypatch.setattr(sys, "argv", ["evaluation", "restore", str(bundle)])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert "not an evaluation bundle" in str(exc.value)
 
 
 def test_restore_requires_exactly_one_source(monkeypatch, tmp_path):

@@ -353,6 +353,14 @@ def _record_to_insight(record: dict) -> Insight:
     return insight
 
 
+def _to_list_item(insight: Insight) -> InsightListItem:
+    """Convert an Insight without dropping its private entity metadata."""
+    item = InsightListItem.model_validate(insight.model_dump(exclude_computed_fields=True))
+    if insight.__pydantic_private__ is not None:
+        item.__pydantic_private__ = insight.__pydantic_private__.copy()
+    return item
+
+
 def _insight_to_record(insight: Insight, *, workspace: str) -> dict:
     """Flatten a stored :class:`Insight` into a file record.
 
@@ -629,9 +637,7 @@ class LocalAnalystBackend(AnalystBackend):
         status: InsightStatus | None,
     ) -> InsightPage:
         items = [
-            InsightListItem.model_validate(_record_to_insight(r).model_dump())
-            for r in self.store.read_records()
-            if r.get("workspace") == workspace
+            _to_list_item(_record_to_insight(r)) for r in self.store.read_records() if r.get("workspace") == workspace
         ]
         if agent:
             items = [i for i in items if i.agent == agent]

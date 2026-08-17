@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -27,6 +28,10 @@ class StateStore:
     endpoint: str
     region: str
     bucket: str
+
+
+class StateRefConflict(RuntimeError):
+    """A conditional upload found that another publisher already created the ref."""
 
 
 def state_store(path: Path = REGISTRY_PATH) -> StateStore:
@@ -143,8 +148,10 @@ def download_ref(ref: str, dest_dir: Path, *, store: StateStore | None = None) -
         print(f"using cached {ref}.tar.zst")
         return dest
     cache_dir.mkdir(parents=True, exist_ok=True)
-    partial = dest.with_suffix(f"{dest.suffix}.partial")
-    partial.unlink(missing_ok=True)
+    descriptor, partial_name = tempfile.mkstemp(prefix=f".{dest.name}.", suffix=".partial", dir=cache_dir)
+    os.close(descriptor)
+    partial = Path(partial_name)
+    partial.unlink()
     try:
         _aws(
             store,
@@ -180,7 +187,15 @@ def upload_ref(
         f"{ref}.tar.zst",
         "--body",
         str(bundle),
+        "--if-none-match",
+        "*",
     ]
     if metadata:
         args += ["--metadata", json.dumps(dict(metadata), separators=(",", ":"))]
-    _aws(store, *args)
+    try:
+        _aws(store, *args)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr or ""
+        if any(marker in stderr for marker in ("PreconditionFailed", "ConditionalRequestConflict", "412", "409")):
+            raise StateRefConflict(ref) from exc
+        raise

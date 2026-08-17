@@ -297,6 +297,41 @@ def test_local_backend_write_preserves_other_top_level_keys(tmp_path: Path) -> N
     }
 
 
+@pytest.mark.asyncio
+async def test_local_backend_list_preserves_entity_metadata(tmp_path: Path) -> None:
+    backend = LocalAnalystBackend(
+        client=cast(AsyncNeMoPlatform, SimpleNamespace()),
+        path=tmp_path / "insights.yaml",
+    )
+    backend.store.write_records(
+        [
+            {
+                "id": "insight-local-1",
+                "workspace": "default",
+                "title": "Repeated failure",
+                "description": "The agent repeats the same failure.",
+                "agent": "research-agent",
+                "status": "open",
+                "trace_refs": ["trace-1"],
+                "created_at": _STAMP.isoformat(),
+                "updated_at": _STAMP.isoformat(),
+            }
+        ]
+    )
+
+    page = await backend.list_insights(
+        workspace="default",
+        page=1,
+        page_size=10,
+        agent=None,
+        status=None,
+    )
+
+    assert page.data[0].id == "insight-local-1"
+    assert page.data[0].created_at == _STAMP
+    assert page.data[0].updated_at == _STAMP
+
+
 def test_merge_eval_filter_pins_evaluation_id() -> None:
     assert _merge_eval_filter({"agent_name": "a"}, evaluation_id="run-1") == {
         "agent_name": "a",

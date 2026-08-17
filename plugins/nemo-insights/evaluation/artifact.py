@@ -34,9 +34,9 @@ LEGACY_EXPORT_KIND = "testbed-export"
 EXPORT_KINDS = frozenset({EXPORT_KIND, LEGACY_EXPORT_KIND})
 
 
-def is_export_manifest(manifest: dict) -> bool:
+def is_export_manifest(manifest: object) -> bool:
     """Return whether a manifest is a current or pre-rename export bundle."""
-    return manifest.get("kind") in EXPORT_KINDS
+    return isinstance(manifest, Mapping) and manifest.get("kind") in EXPORT_KINDS
 
 
 def pick_records(tmp_dir: Path, subjects: list[str]) -> list[Path]:

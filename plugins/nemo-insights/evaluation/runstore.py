@@ -10,7 +10,7 @@ from pathlib import Path
 def save_run(path: Path, record: Mapping[str, object]) -> None:
     """Write a run record as JSON, creating the parent directory if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(dict(record), indent=2), encoding="utf-8")
 
 
 def load_run(path: Path) -> dict[str, object] | None:

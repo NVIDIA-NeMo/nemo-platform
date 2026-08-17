@@ -106,9 +106,8 @@ def _doctor(subjects: dict[str, Subject], name: str | None) -> None:
         unmet: list[str] = []
         if shutil.which("aws") is None:
             unmet.append("AWS CLI (needed for pinned/--state analyze; install with `brew install awscli`)")
-        for key in (release.ACCESS_KEY_ENV, release.SECRET_KEY_ENV):
-            if not os.environ.get(key):
-                unmet.append(f"{key} in evaluation/.env (CSS Portal → Auth Info)")
+        if not os.environ.get(release.ACCESS_KEY_ENV) or not os.environ.get(release.SECRET_KEY_ENV):
+            unmet.append("CSS S3 credentials in evaluation/.env (CSS Portal → Auth Info)")
         unmet += build_adapter(subject).check()
         if unmet:
             print(f"✗ {subject_name} ({subject.type}) — needs:")
@@ -423,7 +422,7 @@ def _resolve_bundle(args: argparse.Namespace, subject: Subject | None = None) ->
     return release.download_ref(ref, TMP / "downloads"), ref, ref
 
 
-def _read_bundle_manifest(bundle: Path) -> dict:
+def _read_bundle_manifest(bundle: Path) -> object:
     """Peek at a bundle's ``state/manifest.json`` without a full extract.
 
     Each failure mode is loud and distinct: a missing file or an unreadable
@@ -959,6 +958,8 @@ def main() -> None:
             sys.exit("restore: FILE must be a non-empty path")
         bundle_path, _label, suffix = _resolve_bundle(args)
         manifest = _read_bundle_manifest(bundle_path)
+        if not isinstance(manifest, dict):
+            sys.exit(f"restore: {bundle_path.name} is not an evaluation bundle (manifest must be a JSON object)")
         if not artifact.is_export_manifest(manifest):
             sys.exit(
                 f"restore: {bundle_path.name} is a legacy tar bundle (state-v1..v5) — "
@@ -966,7 +967,12 @@ def main() -> None:
             )
         if args.into is not None:
             # Validate the direct target before catalog loading, extraction, or network I/O.
-            reingest.explicit_workspace_map(manifest["workspaces"], args.into)
+            workspaces = manifest.get("workspaces")
+            if not isinstance(workspaces, list):
+                sys.exit(
+                    f"restore: {bundle_path.name} is not an evaluation bundle (manifest workspaces must be a list)"
+                )
+            reingest.explicit_workspace_map([str(workspace) for workspace in workspaces], args.into)
         _restore_export_bundle(
             bundle_path,
             base_url=args.base or LOCAL_URL,
@@ -1058,6 +1064,8 @@ def main() -> None:
             )
         bundle_path, label, suffix = _resolve_bundle(args, subject)
         peek = _read_bundle_manifest(bundle_path)
+        if not isinstance(peek, dict):
+            sys.exit(f"analyze: {bundle_path.name} is not an evaluation bundle (manifest must be a JSON object)")
         if not artifact.is_export_manifest(peek):
             sys.exit(
                 f"analyze: {bundle_path.name} is a legacy tar bundle (state-v1..v5) — "
@@ -1072,9 +1080,13 @@ def main() -> None:
         workspace = str(subject.config.get("workspace") or "")
         if not workspace:
             sys.exit(f"analyze: subject '{args.name}' has no workspace configured")
-        bundle_workspaces = [str(ws) for ws in peek.get("workspaces") or []]
+        raw_workspaces = peek.get("workspaces")
+        bundle_workspaces = [str(ws) for ws in raw_workspaces] if isinstance(raw_workspaces, list) else []
         if workspace not in bundle_workspaces:
-            bundle_subjects = ", ".join(str(s) for s in peek.get("subjects") or []) or "(unknown)"
+            raw_subjects = peek.get("subjects")
+            bundle_subjects = (
+                ", ".join(str(subject) for subject in raw_subjects) if isinstance(raw_subjects, list) else ""
+            ) or "(unknown)"
             sys.exit(
                 f"analyze: subject '{args.name}' needs workspace '{workspace}', "
                 f"but bundle {label} carries only {', '.join(bundle_workspaces) or '(none)'} "

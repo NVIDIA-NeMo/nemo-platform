@@ -8,7 +8,19 @@ emits Insights for comparison. This maintainer tooling drives
 `nemo agents analyst`; it is not the product CLI and is not shipped in the
 wheel.
 
+## Prerequisites
+
+- Run every command from `plugins/nemo-insights`; the `evaluation` package is
+  not installed in the plugin wheel.
+- Install the AWS CLI and configure the CSS S3 credentials described in
+  [State bundles](#state-bundles).
+- Start a local NeMo Platform at `http://localhost:8080` before using pinned
+  analysis, restore, roundtrip, or guarded publish commands.
+
+## Quickstart
+
 ```bash
+cd plugins/nemo-insights
 uv run python -m evaluation analyze tau2-airline         # reproducible default: restore the pinned state locally, then analyze
 uv run python -m evaluation analyze all                  # refresh every pinned benchmark/intake baseline transactionally
 uv run python -m evaluation list
@@ -271,3 +283,9 @@ publishing, update the relevant subject's `state` key in `evaluations.toml`.
 Restores are additive re-ingests into `<workspace>-<state-ref>` fixture
 workspaces, so a bundle does not modify the source workspace. Override the
 committed pin for one run with `analyze <subject> --state state-vN`.
+
+## Next steps
+
+- Run `uv run python -m evaluation doctor` to check the configured subjects.
+- Edit [`evaluations.toml`](evaluations.toml) to add a subject or update a state pin.
+- See the [NeMo Insights README](../README.md) for the product Analyst CLI and plugin architecture.

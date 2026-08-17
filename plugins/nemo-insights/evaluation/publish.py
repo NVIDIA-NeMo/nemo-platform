@@ -43,6 +43,14 @@ def _sanitize_reason(reason: str) -> str:
     return re.sub(r"\s+", " ", reason).strip()
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def publish(candidate: Path, *, reason: str | None, env: Mapping[str, str] | None = None) -> str:
     """Mint the next ref and upload the bundle to CSS S3.
 
@@ -53,17 +61,21 @@ def publish(candidate: Path, *, reason: str | None, env: Mapping[str, str] | Non
     manifest = read_manifest(candidate)
     if reason is None:
         reason = env.get("REASON") or str(manifest.get("reason") or "")
-    ref = release.next_ref(release.latest_ref(release.object_names()))
-    tarball = candidate.parent / f"{ref}.tar.zst"
-    shutil.copy2(candidate, tarball)
-    release.upload_ref(
-        ref,
-        tarball,
-        metadata={
-            "reason": _sanitize_reason(reason),
-            "published-by": getpass.getuser(),
-            "sha256": hashlib.sha256(tarball.read_bytes()).hexdigest(),
-        },
-    )
-    print(f"published {ref}")
-    return ref
+    metadata = {
+        "reason": _sanitize_reason(reason),
+        "published-by": getpass.getuser(),
+        "sha256": _sha256(candidate),
+    }
+    names = release.object_names()
+    while True:
+        ref = release.next_ref(release.latest_ref(names))
+        tarball = candidate.parent / f"{ref}.tar.zst"
+        shutil.copy2(candidate, tarball)
+        try:
+            release.upload_ref(ref, tarball, metadata=metadata)
+        except release.StateRefConflict:
+            tarball.unlink()
+            names.append(tarball.name)
+            continue
+        print(f"published {ref}")
+        return ref

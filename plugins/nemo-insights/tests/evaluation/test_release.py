@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -84,7 +86,8 @@ def test_aws_passes_css_credentials_and_endpoint(monkeypatch):
     assert "AWS_SESSION_TOKEN" not in seen["env"]
 
 
-def test_aws_requires_dedicated_credentials():
+def test_aws_requires_dedicated_credentials(monkeypatch):
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: pytest.fail("missing credentials invoked AWS"))
     with pytest.raises(SystemExit) as exc:
         release._aws(STORE, "s3api", "list-buckets", env={})
     assert release.ACCESS_KEY_ENV in str(exc.value)
@@ -181,6 +184,7 @@ def test_download_ref_aws_args_and_return_path(tmp_path, monkeypatch):
     monkeypatch.setattr(release, "_aws", fake_aws)
     dest = tmp_path / "dl"
     result = release.download_ref("state-v4", dest, store=STORE)
+    partial = Path(calls[0][-1])
     assert calls == [
         (
             "s3api",
@@ -189,10 +193,35 @@ def test_download_ref_aws_args_and_return_path(tmp_path, monkeypatch):
             STORE.bucket,
             "--key",
             "state-v4.tar.zst",
-            str(result.with_suffix(f"{result.suffix}.partial")),
+            str(partial),
         )
     ]
+    assert partial.parent == result.parent
+    assert partial.name.startswith(f".{result.name}.")
+    assert partial.suffix == ".partial"
+    assert not partial.exists()
     assert result.read_bytes() == b"downloaded"
+
+
+def test_download_ref_uses_distinct_partial_files_concurrently(tmp_path, monkeypatch):
+    barrier = threading.Barrier(2)
+    partials: list[Path] = []
+
+    def download(store, *args):
+        partial = Path(args[-1])
+        partials.append(partial)
+        partial.write_bytes(b"same immutable state")
+        barrier.wait(timeout=5)
+        return ""
+
+    monkeypatch.setattr(release, "_aws", download)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: release.download_ref("state-v4", tmp_path / "dl", store=STORE), range(2)))
+
+    assert results[0] == results[1]
+    assert len(set(partials)) == 2
+    assert all(not partial.exists() for partial in partials)
+    assert results[0].read_bytes() == b"same immutable state"
 
 
 def test_download_ref_reuses_cached_file_without_aws(tmp_path, monkeypatch, capsys):
@@ -226,7 +255,22 @@ def test_upload_ref_uses_key_and_metadata(tmp_path, monkeypatch):
             "state-v11.tar.zst",
             "--body",
             str(bundle),
+            "--if-none-match",
+            "*",
             "--metadata",
             '{"reason":"new data"}',
         )
     ]
+
+
+@pytest.mark.parametrize("stderr", ["PreconditionFailed", "ConditionalRequestConflict", "HTTP 412", "HTTP 409"])
+def test_upload_ref_reports_conditional_conflict(tmp_path, monkeypatch, stderr):
+    bundle = tmp_path / "state-v11.tar.zst"
+    bundle.write_bytes(b"fixture")
+
+    def fail(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args, stderr=stderr)
+
+    monkeypatch.setattr(release, "_aws", fail)
+    with pytest.raises(release.StateRefConflict):
+        release.upload_ref("state-v11", bundle, store=STORE)

@@ -83,6 +83,24 @@ def test_publish_reason_falls_back_to_manifest(fake_store, tmp_path):
     assert fake_store[0][2]["metadata"]["reason"] == "captured during produce"
 
 
+def test_publish_retries_with_next_ref_after_concurrent_create(tmp_path, monkeypatch):
+    candidate = _make_bundle(tmp_path / "candidate.tar.zst")
+    uploads: list[str] = []
+    monkeypatch.setattr(release, "object_names", lambda: ["state-v6.tar.zst"])
+
+    def upload(ref, bundle, **kwargs):
+        uploads.append(ref)
+        if len(uploads) == 1:
+            raise release.StateRefConflict(ref)
+
+    monkeypatch.setattr(release, "upload_ref", upload)
+
+    assert publish.publish(candidate, reason="", env={}) == "state-v8"
+    assert uploads == ["state-v7", "state-v8"]
+    assert not (tmp_path / "state-v7.tar.zst").exists()
+    assert (tmp_path / "state-v8.tar.zst").read_bytes() == candidate.read_bytes()
+
+
 def test_publish_rejects_non_export_bundle(fake_store, tmp_path):
     bundle = _make_bundle(tmp_path / "legacy.tar.zst", {"created_at": "2026-01-01"})
     with pytest.raises(SystemExit) as exc:
