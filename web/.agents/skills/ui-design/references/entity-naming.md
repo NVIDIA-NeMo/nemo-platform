@@ -4,13 +4,7 @@
 # Entity Naming UX
 
 Every "name this entity" field follows the same interaction contract. This is
-a **pattern to implement per form**, not a shared component to import — every
-naming field in Studio is already its own `react-hook-form` + `zod` form
-(`CreateInferenceProviderSidePanel`, `CreateSecretModal`,
-`CreateGuardrailModal`, …), and this contract is designed to layer onto that
-existing setup, not replace it. Do not invent per-form validation timing,
-per-form sanitization copy, or a bespoke uniqueness check — reuse the shapes
-below.
+a **pattern to implement per form**, not a shared component to import. Do not invent per-form validation timing, per-form sanitization copy, or a bespoke uniqueness check — reuse the shapes below.
 
 > Canonical helpers: `packages/common/src/utils/entityName.ts`
 > (`ENTITY_NAME_REGEXP`, `ENTITY_NAME_HELP`, `sanitizeEntityName`,
@@ -22,40 +16,6 @@ below.
 > with `react-hook-form` + `zod`, end to end. It exists to demonstrate and
 > visually validate the pattern — it is not exported for reuse. Copy the
 > shape into your form; don't import the story file.
-
-## `entityNameSchema` is the wrong schema for this contract
-
-`entityNameSchema` (and `getEntityNameError`) already used by
-`CreateInferenceProviderSidePanel` / `CreateSecretModal` / `CreateGuardrailModal`
-is a **strict, hard-validation** schema: any deviation from
-`ENTITY_NAME_REGEXP` — a space, a capital letter, a trailing hyphen — is a
-blocking form error. That's the right tool when the raw input itself must be
-the persisted value. It is the *wrong* tool for this contract, whose whole
-point is that cosmetic deviations are silently fixed, not rejected. Define a
-**separate, per-field schema** for a naming field that adopts this pattern:
-
-```tsx
-const nameSchema = z
-  .string()
-  .superRefine((value, ctx) => {
-    if (sanitizeEntityName(value) === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: value ? 'Name must contain at least one letter or number.' : 'Name is required.',
-      });
-    }
-  })
-  .transform((value) => toValidEntityName(value, value));
-```
-
-The `.superRefine` only fails when nothing valid survives sanitization. The
-`.transform` is what makes this **compatible with `formData`**: `zodResolver`
-parses through the full schema before calling your submit handler, so
-`handleSubmit((formData) => ...)` receives the already-*sanitized* name in
-`formData.name` — you never need to re-sanitize in `onSubmit`. `watch('name')`
-and the rendered input's `value`, by contrast, stay the raw, literal input the
-user typed (transforms don't affect the live field value, only the parsed
-output) — which is exactly what the live preview and blur-gating below need.
 
 ## The contract
 
@@ -89,7 +49,7 @@ output) — which is exactly what the live preview and blur-gating below need.
    always mirrors the user's literal keystrokes.
 
 3. **No error state before blur — and even after blur, only for
-   unsalvageable input.** Since the submitted value is always the *sanitized*
+   unsalvageable input.** Since the submitted value is always the _sanitized_
    name (never the literal typed value), a cosmetic deviation (spaces,
    casing, a stray invalid character) is never a form error — it's exactly
    what the "will be created as" preview already resolves for the user. Use
@@ -129,12 +89,12 @@ output) — which is exactly what the live preview and blur-gating below need.
 
 Evaluate in this order — the first match wins:
 
-| Condition | `slotHelp` / `slotError` | `status` |
-| --- | --- | --- |
-| Uniqueness check in flight | `slotHelp`: "Checking name..." | none |
-| Uniqueness check resolved: conflict found | `slotError`: "An {entity} named {value} already exists" | `error` |
-| Field touched (blurred) and `sanitizeEntityName(value)` is `undefined` (nothing salvageable) | `slotError`: "{label} is required." / "{label} must contain at least one letter or number." | `error` |
-| Otherwise | `slotHelp`: "Your {entity} will be created as {value}" (`{value}` in `text-primary`) | none |
+| Condition                                                                                    | `slotHelp` / `slotError`                                                                    | `status` |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------- |
+| Uniqueness check in flight                                                                   | `slotHelp`: "Checking name..."                                                              | none     |
+| Uniqueness check resolved: conflict found                                                    | `slotError`: "An {entity} named {value} already exists"                                     | `error`  |
+| Field touched (blurred) and `sanitizeEntityName(value)` is `undefined` (nothing salvageable) | `slotError`: "{label} is required." / "{label} must contain at least one letter or number." | `error`  |
+| Otherwise                                                                                    | `slotHelp`: "Your {entity} will be created as {value}" (`{value}` in `text-primary`)        | none     |
 
 ## Example
 
@@ -179,7 +139,10 @@ useEffect(() => {
   checkAvailability(sanitized)
     .then((exists) => {
       if (exists) {
-        setError('name', { type: 'conflict', message: `A secret named ${sanitized} already exists` });
+        setError('name', {
+          type: 'conflict',
+          message: `A secret named ${sanitized} already exists`,
+        });
       } else {
         clearErrors('name');
       }
@@ -199,16 +162,21 @@ const slotHelp = checking
         </>
       );
 
-<FormField slotLabel="Name" slotHelp={slotHelp} slotError={slotError} status={slotError ? 'error' : undefined}>
-  <TextInput
-    value={value}
-    onChange={(e) => onChange(e.currentTarget.value)}
-    onBlur={onBlur}
-  />
+<FormField
+  slotLabel="Name"
+  slotHelp={slotHelp}
+  slotError={slotError}
+  status={slotError ? 'error' : undefined}
+>
+  <TextInput value={value} onChange={(e) => onChange(e.currentTarget.value)} onBlur={onBlur} />
 </FormField>;
 
 // formData.name in handleSubmit is already sanitized — no extra step needed:
-<form onSubmit={handleSubmit((formData) => createSecret({ name: formData.name /* already sanitized */ }))} />;
+<form
+  onSubmit={handleSubmit((formData) =>
+    createSecret({ name: formData.name /* already sanitized */ })
+  )}
+/>;
 ```
 
 ## Do / Don't
@@ -241,5 +209,3 @@ const slotHelp = checking
 - **Do** debounce the uniqueness check (`use-debounce`), or check against an
   already-loaded client-side set when one exists. **Don't** fire a network
   request on every raw keystroke.
-</content>
-<parameter name="i">Rewrite entity-naming.md as a framework-integrated pattern, not a shared component
