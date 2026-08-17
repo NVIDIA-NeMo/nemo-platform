@@ -239,7 +239,7 @@ def test_the_reporting_budget_rides_the_dpo_block(tmp_path: Path) -> None:
     _write_preference_dataset(tmp_path / "data")
     step_config = _make_step_config(
         schedule=TrainingStepConfig.ScheduleConfig(
-            progress_reporting=ProgressReportingConfig(max_points=25, time_series_metrics=["*_loss"]),
+            progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss"]),
         ),
     )
     step_config.dataset.path = str(tmp_path / "data")
@@ -247,12 +247,10 @@ def test_the_reporting_budget_rides_the_dpo_block(tmp_path: Path) -> None:
 
     cfg = compile_dpo_config(step_config, _job_ctx(tmp_path))
 
-    assert cfg["dpo"]["max_progress_points"] == 25
     assert cfg["dpo"]["progress_time_series_metrics"] == ["*_loss"]
 
 
 def test_the_dpo_block_carries_the_default_when_unstated(tmp_path: Path) -> None:
-    from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
     from nmp.rl.tasks.training.backends.nemo_rl.dpo_config import compile_dpo_config
 
     _write_preference_dataset(tmp_path / "data")
@@ -262,5 +260,4 @@ def test_the_dpo_block_carries_the_default_when_unstated(tmp_path: Path) -> None
 
     cfg = compile_dpo_config(step_config, _job_ctx(tmp_path))
 
-    assert cfg["dpo"]["max_progress_points"] == DEFAULT_MAX_POINTS
     assert cfg["dpo"]["progress_time_series_metrics"] is None, "absent means everything, not nothing"

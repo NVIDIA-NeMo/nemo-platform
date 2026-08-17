@@ -150,7 +150,6 @@ def compile_dpo_config(
         # Read back with getattr, never attribute access: a config compiled
         # elsewhere simply omits them.
         "steps_per_epoch": steps_per_epoch,
-        "max_progress_points": customizer_config.schedule.progress_reporting.max_points,
         "progress_time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
         "val_period": val_period,
         "val_batches": 0,  # Run the entire validation dataset

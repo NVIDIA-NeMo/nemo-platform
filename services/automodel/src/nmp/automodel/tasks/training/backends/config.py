@@ -241,7 +241,6 @@ def compile_automodel_config(
     # config because the config file is the only channel to the training process.
     # AutomodelRecipeWrapper reads it back off `recipe.cfg`.
     cfg["_progress_reporting"] = {
-        "max_points": customizer_config.schedule.progress_reporting.max_points,
         "time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
     }
 

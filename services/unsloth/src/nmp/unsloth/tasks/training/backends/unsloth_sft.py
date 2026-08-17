@@ -386,7 +386,6 @@ def _create_progress_callback(reporting: ProgressReportingConfig) -> TrainingPro
     """
     return TrainingProgressCallback(
         JobsServiceProgressReporter(NMPJobContext.from_env()),
-        max_points=reporting.max_points,
         time_series_metrics=(
             DIAGNOSTIC_TIME_SERIES if reporting.time_series_metrics is None else reporting.time_series_metrics
         ),

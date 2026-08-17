@@ -15,7 +15,7 @@ from typing import Any, Mapping, Optional, Self
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback, is_chartable
-from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS, DIAGNOSTIC_TIME_SERIES
+from nmp.customization_common.training.reporting import DIAGNOSTIC_TIME_SERIES
 from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
@@ -94,7 +94,6 @@ class NemoRLLogger(LoggerInterface):
         job_ctx: NMPJobContext | None = None,
         max_steps: int | None = None,
         num_epochs: int | None = None,
-        max_points: int | None = None,
         time_series_metrics: Collection[str] | None = None,
     ):
         """Initialize the NemoRL logger.
@@ -104,9 +103,6 @@ class NemoRLLogger(LoggerInterface):
             job_ctx: NeMo Platform job context for progress reporting (defaults to environment variables).
             max_steps: Total number of training steps (optional, used for progress reporting).
             num_epochs: Total number of epochs (optional, used for progress reporting).
-            max_points: Points kept on each metric curve. None takes the shared
-                default, which is what a config compiled before this knob existed
-                resolves to.
             time_series_metrics: Qualified metric names or glob patterns to
                 record as a series. None takes
                 :data:`DEFAULT_TIME_SERIES_METRICS` -- absent means "the
@@ -130,7 +126,6 @@ class NemoRLLogger(LoggerInterface):
 
         self._callback = TrainingProgressCallback(
             JobsServiceProgressReporter(self._job_ctx),
-            max_points=DEFAULT_MAX_POINTS if max_points is None else max_points,
             time_series_metrics=(DEFAULT_TIME_SERIES_METRICS if time_series_metrics is None else time_series_metrics),
         )
 
@@ -152,7 +147,6 @@ class NemoRLLogger(LoggerInterface):
         num_epochs: int | None,
         val_period: int | None = None,
         steps_per_epoch: int | None = None,
-        max_points: int | None = None,
         time_series_metrics: Collection[str] | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
@@ -161,8 +155,6 @@ class NemoRLLogger(LoggerInterface):
         Args:
             steps_per_epoch: Authoritative value when the algorithm config carries
                 one (DPO does); otherwise derived from max_steps and num_epochs.
-            max_points: Points kept on each metric curve, from the job config.
-                None takes the shared default.
             time_series_metrics: Names or patterns from the job config. None
                 takes :data:`DEFAULT_TIME_SERIES_METRICS`.
             val_period: Accepted and unused. It used to set the validation report
@@ -176,7 +168,6 @@ class NemoRLLogger(LoggerInterface):
             job_ctx=job_ctx,
             max_steps=max_steps,
             num_epochs=num_epochs,
-            max_points=max_points,
             time_series_metrics=time_series_metrics,
         )
 

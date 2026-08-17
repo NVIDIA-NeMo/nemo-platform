@@ -341,24 +341,6 @@ def test_for_schedule_builds_a_consistent_logger(callback: _RecordingCallback) -
     assert logger._num_epochs == 4
 
 
-def test_the_reporting_budget_reaches_the_callback(callback: _RecordingCallback) -> None:
-    """The job config's max_points has to survive the trip to the gate."""
-    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100, max_points=25)
-
-    assert callback.max_points == 25
-
-
-def test_a_config_without_a_reporting_budget_takes_the_shared_default(callback: _RecordingCallback) -> None:
-    """dpo_config carries max_points as an undeclared extra, so it can be absent.
-
-    A job compiled before the knob existed, or by anything that does not set it,
-    has to start rather than fail on a missing reporting field.
-    """
-    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
-
-    assert callback.max_points == nemo_rl_logger.DEFAULT_MAX_POINTS
-
-
 def test_the_charted_metric_names_reach_the_callback(callback: _RecordingCallback) -> None:
     NemoRLLogger.for_schedule(
         max_steps=20_000, num_epochs=1, val_period=100, time_series_metrics=["*_loss", "*_accuracy"]

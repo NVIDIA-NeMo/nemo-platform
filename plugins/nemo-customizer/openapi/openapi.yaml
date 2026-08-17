@@ -2049,17 +2049,6 @@ components:
       title: PlatformJobTaskStatusResponse
     ProgressReportingConfig:
       properties:
-        max_points:
-          type: integer
-          exclusiveMinimum: 0.0
-          title: Max Points
-          description: 'Maximum points recorded on each metric curve, applied independently
-            to the training and validation curves. Lower values reduce reporting overhead
-            on long runs; higher values give a finer chart at proportionally more
-            cost, including a little more time spent reporting rather than training.
-            This can only thin what the training framework produces, never add to
-            it: a run that logs 40 times reports 40 points whatever this is set to.'
-          default: 200
         time_series_metrics:
           title: Time Series Metrics
           description: 'Which metrics are recorded as a time series, named exactly
@@ -2081,14 +2070,16 @@ components:
         with.
 
 
-        Two knobs, and they multiply: the stored blob is
+        One knob. Every point the training library logs is recorded and sent -- there
 
-        ``time_series_metrics x max_points``. ``max_points`` bounds how finely each
+        is no sampling of our own, and the cost of a long run is the Jobs service''s
 
-        series is sampled; ``time_series_metrics`` bounds how many series there are.
+        to solve rather than something to hide behind a cap here (see the payload
+
+        note in :mod:`nmp.customization_common.training.callbacks`).
 
 
-        The split the second knob expresses is that a training run produces two kinds
+        What this does express is that a training run produces two kinds
 
         of metric. A few are worth a *history* -- the loss, the learning rate, the
 

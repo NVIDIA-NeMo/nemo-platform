@@ -116,38 +116,6 @@ class _Recipe:
         self.cfg = cfg
 
 
-def test_the_compiled_reporting_budget_is_used(finetune: ModuleType) -> None:
-    """The `_progress_reporting` block config.py writes is the whole channel."""
-    recipe = _Recipe({"_progress_reporting": {"max_points": 25}})
-
-    assert finetune._resolve_max_points(recipe) == 25
-
-
-@pytest.mark.parametrize(
-    "cfg",
-    [
-        {},  # a config compiled before the knob existed
-        {"_progress_reporting": {}},  # the block, without the field
-        {"_progress_reporting": None},
-        {"_progress_reporting": {"max_points": None}},
-        {"_progress_reporting": {"max_points": 0}},  # would make an empty curve
-        {"_progress_reporting": {"max_points": -5}},
-        {"_progress_reporting": {"max_points": "many"}},
-        {"_progress_reporting": {"max_points": True}},  # bool is an int subclass
-        {"_progress_reporting": "not a block"},
-        None,  # no cfg at all
-    ],
-)
-def test_an_unusable_budget_falls_back_rather_than_failing(finetune: ModuleType, cfg: object) -> None:
-    """The recipe config is also loadable from a hand-written YAML.
-
-    A run whose config predates this block, or spells it wrong, should report at
-    the shared default rather than fail to start over a reporting knob. This runs
-    in the wrapper's constructor, outside any try, so raising here kills training.
-    """
-    assert finetune._resolve_max_points(_Recipe(cfg)) == finetune.DEFAULT_MAX_POINTS
-
-
 def test_the_compiled_metric_list_is_used(finetune: ModuleType) -> None:
     recipe = _Recipe({"_progress_reporting": {"time_series_metrics": ["train_loss", "*_lr"]}})
 

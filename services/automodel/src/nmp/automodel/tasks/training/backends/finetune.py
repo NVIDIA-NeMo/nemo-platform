@@ -22,7 +22,7 @@ from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderReci
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import DatasetQualifier, TrainingProgressCallback
-from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS, DIAGNOSTIC_TIME_SERIES
+from nmp.customization_common.training.reporting import DIAGNOSTIC_TIME_SERIES
 
 logger = logging.getLogger(__name__)
 
@@ -126,15 +126,6 @@ def _reporting_block(recipe: AutomodelRecipe) -> Any:
     return cfg.get("_progress_reporting") if hasattr(cfg, "get") else None
 
 
-def _resolve_max_points(recipe: AutomodelRecipe) -> int:
-    """Points per metric curve, falling back to the shared default."""
-    block = _reporting_block(recipe)
-    max_points = block.get("max_points") if hasattr(block, "get") else None
-    if isinstance(max_points, int) and not isinstance(max_points, bool) and max_points > 0:
-        return max_points
-    return DEFAULT_MAX_POINTS
-
-
 def _resolve_time_series_metrics(recipe: AutomodelRecipe) -> tuple[str, ...] | list[str]:
     """Which metrics get a stored series, defaulting to the diagnostic set.
 
@@ -192,7 +183,6 @@ class AutomodelRecipeWrapper:
 
         self.callback = TrainingProgressCallback(
             self._reporter,
-            max_points=_resolve_max_points(recipe),
             time_series_metrics=_resolve_time_series_metrics(recipe),
         )
         logger.info(f"Automodel recipe wrapper initialized: max_steps={self.max_steps}, num_epochs={self.num_epochs}")

@@ -18,15 +18,6 @@ API layer can import the schema without pulling in the platform SDK that
 
 from pydantic import BaseModel, Field
 
-#: Points kept on each metric curve, per reporting path. Roughly the number a
-#: chart a few hundred pixels wide can draw distinctly, and past which the extra
-#: points cost more than they show.
-#:
-#: It is also what bounds the cost of reporting, which is why it is a ceiling and
-#: not a target -- see the payload note in
-#: :mod:`nmp.customization_common.training.callbacks`.
-DEFAULT_MAX_POINTS = 200
-
 #: The time-series metrics every backend has in common: the loss family, the
 #: learning rate, and the gradient norm. Written as patterns rather than literal
 #: names so one entry covers both phases (``train_loss`` and ``val_loss``), the
@@ -44,11 +35,12 @@ ALL_METRICS = ("*",)
 class ProgressReportingConfig(BaseModel):
     """How much detail training progress is reported to the Jobs service with.
 
-    Two knobs, and they multiply: the stored blob is
-    ``time_series_metrics x max_points``. ``max_points`` bounds how finely each
-    series is sampled; ``time_series_metrics`` bounds how many series there are.
+    One knob. Every point the training library logs is recorded and sent -- there
+    is no sampling of our own, and the cost of a long run is the Jobs service's
+    to solve rather than something to hide behind a cap here (see the payload
+    note in :mod:`nmp.customization_common.training.callbacks`).
 
-    The split the second knob expresses is that a training run produces two kinds
+    What this does express is that a training run produces two kinds
     of metric. A few are worth a *history* -- the loss, the learning rate, the
     gradient norm -- because their shape over time is the whole point. The rest
     are throughput and accounting counters (``tps``, ``mem``, ``num_label_tokens``,
@@ -62,18 +54,6 @@ class ProgressReportingConfig(BaseModel):
     stays correct when a framework adds a metric.
     """
 
-    max_points: int = Field(
-        default=DEFAULT_MAX_POINTS,
-        gt=0,
-        description=(
-            "Maximum points recorded on each metric curve, applied independently to the training "
-            "and validation curves. Lower values reduce reporting overhead on long runs; higher "
-            "values give a finer chart at proportionally more cost, including a little more time "
-            "spent reporting rather than training. This can only thin what the training framework "
-            "produces, never add to it: a run that logs 40 times reports 40 points whatever this "
-            "is set to."
-        ),
-    )
     time_series_metrics: list[str] | None = Field(
         default=None,
         description=(

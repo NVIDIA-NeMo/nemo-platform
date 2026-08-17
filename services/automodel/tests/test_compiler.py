@@ -116,13 +116,12 @@ def test_the_reporting_budget_reaches_the_training_step_config() -> None:
     job_output = CustomizationJobOutput(
         model="default/test-target",
         dataset="default/my-dataset",
-        training=SFTTraining(progress_reporting=ProgressReportingConfig(max_points=25, time_series_metrics=["*_loss"])),
+        training=SFTTraining(progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss"])),
         output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
     )
     step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
     cfg = step.config if hasattr(step, "config") else step["config"]
 
-    assert cfg["schedule"]["progress_reporting"]["max_points"] == 25
     assert cfg["schedule"]["progress_reporting"]["time_series_metrics"] == ["*_loss"]
 
 
@@ -138,7 +137,6 @@ def test_a_spec_still_carrying_log_every_n_steps_compiles() -> None:
     tolerance into a hard failure for exactly those specs.
     """
     from nmp.automodel.app.jobs.training.compiler import compile_training_step
-    from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
 
     training = SFTTraining.model_validate({"learning_rate": 1e-4, "log_every_n_steps": 10})
     assert not hasattr(training, "log_every_n_steps")
@@ -152,7 +150,8 @@ def test_a_spec_still_carrying_log_every_n_steps_compiles() -> None:
     step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
     cfg = step.config if hasattr(step, "config") else step["config"]
 
-    assert cfg["schedule"]["progress_reporting"]["max_points"] == DEFAULT_MAX_POINTS
+    assert cfg["optimizer"]["learning_rate"] == 1e-4, "the spec compiles, key and all"
+    assert "log_every_n_steps" not in cfg["schedule"]
 
 
 def test_the_reporting_budget_survives_the_plugin_adapter() -> None:
@@ -163,19 +162,17 @@ def test_the_reporting_budget_survives_the_plugin_adapter() -> None:
         "model": "default/test-target",
         "dataset": {"training": "default/my-dataset"},
         "training": {"training_type": "sft", "finetuning_type": "lora"},
-        "schedule": {"epochs": 1, "progress_reporting": {"max_points": 25, "time_series_metrics": ["*_loss"]}},
+        "schedule": {"epochs": 1, "progress_reporting": {"time_series_metrics": ["*_loss"]}},
         "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
     }
     reporting = automodel_spec_to_compiler_output(spec).training.progress_reporting
 
-    assert reporting.max_points == 25
     assert reporting.time_series_metrics == ["*_loss"]
 
 
 def test_a_plugin_spec_without_a_schedule_block_still_compiles() -> None:
     """`schedule` is optional in the plugin shape, so the adapter must not index it."""
     from nmp.automodel.adapter import automodel_spec_to_compiler_output
-    from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
 
     spec = {
         "model": "default/test-target",
@@ -185,7 +182,6 @@ def test_a_plugin_spec_without_a_schedule_block_still_compiles() -> None:
     }
     reporting = automodel_spec_to_compiler_output(spec).training.progress_reporting
 
-    assert reporting.max_points == DEFAULT_MAX_POINTS
     assert reporting.time_series_metrics is None
 
 

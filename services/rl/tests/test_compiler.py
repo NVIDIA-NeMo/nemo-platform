@@ -107,21 +107,15 @@ def test_the_reporting_budget_reaches_the_training_step_config() -> None:
     """
     from nmp.customization_common.training.reporting import ProgressReportingConfig
 
-    t = DPOTraining(
-        progress_reporting=ProgressReportingConfig(max_points=25, time_series_metrics=["*_loss", "*_accuracy"])
-    )
+    t = DPOTraining(progress_reporting=ProgressReportingConfig(time_series_metrics=["*_loss", "*_accuracy"]))
     sc = _build_training_step_config(_make_job_output(t), trust_remote_code=False)
 
-    assert sc.schedule.progress_reporting.max_points == 25
     assert sc.schedule.progress_reporting.time_series_metrics == ["*_loss", "*_accuracy"]
 
 
 def test_the_reporting_budget_defaults_when_unstated() -> None:
-    from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
-
     sc = _build_training_step_config(_make_job_output(), trust_remote_code=False)
 
-    assert sc.schedule.progress_reporting.max_points == DEFAULT_MAX_POINTS
     assert sc.schedule.progress_reporting.time_series_metrics is None
 
 
