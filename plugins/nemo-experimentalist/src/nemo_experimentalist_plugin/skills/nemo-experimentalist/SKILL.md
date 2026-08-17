@@ -283,6 +283,13 @@ eval_author:
   max_traces: 3
 ```
 
+`builder_config.max_architecture_doc_iterations` is how many iterations the
+builder can use to write `architecture.md`, and it defaults to `100`. It is
+separate from the evaluation budget above, but each additional iteration adds
+model usage and run time to that step. Increase it when a run stops with
+`Generation failed after 100 iterations (max_iterations=100)`. An agent that has
+many source files needs more iterations.
+
 ### Create a low-cost smoke dataset
 
 When the full dataset is expensive, create small **copied** train and

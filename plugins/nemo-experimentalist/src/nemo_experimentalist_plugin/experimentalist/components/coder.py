@@ -51,6 +51,11 @@ class CodeEditBuilderConfig(BaseModel):
         default=2,
         description="Max LLM repair iterations inside integration_check before giving up on a candidate.",
     )
+    max_architecture_doc_iterations: int = Field(
+        default=100,
+        gt=0,
+        description="Max CodeAct iterations allowed to write architecture.md. Raise it for agents with many source files.",
+    )
     model_catalog_path: Path | None = Field(
         default=None,
         description="Optional YAML model catalog path overriding the packaged assets/models.yaml.",
@@ -578,6 +583,11 @@ class ArchitectureSkill(Skill):
     """
 
 
+def _architecture_doc_codeact(max_iterations: int) -> CodeActConfig:
+    """Bound one architecture-doc generation, which reads source through slow shell work."""
+    return CodeActConfig(max_iterations=max_iterations, cell_timeout=3600.0)
+
+
 # Keeps its own Evaluator rather than using ctx.evaluate: its smoke checks run against an
 # artifact that is deliberately not yet a Candidate, and ctx.evaluate exists to associate a
 # result with one. An internal check has nothing to associate and must not be recorded
@@ -1041,11 +1051,32 @@ class CodeEditBuilder(Agent, roles.Builder):
             options=smoke_options,
         )
 
+    async def create_architecture_doc(
+        self, workdir: Path, source_path: str | None = None, entrypoint: str | None = None
+    ) -> None:
+        """Update (or, only if absent, create) architecture.md for the given agent.
+
+        Args:
+            workdir: The agent directory to document.
+            source_path: Directory holding the agent source, relative to the agent directory.
+            entrypoint: File the evaluation harness invokes, relative to the agent directory.
+
+        """
+        # A @strategy config is fixed when the class is defined, but how many iterations
+        # documenting an agent takes scales with the source this builder was handed.
+        codeact = _architecture_doc_codeact(self._config.max_architecture_doc_iterations)
+        await self._create_architecture_doc(
+            workdir,
+            source_path=source_path,
+            entrypoint=entrypoint,
+            _strategy=CodeActStrategy(config=codeact),  # ty: ignore[unknown-argument]
+        )
+
     @strategy(
-        CodeActStrategy(config=CodeActConfig(max_iterations=50, cell_timeout=3600.0)),
+        CodeActStrategy(config=_architecture_doc_codeact(CodeEditBuilderConfig().max_architecture_doc_iterations)),
         llm=lambda self: self._architecture_model,
     )
-    async def create_architecture_doc(
+    async def _create_architecture_doc(
         self, workdir: Path, source_path: str | None = None, entrypoint: str | None = None
     ) -> None:
         """Update (or, only if absent, create) architecture.md for the given agent.
