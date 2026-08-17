@@ -44,6 +44,10 @@ function buildNameSchema() {
     .transform((value) => toValidEntityName(value, value));
 }
 
+/** Result of the debounced uniqueness check, tagged with the exact candidate it was checked against. */
+type AvailabilityState =
+  | { candidate: string; status: 'checking' | 'available' | 'conflict' | 'failed' };
+
 interface NameFieldFormProps {
   entity: string;
   /** Resolve `true` when the sanitized name already exists on another entity. Omit for entities with no uniqueness requirement. */
@@ -64,8 +68,6 @@ const NameFieldForm: FC<NameFieldFormProps> = ({
   const {
     control,
     watch,
-    setError,
-    clearErrors,
     handleSubmit,
     formState: { errors },
   } = useForm<NameFormValues, unknown, NameFormValues>({
@@ -80,48 +82,67 @@ const NameFieldForm: FC<NameFieldFormProps> = ({
 
   const rawValue = watch('name');
   const [debouncedValue] = useDebounce(rawValue, DEFAULT_DEBOUNCE_MS);
-  const [checking, setChecking] = useState(false);
   const sanitized = toValidEntityName(debouncedValue, '');
 
   // Uniqueness runs on every keystroke (debounced), independent of RHF's
   // `mode: 'onBlur'` gate on the local schema error — a conflict must
-  // surface immediately, never wait for blur.
+  // surface immediately, never wait for blur. Result is tracked by the
+  // candidate it was checked against (not folded into RHF's error state)
+  // so a resolve that lands after the user kept typing can never render
+  // against a candidate it wasn't actually checked for.
+  const [availability, setAvailability] = useState<AvailabilityState>();
+
   useEffect(() => {
-    if (!checkAvailability || !sanitized) {
-      setChecking(false);
+    if (!checkAvailability) return;
+    if (!sanitized) {
+      // Nothing salvageable to check — drop any stale result rather than
+      // let a prior conflict/failure linger for a candidate that no
+      // longer exists.
+      setAvailability(undefined);
       return;
     }
     let cancelled = false;
-    setChecking(true);
+    setAvailability({ candidate: sanitized, status: 'checking' });
     checkAvailability(sanitized)
       .then((exists) => {
         if (cancelled) return;
-        if (exists) {
-          setError('name', {
-            type: 'conflict',
-            message: `An ${entity} named ${sanitized} already exists`,
-          });
-        } else {
-          clearErrors('name');
-        }
+        setAvailability({ candidate: sanitized, status: exists ? 'conflict' : 'available' });
       })
-      .finally(() => {
-        if (!cancelled) setChecking(false);
+      .catch(() => {
+        if (cancelled) return;
+        setAvailability({ candidate: sanitized, status: 'failed' });
       });
     return () => {
       cancelled = true;
     };
-  }, [checkAvailability, sanitized, entity, setError, clearErrors]);
+  }, [checkAvailability, sanitized]);
 
   const preview = toValidEntityName(rawValue, '');
-  const slotError = errors.name?.message;
-  const slotHelp = checking ? (
-    'Checking name...'
-  ) : slotError ? undefined : preview ? (
-    <>
-      Your {entity} will be created as <span className="text-primary">{preview}</span>
-    </>
-  ) : undefined;
+  // Only trust `availability` when it was checked against the candidate
+  // currently on screen — otherwise it's a stale result for a value the
+  // user has since changed.
+  const currentAvailability = availability?.candidate === preview ? availability : undefined;
+  const checking = currentAvailability?.status === 'checking';
+  const conflict = currentAvailability?.status === 'conflict' ? currentAvailability : undefined;
+  const checkFailed = currentAvailability?.status === 'failed';
+
+  const schemaError = errors.name?.message;
+  const slotError = conflict
+    ? `An ${entity} named ${conflict.candidate} already exists`
+    : schemaError;
+  const slotHelp = checking
+    ? 'Checking name...'
+    : slotError
+      ? undefined
+      : checkFailed
+        ? "Couldn't check name availability. You can still submit."
+        : preview
+          ? (
+              <>
+                Your {entity} will be created as <span className="text-primary">{preview}</span>
+              </>
+            )
+          : undefined;
 
   return (
     <form

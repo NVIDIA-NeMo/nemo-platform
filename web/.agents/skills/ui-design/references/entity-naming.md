@@ -64,12 +64,19 @@ a **pattern to implement per form**, not a shared component to import. Do not in
    independent of the schema/blur gating above.** For entities whose name
    must be unique, debounce the live (`watch()`) value (`use-debounce`,
    `DEFAULT_DEBOUNCE_MS`) and query for a conflict as the user types. Track
-   the in-flight/result state outside `formState.errors`' normal validation
-   cycle — e.g. local `useState` for the "checking" flag, and
-   `setError('name', { type: 'conflict', message })` /
-   `clearErrors('name')` to drive the error slot once the check resolves,
-   since a plain `zodResolver` schema can't await a debounced network call
-   per keystroke:
+   the result as an object tagging the checked candidate with its outcome —
+   `checking`, `available`, `conflict`, or `failed` — in local `useState`,
+   never folded straight into `formState.errors` via
+   `setError`/`clearErrors` keyed only on the latest debounce, since an
+   in-flight promise can resolve after the user has kept typing:
+   - Before rendering a result, compare its `candidate` against the
+     _current_ sanitized preview (`toValidEntityName(watch('name'), '')`).
+     A mismatch means the result is stale for a value the user has since
+     changed — discard it (render as if no check has run) rather than show
+     it.
+   - If the current value is unsalvageable (`sanitized` is empty): drop any
+     stored result immediately, don't leave a prior conflict/failure
+     rendered against a candidate that no longer exists.
    - While the debounced query is in flight: `slotHelp` = `"Checking name..."`
      (replaces the "will be created as" copy for that moment; don't show both).
    - If the sanitized name already exists on another entity: treat it as an
@@ -78,6 +85,12 @@ a **pattern to implement per form**, not a shared component to import. Do not in
      `slotError` = `"An {entity} named {value} already exists"`, where
      `{value}` is the sanitized (would-be-submitted) name, and set
      `status="error"`.
+   - If the check itself fails (rejected promise/network error): don't
+     silently swallow it into an unhandled rejection, and don't render the
+     normal "will be created as" preview either — that would claim an
+     availability you never actually confirmed. Show a neutral
+     non-blocking `slotHelp` (e.g. "Couldn't check name availability. You
+     can still submit.") instead.
    - If available: fall back to the normal "will be created as" `slotHelp`.
    - If the full candidate list is already loaded client-side (as in
      `CreateInferenceProviderSidePanel`'s `existingNames` set), a debounced
@@ -91,10 +104,11 @@ Evaluate in this order — the first match wins:
 
 | Condition                                                                                    | `slotHelp` / `slotError`                                                                    | `status` |
 | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------- |
-| Uniqueness check in flight                                                                   | `slotHelp`: "Checking name..."                                                              | none     |
-| Uniqueness check resolved: conflict found                                                    | `slotError`: "An {entity} named {value} already exists"                                     | `error`  |
+| Uniqueness check in flight for the current candidate                                         | `slotHelp`: "Checking name..."                                                              | none     |
+| Uniqueness check resolved for the current candidate: conflict found                          | `slotError`: "An {entity} named {value} already exists"                                     | `error`  |
 | Field touched (blurred) and `sanitizeEntityName(value)` is `undefined` (nothing salvageable) | `slotError`: "{label} is required." / "{label} must contain at least one letter or number." | `error`  |
-| Otherwise                                                                                    | `slotHelp`: "Your {entity} will be created as {value}" (`{value}` in `text-primary`)        | none     |
+| Uniqueness check for the current candidate failed (rejected)                                 | `slotHelp`: "Couldn't check name availability. You can still submit."                       | none     |
+| Otherwise (including a stale/mismatched check result)                                        | `slotHelp`: "Your {entity} will be created as {value}" (`{value}` in `text-primary`)        | none     |
 
 ## Example
 
@@ -114,8 +128,6 @@ const nameSchema = z
 const {
   control,
   watch,
-  setError,
-  clearErrors,
   handleSubmit,
   formState: { errors },
 } = useForm({
@@ -130,37 +142,53 @@ const {
 
 const rawValue = watch('name');
 const [debouncedValue] = useDebounce(rawValue, DEFAULT_DEBOUNCE_MS);
-const [checking, setChecking] = useState(false);
 const sanitized = toValidEntityName(debouncedValue, '');
 
+// Tagged with the exact candidate it was checked against, so a resolve
+// that lands after the user kept typing never gets rendered as current.
+const [availability, setAvailability] = useState(undefined);
+
 useEffect(() => {
-  if (!sanitized) return;
-  setChecking(true);
+  if (!sanitized) {
+    setAvailability(undefined);
+    return;
+  }
+  let cancelled = false;
+  setAvailability({ candidate: sanitized, status: 'checking' });
   checkAvailability(sanitized)
     .then((exists) => {
-      if (exists) {
-        setError('name', {
-          type: 'conflict',
-          message: `A secret named ${sanitized} already exists`,
-        });
-      } else {
-        clearErrors('name');
-      }
+      if (!cancelled)
+        setAvailability({ candidate: sanitized, status: exists ? 'conflict' : 'available' });
     })
-    .finally(() => setChecking(false));
+    .catch(() => {
+      if (!cancelled) setAvailability({ candidate: sanitized, status: 'failed' });
+    });
+  return () => {
+    cancelled = true;
+  };
 }, [sanitized]);
 
 const preview = toValidEntityName(rawValue, '');
-const slotError = errors.name?.message;
+// Discard a result that no longer matches what's on screen.
+const current = availability?.candidate === preview ? availability : undefined;
+const checking = current?.status === 'checking';
+const conflict = current?.status === 'conflict' ? current : undefined;
+const checkFailed = current?.status === 'failed';
+
+const slotError = conflict
+  ? `A secret named ${conflict.candidate} already exists`
+  : errors.name?.message;
 const slotHelp = checking
   ? 'Checking name...'
   : slotError
     ? undefined
-    : preview && (
-        <>
-          Your secret will be created as <span className="text-primary">{preview}</span>
-        </>
-      );
+    : checkFailed
+      ? "Couldn't check name availability. You can still submit."
+      : preview && (
+          <>
+            Your secret will be created as <span className="text-primary">{preview}</span>
+          </>
+        );
 
 <FormField
   slotLabel="Name"
@@ -204,8 +232,8 @@ const slotHelp = checking
   salvage. **Don't** surface `getEntityNameError`'s cosmetic messages ("must
   be lowercase", "cannot contain spaces") as blur errors — those are
   auto-fixed at submit, not user mistakes. **Don't** gate the
-  uniqueness-conflict error on blur — surface it via `setError` as soon as
-  the debounced check resolves.
+  uniqueness-conflict error on blur — render it as soon as the debounced
+  check resolves for the currently-displayed candidate.
 - **Do** debounce the uniqueness check (`use-debounce`), or check against an
   already-loaded client-side set when one exists. **Don't** fire a network
   request on every raw keystroke.
