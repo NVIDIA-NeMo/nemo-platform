@@ -13,11 +13,12 @@ The layers, in order:
 1. **on disk** — what the verifier left in the trial directory.
 2. ``trials_from_job_dir`` — the ``TrialResult`` status and metrics parsed from it.
 3. ``Evaluator.aggregate_results`` — the per-candidate aggregate the loop stores.
-4. ``reward_scalar`` / ``RunReporter`` — the number a strategy ranks on and the
-   line an operator reads.
-5. ``has_metric_dimensions`` — the predicate the selector and terminator share,
-   which decides whether the loop has anything to compare and therefore whether
-   it can stop early.
+4. ``reward_scalar`` / ``RunReporter`` — the line an operator reads. ``reward_scalar``
+   is printed alongside it because it looks like the loop's scalar reward, but no
+   caller in the loop uses it.
+5. ``pareto_objectives`` / ``has_metric_dimensions`` — the projection the selector
+   ranks on and the predicate the selector and terminator share, which together
+   decide whether the loop can compare candidates or stop early.
 
 Every layer is called through production code. Nothing here is imported by the
 plugin; this is a read-only inspector for humans.
@@ -53,7 +54,10 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import trials_from_job_dir
-from nemo_experimentalist_plugin.experimentalist.components.models import has_metric_dimensions
+from nemo_experimentalist_plugin.experimentalist.components.models import (
+    has_metric_dimensions,
+    pareto_objectives,
+)
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter, reward_scalar
 
 _OBJECTIVES = [MetricTarget(name="reward", direction="maximize")]
@@ -216,19 +220,20 @@ async def inspect(job_dir: Path, *, behaviour: str | None = None) -> None:
     print(f"    completed trials={len(completed)}/{len(trials)} · aggregate={aggregate or '{}'}")
 
     print("\n[4] reward_scalar / RunReporter")
-    print(f"    reward_scalar={reward_scalar(aggregate)!r}   (the number a strategy ranks on)")
+    print(f"    reward_scalar={reward_scalar(aggregate)!r}   (defined in reporting.py; no caller in the loop)")
     print(f"    operator sees: {_reporter_line(aggregate)}")
     if "reward" not in aggregate:
         print("    ^ no reward reached the loop, and nothing on this path said so")
 
-    print("\n[5] has_metric_dimensions (shared by the selector and the terminator)")
-    comparable = has_metric_dimensions({name: float(value) for name, value in aggregate.items()}, _OBJECTIVES)
-    print(f"    comparable={comparable}")
-    if comparable:
+    metrics = {name: float(value) for name, value in aggregate.items()}
+    print("\n[5] pareto_objectives / has_metric_dimensions (what the loop really ranks on)")
+    print(f"    pareto_objectives={pareto_objectives(metrics, _OBJECTIVES) or '{}'}")
+    print(f"    has_metric_dimensions={has_metric_dimensions(metrics, _OBJECTIVES)}")
+    if pareto_objectives(metrics, _OBJECTIVES):
         print("    the selector can rank, the terminator can detect a stagnant front, and a winner exists")
     else:
-        print("    the terminator sees nothing scored, so it never stops early;")
-        print("    the selector still calls a model each round, and finalization ends with no winner")
+        print("    every candidate projects to {}, so _dominates is always False and one front holds them all;")
+        print("    ranking is a no-op, the terminator never stops early, and finalization finds no winner")
 
 
 async def main() -> None:
