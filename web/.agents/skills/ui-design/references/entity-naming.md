@@ -133,7 +133,7 @@ const {
   control,
   watch,
   handleSubmit,
-  formState: { errors },
+  formState: { errors, touchedFields },
 } = useForm({
   resolver: zodResolver(z.object({ name: nameSchema })),
   defaultValues: { name: '' },
@@ -183,9 +183,8 @@ const checking = current?.status === 'checking';
 const conflict = current?.status === 'conflict' ? current : undefined;
 const checkFailed = current?.status === 'failed';
 
-const slotError = conflict
-  ? `A secret named ${conflict.candidate} already exists`
-  : errors.name?.message;
+const schemaError = touchedFields.name ? errors.name?.message : undefined;
+const slotError = conflict ? `A secret named ${conflict.candidate} already exists` : schemaError;
 const slotHelp = checking
   ? 'Checking name...'
   : slotError

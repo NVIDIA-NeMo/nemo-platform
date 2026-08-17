@@ -45,8 +45,10 @@ function buildNameSchema() {
 }
 
 /** Result of the debounced uniqueness check, tagged with the exact candidate it was checked against. */
-type AvailabilityState =
-  | { candidate: string; status: 'checking' | 'available' | 'conflict' | 'failed' };
+type AvailabilityState = {
+  candidate: string;
+  status: 'checking' | 'available' | 'conflict' | 'failed';
+};
 
 interface NameFieldFormProps {
   entity: string;
@@ -69,7 +71,7 @@ const NameFieldForm: FC<NameFieldFormProps> = ({
     control,
     watch,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, touchedFields },
   } = useForm<NameFormValues, unknown, NameFormValues>({
     resolver: zodResolver(z.object({ name: buildNameSchema() })),
     defaultValues: { name: defaultValue },
@@ -126,23 +128,19 @@ const NameFieldForm: FC<NameFieldFormProps> = ({
   const conflict = currentAvailability?.status === 'conflict' ? currentAvailability : undefined;
   const checkFailed = currentAvailability?.status === 'failed';
 
-  const schemaError = errors.name?.message;
+  const schemaError = touchedFields.name ? errors.name?.message : undefined;
   const slotError = conflict
     ? `An ${entity} named ${conflict.candidate} already exists`
     : schemaError;
-  const slotHelp = checking
-    ? 'Checking name...'
-    : slotError
-      ? undefined
-      : checkFailed
-        ? "Couldn't check name availability. You can still submit."
-        : preview
-          ? (
-              <>
-                Your {entity} will be created as <span className="text-primary">{preview}</span>
-              </>
-            )
-          : undefined;
+  const slotHelp = checking ? (
+    'Checking name...'
+  ) : slotError ? undefined : checkFailed ? (
+    "Couldn't check name availability. You can still submit."
+  ) : preview ? (
+    <>
+      Your {entity} will be created as <span className="text-primary">{preview}</span>
+    </>
+  ) : undefined;
 
   return (
     <form
