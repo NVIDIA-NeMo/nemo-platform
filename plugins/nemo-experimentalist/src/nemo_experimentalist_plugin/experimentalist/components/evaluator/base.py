@@ -5,19 +5,68 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias
 
 from nemo_experimentalist_plugin.entities import (
     Dataset,
     EvaluationResult,
     TrialResult,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
-EvaluatorType: TypeAlias = Literal["harbor"]
+logger = logging.getLogger(__name__)
+
+EvaluatorType: TypeAlias = Literal["harbor_native", "harbor_evaluator"]
+"""Selects which evaluator drives the run.
+
+``harbor_native`` is the default: the plugin builds and runs Harbor's ``Job``
+directly. ``harbor_evaluator`` routes orchestration through the NeMo Evaluator
+SDK's ``HarborAgentTaskRunner``, which owns the ``JobConfig``, the success-aware
+job-dir cache, and agent import scoping.
+"""
+_DEPRECATED_EVALUATOR_TYPES: dict[str, EvaluatorType] = {"harbor": "harbor_native"}
+"""Retired spellings still accepted on input, mapped to their current name.
+
+``harbor`` shipped before the rename, so experiment configs in the wild carry it.
+``harbor_agent_task_runner`` is deliberately absent: it never shipped, so nothing
+can be pinned to it.
+"""
+
+_warned_evaluator_types: set[str] = set()
+
+
+def normalize_evaluator_type(value: Any) -> Any:
+    """Map a retired evaluator-type spelling onto its current name, warning once.
+
+    Non-strings and unknown strings pass through untouched so pydantic still
+    produces its own error for a genuinely invalid value, rather than this
+    function masking it with a confusing one.
+
+    Args:
+        value(Any): Raw ``evaluator_type`` as supplied by config or a caller.
+
+    Returns:
+        Any: The canonical evaluator type, or ``value`` unchanged.
+    """
+    replacement = _DEPRECATED_EVALUATOR_TYPES.get(value) if isinstance(value, str) else None
+    if replacement is None:
+        return value
+    if value not in _warned_evaluator_types:
+        _warned_evaluator_types.add(value)
+        logger.warning(
+            "evaluator_type %r is deprecated and will be removed; use %r instead.",
+            value,
+            replacement,
+        )
+    return replacement
+
+
+EvaluatorTypeField: TypeAlias = Annotated[EvaluatorType, BeforeValidator(normalize_evaluator_type)]
+"""``EvaluatorType`` for config models, accepting the retired spellings on input."""
 
 
 class EvaluatorConfig(BaseModel):
@@ -43,10 +92,13 @@ class Evaluator(ABC):
         """
         Aggregate evaluation results from multiple runs.
 
-        Defaults to averaging each metric across all trials, treating trials that
-        did not emit a metric (e.g. failed trials) as contributing 0. The denominator
-        is always ``len(results)``, not the number of trials that reported each metric,
-        so failure counts against the aggregate score.
+        Averages each metric over trials with ``status == "completed"``. Anything
+        else is excluded from both the sum and the denominator, so a crash does not
+        pull the mean down — it shrinks the sample the mean is taken over, and a
+        round with no completed trial aggregates to ``{}`` rather than to zeros.
+
+        Completed trials must all report the same metric keys; a mismatch raises
+        rather than silently averaging over different denominators per metric.
 
         Args:
             results(Sequence[TrialResult]): List of trial results to aggregate.
@@ -57,7 +109,10 @@ class Evaluator(ABC):
         if not results:
             return {}
 
-        completed = [r for r in results if r.status != "failed"]
+        # Positive predicate on purpose: `!= "failed"` is equivalent while TrialStatus
+        # is Literal["completed", "failed"], but it would silently start averaging any
+        # third status someone adds. Opt statuses in, do not opt "failed" out.
+        completed = [r for r in results if r.status == "completed"]
         if not completed:
             return {}
 

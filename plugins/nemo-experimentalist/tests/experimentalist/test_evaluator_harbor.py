@@ -27,25 +27,28 @@ from nemo_experimentalist_plugin.entities import (
     subset_dataset_id,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
-    _TRACE_ARTIFACT_DESTINATION,
-    _TRACE_ARTIFACT_SOURCE,
+    DEFAULT_TRACE_ARTIFACT_SOURCE,
     HarborDataset,
     HarborDependencyContext,
     HarborDependencyRuntime,
-    HarborEvaluator,
-    HarborEvaluatorConfig,
     HarborVerifierValidationError,
     _chmod_path_chain,
-    _cleanup_scoped_imports,
-    _ensure_package,
     _python_syntax_failure,
-    _safe_identifier,
-    _scoped_import_path,
     _shell_syntax_failure,
     _trial_error,
     _trial_metric_spec,
     _trial_metrics,
     _trial_resources,
+)
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
+    _TRACE_ARTIFACT_DESTINATION,
+    HarborEvaluator,
+    HarborEvaluatorConfig,
+    _cleanup_scoped_imports,
+    _ensure_package,
+    _safe_identifier,
+    _scoped_import_path,
+    _validated_job_dir,
     _with_trace_artifact,
 )
 
@@ -741,7 +744,7 @@ async def test_harbor_evaluator_runs_job_and_maps_output(tmp_path: Path, monkeyp
         async def run(self):
             return SimpleNamespace(id="job-id", stats=FakeStats())
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", FakeJob)
 
     result = await evaluator.run(
         agent=tmp_path / "agent",
@@ -866,7 +869,7 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
 
     dataset = HarborDataset.from_path(dataset_dir)
     fake_job = _recording_job(tmp_path / "jobs" / "preflight")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
     compile_calls = 0
     original_compile = compile
 
@@ -987,7 +990,7 @@ async def test_harbor_evaluator_accepts_valid_python_verifier(
     _write(task_dir / "tests" / "check.py", "def check():\n    return True\n")
     dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-python")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
 
     trials = await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
@@ -1009,7 +1012,7 @@ async def test_harbor_evaluator_rejects_invalid_configured_test_sh_before_job_cr
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo broken\n")
     dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "invalid-shell")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
 
     with pytest.raises(HarborVerifierValidationError) as exc_info:
         await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
@@ -1034,7 +1037,7 @@ async def test_harbor_evaluator_accepts_valid_legacy_test_sh(
     _write(task_dir / "test" / "test.sh", "if true; then\n  echo valid\nfi\n")
     dataset = HarborDataset.from_path(task_dir.parent)
     fake_job = _recording_job(tmp_path / "jobs" / "valid-shell")
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", fake_job)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", fake_job)
 
     trials = await HarborEvaluator()._run(agent_dir, dataset, HarborEvaluatorConfig())
 
@@ -1352,8 +1355,8 @@ def test_trial_metric_spec_task_dir_verifier(tmp_path):
 def test_with_trace_artifact_already_has_source():
     from harbor.models.job.config import ArtifactConfig
 
-    existing = ArtifactConfig(source=_TRACE_ARTIFACT_SOURCE, destination="traces")
-    result = _with_trace_artifact([existing], _TRACE_ARTIFACT_SOURCE)
+    existing = ArtifactConfig(source=DEFAULT_TRACE_ARTIFACT_SOURCE, destination="traces")
+    result = _with_trace_artifact([existing], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert result == [existing]
 
 
@@ -1361,7 +1364,7 @@ def test_with_trace_artifact_already_has_destination():
     from harbor.models.job.config import ArtifactConfig
 
     existing = ArtifactConfig(source="/other", destination=_TRACE_ARTIFACT_DESTINATION)
-    result = _with_trace_artifact([existing], _TRACE_ARTIFACT_SOURCE)
+    result = _with_trace_artifact([existing], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert result == [existing]
 
 
@@ -1369,9 +1372,9 @@ def test_with_trace_artifact_adds_when_missing():
     from harbor.models.job.config import ArtifactConfig
 
     other = ArtifactConfig(source="/other", destination="other")
-    result = _with_trace_artifact([other], _TRACE_ARTIFACT_SOURCE)
+    result = _with_trace_artifact([other], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert len(result) == 2
-    assert result[0].source == _TRACE_ARTIFACT_SOURCE
+    assert result[0].source == DEFAULT_TRACE_ARTIFACT_SOURCE
 
 
 def test_trial_error_non_dict():
@@ -1426,7 +1429,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
         rmtree_calls.append(path)
 
     monkeypatch.setattr(
-        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.shutil.rmtree", fake_rmtree
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.shutil.rmtree", fake_rmtree
     )
 
     class FakeJob:
@@ -1444,7 +1447,7 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
         async def run(self):
             return SimpleNamespace(id="job-id", stats=None)
 
-    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor.Job", FakeJob)
+    monkeypatch.setattr("nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job", FakeJob)
 
     trials = await evaluator._run(
         agent=agent_dir,
@@ -1457,7 +1460,60 @@ async def test_harbor_evaluator_force_rerun(tmp_path, monkeypatch):
     )
     assert trials == []
     assert len(rmtree_calls) == 1
-    assert rmtree_calls[0] == job_dir
+    assert rmtree_calls[0] == job_dir.resolve()
+
+
+def test_validated_job_dir_rejects_parent_escape(tmp_path: Path) -> None:
+    jobs_dir = tmp_path / "jobs"
+    jobs_dir.mkdir()
+    with pytest.raises(ValueError, match="strict descendant"):
+        _validated_job_dir(jobs_dir, "../outside")
+
+
+@pytest.mark.asyncio
+async def test_harbor_evaluator_force_rerun_rejects_job_name_outside_jobs_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    evaluator = HarborEvaluator()
+    agent_dir = tmp_path / "agent"
+    agent_dir.mkdir()
+    task_dir = tmp_path / "dataset" / "task-a"
+    _write(task_dir / "task.toml", "")
+    harbor_dataset = HarborDataset.from_path(task_dir.parent)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("do not delete", encoding="utf-8")
+
+    rmtree_calls: list[Path] = []
+
+    def fake_rmtree(path: Path, **kwargs: object) -> None:
+        rmtree_calls.append(path)
+
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.shutil.rmtree",
+        fake_rmtree,
+    )
+    monkeypatch.setattr(
+        "nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native.Job",
+        object,
+    )
+
+    with pytest.raises(ValueError, match="strict descendant"):
+        await evaluator._run(
+            agent=agent_dir,
+            dataset=harbor_dataset,
+            options=HarborEvaluatorConfig(
+                import_path="harbor_wrapper:WrappedAgent",
+                jobs_dir=tmp_path / "jobs",
+                job_name="../outside",
+                force_rerun=True,
+            ),
+        )
+
+    assert rmtree_calls == []
+    assert marker.read_text(encoding="utf-8") == "do not delete"
 
 
 @pytest.mark.asyncio
@@ -1905,12 +1961,12 @@ def test_resolve_trial_task_id_fallback_to_trial_base():
 
 
 def test_with_trace_artifact_string_match():
-    result = _with_trace_artifact([_TRACE_ARTIFACT_SOURCE], _TRACE_ARTIFACT_SOURCE)
-    assert result == [_TRACE_ARTIFACT_SOURCE]
+    result = _with_trace_artifact([DEFAULT_TRACE_ARTIFACT_SOURCE], DEFAULT_TRACE_ARTIFACT_SOURCE)
+    assert result == [DEFAULT_TRACE_ARTIFACT_SOURCE]
 
 
 def test_with_trace_artifact_string_destination_match():
-    result = _with_trace_artifact([_TRACE_ARTIFACT_DESTINATION], _TRACE_ARTIFACT_SOURCE)
+    result = _with_trace_artifact([_TRACE_ARTIFACT_DESTINATION], DEFAULT_TRACE_ARTIFACT_SOURCE)
     assert result == [_TRACE_ARTIFACT_DESTINATION]
 
 

@@ -24,6 +24,7 @@ from typing import Any, Literal, Self
 from nemo_eval_author_plugin.eval_author.models import EvalAuthorConfig
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import AnalyzerConfig
 from nemo_experimentalist_plugin.experimentalist.components.coder import CoderConfig
+from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import EvaluatorTypeField
 from nemo_experimentalist_plugin.experimentalist.components.goal_tree import GoalTreeConfig
 from nemo_experimentalist_plugin.experimentalist.components.proposer import ProposerConfig
 from pydantic import BaseModel, Field, model_validator
@@ -157,6 +158,7 @@ class EvolutionaryOptimizerConfig(BaseModel):
     coder: CoderConfig = Field(default_factory=CoderConfig)
     analyzer: AnalyzerConfig = Field(default_factory=AnalyzerConfig)
     proposer: ProposerConfig = Field(default_factory=ProposerConfig)
+    evaluator_type: EvaluatorTypeField = "harbor_native"
     evaluator: dict[str, Any] = Field(default_factory=dict)
     eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
 
