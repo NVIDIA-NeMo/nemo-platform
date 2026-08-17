@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regression tests for AgentAnalyzer client/workspace plumbing and retry budget.
+"""Regression tests for AgentAnalyzer client/workspace plumbing.
 
 The Experimentalist round-N analysis path used to silently skip every
 ``intake://`` trial trace because ``AgentAnalyzer`` never received (and never
@@ -14,17 +14,13 @@ and thread them into ``TraceAnalyzer.run``.
 ``classify_failures``, ``compare_with_peers``) are replaced by callable
 *objects* — the agent framework's method guard rejects attaching plain
 functions/methods to public attributes, but allows non-function callables.
-The retry-budget test is the exception: it drives the real CodeAct harness with
-a scripted model, because the budget it pins is the framework's.
 """
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
-from nemo_experimentalist_plugin.entities import EvaluationResult, MetricResult, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import analyzer as analyzer_module
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
@@ -36,8 +32,6 @@ from nemo_experimentalist_plugin.experimentalist.components.analyzer import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.rationalizer import Rationale
 from nemo_experimentalist_plugin.experimentalist.components.trace_analyzer import Diagnostic
-from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients, activate_model_clients
-from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
 @dataclass
@@ -307,64 +301,6 @@ async def test_run_threads_numeric_objective_targets_into_trace_analyzer(
     )
 
     assert calls[0]["objective_metrics"] == objective_metrics
-
-
-def _placeholder_reply() -> LLMResponse:
-    """A scripted turn where the model answers with a placeholder instead of a selection."""
-    return LLMResponse(
-        raw_response=None,
-        content="<result>",
-        tool_calls=[],
-        finish_reason="stop",
-        assistant_message={"role": "assistant", "content": "<result>"},
-    )
-
-
-def _selection_reply(trial_id: str) -> LLMResponse:
-    """A scripted turn that returns a valid selection through the return_result tool."""
-    result = [{"trial_id": trial_id, "reason": "Lowest reward of the round."}]
-    return LLMResponse(
-        raw_response=None,
-        content="",
-        tool_calls=[ToolCall(id="call_return", name="return_result", arguments=json.dumps({"result": result}))],
-        finish_reason="tool_calls",
-        assistant_message={"role": "assistant", "content": ""},
-    )
-
-
-@pytest.mark.asyncio
-async def test_select_trials_allows_a_model_several_attempts_at_the_contract(tmp_path: Path) -> None:
-    """Four placeholder answers, then a valid one, on the real CodeAct harness.
-
-    The framework defaults stop at three, and two separate guards have to allow the
-    extra room: the shared malformed-reply budget and the consecutive plain-text
-    counter, which a placeholder answer spends at the same time.
-    """
-    fake = FakeLLMClient(scripted_responses=[*[_placeholder_reply() for _ in range(4)], _selection_reply("trial-weak")])
-    evaluation = EvaluationResult(
-        id="eval-1",
-        aggregate_metrics={"reward": 0.0},
-        trials=[
-            TrialResult(
-                id="trial-weak",
-                task_id="task-1",
-                status="completed",
-                metrics={"reward": MetricResult(name="reward", value=0.0)},
-            )
-        ],
-    )
-
-    with activate_model_clients(ConfiguredModelClients(default=cast(Any, fake), fast=cast(Any, fake))):
-        analyzer = AgentAnalyzer(workspace=tmp_path)
-        selections = await analyzer.select_trials(
-            "agent-0",
-            cast(Any, _FakeDataset(tasks=[_FakeTask(id="task-1")])),
-            evaluation,
-            [{"name": "reward", "direction": "maximize"}],
-            [],
-        )
-
-    assert [selection.trial_id for selection in selections] == ["trial-weak"]
 
 
 @pytest.mark.asyncio

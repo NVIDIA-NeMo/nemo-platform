@@ -36,15 +36,6 @@ from .util import load_framework_skills
 
 logger = logging.getLogger(__name__)
 
-# Attempts a model gets to answer an analysis step in the shape the step declares.
-# Two CodeAct guards have to allow it: one shared budget covers every malformed
-# reply (an empty response, tool arguments that do not parse, an unknown tool, or a
-# return value that does not match the contract), and a separate counter caps
-# consecutive plain-text replies. Either one at the framework default of 3 can run
-# out before a model that answered in the wrong shape has corrected itself, which
-# ends the run after the round's evaluation is already paid for.
-_ANALYSIS_ATTEMPTS = 6
-
 
 class AnalyzerConfig(BaseModel):
     """Configure tuning parameters for AgentAnalyzer."""
@@ -273,14 +264,7 @@ class AgentAnalyzer(Agent):
         )
 
     @strategy(
-        CodeActStrategy(
-            config=CodeActConfig(
-                max_iterations=20,
-                cell_timeout=3600.0,
-                max_retries=_ANALYSIS_ATTEMPTS,
-                max_consecutive_text_only=_ANALYSIS_ATTEMPTS,
-            )
-        ),
+        CodeActStrategy(config=CodeActConfig(max_iterations=20, cell_timeout=3600.0)),
         llm=lambda self: self._fast_model,
     )
     async def select_trials(
@@ -359,14 +343,7 @@ class AgentAnalyzer(Agent):
         ...
 
     @strategy(
-        CodeActStrategy(
-            config=CodeActConfig(
-                max_iterations=30,
-                cell_timeout=3600.0,
-                max_retries=_ANALYSIS_ATTEMPTS,
-                max_consecutive_text_only=_ANALYSIS_ATTEMPTS,
-            )
-        ),
+        CodeActStrategy(config=CodeActConfig(max_iterations=30, cell_timeout=3600.0)),
         llm=lambda self: self._fast_model,
     )
     async def classify_failures(

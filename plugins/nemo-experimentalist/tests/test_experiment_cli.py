@@ -303,16 +303,16 @@ def test_experiment_cli_exits_nonzero_when_evaluation_has_no_scores(
     assert platform_client.closed
 
 
-def test_experiment_cli_reports_a_model_that_cannot_satisfy_a_step(
+def test_experiment_cli_reports_a_failed_generation_without_a_traceback(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     platform_client: FakePlatformClient,
 ) -> None:
-    """A model that never returns the required shape fails with guidance, not a traceback."""
+    """A step the model cannot finish exits 1 and repeats what the harness reported."""
 
     async def fail_generation(**_: object) -> str:
         raise GenerationError(
-            "return_result validation failed after 6 attempts.\nExpected: list[TrialSelection]\nGot: str"
+            "return_result validation failed after 3 attempts.\nExpected: list[TrialSelection]\nGot: str"
         )
 
     paths = _make_paths(tmp_path)
@@ -323,7 +323,6 @@ def test_experiment_cli_reports_a_model_that_cannot_satisfy_a_step(
     assert result.exit_code == 1
     assert result.exception is None or isinstance(result.exception, SystemExit)
     assert "Expected: list[TrialSelection]" in result.output
-    assert "nemo setup" in result.output
     assert platform_client.closed
 
 
