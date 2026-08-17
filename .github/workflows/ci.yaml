@@ -331,7 +331,7 @@ jobs:
         shell: bash
         run: make docker-push TARGET=docker-cpu-ci
 
-      - name: Publish Gym E2E API tag
+      - name: Publish Gym e2e API tag
         if: env.PUBLISH_IMAGES == 'true'
         shell: bash
         run: |
@@ -595,7 +595,7 @@ jobs:
           services-log-dir: ${{ runner.temp }}/e2e-services-logs
 
   kind-gym-e2e:
-    name: Kind Gym e2e
+    name: Kind Gym agent-evaluate e2e
     needs: [changes, build-cpu-smoke-images]
     if: >
       !cancelled() &&
