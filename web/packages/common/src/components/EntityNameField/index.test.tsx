@@ -6,6 +6,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 
+/** `getByText` only matches direct text-node children, so it can't see text split across our `<span>` value node — match on normalized helper textContent instead. */
+const getByHelperText = (text: string) =>
+  screen.getByText(
+    (_content, element) => element?.textContent?.replace(/\s+/g, ' ').trim() === text
+  );
+
 function Wrapper({
   checkAvailability,
 }: {
@@ -31,12 +37,13 @@ describe('EntityNameField', () => {
     await user.type(input, 'Foo bar');
 
     expect(input).toHaveValue('Foo bar');
-    expect(screen.getByText('Your fileset will be created as foo-bar')).toHaveClass('text-primary');
+    expect(getByHelperText('Your fileset will be created as foo-bar')).toBeInTheDocument();
+    expect(screen.getByText('foo-bar')).toHaveClass('text-primary');
 
     await user.clear(input);
     await user.type(input, 'MyProject');
     expect(input).toHaveValue('MyProject');
-    expect(screen.getByText('Your fileset will be created as myproject')).toBeInTheDocument();
+    expect(getByHelperText('Your fileset will be created as myproject')).toBeInTheDocument();
   });
 
   it('does not show a local error after blur for a name that just needs sanitizing, since we submit the transformed name', async () => {
@@ -50,7 +57,7 @@ describe('EntityNameField', () => {
     expect(
       screen.queryByText(/is required|must contain at least one letter or number/i)
     ).not.toBeInTheDocument();
-    expect(screen.getByText('Your fileset will be created as a-bad-name')).toBeInTheDocument();
+    expect(getByHelperText('Your fileset will be created as a-bad-name')).toBeInTheDocument();
   });
 
   it('shows a local error only after blur when nothing valid survives sanitization', async () => {

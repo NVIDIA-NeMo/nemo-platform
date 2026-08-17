@@ -99,9 +99,9 @@ export const EntityNameField: FC<EntityNameFieldProps> = ({
   } else {
     const preview = toValidEntityName(value, '');
     slotHelp = preview ? (
-      <span className="text-primary">
-        Your {entity} will be created as {preview}
-      </span>
+      <>
+        Your {entity} will be created as <span className="text-primary">{preview}</span>
+      </>
     ) : undefined;
   }
 

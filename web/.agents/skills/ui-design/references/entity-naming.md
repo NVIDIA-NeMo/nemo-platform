@@ -24,9 +24,11 @@ uniqueness check — reuse the pattern below.
    Compute `{value}` by running the current input through
    `toValidEntityName(input, fallback)` — never re-derive sanitization ad hoc.
    `{entity}` is the lowercase entity noun ("secret", "fileset", "provider").
-   Render this specific message with `text-primary` (it reads as confirmed
-   fact, not muted helper copy) — `"Checking name..."` and error messages
-   keep the field's default helper/error color.
+   Render just the `{value}` token in `text-primary` — wrap only the
+   sanitized name in a `<span>`, not the surrounding sentence — since it
+   reads as confirmed fact, unlike the muted framing copy around it.
+   `"Checking name..."` and error messages keep the field's default
+   helper/error color.
 
 2. **Sanitize for preview only, never the field.** If the typed value doesn't
    satisfy `ENTITY_NAME_REGEXP`, don't rewrite the input the user sees or
@@ -74,7 +76,7 @@ Evaluate in this order — the first match wins:
 | Uniqueness query in flight | `slotHelp`: "Checking name..." | none |
 | Uniqueness query resolved: conflict found | `slotError`: "An {entity} named {value} already exists" | `error` |
 | Field touched (blurred) and `sanitizeEntityName(value)` is `undefined` (nothing salvageable) | `slotError`: "{label} is required." / "{label} must contain at least one letter or number." | `error` |
-| Otherwise | `slotHelp`: "Your {entity} will be created as {value}" (`text-primary`) | none |
+| Otherwise | `slotHelp`: "Your {entity} will be created as {value}" (`{value}` in `text-primary`) | none |
 
 ## Example
 
@@ -99,7 +101,9 @@ const localError = !touched
 const slotHelp = isChecking ? (
   'Checking name...'
 ) : !conflict && !localError ? (
-  <span className="text-primary">Your secret will be created as {toValidEntityName(name, '')}</span>
+  <>
+    Your secret will be created as <span className="text-primary">{toValidEntityName(name, '')}</span>
+  </>
 ) : undefined;
 
 const slotError = conflict
