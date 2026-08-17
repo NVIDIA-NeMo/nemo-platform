@@ -22,12 +22,14 @@ from fastapi.responses import JSONResponse
 from nmp.common.api.utils import install_query_param_schema_openapi_hook
 from nmp.common.auth import AuthorizationMiddleware
 from nmp.common.config import get_auth_config, get_platform_config
+from nmp.common.controller import ControllerManager
 from nmp.common.http_clients import close_shared_http_clients
 from nmp.common.observability import initialize_obs, setup_fastapi_instrumentations, setup_global_instrumentations
 from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
 from nmp.platform_runner.config import DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS, PlatformAppConfig
+from nmp.platform_runner.controller_threads import start_controller_threads
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router, get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -167,15 +169,7 @@ def create_app(
         platform_seed_task: asyncio.Task[None] | None = None
         if controller_run_funcs:
             logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
-            for name, run_func in controller_run_funcs.items():
-                thread = threading.Thread(
-                    target=run_func,
-                    args=(controller_stop_signal,),
-                    name=f"controller-{name}",
-                    daemon=True,
-                )
-                thread.start()
-                controller_threads.append(thread)
+            controller_threads.extend(start_controller_threads(controller_run_funcs, controller_stop_signal))
 
         if platform_seed_state is not None:
             try:
@@ -216,6 +210,9 @@ def create_app(
         controller_stop_signal.set()
         for thread in controller_threads:
             thread.join(timeout=5)
+        manager = ControllerManager.get_instance()
+        for name in controller_run_funcs:
+            manager.stop_expecting_controller(name)
 
         await close_shared_http_clients()
         logger.info("Shutting down Nemo Platform API server")

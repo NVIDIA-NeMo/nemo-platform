@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import httpx
+import pytest
 import respx
 from fastapi.testclient import TestClient
+from nmp.common.auth.workload_proxy import main as workload_proxy_main
 from nmp.common.auth.workload_proxy.main import build_app
+from nmp.common.controller import ControllerManager
 
 
 @respx.mock
@@ -169,3 +174,61 @@ def test_lifespan_closes_upstream_client() -> None:
         assert test_client.get("/healthz").status_code == 200
         assert upstream_client.is_closed is False
     assert upstream_client.is_closed is True
+
+
+@pytest.fixture(autouse=True)
+def _reset_controller_manager() -> Iterator[None]:
+    ControllerManager._instance = None
+    yield
+    ControllerManager._instance = None
+
+
+def test_run_registers_healthy_loop_for_health_reporting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A running auth-proxy must be visible to ControllerManager, not merely absent.
+
+    Regression test for the sidecar being silently exempt from the crash-before-
+    registration health tracking added for controller run_funcs.
+    """
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+
+    server_started = threading.Event()
+
+    class _FakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            server_started.set()
+            while not self.should_exit:
+                threading.Event().wait(timeout=0.05)
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _FakeServer)
+
+    stop_signal = threading.Event()
+    run_thread = threading.Thread(target=workload_proxy_main.run, args=(stop_signal,), daemon=True)
+    run_thread.start()
+
+    try:
+        assert server_started.wait(timeout=2)
+        manager = ControllerManager.get_instance()
+
+        def _registered() -> bool:
+            return "auth-proxy" in manager.get_all_loops()
+
+        assert _wait_until(_registered)
+        assert manager.validate_all_healthy() == (True, {"auth-proxy": True})
+    finally:
+        stop_signal.set()
+        run_thread.join(timeout=5)
+
+
+def _wait_until(predicate, timeout: float = 2.0, interval: float = 0.02) -> bool:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()

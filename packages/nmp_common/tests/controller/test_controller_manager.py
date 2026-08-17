@@ -169,6 +169,66 @@ def test_detailed_false():
         unhealthy_loop.join(timeout=0.1)
 
 
+def test_expected_controller_is_unhealthy_until_it_registers_a_loop():
+    manager = ControllerManager.get_instance()
+    manager.expect_controller("models")
+
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+    loop = _ToggleLoop(healthy=True)
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", loop)
+
+    assert manager.validate_all_healthy() == (True, {"models_controller": True})
+
+
+def test_failed_controller_remains_unhealthy_after_registration():
+    manager = ControllerManager.get_instance()
+    manager.expect_controller("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+    manager.mark_controller_failed("models")
+
+    assert manager.validate_all_healthy() == (
+        False,
+        {"models": False, "models_controller": True},
+    )
+
+
+def test_failed_controller_status_takes_precedence_over_same_named_healthy_loop():
+    manager = ControllerManager.get_instance()
+    manager.expect_controller("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models", _ToggleLoop(healthy=True))
+    manager.mark_controller_failed("models")
+
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+
+def test_expected_controller_is_unhealthy_after_its_last_loop_is_unregistered():
+    manager = ControllerManager.get_instance()
+    manager.expect_controller("models")
+    with manager.controller_registration_context("models"):
+        manager.register("models_controller", _ToggleLoop(healthy=True))
+
+    manager.unregister("models_controller")
+
+    assert manager.validate_all_healthy() == (False, {"models": False})
+
+
+def test_stopping_controller_expectation_removes_its_registered_loops():
+    manager = ControllerManager.get_instance()
+    manager.expect_controller("jobs")
+    with manager.controller_registration_context("jobs"):
+        manager.register("job_scheduler", _ToggleLoop(healthy=True))
+        manager.register("job_reconciler", _ToggleLoop(healthy=True))
+
+    manager.stop_expecting_controller("jobs")
+
+    assert manager.get_all_loops() == {}
+    assert manager.validate_all_healthy() == (True, {})
+
+
 # =============================================================================
 # Loop shutdown_func Tests
 # =============================================================================

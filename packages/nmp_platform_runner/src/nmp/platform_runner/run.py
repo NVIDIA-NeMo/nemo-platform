@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from typing import cast
 
 from nmp.common.config import get_auth_config, get_common_service_config, get_platform_config, get_service_config
+from nmp.common.controller import ControllerManager
 from nmp.common.observability import initialize_obs, setup_global_instrumentations
 from nmp.common.observability.otel import settings as otel_settings
 from nmp.common.service import CircularDependencyError, Service
@@ -22,6 +23,7 @@ from nmp.platform_runner.config import (
     apply_run_environment,
     resolve_run_configuration,
 )
+from nmp.platform_runner.controller_threads import start_controller_threads
 from nmp.platform_runner.health import get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -67,12 +69,7 @@ def run_controllers_in_threads(
     stop_signal: threading.Event,
 ) -> list[threading.Thread]:
     """Start controller run functions in daemon threads."""
-    threads = []
-    for name, run_func in controller_run_funcs.items():
-        thread = threading.Thread(target=run_func, args=(stop_signal,), name=f"controller-{name}", daemon=True)
-        thread.start()
-        threads.append(thread)
-    return threads
+    return start_controller_threads(controller_run_funcs, stop_signal)
 
 
 def run_platform(
@@ -178,6 +175,9 @@ def run_platform(
             thread.join(timeout=10)
             if thread.is_alive():
                 logger.warning("Controller thread %s did not finish in time", thread.name)
+        manager = ControllerManager.get_instance()
+        for name in controller_run_funcs | sidecar_run_funcs:
+            manager.stop_expecting_controller(name)
 
 
 def _load_service_instances(

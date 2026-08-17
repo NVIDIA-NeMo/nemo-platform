@@ -37,6 +37,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
+from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +159,20 @@ def build_app(*, base_url: str, principal: str, on_behalf_of: str | None = None)
     return app
 
 
+class _ServerThreadController(Controller):
+    """Reports unhealthy if the auth-proxy's uvicorn thread has died."""
+
+    def __init__(self, thread: threading.Thread) -> None:
+        self._thread = thread
+
+    def step(self) -> None:
+        pass
+
+    @property
+    def is_healthy(self) -> bool:
+        return self._thread.is_alive()
+
+
 def run(parent_stop_signal: threading.Event | None = None) -> None:
     """Sidecar entrypoint. Serves the loopback auth-proxy until stopped."""
     base_url = _upstream_base_url()
@@ -186,12 +201,23 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
 
     thread = threading.Thread(target=server.run, name="auth-proxy-uvicorn", daemon=True)
     thread.start()
+
+    health_loop = Loop(
+        waiter=TimedLoopWaiter(sleep_secs=1.0, stop_signal=parent_stop_signal),
+        controller=_ServerThreadController(thread),
+        stop_signal=parent_stop_signal,
+    )
+    health_loop.name = "auth-proxy"
+    health_loop.start()
+    ControllerManager.get_instance().register(health_loop.name, health_loop)
+
     try:
         while not parent_stop_signal.is_set():
             parent_stop_signal.wait(timeout=1)
     finally:
         server.should_exit = True
         thread.join(timeout=10)
+        health_loop.join(timeout=5)
         logger.info("auth-proxy sidecar stopped")
 
 

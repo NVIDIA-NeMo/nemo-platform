@@ -25,7 +25,7 @@ from fastapi import FastAPI
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.service import NemoService
 from nmp.common.config import get_platform_config
-from nmp.common.controller import Controller, Loop, TimedLoopWaiter, TrackLastExecutionTime
+from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter, TrackLastExecutionTime
 from nmp.common.service import RouterConfig, Service
 from nmp.common.service.api.health import wait_for_service_ready
 
@@ -216,6 +216,7 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
             stop_signal=stop_signal,
         )
         loop.name = f"controller-plugin-{controller.name}"
+        ControllerManager.get_instance().register(loop.name, loop)
         loop.start()
         loop.join()
 
