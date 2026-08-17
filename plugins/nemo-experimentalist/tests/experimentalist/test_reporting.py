@@ -77,6 +77,23 @@ def test_candidate_evaluated_shows_all_objectives_and_direction_aware_deltas() -
     assert "tokens 80.000 ▲-20.000" in lines[1]
 
 
+def test_candidate_evaluated_explains_an_na_when_the_caller_knows_why() -> None:
+    # Without the reason, `n/a` reads as a score of nothing rather than a
+    # measurement that never happened, and the two lead to opposite actions.
+    r, sink = _reporter()
+    r.candidate_evaluated(
+        label="agent-0",
+        split="validation",
+        metrics={"tokens": 100.0},
+        objective_metrics=OBJECTIVES,
+        artifacts=Path("/exp/results/agent-0-validation"),
+        reason="no trial completed (2 failed: RewardFileNotFoundError), so 'success' is absent",
+    )
+    lines = sink.getvalue().splitlines()
+    assert "success n/a" in lines[0]
+    assert "RewardFileNotFoundError" in lines[1]
+
+
 def test_seed_baseline_sets_delta_reference_silently_for_resume() -> None:
     # On resume agent-0 is not re-evaluated; seed_baseline sets the delta
     # reference from its cached reward without emitting a line, so the first

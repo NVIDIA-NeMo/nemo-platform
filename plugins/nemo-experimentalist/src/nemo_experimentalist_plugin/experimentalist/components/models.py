@@ -10,10 +10,11 @@ analyzer, proposer, coder, and evaluator.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections import Counter
+from collections.abc import Callable, Iterable, Sequence
 from typing import Literal, TypeVar
 
-from nemo_experimentalist_plugin.entities import Candidate, MetricTarget
+from nemo_experimentalist_plugin.entities import Candidate, MetricTarget, TrialResult
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
@@ -334,3 +335,52 @@ def pareto_objectives(metrics: dict[str, float], objective_function: list[Metric
 def has_metric_dimensions(metrics: dict[str, float], targets: list[MetricTarget]) -> bool:
     """Return whether an evaluator result contains every required metric target."""
     return all(target.name in metrics for target in targets)
+
+
+def missing_objective_reason(
+    trials: Sequence[TrialResult],
+    metrics: dict[str, float | int],
+    targets: list[MetricTarget],
+) -> str | None:
+    """Explain why *metrics* omits a required target, or None when none is omitted.
+
+    An absent objective is indistinguishable from a measured one in every
+    downstream check: :func:`pareto_objectives` projects both an unmeasured and a
+    zero-scored candidate onto a dict, and only one of them is comparable. The
+    evidence for *which* happened lives in the trials, and by the time a caller
+    holds only the aggregate it is gone. This recovers it from the trials while
+    they are still in hand.
+
+    Deliberately free of any evaluator's vocabulary: it names the absent target
+    and the trial statuses behind it. A caller that knows which harness produced
+    the trials is the one that can point at a directory.
+
+    Args:
+        trials: Trials the aggregate was computed from.
+        metrics: The aggregate, as ``Evaluator.aggregate_results`` returned it.
+        targets: Metrics the run is scored against.
+
+    Returns:
+        str | None: A one-line explanation, or None when every target is present.
+    """
+    absent = [target.name for target in targets if target.name not in metrics]
+    if not absent:
+        return None
+
+    named = ", ".join(repr(name) for name in absent)
+    if not trials:
+        return f"the evaluator produced no trials, so {named} was never measured"
+
+    completed = [trial for trial in trials if trial.status == "completed"]
+    if not completed:
+        return f"no trial completed ({len(trials)} failed: {_trial_error_summary(trials)}), so {named} is absent"
+    return (
+        f"{len(completed)}/{len(trials)} trials completed but none reported {named}; "
+        "the verifier ran without emitting the metric"
+    )
+
+
+def _trial_error_summary(trials: Sequence[TrialResult]) -> str:
+    """Name the error types across *trials*, most frequent first."""
+    counts = Counter(str((trial.error or {}).get("type") or "unknown") for trial in trials)
+    return ", ".join(name if count == 1 else f"{name} ×{count}" for name, count in counts.most_common())
