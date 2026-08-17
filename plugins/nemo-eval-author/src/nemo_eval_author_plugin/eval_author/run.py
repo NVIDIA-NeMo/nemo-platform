@@ -19,6 +19,7 @@ from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_insights_plugin.entities import Insight
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.nooa_model_client import (
+    CompletionClientOptions,
     ConfiguredModelClients,
     ConfiguredModelRefs,
     activate_model_clients,
@@ -82,7 +83,14 @@ async def run_eval_author(
     client = make_client(base_url)
     model_clients: ConfiguredModelClients | None = None
     try:
-        model_clients = await resolve_model_clients(client, selected_model_refs)
+        model_clients = await resolve_model_clients(
+            client,
+            selected_model_refs,
+            CompletionClientOptions(
+                reasoning_effort=config.reasoning_effort,
+                completion_params=config.completion_params,
+            ),
+        )
         backend = make_experimentalist_backend(
             client=client,
             experiments_output=str(experiment_dir),

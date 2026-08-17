@@ -24,3 +24,4 @@ optimizer:
   eval_author:
     max_traces: 3
     max_validation_repair_attempts: 2
+    reasoning_effort: medium

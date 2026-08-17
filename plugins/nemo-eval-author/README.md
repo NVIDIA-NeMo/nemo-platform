@@ -56,6 +56,11 @@ For non-interactive and isolated environments, `NEMO_DEFAULT_MODEL` and
 `NEMO_FAST_MODEL` can override the stored selections. Values must still use
 `workspace/model-name` and refer to Model Entities on the target Platform.
 
+Completion options (not model IDs) live on `EvalAuthorConfig`:
+`reasoning_effort` defaults to `"medium"`, and `completion_params` can pass
+backend-specific kwargs. See
+[`eval_author/README.md`](src/nemo_eval_author_plugin/eval_author/README.md#evalauthorconfig-model-and-completion-options).
+
 A `nemo agents eval-author` CLI is registered under `nemo.cli.agents` and
 mounted by the agents plugin. Verb scaffolding is in place
 (`discover`, `audit`, `propose`, `run`, `doctor`); bodies are still

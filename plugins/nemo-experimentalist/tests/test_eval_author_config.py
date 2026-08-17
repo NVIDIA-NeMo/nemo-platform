@@ -13,6 +13,14 @@ def test_evolutionary_optimizer_uses_top_level_eval_author_config() -> None:
 
     assert type(config) is EvalAuthorConfig
     assert config.max_validation_repair_attempts == 5
+    assert config.reasoning_effort == "medium"
+    assert config.completion_params == {}
+
+
+def test_partial_eval_author_yaml_keeps_medium_reasoning_effort() -> None:
+    config = EvolutionaryOptimizerConfig.model_validate({"eval_author": {"max_traces": 5}})
+    assert config.eval_author.max_traces == 5
+    assert config.eval_author.reasoning_effort == "medium"
 
 
 def test_evolutionary_optimizer_tolerates_unknown_eval_author_config() -> None:

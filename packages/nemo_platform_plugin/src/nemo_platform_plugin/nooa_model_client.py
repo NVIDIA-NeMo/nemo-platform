@@ -9,10 +9,11 @@ and client lifetime behavior without making Nooa a required dependency of the
 public plugin contract.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.config import get_context
@@ -33,6 +34,20 @@ class ConfiguredModelRefs:
 
     default: str
     fast: str
+
+
+@dataclass(frozen=True)
+class CompletionClientOptions:
+    """Optional kwargs applied when building each run-scoped CompletionClient.
+
+    ``reasoning_effort`` is the OpenAI-shaped shortcut. When ``None``, the field
+    is omitted so the provider default applies. ``completion_params`` are spread
+    into ``CompletionClient`` for backend-specific knobs; an explicit
+    ``reasoning_effort`` wins over the same key inside ``completion_params``.
+    """
+
+    reasoning_effort: str | None = None
+    completion_params: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -84,10 +99,21 @@ def _parse_model_ref(model_ref: str) -> tuple[str, str]:
     return workspace, name
 
 
+def _client_option_kwargs(options: CompletionClientOptions | None) -> dict[str, Any]:
+    """Merge completion options: params first, then explicit reasoning_effort."""
+    if options is None:
+        return {}
+    kwargs: dict[str, Any] = dict(options.completion_params)
+    if options.reasoning_effort is not None:
+        kwargs["reasoning_effort"] = options.reasoning_effort
+    return kwargs
+
+
 def _completion_client(
     client: AsyncNeMoPlatform,
     model_entity: ModelEntity,
     served_model_name: str,
+    options: CompletionClientOptions | None = None,
 ) -> CompletionClient:
     """Build a Nooa client that routes through the Model Entity's Platform URL."""
     api_base = client.models.get_model_entity_route_openai_url(model_entity)
@@ -96,6 +122,7 @@ def _completion_client(
     # response bytes. Nooa needs decoded JSON/SSE, so make that requirement
     # explicit at this adapter boundary for every configured agent client.
     extra_headers[_ACCEPT_ENCODING_HEADER] = _IDENTITY_ENCODING
+    option_kwargs = _client_option_kwargs(options)
     # Backend format is the Platform-facing wire contract, not the upstream
     # provider identity. The LiteLLM prefix selects the adapter for that shape.
     if model_entity.backend_format == _OPENAI_FORMAT:
@@ -114,6 +141,7 @@ def _completion_client(
             # LiteLLM versions otherwise bridge GPT-5.4+ tool calls with any
             # reasoning_effort value (including "none") to /responses.
             _skip_responses_api_bridge=True,
+            **option_kwargs,
         )
     elif model_entity.backend_format == _ANTHROPIC_FORMAT:
         api_base = api_base.removesuffix("/v1")
@@ -131,6 +159,7 @@ def _completion_client(
         base_model=litellm_model,
         extra_headers=extra_headers,
         drop_params=True,
+        **option_kwargs,
     )
 
 
@@ -159,6 +188,7 @@ async def _served_model_name(
 async def resolve_model_clients(
     client: AsyncNeMoPlatform,
     refs: ConfiguredModelRefs | None = None,
+    options: CompletionClientOptions | None = None,
 ) -> ConfiguredModelClients:
     """Resolve configured Model Entities and construct each distinct client once."""
     selected = refs or configured_model_refs()
@@ -171,7 +201,7 @@ async def resolve_model_clients(
             workspace, name = _parse_model_ref(model_ref)
             entity = await client.models.retrieve(name, workspace=workspace)
             served_model_name = await _served_model_name(client, entity, provider_cache)
-            resolved[model_ref] = _completion_client(client, entity, served_model_name)
+            resolved[model_ref] = _completion_client(client, entity, served_model_name, options)
     except Exception as resolution_error:
         for model_client in resolved.values():
             try:

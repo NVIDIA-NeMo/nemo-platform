@@ -38,7 +38,34 @@ The preset includes the run inputs needed by `run_eval_author(...)`:
 - `task_template`: local or `fileset://` evaluator task template URI for production traces.
 - `experiment_dir`: local Eval Author working directory.
 - `workspace`, `base_url`, `mode`, and `evaluator_type`: platform and evaluator routing.
-- `eval_author.max_summary_tokens` and `eval_author.max_traces`: agent tuning parameters.
+- `eval_author.*`: agent tuning — see below.
+
+### `EvalAuthorConfig` (model and completion options)
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `max_summary_tokens` | `80000` | Token budget for the fast-model summarizer. |
+| `max_traces` | `10` | Insight `trace_refs` to analyze in depth. |
+| `max_validation_repair_attempts` | `5` | Repair attempts after Insight verifier validation fails. |
+| `reasoning_effort` | `"medium"` | OpenAI-shaped effort passed into `CompletionClient`. Set to `null` to omit the field (provider default). |
+| `completion_params` | `{}` | Extra kwargs forwarded to `CompletionClient` (non-OpenAI backends or other OpenAI knobs). An explicit `reasoning_effort` wins over the same key here. |
+
+Standalone `run_eval_author(...)` builds clients with these options. In
+Experimentalist Insight mode, the runner nested-resolves Author-scoped clients
+from the run config's `eval_author` block (same defaults), then restores the
+outer Experimentalist default/fast pair for the optimization loop.
+
+Example override in Experimentalist `--config` YAML:
+
+```yaml
+eval_author:
+  max_traces: 5
+  reasoning_effort: medium   # default; use null to omit
+  # completion_params:
+  #   thinking:
+  #     type: enabled
+  #     budget_tokens: 2048
+```
 
 ## Materialized Insight Suite
 

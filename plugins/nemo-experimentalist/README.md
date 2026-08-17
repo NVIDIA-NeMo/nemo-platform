@@ -78,6 +78,8 @@ single leader, so complementary strengths stay alive across rounds.
   analyze traces or host an Insight API.
 - [NeMo Eval Author](../nemo-eval-author/README.md) builds the
   Insight-specific evaluation suite, invoked automatically in Insight mode.
+  Authoring uses `eval_author` run settings (including `reasoning_effort`,
+  default `medium`); see the Eval Author README for the full config surface.
 - **Harbor** runs the task containers that score every candidate.
 - **NeMo Experiments** mirrors each run and its candidates as an experiment
   group, so the lineage is visible in Studio. Structure only — rewards and
@@ -171,7 +173,7 @@ win. "Required" below means required *when the profile does not supply it*.
 | `--train-dataset` | Local Harbor dataset or registry ref — the split candidates are proposed against. | Yes. |
 | `--validation-dataset` | The held-out split that selects the winner. | Yes. |
 | `--task-template` | Directory holding one Harbor task template (`task.toml` with placeholders); Eval Author fills a copy per failing trace. | Insight-driven mode only. |
-| `--config` | Run configuration: round and candidate limits plus `source`, `storage`, `goal_config`, `coder`, `analyzer`, `proposer`, `evaluator`, `eval_author`. Rejects a `models:` key. | No — defaults apply. |
+| `--config` | Run configuration: round and candidate limits plus `source`, `storage`, `goal_config`, `coder`, `analyzer`, `proposer`, `evaluator`, `eval_author` (Insight-mode Author tuning, including `reasoning_effort`, default `medium`). Rejects a `models:` key. | No — defaults apply. |
 | `--workspace` | NeMo workspace for traces and run metadata. | No — profile, else `default`. |
 | `--base-url` | URL of the running platform. | No — `NMP_BASE_URL`, else `http://localhost:8080`. |
 | `--experiment-dir` | Where `eval-and-optimize/` is written. Also `-o`, `--output`, `--experiments-output`. | No — see [Output](#output). |
@@ -285,7 +287,9 @@ Objectives are what candidates are Pareto-ranked on, with minimized metrics
 sign-inverted; regression metrics are deliberately kept out of that ranking. In
 an Insight-driven run, Eval Author's authored Insight metrics take over as the
 objective and your configured targets move to `regression_metrics`, so the
-Insight gets fixed without giving up what the run already cared about.
+Insight gets fixed without giving up what the run already cared about. Eval
+Author itself defaults to `reasoning_effort: medium` under `eval_author` in
+`--config`; set it to `null` to omit the field.
 
 The agent under test is configured separately, and none of the variables above
 reach it. What arrives in the evaluation container is whatever each Harbor task

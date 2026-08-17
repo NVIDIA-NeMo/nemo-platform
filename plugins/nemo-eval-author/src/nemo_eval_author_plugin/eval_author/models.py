@@ -3,7 +3,7 @@
 
 """Small boundary models for Eval Author."""
 
-from typing import Self
+from typing import Any, Self
 
 from nemo_experimentalist_plugin.entities import Dataset
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -64,6 +64,21 @@ class EvalAuthorConfig(BaseModel):
         ge=0,
         le=10,
         description="Max Eval Author repair attempts after mandatory Insight verifier validation fails.",
+    )
+    reasoning_effort: str | None = Field(
+        default="medium",
+        description=(
+            "OpenAI-shaped reasoning_effort passed to CompletionClient. "
+            "Default medium. Set to None to omit the field (provider default)."
+        ),
+    )
+    completion_params: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Extra kwargs forwarded to CompletionClient (for non-OpenAI backends or "
+            "additional OpenAI knobs). An explicit reasoning_effort wins over the "
+            "same key here."
+        ),
     )
 
 

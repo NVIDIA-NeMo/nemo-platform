@@ -214,7 +214,14 @@ class EvolutionaryOptimizerConfig(BaseModel):
         default_factory=dict,
         description="Config for the selected 'evaluation' component; its own model validates it.",
     )
-    eval_author: EvalAuthorConfig = Field(default_factory=EvalAuthorConfig)
+    eval_author: EvalAuthorConfig = Field(
+        default_factory=EvalAuthorConfig,
+        description=(
+            "Insight-mode Eval Author settings. Defaults match EvalAuthorConfig, including "
+            "reasoning_effort='medium' and empty completion_params. Override in run YAML under "
+            "eval_author; set reasoning_effort to null to omit the field (provider default)."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_metric_contract(self) -> Self:

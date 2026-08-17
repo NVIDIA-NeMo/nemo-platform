@@ -239,17 +239,41 @@ class ExperimentRunner:
             # Lazy: a run without an Insight never authors an eval suite, so it must not
             # fail to import when the Eval Author package is absent.
             from nemo_eval_author_plugin.eval_author.agent import EvalAuthor  # noqa: PLC0415
-
-            authored = await EvalAuthor(
-                experiment_dir=self._root, config=self._config.eval_author, reporter=self._reporter
-            ).run(
-                insight=insight,
-                agent_path=agent_dir,
-                task_template=dataset_factory.build_task_template(self._config.outcome_evaluator, template_ref),
-                train_dataset=datasets["train"],
-                validation_dataset=datasets["validation"],
-                client=self._backend.client,
+            from nemo_platform_plugin.nooa_model_client import (  # noqa: PLC0415
+                CompletionClientOptions,
+                activate_model_clients,
+                get_configured_model_refs,
+                resolve_model_clients,
             )
+
+            # Author gets its own clients so eval_author.reasoning_effort /
+            # completion_params apply without changing the outer Experimentalist pair.
+            author_clients = await resolve_model_clients(
+                self._backend.client,
+                get_configured_model_refs(),
+                CompletionClientOptions(
+                    reasoning_effort=self._config.eval_author.reasoning_effort,
+                    completion_params=self._config.eval_author.completion_params,
+                ),
+            )
+            try:
+                with activate_model_clients(author_clients):
+                    authored = await EvalAuthor(
+                        experiment_dir=self._root,
+                        config=self._config.eval_author,
+                        reporter=self._reporter,
+                    ).run(
+                        insight=insight,
+                        agent_path=agent_dir,
+                        task_template=dataset_factory.build_task_template(
+                            self._config.outcome_evaluator, template_ref
+                        ),
+                        train_dataset=datasets["train"],
+                        validation_dataset=datasets["validation"],
+                        client=self._backend.client,
+                    )
+            finally:
+                await author_clients.aclose()
             datasets["train"] = authored.train_dataset
             datasets["validation"] = authored.validation_dataset
 

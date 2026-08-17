@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from nemo_platform_plugin import nooa_model_client
 from nemo_platform_plugin.nooa_model_client import (
+    CompletionClientOptions,
     ConfiguredModelClients,
     ConfiguredModelRefs,
     activate_model_clients,
@@ -248,3 +249,110 @@ async def test_resolve_model_clients_closes_constructed_client_after_failure(mon
         )
 
     constructed.aclose.assert_awaited_once()
+
+
+def _openai_entity(name: str = "gpt-4-1") -> SimpleNamespace:
+    return SimpleNamespace(
+        workspace="default",
+        name=name,
+        backend_format="OPENAI_CHAT",
+        model_providers=[],
+        api_endpoint=None,
+    )
+
+
+async def test_resolve_model_clients_omits_reasoning_effort_by_default(monkeypatch):
+    client = MagicMock()
+    client.models.retrieve = AsyncMock(return_value=_openai_entity())
+    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-4-1/-/v1"
+    client.models.get_client_default_headers.return_value = {}
+    factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+
+    await resolve_model_clients(
+        client,
+        ConfiguredModelRefs(default="default/gpt-4-1", fast="default/gpt-4-1"),
+    )
+
+    assert "reasoning_effort" not in factory.call_args.kwargs
+
+
+async def test_resolve_model_clients_passes_reasoning_effort(monkeypatch):
+    client = MagicMock()
+    client.models.retrieve = AsyncMock(return_value=_openai_entity())
+    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-4-1/-/v1"
+    client.models.get_client_default_headers.return_value = {}
+    factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+
+    await resolve_model_clients(
+        client,
+        ConfiguredModelRefs(default="default/gpt-4-1", fast="default/gpt-4-1"),
+        CompletionClientOptions(reasoning_effort="medium"),
+    )
+
+    assert factory.call_args.kwargs["reasoning_effort"] == "medium"
+
+
+async def test_resolve_model_clients_forwards_completion_params(monkeypatch):
+    client = MagicMock()
+    client.models.retrieve = AsyncMock(return_value=_openai_entity())
+    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-4-1/-/v1"
+    client.models.get_client_default_headers.return_value = {}
+    factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+
+    await resolve_model_clients(
+        client,
+        ConfiguredModelRefs(default="default/gpt-4-1", fast="default/gpt-4-1"),
+        CompletionClientOptions(completion_params={"temperature": 0.0, "thinking": {"type": "enabled"}}),
+    )
+
+    assert factory.call_args.kwargs["temperature"] == 0.0
+    assert factory.call_args.kwargs["thinking"] == {"type": "enabled"}
+    assert "reasoning_effort" not in factory.call_args.kwargs
+
+
+async def test_resolve_model_clients_reasoning_effort_overrides_completion_params(monkeypatch):
+    client = MagicMock()
+    client.models.retrieve = AsyncMock(return_value=_openai_entity())
+    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/gpt-4-1/-/v1"
+    client.models.get_client_default_headers.return_value = {}
+    factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+
+    await resolve_model_clients(
+        client,
+        ConfiguredModelRefs(default="default/gpt-4-1", fast="default/gpt-4-1"),
+        CompletionClientOptions(
+            reasoning_effort="medium",
+            completion_params={"reasoning_effort": "minimal", "temperature": 0.2},
+        ),
+    )
+
+    assert factory.call_args.kwargs["reasoning_effort"] == "medium"
+    assert factory.call_args.kwargs["temperature"] == 0.2
+
+
+async def test_resolve_model_clients_applies_options_to_anthropic_clients(monkeypatch):
+    model_entity = SimpleNamespace(
+        workspace="default",
+        name="claude-sonnet-4",
+        backend_format="ANTHROPIC_MESSAGES",
+        model_providers=[],
+        api_endpoint=None,
+    )
+    client = MagicMock()
+    client.models.retrieve = AsyncMock(return_value=model_entity)
+    client.models.get_model_entity_route_openai_url.return_value = "http://platform/model/claude-sonnet-4/-/v1"
+    client.models.get_client_default_headers.return_value = {}
+    factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(nooa_model_client, "CompletionClient", factory)
+
+    await resolve_model_clients(
+        client,
+        ConfiguredModelRefs(default="default/claude-sonnet-4", fast="default/claude-sonnet-4"),
+        CompletionClientOptions(completion_params={"thinking": {"type": "enabled", "budget_tokens": 2048}}),
+    )
+
+    assert factory.call_args.kwargs["thinking"] == {"type": "enabled", "budget_tokens": 2048}

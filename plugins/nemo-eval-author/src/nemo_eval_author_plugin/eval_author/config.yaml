@@ -23,3 +23,5 @@ experiment_dir: tmp/eval_author
 eval_author:
   max_summary_tokens: 80000
   max_traces: 10
+  reasoning_effort: medium
+  # completion_params: {}
