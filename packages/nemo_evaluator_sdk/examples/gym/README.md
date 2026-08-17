@@ -95,10 +95,10 @@ The dataset handed to step 2 is not your source file. The runner **materializes*
 
 ### Logs
 
-Gym's subprocess output is streamed to files in the run's work directory — `gym_env.log` for `gym env start`, and `gym_eval.stdout.log` / `gym_eval.stderr.log` for the collection — and mirrored to the `nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime` logger at `DEBUG`. Startup and collection failures name the relevant files and inline the last lines. To watch Gym's output in your own terminal, turn that logger up:
+Gym's subprocess output is streamed to files in the run's work directory — `gym_env.log` for `gym env start`, and `gym_eval.stdout.log` / `gym_eval.stderr.log` for the collection — and mirrored to the `nemo_evaluator_sdk.agent_eval.runtimes.gym` logger at `DEBUG`. Startup and collection failures name the relevant files and inline the last lines. To watch Gym's output in your own terminal, turn that logger up:
 
 ```python
-logging.getLogger("nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime").setLevel(logging.DEBUG)
+logging.getLogger("nemo_evaluator_sdk.agent_eval.runtimes.gym").setLevel(logging.DEBUG)
 ```
 
 ## Notes & caveats

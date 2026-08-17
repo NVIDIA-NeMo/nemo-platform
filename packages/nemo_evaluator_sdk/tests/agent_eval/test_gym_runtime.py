@@ -19,32 +19,37 @@ from collections import Counter, deque
 from pathlib import Path
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
-    _LOG_TAIL_LINES,
-    NG_ROLLOUT_INDEX,
-    NG_TASK_INDEX,
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import (
     GymAgentTaskRunner,
     GymRewardMetric,
     GymRuntimeConfig,
-    _agent_never_ran,
-    _aggregate_metrics_path_for,
+    discover_gym_tasks,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import _flatten_overrides, _hydra_scalar, _selection_args
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import (
     _canonical_row_hash,
     _content_text,
-    _drain_pumps,
-    _ensure_fresh_output,
-    _flatten_overrides,
-    _gym_executable,
-    _hydra_scalar,
     _materialize_dataset,
+    _render_instruction,
+    _source_datasets,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.process import (
+    _LOG_TAIL_LINES,
+    _drain_pumps,
+    _gym_executable,
     _pending_servers,
     _pump_stream,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import NG_ROLLOUT_INDEX, NG_TASK_INDEX
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
+    _INPUT_TOKEN_KEYS,
+    _TOKEN_USAGE_KEYS,
+    _agent_never_ran,
+    _aggregate_metrics_path_for,
+    _ensure_fresh_output,
     _read_run_aggregations,
-    _render_instruction,
     _require_full_coverage,
-    _selection_args,
-    _source_datasets,
     _trials_from_rollouts,
-    discover_gym_tasks,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
@@ -492,7 +497,7 @@ async def test_pump_stream_writes_file_and_mirrors_to_logger(tmp_path: Path, cap
     stream.feed_eof()
     log_path = tmp_path / "gym_eval.stdout.log"
     tails: dict[str, deque] = {}
-    with caplog.at_level(logging.DEBUG, logger="nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime"):
+    with caplog.at_level(logging.DEBUG, logger="nemo_evaluator_sdk.agent_eval.runtimes.gym.process"):
         await _pump_stream(stream, log_path, label="gym eval", tails=tails, key="stdout")
     assert log_path.read_text(encoding="utf-8") == "first line\nsecond line\nno trailing newline"
     assert list(tails["stdout"]) == ["first line", "second line", "no trailing newline"]
@@ -774,11 +779,31 @@ def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_pat
     assert "++simple_agent.responses_api_agents.simple_agent.resources_server.name='other'" in selection
 
 
+@pytest.mark.parametrize(
+    "awkward",
+    [
+        pytest.param("run with spaces", id="spaces"),
+        pytest.param("run,with,commas", id="commas"),
+        pytest.param("run[1]", id="brackets"),
+    ],
+)
+def test_selection_quotes_a_work_dir_containing_hydra_grammar(tmp_path: Path, awkward: str) -> None:
+    # Raised by review on #1295. `hydra.run.dir` is a path, and Hydra's grammar reads `,` as a sweep
+    # separator and `[` as a list opener. Checked against Hydra's own parser: unquoted, `/tmp/a,b`
+    # comes back as a ChoiceSweep and `/tmp/x[1]` raises OverrideParseException. Quoting round-trips
+    # all three, so the value has to go through _hydra_scalar like every other override.
+    work_dir = tmp_path / awkward
+    arg = next(a for a in _selection_args(_config(), work_dir) if a.startswith("hydra.run.dir="))
+    value = arg.removeprefix("hydra.run.dir=")
+    assert value == _hydra_scalar(str(work_dir / "gym_hydra"))
+    assert value.startswith("'") and value.endswith("'")
+
+
 def test_selection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
     # Gym writes `outputs/<date>/<time>/` relative to cwd, and the subprocesses inherit ours so Gym
     # can find env.yaml — so without this every run litters the caller's directory.
     selection = _selection_args(_config(), tmp_path)
-    assert f"hydra.run.dir={tmp_path / 'gym_hydra'}" in selection
+    assert f"hydra.run.dir={_hydra_scalar(str(tmp_path / 'gym_hydra'))}" in selection
 
 
 def _stub_gym(tmp_path: Path, *, exit_code: int, message: str) -> str:
@@ -873,6 +898,35 @@ def _two_tasks_and_map(tmp_path: Path):
     return tasks, _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
 
 
+def test_token_usage_keys_match_the_openai_schemas_they_mirror() -> None:
+    """The keys are *wire-format* field names, cross-checked here against their source of truth.
+
+    Raised in review of #1295: could these come from Gym directly? No — this runtime never imports
+    `nemo_gym` (it shells out to the CLI, and nemo-platform excludes Ray by constraint), and the
+    names are not Gym's anyway. They are OpenAI's, and `openai` *is* a dependency here.
+
+    Deliberately a test rather than deriving the tuple at import time. What we match is the JSON a
+    Gym rollout record carries, which is stable regardless of how the `openai` package organises its
+    Python classes — importing `openai.types.responses.response_usage` into the runtime to obtain
+    five string literals would trade a stable thing for a fragile one, and break the whole runner if
+    that module ever moves. This way a genuinely new token field fails one test instead.
+    """
+    from openai.types.completion_usage import CompletionUsage
+    from openai.types.responses.response_usage import ResponseUsage
+
+    upstream = {field for field in CompletionUsage.model_fields if field.endswith("_tokens")} | {
+        field for field in ResponseUsage.model_fields if field.endswith("_tokens")
+    }
+    assert set(_TOKEN_USAGE_KEYS) == upstream, (
+        "the token-count keys have drifted from the OpenAI usage schemas they mirror; a field added "
+        "upstream means a real model call could be reported in a key this runtime does not read"
+    )
+    # The input-side subset is a semantic judgement neither schema encodes: these are the counts a
+    # call cannot avoid spending, because it always sends a prompt.
+    assert set(_INPUT_TOKEN_KEYS) < set(_TOKEN_USAGE_KEYS)
+    assert set(_INPUT_TOKEN_KEYS) == {"total_tokens", "input_tokens", "prompt_tokens"}
+
+
 def test_agent_never_ran_detects_the_empty_zero_token_rollout() -> None:
     assert _agent_never_ran({"response": _EMPTY_RESPONSE, "reward": 0.0}) is True
 
@@ -934,6 +988,24 @@ def test_agent_never_ran_is_false_without_usage_to_corroborate() -> None:
     assert _agent_never_ran({"response": "Lyon", "reward": 0.0}) is False
 
 
+def test_missing_results_file_names_the_logs_instead_of_raising_filenotfound(tmp_path: Path) -> None:
+    # Raised by review on #1295. `_ensure_fresh_output` deletes any stale file before the run and
+    # `_collect_rollouts` already raised on a non-zero exit, so an absent file here means Gym
+    # reported success and wrote nothing. Opening it regardless gives a bare FileNotFoundError
+    # naming a path the reader has no reason to recognise.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    missing = tmp_path / "rollouts.jsonl"
+    assert not missing.exists()
+
+    with pytest.raises(RuntimeError) as excinfo:
+        _trials_from_rollouts(missing, tasks, index_map)
+
+    message = str(excinfo.value)
+    assert "wrote no results" in message
+    assert "gym_eval.stdout.log" in message
+    assert "gym_env.log" in message
+
+
 def test_all_rollouts_empty_fails_the_run_instead_of_reporting_zeros(tmp_path: Path) -> None:
     # The legal_agent_bench case: "completed" trials scoring 0.0 that measured nothing at all.
     # Two attempts per task, so trial and task counts differ and the message has to state both —
@@ -966,6 +1038,27 @@ def test_all_rollouts_empty_fails_the_run_instead_of_reporting_zeros(tmp_path: P
     # filename and has to be quotable verbatim to be useful.
     prose = " ".join(word for word in message.split() if "/" not in word)
     assert "rollout" not in prose.lower()
+
+
+def test_an_unattributed_failure_prevents_the_all_empty_raise(tmp_path: Path) -> None:
+    # Raised in review of #1295: the guard covered unattributed *successes* but not unattributed
+    # *failures*. Both are invisible to len(trials) for the same reason — neither becomes a trial —
+    # and a failure record is a diagnosis in its own right (an OOM-killed agent here). Claiming
+    # "nothing was measured" while the environment recorded one is false.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "response": _EMPTY_RESPONSE, "reward": 0.0}) + "\n",
+        encoding="utf-8",
+    )
+    # No NG_TASK_INDEX, so it is counted but never attributed to a task.
+    (tmp_path / "rollouts_failures.jsonl").write_text(
+        json.dumps({"error": "agent OOM-killed mid-episode"}) + "\n", encoding="utf-8"
+    )
+
+    trials = _trials_from_rollouts(bundle, tasks, index_map)
+
+    assert [trial.status for trial in trials] == [AgentEvalTrialStatus.FAILED]
 
 
 def test_an_unattributed_rollout_prevents_the_all_empty_raise(tmp_path: Path) -> None:
@@ -1115,4 +1208,4 @@ async def test_collection_redirects_hydra_output_under_the_run_work_dir(tmp_path
     await runner._collect_rollouts(gym, tmp_path / "in.jsonl", tmp_path / "out.jsonl", tmp_path, {})
 
     argv = (tmp_path / "argv.txt").read_text().splitlines()
-    assert f"hydra.run.dir={tmp_path / 'gym_hydra'}" in argv
+    assert f"hydra.run.dir={_hydra_scalar(str(tmp_path / 'gym_hydra'))}" in argv

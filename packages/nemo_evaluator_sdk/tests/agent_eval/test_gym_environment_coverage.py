@@ -58,12 +58,8 @@ from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
-    GymAgentTaskRunner,
-    GymRuntimeConfig,
-    _flatten_overrides,
-    discover_gym_tasks,
-)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymAgentTaskRunner, GymRuntimeConfig, discover_gym_tasks
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import _flatten_overrides
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 
