@@ -11,6 +11,7 @@ canonical-shape contract that ``train_sft`` and ``compile`` consume.
 from __future__ import annotations
 
 import pytest
+from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
 from nmp.unsloth.schemas import (
     DatasetSpec,
     LoRAParams,
@@ -77,6 +78,23 @@ class TestSubShapesIndependently:
         sched = ScheduleSpec()
         assert sched.epochs == 1
         assert sched.max_steps is None
+
+    def test_the_reporting_budget_is_separate_from_the_hf_logging_cadence(self) -> None:
+        """`logging_steps` drives stdout and W&B; it is not the Jobs reporting knob.
+
+        Before the shared gate existed it accidentally was the only thing
+        throttling Jobs reports, so raising it from 1 gave proportionally fewer.
+        A user who wants verbose HF logs should not have to trade the training
+        curve for them, which is why these are two fields.
+        """
+        sched = ScheduleSpec()
+        assert sched.logging_steps == 1, "the finest resolution, for the gate to sample from"
+        assert sched.progress_reporting.max_points == DEFAULT_MAX_POINTS
+
+    def test_the_reporting_budget_is_settable_and_bounded(self) -> None:
+        assert ScheduleSpec(progress_reporting={"max_points": 25}).progress_reporting.max_points == 25
+        with pytest.raises(ValidationError):
+            ScheduleSpec(progress_reporting={"max_points": 0})
 
     def test_training_defaults(self) -> None:
         t = TrainingSpec()

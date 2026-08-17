@@ -1592,6 +1592,8 @@ components:
         seed:
           title: Seed
           type: integer
+        progress_reporting:
+          $ref: '#/components/schemas/ProgressReportingConfig'
       additionalProperties: false
       type: object
       title: AutomodelScheduleSpec
@@ -2045,6 +2047,23 @@ components:
       - created_at
       - updated_at
       title: PlatformJobTaskStatusResponse
+    ProgressReportingConfig:
+      properties:
+        max_points:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Max Points
+          description: 'Maximum points recorded on each metric curve, applied independently
+            to the training and validation curves. Lower values reduce reporting overhead
+            on long runs; higher values give a finer chart at proportionally more
+            cost, including a little more time spent reporting rather than training.
+            This can only thin what the training framework produces, never add to
+            it: a run that logs 40 times reports 40 points whatever this is set to.'
+          default: 200
+      type: object
+      title: ProgressReportingConfig
+      description: How much detail training progress is reported to the Jobs service
+        with.
     RlDPOTraining:
       properties:
         optimizer_type:
@@ -2118,6 +2137,8 @@ components:
             enabled so the final checkpoint carries validation metrics and best-checkpoint
             selection works; set False only to skip the extra eval.
           default: true
+        progress_reporting:
+          $ref: '#/components/schemas/ProgressReportingConfig'
         keep_top_k:
           type: integer
           exclusiveMinimum: 0.0
@@ -3237,6 +3258,8 @@ components:
           title: Eval Steps
           type: integer
           exclusiveMinimum: 0.0
+        progress_reporting:
+          $ref: '#/components/schemas/ProgressReportingConfig'
         seed:
           type: integer
           title: Seed

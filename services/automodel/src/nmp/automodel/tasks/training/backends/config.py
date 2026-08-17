@@ -236,6 +236,14 @@ def compile_automodel_config(
         "num_epochs": epochs,
     }
 
+    # Ours, not the recipe's -- underscore-prefixed like `_resolved_chat_template`
+    # below, which is the existing convention for a key that rides in the recipe
+    # config because the config file is the only channel to the training process.
+    # AutomodelRecipeWrapper reads it back off `recipe.cfg`.
+    cfg["_progress_reporting"] = {
+        "max_points": customizer_config.schedule.progress_reporting.max_points,
+    }
+
     val_every_steps = compute_val_check_interval(
         steps_per_epoch=steps_per_epoch,
         max_steps=max_steps,

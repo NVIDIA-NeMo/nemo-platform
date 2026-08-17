@@ -221,6 +221,7 @@ def _build_training_step_config(job_spec: RlJobOutput, *, trust_remote_code: boo
             val_check_interval=t.val_check_interval,
             val_at_end=t.val_at_end,
             keep_top_k=t.keep_top_k,
+            progress_reporting=t.progress_reporting,
         ),
         batch=TrainingStepConfig.BatchConfig(global_batch_size=t.batch_size, micro_batch_size=t.micro_batch_size),
         optimizer=TrainingStepConfig.OptimizerConfig(

@@ -125,18 +125,11 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar, cast
 
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
+from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
 
 logger = logging.getLogger(__name__)
 
-#: Points kept on each metric curve, applied independently to the training and
-#: validation paths. Roughly the number a chart a few hundred pixels wide can draw
-#: distinctly, and past which the extra points cost more than they show.
-#:
-#: It is also what bounds the cost, which is why it is a ceiling and not a target --
-#: see the payload note above. Per path, so a run making full use of both is bounded
-#: by twice this. What matters is that no path is unbounded; one uncapped path is
-#: enough to make the total quadratic.
-DEFAULT_MAX_POINTS = 200
+__all__ = ["DEFAULT_MAX_POINTS", "TrainingProgressCallback", "is_chartable"]
 
 #: The two reporting paths, which are also the series-name prefixes the phase
 #: supplies. Kept as constants because the gate keys on both meanings.

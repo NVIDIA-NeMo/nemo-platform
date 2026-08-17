@@ -74,6 +74,9 @@ class _RecordingCallback:
         self.order: list[str] = []
         self.closed = False
         self.closes = 0
+        #: The reporting budget the logger built us with, so the plumbing from the
+        #: job config down to the gate is assertable from this side.
+        self.max_points: int | None = None
 
     def report_training_start(self, max_steps: int, num_epochs: int) -> None:
         self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
@@ -95,8 +98,13 @@ class _RecordingCallback:
 def callback(monkeypatch: pytest.MonkeyPatch) -> _RecordingCallback:
     """Build a NemoRLLogger whose reporter/callback are inert local objects."""
     recorder = _RecordingCallback()
+
+    def _build(_reporter: Any, *, max_points: int | None = None) -> _RecordingCallback:
+        recorder.max_points = max_points
+        return recorder
+
     monkeypatch.setattr(nemo_rl_logger, "JobsServiceProgressReporter", lambda *a, **k: object())
-    monkeypatch.setattr(nemo_rl_logger, "TrainingProgressCallback", lambda _reporter: recorder)
+    monkeypatch.setattr(nemo_rl_logger, "TrainingProgressCallback", _build)
     return recorder
 
 
@@ -324,6 +332,24 @@ def test_for_schedule_builds_a_consistent_logger(callback: _RecordingCallback) -
     assert logger._steps_per_epoch == 25
     assert logger._max_steps == 100
     assert logger._num_epochs == 4
+
+
+def test_the_reporting_budget_reaches_the_callback(callback: _RecordingCallback) -> None:
+    """The job config's max_points has to survive the trip to the gate."""
+    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100, max_points=25)
+
+    assert callback.max_points == 25
+
+
+def test_a_config_without_a_reporting_budget_takes_the_shared_default(callback: _RecordingCallback) -> None:
+    """dpo_config carries max_points as an undeclared extra, so it can be absent.
+
+    A job compiled before the knob existed, or by anything that does not set it,
+    has to start rather than fail on a missing reporting field.
+    """
+    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
+
+    assert callback.max_points == nemo_rl_logger.DEFAULT_MAX_POINTS
 
 
 def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _RecordingCallback) -> None:

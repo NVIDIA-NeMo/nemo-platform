@@ -115,12 +115,14 @@ def main():
             max_steps=config.dpo.max_num_steps,
             num_epochs=config.dpo.max_num_epochs,
             val_period=config.dpo.val_period,
-            # An extra (undeclared) DPOConfig field, present only because the model
-            # allows extras -- dpo_config.py puts it there. Read with getattr, not
-            # attribute access: a config compiled elsewhere simply omits it, and
+            # Extra (undeclared) DPOConfig fields, present only because the model
+            # allows extras -- dpo_config.py puts them there. Read with getattr, not
+            # attribute access: a config compiled elsewhere simply omits them, and
             # pydantic raises AttributeError for a missing extra. None is what
-            # for_schedule's derive-from-the-schedule fallback takes.
+            # for_schedule's fallbacks take -- derive-from-the-schedule for
+            # steps_per_epoch, and the shared default for the reporting budget.
             steps_per_epoch=getattr(config.dpo, "steps_per_epoch", None),
+            max_points=getattr(config.dpo, "max_progress_points", None),
         )
         # The setup() logger is a composite with a `.loggers` list; guard in case
         # that internal shape changes.

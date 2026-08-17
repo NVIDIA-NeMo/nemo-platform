@@ -22,6 +22,7 @@ from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderReci
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback
+from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,22 @@ def strip_val_prefix(metrics: Mapping[str, Any]) -> dict[str, Any]:
     return stripped
 
 
+def _resolve_max_points(recipe: AutomodelRecipe) -> int:
+    """Points per metric curve, from the ``_progress_reporting`` block we compiled in.
+
+    Ours rather than the recipe's, which is why it is read defensively: the
+    recipe config is also loadable from a hand-written YAML, and a run whose
+    config predates this block should report at the shared default rather than
+    fail to start over a reporting knob.
+    """
+    block = getattr(recipe, "cfg", None)
+    block = block.get("_progress_reporting") if hasattr(block, "get") else None
+    max_points = block.get("max_points") if hasattr(block, "get") else None
+    if isinstance(max_points, int) and not isinstance(max_points, bool) and max_points > 0:
+        return max_points
+    return DEFAULT_MAX_POINTS
+
+
 class AutomodelRecipeWrapper:
     """Wraps an Automodel recipe with Jobs-service progress reporting."""
 
@@ -131,10 +148,10 @@ class AutomodelRecipeWrapper:
         self._recipe = recipe
         self._recipe.setup()
 
-        self.max_steps = getattr(self._recipe.step_scheduler, "max_steps", None) or 100
+        self.max_steps = self._recipe.step_scheduler.max_steps
         self.num_epochs = getattr(self._recipe.step_scheduler, "num_epochs", None) or 1
 
-        self.callback = TrainingProgressCallback(self._reporter)
+        self.callback = TrainingProgressCallback(self._reporter, max_points=_resolve_max_points(recipe))
         logger.info(f"Automodel recipe wrapper initialized: max_steps={self.max_steps}, num_epochs={self.num_epochs}")
 
         # Store original methods before patching

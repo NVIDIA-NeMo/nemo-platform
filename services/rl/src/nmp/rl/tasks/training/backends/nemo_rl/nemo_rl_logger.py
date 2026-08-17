@@ -14,6 +14,7 @@ from typing import Any, Mapping, Optional, Self
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback, is_chartable
+from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
 from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ class NemoRLLogger(LoggerInterface):
         job_ctx: NMPJobContext | None = None,
         max_steps: int | None = None,
         num_epochs: int | None = None,
+        max_points: int | None = None,
     ):
         """Initialize the NemoRL logger.
 
@@ -83,6 +85,9 @@ class NemoRLLogger(LoggerInterface):
             job_ctx: NeMo Platform job context for progress reporting (defaults to environment variables).
             max_steps: Total number of training steps (optional, used for progress reporting).
             num_epochs: Total number of epochs (optional, used for progress reporting).
+            max_points: Points kept on each metric curve. None takes the shared
+                default, which is what a config compiled before this knob existed
+                resolves to.
 
         Raises:
             ValueError: If ``steps_per_epoch`` is < 1. It divides in
@@ -98,7 +103,10 @@ class NemoRLLogger(LoggerInterface):
         self._num_epochs = num_epochs
         self._steps_per_epoch = steps_per_epoch
 
-        self._callback = TrainingProgressCallback(JobsServiceProgressReporter(self._job_ctx))
+        self._callback = TrainingProgressCallback(
+            JobsServiceProgressReporter(self._job_ctx),
+            max_points=DEFAULT_MAX_POINTS if max_points is None else max_points,
+        )
 
         self._closed = False
 
@@ -118,6 +126,7 @@ class NemoRLLogger(LoggerInterface):
         num_epochs: int | None,
         val_period: int | None = None,
         steps_per_epoch: int | None = None,
+        max_points: int | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
@@ -125,6 +134,8 @@ class NemoRLLogger(LoggerInterface):
         Args:
             steps_per_epoch: Authoritative value when the algorithm config carries
                 one (DPO does); otherwise derived from max_steps and num_epochs.
+            max_points: Points kept on each metric curve, from the job config.
+                None takes the shared default.
             val_period: Accepted and unused. It used to set the validation report
                 cadence, and before that the training one; both now follow from
                 run length in the shared callback. Kept in the signature so the
@@ -136,6 +147,7 @@ class NemoRLLogger(LoggerInterface):
             job_ctx=job_ctx,
             max_steps=max_steps,
             num_epochs=num_epochs,
+            max_points=max_points,
         )
 
     def log_metrics(

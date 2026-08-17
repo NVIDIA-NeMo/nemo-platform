@@ -12,6 +12,7 @@ from nmp.common.entities.constants import (
     MAX_LENGTH_255,
     REGEX_WORD_CHARACTER_DOT_DASH,
 )
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from pydantic import AfterValidator, BaseModel, ConfigDict, Discriminator, Field, model_validator
 
 # Important!!! Do not import Pydantic models from this file into tasks.
@@ -218,6 +219,7 @@ class _TrainingBase(BaseModel):
         default=None,
         description="Validation interval. Float <= 1.0 is fraction of epoch; > 1.0 is step count.",
     )
+    progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)
 
     # --- Batch ---
     batch_size: int = Field(

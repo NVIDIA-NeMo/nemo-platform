@@ -335,7 +335,7 @@ def train_sft(
 
     args = SFTConfig(**args_kwargs)
 
-    progress = progress_callback or _create_progress_callback()
+    progress = progress_callback or _create_progress_callback(spec.schedule.progress_reporting.max_points)
     from nmp.unsloth.tasks.training.backends.hf_trainer_callback import (
         create_hf_trainer_progress_callback,
     )
@@ -369,9 +369,12 @@ def train_sft(
     }
 
 
-def _create_progress_callback() -> TrainingProgressCallback:
+def _create_progress_callback(max_points: int) -> TrainingProgressCallback:
     """Build a Jobs-service progress callback from platform env vars."""
-    return TrainingProgressCallback(JobsServiceProgressReporter(NMPJobContext.from_env()))
+    return TrainingProgressCallback(
+        JobsServiceProgressReporter(NMPJobContext.from_env()),
+        max_points=max_points,
+    )
 
 
 TRAIN_FILE = "train.jsonl"
