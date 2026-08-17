@@ -260,11 +260,7 @@ fi
 
 add_nvidia_helm_repo
 helm repo update nvidia 2>/dev/null || true
-if grep -Eq '^[[:space:]]*dependencies:' "${HELM_CHART}/Chart.yaml"; then
-    helm dependency build "${HELM_CHART}"
-else
-    log_info "Skipping Helm dependency build; chart declares no dependencies"
-fi
+helm dependency build "${HELM_CHART}"
 
 if ! helm upgrade -i "${HELM_ARGS[@]}"; then
     log_error "Helm install/upgrade failed"

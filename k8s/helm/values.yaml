@@ -120,14 +120,16 @@ multinodeNetworking:
     # -- Number of RDMA devices (mlnxnics) to request per GPU
     rdmaDevicesPerGPU: 8
 
-# -- NetworkPolicy configuration. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup/helm/network-policy-smoke-test.
-# @default -- This object has the following default values for optional NetworkPolicy resources.
+# -- NetworkPolicy configuration. Enable the top-level switch to render all default policies, then disable individual policies only for cluster-specific exceptions. For a Calico-backed smoke test, see https://docs.nvidia.com/nemo-platform/documentation/self-managed-deployment/setup/helm/network-policy-smoke-test.
+# @default -- This object has the following default values. The top-level switch is disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
 networkPolicies:
+  # -- Create NetworkPolicy resources for enabled subpolicies.
+  enabled: false
   # -- NetworkPolicy configuration for the Platform API pods.
-  # @default -- This object has the following default values for API pod ingress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+  # @default -- This object has the following default values for API pod ingress isolation.
   api:
     # -- Create NetworkPolicy resources that isolate Platform API pod ingress.
-    enabled: false
+    enabled: true
     # -- Optional NetworkPolicy port for the Platform API. Empty uses api.service.port.
     port: ""
     # -- Allow pods from the same Helm release namespace that carry the chart selector labels to reach the Platform API pods.
@@ -147,10 +149,10 @@ networkPolicies:
     extraIngress: []
 
   # -- NetworkPolicy configuration for the core controller pods.
-  # @default -- This object has the following default values for core controller pod ingress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+  # @default -- This object has the following default values for core controller pod ingress isolation.
   controller:
     # -- Create NetworkPolicy resources that isolate core controller pod ingress.
-    enabled: false
+    enabled: true
     # -- Optional NetworkPolicy port for the core controller. Empty uses core.controller.service.port.
     port: ""
     # -- Allow pods from the same Helm release namespace that carry the chart selector labels to reach the core controller pods.
@@ -161,10 +163,10 @@ networkPolicies:
     extraIngress: []
 
   # -- NetworkPolicy configuration for pods created by the jobs controller.
-  # @default -- This object has the following default values for managed job pod egress isolation. Disabled by default so chart upgrades do not change cluster connectivity unless explicitly enabled.
+  # @default -- This object has the following default values for managed job pod egress isolation.
   jobs:
     # -- Create NetworkPolicy resources that isolate managed job pod egress.
-    enabled: false
+    enabled: true
     # -- Pod selector for managed job pods. The default matches Kubernetes/Volcano pods created by the jobs controller.
     podSelector:
       matchLabels:

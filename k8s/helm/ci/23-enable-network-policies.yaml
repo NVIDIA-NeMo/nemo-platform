@@ -1,8 +1,3 @@
 # CI validates by running: helm template nemo-platform . -f ci/23-enable-network-policies.yaml
 networkPolicies:
-  api:
-    enabled: true
-  controller:
-    enabled: true
-  jobs:
-    enabled: true
+  enabled: true

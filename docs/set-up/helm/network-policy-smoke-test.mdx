@@ -4,13 +4,15 @@ description: ""
 ---
 <a id="network-policy-smoke-test"></a>
 
-Use this how-to to verify the optional Helm `networkPolicies` values on a local
-Kind cluster with Calico enforcing Kubernetes NetworkPolicy resources.
+Use this how-to to verify the Helm `networkPolicies` values on a local Kind
+cluster with Calico enforcing Kubernetes NetworkPolicy resources and Chainsaw
+running the behavioral assertions.
 
 ## Prerequisites
 
 - A source checkout of `NVIDIA-NeMo/nemo-platform`
 - `docker`, `kind`, `kubectl`, and `helm` available on your workstation
+- A local `chainsaw` binary, or Docker access to `ghcr.io/kyverno/chainsaw:v0.2.3`
 - `NGC_API_KEY` with access to the NeMo Platform chart and container images
 - Permission to create and delete the local Kind cluster and Kubernetes namespaces
 
@@ -31,9 +33,9 @@ e2e/k8s/scripts/run_network_policy_e2e.sh
 ```
 
 The script creates or validates a Kind cluster, installs Calico as the enforcing
-CNI, installs the chart with `e2e/k8s/values/network-policies.yaml`, and runs
-in-cluster probes that verify allowed API/controller traffic and denied
-unlabelled or managed-job egress traffic.
+CNI, installs the chart with `e2e/k8s/values/network-policies.yaml`, and runs a
+Chainsaw test suite that creates probe pods to verify allowed API/controller
+traffic and denied unlabelled or managed-job egress traffic.
 
 </Tab>
 
@@ -64,6 +66,10 @@ for workspace in client.workspaces.list().data:
 
 Set `CALICO_IMAGE_REGISTRY` to override the Calico registry used by the Kind
 setup script. The default is `docker.io/calico`.
+
+Set `CHAINSAW_IMAGE` to override the Chainsaw container image used when a local
+`chainsaw` binary is not installed. The default is
+`ghcr.io/kyverno/chainsaw:v0.2.3`.
 
 When testing source changes, set `NMP_E2E_REGISTRY` and `NMP_E2E_TAG` to a
 branch-built `nmp-api` image. CI supplies these from the CPU smoke image build.

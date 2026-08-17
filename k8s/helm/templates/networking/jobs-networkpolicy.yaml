@@ -1,4 +1,4 @@
-{{- if .Values.networkPolicies.jobs.enabled }}
+{{- if and .Values.networkPolicies.enabled .Values.networkPolicies.jobs.enabled }}
 {{- $jobs := .Values.networkPolicies.jobs -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

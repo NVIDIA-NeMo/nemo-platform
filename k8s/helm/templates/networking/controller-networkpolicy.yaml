@@ -1,4 +1,4 @@
-{{- if and .Values.core.enabled .Values.networkPolicies.controller.enabled }}
+{{- if and .Values.core.enabled .Values.networkPolicies.enabled .Values.networkPolicies.controller.enabled }}
 {{- $controller := .Values.networkPolicies.controller -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

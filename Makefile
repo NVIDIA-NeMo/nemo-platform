@@ -620,8 +620,8 @@ test-e2e-kubernetes: ## Run e2e tests against Kubernetes (set NMP_E2E_CLUSTER_UR
 	$(UV) run --frozen pytest e2e --kubernetes -v -n 2 --junitxml=report-kubernetes.xml
 
 .PHONY: test-e2e-kubernetes-network-policies
-test-e2e-kubernetes-network-policies: ## Set up local kind with Calico and run the Helm NetworkPolicy smoke test
-	@echo "Running Kubernetes NetworkPolicy e2e smoke test..."
+test-e2e-kubernetes-network-policies: ## Set up local kind with Calico and run the Chainsaw NetworkPolicy smoke test
+	@echo "Running Chainsaw NetworkPolicy e2e smoke test..."
 	e2e/k8s/scripts/run_network_policy_e2e.sh
 
 .PHONY: test-e2e-kubernetes-auth
