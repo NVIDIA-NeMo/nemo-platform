@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
-import { getEntityNameError, toValidEntityName } from '@nemo/common/src/utils/entityName';
+import { sanitizeEntityName, toValidEntityName } from '@nemo/common/src/utils/entityName';
 import { FormField, TextInput } from '@nvidia/foundations-react-core';
 import { useEffect, useRef, useState, type FC } from 'react';
 import { useDebounce } from 'use-debounce';
@@ -32,7 +32,10 @@ export interface EntityNameFieldProps {
  * 1. Live "Your {entity} will be created as {value}" preview as the user types.
  * 2. Sanitizes (spaces → dashes, lowercased) for that preview only — never
  *    rewrites the field's actual value.
- * 3. Local format errors surface only after blur.
+ * 3. Local errors surface only after blur, and only when nothing valid can
+ *    be salvaged from the input (e.g. it's empty or pure symbols) — cosmetic
+ *    deviations (spaces, casing, stray characters) are silently fixed by the
+ *    same sanitization used for submission, so they are never form errors.
  * 4. When `checkAvailability` is provided, uniqueness is checked on every
  *    keystroke (debounced): "Checking name..." while in flight, then a
  *    conflict error surfaces immediately (not gated on blur).
@@ -76,7 +79,13 @@ export const EntityNameField: FC<EntityNameFieldProps> = ({
       });
   }, [checkAvailability, sanitized]);
 
-  const localError = touched ? getEntityNameError(value, label) : undefined;
+  const localError = !touched
+    ? undefined
+    : !value
+      ? `${label} is required.`
+      : sanitizeEntityName(value) === undefined
+        ? `${label} must contain at least one letter or number.`
+        : undefined;
 
   let slotHelp: string | undefined;
   let slotError: string | undefined;

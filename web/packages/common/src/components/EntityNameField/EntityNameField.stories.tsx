@@ -33,12 +33,25 @@ type Story = StoryObj<typeof EntityNameField>;
 /**
  * No uniqueness constraint. Type "Foo bar" or "MyProject" and watch the
  * description below the field update live, while the input itself keeps
- * exactly what you typed. Blur the field with an invalid character (e.g.
- * a leading digit) to see the error only appear after blur.
+ * exactly what you typed. Blur the field afterward — since the sanitized
+ * name is what actually gets submitted, cosmetic differences like these
+ * never turn into a form error.
  */
 export const Default: Story = {
   render: function DefaultStory() {
     const [value, setValue] = useState('');
+    return <EntityNameField entity="fileset" value={value} onChange={setValue} />;
+  },
+};
+
+/**
+ * Blur with input that sanitizes to nothing usable (e.g. only symbols) to
+ * see the one case that *does* error after blur — there's no valid name to
+ * submit.
+ */
+export const NothingValidToSubmit: Story = {
+  render: function NothingValidToSubmitStory() {
+    const [value, setValue] = useState('!!!');
     return <EntityNameField entity="fileset" value={value} onChange={setValue} />;
   },
 };

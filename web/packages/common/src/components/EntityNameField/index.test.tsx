@@ -39,18 +39,36 @@ describe('EntityNameField', () => {
     expect(screen.getByText('Your fileset will be created as myproject')).toBeInTheDocument();
   });
 
-  it('does not show a local validation error before blur, but does after', async () => {
+  it('does not show a local error after blur for a name that just needs sanitizing, since we submit the transformed name', async () => {
     const user = userEvent.setup();
     render(<Wrapper />);
 
     const input = screen.getByRole('textbox');
-    await user.type(input, '1a'); // invalid: must start with a lowercase letter
+    await user.type(input, '1a Bad Name!!');
+    await user.tab(); // blur
 
-    expect(screen.queryByText(/must start with a lowercase letter/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/is required|must contain at least one letter or number/i)
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Your fileset will be created as a-bad-name')).toBeInTheDocument();
+  });
+
+  it('shows a local error only after blur when nothing valid survives sanitization', async () => {
+    const user = userEvent.setup();
+    render(<Wrapper />);
+
+    const input = screen.getByRole('textbox');
+    await user.type(input, '!!!'); // sanitizes to nothing usable
+
+    expect(
+      screen.queryByText(/must contain at least one letter or number/i)
+    ).not.toBeInTheDocument();
 
     await user.tab(); // blur
 
-    expect(await screen.findByText(/must start with a lowercase letter/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/must contain at least one letter or number/i)
+    ).toBeInTheDocument();
   });
 
   it('checks availability on keystroke and shows "Checking name..." while in flight', async () => {

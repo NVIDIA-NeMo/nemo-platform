@@ -36,13 +36,18 @@ uniqueness check — reuse the pattern below.
    The field's actual value is whatever the user typed; the sanitized string
    is what gets submitted and is what the "will be created as" copy shows.
 
-3. **No error state before blur.** Don't set `status="error"` /
-   `slotError` while the field has focus, even if the current value is
-   currently invalid — the live "will be created as" preview already tells
-   the user what will happen. Validate and surface `slotError` (from
-   `getEntityNameError` / your `zodResolver`) only `onBlur` (react-hook-form:
-   `mode: 'onBlur'`, or check `fieldState.isTouched` before rendering
-   `slotError`).
+3. **No error state before blur — and even after blur, only for
+   unsalvageable input.** The submitted value is always the *sanitized*
+   name, not the literal typed value, so a cosmetic deviation (spaces,
+   casing, a stray invalid character) is never a form error — it's exactly
+   what the "will be created as" preview already resolves for the user.
+   Don't set `status="error"` / `slotError` while the field has focus.
+   `onBlur` (react-hook-form: check `fieldState.isTouched`), surface
+   `slotError` **only** when `sanitizeEntityName(value)` returns
+   `undefined` — i.e. nothing valid survives sanitization (empty input, or
+   input that is pure symbols/too short once invalid characters are
+   stripped). In every other case, blur shows the same "will be created as"
+   `slotHelp` as while typing.
 
 4. **Uniqueness check runs on every keystroke, not just blur.** For entities
    whose name must be unique, debounce the typed value (`use-debounce`,
@@ -65,7 +70,7 @@ Evaluate in this order — the first match wins:
 | --- | --- | --- |
 | Uniqueness query in flight | `slotHelp`: "Checking name..." | none |
 | Uniqueness query resolved: conflict found | `slotError`: "An {entity} named {value} already exists" | `error` |
-| Field touched (blurred) and locally invalid (`getEntityNameError`) | `slotError`: rule message from `entityName.ts` | `error` |
+| Field touched (blurred) and `sanitizeEntityName(value)` is `undefined` (nothing salvageable) | `slotError`: "{label} is required." / "{label} must contain at least one letter or number." | `error` |
 | Otherwise | `slotHelp`: "Your {entity} will be created as {value}" | none |
 
 ## Example
@@ -80,7 +85,13 @@ const { data: conflict, isFetching: isChecking } = useCheckNameAvailability(sani
   enabled: sanitized.length > 0,
 });
 
-const localError = touched ? getEntityNameError(name, 'Name') : undefined;
+const localError = !touched
+  ? undefined
+  : !name
+    ? 'Name is required.'
+    : sanitizeEntityName(name) === undefined
+      ? 'Name must contain at least one letter or number.'
+      : undefined;
 
 const slotHelp = isChecking
   ? 'Checking name...'
@@ -110,8 +121,11 @@ const slotError = conflict
 - **Do** leave the input's literal value untouched while typing. **Don't**
   rewrite `field.value` to the sanitized string as the user types — that
   fights cursor position and hides what they actually typed.
-- **Do** gate local validation errors on `isTouched`/`onBlur`. **Don't** gate
-  the uniqueness-conflict error on blur — surface it as soon as the debounced
-  query resolves.
+- **Do** gate local validation errors on `isTouched`/`onBlur`, and only for
+  input `sanitizeEntityName` can't salvage. **Don't** surface
+  `getEntityNameError`'s cosmetic messages ("must be lowercase", "cannot
+  contain spaces") as blur errors — those are auto-fixed at submit, not
+  user mistakes. **Don't** gate the uniqueness-conflict error on blur —
+  surface it as soon as the debounced query resolves.
 - **Do** debounce the uniqueness query (`use-debounce`). **Don't** fire a
   request on every raw keystroke.
