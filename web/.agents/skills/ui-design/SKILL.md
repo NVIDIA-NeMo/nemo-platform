@@ -15,3 +15,4 @@ markup — reuse the shared pattern rather than hand-rolling a new one.
 | If you are building / changing...                     | Read                         |
 | ----------------------------------------------------- | ---------------------------- |
 | An empty state (no items, no results, failed to load) | `references/empty-states.md` |
+| Naming an entity (create/rename forms)                 | `references/entity-naming.md` |
