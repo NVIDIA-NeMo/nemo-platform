@@ -7,8 +7,13 @@ The metric dicts here mirror what NeMo-RL actually hands the logger, including t
 non-scalar entries (``Histogram`` objects, tables, nested dicts) that share the dict
 with the numbers, so they are exercised rather than sanitised away.
 
-The logger forwards the dict whole and decides only *whether* and *when* to report:
-which entries survive is the shared callback's business, covered by its own suite.
+The logger is an adapter and nothing else: it decides *whether* a call is a report
+and what to call the metrics in it. Which entries survive, and *when* a report is
+admitted, are both the shared callback's business -- see
+``packages/nmp_customization_common/tests/training/test_callbacks.py``, which is
+where this file's throttle and flush coverage moved when the cadence stopped being
+implemented here. The stub below cannot observe a throttle by construction, which
+is the point: there is no longer one to observe on this side.
 """
 
 from __future__ import annotations
@@ -49,11 +54,8 @@ if importlib.util.find_spec("nemo_rl") is None:  # pragma: no cover - env depend
 
 from nmp.rl.tasks.training.backends.nemo_rl import nemo_rl_logger  # noqa: E402
 from nmp.rl.tasks.training.backends.nemo_rl.nemo_rl_logger import (  # noqa: E402
-    _MAX_REPORTS_PER_RUN,
     NemoRLLogger,
-    resolve_log_interval,
     resolve_steps_per_epoch,
-    resolve_val_report_interval,
 )
 
 for _name in _stubbed:
@@ -71,6 +73,7 @@ class _RecordingCallback:
         #: step of the last one it saw, so the sequence is part of the contract.
         self.order: list[str] = []
         self.closed = False
+        self.closes = 0
 
     def report_training_start(self, max_steps: int, num_epochs: int) -> None:
         self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
@@ -85,6 +88,7 @@ class _RecordingCallback:
 
     def close(self) -> None:
         self.closed = True
+        self.closes += 1
 
 
 @pytest.fixture
@@ -97,7 +101,7 @@ def callback(monkeypatch: pytest.MonkeyPatch) -> _RecordingCallback:
 
 
 def _make_logger(**kwargs: Any) -> NemoRLLogger:
-    params: dict[str, Any] = {"steps_per_epoch": 10, "log_interval": 1}
+    params: dict[str, Any] = {"steps_per_epoch": 10}
     params.update(kwargs)
     return NemoRLLogger(**params)
 
@@ -107,7 +111,7 @@ def _driver_steps(max_steps: int) -> range:
 
     dpo.py logs `total_steps + 1` with total_steps 0-based and incremented after
     the log, so an N-step run emits 1..N -- not 0..N-1. Tests that use range(N)
-    directly would validate the throttle against a convention no caller uses.
+    directly would validate against a convention no caller uses.
     """
     return range(1, max_steps + 1)
 
@@ -226,121 +230,53 @@ def test_every_train_scalar_is_forwarded(callback: _RecordingCallback) -> None:
     assert reported["global_valid_toks"] == 1024.0
 
 
-def test_log_interval_throttles_train_reports(callback: _RecordingCallback) -> None:
-    logger = _make_logger(log_interval=5)
-    for step in _driver_steps(10):
-        logger.log_metrics(TRAIN_METRICS, step=step, prefix="train")
-
-    assert [r["step"] for r in callback.train_steps] == [5, 10]
-
-
 # --------------------------------------------------------------------------- #
-# Final-step flush
+# Teardown reaches the callback, whichever name NeMo-RL calls
 # --------------------------------------------------------------------------- #
 
 
-def test_close_flushes_the_withheld_final_step(callback: _RecordingCallback) -> None:
-    """When max_steps is not a multiple of log_interval the last step is throttled out.
-
-    Without a flush the run's last recorded loss is stale — for 23 steps at an
-    interval of 10 it would be step 20's, and steps 21-23 would never be seen.
-    """
-    logger = _make_logger(log_interval=10)
-    for step in _driver_steps(23):
-        logger.log_metrics(TRAIN_METRICS, step=step, prefix="train")
-
-    assert [r["step"] for r in callback.train_steps] == [10, 20]
-
-    logger.close()
-
-    assert [r["step"] for r in callback.train_steps] == [10, 20, 23]
-
-
-def test_close_does_not_duplicate_an_already_reported_step(callback: _RecordingCallback) -> None:
-    logger = _make_logger(log_interval=10)
-    for step in _driver_steps(20):
-        logger.log_metrics(TRAIN_METRICS, step=step, prefix="train")
-
-    logger.close()
-
-    assert [r["step"] for r in callback.train_steps] == [10, 20]
-
-
-def test_flushed_step_carries_the_full_metric_payload(callback: _RecordingCallback) -> None:
-    logger = _make_logger(log_interval=10)
-    logger.log_metrics(TRAIN_METRICS, step=1, prefix="train")
-    logger.close()
-
-    flushed = callback.train_steps[-1]
-    assert flushed["step"] == 1
-    assert flushed["metrics"]["loss"] == 0.5
-    assert flushed["metrics"]["preference_loss"] == 0.42
-
-
-def test_double_close_flushes_once(callback: _RecordingCallback) -> None:
-    logger = _make_logger(log_interval=10)
-    logger.log_metrics(TRAIN_METRICS, step=1, prefix="train")
-
-    logger.close()
-    logger.close()
-
-    assert len(callback.train_steps) == 1
-
-
-def test_finish_flushes_like_close(callback: _RecordingCallback) -> None:
+def test_finish_closes_like_close(callback: _RecordingCallback) -> None:
     """`finish` is the name NeMo-RL's composite Logger actually dispatches.
 
     nemo_rl.utils.logger.Logger has no close(); its teardown fan-out is
     `getattr(logger, "finish", None)`. Without this alias the composite skips us
-    entirely and the withheld final step is never flushed.
+    entirely, the callback is never closed, and the step its gate withheld is
+    never flushed. The flush itself is the callback's now -- what has to hold
+    here is only that teardown reaches it.
     """
-    logger = _make_logger(log_interval=10)
+    logger = _make_logger()
     logger.log_metrics(TRAIN_METRICS, step=1, prefix="train")
 
     logger.finish()
 
-    assert [r["step"] for r in callback.train_steps] == [1]
     assert callback.closed
 
 
 def test_finish_is_reachable_through_the_composite_dispatch(callback: _RecordingCallback) -> None:
     """Mirrors Logger.finish()'s exact lookup, so a rename here fails loudly."""
-    logger = _make_logger(log_interval=10)
-    logger.log_metrics(TRAIN_METRICS, step=1, prefix="train")
+    logger = _make_logger()
 
     finish = getattr(logger, "finish", None)
     assert callable(finish)
     finish()
 
-    assert [r["step"] for r in callback.train_steps] == [1]
+    assert callback.closed
 
 
-def test_finish_then_close_flushes_once(callback: _RecordingCallback) -> None:
-    """Both the composite and the driver may call in; the step reports once."""
-    logger = _make_logger(log_interval=10)
+def test_finish_then_close_closes_once(callback: _RecordingCallback) -> None:
+    """Both the composite and the driver may call in; teardown runs once.
+
+    The callback's close() is idempotent as well, so this is belt and braces --
+    but a second close here would also mean a second flush there, and the pending
+    report would land twice.
+    """
+    logger = _make_logger()
     logger.log_metrics(TRAIN_METRICS, step=1, prefix="train")
 
     logger.finish()
     logger.close()
 
-    assert len(callback.train_steps) == 1
-
-
-def test_close_with_nothing_pending_reports_nothing(callback: _RecordingCallback) -> None:
-    _make_logger().close()
-
-    assert callback.train_steps == []
-
-
-def test_close_still_flushes_a_step_ahead_of_the_last_validation(callback: _RecordingCallback) -> None:
-    """The ordinary interleaving: nothing overtook it, so the flush still runs."""
-    logger = _make_logger(log_interval=10)
-    logger.log_metrics({"loss": 0.4}, step=13, prefix="validation")
-    logger.log_metrics(TRAIN_METRICS, step=14, prefix="train")
-
-    logger.close()
-
-    assert [r["step"] for r in callback.train_steps] == [14]
+    assert callback.closes == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -348,52 +284,22 @@ def test_close_still_flushes_a_step_ahead_of_the_last_validation(callback: _Reco
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(
-    "max_steps,expected",
-    [
-        (0, 1),  # degenerate, but the clamp keeps it a usable modulus
-        (1, 1),
-        (200, 1),  # a run no longer than the budget reports every step
-        (313, 2),  # 157 reports, not 313
-        (2_000, 10),
-        (20_000, 100),
-        (20_001, 101),  # ceiling division: never rounds down past the budget
-    ],
-)
-def test_resolve_log_interval(max_steps: int, expected: int) -> None:
-    assert resolve_log_interval(max_steps) == expected
-
-
 @pytest.mark.parametrize("val_period", [None, 0, 1, 5, 100, 20_000])
-def test_the_train_cadence_does_not_move_with_the_validation_cadence(
+def test_the_schedule_no_longer_reads_the_validation_cadence(
     callback: _RecordingCallback, val_period: int | None
 ) -> None:
     """How often a run validates says nothing about how often it should report.
 
     The two were coupled, and the coupling ran the wrong way: validating less
     often -- what you do when validation is expensive -- made the training curve
-    coarser. Run length is the only thing that sets the train cadence now.
+    coarser. That term is gone, and then the whole cadence moved to the shared
+    callback; `val_period` survives only as an accepted-and-ignored argument, so
+    what is pinned here is that no configuration of it changes the logger built.
     """
     logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=val_period)
 
-    assert logger._log_interval == 100
-
-
-def test_a_long_run_on_the_default_cadence_draws_a_usable_curve(callback: _RecordingCallback) -> None:
-    """The regression the val_period term caused, at the scale where it mattered.
-
-    `compute_val_check_interval` returns steps_per_epoch when the user sets no
-    `val_check_interval`, so a one-epoch run reached here with
-    `val_period == max_steps`. Targeting ~10 reports per validation period then
-    drew this whole curve from ten points, and moved the progress bar ten times,
-    however long the run was.
-    """
-    max_steps = 20_000
-    logger = NemoRLLogger.for_schedule(max_steps=max_steps, num_epochs=1, val_period=max_steps)
-    for step in _driver_steps(max_steps):
-        logger.log_metrics(TRAIN_METRICS, step=step, prefix="train")
-
-    assert len(callback.train_steps) == _MAX_REPORTS_PER_RUN
+    assert logger._max_steps == 20_000
+    assert logger._steps_per_epoch == 20_000
 
 
 @pytest.mark.parametrize(
@@ -412,16 +318,26 @@ def test_resolve_steps_per_epoch(max_steps: int, num_epochs: int | None, explici
 
 
 def test_for_schedule_builds_a_consistent_logger(callback: _RecordingCallback) -> None:
-    """A 100-step run is shorter than the report budget, so every step reports.
-
-    DPO's own formula produced 11 here -- one report for the whole run, from a
-    `+1` that was a divide-by-zero guard and skewed every value it produced.
-    """
+    """The schedule the logger still owns: epoch derivation and the run length."""
     logger = NemoRLLogger.for_schedule(max_steps=100, num_epochs=4, val_period=100)
 
-    assert logger._log_interval == 1
     assert logger._steps_per_epoch == 25
     assert logger._max_steps == 100
+    assert logger._num_epochs == 4
+
+
+def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _RecordingCallback) -> None:
+    """The cadence is set from `report_training_start`, so it has to state the run.
+
+    The logger no longer throttles, which makes this its whole remaining
+    contribution to the cadence: forward `max_steps` before the first metric
+    report. NeMo-RL calls `log_hyperparams` on the composite exactly once, before
+    the loop.
+    """
+    logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=2, val_period=100)
+    logger.log_hyperparams({})
+
+    assert callback.training_starts == [{"max_steps": 20_000, "num_epochs": 2}]
 
 
 # --------------------------------------------------------------------------- #
@@ -548,75 +464,20 @@ def test_a_dataset_keeps_the_namespace_it_started_in(callback: _RecordingCallbac
     ]
 
 
-# --------------------------------------------------------------------------- #
-# Validation reporting is bounded too
-# --------------------------------------------------------------------------- #
+def test_every_validation_pass_reaches_the_callback(callback: _RecordingCallback) -> None:
+    """The logger forwards every pass; thinning them is the callback's decision.
 
-
-@pytest.mark.parametrize(
-    "val_period,max_steps,expected",
-    [
-        (100, 100, 1),  # 1 pass
-        (100, 20_000, 1),  # 200 passes -- exactly the cap, still every pass
-        (1, 20_000, 100),  # 20,000 passes -- thinned to 200
-        (5, 20_000, 20),
-        (None, 20_000, 100),  # treated as "every step"
-        (0, 0, 1),
-    ],
-)
-def test_resolve_val_report_interval(val_period: int | None, max_steps: int, expected: int) -> None:
-    assert resolve_val_report_interval(val_period, max_steps) == expected
-
-
-def test_the_run_length_cap_bounds_validation_reports_too(callback: _RecordingCallback) -> None:
-    """Capping only the train side bounded nothing.
-
-    `val_check_interval=1` is reachable, and it validates on every step: the
-    train reports were held to 200 while validation reported all 20,000, each
-    one resending every accumulated series in full.
+    This used to be counted here, against a per-run budget, and the counter was
+    wrong in a way the move fixes: it counted *reports*, and `validate()` logs
+    once per dataloader at a single step, so N dataloaders advanced it N times
+    per pass and could split one pass across the admit/hold boundary. The gate
+    keys on the distinct step instead.
     """
-    max_steps = 20_000
-    logger = NemoRLLogger.for_schedule(max_steps=max_steps, num_epochs=1, val_period=1)
-    for step in _driver_steps(max_steps):
+    logger = NemoRLLogger.for_schedule(max_steps=1_000, num_epochs=1, val_period=1)
+    for step in _driver_steps(1_000):
         logger.log_metrics({"loss": 0.5}, step=step, prefix="validation")
 
-    assert len(callback.validations) <= _MAX_REPORTS_PER_RUN
-    assert len(callback.validations) >= _MAX_REPORTS_PER_RUN // 2, "still a usable curve"
-
-
-def test_an_ordinary_validation_cadence_reports_every_pass(callback: _RecordingCallback) -> None:
-    """Nothing in the existing regime moves: 200 passes is already the cap."""
-    logger = NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
-    for step in range(100, 20_001, 100):
-        logger.log_metrics({"loss": 0.5}, step=step, prefix="validation")
-
-    assert len(callback.validations) == 200
-
-
-def test_close_flushes_the_withheld_final_validation(callback: _RecordingCallback) -> None:
-    """The last pass is the one worth having; the throttle must not eat it."""
-    logger = _make_logger(val_report_interval=10)
-    for step in (10, 20, 30):
-        logger.log_metrics({"loss": 0.5}, step=step, prefix="validation")
-
-    assert callback.validations == []
-
-    logger.close()
-
-    assert [v["step"] for v in callback.validations] == [30]
-
-
-def test_pending_reports_flush_in_step_order(callback: _RecordingCallback) -> None:
-    """Both go to a callback that reads a report behind the last one as a rewind."""
-    logger = _make_logger(log_interval=100, val_report_interval=100)
-    logger.log_metrics(TRAIN_METRICS, step=18, prefix="train")
-    logger.log_metrics({"loss": 0.5}, step=19, prefix="validation")
-
-    logger.close()
-
-    assert [r["step"] for r in callback.train_steps] == [18]
-    assert [v["step"] for v in callback.validations] == [19]
-    assert callback.order == ["train", "validation"]
+    assert [v["step"] for v in callback.validations] == list(_driver_steps(1_000))
 
 
 @pytest.mark.parametrize("prefix", ["validation", "validation-0", "validation/nemo_gym"])

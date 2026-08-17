@@ -54,9 +54,17 @@ def reporter() -> _RecordingReporter:
     return _RecordingReporter()
 
 
-def _make_callback(reporter: _RecordingReporter) -> TrainingProgressCallback:
+def _make_callback(reporter: _RecordingReporter, **kwargs: Any) -> TrainingProgressCallback:
     """Build the callback over a duck-typed reporter, narrowing the type once here."""
-    return TrainingProgressCallback(cast(JobsServiceProgressReporter, reporter))
+    return TrainingProgressCallback(cast(JobsServiceProgressReporter, reporter), **kwargs)
+
+
+def _train_steps(reporter: _RecordingReporter) -> list[int]:
+    return [r["step"] for r in reporter.reports if r["phase"] == "training" and "step" in r]
+
+
+def _val_steps(reporter: _RecordingReporter) -> list[int]:
+    return [r["step"] for r in reporter.reports if r["phase"] == "validation"]
 
 
 # --------------------------------------------------------------------------- #
@@ -585,3 +593,524 @@ def test_close_delegates_to_the_reporter(reporter: _RecordingReporter) -> None:
     _make_callback(reporter).close()
 
     assert reporter.closed
+
+
+# --------------------------------------------------------------------------- #
+# The reporting cadence
+#
+# Moved here from services/rl/tests/test_nemo_rl_logger.py, which is where this
+# was implemented for one backend while the other two reported every step. The
+# invariants are that backend's; the coverage is now everyone's.
+# --------------------------------------------------------------------------- #
+
+
+def test_the_cadence_follows_the_run_length(reporter: _RecordingReporter) -> None:
+    """One input, and it is not the validation cadence.
+
+    How often someone wants the curve and the progress bar to move is unrelated
+    to how often the run validates. The two were coupled once, and the coupling
+    ran backwards: validating less often -- what you do when validation is
+    expensive -- made the training curve coarser.
+    """
+    callback = _make_callback(reporter, max_points=10)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+    for step in range(1, 101):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 11, 21, 31, 41, 51, 61, 71, 81, 91]
+
+
+def test_a_long_run_draws_a_usable_curve_and_no_more(reporter: _RecordingReporter) -> None:
+    """The point of the whole exercise, at the scale where it matters.
+
+    20,000 steps used to mean 20,000 reports for two of the three backends, each
+    resending every accumulated series in full and each one blocking the training
+    loop for longer than the last.
+    """
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=20_000, num_epochs=1)
+    for step in range(1, 20_001):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    reported = _train_steps(reporter)
+    assert len(reported) == 200
+    assert len(reporter.reports[-1]["metrics"]["train_loss"]) == 200
+
+
+def test_a_run_shorter_than_the_budget_reports_every_step(reporter: _RecordingReporter) -> None:
+    """Nothing is thinned that did not need thinning."""
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=50, num_epochs=1)
+    for step in range(1, 51):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == list(range(1, 51))
+
+
+def test_the_first_arrival_is_always_admitted(reporter: _RecordingReporter) -> None:
+    """A curve should start at the beginning of the run, not one interval into it."""
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1]
+
+
+def test_reporting_before_the_schedule_is_stated_is_not_withheld(reporter: _RecordingReporter) -> None:
+    """A backend that never states a run length reports everything, not nothing.
+
+    The interval is unknown until report_training_start, and the safe reading of
+    an unknown run length is that it is short. Getting this backwards would mean
+    a backend that forgot to announce its schedule reported once and then went
+    silent, which is indistinguishable from a hung run.
+    """
+    callback = _make_callback(reporter, max_points=200)
+    for step in range(1, 6):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 2, 3, 4, 5]
+
+
+def test_an_unstated_run_length_is_still_bounded(reporter: _RecordingReporter) -> None:
+    """Admitting everything is the *starting* position, not the standing one.
+
+    With no schedule to seed an interval from, decimation is the only thing
+    holding the budget -- so it has to be able to hold it alone. The cadence
+    coarsens as the curve fills rather than being right from step one, which is
+    the documented cost of not knowing the run length.
+    """
+    callback = _make_callback(reporter, max_points=20)
+    for step in range(1, 1_001):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    stored = reporter.reports[-1]["metrics"]["train_loss"]
+    assert len(stored) <= 20
+    assert len(_train_steps(reporter)) < 100, "and the report count is bounded too, not just the curve"
+
+
+# --------------------------------------------------------------------------- #
+# Elapsed steps, not a modulus
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("framework_interval", [1, 3, 7, 10])
+def test_a_framework_that_reports_on_its_own_cadence_still_gets_a_full_curve(
+    framework_interval: int,
+) -> None:
+    """The bug a modulus gate would have, and the reason this one counts elapsed steps.
+
+    unsloth's on_log is gated by HuggingFace at `logging_steps` before it reaches
+    us, so composing a second modulus yields their LCM rather than the finer of
+    the two. At logging_steps=3 against a target interval of 100, `step % 100`
+    admits only multiples of 300 -- a third of the points asked for -- and at 7,
+    an eighth. The default of 1 divides everything, which is exactly why a
+    modulus passes every test one would write by default and then mangles the
+    curve for anyone who touches the knob.
+    """
+    reporter = _RecordingReporter()
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=20_000, num_epochs=1)
+    for step in range(framework_interval, 20_001, framework_interval):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    # Never over budget, and never the LCM collapse: >= 190 of the 200 asked for.
+    assert 190 <= len(_train_steps(reporter)) <= 200
+
+
+def test_a_framework_coarser_than_the_target_gets_everything_it_has(reporter: _RecordingReporter) -> None:
+    """The gate subsamples what it is handed; it cannot manufacture points.
+
+    Degrading to "admit everything" is the honest failure for a framework whose
+    own cadence is coarser than ours -- a modulus would instead drop most of the
+    few points that exist.
+    """
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=20_000, num_epochs=1)
+    for step in range(500, 20_001, 500):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert len(_train_steps(reporter)) == 40, "only 40 points exist, and all 40 land"
+
+
+# --------------------------------------------------------------------------- #
+# Each path carries its own budget
+# --------------------------------------------------------------------------- #
+
+
+def test_the_two_paths_are_gated_independently(reporter: _RecordingReporter) -> None:
+    """One budget across two cadences means whichever fires first starves the other."""
+    callback = _make_callback(reporter, max_points=10)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+    for step in range(1, 101):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+        if step % 10 == 0:
+            callback.report_validation(step=step, epoch=1, metrics={"loss": 0.4})
+
+    assert len(_train_steps(reporter)) == 10
+    assert _val_steps(reporter) == [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+
+def test_capping_only_the_train_side_would_bound_nothing(reporter: _RecordingReporter) -> None:
+    """`val_check_interval=1` is reachable, and it validates on every step.
+
+    The train reports were held to 200 while validation reported all 20,000 --
+    each one resending every accumulated series in full, which is what makes one
+    uncapped path enough to leave the total quadratic.
+    """
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=20_000, num_epochs=1)
+    for step in range(1, 20_001):
+        callback.report_validation(step=step, epoch=1, metrics={"loss": 0.4})
+
+    assert len(_val_steps(reporter)) == 200
+
+
+def test_every_report_at_one_validation_step_gets_the_same_decision(reporter: _RecordingReporter) -> None:
+    """validate() logs once per dataloader, all at a single step.
+
+    An ordinal counter -- which is what this replaces -- would admit dataset A
+    and hold dataset B at one step, leaving the two curves disagreeing about
+    which steps exist, and would burn the budget N times faster with N
+    dataloaders.
+    """
+    callback = _make_callback(reporter, max_points=5)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    for step in (10, 20, 30, 210, 220):
+        for dataset in ("", "heldout_"):
+            callback.report_validation(step=step, epoch=1, metrics={f"{dataset}loss": 0.4})
+
+    landed = _val_steps(reporter)
+    for step in set(landed):
+        assert landed.count(step) == 2, f"step {step} admitted one dataloader but not the other"
+
+
+# --------------------------------------------------------------------------- #
+# The decimation backstop
+# --------------------------------------------------------------------------- #
+
+
+def test_a_curve_never_outgrows_the_budget_even_on_a_wrong_run_length(
+    reporter: _RecordingReporter,
+) -> None:
+    """The guarantee stops depending on an input we do not control.
+
+    A run that overshoots the length it declared -- or a backend added later
+    whose schedule nobody audited -- costs a resolution step-down rather than an
+    unbounded series.
+    """
+    callback = _make_callback(reporter, max_points=20)
+    callback.report_training_start(max_steps=100, num_epochs=1)  # off by 20x
+    for step in range(1, 2_001):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    stored = reporter.reports[-1]["metrics"]["train_loss"]
+    assert len(stored) <= 20
+    assert len(stored) >= 10, "a step-down, not a collapse"
+
+
+def test_decimation_keeps_the_leading_edge(reporter: _RecordingReporter) -> None:
+    """A curve may lose resolution; it must never lose its most recent point."""
+    callback = _make_callback(reporter, max_points=4)
+    for step in range(1, 12):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": float(step)})
+
+    stored = reporter.reports[-1]["metrics"]["train_loss"]
+    assert stored[-1]["step"] == _train_steps(reporter)[-1]
+
+
+def test_decimation_thins_every_curve_on_the_path(reporter: _RecordingReporter) -> None:
+    """Not just the loss: the budget is per curve, and they all cost the same."""
+    callback = _make_callback(reporter, max_points=4)
+    for step in range(1, 12):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5, "lr": 1e-5})
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert len(metrics["train_loss"]) <= 4
+    assert len(metrics["train_lr"]) <= 4
+
+
+# --------------------------------------------------------------------------- #
+# Never lose the tail
+# --------------------------------------------------------------------------- #
+
+
+def test_close_flushes_the_withheld_final_step(reporter: _RecordingReporter) -> None:
+    """The last step rarely lands on an interval, and it is the one worth having.
+
+    Without a flush a run ends on whatever the cadence last happened to catch,
+    so the final loss a reader sees is stale by up to a full interval.
+    """
+    callback = _make_callback(reporter, max_points=10)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+    for step in range(1, 24):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 11, 21]
+
+    callback.close()
+
+    assert _train_steps(reporter) == [1, 11, 21, 23]
+
+
+def test_close_flushes_the_withheld_final_validation(reporter: _RecordingReporter) -> None:
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+    for step in (10, 20, 30):
+        callback.report_validation(step=step, epoch=1, metrics={"loss": 0.4})
+
+    assert _val_steps(reporter) == [10]
+
+    callback.close()
+
+    assert _val_steps(reporter) == [10, 30]
+
+
+def test_close_does_not_duplicate_an_already_reported_step(reporter: _RecordingReporter) -> None:
+    """A report that landed retires whatever the gate was holding."""
+    callback = _make_callback(reporter, max_points=10)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+    for step in range(1, 22):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 11, 21]
+
+    callback.close()
+
+    assert _train_steps(reporter) == [1, 11, 21]
+
+
+def test_a_flushed_step_carries_its_full_payload(reporter: _RecordingReporter) -> None:
+    """It is a real report, not a marker: the curves and the scalars both land."""
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.9})
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.5, "lr": 1e-5})
+
+    callback.close()
+
+    flushed = reporter.reports[-1]
+    assert flushed["step"] == 2
+    assert flushed["train_loss"] == 0.5
+    assert flushed["train_lr"] == 1e-5
+    assert flushed["metrics"]["train_loss"][-1] == {"step": 2, "epoch": 1, "value": 0.5}
+
+
+def test_pending_reports_flush_in_step_order(reporter: _RecordingReporter) -> None:
+    """A consumer reads a report behind the last one as a rewind."""
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_validation(step=2, epoch=1, metrics={"loss": 0.4})
+    callback.report_train_step(step=18, epoch=1, metrics={"loss": 0.5})
+    callback.report_validation(step=19, epoch=1, metrics={"loss": 0.4})
+
+    callback.close()
+
+    flushed = [(r["phase"], r["step"]) for r in reporter.reports[-2:]]
+    assert flushed == [("training", 18), ("validation", 19)]
+
+
+def test_a_double_close_flushes_once(reporter: _RecordingReporter) -> None:
+    """Reachable from a driver finally, from finish() and from __del__."""
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.9})
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.5})
+
+    callback.close()
+    callback.close()
+
+    assert _train_steps(reporter) == [1, 2]
+
+
+def test_close_with_nothing_withheld_reports_nothing(reporter: _RecordingReporter) -> None:
+    _make_callback(reporter).close()
+
+    assert reporter.reports == []
+
+
+def test_the_flushed_tail_does_not_cost_the_curve_half_its_resolution() -> None:
+    """Found by measuring a real run against a live platform, not by reading this.
+
+    A run whose length divides evenly lands exactly `max_points` admissions and
+    then flushes one more, and decimating on that last append halves the finished
+    curve. A 600-step run at a budget of 200 reported 200 points and stored 101,
+    at a spacing of 5 to 6 rather than 3 -- and the same holds at 20,000 steps,
+    so it was the nominal path rather than an edge of it.
+    """
+    reporter = _RecordingReporter()
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=600, num_epochs=1)
+    for step in range(1, 601):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+    callback.close()
+
+    stored = reporter.reports[-1]["metrics"]["train_loss"]
+    assert len(stored) == 201, "the budget, plus the tail that is never dropped"
+    assert stored[-1]["step"] == 600
+    spacings = {stored[i + 1]["step"] - stored[i]["step"] for i in range(len(stored) - 2)}
+    assert spacings == {3}, "and the cadence asked for, held to the end"
+
+
+def test_a_resumed_process_is_not_misled_by_the_flushed_tail() -> None:
+    """The last gap in a stored curve is systematically unrepresentative.
+
+    Every run ends by flushing the step its gate withheld, which lands hard
+    against its predecessor -- so a curve ending `..., 19901, 20000` was
+    reporting every hundred steps and reads, off that final pair alone, as
+    every one. A process taking the task over would then report all 20,000.
+    """
+    prior = {
+        "train_loss": [{"step": s, "epoch": 1, "value": 0.5} for s in (1, 101, 201, 301, 400)],
+    }
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=200)
+
+    callback.report_train_step(step=450, epoch=1, metrics={"loss": 0.4})
+    assert _train_steps(reporter) == [], "the 99-step gap is the cadence, not the 99th"
+
+    callback.report_train_step(step=500, epoch=1, metrics={"loss": 0.4})
+    assert _train_steps(reporter) == [500]
+
+
+# --------------------------------------------------------------------------- #
+# The gate's state is whatever the seeded series says it is
+# --------------------------------------------------------------------------- #
+
+
+def test_a_resumed_process_continues_the_cadence_it_inherited() -> None:
+    """Otherwise it restarts at full resolution and blows the budget on the tail.
+
+    The interval in force is recoverable from the spacing of the stored points,
+    which is what lets a decimated curve survive a restart: the halved series
+    records its doubled interval in its own steps.
+    """
+    prior = {"train_loss": [{"step": 100, "epoch": 1, "value": 0.9}, {"step": 200, "epoch": 1, "value": 0.8}]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=200)
+
+    callback.report_train_step(step=250, epoch=1, metrics={"loss": 0.7})
+    assert _train_steps(reporter) == [], "half an interval in, and held"
+
+    callback.report_train_step(step=300, epoch=1, metrics={"loss": 0.6})
+    assert _train_steps(reporter) == [300]
+
+
+def test_the_seeded_cadence_is_never_relaxed_by_the_schedule() -> None:
+    """A short declared run must not undo a coarser cadence already in force.
+
+    Dropping back would re-admit at the finer rate for the remainder, which is
+    exactly what decimation had already decided against.
+    """
+    prior = {"train_loss": [{"step": 100, "epoch": 1, "value": 0.9}, {"step": 200, "epoch": 1, "value": 0.8}]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=200, num_epochs=1)  # would seed interval 1
+
+    callback.report_train_step(step=210, epoch=1, metrics={"loss": 0.7})
+
+    assert _train_steps(reporter) == []
+
+
+def test_the_anchor_is_the_series_that_has_been_there_from_the_start() -> None:
+    """A metric that only starts appearing mid-run understates both position and cadence."""
+    prior = {
+        "train_loss": [{"step": s, "epoch": 1, "value": 0.5} for s in (100, 200, 300)],
+        "train_reward": [{"step": 300, "epoch": 1, "value": 0.2}],
+    }
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=200)
+
+    callback.report_train_step(step=350, epoch=1, metrics={"loss": 0.4})
+    assert _train_steps(reporter) == [], "interval 100 read off train_loss, not 0 off train_reward"
+
+
+def test_a_from_scratch_restart_reports_from_its_first_step() -> None:
+    """The elapsed check alone would withhold the whole first half of a restarted run.
+
+    automodel and unsloth never resume from a checkpoint, so a replaced pod seeds
+    itself from the previous attempt's points and starts again at step one.
+    Reporting nothing until it caught up would be a far worse failure than the
+    duplicated series the seeding note already documents.
+    """
+    prior = {"train_loss": [{"step": s, "epoch": 1, "value": 0.5} for s in (100, 200, 500)]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=200)
+    callback.report_training_start(max_steps=20_000, num_epochs=1)
+
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 2.0})
+
+    assert _train_steps(reporter) == [1]
+
+
+def test_a_restarted_run_is_gated_again_from_where_it_restarted(reporter: _RecordingReporter) -> None:
+    """Admitting the backwards step must not disable the gate for the rest of the run."""
+    prior = {"train_loss": [{"step": 500, "epoch": 1, "value": 0.5}]}
+    reporter = _RecordingReporter(prior)
+    callback = _make_callback(reporter, max_points=10)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+
+    for step in range(1, 32):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 11, 21, 31]
+
+
+def test_a_failed_seed_read_does_not_disable_the_gate() -> None:
+    """Those reports omit `metrics`, which makes them look free. They are not.
+
+    Two of the three writes a report costs carry the whole stored blob whatever
+    the payload says, so withholding the series saves a fraction of one leg out
+    of three and none of the latency.
+    """
+    reporter = _UnreadableReporter()
+    callback = _make_callback(reporter, max_points=10)
+    callback.report_training_start(max_steps=100, num_epochs=1)
+    for step in range(1, 101):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert len(_train_steps(reporter)) == 10
+
+
+# --------------------------------------------------------------------------- #
+# What a withheld report costs
+# --------------------------------------------------------------------------- #
+
+
+def test_a_withheld_report_is_not_sent_at_all(reporter: _RecordingReporter) -> None:
+    """Not the curves, and not the current values either.
+
+    Splitting the two -- scalars often, curves rarely -- does not help while the
+    curves live in status_details: the two server-side writes carry the whole
+    blob regardless of what the report said, so a scalar-only report costs
+    almost exactly what a full one costs.
+    """
+    callback = _make_callback(reporter, max_points=2)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.9})
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1]
+
+
+def test_the_reports_that_are_never_gated(reporter: _RecordingReporter) -> None:
+    """Checkpoints and epoch ends are events, not samples of a curve.
+
+    They also carry the only record of where a checkpoint landed, so a gate that
+    dropped one would lose it rather than thin it.
+    """
+    callback = _make_callback(reporter, max_points=1)
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    for step in (1, 2, 3):
+        callback.report_checkpoint_saved(step=step, epoch=1, checkpoint_path=f"/ckpt/{step}")
+        callback.report_epoch_end(step=step, epoch=1)
+
+    assert len([r for r in reporter.reports if r["phase"] == "checkpoint_saved"]) == 3
+    assert len([r for r in reporter.reports if r["phase"] == "epoch_end"]) == 3
+
+
+@pytest.mark.parametrize("max_points", [0, -1])
+def test_a_budget_below_one_is_rejected(reporter: _RecordingReporter, max_points: int) -> None:
+    """A curve with no points on it reads downstream as a run that never reported."""
+    with pytest.raises(ValueError, match="max_points"):
+        _make_callback(reporter, max_points=max_points)

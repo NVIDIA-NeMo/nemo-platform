@@ -18,24 +18,17 @@ from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
 
-# Progress reports for one run, per reporting path. Reporting is throttled to
-# whatever cadence lands about this many across the run, so a curve has the same
-# resolution whether the run is 300 steps or 30,000. Roughly the number of points a
-# chart a few hundred pixels wide can draw distinctly, and past which the extra
-# points cost more than they show.
+# This logger no longer throttles. Bounding the report count is
+# TrainingProgressCallback's job now, on both paths and for all three backends --
+# NeMo-RL was the only one that did it, and the other two paid quadratically for
+# the absence. What lived here (a per-run report budget, a train-step modulus, a
+# validation-pass counter, and a pending/flush pair) moved there wholesale; the
+# validation counter was also replaced rather than moved, because counting
+# reports rather than distinct steps split a multi-dataloader pass across the
+# admit/hold boundary and burned the budget N times faster with N dataloaders.
 #
-# It is also what bounds the cost, which is why it is a ceiling and not a target.
-# Every report resends every accumulated series in full and the Jobs service stores
-# the blob twice, so upload grows as the square of the report count -- see the
-# payload note in nmp.customization_common.training.callbacks. Capping the count is
-# what keeps that finite; the resolution argument is what makes 200 the right
-# number rather than merely a small one.
-#
-# Per path, so a run making full use of both is bounded by twice this. That is a
-# bound either way; what matters is that no path is unbounded, and applying one
-# budget across two cadences that fire independently would mean whichever ran
-# first starved the other.
-_MAX_REPORTS_PER_RUN = 200
+# What remains is an adapter: route by prefix, qualify validation metrics by
+# dataloader, derive the epoch, and dedupe the rollout log.
 
 # NeMo-RL's metric dicts are forwarded whole. There is no allow-list: the
 # callback keeps the finite scalars and drops everything else, so a metric
@@ -47,48 +40,6 @@ _MAX_REPORTS_PER_RUN = 200
 # emits a `<key>/histogram` holding a `Histogram`, NeMo-Gym adds a per-agent
 # `full_result` `Table`, and `generation_logger_metrics` is a nested dict. Each
 # one rides in the same dict as the scalars.
-
-
-def resolve_log_interval(max_steps: int) -> int:
-    """Steps between progress reports: enough steps for ``_MAX_REPORTS_PER_RUN``.
-
-    Run length is the only input. The cadence used to be derived from
-    ``val_period`` as well, targeting ~10 reports per validation period, and that
-    term decided the interval on nearly every real configuration. It had no
-    bearing on the question: how often someone wants the curve and the progress
-    bar to move is unrelated to how often the run validates.
-
-    Its effect was to hold the report count at ten per epoch at every scale.
-    ``compute_val_check_interval`` returns ``steps_per_epoch`` when the user sets
-    no ``val_check_interval``, so on the default path ``val_period`` *was* the
-    epoch: a 20,000-step run drew its loss curve from ten points. The coupling
-    was inverted, too -- validating less often, which is what you do when
-    validation is expensive, made the training curve coarser.
-
-    ``report_running`` derives ``percentage_done`` from the step a train report
-    states, so this sets the granularity of the progress bar as well as of the
-    chart. Ten reports across an eleven-hour run is ten movements of the bar.
-    """
-    return max((max(max_steps, 0) + _MAX_REPORTS_PER_RUN - 1) // _MAX_REPORTS_PER_RUN, 1)
-
-
-def resolve_val_report_interval(val_period: int | None, max_steps: int) -> int:
-    """Validation passes between validation reports.
-
-    The same bound as :func:`resolve_log_interval`, applied to the other report
-    path. A validation report costs exactly what a train report costs -- every
-    series resent in full, stored twice by the Jobs service -- so capping only
-    the train side bounds nothing: ``val_check_interval=1`` is reachable through
-    ``compute_val_check_interval``, and it produces one validation pass per step.
-    A 20k-step run then made 200 train reports and 20,000 validation ones.
-
-    Returns 1 for any ordinary cadence, so nothing in the existing regime moves:
-    validating every 100 steps over 20k steps is 200 passes, which is already the
-    cap. Only a cadence that would exceed it thins the passes out.
-    """
-    period = max(val_period or 0, 1)
-    passes = max(max_steps, 0) // period
-    return max((passes + _MAX_REPORTS_PER_RUN - 1) // _MAX_REPORTS_PER_RUN, 1)
 
 
 def _val_dataset_name(prefix: str) -> str:
@@ -122,39 +73,27 @@ class NemoRLLogger(LoggerInterface):
         self,
         steps_per_epoch: int,
         job_ctx: NMPJobContext | None = None,
-        log_interval: int = 10,
         max_steps: int | None = None,
         num_epochs: int | None = None,
-        val_report_interval: int = 1,
     ):
         """Initialize the NemoRL logger.
 
         Args:
             steps_per_epoch: Number of steps per epoch (required for accurate epoch calculation).
             job_ctx: NeMo Platform job context for progress reporting (defaults to environment variables).
-            log_interval: Number of steps between progress updates.
             max_steps: Total number of training steps (optional, used for progress reporting).
             num_epochs: Total number of epochs (optional, used for progress reporting).
-            val_report_interval: Validation passes between validation reports. 1 reports
-                every pass, which is what any ordinary validation cadence resolves to.
 
         Raises:
-            ValueError: If ``steps_per_epoch``, ``log_interval`` or
-                ``val_report_interval`` is < 1. All three are used as
-                divisors/moduli in ``log_metrics`` (epoch derivation and the two
-                throttles), so non-positive values are rejected up front to fail
-                fast instead of raising ZeroDivisionError mid-training.
+            ValueError: If ``steps_per_epoch`` is < 1. It divides in
+                ``log_metrics`` to derive the epoch, so a non-positive value is
+                rejected up front to fail fast instead of raising
+                ZeroDivisionError mid-training.
         """
         if steps_per_epoch < 1:
             raise ValueError(f"steps_per_epoch must be >= 1, got {steps_per_epoch}")
-        if log_interval < 1:
-            raise ValueError(f"log_interval must be >= 1, got {log_interval}")
-        if val_report_interval < 1:
-            raise ValueError(f"val_report_interval must be >= 1, got {val_report_interval}")
 
         self._job_ctx = job_ctx or NMPJobContext.from_env()
-        self._log_interval = log_interval
-        self._val_report_interval = val_report_interval
         self._max_steps = max_steps
         self._num_epochs = num_epochs
         self._steps_per_epoch = steps_per_epoch
@@ -163,24 +102,12 @@ class NemoRLLogger(LoggerInterface):
 
         self._closed = False
 
-        # Validation passes seen so far, which is what the validation throttle
-        # counts against: passes arrive on their own cadence, so a step-based
-        # modulus would skip whole passes rather than thin them evenly.
-        self._val_passes = 0
-
         # The prefix whose metrics keep the bare names; see _qualify_by_dataset.
         self._primary_val_prefix: str | None = None
 
-        # Reports built but withheld by a throttle, at most one of each kind.
-        # Flushed on close() so a run's final train step and final validation pass
-        # are reported even when neither lands on its interval -- otherwise the
-        # last recorded values are stale.
-        self._pending: dict[str, dict[str, Any]] = {}
-
         _logger.info(
             f"Initialized NemoRLLogger with jobs_url={self._job_ctx.jobs_url}, "
-            f"log_interval={log_interval}, max_steps={max_steps}, num_epochs={num_epochs}, "
-            f"steps_per_epoch={steps_per_epoch}"
+            f"max_steps={max_steps}, num_epochs={num_epochs}, steps_per_epoch={steps_per_epoch}"
         )
 
     @classmethod
@@ -189,27 +116,24 @@ class NemoRLLogger(LoggerInterface):
         *,
         max_steps: int,
         num_epochs: int | None,
-        val_period: int | None,
+        val_period: int | None = None,
         steps_per_epoch: int | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
 
-        The arithmetic lives here rather than in each driver, which is where DPO
-        derived its own ``log_interval`` from ``val_period`` and where any further
-        algorithm would have copied it. One place to call, and one place to fix.
-
         Args:
             steps_per_epoch: Authoritative value when the algorithm config carries
                 one (DPO does); otherwise derived from max_steps and num_epochs.
-            val_period: Steps between validation passes. Sets the cadence of the
-                validation reports only; the train cadence is run length alone.
+            val_period: Accepted and unused. It used to set the validation report
+                cadence, and before that the training one; both now follow from
+                run length in the shared callback. Kept in the signature so the
+                drivers that pass it keep working, and because the next algorithm
+                wired up will pass it too.
         """
         return cls(
             steps_per_epoch=resolve_steps_per_epoch(max_steps, num_epochs, steps_per_epoch),
             job_ctx=job_ctx,
-            log_interval=resolve_log_interval(max_steps),
-            val_report_interval=resolve_val_report_interval(val_period, max_steps),
             max_steps=max_steps,
             num_epochs=num_epochs,
         )
@@ -249,13 +173,7 @@ class NemoRLLogger(LoggerInterface):
         # keeps one step from producing two reports, and what keeps the rollout
         # log from displacing a pending report that has the loss in it.
         if prefix == "train" and is_chartable(metrics.get("loss")):
-            report = {"step": step, "epoch": epoch, "metrics": dict(metrics)}
-            # Throttled to log_interval to reduce output. A withheld step is held as
-            # pending rather than dropped, so close() can flush the last one.
-            if step % self._log_interval == 0:
-                self._send("train", report)
-            else:
-                self._pending["train"] = report
+            self._callback.report_train_step(step=step, epoch=epoch, metrics=dict(metrics))
 
         # Validation reports whatever the pass produced. There is one validation
         # log per pass per dataloader and no rollout twin to tell apart, so
@@ -265,16 +183,11 @@ class NemoRLLogger(LoggerInterface):
         # hollow report -- a pass whose metrics are all histograms says nothing.
         elif prefix and prefix.startswith("validation"):
             if any(is_chartable(value) for value in metrics.values()):
-                self._val_passes += 1
-                report = {
-                    "step": step,
-                    "epoch": epoch,
-                    "metrics": self._qualify_by_dataset(prefix, metrics),
-                }
-                if self._val_passes % self._val_report_interval == 0:
-                    self._send("validation", report)
-                else:
-                    self._pending["validation"] = report
+                self._callback.report_validation(
+                    step=step,
+                    epoch=epoch,
+                    metrics=self._qualify_by_dataset(prefix, metrics),
+                )
 
         _logger.debug(f"log_metrics: step={step}, prefix={prefix}, metrics={metrics}")
 
@@ -301,14 +214,6 @@ class NemoRLLogger(LoggerInterface):
             return dict(metrics)
         dataset = _val_dataset_name(prefix) or prefix
         return {f"{dataset}_{name}": value for name, value in metrics.items()}
-
-    def _send(self, kind: str, report: dict[str, Any]) -> None:
-        """Report one built payload, retiring anything withheld of that kind."""
-        if kind == "train":
-            self._callback.report_train_step(**report)
-        else:
-            self._callback.report_validation(**report)
-        self._pending.pop(kind, None)
 
     def log_hyperparams(self, params: Mapping[str, Any]) -> None:
         """Log hyperparameters and report training start.
@@ -359,29 +264,17 @@ class NemoRLLogger(LoggerInterface):
         self.close()
 
     def close(self) -> None:
-        """Flush any withheld final step, then clean up resources."""
+        """Clean up resources, flushing whatever the callback's gates withheld.
+
+        The flush itself lives in ``TrainingProgressCallback.close()`` now, and is
+        idempotent there as well as here -- this is reachable from the driver's
+        ``finally``, from ``finish()`` and from ``__del__``.
+        """
         if self._closed:
             return
         self._closed = True
-        self._flush_pending()
         _logger.info("NemoRLLogger closing")
         self._callback.close()
-
-    def _flush_pending(self) -> None:
-        """Report whatever the throttles withheld, oldest step first.
-
-        Step order so a series' points are appended in the order they were
-        produced, rather than in whichever order the kinds happen to iterate.
-
-        Reachable from ``__del__``, so failures must not propagate; the reporter
-        already swallows and logs transport errors, and this guards the rest.
-        """
-        pending, self._pending = self._pending, {}
-        for kind, report in sorted(pending.items(), key=lambda item: item[1]["step"]):
-            try:
-                self._send(kind, report)
-            except Exception as exc:  # pragma: no cover - defensive, shutdown path
-                _logger.warning(f"Failed to flush final {kind} report: {exc}")
 
     def __del__(self):
         """Cleanup when the logger is destroyed."""

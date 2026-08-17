@@ -34,29 +34,40 @@ nothing a ``<phase>_`` name can spell reaches ``phase``, ``step``, ``epoch`` or
 produces for a metric named ``loss``. They are not special cases, and there are
 none.
 
-Payload size
-------------
+Payload size, and the gate that bounds it
+-----------------------------------------
 Every series is resent in full on every train and validation report, so the
-stored blob grows as ``series x reports`` and total upload as the square of it.
-The driver of that cost is the number of *reports*, not training steps --
-backends throttle reporting, so a 500-step run at ``log_interval=10``
-accumulates 50 points per series, not 500.
+stored blob grows as ``series x reports`` and the cost as the square of it. The
+driver is the number of *reports*, not training steps, which is why this class
+throttles: see :class:`_PathGate` and :meth:`TrainingProgressCallback._report_metrics`.
 
-Measured for a backend reporting ~22 series:
+One report costs three writes, not one. The client sends it; ``JobDispatcher``
+persists it to the task (``dispatcher.py:1217-1223``) and propagates a copy to the
+job attempt (``:1240-1242`` -> ``:1018-1019``). Both of those go through
+``EntityClient.update``, which PUTs the entity's whole ``data`` blob -- so the two
+server-side writes carry the entire accumulated ``metrics`` **whether or not the
+report mentioned it**. A report that omits the series is therefore not a cheap
+report; it is a report that saves only its own share of one leg out of three.
 
-    500 steps, log_interval 10  ->   42 KB final blob,   1.1 MB uploaded
-    500 steps, log_interval  1  ->  413 KB final blob, 101.3 MB uploaded
+Measured against a live platform, driving this callback with each backend's real
+metric dict. A point serialises to ~43 bytes:
 
-Those are client-side upload figures. The server pays twice over: ``JobDispatcher``
-persists each report to the task and then again to the copy propagated up to the
-job, so the write volume is double the numbers above.
+                     series   blob/report   latency/report
+    NeMo-RL DPO        20      0.86 KB x R    46ms + 0.31ms/KB
+    Automodel          12      0.52 KB x R    46ms + 0.31ms/KB
+    unsloth             4      0.17 KB x R    46ms + 0.31ms/KB
 
-Deliberately accepted for batch training jobs, on the understanding that a
-backend bounds its own report count -- on *every* path that reports, since one
-uncapped path is enough to make the total quadratic. NeMo-RL bounds both its
-train steps and its validation passes for exactly this reason. A backend that
-instead reports every step of a long run pays quadratically, and the answer to
-that is delta appends in the transport rather than trimming the series here.
+That latency is the third cost and the one a user feels: ``update_task`` is a
+synchronous call made from the backend's logging hook, on the training thread,
+between one optimizer step and the next. It grows with the blob, so an unbounded
+run does not merely upload quadratically -- it *stalls training* quadratically.
+Measured: 600 unthrottled reports at 11 series spent 52 seconds blocked inside
+the loop, the last fifty averaging 2.4x the latency of the first fifty.
+
+Bounding the point count is what keeps all three finite. It leaves one ceiling
+standing: each admitted report still resends every series in full, so the answer
+to *that* is moving the curves out of ``status_details`` -- not trimming further
+here. Delta appends alone would fix only the client leg.
 
 Seeding, and what it inherits
 ----------------------------
@@ -110,11 +121,27 @@ import logging
 import math
 import numbers
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, ClassVar, cast
 
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
+
+#: Points kept on each metric curve, applied independently to the training and
+#: validation paths. Roughly the number a chart a few hundred pixels wide can draw
+#: distinctly, and past which the extra points cost more than they show.
+#:
+#: It is also what bounds the cost, which is why it is a ceiling and not a target --
+#: see the payload note above. Per path, so a run making full use of both is bounded
+#: by twice this. What matters is that no path is unbounded; one uncapped path is
+#: enough to make the total quadratic.
+DEFAULT_MAX_POINTS = 200
+
+#: The two reporting paths, which are also the series-name prefixes the phase
+#: supplies. Kept as constants because the gate keys on both meanings.
+TRAIN_PHASE = "train"
+VAL_PHASE = "val"
 
 
 def is_chartable(value: Any) -> bool:
@@ -189,6 +216,76 @@ def _point_step(point: object) -> float | int | None:
     return step if isinstance(step, (int, float)) else None
 
 
+@dataclass
+class _PathGate:
+    """Admission state for one reporting path, and whatever it withheld.
+
+    Two paths report on independent cadences, so each carries its own budget --
+    applying one across both would mean whichever fired first starved the other.
+
+    Elapsed steps, never a modulus
+    ------------------------------
+    ``step % interval == 0`` is only correct when the caller sees every step.
+    This class cannot assume that: unsloth's ``on_log`` is gated by HuggingFace at
+    ``TrainingArguments.logging_steps`` before it ever reaches us. Compose two
+    moduli and you get their LCM rather than the finer of the two -- at
+    ``logging_steps=3`` and a target interval of 100, a modulus admits only
+    multiples of 300 and draws a third of the points asked for. The default of 1
+    divides everything, so a modulus passes every test one would naturally write
+    and then mangles the curve for anyone who touches the knob.
+
+    Elapsed steps degrade to "admit everything" when the framework is coarser
+    than the target, which is the honest failure, and are behaviour-preserving
+    over a contiguous step sequence.
+    """
+
+    #: Steps that must elapse between admissions. 1 until the run length is
+    #: known, so a backend that never states a schedule reports everything
+    #: rather than nothing.
+    interval: int = 1
+
+    #: Step of the last admitted report, or None before the first.
+    last_admitted: float | int | None = None
+
+    #: The most recent (step, decision) pair. ``validate()`` logs once per
+    #: dataloader at one step -- NeMo-RL over ``val_dataloader.items()``,
+    #: automodel over ``val_dataloaders`` -- and every one of those must get the
+    #: same answer, or one dataset lands at a step where its neighbour was held.
+    #: An ordinal counter would also burn the budget N times faster with N
+    #: dataloaders, which is the bug this replaces.
+    decision: tuple[float | int, bool] | None = field(default=None, repr=False)
+
+    #: The last report this gate withheld, replayed by ``close()`` so a run's
+    #: final step is never lost to a throttle. At most one: a newer held report
+    #: supersedes an older one, since only the latest is still current.
+    pending: dict[str, Any] | None = field(default=None, repr=False)
+
+    def admit(self, step: float | int) -> bool:
+        """Whether to record and send a report at ``step``.
+
+        The first arrival is always admitted, so a curve starts at the beginning
+        of the run rather than one full interval into it.
+
+        A step at or behind the last admitted one is also admitted, and resets
+        the gate to it. That is the from-scratch restart: a replaced pod seeds
+        itself from the previous attempt's points and starts again at step one,
+        and an elapsed check alone would then withhold every report until the run
+        caught up to where the old one stopped. Reporting nothing for the first
+        half of a restarted run is a worse failure than the duplicated series the
+        seeding note above already documents.
+        """
+        if self.decision is not None and self.decision[0] == step:
+            return self.decision[1]
+
+        admitted = (
+            self.last_admitted is None or step <= self.last_admitted or step - self.last_admitted >= self.interval
+        )
+        self.decision = (step, admitted)
+        if admitted:
+            self.last_admitted = step
+        return admitted
+
+
 class TrainingProgressCallback:
     """Report training progress to the Jobs service."""
 
@@ -196,8 +293,21 @@ class TrainingProgressCallback:
     #: ``None`` means no ``backend`` field is added.
     _default_backend: ClassVar[str | None] = None
 
-    def __init__(self, reporter: JobsServiceProgressReporter):
+    def __init__(self, reporter: JobsServiceProgressReporter, *, max_points: int = DEFAULT_MAX_POINTS):
+        """Build the callback over ``reporter``.
+
+        Args:
+            reporter: Transport to the Jobs service.
+            max_points: Points kept on each metric curve, per path. Rejected
+                below 1 up front rather than producing a curve with no points on
+                it, which reads downstream as a run that never reported.
+        """
+        if max_points < 1:
+            raise ValueError(f"max_points must be >= 1, got {max_points}")
+
         self._reporter = reporter
+        self._max_points = max_points
+        self._closed = False
 
         seeded = reporter.fetch_current_metrics()
 
@@ -233,6 +343,84 @@ class TrainingProgressCallback:
                 ", ".join(sorted(self._series)),
             )
 
+        #: One gate per reporting path, reconstructed from the seeded series so a
+        #: process taking over a task continues the cadence it inherited instead
+        #: of restarting at full resolution and blowing the budget on the tail of
+        #: a run. See :meth:`_seed_gate` -- the seed *is* the state, so resume
+        #: needs no protocol of its own.
+        self._gates: dict[str, _PathGate] = {phase: self._seed_gate(phase) for phase in (TRAIN_PHASE, VAL_PHASE)}
+
+    def _seed_gate(self, phase: str) -> _PathGate:
+        """Rebuild one path's gate from the series already stored for it.
+
+        Both pieces of state fall out of the accumulator: the last admitted step
+        is the last point's, and the interval in force is the curve's own average
+        spacing. Reading the interval back out of the spacing is what makes
+        decimation survive a restart -- a halved curve records its doubled
+        interval in its own points, so the new process does not snap back to the
+        seeded cadence and re-admit at twice the intended rate.
+
+        The *average* gap rather than the last one, because the last one is
+        systematically unrepresentative: every run ends by flushing the step its
+        gate withheld, which lands hard against its predecessor. A curve ending
+        ``..., 19901, 20000`` was reporting every hundred steps and would read as
+        every one. Averaging also survives the seeded points being a decimated
+        curve, which is the case this has to get right.
+        """
+        points = self._anchor(phase)
+        gate = _PathGate()
+        if not points:
+            return gate
+
+        gate.last_admitted = _point_step(points[-1])
+        if len(points) > 1:
+            span = cast(float, _point_step(points[-1])) - cast(float, _point_step(points[0]))
+            gate.interval = max(int(span // (len(points) - 1)), 1)
+        return gate
+
+    def _anchor(self, phase: str) -> list[dict[str, float | int]]:
+        """The longest series on ``phase``, which is the one present from step one.
+
+        A metric that only starts appearing mid-run has fewer points and a
+        different first step, so it would understate both the position and the
+        cadence. Ties break by name so every process reading the same blob picks
+        the same anchor.
+        """
+        prefix = f"{phase}_"
+        candidates = [(len(points), name, points) for name, points in self._series.items() if name.startswith(prefix)]
+        return max(candidates, default=(0, "", []))[2]
+
+    def _decimate(self, phase: str) -> None:
+        """Halve any curve on ``phase`` that has outgrown ``max_points``.
+
+        The backstop behind the interval seeded from ``max_steps``, and expected
+        never to fire on a configuration we ship: it costs a resolution step-down
+        where a wrong run length would otherwise cost an unbounded series. What it
+        buys is that the guarantee stops depending on an input we do not control --
+        a run that overshoots its stated length, or a backend added later whose
+        schedule nobody audited.
+
+        Every other point goes, counting back from the end so the most recent one
+        is always kept: a curve may lose resolution, never its leading edge.
+        Rewriting the stored series is free, the Jobs merge being wholesale per
+        key -- a shorter list simply replaces the longer one.
+        """
+        prefix = f"{phase}_"
+        trimmed = False
+        for name, points in self._series.items():
+            if name.startswith(prefix) and len(points) > self._max_points:
+                self._series[name] = points[(len(points) - 1) % 2 :: 2]
+                trimmed = True
+        if trimmed:
+            gate = self._gates[phase]
+            gate.interval *= 2
+            logger.info(
+                "Halved the %s curves to stay within %d points; reporting every %d steps from here.",
+                phase,
+                self._max_points,
+                gate.interval,
+            )
+
     def _resolve_backend(self, backend: str | None) -> str | None:
         return backend if backend is not None else self._default_backend
 
@@ -260,13 +448,66 @@ class TrainingProgressCallback:
     ) -> None:
         """Record every metric as a point and report them as current values.
 
-        The one path both ``report_train_step`` and ``report_validation`` take.
-        ``phase`` qualifies the series names (``train``/``val``); ``report_phase``
-        is what the Jobs service records as the task's phase.
+        The one path both ``report_train_step`` and ``report_validation`` take,
+        for all three backends, which is why the gate lives here rather than in
+        each of them. ``phase`` qualifies the series names (``train``/``val``);
+        ``report_phase`` is what the Jobs service records as the task's phase.
+
+        The append and the send are gated as one unit, deliberately. Accumulating
+        every step and merely sending less often would leave the series growing
+        without bound while each send carried all of it -- upload becomes
+        ``reports x points`` with points unbounded, which is strictly worse than
+        no throttle at all.
+
+        A held report's values are therefore discarded rather than delayed, and
+        that includes the current-value scalars, so ``percentage_done`` moves at
+        the gated cadence too. Splitting the two -- scalars often, curves rarely --
+        does not help while the curves live in ``status_details``: the two
+        server-side writes carry the whole blob regardless of what the report
+        said, so a scalar-only report costs almost exactly what a full one costs.
+        Measured at 108 bytes of payload against a 282 KB stored series: 111ms,
+        against 58ms at 46 KB stored. The payload was identical; only the blob it
+        did not send had grown.
         """
         qualified = _qualify_metric_names(phase, metrics)
+        gate = self._gates[phase]
+        if not gate.admit(step):
+            gate.pending = {
+                "phase": phase,
+                "report_phase": report_phase,
+                "step": step,
+                "epoch": epoch,
+                "qualified": qualified,
+                "backend": backend,
+            }
+            return
+        self._record_and_send(phase, report_phase, step, epoch, qualified, backend)
+
+    def _record_and_send(
+        self,
+        phase: str,
+        report_phase: str,
+        step: int,
+        epoch: int,
+        qualified: dict[str, float | int],
+        backend: str | None,
+        decimate: bool = True,
+    ) -> None:
+        """Append an admitted report's points and put it on the wire.
+
+        ``decimate`` is False only for the tail flushed by ``close()``. A run
+        whose length divides evenly lands exactly ``max_points`` admissions and
+        then flushes one more, and decimating on that last append would halve the
+        finished curve -- a 20,000-step run at a budget of 200 would store 101
+        points, having reported 200, purely because its final step did not fall on
+        an interval. Since nothing follows the flush, letting the curve close one
+        point over budget costs a single point and keeps the resolution that was
+        asked for.
+        """
         for name, value in qualified.items():
             self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
+        if qualified and decimate:
+            self._decimate(phase)
 
         details: dict[str, object] = {
             "step": step,
@@ -278,6 +519,13 @@ class TrainingProgressCallback:
         # leaves a key that is not mentioned standing.
         if not self._seed_unavailable and qualified:
             details["metrics"] = self._build_metrics_summary()
+        # Both retired here rather than by the caller, so that a flushed report
+        # leaves the same state an admitted one does: anything the gate was
+        # holding is now stale, superseded by a report that actually landed, and
+        # this step is the one the next elapsed check measures from.
+        gate = self._gates[phase]
+        gate.pending = None
+        gate.last_admitted = step
         self._send(report_phase, details, backend)
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
@@ -305,8 +553,14 @@ class TrainingProgressCallback:
         because the epoch beside it is not restated and goes on reading
         correctly. Nothing has happened yet that this could truthfully report, so
         it says nothing and lets the first train step state the position.
+
+        It is also where the reporting cadence is set, which is why it matters
+        that all three backends call it before their first metric report --
+        NeMo-RL via ``log_hyperparams``, automodel from the recipe wrapper,
+        unsloth from ``on_train_begin``.
         """
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
+        self._configure_cadence(max_steps)
         details: dict[str, object] = {
             "max_steps": max_steps,
             "num_epochs": num_epochs,
@@ -377,6 +631,79 @@ class TrainingProgressCallback:
         }
         self._send("epoch_end", details, backend)
 
+    def _configure_cadence(self, max_steps: int) -> None:
+        """Set each path's interval from the run length.
+
+        ``ceil(max_steps / max_points)`` on the train path, which is the whole
+        input: how often someone wants the curve and the progress bar to move is
+        unrelated to how often the run validates.
+
+        The validation path gets the same seed rather than a pass count of its
+        own. It is deliberately a lower bound and not an estimate -- validation
+        passes are always at least a step apart, so a run whose passes are rarer
+        than this simply reports all of them, and one that validates every step
+        is thinned to the same budget as training. Nothing here needs the
+        validation cadence plumbed through to be correct; stating it would only
+        let the seed start closer to the answer, and ``_decimate`` closes the gap
+        either way.
+
+        Raised, never lowered: a gate seeded from stored points is already
+        reporting at a cadence a previous process settled on, possibly after
+        decimation, and dropping back to a finer one would re-admit at twice the
+        intended rate for the rest of the run.
+        """
+        seeded = max((max(max_steps, 0) + self._max_points - 1) // self._max_points, 1)
+        for gate in self._gates.values():
+            gate.interval = max(gate.interval, seeded)
+
     def close(self) -> None:
-        """Clean up resources."""
+        """Flush whatever the gates withheld, then clean up resources.
+
+        Idempotent: NeMo-RL reaches this from a driver ``finally``, from the
+        composite logger's ``finish()`` and from ``__del__``, and a second flush
+        would append the final step twice.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        self._flush_pending()
         self._reporter.close()
+
+    def _flush_pending(self) -> None:
+        """Report the last step each gate held back, oldest first.
+
+        Without this a throttled run ends on stale values: the final train step
+        and the final validation pass rarely land on an interval, so the last
+        thing a reader sees is whenever the cadence last happened to fire.
+
+        Step order so points are appended in the order they were produced, rather
+        than in whichever order the paths happen to iterate.
+
+        Reachable from a shutdown path, so failures are logged rather than
+        propagated -- the reporter already swallows transport errors, and this
+        guards the rest.
+        """
+        held = sorted(
+            (gate.pending for gate in self._gates.values() if gate.pending is not None),
+            key=lambda report: report["step"],
+        )
+        for report in held:
+            gate = self._gates[report["phase"]]
+            gate.pending = None
+            # Defensive against a double flush: a report admitted after this one
+            # was held would already have retired it, so this can only fire if
+            # something replayed the flush.
+            if gate.last_admitted is not None and report["step"] <= gate.last_admitted:
+                continue
+            try:
+                self._record_and_send(
+                    report["phase"],
+                    report["report_phase"],
+                    report["step"],
+                    report["epoch"],
+                    report["qualified"],
+                    report["backend"],
+                    decimate=False,
+                )
+            except Exception as exc:  # pragma: no cover - defensive, shutdown path
+                logger.warning(f"Failed to flush the final {report['phase']} report: {exc}")
