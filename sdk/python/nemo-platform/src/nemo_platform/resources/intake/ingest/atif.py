@@ -91,11 +91,8 @@ class AtifResource(SyncAPIResource):
         Ingest Atif
 
         Args:
-          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
-
-              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-              evaluation_run_id, metadata) keeps ingesting without error rather than being
-              rejected.
+          evaluation_context: Identifies the Evaluation and optional test case associated with ingested
+              telemetry.
 
           extra_headers: Send extra headers
 
@@ -183,11 +180,8 @@ class AsyncAtifResource(AsyncAPIResource):
         Ingest Atif
 
         Args:
-          evaluation_context: Evaluation context accepted by ingest endpoints (the canonical shape).
-
-              `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-              evaluation_run_id, metadata) keeps ingesting without error rather than being
-              rejected.
+          evaluation_context: Identifies the Evaluation and optional test case associated with ingested
+              telemetry.
 
           extra_headers: Send extra headers
 

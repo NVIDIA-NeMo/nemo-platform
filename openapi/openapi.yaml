@@ -4688,9 +4688,9 @@ paths:
         schema:
           $ref: '#/components/schemas/SpanFilter'
         description: Filter spans by session_id, trace_id, parent_span_id, project,
-          evaluation_id, test_case_id, source, kind, status, model, tool_name, provider,
-          agent_id, agent_name, and started_at. Every field takes one exact value,
-          except started_at, which takes gte and lte.
+          evaluation_name, test_case_name, source, kind, status, model, tool_name,
+          provider, agent_id, agent_name, and started_at. Every field takes one exact
+          value, except started_at, which takes gte and lte.
       responses:
         '200':
           description: Successful Response
@@ -11055,24 +11055,28 @@ components:
       description: Schema for updating an entity.
     EvaluationContext:
       properties:
+        evaluation_name:
+          title: Evaluation Name
+          description: Name of an existing Evaluation.
+          type: string
+        test_case_name:
+          title: Test Case Name
+          description: Optional producer-supplied test case name.
+          type: string
         evaluation_id:
           title: Evaluation Id
-          description: Name of an existing Evaluation.
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
+          deprecated: true
           type: string
         test_case_id:
           title: Test Case Id
-          description: Optional producer-supplied test case id.
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
       type: object
       title: EvaluationContext
-      description: 'Evaluation context accepted by ingest endpoints (the canonical
-        shape).
-
-
-        ``extra="ignore"`` so a producer still sending retired keys (evaluation_sha,
-        evaluation_run_id,
-
-        metadata) keeps ingesting without error rather than being rejected.'
+      description: Identifies the Evaluation and optional test case associated with
+        ingested telemetry.
     EvaluationFilter:
       additionalProperties: false
       description: Filter for listing Evaluations.
@@ -18365,11 +18369,23 @@ components:
       title: Span
     SpanEvaluationContext:
       properties:
+        evaluation_name:
+          title: Evaluation Name
+          description: Name of an existing Evaluation.
+          type: string
+        test_case_name:
+          title: Test Case Name
+          description: Optional producer-supplied test case name.
+          type: string
         evaluation_id:
           title: Evaluation Id
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
+          deprecated: true
           type: string
         test_case_id:
           title: Test Case Id
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
+          deprecated: true
           type: string
       additionalProperties: false
       type: object
@@ -18388,12 +18404,22 @@ components:
           description: Filter by project name.
           title: Project
           type: string
+        evaluation_name:
+          description: Filter by Evaluation name.
+          title: Evaluation Name
+          type: string
+        test_case_name:
+          description: Filter by test case name.
+          title: Test Case Name
+          type: string
         evaluation_id:
-          description: Filter by evaluation id.
+          deprecated: true
+          description: Deprecated alias for evaluation_name. Use evaluation_name instead.
           title: Evaluation Id
           type: string
         test_case_id:
-          description: Filter by dataset test case id.
+          deprecated: true
+          description: Deprecated alias for test_case_name. Use test_case_name instead.
           title: Test Case Id
           type: string
         source:

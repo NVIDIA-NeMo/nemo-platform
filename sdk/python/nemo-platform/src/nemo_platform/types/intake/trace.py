@@ -51,11 +51,9 @@ class Trace(BaseModel):
     error_count: Optional[int] = None
 
     evaluation_context: Optional[EvaluationContext] = None
-    """Evaluation context accepted by ingest endpoints (the canonical shape).
-
-    `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-    evaluation_run_id, metadata) keeps ingesting without error rather than being
-    rejected.
+    """
+    Identifies the Evaluation and optional test case associated with ingested
+    telemetry.
     """
 
     input: Optional[str] = None

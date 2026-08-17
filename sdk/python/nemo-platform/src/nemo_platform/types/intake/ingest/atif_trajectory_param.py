@@ -34,11 +34,9 @@ class AtifTrajectoryParam(TypedDict, total=False):
     continued_trajectory_ref: str
 
     evaluation_context: EvaluationContextParam
-    """Evaluation context accepted by ingest endpoints (the canonical shape).
-
-    `extra="ignore"` so a producer still sending retired keys (evaluation_sha,
-    evaluation_run_id, metadata) keeps ingesting without error rather than being
-    rejected.
+    """
+    Identifies the Evaluation and optional test case associated with ingested
+    telemetry.
     """
 
     extra: Dict[str, object]

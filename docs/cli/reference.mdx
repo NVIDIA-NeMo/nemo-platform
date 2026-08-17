@@ -6599,7 +6599,7 @@ nemo intake ingest atif create [OPTIONS]
 * `--agent`: JSON string
 * `--schema-version <CHOICE>`: (required) [possible values: ATIF-v1.0, ATIF-v1.1, ATIF-v1.2, ATIF-v1.3, ATIF-v1.4, ATIF-v1.5, ATIF-v1.6, ATIF-v1.7]
 * `--continued-trajectory-ref`
-* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--evaluation-context`: Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)
 * `--extra`: JSON string
 * `--final-metrics`: JSON string
 * `--notes`
@@ -6669,7 +6669,7 @@ nemo intake ingest chat-completions create [OPTIONS]
 * `--cost-input-usd <FLOAT>`: Estimated input-token cost of this model call in USD.
 * `--cost-output-usd <FLOAT>`: Estimated output-token cost of this model call in USD.
 * `--cost-usd <FLOAT>`: Total estimated cost of this model call in USD. This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
-* `--evaluation-context`: Evaluation context accepted by ingest endpoints (the canonical shape).`extra="ignore"` so a producer still sending retired keys (evaluation_sha, evaluation_run_id, metadata) keeps ingesting without error rather than being rejected. (JSON string)
+* `--evaluation-context`: Identifies the Evaluation and optional test case associated with ingested telemetry. (JSON string)
 * `--provider`
 * `--session-id`: Groups related chat-completions calls without forcing them into the same trace.
 * `--trace-id`: Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.
@@ -6925,10 +6925,11 @@ nemo intake spans list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, test_case_id, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
+Filter spans by session_id, trace_id, parent_span_id, project, evaluation_name, test_case_name, source, kind, status, model, tool_name, provider, agent_id, agent_name, and started_at. Every field takes one exact value, except started_at, which takes gte and lte.
 * `--filter.agent-id`
 * `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
@@ -6938,6 +6939,7 @@ Filter spans by session_id, trace_id, parent_span_id, project, evaluation_id, te
 * `--filter.source`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 * `--filter.tool-name`
 * `--filter.trace-id`
 
@@ -7072,6 +7074,7 @@ Filter spans by the same fields as the span list endpoint, then group matching s
 * `--filter.agent-id`
 * `--filter.agent-name`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.kind`
 * `--filter.model`
 * `--filter.parent-span-id`
@@ -7081,6 +7084,7 @@ Filter spans by the same fields as the span list endpoint, then group matching s
 * `--filter.source`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 * `--filter.tool-name`
 * `--filter.trace-id`
 
