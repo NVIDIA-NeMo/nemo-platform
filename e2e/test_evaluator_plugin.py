@@ -85,6 +85,8 @@ def _chat_completion(content: str) -> dict[str, object]:
     return {
         "id": "chatcmpl-evaluator-e2e",
         "object": "chat.completion",
+        "created": 0,
+        "model": "mock-model",
         "choices": [
             {
                 "index": 0,
@@ -743,21 +745,24 @@ def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> 
 
 # --- Gym agent-evaluate job ------------------------------------------------------------------
 #
-# GymAgentTaskRunner runs inside nmp-cpu-tasks, not this test process, so this is the only place
+# GymAgentTaskRunner runs inside the CPU-task job, not this test process, so this is the only place
 # exercising the real `gym env start`/`gym eval run` subprocess path (the SDK's unit tests use
-# synthetic data). See docker/Dockerfile.nmp-cpu-tasks for how Gym gets installed there.
+# synthetic data). A dedicated Kind CI job runs the platform with a CI-only -gym-e2e image tag
+# set; this test does not imply that the released CPU-task image includes Gym. See
+# docker/Dockerfile.nmp-cpu-tasks-gym-e2e.
 #
 # GymRunnerTarget has no dedicated credentials field, so the mock model's route/key travel via
 # env_overrides instead -- Gym's config loader merges CLI overrides last, so they win over
 # whatever (if anything) is in env.yaml.
 #
 # Checked-in copy of mcqa's example.jsonl: discover_gym_tasks runs client-side here, where
-# nemo-gym isn't installed (only nmp-cpu-tasks has it).
+# nemo-gym isn't installed (only the CI task image has it).
 GYM_MCQA_FIXTURE = (
     Path(__file__).resolve().parents[1] / "packages/nemo_evaluator_sdk/tests/agent_eval/fixtures/gym_mcqa_example.jsonl"
 )
 
 
+@pytest.mark.gym_e2e
 def test_gym_agent_evaluate_job_completes(
     sdk: NeMoPlatform,
     evaluator_sdk: NeMoPlatform,
@@ -791,6 +796,7 @@ def test_gym_agent_evaluate_job_completes(
         }
         for task in tasks
     ]
+
     target = GymRunnerTarget(
         agent="simple_agent",
         agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
@@ -803,6 +809,7 @@ def test_gym_agent_evaluate_job_completes(
             "policy_model_name": model_name,
         },
     )
+
     payload = _post_evaluator_payload(
         evaluator_sdk,
         evaluator_workspace,
@@ -811,25 +818,28 @@ def test_gym_agent_evaluate_job_completes(
     )
     job_name = _require_job_name(payload)
     try:
-        # Not EvaluatorJobResource/get_job_resource: that targets evaluate/jobs, the wrong route
-        # for an agent-evaluate job. Use the generic platform jobs API instead.
         job = wait_for_platform_job(evaluator_sdk, job_name, evaluator_workspace, timeout=480)
         assert job.status.lower() == "completed", f"job {job_name!r} ended {job.status!r}"
 
+        # Download the results archive to a tmp path.
         archive_path = tmp_path / "agent-eval-results.tar.gz"
         evaluator_sdk.jobs.results.download(
             "agent-eval-results", job=job_name, workspace=evaluator_workspace
         ).write_to_file(archive_path)
+
+        # Extract the trials.jsonl file from the archive.
         extract_dir = tmp_path / "agent-eval-results"
         with tarfile.open(archive_path) as archive:
             archive.extractall(extract_dir)  # noqa: S202 - trusted first-party job artifact, not user input
-
         trials_files = list(extract_dir.rglob("trials.jsonl"))
         assert trials_files, f"trials.jsonl missing under {extract_dir}"
+
         trial_lines = [line for line in trials_files[0].read_text(encoding="utf-8").splitlines() if line.strip()]
         assert trial_lines, "Gym job produced no trials"
+
         trials = [json.loads(line) for line in trial_lines]
         completed = [t for t in trials if t.get("status") == "completed"]
+
         assert completed, f"expected at least one completed trial, got statuses: {[t.get('status') for t in trials]}"
         for trial in completed:
             assert trial.get("metadata", {}).get("reward") is not None, "completed trial missing Gym's reward"

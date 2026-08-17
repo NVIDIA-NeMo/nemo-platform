@@ -329,6 +329,16 @@ group "docker-cpu" {
   ]
 }
 
+# CI-only extension of docker-cpu. The Gym image is SHA-tagged in GHCR for Kind E2E and is not
+# included in any release target.
+group "docker-cpu-ci" {
+  targets = [
+    "nmp-api-docker",
+    "nmp-cpu-tasks-docker",
+    "nmp-cpu-tasks-gym-e2e",
+  ]
+}
+
 group "docker-gpu" {
   targets = [
     "safe-synthesizer-tasks-docker",
@@ -683,6 +693,19 @@ target "nmp-cpu-tasks-docker" {
   tags       = sha_and_maybe_latest_tags("nmp-cpu-tasks")
   output     = image_output()
   platforms  = get_platforms()
+}
+
+# CI-only nmp-cpu-tasks derivative with NeMo Gym and Ray. A dedicated Kind job uses the
+# -gym-e2e tag set, leaving the regular E2E cluster on the production image.
+target "nmp-cpu-tasks-gym-e2e" {
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-cpu-tasks-gym-e2e"
+  contexts = {
+    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+  }
+  tags      = ["${IMAGE_REGISTRY}/nmp-cpu-tasks:${BAKE_TAG}-gym-e2e"]
+  output    = image_output()
+  platforms = get_platforms()
 }
 
 # Python wheel builders (causal-conv1d, mamba-ssm, av, opencv-python-headless).
