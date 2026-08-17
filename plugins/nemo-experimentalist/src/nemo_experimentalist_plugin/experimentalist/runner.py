@@ -295,6 +295,16 @@ class ExperimentRunner:
                 "unreachable. Restore run.json, or move the directory aside to start over."
             )
         if existing is not None:
+            if existing.status == "completed":
+                # Resume exists for a run that was interrupted. A completed one has its
+                # winner chosen, its report written and possibly a PR opened; re-opening
+                # marks it running again and lets the strategy rewrite all of it. Refusing
+                # costs a fresh directory and keeps a finished result finished.
+                raise ValueError(
+                    f"Run {existing.id!r} in {self._eo / 'run.json'} already completed. Point "
+                    "--experiment-dir at a fresh directory to start a new run, or delete that "
+                    "run to redo it."
+                )
             if not self._strategy.supports_resume:
                 raise ValueError(
                     f"{type(self._strategy).__name__} does not support resume, but "

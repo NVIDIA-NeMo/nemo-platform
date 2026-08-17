@@ -614,8 +614,18 @@ class LocalExperimentalistBackend(ExperimentalistBackend):
     # ------------------------------------------------------------------
 
     def _candidate_path(self, candidate_id: str) -> Path:
+        """Where *candidate_id*'s record lives, refusing an id that is not one name.
+
+        The id is interpolated into a path, so one containing a separator escapes the
+        candidates directory: ``../run`` lands on ``eval-and-optimize/run.json`` and a
+        candidate write would overwrite the run. Ids are minted as uuids here, but a
+        Candidate can arrive from a component this repo did not write -- which is the
+        point of the registry -- so the check belongs at the path, not at the mint.
+        """
         if not candidate_id:
             raise ValueError("Candidate id is required")
+        if candidate_id != Path(candidate_id).name or candidate_id in {".", ".."}:
+            raise ValueError(f"Candidate id must be a single path component, got {candidate_id!r}")
         return self._eo / "candidates" / f"{candidate_id}.json"
 
     def _write_candidate(self, candidate: Candidate) -> None:

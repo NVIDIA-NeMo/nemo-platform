@@ -942,7 +942,15 @@ def test_a_components_settings_are_validated_against_its_own_model() -> None:
 
     load_plugins()
     config = EvolutionaryOptimizerConfig()
-    for field in ("builder_config", "analyzer_config", "proposer_config", "trajectory_scorer_config"):
+    for field in (
+        "builder_config",
+        "analyzer_config",
+        "proposer_config",
+        "trajectory_scorer_config",
+        "selector_config",
+        "terminator_config",
+        "outcome_evaluator_config",
+    ):
         assert isinstance(getattr(config, field), dict), f"{field} must stay open for a third-party component"
 
     undeclared = {
@@ -977,3 +985,50 @@ def test_a_third_party_components_settings_reach_it_unchanged() -> None:
         assert built.config.beam_width == 7
     finally:
         Component._registry.pop(("selector", "acme-beam"), None)
+
+
+def test_both_construction_paths_validate_a_components_settings() -> None:
+    """`get_component` and `ctx.component` must agree, or the check is decorative.
+
+    The context builds components its own way -- it narrows the run-scoped arguments to
+    those the constructor names -- so validation added to one path silently skipped the
+    other. The terminator and trajectory-scorer are built through the context, so their
+    settings reached them as raw mappings and a misspelled option was never rejected.
+    """
+    import pytest
+    from doubles import FakeBackend, make_context
+    from nemo_experimentalist_plugin.experimentalist.registry import Component, get_component
+    from pydantic import BaseModel
+
+    class Strict(BaseModel):
+        model_config = {"extra": "forbid"}
+        depth: int = 1
+
+    class Probe(Component):
+        role = "terminator"
+        name = "probe-strict"
+        config_type = Strict
+
+        def __init__(self, config: Strict | None = None, **_: object) -> None:
+            self.config = config
+
+    import tempfile
+    from pathlib import Path
+
+    try:
+        ctx = make_context(root=Path(tempfile.mkdtemp()), backend=FakeBackend())
+
+        direct = get_component("terminator", "probe-strict", config={"depth": 3})
+        through_context = ctx.component("terminator", "probe-strict", config={"depth": 3})
+
+        assert isinstance(direct.config, Strict), "get_component did not validate"
+        assert isinstance(through_context.config, Strict), "ctx.component did not validate"
+
+        for build in (
+            lambda: get_component("terminator", "probe-strict", config={"depht": 3}),
+            lambda: ctx.component("terminator", "probe-strict", config={"depht": 3}),
+        ):
+            with pytest.raises(Exception, match="depht|extra"):
+                build()
+    finally:
+        Component._registry.pop(("terminator", "probe-strict"), None)

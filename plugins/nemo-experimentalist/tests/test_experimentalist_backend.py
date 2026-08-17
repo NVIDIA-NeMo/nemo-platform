@@ -448,3 +448,28 @@ async def test_upload_trace_atif_sends_json_not_protobuf(tmp_path):
     await _upload_trace_atif(cast(Any, client), "ws-1", _atif_ref(tmp_path), evaluation_name="exp-1", task_id="case-a")
     assert client.posts[0]["content"] is None
     assert client.posts[0]["body"] is not None
+
+
+@pytest.mark.parametrize("bad_id", ["../run", "a/b", "..", ".", "nested/../../run"])
+async def test_a_candidate_id_that_is_not_one_name_is_refused(tmp_path: Path, bad_id: str) -> None:
+    """The id is interpolated into a path, so a separator escapes the candidates directory.
+
+    `../run` lands exactly on `eval-and-optimize/run.json`, so writing that candidate would
+    overwrite the run record and make the whole run unresumable. Ids are minted as uuids
+    here, but a Candidate can arrive from a component this repo did not write -- which is
+    what the registry is for -- so the check belongs at the path.
+    """
+    backend = _local_backend(tmp_path)
+
+    with pytest.raises(ValueError, match="single path component|required"):
+        backend._candidate_path(bad_id)
+
+
+async def test_a_normal_candidate_id_still_resolves(tmp_path: Path) -> None:
+    """The refusal must not fire on the ids the backend actually mints."""
+    backend = _local_backend(tmp_path)
+
+    path = backend._candidate_path("8374a3ea-f04d-4203-9f6e-21b56e64f1fc")
+
+    assert path.parent.name == "candidates"
+    assert path.name.endswith(".json")

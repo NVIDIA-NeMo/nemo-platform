@@ -164,7 +164,18 @@ def get_component(role: str, name: str, **kwargs: Any) -> Any:
     round three, an hour of image builds later.
     """
     component = resolve(role, name)
+    return component(**validated_config(component, kwargs))
+
+
+def validated_config(component: type[Component], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """*kwargs* with ``config`` validated against *component*'s own ``config_type``.
+
+    Separate from :func:`get_component` because the context builds components its own way
+    -- it narrows the run-scoped arguments to those the constructor names -- and both
+    paths must validate, or whichever one a role happens to use decides whether a typo in
+    its settings is caught.
+    """
     config = kwargs.get("config")
-    if component.config_type is not None and isinstance(config, Mapping):
-        kwargs["config"] = component.config_type.model_validate(dict(config))
-    return component(**kwargs)
+    if component.config_type is None or not isinstance(config, Mapping):
+        return kwargs
+    return {**kwargs, "config": component.config_type.model_validate(dict(config))}

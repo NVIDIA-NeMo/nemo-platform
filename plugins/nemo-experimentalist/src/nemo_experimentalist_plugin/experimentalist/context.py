@@ -47,7 +47,7 @@ from nemo_experimentalist_plugin.experimentalist.components.trace_explorer impor
 from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import (
     ExperimentalistBackend,
 )
-from nemo_experimentalist_plugin.experimentalist.registry import resolve
+from nemo_experimentalist_plugin.experimentalist.registry import resolve, validated_config
 from nemo_experimentalist_plugin.experimentalist.reporting import RunReporter
 from nemo_experimentalist_plugin.experimentalist.seam import PRIMARY_SPLIT, Fork
 
@@ -507,7 +507,7 @@ class ExperimentContext:
             "dataset": self.datasets.get("train", self.datasets[PRIMARY_SPLIT]),
             **kwargs,
         }
-        return component(**_accepted(component.__init__, supplied))
+        return component(**validated_config(component, _accepted(component.__init__, supplied)))
 
     @property
     def objective_metrics(self) -> list[MetricTarget]:

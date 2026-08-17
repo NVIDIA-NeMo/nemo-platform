@@ -239,3 +239,24 @@ async def test_a_round_zero_resume_records_no_baseline_reward_and_does_not_raise
 
     (stored,) = await ctx.candidates()
     assert stored.rewards["validation"].metrics == {"reward": 0.4}, "the earlier measurement must survive"
+
+
+@pytest.mark.asyncio
+async def test_a_completed_run_is_not_reopened(tmp_path, monkeypatch) -> None:
+    """Resume is for a run that was interrupted, not one that finished.
+
+    A completed run has its winner chosen, its report written and possibly a PR opened.
+    Re-opening set its status back to `running` and let the strategy rewrite all of it,
+    so pointing `--experiment-dir` at a finished run silently destroyed its result. It
+    now refuses and says where to point instead.
+    """
+    await _make_runner(tmp_path, ScriptedStrategy(), monkeypatch).run()
+
+    run = json.loads((tmp_path / "experiment" / "eval-and-optimize" / "run.json").read_text())
+    assert run["status"] == "completed", "the first run did not finish; this test needs it to"
+
+    with pytest.raises(ValueError, match="already completed"):
+        await _make_runner(tmp_path, ScriptedStrategy(), monkeypatch).run()
+
+    after = json.loads((tmp_path / "experiment" / "eval-and-optimize" / "run.json").read_text())
+    assert after["status"] == "completed", "the refused run still reopened the record"

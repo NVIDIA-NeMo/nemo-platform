@@ -818,7 +818,7 @@ async def test_the_example_strategy_resumes_where_the_store_left_off(tmp_path, i
 
     # Imported by name: the package is optional here, so a static import would make the
     # type checker resolve something that is not installed.
-    strategy_class = cast("Any", importlib.import_module("acme_strategies.random_search").RandomSearch)
+    strategy_class = cast(Any, importlib.import_module("acme_strategies.random_search").RandomSearch)
 
     ctx = make_context(root=tmp_path, backend=FakeBackend())
     baseline = await _one(ctx)
