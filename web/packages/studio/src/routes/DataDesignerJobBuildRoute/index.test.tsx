@@ -67,7 +67,7 @@ describe('DataDesignerJobBuildRoute', () => {
     renderBuildRoute(undefined, '?template=sft-instruction');
 
     expect(
-      await screen.findByText(/template asks for a model your workspace doesn't have/i)
+      await screen.findByText(/config references a model your workspace doesn't have/i)
     ).toBeInTheDocument();
   });
 });

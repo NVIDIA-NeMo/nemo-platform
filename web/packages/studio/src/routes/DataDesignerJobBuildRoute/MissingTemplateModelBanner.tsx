@@ -33,8 +33,8 @@ export const MissingTemplateModelBanner: FC<MissingTemplateModelBannerProps> = m
       <div className="shrink-0 px-density-2xl py-density-md">
         <Banner kind="inline" status="error">
           {unresolved.length === 1
-            ? `This template asks for a model your workspace doesn't have: ${describeIssue(unresolved[0])}. Select an available model in the model panel before generating.`
-            : "This template asks for models your workspace doesn't have. Select available models in the model panel before generating:"}
+            ? `This config references a model your workspace doesn't have: ${describeIssue(unresolved[0])}. Select an available model in the model panel before generating.`
+            : "This config references models your workspace doesn't have. Select available models in the model panel before generating:"}
           {unresolved.length > 1 && (
             <ul className="list-disc pl-density-lg">
               {unresolved.map((issue) => (
