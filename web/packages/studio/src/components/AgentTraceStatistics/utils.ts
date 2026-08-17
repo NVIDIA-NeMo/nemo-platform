@@ -149,5 +149,5 @@ export const formatBucketTick = (timestamp: number, range: TraceStatisticsRange)
   const date = new Date(timestamp);
   return range === 'day'
     ? date.toLocaleTimeString(undefined, { hour: 'numeric' })
-    : `${date.getMonth() + 1}/${date.getDate()}`;
+    : `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
 };
