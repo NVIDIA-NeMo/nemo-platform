@@ -192,7 +192,9 @@ class AgentEvaluator:
             tasks=task_list,
             trials=trial_list,
             scores=scores,
-            summary=AgentEvalSummary.from_scores(scores, tasks=task_list, extra_scores=runner_scores),
+            summary=AgentEvalSummary.from_scores(
+                scores, tasks=task_list, trials=trial_list, extra_scores=runner_scores
+            ),
             metadata=metadata,
             work_dir=runtime_config.work_dir,
         )
@@ -691,6 +693,8 @@ def _metric_row(task: AgentEvalTask, trial: AgentEvalTrial) -> dict[str, Any]:
             "id": trial.id,
             "task_id": trial.task_id,
             "status": trial.status.value,
+            # How the trial failed, for a metric that grades on it. None when the producer reported no failure.
+            "error": trial.error.model_dump(mode="json") if trial.error is not None else None,
             "metadata": trial.metadata,
         },
     }

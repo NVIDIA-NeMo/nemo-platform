@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 import tempfile
 from collections import deque
@@ -24,7 +23,7 @@ from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.config import (
     _HYDRA_SUBDIR,
     GymRuntimeConfig,
     _hydra_scalar,
-    _redact_env_overrides,
+    _redact_hydra_params,
     _selection_args,
 )
 from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.dataset import _materialize_dataset, _source_datasets
@@ -33,6 +32,7 @@ from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.process import (
     _VALIDATE_TIMEOUT_S,
     _drain_pumps,
     _gym_executable,
+    _gym_invocation_env,
     _pending_servers,
     _pump_stream,
     _terminate,
@@ -80,8 +80,10 @@ class GymAgentTaskRunner:
         """Identify this runner and the Gym settings that shape its results.
 
         Credentials normally live in the Gym checkout's gitignored ``env.yaml`` and never reach this
-        object — but ``env_overrides`` is a free-form escape hatch, so its values are redacted by key
-        (see :func:`_redact_env_overrides`) rather than trusted.
+        object — but ``hydra_params`` and ``env_vars`` are free-form escape hatches, so their values
+        are redacted by key (see :func:`_redact_hydra_params`) rather than trusted. ``env_vars``
+        needs it at least as much: environment variables are the conventional way to pass an API
+        key, so a caller doing the obvious thing would otherwise write one into the run bundle.
         """
         cfg = self._config
         return RunnerInfo(
@@ -95,7 +97,8 @@ class GymAgentTaskRunner:
                 "num_repeats": cfg.num_repeats,
                 "concurrency": cfg.concurrency,
                 "bind_resources_server": cfg.bind_resources_server,
-                "env_overrides": _redact_env_overrides(cfg.env_overrides),
+                "hydra_params": _redact_hydra_params(cfg.hydra_params),
+                "env_vars": _redact_hydra_params(cfg.env_vars),
                 "reward_key": cfg.reward_key,
             },
         )
@@ -201,7 +204,7 @@ class GymAgentTaskRunner:
         # detects a `uv run` ancestor and tries to replicate that uv project onto its workers,
         # asserting the project pyproject.toml lives in the driver's cwd — which aborts startup. That
         # hook is wrong for Gym (servers manage their own deps), so disable it for the subprocesses.
-        subprocess_env = {**os.environ, "RAY_ENABLE_UV_RUN_RUNTIME_ENV": "0"}
+        subprocess_env = _gym_invocation_env(cfg)
 
         selection = _selection_args(cfg, work_dir)
 
