@@ -15,6 +15,11 @@ import {
 import type { WarGameModels } from '@iron-swarm/generated/schema';
 import { useBreadcrumbs, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
+import {
+  manifestFormSchema,
+  NAME_PATTERN,
+  type ManifestFormData,
+} from '@iron-swarm/routes/NewIronSwarmManifestRoute/schema';
 import { AccessibleTitle, AccordionSection, ControlledSelect, ControlledTextInput } from '@nemo/common';
 import {
   AccordionRoot,
@@ -30,23 +35,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { FC, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
-import { z } from 'zod';
-
-const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-
-const schema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, 'A manifest id is required')
-    .regex(NAME_PATTERN, 'Lowercase letters, digits and hyphens only'),
-  agent: z.string().trim().optional(),
-  egress: z.string().trim().optional(),
-  env: z.string().trim().optional(),
-  port: z.string().trim().optional(),
-  secrets: z.string().trim().optional(),
-});
-type FormData = z.infer<typeof schema>;
 
 type Source = 'agent' | 'project';
 
@@ -67,9 +55,9 @@ export const NewIronSwarmManifestRoute: FC = () => {
     ],
   });
 
-  const { control, handleSubmit, watch, setError, setValue } = useForm<FormData>({
+  const { control, handleSubmit, watch, setError, setValue } = useForm<ManifestFormData>({
     defaultValues: { name: '', agent: '', egress: '', env: '', port: '', secrets: '' },
-    resolver: zodResolver(schema),
+    resolver: zodResolver(manifestFormSchema),
   });
   const nameValue = watch('name').trim();
   const nameValid = NAME_PATTERN.test(nameValue);
