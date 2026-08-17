@@ -25,7 +25,7 @@ from pathlib import Path
 import typer
 from git import InvalidGitRepositoryError, Repo
 
-app = typer.Typer(name="copyright-fixer", help="Copyright fixer tool for NeMo-Platform.", no_args_is_help=True)
+app = typer.Typer(name="copyright-fixer", help="Copyright fixer tool for NeMo-Platform.", no_args_is_help=False)
 
 # --- constants ---
 
@@ -744,46 +744,18 @@ def _add_header(filepath: str) -> bool:
     return True
 
 
-def _resolve_targets(paths: list[Path], include: list[str] | None = None) -> tuple[list[str], str | None]:
-    """Return (file_list, display_root)."""
-    if len(paths) == 1 and paths[0].is_dir():
-        root = str(paths[0].resolve())
-        return _collect_files_from_dir(root, include=include), root
-
-    files = [str(p.resolve()) for p in paths if p.is_file() and _is_supported_file(str(p.resolve()))]
-    files = _filter_copyright_excluded(files, include=include)
-    return files, None
+def _resolve_repo_root() -> str:
+    """Return the current Git repository root, or the current directory outside Git."""
+    repo = _get_repo(os.getcwd())
+    if repo is not None and repo.working_tree_dir is not None:
+        return str(Path(repo.working_tree_dir).resolve())
+    return str(Path(".").resolve())
 
 
-def _filter_copyright_excluded(files: list[str], include: list[str] | None = None) -> list[str]:
-    """Drop files matched by .copyrightignore, unless explicitly --include'd.
-
-    Mirrors the exclusion applied by ``_collect_files_from_dir`` for
-    directory scans, but for an explicit file list (e.g. filenames passed
-    by pre-commit).
-    """
-    if not files:
-        return files
-
-    repo = _get_repo(files[0])
-    if repo is None:
-        return files
-
-    repo_root = str(repo.working_tree_dir)
-    copyright_excludes = _load_copyright_excludes(repo_root)
-    if not copyright_excludes:
-        return files
-
-    include = include or []
-    kept = []
-    for filepath in files:
-        relpath = os.path.relpath(filepath, repo_root)
-        if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
-            relpath, relpath, include
-        ):
-            continue
-        kept.append(filepath)
-    return kept
+def _resolve_targets(include: list[str] | None = None) -> tuple[list[str], str]:
+    """Return tracked copyright-check targets for the current repository."""
+    root = _resolve_repo_root()
+    return _collect_files_from_dir(root, include=include), root
 
 
 # --- CLI ---
@@ -791,10 +763,6 @@ def _filter_copyright_excluded(files: list[str], include: list[str] | None = Non
 
 @app.command()
 def update_license_headers(
-    paths: list[Path] = typer.Argument(
-        default=None,
-        help="Directory to scan or individual files to process. Defaults to current directory.",
-    ),
     check: bool = typer.Option(False, "--check", help="Check only, don't modify files. Exit 1 if headers are missing."),
     dry_run: bool = typer.Option(
         False, "--dry-run", "-n", help="Show files that would be updated, without modifying anything."
@@ -814,8 +782,8 @@ def update_license_headers(
 ) -> None:
     """Add SPDX copyright headers to files missing them.
 
-    Accepts a single directory (scans recursively) or a list of individual
-    files.  When no argument is provided, scans the current directory.
+    Scans the current Git repository, or the current directory when run outside
+    Git.  The fixer only considers tracked files when run inside a repository.
 
     Use --fix to replace non-compliant headers (proprietary licenses,
     old-style Apache blocks, non-standard SPDX) with the correct SPDX
@@ -829,20 +797,12 @@ def update_license_headers(
     target files under .copyrightignore-excluded directories::
 
         # Only process two directories
-        ./script/copyright_fixer.py . --include services/guardrails --include packages/models
+        uv run tools/lint/copyright_fixer.py --include services/guardrails --include packages/models
 
         # Process everything except generated SDK code
-        ./script/copyright_fixer.py . --exclude packages/nemo_platform
+        uv run tools/lint/copyright_fixer.py --exclude packages/nemo_platform
     """
-    if not paths:
-        paths = [Path(".")]
-
-    for p in paths:
-        if not p.exists():
-            typer.echo(f"Error: {p} does not exist", err=True)
-            raise typer.Exit(code=1)
-
-    files, root = _resolve_targets(paths, include=include)
+    files, root = _resolve_targets(include=include)
 
     # Apply --include / --exclude filters (include takes priority over exclude)
     if include or exclude:
