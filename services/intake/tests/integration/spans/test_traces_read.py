@@ -28,7 +28,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     # nemo.evaluation.name, so this asserts the dual-read path end to end (a pre-rename
                     # producer still associates its traces to the evaluation).
                     "nemo.experiment.id": "experiment-a",
-                    "nemo.test_case.id": "case-a",
+                    "nemo.test_case.name": "case-a",
                     "deployment.environment.name": "prod",
                     "tag.tags": ["trace-read"],
                     "metadata": {"owner": "trace-test"},
@@ -95,8 +95,12 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert Decimal(str(trace["cost_output_usd"])) == Decimal("0.0037")
     assert trace["span_count"] == 2
     assert trace["error_count"] == 0
-    assert trace["evaluation_context"]["evaluation_id"] == "experiment-a"
-    assert trace["evaluation_context"]["test_case_id"] == "case-a"
+    assert trace["evaluation_context"] == {
+        "evaluation_name": "experiment-a",
+        "test_case_name": "case-a",
+        "evaluation_id": "experiment-a",
+        "test_case_id": "case-a",
+    }
     assert "evaluation_id" not in trace
     assert "experiment_id" not in trace
     assert "test_case_id" not in trace
@@ -118,8 +122,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     summary_trace = summary_response.json()["data"][0]
     assert summary_trace["id"] == trace["id"]
     assert summary_trace["status"] == "success"
-    assert summary_trace["evaluation_context"]["evaluation_id"] == "experiment-a"
-    assert summary_trace["evaluation_context"]["test_case_id"] == "case-a"
+    assert summary_trace["evaluation_context"] == trace["evaluation_context"]
     assert "evaluation_id" not in summary_trace
     assert "experiment_id" not in summary_trace
     assert "test_case_id" not in summary_trace

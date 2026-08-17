@@ -55,7 +55,7 @@ async def _upload_trials(
 
         attrs = {
             "nemo.experiment.id": group,
-            "nemo.test_case.id": trial.task_id,
+            "nemo.test_case.name": trial.task_id,
             "nemo.trial.id": trial.id,
             "gen_ai.agent.name": AGENT_NAME,
             "gen_ai.agent.version": AGENT_VERSION,

@@ -33,12 +33,12 @@ Active v2 workspace endpoints:
 The Experiments feature captures evaluation runs as leaderboard rows. The flow:
 
 1. Create an **Experiment Group** — `POST /experiment-groups`.
-2. Create an **Evaluation** under it — `POST /evaluations`. Its `name` is the `evaluation_id` you
-   reference when logging.
+2. Create an **Evaluation** under it — `POST /evaluations`. Use the Evaluation's `name` when
+   associating telemetry with it.
 3. Log traces + evaluator results to an ingest endpoint. The Evaluation must exist first. Attach
    evaluation identity per endpoint: **ATIF/Harbor** and **chat-completions** carry it in the JSON body
-   as `evaluation_context = {evaluation_id, test_case_id}`; **OTLP** carries it as root-span attributes
-   `nemo.evaluation.name` (the Evaluation name) and `nemo.test_case.id`.
+   as `evaluation_context = {evaluation_name, test_case_name}`; **OTLP** carries it as root-span attributes
+   `nemo.evaluation.name` (the Evaluation name) and `nemo.test_case.name`.
 4. Read the rollups — `GET /evaluations/{name}` and `.../{name}/sessions` — or view them in Studio
    (behind the `VITE_FF_EXPERIMENT` flag).
 

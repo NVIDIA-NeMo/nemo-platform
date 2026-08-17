@@ -235,7 +235,7 @@ session with the Evaluation's identity:
   `evaluation_context` object to the ingest payload
   carrying `evaluation_id` (the Evaluation's **name**) and `test_case_id`.
 - For OpenTelemetry Protocol (OTLP), set the `nemo.evaluation.name` and
-  `nemo.test_case.id` root-span attributes.
+  `nemo.test_case.name` root-span attributes.
 
 The per-evaluator scores on the leaderboard come from **evaluator results** captured on those
 sessions, either automatically from ATIF verifier rewards or explicitly through the evaluator-results
@@ -246,10 +246,10 @@ The `nemo-experiments-upload` skill walks this through end to end.
 
 <Warning>
 
-**`test_case_id` is required for a populated leaderboard.** A session tagged with only `evaluation_id`
+**`test_case_name` is required for a populated leaderboard.** A session tagged with only `evaluation_name`
 still ingests and appears in the Evaluation's session list, but it does not count toward
 `test_case_count` or any rollup. The row therefore reads as all zeros, with tokens, model, and agent
-blank too. Always send `test_case_id` alongside `evaluation_id`.
+blank too. Always send `test_case_name` alongside `evaluation_name`.
 
 </Warning>
 

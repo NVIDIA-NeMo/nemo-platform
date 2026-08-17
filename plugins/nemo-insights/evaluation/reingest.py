@@ -109,8 +109,6 @@ _POST_DROP = {
 # The platform's entity-name rule (nmp.common NAME_PATTERN) — target workspaces must satisfy it.
 _WS_OK = re.compile(r"^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$")
 
-# Catalog fields that are not flat doc columns: nested under evaluation_context / usage_details.
-_EVAL_CONTEXT_FIELDS = frozenset({"evaluation_id", "evaluation_sha", "evaluation_run_id", "test_case_id"})
 _USAGE_DETAIL_FIELDS = {
     "prompt_cache_write_tokens": "prompt_details.cache_write",
     "prompt_audio_tokens": "prompt_details.audio",
@@ -238,9 +236,12 @@ def load_catalog(platform_root: Path) -> ModuleType:
 
 
 def _doc_value(doc: dict, field: str) -> Any:
-    """The doc's value for a catalog semantic field (most are flat columns; a few are nested)."""
-    if field in _EVAL_CONTEXT_FIELDS:
-        return (doc.get("evaluation_context") or {}).get(field)
+    """Return a detailed-span document value using canonical response field names."""
+    evaluation_context = doc.get("evaluation_context") or {}
+    if field == "evaluation_name":
+        return evaluation_context.get("evaluation_name") or evaluation_context.get("evaluation_id")
+    if field == "test_case_name":
+        return evaluation_context.get("test_case_name") or evaluation_context.get("test_case_id")
     if field in _USAGE_DETAIL_FIELDS:
         return (doc.get("usage_details") or {}).get(_USAGE_DETAIL_FIELDS[field])
     if field == "agent_version":

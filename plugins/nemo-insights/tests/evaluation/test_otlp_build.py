@@ -366,7 +366,7 @@ def test_every_span_carries_evaluation_and_test_case_tags():
     assert spans  # at least the AGENT root + EVALUATOR
     for s in spans:
         assert s["attributes"]["nemo.evaluation.name"] == "tau2-airline-20260626-000000-abcd"
-        assert s["attributes"]["nemo.test_case.id"] == "7"
+        assert s["attributes"]["nemo.test_case.name"] == "7"
 
 
 def test_tags_identical_across_realistic_and_oracle_twins():
@@ -381,7 +381,7 @@ def test_tags_identical_across_realistic_and_oracle_twins():
     oracle = sim_to_spans(sim, include_rewards=True, **common)
 
     def tag(s):
-        return (s["attributes"]["nemo.evaluation.name"], s["attributes"]["nemo.test_case.id"])
+        return (s["attributes"]["nemo.evaluation.name"], s["attributes"]["nemo.test_case.name"])
 
     assert {tag(s) for s in realistic} == {("run-1", "7")}
     assert {tag(s) for s in oracle} == {("run-1", "7")}
