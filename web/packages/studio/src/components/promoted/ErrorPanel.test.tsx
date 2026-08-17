@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ErrorPanelProps, RouteErrorPanel } from '@nemo/common/src/components/ErrorPanel';
+import { RouteErrorPanel, type ErrorPanelProps } from '@nemo/common/src/components/ErrorPanel';
 import { suppressConsoleError } from '@nemo/testing/utils/suppress-console';
 import { mockUseNavigate } from '@studio/tests/util/mockUseParams';
 import { render, screen, fireEvent } from '@testing-library/react';

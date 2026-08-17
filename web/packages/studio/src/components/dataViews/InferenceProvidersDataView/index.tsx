@@ -38,7 +38,7 @@ import { Stack, Text } from '@nvidia/foundations-react-core';
 import { EditInferenceProviderModal } from '@studio/routes/InferenceProvidersListRoute/EditInferenceProviderModal';
 import { InferenceProviderDetailsSidePanel } from '@studio/routes/InferenceProvidersListRoute/InferenceProviderDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
-import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
 
 export interface InferenceProvidersDataViewProps {
   workspace: string;

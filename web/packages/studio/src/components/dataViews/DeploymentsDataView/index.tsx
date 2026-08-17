@@ -27,7 +27,7 @@ import {
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
-import { ComponentProps, FC, useCallback } from 'react';
+import { type ComponentProps, type FC, useCallback } from 'react';
 
 export interface DeploymentsDataViewProps {
   workspace: string;

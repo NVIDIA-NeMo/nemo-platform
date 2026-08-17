@@ -126,8 +126,7 @@ export const ErrorPanel: FC<ErrorPanelProps> = ({ title, errorMessage, attribute
  *     <RouteErrorPanel
  *       title="Data Store"
  *       attributes={{
- *         slotMedia: <CustomIcon />,
- *         slotFooter: <CustomFooter />,
+ *         ErrorMessage: { slotMedia: <CustomIcon />, slotFooter: <CustomFooter /> },
  *       }}
  *     />
  *   ),
