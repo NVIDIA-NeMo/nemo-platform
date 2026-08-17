@@ -370,6 +370,175 @@ def test_create_project_manifest_forwards_backends(client, mock_entity_client, m
     assert backend_flags == ["finance:8086", "cache:6379,6380"]
 
 
+def _stub_byo_project(monkeypatch, project_dir: Path, captured: list[list[str]], agent_yaml: str) -> None:
+    """Stub the project paths against a real directory, so the dockerfile containment check can run."""
+    (project_dir / "deploy").mkdir(parents=True, exist_ok=True)
+    (project_dir / "deploy" / "Dockerfile").write_text("FROM python:3.11-slim\n", encoding="utf-8")
+    monkeypatch.setattr(manifests_module, "download_and_extract_project", lambda *_a, **_k: project_dir)
+    monkeypatch.setattr(
+        manifests_module.IronSwarmConfig,
+        "get",
+        classmethod(lambda cls: MagicMock(iron_swarm_bin=Path("/bin/iron-swarm"))),
+    )
+
+    def fake_run(cmd, **_kwargs):
+        captured.append(cmd)
+        Path(cmd[cmd.index("-o") + 1]).write_text(agent_yaml, encoding="utf-8")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(manifests_module.subprocess, "run", fake_run)
+
+
+_BYO_YAML = (
+    "agent:\n"
+    "  name: lab\n"
+    "  project_dir: .\n"
+    "  workflow: agents/lab/workflow.yaml\n"
+    "  dockerfile: deploy/Dockerfile\n"
+    "  binaries:\n"
+    "  - /app/.venv/bin/**\n"
+)
+
+
+def test_create_byo_manifest_forwards_dockerfile_and_binaries(client, mock_entity_client, monkeypatch, tmp_path):
+    captured: list[list[str]] = []
+    _stub_byo_project(monkeypatch, tmp_path, captured, _BYO_YAML)
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "byo",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "launch_mode": "byo",
+            "dockerfile": "deploy/Dockerfile",
+            "binaries": ["/app/.venv/bin/**"],
+            "workflow": "agents/lab/workflow.yaml",
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    argv = captured[0]
+    # Relative, not resolved: the run re-materializes the manifest elsewhere.
+    assert argv[argv.index("--dockerfile") + 1] == "deploy/Dockerfile"
+    assert [argv[i + 1] for i, tok in enumerate(argv) if tok == "--binary"] == ["/app/.venv/bin/**"]
+    created_call = mock_entity_client.create.await_args
+    assert created_call is not None
+    stored = created_call.args[0]
+    assert stored.launch_mode == "byo"
+    assert stored.workflow == "agents/lab/workflow.yaml"  # the image does not displace the workflow
+    assert stored.dockerfile == "deploy/Dockerfile"
+
+
+def test_byo_manifest_yaml_is_labelled_byo_without_an_explicit_launch_mode(
+    client, mock_entity_client, monkeypatch, tmp_path
+):
+    """The CLI sends a pre-built manifest and no launch_mode; it must not be labelled 'workflow'."""
+    _stub_byo_project(monkeypatch, tmp_path, [], _BYO_YAML)
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "byo-cli",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "manifest_yaml": _BYO_YAML,
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    created_call = mock_entity_client.create.await_args
+    assert created_call is not None
+    stored = created_call.args[0]
+    assert stored.launch_mode == "byo"
+    assert stored.dockerfile == "deploy/Dockerfile"
+
+
+def test_byo_without_a_workflow_is_rejected(client, mock_entity_client, monkeypatch, tmp_path) -> None:
+    """iron-swarm can't launch a BYO victim without a workflow, and the platform never sets start_command."""
+    no_workflow = "agent:\n  name: lab\n  project_dir: .\n  dockerfile: deploy/Dockerfile\n  binaries:\n  - /app/**\n"
+    _stub_byo_project(monkeypatch, tmp_path, [], no_workflow)
+    mock_entity_client.create = AsyncMock(side_effect=lambda entity: entity)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "byo-noflow",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "manifest_yaml": no_workflow,
+        },
+    )
+
+    assert resp.status_code == 422
+    assert "workflow" in resp.json()["detail"]
+
+
+def test_create_byo_manifest_rejects_a_dockerfile_outside_the_project(client, monkeypatch, tmp_path) -> None:
+    _stub_byo_project(monkeypatch, tmp_path, [], _BYO_YAML)
+
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "escape",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "dockerfile": "../../../etc/passwd",
+            "binaries": ["/app/.venv/bin/**"],
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "inside the uploaded project" in resp.json()["detail"]
+
+
+def test_create_byo_manifest_requires_binaries(client) -> None:
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "no-binaries",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "dockerfile": "deploy/Dockerfile",
+        },
+    )
+
+    assert resp.status_code == 422
+    assert "binaries" in resp.json()["detail"]
+
+
+def test_create_manifest_rejects_an_unknown_launch_mode(client) -> None:
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "weird",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "launch_mode": "kubernetes",
+        },
+    )
+
+    assert resp.status_code == 422
+    assert "launch_mode" in resp.json()["detail"]
+
+
+def test_byo_without_a_dockerfile_anywhere_is_rejected(client) -> None:
+    resp = client.post(
+        "/apis/iron-swarm/v2/workspaces/default/manifests",
+        json={
+            "name": "byo-empty",
+            "source_type": "project",
+            "project_fileset": "default/proj-bundle",
+            "launch_mode": "byo",
+        },
+    )
+
+    assert resp.status_code == 422
+    assert "dockerfile" in resp.json()["detail"]
+
+
 def test_delete_missing_manifest_returns_404(client, mock_entity_client) -> None:
     mock_entity_client.get = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
 

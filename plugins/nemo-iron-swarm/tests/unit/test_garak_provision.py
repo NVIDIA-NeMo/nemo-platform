@@ -112,7 +112,15 @@ def test_default_install_is_a_plain_pypi_install(tmp_path: Path, monkeypatch: py
     provisioning.provision_venv(cfg, force=True)
 
     install = next(c for c in commands if "install" in c)
-    assert install == ["uv", "pip", "install", "--python", str(cfg.venv_path / "bin" / "python"), "iron-swarm"]
+    # A version floor is fine (BYO needs `init --dockerfile`); a baked-in registry is not.
+    assert install == [
+        "uv",
+        "pip",
+        "install",
+        "--python",
+        str(cfg.venv_path / "bin" / "python"),
+        "iron-swarm>=0.0.7",
+    ]
 
 
 def test_provision_venv_passes_configured_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

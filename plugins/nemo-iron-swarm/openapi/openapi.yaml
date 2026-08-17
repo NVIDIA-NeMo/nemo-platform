@@ -1752,6 +1752,21 @@ components:
           title: Launch Mode
           description: Victim launch mode ('workflow'|'byo'; project source).
           default: ''
+        dockerfile:
+          type: string
+          title: Dockerfile
+          description: Project-relative Dockerfile the victim image is built from
+            ('byo' launch mode). Stored alongside launch_mode so a manifest says which
+            image it uses, not merely that it brings one.
+          default: ''
+        binaries:
+          items:
+            type: string
+          type: array
+          title: Binaries
+          description: In-container glob patterns scoping which processes may egress
+            ('byo' launch mode); iron-swarm requires them because a BYO image's layout
+            cannot be inferred.
         manifest_yaml:
           type: string
           title: Manifest Yaml
@@ -2107,8 +2122,28 @@ components:
           type: string
         launch_mode:
           title: Launch Mode
-          description: Victim launch mode ('workflow'; BYO is Phase 2).
+          description: 'Victim launch mode: ''workflow'' (a generic image built from
+            the project) or ''byo'' (built from the project''s own Dockerfile). ''byo''
+            needs either a `dockerfile` here or a `manifest_yaml` that already carries
+            one. Derived from the manifest when omitted.'
           type: string
+        dockerfile:
+          title: Dockerfile
+          description: "Project-relative Dockerfile to build the victim image from,\
+            \ instead of a generic one \u2014 for agents needing system packages or\
+            \ a custom base image. Requires `binaries`, and a `workflow` (given or\
+            \ detected): the image is how the environment is built, the workflow is\
+            \ what gets served and hardened. The image must carry a 'sandbox' user/group,\
+            \ iproute2, and `nat` on the default PATH."
+          type: string
+        binaries:
+          title: Binaries
+          description: 'In-container glob patterns scoping which processes may egress,
+            e.g. ''/app/.venv/bin/**''. Required with `dockerfile`: a BYO image''s
+            layout is unknown, so the sandbox policy cannot infer it.'
+          items:
+            type: string
+          type: array
         port:
           title: Port
           description: Victim port (defaults to 8000).

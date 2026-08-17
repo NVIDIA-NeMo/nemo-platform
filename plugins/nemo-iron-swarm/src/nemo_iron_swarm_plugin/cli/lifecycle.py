@@ -24,12 +24,31 @@ from nemo_iron_swarm_plugin.config import IronSwarmConfig
 from nemo_iron_swarm_plugin.filesets import upload_project_dir
 
 
+def _check_byo(project_dir: Path, dockerfile: str, binaries: list[str]) -> None:
+    """Reject a BYO request that would only fail later, on a different machine."""
+    if not binaries:
+        typer.secho(
+            "Error: --dockerfile requires at least one --binary glob, e.g. --binary '/app/.venv/bin/**'.", fg="red"
+        )
+        raise typer.Exit(code=1)
+    if Path(dockerfile).is_absolute():
+        # The run re-downloads the bundle elsewhere, so only a project-relative path resolves there.
+        typer.secho(f"Error: --dockerfile must be relative to {project_dir}, not an absolute path.", fg="red")
+        raise typer.Exit(code=1)
+    candidate = (project_dir / dockerfile).resolve()
+    if not candidate.is_relative_to(project_dir.resolve()) or not candidate.is_file():
+        typer.secho(f"Error: --dockerfile not found inside the project: {dockerfile}", fg="red")
+        raise typer.Exit(code=1)
+
+
 def _project_init_body(
     ctx: CommandContext,
     project_dir: Path,
     *,
     name: str | None,
     workflow: str | None,
+    dockerfile: str | None,
+    binaries: list[str],
     port: int | None,
     egress: list[str],
     secrets: list[str],
@@ -45,6 +64,8 @@ def _project_init_body(
     if not project_dir.is_dir():
         typer.secho(f"Error: {project_dir} is not a directory.", fg="red")
         raise typer.Exit(code=1)
+    if dockerfile:
+        _check_byo(project_dir, dockerfile, binaries)
 
     manifest_name = name or project_dir.resolve().name
     with tempfile.TemporaryDirectory() as tmp:
@@ -65,6 +86,10 @@ def _project_init_body(
             cmd.append("--yes")
         if workflow:
             cmd += ["--workflow", workflow]
+        if dockerfile:
+            cmd += ["--dockerfile", dockerfile]
+            for glob in binaries:
+                cmd += ["--binary", glob]
         if port:
             cmd += ["--port", str(port)]
         if secrets:
@@ -91,6 +116,7 @@ def _project_init_body(
         "source_type": "project",
         "project_fileset": fileset,
         "manifest_yaml": manifest_yaml,
+        "launch_mode": "byo" if dockerfile else "workflow",
     }
 
 
@@ -166,6 +192,20 @@ def register(app: typer.Typer) -> None:
         workflow: str | None = typer.Option(
             None, "--workflow", help="Workflow path within the project (project source; default: detected)."
         ),
+        dockerfile: str | None = typer.Option(
+            None,
+            "--dockerfile",
+            help="Project-relative Dockerfile to build the victim from instead of a generic image (project "
+            "source) — for agents needing system packages or a custom base image. Composes with --workflow; "
+            "requires --binary. The image must carry a 'sandbox' user/group, iproute2, and `nat` on the "
+            "default PATH.",
+        ),
+        binary: list[str] = typer.Option(
+            None,
+            "--binary",
+            help="In-container glob scoping which processes may egress, repeatable (e.g. '/app/.venv/bin/**'). "
+            "Required with --dockerfile.",
+        ),
         port: int | None = typer.Option(None, "--port", help="Victim port (project source; default: detected)."),
         attack_model: str | None = typer.Option(
             None, "--attack-model", help="Default model for garak's red-team + detector."
@@ -203,6 +243,9 @@ def register(app: typer.Typer) -> None:
         if bool(agent) == bool(project_dir):
             typer.secho("Error: pass exactly one of --agent or --project-dir.", fg="red")
             raise typer.Exit(code=1)
+        if dockerfile and agent:
+            typer.secho("Error: --dockerfile applies to --project-dir only; a deployed agent has no image.", fg="red")
+            raise typer.Exit(code=1)
 
         ctx = command_context(workspace)
         body: dict[str, object]
@@ -212,6 +255,8 @@ def register(app: typer.Typer) -> None:
                 Path(project_dir),
                 name=name,
                 workflow=workflow,
+                dockerfile=dockerfile,
+                binaries=list(binary or []),
                 port=port,
                 egress=list(egress or []),
                 secrets=list(secrets or []),
@@ -251,8 +296,11 @@ def register(app: typer.Typer) -> None:
         manifest_name = str(manifest.get("name") or body["name"])
         typer.secho(f"Saved manifest '{manifest_name}'", fg="green")
         source = manifest.get("agent") or manifest.get("project_fileset") or "?"
+        image = manifest.get("dockerfile") or "(generic, built from the project)"
         typer.echo(
             f"  source    {source}\n"
+            f"  image     {image}\n"
+            f"  workflow  {manifest.get('workflow') or '(none)'}\n"
             f"  victim    port {manifest.get('port', '?')}\n"
             f"  secrets   {', '.join(manifest.get('secrets') or [])}\n"
             f"  egress    {', '.join(manifest.get('egress') or []) or '(none — outbound calls are blocked)'}"

@@ -152,10 +152,11 @@ class IronSwarmConfig(NemoConfig):
         ),
     )
     iron_swarm_spec: str = Field(
-        default="iron-swarm",
+        default="iron-swarm>=0.0.7",
         description=(
             "Package spec `nemo iron-swarm setup` installs into the venv (e.g. 'iron-swarm', "
-            "'iron-swarm==0.0.1', or a local path/VCS URL for development)."
+            "'iron-swarm==0.0.1', or a local path/VCS URL for development). The floor is the release "
+            "that added `init --dockerfile/--binary`, which the BYO launch mode depends on."
         ),
     )
     index_url: str | None = Field(

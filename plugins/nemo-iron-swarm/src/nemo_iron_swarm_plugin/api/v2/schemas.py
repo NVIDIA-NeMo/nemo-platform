@@ -63,7 +63,24 @@ class ManifestInit(BaseModel):
     workflow: str | None = Field(
         default=None, description="Chosen workflow path within the project (project-relative)."
     )
-    launch_mode: str | None = Field(default=None, description="Victim launch mode ('workflow'; BYO is Phase 2).")
+    launch_mode: str | None = Field(
+        default=None,
+        description="Victim launch mode: 'workflow' (a generic image built from the project) or 'byo' "
+        "(built from the project's own Dockerfile). 'byo' needs either a `dockerfile` here or a "
+        "`manifest_yaml` that already carries one. Derived from the manifest when omitted.",
+    )
+    dockerfile: str | None = Field(
+        default=None,
+        description="Project-relative Dockerfile to build the victim image from, instead of a generic one — "
+        "for agents needing system packages or a custom base image. Requires `binaries`, and a `workflow` "
+        "(given or detected): the image is how the environment is built, the workflow is what gets served "
+        "and hardened. The image must carry a 'sandbox' user/group, iproute2, and `nat` on the default PATH.",
+    )
+    binaries: list[str] | None = Field(
+        default=None,
+        description="In-container glob patterns scoping which processes may egress, e.g. '/app/.venv/bin/**'. "
+        "Required with `dockerfile`: a BYO image's layout is unknown, so the sandbox policy cannot infer it.",
+    )
     port: int | None = Field(default=None, description="Victim port (defaults to 8000).")
     secrets: list[str] | None = Field(default=None, description="Secret names the victim requires.")
     secrets_file: str | None = Field(default=None, description="Dotenv path within the project holding the secrets.")

@@ -84,6 +84,16 @@ class IronSwarmManifest(NemoEntity, entity_type=IRON_SWARM_MANIFEST_TYPE):
     )
     workflow: str = Field(default="", description="Chosen workflow path within the project (project source, display).")
     launch_mode: str = Field(default="", description="Victim launch mode ('workflow'|'byo'; project source).")
+    dockerfile: str = Field(
+        default="",
+        description="Project-relative Dockerfile the victim image is built from ('byo' launch mode). Stored "
+        "alongside launch_mode so a manifest says which image it uses, not merely that it brings one.",
+    )
+    binaries: list[str] = Field(
+        default_factory=list,
+        description="In-container glob patterns scoping which processes may egress ('byo' launch mode); "
+        "iron-swarm requires them because a BYO image's layout cannot be inferred.",
+    )
     manifest_yaml: str = Field(default="", description="The resolved iron-swarm.yaml content (for display).")
     port: int = Field(default=0, description="Victim port the war-game will target.")
     secrets: list[str] = Field(default_factory=list, description="Secret names the victim agent requires.")

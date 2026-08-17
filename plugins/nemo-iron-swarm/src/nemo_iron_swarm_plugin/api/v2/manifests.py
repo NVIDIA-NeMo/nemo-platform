@@ -344,6 +344,26 @@ async def _build_agent_manifest(workspace: str, body: ManifestInit) -> IronSwarm
     return manifest
 
 
+def _validate_launch_mode(body: ManifestInit) -> None:
+    """Reject a launch mode we can't build, before the bundle is downloaded."""
+    if body.launch_mode and body.launch_mode not in ("workflow", "byo"):
+        raise HTTPException(
+            status_code=422, detail=f"launch_mode must be 'workflow' or 'byo'; got {body.launch_mode!r}."
+        )
+    if body.launch_mode == "byo" and not body.dockerfile and not body.manifest_yaml:
+        raise HTTPException(
+            status_code=422,
+            detail="launch_mode 'byo' requires a 'dockerfile' (or a 'manifest_yaml' that already sets one).",
+        )
+    if body.dockerfile and not body.binaries:
+        # iron-swarm's NatVictimSpec rejects BYO without them.
+        raise HTTPException(
+            status_code=422,
+            detail="'dockerfile' requires 'binaries' — glob patterns scoping which processes may egress, "
+            "e.g. ['/app/.venv/bin/**'].",
+        )
+
+
 async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwarmManifest:
     """Build a manifest from an uploaded NAT project by shelling ``iron-swarm init --yes``.
 
@@ -353,8 +373,7 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
     fileset = body.project_fileset
     if not fileset:
         raise HTTPException(status_code=422, detail="source_type 'project' requires a 'project_fileset'.")
-    if body.launch_mode and body.launch_mode != "workflow":
-        raise HTTPException(status_code=422, detail="Only the 'workflow' launch mode is supported (BYO is Phase 2).")
+    _validate_launch_mode(body)
 
     sdk = get_platform_sdk(as_service="iron-swarm", internal=True)
     bin_path = IronSwarmConfig.get().iron_swarm_bin
@@ -380,6 +399,17 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
             ]
             if body.workflow:
                 cmd += ["--workflow", body.workflow]
+            if body.dockerfile:
+                # Same containment check as `secrets_file` below. The flag keeps the relative path:
+                # the run re-materializes the manifest against a different directory.
+                candidate = (project_dir / body.dockerfile).resolve()
+                if not candidate.is_relative_to(project_dir.resolve()):
+                    raise ValueError("'dockerfile' must be inside the uploaded project.")
+                if not candidate.is_file():
+                    raise ValueError(f"'dockerfile' not found in the uploaded project: {body.dockerfile}")
+                cmd += ["--dockerfile", body.dockerfile]
+                for glob in body.binaries or []:
+                    cmd += ["--binary", glob]
             if body.secrets:
                 cmd += ["--secrets", ",".join(body.secrets)]
             if body.secrets_file:
@@ -424,7 +454,11 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
         source_type="project",
         project_fileset=fileset,
         workflow=body.workflow or str(agent_section.get("workflow") or ""),
-        launch_mode=body.launch_mode or "workflow",
+        # Derived, not defaulted: the CLI sends a pre-built manifest_yaml with no launch_mode, so
+        # defaulting to "workflow" mislabels every BYO manifest it creates.
+        launch_mode=body.launch_mode or ("byo" if agent_section.get("dockerfile") else "workflow"),
+        dockerfile=body.dockerfile or str(agent_section.get("dockerfile") or ""),
+        binaries=body.binaries or list(agent_section.get("binaries") or []),
         manifest_yaml=manifest_yaml,
         port=body.port or int(agent_section.get("port") or port),
         secrets=body.secrets or list(agent_section.get("secrets") or []),
@@ -432,6 +466,15 @@ async def _build_project_manifest(workspace: str, body: ManifestInit) -> IronSwa
         env=body.env or dict(agent_section.get("env") or {}),
         models=body.models or WarGameModels(),
     )
+    if manifest.launch_mode == "byo" and not manifest.workflow:
+        # iron-swarm needs `workflow` or `start_command` to launch a BYO victim, and the platform
+        # never sets start_command — so this manifest would raise at run time, not merely degrade.
+        raise HTTPException(
+            status_code=422,
+            detail="A BYO image needs a workflow to serve: none was given or detected in the project. "
+            "Pass 'workflow' (the image is how the environment is built; the workflow is what gets "
+            "served and hardened).",
+        )
     manifest.manifest_yaml = _yaml_with_agent_settings(manifest.manifest_yaml, manifest)
     return manifest
 

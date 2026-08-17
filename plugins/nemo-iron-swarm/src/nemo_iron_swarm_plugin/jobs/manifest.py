@@ -114,6 +114,10 @@ def _apply_manifest_overrides(manifest: dict[str, Any], data: dict[str, Any]) ->
     # Guardrails only applies when the agent has a workflow (iron-swarm gates it the same way).
     has_workflow = bool(manifest.get("agent", {}).get("workflow"))
     entries = [DEFENDER_ENTRIES[key] for key in enabled if key != "guardrails" or has_workflow]
+    if "guardrails" in enabled and not has_workflow:
+        # Without this the defender just vanishes from the run; the safety-model warning below
+        # only fires when a safety model was chosen.
+        logger.warning("guardrails defender skipped: the manifest has no 'agent.workflow' to patch.")
     if safety_model:
         if any(entry["name"] == DEFENDER_ENTRIES["guardrails"]["name"] for entry in entries):
             entries = _with_safety_llm(entries, safety_model)
