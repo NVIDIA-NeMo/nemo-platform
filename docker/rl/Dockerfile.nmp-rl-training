@@ -82,10 +82,11 @@ RUN bash /app/docker/scripts/remove-listed-files.sh /app/docker/rl/codec-file-re
 # Runtime uv cache: the base's /opt/uv_cache ships READ-ONLY on purpose - the prefetched venvs
 # symlink their package files into it, so a writable cache would let code running in this container
 # (including user-authored NeMo-Gym environment code) rewrite the training stack's own packages.
-# Point runtime uv writes at the per-user cache instead, which is already owned by USER_UID above.
+# Point HOME and runtime uv writes at the per-user tree already owned by USER_UID above.
 # The prefetched venvs are unaffected: their symlinks are absolute /opt/uv_cache paths resolved at
 # build time, so changing UV_CACHE_DIR only redirects FUTURE uv operations.
 ENV PATH="/opt/nemo_rl_venv/bin:${PATH}" \
+    HOME=/home/${USERNAME} \
     UV_CACHE_DIR=/home/${USERNAME}/.cache/uv
 ENTRYPOINT ["/opt/venv/bin/python"]
 CMD ["-m", "nmp.rl.tasks.training", "--help"]

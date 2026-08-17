@@ -166,6 +166,34 @@ class TestEvaluator:
         assert "fail_fast" not in call
 
     @pytest.mark.asyncio
+    async def test_run_accepts_single_metric_instance(self):
+        backend = _FakeDirectBackend(result=_empty_benchmark_result())
+        evaluator = Evaluator(client=backend)
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")
+
+        await evaluator.run(
+            metrics=metric,
+            dataset=_DATASET,
+            config=RunConfig(parallelism=1),
+        )
+
+        assert backend.dataset_calls[0]["metrics"] == [metric]
+
+    @pytest.mark.asyncio
+    async def test_run_rejects_invalid_metric_sequence(self):
+        backend = _FakeDirectBackend(result=_empty_benchmark_result())
+        evaluator = Evaluator(client=backend)
+
+        with pytest.raises(TypeError, match="Metric or a sequence of Metric"):
+            await evaluator.run(
+                metrics=cast(Any, [("exact-match", _CustomMetric())]),
+                dataset=_DATASET,
+                config=RunConfig(parallelism=1),
+            )
+
+        assert backend.dataset_calls == []
+
+    @pytest.mark.asyncio
     async def test_run_preserves_aggregate_fields_on_request(self):
         backend = _FakeDirectBackend(result=_empty_benchmark_result())
         evaluator = Evaluator(client=backend)
@@ -306,6 +334,18 @@ class TestEvaluator:
         assert result.aggregate_scores.scores[0].name == "string-check.string-check"
         assert result.row_scores[0].metrics["string-check"][0].value == 0.0
         assert result.row_scores[1].metrics["string-check"][0].value == 0.0
+
+    def test_run_sync_accepts_single_metric_instance(self):
+        evaluator = Evaluator()
+
+        result = evaluator.run_sync(
+            metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"),
+            dataset=_DATASET,
+        )
+
+        assert isinstance(result, BenchmarkEvaluationResult)
+        assert result.aggregate_scores.scores[0].name == "exact-match.exact-match"
+        assert result.aggregate_scores.scores[0].mean == 0.5
 
     def test_run_sync_field_mapping_populates_offline_candidate_output(self):
         evaluator = Evaluator()

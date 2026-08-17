@@ -25,8 +25,10 @@ from nemo_platform.beta.evaluator.values.results import AggregateFieldName
 from .backends.base import BackendParams, EvaluationBackend, SyncEvaluationBackend
 from .backends.local.backend import LocalBackend
 from .config import resolve_params
+from .utils import is_metric, is_metric_sequence
 
 BackendClient = EvaluationBackend | SyncEvaluationBackend
+MetricInputArg = Metric | Sequence[Metric]
 
 
 def _validate_backend_client(client: BackendClient) -> None:
@@ -54,6 +56,15 @@ def _is_async_backend(client: BackendClient) -> TypeGuard[EvaluationBackend]:
 def _is_sync_backend(client: BackendClient) -> TypeGuard[SyncEvaluationBackend]:
     """Return whether the validated backend client exposes a sync evaluator method."""
     return not inspect.iscoroutinefunction(client.evaluate_dataset)
+
+
+def _normalize_metrics(metrics: object) -> list[Metric]:
+    """Normalize public metric inputs without iterating a single metric model."""
+    if is_metric(metrics):
+        return [metrics]
+    if is_metric_sequence(metrics):
+        return list(metrics)
+    raise TypeError("metrics must be a Metric or a sequence of Metric instances")
 
 
 class _SyncBackendAdapter:
@@ -136,7 +147,7 @@ class Evaluator:
     @overload
     async def run(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
@@ -151,7 +162,7 @@ class Evaluator:
     @overload
     async def run(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfigOnlineModel,
@@ -166,7 +177,7 @@ class Evaluator:
     @overload
     async def run(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfigOnline,
@@ -180,7 +191,7 @@ class Evaluator:
 
     async def run(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
@@ -194,7 +205,7 @@ class Evaluator:
         """Evaluate metrics and return the finished result.
 
         Args:
-            metrics: Metrics to execute together over each dataset row.
+            metrics: Metric or metrics to execute over each dataset row.
             dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
             config: Optional run-level execution configuration. Offline calls default to ``RunConfig``.
             target: Optional model or agent used for online generation. Omit for offline scoring.
@@ -211,7 +222,7 @@ class Evaluator:
         normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
         normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
         return await self._backend.evaluate_dataset(
-            metrics=list(metrics),
+            metrics=_normalize_metrics(metrics),
             dataset=dataset,
             params=params,
             target=target,
@@ -225,7 +236,7 @@ class Evaluator:
     @overload
     def run_sync(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
@@ -240,7 +251,7 @@ class Evaluator:
     @overload
     def run_sync(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfigOnlineModel,
@@ -255,7 +266,7 @@ class Evaluator:
     @overload
     def run_sync(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfigOnline,
@@ -269,7 +280,7 @@ class Evaluator:
 
     def run_sync(
         self,
-        metrics: Sequence[Metric],
+        metrics: MetricInputArg,
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
@@ -283,7 +294,7 @@ class Evaluator:
         """Synchronously evaluate metrics and return the finished result.
 
         Args:
-            metrics: Metrics to execute together over each dataset row.
+            metrics: Metric or metrics to execute over each dataset row.
             dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
             config: Optional run-level execution configuration. Offline calls default to ``RunConfig``.
             target: Optional model or agent used for online generation. Omit for offline scoring.
@@ -302,7 +313,7 @@ class Evaluator:
             normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
             normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
             return await self._backend.evaluate_dataset(
-                metrics=list(metrics),
+                metrics=_normalize_metrics(metrics),
                 dataset=dataset,
                 params=params,
                 target=target,
