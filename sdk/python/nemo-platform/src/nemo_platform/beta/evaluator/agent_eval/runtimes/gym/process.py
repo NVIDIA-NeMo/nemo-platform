@@ -20,6 +20,8 @@ from collections import deque
 from collections.abc import Sequence
 from pathlib import Path
 
+from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.config import GymRuntimeConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -186,3 +188,24 @@ async def _terminate(proc: asyncio.subprocess.Process, *, grace_s: float = 30.0)
     except asyncio.TimeoutError:
         _signal_group(pgid, signal.SIGKILL)
         await proc.wait()
+
+
+def _gym_invocation_env(config: GymRuntimeConfig) -> dict[str, str]:
+    """The environment the ``gym`` CLI is invoked with.
+
+    Three layers, lowest precedence first:
+
+    1. **This process's environment.** Gym reads credentials from its own gitignored ``env.yaml``,
+       but honours plenty of ordinary variables (``HF_TOKEN``, proxies) a caller expects to carry
+       over.
+    2. **``RAY_ENABLE_UV_RUN_RUNTIME_ENV=0``.** Gym launches each server from its own subdir with its
+       own ``.venv``; Ray (>=2.56) otherwise detects a ``uv run`` ancestor and tries to replicate that
+       uv project onto its workers, asserting the project's ``pyproject.toml`` lives in the driver's
+       cwd — which aborts startup. That hook is wrong for Gym, whose servers manage their own deps.
+    3. **``config.env_vars``.** Named explicitly in the run config, so it wins over both. That
+       includes the Ray setting: it is a default that makes Gym work, not an invariant, and someone
+       debugging that hook needs a way to put it back.
+
+    Lives here rather than in the runtime so the precedence is assertable without starting Ray.
+    """
+    return {**os.environ, "RAY_ENABLE_UV_RUN_RUNTIME_ENV": "0", **config.env_vars}
