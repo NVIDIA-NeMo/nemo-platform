@@ -1,0 +1,15 @@
+[project]
+name = "nmp-cpu-tasks-gym-e2e"
+version = "0.0.0"
+requires-python = ">=3.13.14,<3.14"
+dependencies = [
+    "nemo-gym==0.5.0",
+    "tiktoken==0.13.0",
+]
+
+[tool.uv]
+required-version = ">=0.9.14,<0.10.0"
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]

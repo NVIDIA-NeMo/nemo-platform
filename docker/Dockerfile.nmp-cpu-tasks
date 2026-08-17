@@ -33,31 +33,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --python /app/.venv/bin/python \
         --output /app/.source-distributions/nmp-cpu-tasks
 
-# NeMo Gym, for the GymAgentTaskRunner path (agent-evaluate jobs with a GymRunnerTarget). Gym
-# imports Ray at module load; nemo-platform excludes Ray workspace-wide via a `uv`
-# override-dependencies constraint (unfixed CVE, see root pyproject.toml), so it can never join
-# the `uv sync` above -- same reasoning as docker/rl/Dockerfile.nmp-rl-base's separate Ray venv,
-# just without that image's much heavier multi-venv-per-actor machinery, which Gym-through-
-# Evaluator doesn't need: one `gym` process on PATH is enough here.
-#
-# No baked env.yaml: this image ships to production (see .github/workflows/release.yaml), so it
-# must not carry test-only credentials. Callers pass policy_base_url/policy_api_key/
-# policy_model_name per-job via GymRunnerTarget.env_overrides instead -- Gym's own config loader
-# merges CLI overrides last, so they take precedence over any env.yaml regardless.
-RUN python3 -m venv /opt/gym-venv \
-    && /opt/gym-venv/bin/pip install --no-cache-dir nemo-gym tiktoken
-
 FROM ${NMP_PYTHON_BASE} AS runtime
 ENV USERNAME=nvs \
     HOME=/home/nvs
 COPY --chown=nvs:nvs --from=builder /app/.venv /app/.venv
 COPY --chown=nvs:nvs --from=builder /app/.source-distributions/nmp-cpu-tasks/ /usr/share/nemo-platform/source-distributions/nmp-cpu-tasks/
 COPY --chown=nvs:nvs --from=builder /app/plugins/nemo-data-designer/tiktoken-cache /app/tiktoken-cache
-COPY --chown=nvs:nvs --from=builder /opt/gym-venv /opt/gym-venv
 ENV TIKTOKEN_CACHE_DIR=/app/tiktoken-cache
-# App venv first, so it wins any name collision; /opt/gym-venv only contributes `gym` (and its
-# own python/pip, which nothing else on this PATH needs to resolve to).
-ENV PATH="/app/.venv/bin:/opt/gym-venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 USER 0
 COPY docker/scripts/cve-cleanup.sh /bin/
 RUN sh /bin/cve-cleanup.sh
