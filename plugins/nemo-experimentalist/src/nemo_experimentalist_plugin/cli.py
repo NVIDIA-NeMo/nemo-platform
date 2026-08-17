@@ -46,6 +46,7 @@ from nemo_insights_plugin.contracts.profile import (
 )
 from nemo_platform import NeMoPlatformError
 from nemo_platform_plugin.cli import NemoCLI
+from nooa import GenerationError
 
 DEFAULT_WORKSPACE = "default"
 
@@ -311,6 +312,14 @@ class ExperimentalistCLI(NemoCLI):
 
             try:
                 output_text = asyncio.run(_flow())
+            except GenerationError as exc:
+                typer.echo(
+                    f"Error: the model did not return the output that a step of the run requires.\n\n{exc}\n\n"
+                    "Analysis steps use the fast model, which falls back to the default model when unset. "
+                    "Run `nemo setup` to select more capable models, then start the run again.",
+                    err=True,
+                )
+                raise typer.Exit(code=1) from None
             except (OSError, ValueError, yaml.YAMLError) as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from None
