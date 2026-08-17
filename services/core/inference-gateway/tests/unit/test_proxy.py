@@ -1389,7 +1389,9 @@ async def test_proxy_request_wraps_certain_errors_in_502(mock_proxy_client, next
     mock_response = Mock(spec=aiohttp.ClientResponse)
     mock_response.status = status_code
     mock_response.closed = False
-    mock_response.headers = CIMultiDict({"content-type": "application/json"})
+    mock_response.headers = CIMultiDict(
+        {"content-type": "application/json", "content-length": "24", "retry-after": "30"}
+    )
     mock_response.read = AsyncMock(return_value=b'{"error": "model not found on backend"}')
     mock_proxy_client.request = AsyncMock(return_value=mock_response)
 
@@ -1399,6 +1401,10 @@ async def test_proxy_request_wraps_certain_errors_in_502(mock_proxy_client, next
     assert exc_info.value.status_code == 502
     assert f"Backend returned {status_code}" in exc_info.value.detail
     assert "model not found on backend" in exc_info.value.detail
+    assert exc_info.value.headers is not None
+    assert exc_info.value.headers.get("retry-after") == "30"
+    assert "content-type" not in exc_info.value.headers
+    assert "content-length" not in exc_info.value.headers
 
 
 @pytest.mark.asyncio
@@ -1427,6 +1433,33 @@ async def test_proxy_request_passes_through_other_backend_errors(mock_proxy_clie
     # (FastAPI generates its own JSON error body), so they must not leak through.
     assert "content-length" not in exc_info.value.headers
     assert "content-type" not in exc_info.value.headers
+
+
+@pytest.mark.asyncio
+async def test_proxy_request_drops_headers_named_by_connection_on_error(mock_proxy_client, next_request_info):
+    """A backend can name additional hop-by-hop headers via Connection; those must not forward either."""
+    import aiohttp
+
+    mock_response = Mock(spec=aiohttp.ClientResponse)
+    mock_response.status = 503
+    mock_response.closed = False
+    mock_response.headers = CIMultiDict(
+        {
+            "connection": "x-backend-only",
+            "x-backend-only": "internal-secret",
+            "retry-after": "30",
+        }
+    )
+    mock_response.read = AsyncMock(return_value=b'{"error": "unavailable"}')
+    mock_proxy_client.request = AsyncMock(return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await proxy_request(mock_proxy_client, next_request_info)
+
+    assert exc_info.value.headers is not None
+    assert exc_info.value.headers.get("retry-after") == "30"
+    assert "connection" not in exc_info.value.headers
+    assert "x-backend-only" not in exc_info.value.headers
 
 
 @pytest.mark.asyncio

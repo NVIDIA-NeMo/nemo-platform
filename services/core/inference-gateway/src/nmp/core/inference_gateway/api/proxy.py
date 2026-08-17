@@ -321,8 +321,16 @@ def _filter_error_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDic
     the framing of the upstream response body (Content-Length, Content-Type, etc.),
     since the error path raises a new HTTPException with its own body rather than
     forwarding the upstream body byte-for-byte.
+
+    Also honors the Connection header's own contents: per RFC 9110 section 7.6.1,
+    a Connection header can name additional hop-by-hop headers that must not be
+    forwarded past this hop, so those named headers are dropped too rather than
+    just the literal "Connection" header itself.
     """
-    return CIMultiDict((k, v) for k, v in headers.items() if k.lower() not in ERROR_RESPONSE_HEADERS_TO_DROP)
+    to_drop = set(ERROR_RESPONSE_HEADERS_TO_DROP)
+    for connection_value in headers.getall("connection", []):
+        to_drop.update(token.strip().lower() for token in connection_value.split(",") if token.strip())
+    return CIMultiDict((k, v) for k, v in headers.items() if k.lower() not in to_drop)
 
 
 def _close_response(response: aiohttp.ClientResponse | None):
