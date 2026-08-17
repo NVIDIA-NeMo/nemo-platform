@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Iterator
 from typing import ClassVar
 from unittest.mock import MagicMock
 
@@ -12,6 +13,7 @@ import pytest
 from fastapi import APIRouter, Request
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.service import NemoService, RouterSpec
+from nmp.common.controller import ControllerManager
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter, make_controller_run_func
 from starlette.responses import JSONResponse
 
@@ -72,9 +74,12 @@ class _StubControllerWithDeps(_StubController):
 
 
 @pytest.fixture(autouse=True)
-def _clear_stub_controller_call_history() -> None:
+def _clear_stub_controller_call_history() -> Iterator[None]:
     _list_objects_calls.clear()
     _on_startup_calls.clear()
+    ControllerManager._instance = None
+    yield
+    ControllerManager._instance = None
 
 
 @pytest.fixture
@@ -212,3 +217,16 @@ def test_controller_skips_wait_when_no_dependencies(monkeypatch: pytest.MonkeyPa
 
     mock_wait.assert_not_called()
     assert _list_objects_calls
+
+
+def test_plugin_controller_registers_loop_for_health_reporting() -> None:
+    stop_signal = threading.Event()
+    thread = _run_controller_until_list_objects(_StubController, stop_signal)
+
+    try:
+        loops = ControllerManager.get_instance().get_all_loops()
+        assert list(loops) == ["controller-plugin-test-controller"]
+        assert loops["controller-plugin-test-controller"].is_alive()
+    finally:
+        stop_signal.set()
+        thread.join(timeout=_WAIT_DEADLINE_SECONDS)
