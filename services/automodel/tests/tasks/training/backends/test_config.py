@@ -435,3 +435,49 @@ def test_compile_uses_fallback_packing_factor_for_schedule(tmp_path: Path) -> No
     assert compiled["step_scheduler"]["max_steps"] == 2
     assert compiled["step_scheduler"]["val_every_steps"] == 1
     assert compiled["lr_scheduler"]["lr_warmup_steps"] == 1
+
+
+def test_the_reporting_block_reaches_the_recipe_config(tmp_path: Path) -> None:
+    """The compiler writes what AutomodelRecipeWrapper reads, under the same key.
+
+    The recipe config file is the only channel from the compiled job to the
+    training process, and `_progress_reporting` is ours rather than the recipe's,
+    so nothing upstream validates it. Both sides were separately covered --
+    test_finetune.py exercises the reader against a hand-built block -- and that
+    is exactly the arrangement where a rename passes every test and the run
+    quietly reports at the default forever. This is the test that fails.
+    """
+    from nmp.customization_common.training.reporting import ProgressReportingConfig
+
+    fixture = (
+        Path(__file__).parents[3] / "contract" / "input_configs" / "llama-3.2-1b" / "llama_3_2_1b_lora_packing.json"
+    )
+    raw = json.loads(fixture.read_text())
+    raw.pop("backend")
+    config = TrainingStepConfig.model_validate(raw)
+    config.schedule.progress_reporting = ProgressReportingConfig(max_points=25, curves=["loss"])
+
+    prepared = PreparedDataset(
+        merged_dir=tmp_path,
+        train_file=tmp_path / "train.jsonl",
+        validation_file=tmp_path / "validation.jsonl",
+        train_samples=100,
+        validation_samples=10,
+    )
+
+    with (
+        patch(f"{CONFIG_MODULE}.prepare_dataset", return_value=prepared),
+        patch(f"{CONFIG_MODULE}.DatasetValidator"),
+        patch(f"{CONFIG_MODULE}.estimate_dataset_sequence_lengths", return_value=None),
+        patch(f"{CONFIG_MODULE}._configure_datasets"),
+        patch(f"{CONFIG_MODULE}._configure_moe_backend"),
+        patch(f"{CONFIG_MODULE}.build_wandb_config", return_value=None),
+        patch(f"{CONFIG_MODULE}.build_mlflow_config", return_value=None),
+    ):
+        compiled = compile_automodel_config(config, tmp_path, MagicMock())
+
+    # Exact equality, not a subset check: the reader in test_finetune.py is written
+    # against this literal shape, so a key renamed or dropped on either side breaks
+    # one of the two. A subset check here would let the writer grow a key the reader
+    # never looks at, which is the same silence in a different place.
+    assert compiled["_progress_reporting"] == {"max_points": 25, "curves": ["loss"]}
