@@ -634,8 +634,9 @@ jobs:
           test -n "${NMP_E2E_CLUSTER_URL}"
           export NMP_BASE_URL="${NMP_E2E_CLUSTER_URL}"
           uv run --frozen pytest \
-            e2e/test_evaluator_plugin.py::test_gym_agent_evaluate_job_completes \
+            e2e/test_evaluator_plugin.py \
             -v \
+            -m gym_e2e \
             --run-e2e \
             --no-cov \
             --junitxml=report-kubernetes-gym-e2e.xml
