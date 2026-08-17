@@ -9,8 +9,8 @@ imports, running a whole Harbor local dataset is two lines — build a
 runs Harbor's ``JobConfig`` and scores the results; the caller never imports
 ``harbor`` or assembles a job.
 
-Two modes, both over the bundled ``hello_world_dataset`` (Harbor's ``hello-world``
-task) scored with the deterministic **oracle** agent, so no LLM/API key is needed:
+Two modes, both over the bundled ``hello_world_dataset`` scored with the
+deterministic **oracle** agent, so no LLM/API key is needed:
 
 * ``--mode native`` — print the SDK summary.
 * ``--mode optimizer`` — collapse the result into NeMo Optimizer's legacy
@@ -20,9 +20,9 @@ Running either mode requires ``harbor`` installed and a working Docker daemon.
 
 Run it as a module from the repository root::
 
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --n-attempts 2
-    python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native --n-attempts 2
+    uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode optimizer
 """
 
 from __future__ import annotations
@@ -70,13 +70,16 @@ async def _main(mode: str, jobs_dir: Path, *, n_attempts: int, job_name: str | N
     for score in result.scores:
         reward = score.outputs[0].value if score.outputs else None
         print(f"  {score.task_id}: reward={reward} status={score.status.value}")
+    for trial in result.trials:
+        if trial.error is not None:
+            print(f"  {trial.id}: error={trial.error.type}: {trial.error.message}")
 
 
 if __name__ == "__main__":
     if __package__ in {None, ""}:
         raise SystemExit(
             "Run this example as a module from the repository root:\n"
-            "  python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native"
+            "  uv run python -m packages.nemo_evaluator_sdk.examples.harbor.run_harbor_example --mode native"
         )
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
