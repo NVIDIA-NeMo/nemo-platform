@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from fastapi import Depends
 from nemo_platform_plugin.auth.access_keys.issuer import AccessKeyFeatureDisabledError
@@ -15,6 +16,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyCreateResponse,
     AccessKeyListResponse,
     AccessKeyMetadataResponse,
+    AccessKeyReversibleStatus,
     AccessKeyStatus,
 )
 from nmp.common.auth.access_keys import LEGACY_ACCESS_KEY_METADATA_VERSION, AccessKeyIssuerService
@@ -31,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 class AccessKeyNotFoundError(Exception):
     """Raised when a key does not exist or is not owned by the caller."""
+
+
+class AccessKeyStateConflictError(Exception):
+    """Raised when an irreversible lifecycle state prevents a transition."""
 
 
 class AccessKeyRegistry:
@@ -92,6 +98,36 @@ class AccessKeyRegistry:
             raise
         return True
 
+    async def suspend(self, jti: str, principal: str) -> tuple[bool, AccessKeyReversibleStatus]:
+        return await self._set_suspension(jti, principal, suspended=True)
+
+    async def unsuspend(self, jti: str, principal: str) -> tuple[bool, AccessKeyReversibleStatus]:
+        return await self._set_suspension(jti, principal, suspended=False)
+
+    async def _set_suspension(
+        self, jti: str, principal: str, *, suspended: bool
+    ) -> tuple[bool, AccessKeyReversibleStatus]:
+        target_status: Literal["ACTIVE", "SUSPENDED"] = "SUSPENDED" if suspended else "ACTIVE"
+        completed_action = "suspended" if suspended else "unsuspended"
+        record = await self._get_owned(jti, principal)
+        if record.status == "REVOKED":
+            raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be {completed_action}")
+        if record.status == target_status:
+            return False, self._reversible_status(record)
+        updated = record.model_copy(update={"status": target_status})
+        try:
+            await self._entity_client.update(updated)
+        except EntityConflictError:
+            # EntityClient.update uses db_version optimistic locking. Re-read to
+            # determine whether a concurrent update won the race.
+            current = await self._get_owned(jti, principal)
+            if current.status == "REVOKED":
+                raise AccessKeyStateConflictError(f"Revoked Scoped Access Key {jti} cannot be {completed_action}")
+            if current.status == target_status:
+                return False, self._reversible_status(current)
+            raise
+        return True, self._reversible_status(updated)
+
     async def is_active(self, jti: str, principal: str, *, claims: TokenClaims | None = None) -> bool:
         try:
             record = await self._get_owned(jti, principal)
@@ -137,12 +173,19 @@ class AccessKeyRegistry:
         if record.status == "REVOKED":
             return "REVOKED"
         if record.status == "SUSPENDED":
-            return "REVOKED"
+            return "SUSPENDED"
         if record.expires_at is not None and datetime.now(tz=UTC) >= record.expires_at + timedelta(
             seconds=leeway_seconds
         ):
             return "EXPIRED"
         return "ACTIVE"
+
+    @staticmethod
+    def _reversible_status(record: AccessKeyEntity) -> AccessKeyReversibleStatus:
+        effective_status = AccessKeyRegistry._status(record)
+        if effective_status == "REVOKED":
+            raise AssertionError("A reversible access-key transition cannot produce REVOKED status")
+        return effective_status
 
     async def _backfill_legacy_record(
         self,
@@ -289,6 +332,38 @@ class PersistentAccessKeyIssuer:
             },
         )
         return revoked
+
+    async def suspend_async(self, jti: str) -> tuple[bool, AccessKeyReversibleStatus]:
+        self._ensure_enabled()
+        suspended, effective_status = await self._registry.suspend(jti, self.principal)
+        self._log_suspension(jti, changed=suspended, action="suspend")
+        return suspended, effective_status
+
+    async def unsuspend_async(self, jti: str) -> tuple[bool, AccessKeyReversibleStatus]:
+        self._ensure_enabled()
+        unsuspended, effective_status = await self._registry.unsuspend(jti, self.principal)
+        self._log_suspension(jti, changed=unsuspended, action="unsuspend")
+        return unsuspended, effective_status
+
+    def _log_suspension(
+        self,
+        jti: str,
+        *,
+        changed: bool,
+        action: Literal["suspend", "unsuspend"],
+    ) -> None:
+        completed_action = "suspended" if action == "suspend" else "unsuspended"
+        logger.info(
+            f"Scoped Access Key {completed_action}"
+            if changed
+            else f"Scoped Access Key {action} requested with no change",
+            extra={
+                "audit_event": f"access_key.{action}ed" if changed else f"access_key.{action}_noop",
+                "actor_principal": self.principal,
+                "access_key_jti": jti,
+                "access_key_state_changed": changed,
+            },
+        )
 
     def _ensure_enabled(self) -> None:
         if not self._config.access_keys.enabled:

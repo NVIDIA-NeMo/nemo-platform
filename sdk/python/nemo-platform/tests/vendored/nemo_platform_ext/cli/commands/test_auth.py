@@ -20,6 +20,7 @@ from nemo_platform_plugin.auth.access_keys.types import (
     AccessKeyListResponse,
     AccessKeyMetadataResponse,
     AccessKeyRevokeResponse,
+    AccessKeyStatusChangeResponse,
 )
 from nemo_platform_plugin.client.constants import WORKLOAD_IDENTITY_TOKEN_FILE_ENVVAR
 from nemo_platform_plugin.client.errors import NotFoundError
@@ -630,6 +631,48 @@ def test_auth_access_keys_revoke_reports_missing_key(monkeypatch: pytest.MonkeyP
     fake_access_keys_client.revoke_access_key.assert_called_once_with(jti="ak_unknown")
 
 
+def test_auth_access_keys_suspend_and_unsuspend(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.suspend_access_key.return_value.data.return_value = AccessKeyStatusChangeResponse(
+        jti="ak_example", status="SUSPENDED", changed=True
+    )
+    fake_access_keys_client.unsuspend_access_key.return_value.data.return_value = AccessKeyStatusChangeResponse(
+        jti="ak_example", status="ACTIVE", changed=True
+    )
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda _self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda _platform, _client_cls: fake_access_keys_client,
+    )
+
+    suspend_result = runner.invoke(app, ["auth", "access-keys", "suspend", "ak_example"])
+    unsuspend_result = runner.invoke(app, ["auth", "access-keys", "unsuspend", "ak_example"])
+
+    assert_exit_code(suspend_result, 0)
+    assert "Suspended Scoped Access Key ak_example." in suspend_result.output
+    assert_exit_code(unsuspend_result, 0)
+    assert "Unsuspended Scoped Access Key ak_example." in unsuspend_result.output
+    fake_access_keys_client.suspend_access_key.assert_called_once_with(jti="ak_example")
+    fake_access_keys_client.unsuspend_access_key.assert_called_once_with(jti="ak_example")
+
+
+def test_auth_access_keys_unsuspend_noop_reports_expired_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_access_keys_client = MagicMock()
+    fake_access_keys_client.unsuspend_access_key.return_value.data.return_value = AccessKeyStatusChangeResponse(
+        jti="ak_example", status="EXPIRED", changed=False
+    )
+    monkeypatch.setattr("nemo_platform.cli.core.context.CLIContext.get_client", lambda _self: MagicMock())
+    monkeypatch.setattr(
+        "nemo_platform.cli.commands.auth.client_from_platform",
+        lambda _platform, _client_cls: fake_access_keys_client,
+    )
+
+    result = runner.invoke(app, ["auth", "access-keys", "unsuspend", "ak_example"])
+
+    assert_exit_code(result, 0)
+    assert "Scoped Access Key ak_example was already expired." in result.output
+
+
 def test_auth_access_keys_help_exposes_lifecycle_commands() -> None:
     result = runner.invoke(app, ["auth", "access-keys", "--help"])
 
@@ -637,6 +680,8 @@ def test_auth_access_keys_help_exposes_lifecycle_commands() -> None:
     assert "create" in result.output
     assert "list" in result.output
     assert "revoke" in result.output
+    assert "suspend" in result.output
+    assert "unsuspend" in result.output
 
     create_help = runner.invoke(app, ["auth", "access-keys", "create", "--help"])
     assert_exit_code(create_help, 0)

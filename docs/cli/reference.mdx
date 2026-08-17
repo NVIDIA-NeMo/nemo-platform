@@ -281,6 +281,8 @@ nemo auth access-keys [OPTIONS] COMMAND [ARGS]...
 * `create`: Create a Scoped Access Key for the currently...
 * `list`: List Scoped Access Keys owned by the currently...
 * `revoke`: Revoke a Scoped Access Key owned by the currently...
+* `suspend`: Temporarily suspend a Scoped Access Key owned by the...
+* `unsuspend`: Restore a suspended Scoped Access Key owned by the...
 
 ##### nemo auth access-keys create
 
@@ -334,6 +336,42 @@ nemo auth access-keys revoke [OPTIONS] JTI
 **Arguments:**
 
 * `<JTI>`: Stable ID of the Scoped Access Key to revoke.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys suspend
+
+Temporarily suspend a Scoped Access Key owned by the current user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys suspend [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to suspend.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo auth access-keys unsuspend
+
+Restore a suspended Scoped Access Key owned by the current user.
+
+**Usage:**
+
+```shell
+nemo auth access-keys unsuspend [OPTIONS] JTI
+```
+
+**Arguments:**
+
+* `<JTI>`: Stable ID of the Scoped Access Key to unsuspend.
 
 **Help:**
 

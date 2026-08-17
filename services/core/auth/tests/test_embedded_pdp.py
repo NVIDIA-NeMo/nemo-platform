@@ -30,6 +30,14 @@ def static_authz_data():
         return yaml.safe_load(f)
 
 
+def test_access_key_lifecycle_routes_are_available_to_authenticated_owners(static_authz_data) -> None:
+    endpoints = static_authz_data["authz"]["endpoints"]
+
+    for action in ["suspend", "unsuspend"]:
+        rule = endpoints[f"/apis/auth/v2/access-keys/{{jti}}/{action}"]["post"]
+        assert rule == {"permissions": [], "scopes": []}
+
+
 @pytest.fixture
 def minimal_authz_data():
     """Minimal authorization data for testing."""
