@@ -861,6 +861,24 @@ class HarborDataset(Dataset):
 
         {"reward": 0.8, "my_metric": 1.0}
 
+    **Writing a reward file is mandatory, not optional.** Harbor accepts either
+    ``/logs/verifier/reward.json`` or ``/logs/verifier/reward.txt`` (one bare
+    number, and nothing else).  ``reward.json`` wins when both exist.  A
+    ``test.sh`` that exits ``0`` without writing either scores nothing at all —
+    it does **not** score zero.  Harbor raises ``RewardFileNotFoundError``, the
+    trial is recorded as failed, and the task contributes no metric to the run.
+    A run whose baseline emits no metric this way is refused outright, because
+    there is then no measurement to optimize toward.
+
+    So create the directory and write the file unconditionally, on every exit
+    path — including the ones where the agent failed::
+
+        mkdir -p /logs/verifier
+        echo 0 > /logs/verifier/reward.txt   # replaced below once the score is known
+
+    Under ``set -e`` a failing check aborts the script, so a reward written only
+    at the end is never written on the path that matters most.
+
     **To add a new metric** — write it as an additional key in ``reward.json``::
 
         {"reward": 0.8, "my_metric": 1.0, "another_metric": 0.5}
@@ -901,6 +919,9 @@ class HarborDataset(Dataset):
         #!/usr/bin/env bash
         set -euo pipefail
         mkdir -p /logs/verifier
+        # Seed a reward before anything can fail. Under `set -e` a failing check
+        # aborts the script, and reward.json below wins whenever it is written.
+        echo 0 > /logs/verifier/reward.txt
         SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
         # Run each metric script and collect its output.
