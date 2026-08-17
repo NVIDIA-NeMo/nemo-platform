@@ -235,9 +235,12 @@ def test_an_installed_out_of_tree_package_is_discovered() -> None:
     repository — which is the only evidence that both discovery levels work for someone
     who is not us.
 
-    Skipped when it is not installed, so the suite does not require it; CI installs it.
+    This one does not skip when the package is missing, unlike the two below. It is the
+    canary for the wiring itself: the package is a locked dev dependency, so absent means
+    someone unwired it, and three tests quietly skipping is how a broken one survived
+    unnoticed before.
     """
-    pytest.importorskip("acme_strategies", reason="out-of-tree example package is not installed")
+    import acme_strategies  # noqa: F401 - importing is the assertion
 
     resolved = resolve("strategy", "random-search")
 
@@ -803,7 +806,9 @@ async def test_the_context_loads_a_trace_by_reference(tmp_path, isolated_registr
 
 
 @pytest.mark.asyncio
-async def test_the_example_strategy_resumes_where_the_store_left_off(tmp_path, isolated_registry: None) -> None:
+async def test_the_example_strategy_resumes_where_the_store_left_off(
+    tmp_path: Path, isolated_registry: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The out-of-tree example declares `supports_resume`, so it must honour it.
 
     Restarting at generation 1 would rebuild finished work and report progress that goes
@@ -835,7 +840,7 @@ async def test_the_example_strategy_resumes_where_the_store_left_off(tmp_path, i
             built.append(name)
         return component
 
-    ctx.component = _recording_component  # type: ignore[method-assign]
+    monkeypatch.setattr(ctx, "component", _recording_component)
     strategy = strategy_class(working_dir=tmp_path, config=EvolutionaryOptimizerConfig(max_rounds=0))
 
     winner = await strategy.run(ctx)
