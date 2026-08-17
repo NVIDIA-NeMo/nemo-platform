@@ -73,6 +73,15 @@ run_chainsaw() {
         --no-color
 }
 
+flattened_kubeconfig=""
+
+cleanup() {
+    if [ -n "${flattened_kubeconfig}" ]; then
+        rm -f "${flattened_kubeconfig}"
+    fi
+}
+trap cleanup EXIT
+
 if command -v chainsaw >/dev/null 2>&1; then
     log_info "Running NetworkPolicy smoke test with local chainsaw"
     run_chainsaw "${CHAINSAW_TEST_DIR}" "${CHAINSAW_REPORT_PATH}"
@@ -85,18 +94,16 @@ if ! command -v docker >/dev/null 2>&1; then
     exit 1
 fi
 
-kubeconfig="${KUBECONFIG:-${HOME}/.kube/config}"
-if [[ "${kubeconfig}" == *:* ]]; then
-    log_warn "KUBECONFIG contains multiple paths; using the first path for Docker-mounted Chainsaw"
-    kubeconfig="${kubeconfig%%:*}"
-fi
-
-if [ ! -f "${kubeconfig}" ]; then
-    log_error "Kubeconfig not found for Docker-mounted Chainsaw: ${kubeconfig}"
+flattened_kubeconfig="$(mktemp)"
+if ! kubectl config view --flatten --raw > "${flattened_kubeconfig}"; then
+    log_error "Failed to create flattened kubeconfig for Docker-mounted Chainsaw"
     exit 1
 fi
 
-kubeconfig="$(cd "$(dirname "${kubeconfig}")" && pwd -P)/$(basename "${kubeconfig}")"
+if [ ! -s "${flattened_kubeconfig}" ]; then
+    log_error "Flattened kubeconfig is empty for Docker-mounted Chainsaw"
+    exit 1
+fi
 
 case "${CHAINSAW_TEST_DIR}" in
     "${REPO_ROOT}"/*)
@@ -114,7 +121,7 @@ docker run --rm \
     --network="${CHAINSAW_DOCKER_NETWORK:-host}" \
     -v "${REPO_ROOT}:/repo:ro" \
     -v "${CHAINSAW_REPORT_PATH}:/chainsaw-report" \
-    -v "${kubeconfig}:/kubeconfig:ro" \
+    -v "${flattened_kubeconfig}:/kubeconfig:ro" \
     -e KUBECONFIG=/kubeconfig \
     "${CHAINSAW_IMAGE}" test "${chainsaw_test_dir_container}" \
         --namespace "${NAMESPACE}" \
