@@ -88,6 +88,17 @@ class TestSubShapesIndependently:
         """
         assert ScheduleSpec().logging_steps == 1
 
+    def test_a_misspelled_reporting_field_is_rejected(self) -> None:
+        """The fragment is not a NamespacedModel, so it had to forbid extras itself.
+
+        Every model it is embedded in inherits `extra="forbid"`, and this module
+        states the contract: typos become validation errors, not silently-ignored
+        fields. Being the one nested object that ignored them made
+        `time_series_metric` a spelling that parsed and then did nothing.
+        """
+        with pytest.raises(ValidationError):
+            ScheduleSpec.model_validate({"progress_reporting": {"time_series_metric": ["*_loss"]}})
+
     def test_the_time_series_metrics_default_to_the_backends_choice(self) -> None:
         """Narrowing is opt-in, so adding the knob changed nobody's curves."""
         assert ScheduleSpec().progress_reporting.time_series_metrics is None

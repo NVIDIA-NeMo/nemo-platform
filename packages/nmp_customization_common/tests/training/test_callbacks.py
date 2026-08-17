@@ -878,3 +878,82 @@ def test_a_run_that_reported_no_metrics_is_not_warned_about(
 # grouped because they share a cause: the gate was written for one report per
 # step per path, and validation produces one report per *dataloader* per step.
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# A misconfigured pattern list must not reach the training loop
+#
+# These values come off a config file, and on the NeMo-RL path straight out of a
+# YAML with no schema in between. Matching runs inline in a training step.
+# --------------------------------------------------------------------------- #
+
+
+def test_a_non_string_entry_does_not_raise_into_the_training_loop(
+    reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`fnmatchcase(name, None)` raises TypeError, and nothing catches it.
+
+    `report_train_step` is called straight from a backend's logging hook with no
+    try around it, so this used to end the run: "object of type 'NoneType' has
+    no len()", out of a reporting knob.
+    """
+    with caplog.at_level(logging.WARNING):
+        callback = _make_callback(reporter, time_series_metrics=["*_loss", None])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
+    assert "non-string" in caplog.text
+
+
+def test_a_bare_string_is_one_pattern_not_ten(reporter: _RecordingReporter) -> None:
+    """`str` satisfies Collection[str] as a collection of its characters.
+
+    `time_series_metrics: train_loss` in YAML became the patterns 't', 'r', 'a'
+    and so on, which match nothing -- a run that silently recorded no history at
+    all. There is only one thing it can have meant.
+    """
+    callback = _make_callback(reporter, time_series_metrics="train_loss")
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert reporter.reports[-1]["metrics"]["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
+
+
+@pytest.mark.parametrize("value", [[None, 3], 7, object()])
+def test_an_entirely_unusable_list_records_everything(reporter: _RecordingReporter, value: object) -> None:
+    """A broken config should cost noise, not data.
+
+    Distinct from `[]`, which is a legitimate request for no history and is
+    honoured -- see the neighbouring test.
+    """
+    callback = _make_callback(reporter, time_series_metrics=value)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
+
+    assert set(reporter.reports[-1]["metrics"]) >= {"train_loss", "train_tps"}
+
+
+def test_an_explicitly_empty_list_is_still_honoured(reporter: _RecordingReporter) -> None:
+    """The one input the "unusable falls back to everything" rule must not catch."""
+    callback = _make_callback(reporter, time_series_metrics=[])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert "metrics" not in reporter.reports[-1]
+
+
+def test_a_typo_is_reported_even_when_every_metric_matched(
+    reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The case the warning was gated out of, and the only one that matters.
+
+    It used to require that some metric had been *excluded* before it would
+    speak. A run whose metrics all matched something excluded nothing, so the
+    misspelling beside them passed in silence -- which is every ordinary run.
+    """
+    callback = _make_callback(reporter, time_series_metrics=["*_loss", "val_accuarcy"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    with caplog.at_level(logging.WARNING):
+        callback.close()
+
+    warned = [r for r in caplog.records if "matched no metric" in r.getMessage()]
+    assert len(warned) == 1
+    assert "val_accuarcy" in warned[0].getMessage()
+    assert "train_loss" in warned[0].getMessage(), "names what did arrive, so the fix is obvious"

@@ -2064,6 +2064,7 @@ components:
           items:
             type: string
           type: array
+      additionalProperties: false
       type: object
       title: ProgressReportingConfig
       description: 'How much detail training progress is reported to the Jobs service

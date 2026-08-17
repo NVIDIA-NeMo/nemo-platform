@@ -262,6 +262,53 @@ class DatasetQualifier:
         return {f"{label}_{name}": value for name, value in metrics.items()}
 
 
+def _clean_patterns(patterns: Collection[str] | None) -> tuple[str, ...]:
+    """Normalise a configured pattern list into something safe to match against.
+
+    Every value here has come off a config file, and on the NeMo-RL path it
+    reaches us straight out of a YAML with no schema in between. Matching runs
+    inline in a training step, so anything unusable has to be handled now rather
+    than raise from inside :func:`fnmatch.fnmatchcase` and take the run with it:
+    a ``None`` in the list used to surface as ``TypeError: object of type
+    'NoneType' has no len()`` out of ``report_train_step``.
+
+    A bare string is the other trap, and the quieter one. ``str`` satisfies
+    ``Collection[str]`` as a collection of its *characters*, so
+    ``time_series_metrics: train_loss`` in YAML became the ten patterns ``t``,
+    ``r``, ``a``, ... which match nothing at all -- a run that records no history
+    and reports no error. There is only one thing it can have meant, so it is
+    read as a single pattern.
+
+    An empty result from a non-empty input means every entry was unusable, which
+    is a broken config rather than a request for no history; that falls back to
+    recording everything, on the principle that a misconfiguration should cost
+    noise rather than data. An input that was *already* empty is left alone --
+    ``[]`` legitimately means "no series at all".
+    """
+    if patterns is None:
+        return ALL_METRICS
+    if isinstance(patterns, str):
+        return (patterns,)
+
+    try:
+        given = tuple(patterns)
+    except TypeError:
+        logger.warning(f"progress_reporting.time_series_metrics is not a list ({patterns!r}); recording every metric.")
+        return ALL_METRICS
+
+    usable = tuple(pattern for pattern in given if isinstance(pattern, str))
+    unusable = [pattern for pattern in given if not isinstance(pattern, str)]
+    if unusable:
+        logger.warning(
+            f"Ignoring {len(unusable)} non-string entr{'y' if len(unusable) == 1 else 'ies'} in "
+            f"progress_reporting.time_series_metrics: {unusable!r}."
+        )
+    if given and not usable:
+        logger.warning("No usable entry in progress_reporting.time_series_metrics; recording every metric.")
+        return ALL_METRICS
+    return usable
+
+
 class TrainingProgressCallback:
     """Report training progress to the Jobs service."""
 
@@ -285,13 +332,19 @@ class TrainingProgressCallback:
         self._reporter = reporter
         #: Normalised to patterns so there is one code path: None becomes "*",
         #: which is what it already meant. An empty list stays empty and records
-        #: nothing, which is a different and equally legitimate request.
-        self._time_series_metrics: tuple[str, ...] = (
-            ALL_METRICS if time_series_metrics is None else tuple(time_series_metrics)
-        )
+        #: nothing, which is a different and equally legitimate request. See
+        #: :func:`_clean_patterns` for what else has to be normalised out.
+        self._time_series_metrics: tuple[str, ...] = _clean_patterns(time_series_metrics)
         #: Names already reported as current-value-only, so the explanation is
         #: logged once per name rather than once per step.
         self._excluded_seen: set[str] = set()
+        #: Every qualified name this run has reported, matched or not. Distinct
+        #: from ``_excluded_seen``, and the distinction matters: "did any metric
+        #: arrive" is what decides whether an unmatched pattern is worth warning
+        #: about, and asking ``_excluded_seen`` instead answered "did any metric
+        #: arrive *and fail to match*" -- false exactly when every metric matched
+        #: something, which is the common case a typo has to be caught in.
+        self._metrics_seen: set[str] = set()
         #: Patterns that have selected at least one metric, so close() can name
         #: the ones that never did.
         self._patterns_matched: set[str] = set()
@@ -421,6 +474,7 @@ class TrainingProgressCallback:
         """
         keep: dict[str, float | int] = {}
         dropped: list[str] = []
+        self._metrics_seen.update(qualified)
         for name, value in qualified.items():
             matched = [p for p in self._time_series_metrics if fnmatchcase(name, p)]
             if matched:
@@ -452,18 +506,24 @@ class TrainingProgressCallback:
         Left to ``close()`` rather than checked up front, because a name that has
         not arrived yet is not yet wrong -- backends omit metrics on some steps,
         and validation names do not appear until the first pass.
+
+        Gated on whether *any* metric arrived, not on whether any was excluded.
+        Those differ precisely when every metric that arrived matched something,
+        which is the ordinary case and therefore the one a typo has to be caught
+        in: ``["*_loss", "val_accuarcy"]`` against a run that reports only a loss
+        has nothing excluded, and the misspelling used to pass in silence.
         """
         unmatched = [p for p in self._time_series_metrics if p not in self._patterns_matched]
-        if not unmatched or not self._excluded_seen:
-            # No metrics seen at all means the run reported nothing; that is a
-            # different problem and this would only add noise to it.
+        if not unmatched or not self._metrics_seen:
+            # No metric arrived at all: every pattern trivially matched nothing,
+            # and the run reporting nothing is the larger problem to look at.
             return
         logger.warning(
             "These progress_reporting.time_series_metrics entries matched no metric this run: %s. "
             "Names are qualified by phase, so 'loss' matches nothing and 'train_loss', 'val_loss' "
-            "or '*_loss' is meant. Metrics seen without a match: %s.",
+            "or '*_loss' is meant. Metrics this run reported: %s.",
             ", ".join(unmatched),
-            ", ".join(sorted(self._excluded_seen)),
+            ", ".join(sorted(self._metrics_seen)),
         )
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:

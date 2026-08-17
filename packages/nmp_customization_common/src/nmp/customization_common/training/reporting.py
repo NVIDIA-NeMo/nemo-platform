@@ -16,7 +16,7 @@ API layer can import the schema without pulling in the platform SDK that
 :mod:`nmp.customization_common.training.progress` needs.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 #: The time-series metrics every backend has in common: the loss family, the
 #: learning rate, and the gradient norm. Written as patterns rather than literal
@@ -53,6 +53,15 @@ class ProgressReportingConfig(BaseModel):
     the series and letting everything else be a scalar is the only partition that
     stays correct when a framework adds a metric.
     """
+
+    # Every model this is embedded in forbids extras, inheriting it from
+    # NamespacedModel, and unsloth's schema module states the contract outright:
+    # "typos in the JSON shape become validation errors, not silently-ignored
+    # fields". This model is not a NamespacedModel -- deliberately, so it emits
+    # one shared OpenAPI component rather than three -- and so it did not inherit
+    # that, which made it the one place in the request body where
+    # `time_series_metric` was accepted and quietly did nothing.
+    model_config = ConfigDict(extra="forbid")
 
     time_series_metrics: list[str] | None = Field(
         default=None,
