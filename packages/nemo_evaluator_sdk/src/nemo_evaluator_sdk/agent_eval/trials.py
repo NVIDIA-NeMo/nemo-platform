@@ -75,7 +75,7 @@ class TrialError(BaseModel):
     """What went wrong producing one trial, as the producer reported it.
 
     Present means the *producer* reported a failure. It does **not** imply ``status is FAILED``: an
-    errored Harbor trial is deliberately :attr:`AgentEvalTrialStatus.PARTIAL` so it is still scored.
+    errored trial can be marked as :attr:`AgentEvalTrialStatus.PARTIAL` so it is still scored (ex: HarborRuntime).
     It is also unrelated to a score diagnostic's ``exception_type`` detail, which records that the
     *metric* raised - a different event.
 
