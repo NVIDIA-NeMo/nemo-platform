@@ -26,6 +26,7 @@ Active v2 workspace endpoints:
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/atif`
+- `POST /apis/intake/v2/workspaces/{workspace}/ingest/spans`
 
 ## Logging experiment data (end-to-end)
 
@@ -48,6 +49,20 @@ mapping, and a troubleshooting table, see the **`nemo-experiments-upload`** agen
 > Naming note: the entity/API is mid-rename. The API surfaces "Evaluation" and "Experiment Group",
 > but the stored entity is still `Experiment`. The OTLP evaluation attribute key is
 > `nemo.evaluation.name`. This doc follows the current in-code naming.
+
+## Importing historical observability data
+
+`POST /apis/intake/v2/workspaces/{workspace}/ingest/spans` accepts a provider-neutral JSON batch of
+1–1000 spans. It supports arbitrary provider IDs, parent references outside the batch, structured
+input/output, semantic attributes, and lossless native JSON for unmodeled attributes. Reposting the
+same `(workspace, source, trace_id, span_id)` updates the logical span.
+
+Customers should use the `nemo-intake` skill's bundled MLflow, LangSmith, Phoenix, and Braintrust
+scripts. They page bounded provider exports, write spans before scores/annotations, retain native
+provider records under namespaced raw attributes, deduplicate annotations, and query imported IDs
+back before reporting success. Intake rejects spans outside its 90-day observation-time retention
+window with `422` before writing any part of the batch. Increase the ClickHouse `spans` and
+`trace_index` TTLs before importing older data.
 
 ## Local Development
 

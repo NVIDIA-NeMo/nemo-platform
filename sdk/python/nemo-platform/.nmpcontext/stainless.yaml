@@ -857,6 +857,12 @@ resources:
               chat_message_role: ChatMessageRole
             methods:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions
+          spans:
+            models:
+              direct_span_input: DirectSpanInput
+              direct_spans_ingest_param: DirectSpansIngestRequest
+            methods:
+              create: post /apis/intake/v2/workspaces/{workspace}/ingest/spans
           otlp:
             subresources:
               v1:

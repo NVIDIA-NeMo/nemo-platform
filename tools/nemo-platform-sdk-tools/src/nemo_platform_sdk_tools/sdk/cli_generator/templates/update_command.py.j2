@@ -34,11 +34,17 @@ def {{ function_name }}(
 {% endif %}
 
     [green]Examples:[/]
+{% if examples %}
+{% for example in examples %}
+    {{ example }}
+{% endfor %}
+{% else %}
     nemo {{ resource_path|map('to_kebab')|join(' ') }} {{ cli_command_name }} {% for p in path_params %}<{{ p.var_name }}> {% endfor %}{% for p in parameters if p.is_positional %}<{{ p.var_name }}> {% endfor %}--input-file config.json
     nemo {{ resource_path|map('to_kebab')|join(' ') }} {{ cli_command_name }} {% for p in path_params %}<{{ p.var_name }}> {% endfor %}{% for p in parameters if p.is_positional %}<{{ p.var_name }}> {% endfor %}--input-data '{% if required_fields_example %}{{"{"}}{{ required_fields_example }}{{"}"}}{% else %}{"field": "value"}{% endif %}'
     echo '{"json": "data"}' | nemo {{ resource_path|map('to_kebab')|join(' ') }} {{ cli_command_name }} {% for p in path_params %}<{{ p.var_name }}> {% endfor %}{% for p in parameters if p.is_positional %}<{{ p.var_name }}> {% endfor %}--input-file -
 {% if parameters|rejectattr("is_positional")|list %}
     nemo {{ resource_path|map('to_kebab')|join(' ') }} {{ cli_command_name }} {% for p in path_params %}<{{ p.var_name }}> {% endfor %}{% for p in parameters if p.is_positional %}<{{ p.var_name }}> {% endfor %}--<option> "value"
+{% endif %}
 {% endif %}
     """
     # Read base input (optional if all fields provided via flags)

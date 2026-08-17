@@ -31,6 +31,14 @@ from .otlp import (
     OtlpResourceWithStreamingResponse,
     AsyncOtlpResourceWithStreamingResponse,
 )
+from .spans import (
+    SpansResource,
+    AsyncSpansResource,
+    SpansResourceWithRawResponse,
+    AsyncSpansResourceWithRawResponse,
+    SpansResourceWithStreamingResponse,
+    AsyncSpansResourceWithStreamingResponse,
+)
 from .ingest import (
     IngestResource,
     AsyncIngestResource,
@@ -55,6 +63,12 @@ __all__ = [
     "AsyncAtifResourceWithRawResponse",
     "AtifResourceWithStreamingResponse",
     "AsyncAtifResourceWithStreamingResponse",
+    "SpansResource",
+    "AsyncSpansResource",
+    "SpansResourceWithRawResponse",
+    "AsyncSpansResourceWithRawResponse",
+    "SpansResourceWithStreamingResponse",
+    "AsyncSpansResourceWithStreamingResponse",
     "ChatCompletionsResource",
     "AsyncChatCompletionsResource",
     "ChatCompletionsResourceWithRawResponse",

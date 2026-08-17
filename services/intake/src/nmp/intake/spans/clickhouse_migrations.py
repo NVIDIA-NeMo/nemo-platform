@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlparse
 
+from nmp.intake.config import DEFAULT_SPAN_RETENTION_DAYS
 from nmp.intake.spans.span_attribute_catalog import SpanAttributeField, spec_for_field
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -139,7 +140,7 @@ def _create_spans_schema(client, settings: ClickHouseMigrationSettings) -> None:
         PARTITION BY toYYYYMM(start_time)
         PRIMARY KEY (workspace, session_id, start_time)
         ORDER BY (workspace, session_id, start_time, id)
-        TTL toDate(start_time) + INTERVAL 90 DAY
+        TTL toDate(start_time) + INTERVAL {DEFAULT_SPAN_RETENTION_DAYS} DAY
         SETTINGS
             index_granularity = 8192,
             ttl_only_drop_parts = 1
@@ -304,7 +305,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
         PARTITION BY toYYYYMM(root_started_at)
         PRIMARY KEY (workspace, root_started_at)
         ORDER BY (workspace, root_started_at, trace_id, root_span_id)
-        TTL toDate(root_started_at) + INTERVAL 90 DAY
+        TTL toDate(root_started_at) + INTERVAL {DEFAULT_SPAN_RETENTION_DAYS} DAY
         SETTINGS
             index_granularity = 256,
             ttl_only_drop_parts = 1

@@ -393,7 +393,10 @@ def to_semantic_value(value: Any, spec: AttributeSpec) -> str | int | float | bo
         return int(value)
     if isinstance(value, int):
         return value
-    numeric = float(value)
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"Invalid numeric value for {spec.field.value}: {value!r}") from exc
     return int(numeric) if numeric.is_integer() else numeric
 
 
