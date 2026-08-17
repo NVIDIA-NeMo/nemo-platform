@@ -137,6 +137,6 @@ async def ingest_atif(
     )
     await service.ingest_batch(TraceBatch(spans=spans, evaluator_results=evaluator_results))
     context = body.evaluation_context
-    if denormalizer is not None and context is not None and context.evaluation_id:
-        denormalizer.mark_dirty(workspace=workspace, evaluation_id=context.evaluation_id)
+    if denormalizer is not None and context is not None and context.evaluation_name:
+        denormalizer.mark_dirty(workspace=workspace, evaluation_id=context.evaluation_name)
     return Response(status_code=status.HTTP_201_CREATED)

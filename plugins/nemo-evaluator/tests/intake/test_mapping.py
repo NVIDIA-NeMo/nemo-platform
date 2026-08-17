@@ -79,8 +79,8 @@ def test_session_id_is_stable_per_trial() -> None:
 
 
 def test_evaluation_context_is_lean() -> None:
-    context = run_task_to_evaluation_context(_trial(task_id="task-42"), experiment_id="bench-x-variant")
-    assert context == {"evaluation_id": "bench-x-variant", "test_case_id": "task-42"}
+    context = run_task_to_evaluation_context(_trial(task_id="task-42"), evaluation_name="bench-x-variant")
+    assert context == {"evaluation_name": "bench-x-variant", "test_case_name": "task-42"}
 
 
 # --- trial_to_atif_ingest ---------------------------------------------------
@@ -99,7 +99,7 @@ def test_trial_to_atif_ingest_shape() -> None:
     assert body["session_id"] == "run-1:t-1"
     assert body["agent"] == {"name": "my-agent", "version": DEFAULT_AGENT_VERSION, "model_name": "gpt-4o"}
     assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "final answer", "timestamp": STARTED_AT}]
-    assert body["evaluation_context"] == {"evaluation_id": "exp-1", "test_case_id": "task-1"}
+    assert body["evaluation_context"] == {"evaluation_name": "exp-1", "test_case_name": "task-1"}
     assert "final_metrics" not in body
 
 

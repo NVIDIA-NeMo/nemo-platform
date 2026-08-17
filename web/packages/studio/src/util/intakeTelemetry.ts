@@ -82,11 +82,23 @@ export const getEvaluationContextSummary = (
   context: SpanEvaluationContext | null | undefined
 ): string => {
   if (!context) return EMPTY_VALUE;
-  return context.evaluation_id || context.test_case_id || EMPTY_VALUE;
+  return (
+    context.evaluation_name ||
+    context.test_case_name ||
+    context.evaluation_id ||
+    context.test_case_id ||
+    EMPTY_VALUE
+  );
 };
 
 export const hasEvaluationContext = (context: SpanEvaluationContext | null | undefined): boolean =>
-  Boolean(context && (context.evaluation_id || context.test_case_id));
+  Boolean(
+    context &&
+      (context.evaluation_name ||
+        context.test_case_name ||
+        context.evaluation_id ||
+        context.test_case_id)
+  );
 
 export const compareSpansByStartedAt = (a: Span, b: Span): number => {
   const aStartedAt = Date.parse(a.started_at);

@@ -104,6 +104,6 @@ def _evaluation_context(trace: IntakeTrace) -> EvaluationContext | None:
     if trace.evaluation_id is None:
         return None
     return EvaluationContext(
-        evaluation_id=trace.evaluation_id,
-        test_case_id=trace.test_case_id,
+        evaluation_name=trace.evaluation_id,
+        test_case_name=trace.test_case_id,
     )
