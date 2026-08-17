@@ -4,7 +4,7 @@
 """Factories for evaluator-specific datasets and evaluators."""
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from nemo_experimentalist_plugin.entities import Dataset, DatasetRef, Task
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
@@ -12,37 +12,24 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.base impor
     EvaluatorConfig,
     EvaluatorType,
 )
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator import (
-    HarborRunnerConfig,
-    HarborRunnerEvaluator,
-)
-from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
-    HarborEvaluator,
-    HarborEvaluatorConfig,
-)
+from nemo_experimentalist_plugin.experimentalist.registry import resolve
 
-# Both Harbor-backed types read the same Harbor dataset layout; only who drives
-# the run differs, so they share ``HarborDataset``.
-_SUPPORTED_EVALUATOR_TYPES: dict[EvaluatorType, tuple[type[Dataset], type[Evaluator], type[EvaluatorConfig]]] = {
-    "harbor_native": (HarborDataset, HarborEvaluator, HarborEvaluatorConfig),
-    "harbor_evaluator": (
-        HarborDataset,
-        HarborRunnerEvaluator,
-        HarborRunnerConfig,
-    ),
-}
+if TYPE_CHECKING:
+    from nemo_experimentalist_plugin.experimentalist.roles import OutcomeEvaluator
+
+
+def _evaluation(name: EvaluatorType) -> "type[OutcomeEvaluator]":
+    """The registered `outcome-evaluator` component called *name*.
+
+    Resolved rather than looked up in a table: a table keyed on the names this package
+    knows is exactly what stops `outcome_evaluator:` being swappable from config. The
+    two Harbor-backed evaluators are entries in the registry like any other.
+    """
+    return cast("type[OutcomeEvaluator]", resolve("outcome-evaluator", name))
 
 
 class DatasetFactory:
     """Build evaluator-compatible Dataset objects from source references."""
-
-    def __init__(
-        self,
-        supported_evaluator_types: dict[EvaluatorType, tuple[type[Dataset], type[Evaluator], type[EvaluatorConfig]]]
-        | None = None,
-    ) -> None:
-        self.supported_evaluator_types = supported_evaluator_types or _SUPPORTED_EVALUATOR_TYPES
 
     def build_dataset(self, evaluator_type: EvaluatorType, dataset_ref: DatasetRef, **options: Any) -> Dataset:
         """Build a Dataset for the selected evaluator type.
@@ -50,6 +37,9 @@ class DatasetFactory:
         Args:
             evaluator_type(EvaluatorType): The type of evaluator to build the dataset for.
             dataset_ref(DatasetRef): The reference to the dataset to build.
+            **options: Forwarded to the dataset type's ``from_ref``. ``allow_empty=True``
+                is what lets an Insight-driven run start with splits the Eval Author has
+                not filled yet.
 
         Returns:
             Dataset: The built dataset.
@@ -59,10 +49,7 @@ class DatasetFactory:
         """
         if not evaluator_type or not dataset_ref:
             raise ValueError("Evaluator type and dataset reference are required")
-
-        if evaluator_type not in self.supported_evaluator_types:
-            raise ValueError(f"Unsupported evaluator type: {evaluator_type}")
-        return self.supported_evaluator_types[evaluator_type][0].from_ref(dataset_ref, **options)
+        return _evaluation(evaluator_type).dataset_type.from_ref(dataset_ref, **options)
 
     def build_task_template(self, evaluator_type: EvaluatorType, template_ref: DatasetRef) -> Task:
         """Parse an evaluator-specific template directory as one task.
@@ -105,17 +92,12 @@ class EvaluatorFactory:
             ValueError: If the evaluator type is not supported.
             TypeError: If the evaluator config is not an EvaluatorConfig or dict.
         """
-        if evaluator_type in _SUPPORTED_EVALUATOR_TYPES:
-            if isinstance(config, EvaluatorConfig):
-                config = config.model_dump()
-            elif not isinstance(config, dict):
-                # Quoted rather than .capitalize()d: these names are snake_case, so
-                # capitalizing produced "Harbor_native" — and it silently changes
-                # shape every time a type is renamed.
-                raise TypeError(f"{evaluator_type!r} evaluator config must be an EvaluatorConfig or dict")
-            evaluator_config = _SUPPORTED_EVALUATOR_TYPES[evaluator_type][2].model_validate(config)
-            return _SUPPORTED_EVALUATOR_TYPES[evaluator_type][1](
-                options=evaluator_config, experiment_dir=experiment_dir
-            )
-
-        raise ValueError(f"Unsupported evaluator type: {evaluator_type}")
+        component = _evaluation(evaluator_type)
+        if isinstance(config, EvaluatorConfig):
+            config = config.model_dump()
+        elif not isinstance(config, dict):
+            # Quoted rather than .capitalize()d: these names are hyphenated, so
+            # capitalizing produced "Harbor-native" — and it silently changes shape
+            # every time a component is renamed.
+            raise TypeError(f"{evaluator_type!r} evaluator config must be an EvaluatorConfig or dict")
+        return component(options=component.config_type.model_validate(config), experiment_dir=experiment_dir)

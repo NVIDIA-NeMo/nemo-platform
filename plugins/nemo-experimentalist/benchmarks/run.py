@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Literal, Self
 
 import yaml
+from harbor.models.task.id import GitTaskId, LocalTaskId, PackageTaskId
 from harbor.registry.client.package import PackageDatasetClient
 from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import (
@@ -24,9 +25,10 @@ from nemo_experimentalist_plugin.entities import (
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborNativeOutcomeEvaluator,
 )
+from nemo_experimentalist_plugin.experimentalist.experimentalist_backend import load_winner
 from nemo_experimentalist_plugin.resolve import resolve_dataset
 from pydantic import BaseModel, Field, model_validator
 
@@ -149,6 +151,24 @@ def load_suite(path: Path) -> SuiteSpec:
 def load_benchmark_config(path: Path) -> BenchmarkConfig:
     """Load and validate a benchmark configuration."""
     return BenchmarkConfig.model_validate(_load_yaml(path))
+
+
+def _canonical_task_id(task: GitTaskId | LocalTaskId | PackageTaskId) -> str:
+    """The suite-facing id of one Harbor task.
+
+    Harbor's task ids are a union, and only ``PackageTaskId`` carries a ``name``. The
+    others do have a ``get_name()``, but it means something different — ``hello-world``
+    for a git or local task versus ``org/hello-world`` for a package one — so there is no
+    accessor that yields the same string across the union. Benchmark suites are pinned to
+    a published package, so anything else is a suite that was authored wrong, and saying
+    so beats silently substituting a value.
+    """
+    if not isinstance(task, PackageTaskId):
+        raise RuntimeError(
+            f"Benchmark suites address tasks by package name, but this dataset yielded a "
+            f"{type(task).__name__}. Point the suite at a published package dataset."
+        )
+    return task.name
 
 
 def validate_canonical_suite(
@@ -376,7 +396,7 @@ async def _evaluate_heldout(
         environment_build_timeout_multiplier=2.0,
     )
     started = time.monotonic()
-    result = await HarborEvaluator(experiment_dir=run_dir).run(
+    result = await HarborNativeOutcomeEvaluator(experiment_dir=run_dir).run(
         agent=agent_dir,
         dataset=dataset,
         options=options,
@@ -467,11 +487,9 @@ async def run_benchmark(args: argparse.Namespace) -> Path:
         framework_skills_dirs=framework_skills_dirs,
         model_refs=optimizer_model_refs,
     )
-    run_document = json.loads((experimentalist_dir / "eval-and-optimize" / "run.json").read_text(encoding="utf-8"))
-    winner_label = run_document.get("winner_agent")
-    if not isinstance(winner_label, str) or not winner_label:
-        raise RuntimeError("Experimentalist completed without a selected winner")
-    winner_dir = experimentalist_dir / "eval-and-optimize" / "agents" / winner_label
+    winner_candidate = load_winner(experimentalist_dir / "eval-and-optimize")
+    winner_label = winner_candidate.label
+    winner_dir = local_path_from_uri(winner_candidate.artifact.uri, context="Winner artifact")
     winner = await _evaluate_heldout(
         label="winner",
         agent_dir=winner_dir,

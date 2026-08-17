@@ -51,7 +51,7 @@ async def run_eval_author(
     base_url: str | None,
     config: EvalAuthorConfig,
     agent: Path | str | None = None,
-    evaluator_type: EvaluatorType = "harbor_native",
+    evaluator_type: EvaluatorType = "harbor-native",
     model_refs: ConfiguredModelRefs | None = None,
 ) -> EvalAuthorResult:
     """Stage evaluation inputs, resolve one Insight, then run Eval Author.

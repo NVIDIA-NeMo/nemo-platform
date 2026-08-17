@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,21 +21,19 @@ from nemo_experimentalist_plugin.config import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.entities import local_path_from_uri
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
     EvaluatorConfig,
-    _warned_evaluator_types,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.factory import EvaluatorFactory
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import HarborDataset
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_evaluator import (
     HarborRunnerConfig,
-    HarborRunnerEvaluator,
+    HarborRunnerOutcomeEvaluator,
     HarborTaskNameError,
     harbor_task_names,
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor_native import (
-    HarborEvaluator,
     HarborEvaluatorConfig,
+    HarborNativeOutcomeEvaluator,
 )
-from nemo_experimentalist_plugin.experimentalist.deps import ExperimentalistDeps
 from pydantic import ValidationError
 
 
@@ -160,7 +157,7 @@ async def cached_job_dir(
             )
 
     fake_job.on_run = write_complete_results
-    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
     fake_job.calls = []
@@ -181,46 +178,33 @@ def agent_dir(tmp_path: Path) -> Path:
 
 
 async def test_optimizer_config_defaults_to_native_harbor() -> None:
-    assert EvolutionaryOptimizerConfig().evaluator_type == "harbor_native"
+    assert EvolutionaryOptimizerConfig().outcome_evaluator == "harbor-native"
 
 
-async def test_deps_default_matches_the_optimizer_config_default() -> None:
-    """The two defaults must not drift: run.py threads one into the other."""
-    assert (
-        ExperimentalistDeps.model_fields["evaluator_type"].default
-        == EvolutionaryOptimizerConfig.model_fields["evaluator_type"].default
-        == "harbor_native"
-    )
+async def test_both_harbor_evaluators_are_selectable() -> None:
+    """Native Harbor stays the default, and the SDK-driven one is selectable beside it."""
+    assert EvolutionaryOptimizerConfig().outcome_evaluator == "harbor-native"
+    chosen = EvolutionaryOptimizerConfig.model_validate({"outcome_evaluator": "harbor-runner"})
+    assert chosen.outcome_evaluator == "harbor-runner"
 
 
-async def test_optimizer_config_still_accepts_plain_harbor() -> None:
-    """Plain Harbor stays selectable — it is the A/B baseline."""
-    config = EvolutionaryOptimizerConfig.model_validate({"evaluator_type": "harbor_native"})
-    assert config.evaluator_type == "harbor_native"
+async def test_the_retired_harbor_spelling_names_both_replacements() -> None:
+    """`harbor` shipped when there was one Harbor evaluator; now there are two.
+
+    It is rejected rather than mapped onto one of them: the config key changed in the
+    same release, so a pinned config has to be edited anyway, and silently choosing a
+    side would decide which evaluator runs on the operator's behalf.
+    """
+    with pytest.raises(ValidationError, match="harbor-native.*harbor-runner"):
+        EvolutionaryOptimizerConfig.model_validate({"outcome_evaluator": "harbor"})
 
 
-async def test_retired_harbor_spelling_still_resolves_and_warns(caplog: pytest.LogCaptureFixture) -> None:
-    # `harbor` shipped before the rename, so experiment YAMLs in the wild are pinned
-    # to it. Those configs must keep running, and the operator must be told once.
-    _warned_evaluator_types.clear()
-    with caplog.at_level(logging.WARNING):
-        config = EvolutionaryOptimizerConfig.model_validate({"evaluator_type": "harbor"})
-        again = EvolutionaryOptimizerConfig.model_validate({"evaluator_type": "harbor"})
+async def test_an_unregistered_evaluator_is_not_invented() -> None:
+    """The set is open, but only to components something actually registers."""
+    from nemo_experimentalist_plugin.experimentalist.registry import resolve
 
-    assert config.evaluator_type == "harbor_native"
-    assert again.evaluator_type == "harbor_native", "the alias must keep resolving, not just the first time"
-    assert caplog.text.count("is deprecated") == 1, "a pinned config must not warn once per round"
-
-
-async def test_retired_spelling_is_not_extended_to_the_never_shipped_name() -> None:
-    # `harbor_agent_task_runner` only ever existed on an unmerged branch, so nothing
-    # can be pinned to it. Accepting it would advertise a name we never released.
-    with pytest.raises(ValidationError) as excinfo:
-        EvolutionaryOptimizerConfig.model_validate({"evaluator_type": "harbor_agent_task_runner"})
-
-    # Pin the error *location*, not just the type: a BeforeValidator that raised for
-    # some unrelated field would otherwise satisfy this test.
-    assert [error["loc"] for error in excinfo.value.errors()] == [("evaluator_type",)]
+    with pytest.raises(LookupError):
+        resolve("outcome-evaluator", "harbor_agent_task_runner")
 
 
 async def test_job_name_comes_from_the_resolved_agent_dir(
@@ -276,24 +260,35 @@ async def test_eval_author_default_tracks_the_experimentalist_default() -> None:
 
     assert (
         inspect.signature(run_eval_author).parameters["evaluator_type"].default
-        == EvolutionaryOptimizerConfig.model_fields["evaluator_type"].default
+        == EvolutionaryOptimizerConfig.model_fields["outcome_evaluator"].default
     )
 
 
-async def test_optimizer_config_rejects_unknown_evaluator_type() -> None:
-    with pytest.raises(ValidationError):
-        EvolutionaryOptimizerConfig.model_validate({"evaluator_type": "not-an-evaluator"})
+async def test_an_unknown_evaluator_fails_at_resolution_not_at_parse() -> None:
+    """The set of evaluators is open, so the config cannot know the valid names.
+
+    A closed `Literal` would reject an unknown name here, but it would also reject a
+    perfectly good evaluator shipped by another package. The name is checked where it is
+    used instead, which still fails while the run is starting.
+    """
+    from nemo_experimentalist_plugin.experimentalist.registry import resolve
+
+    config = EvolutionaryOptimizerConfig.model_validate({"outcome_evaluator": "not-an-evaluator"})
+    assert config.outcome_evaluator == "not-an-evaluator"
+
+    with pytest.raises(LookupError, match="not-an-evaluator"):
+        resolve("outcome-evaluator", config.outcome_evaluator)
 
 
 async def test_factory_builds_sdk_evaluator(tmp_path: Path) -> None:
     evaluator = EvaluatorFactory().build_evaluator(
-        "harbor_evaluator",
+        "harbor-runner",
         {"n_attempts": 3, "quiet": True},
         experiment_dir=tmp_path,
     )
 
-    assert isinstance(evaluator, HarborRunnerEvaluator)
-    assert evaluator.evaluator_type == "harbor_evaluator"
+    assert isinstance(evaluator, HarborRunnerOutcomeEvaluator)
+    assert evaluator.evaluator_type == "harbor-runner"
     assert isinstance(evaluator.options, HarborRunnerConfig)
     assert evaluator.options.n_attempts == 3
     assert evaluator.experiment_dir == tmp_path
@@ -319,7 +314,7 @@ async def test_plain_harbor_still_builds() -> None:
     imported lazily. That premise is gone: ``nemo-evaluator-sdk`` is a declared,
     workspace-linked dependency, so it ships with the plugin and cannot be absent.
     """
-    assert isinstance(EvaluatorFactory().build_evaluator("harbor_native", {}), HarborEvaluator)
+    assert isinstance(EvaluatorFactory().build_evaluator("harbor-native", {}), HarborNativeOutcomeEvaluator)
 
 
 # --------------------------------------------------------------------------
@@ -375,7 +370,7 @@ async def test_runner_receives_expected_job_config(
     agent_dir: Path,
     fake_job: type[_FakeJob],
 ) -> None:
-    evaluator = HarborRunnerEvaluator(experiment_dir=tmp_path)
+    evaluator = HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)
     options = HarborRunnerConfig(
         jobs_dir=Path("jobs"),
         n_attempts=2,
@@ -423,7 +418,7 @@ async def test_complete_cached_job_is_not_rerun(
     cached_job_dir: Path,
     fake_job: type[_FakeJob],
 ) -> None:
-    trials = await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    trials = await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
 
@@ -450,7 +445,7 @@ async def test_errored_cached_job_is_rerun(
     errored["exception_info"] = {"exception_type": "TimeoutError"}
     _write(cached_job_dir / "sum-three__0" / "result.json", json.dumps(errored))
 
-    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
 
@@ -464,7 +459,7 @@ async def test_under_sampled_cached_job_is_rerun(
     cached_job_dir: Path,
     fake_job: type[_FakeJob],
 ) -> None:
-    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"), n_attempts=2)
     )
 
@@ -478,7 +473,7 @@ async def test_force_rerun_discards_a_complete_cache(
     cached_job_dir: Path,
     fake_job: type[_FakeJob],
 ) -> None:
-    trials = await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    trials = await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"), force_rerun=True)
     )
 
@@ -492,7 +487,7 @@ async def test_concurrent_candidates_use_distinct_job_dirs(
     dataset: HarborDataset,
     fake_job: type[_FakeJob],
 ) -> None:
-    evaluator = HarborRunnerEvaluator(experiment_dir=tmp_path)
+    evaluator = HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)
     options = HarborRunnerConfig(jobs_dir=Path("jobs"))
     for name in ("agent-0", "agent-1"):
         candidate = tmp_path / "agents" / name
@@ -510,7 +505,9 @@ async def test_missing_agent_directory_fails_before_docker(
     fake_job: type[_FakeJob],
 ) -> None:
     with pytest.raises(FileNotFoundError, match="Harbor agent path not found"):
-        await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(tmp_path / "nope", dataset, HarborRunnerConfig())
+        await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
+            tmp_path / "nope", dataset, HarborRunnerConfig()
+        )
     assert fake_job.calls == []
 
 
@@ -528,7 +525,7 @@ async def test_broken_verifier_fails_before_docker(
     )
 
     with pytest.raises(HarborVerifierValidationError):
-        await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+        await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
             agent_dir, HarborDataset.from_path(dataset_dir), HarborRunnerConfig()
         )
     assert fake_job.calls == []
@@ -536,7 +533,7 @@ async def test_broken_verifier_fails_before_docker(
 
 async def test_wrong_options_type_is_rejected(tmp_path: Path, dataset: HarborDataset, agent_dir: Path) -> None:
     with pytest.raises(TypeError, match="HarborRunnerConfig"):
-        await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(agent_dir, dataset, EvaluatorConfig())
+        await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(agent_dir, dataset, EvaluatorConfig())
 
 
 # --------------------------------------------------------------------------
@@ -573,7 +570,7 @@ async def test_both_evaluators_produce_equivalent_trials(
         )
 
     fake_job.on_run = write_results
-    sdk_result = await HarborRunnerEvaluator(experiment_dir=tmp_path).run(
+    sdk_result = await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path).run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("sdk-jobs"))
     )
 
@@ -588,7 +585,7 @@ async def test_both_evaluators_produce_equivalent_trials(
         PlainJob,
     )
     PlainJob.on_run = write_results
-    plain_result = await HarborEvaluator(experiment_dir=tmp_path).run(
+    plain_result = await HarborNativeOutcomeEvaluator(experiment_dir=tmp_path).run(
         agent_dir, dataset, HarborEvaluatorConfig(jobs_dir=Path("plain-jobs"))
     )
 
@@ -627,7 +624,7 @@ async def test_sdk_evaluator_selects_the_configured_atif_trace(
 
     fake_job.on_run = write_results
 
-    result = await HarborRunnerEvaluator(experiment_dir=tmp_path).run(
+    result = await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path).run(
         agent_dir,
         selected_dataset,
         HarborRunnerConfig(jobs_dir=Path("jobs"), trace_format="atif"),
@@ -666,7 +663,7 @@ async def test_failed_trials_keep_their_error_shape(
         )
 
     fake_job.on_run = write_results
-    trials = await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    trials = await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
 
@@ -697,7 +694,7 @@ async def test_editing_the_candidate_invalidates_the_cache_through_the_sdk(
     """
     _write(agent_dir / "harbor_wrapper.py", "class WrappedAgent:\n    version = 2\n")
 
-    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
 
@@ -712,7 +709,7 @@ async def test_unchanged_candidate_still_hits_the_cache(
     fake_job: type[_FakeJob],
 ) -> None:
     """The guard must not be so strict that it defeats caching entirely."""
-    await HarborRunnerEvaluator(experiment_dir=tmp_path)._run(
+    await HarborRunnerOutcomeEvaluator(experiment_dir=tmp_path)._run(
         agent_dir, dataset, HarborRunnerConfig(jobs_dir=Path("jobs"))
     )
 

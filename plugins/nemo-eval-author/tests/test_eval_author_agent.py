@@ -186,10 +186,9 @@ def _install_pipeline(
             task: Task,
             agent_path: Path,
             insight: Insight,
-            client: Any,
-            workspace: str,
+            load_trace: Any,
         ) -> Diagnostic:
-            del task, agent_path, insight, client, workspace
+            del task, agent_path, insight, load_trace
             ref = cast(str, trial.metadata["trace_ref"])
             calls.analyzed_refs.append(ref)
             outcome = outcomes[self.index]

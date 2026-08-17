@@ -401,11 +401,17 @@ async def analyze_trace(
         trace=ResourceRef(uri=f"intake://{trace_id}", description="Production trace read from Intake."),
         metadata={"source": "intake"},
     )
+
+    async def load_trace(reference: ResourceRef) -> TraceExplorer:
+        """Resolve a trace ref with this call's client, matching the Experimentalist's
+        `ctx.load_trace`: the analyzer takes a loader rather than a platform client, so
+        its signature names no platform type."""
+        return await TraceExplorer.from_ref(reference, client, workspace)
+
     return await TraceAnalyzer(experiment_dir=experiment_dir).run(
         trial=trial,
         task=task,
         agent_path=agent_path,
         insight=None,
-        client=client,
-        workspace=workspace,
+        load_trace=load_trace,
     )

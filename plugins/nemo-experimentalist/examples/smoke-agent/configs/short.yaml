@@ -60,7 +60,7 @@ objective_function:
     direction: maximize
     target: 1.0
 
-disable_trajectory_scoring: true
+trajectory_scorer: null
 
 # Off, and it should stay off at this depth. The terminator only tests for
 # *stagnation* -- whether any new candidate reached the Pareto front, then an LLM
@@ -82,9 +82,9 @@ disable_trajectory_scoring: true
 #
 # `full.yaml` is where the terminator earns its place: five rounds, three
 # candidates, and stopping when the front genuinely stops moving.
-disable_convergence_check: true
+terminator: null
 
-evaluator:
+outcome_evaluator_config:
   n_attempts: 1
   n_concurrent_trials: 3
   quiet: true

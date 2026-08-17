@@ -158,7 +158,7 @@ async def test_run_eval_author_fails_before_side_effects_when_model_configuratio
     make_client.assert_not_called()
 
 
-@pytest.mark.parametrize("evaluator_type", ["harbor_native", "harbor_evaluator"])
+@pytest.mark.parametrize("evaluator_type", ["harbor-native", "harbor-runner"])
 @pytest.mark.asyncio
 async def test_run_eval_author_resolves_inputs_and_returns_datasets(
     monkeypatch: pytest.MonkeyPatch,
@@ -315,7 +315,7 @@ async def test_run_eval_author_builds_equivalent_real_harbor_inputs_for_both_eva
     results: list[EvalAuthorResult] = []
     calls: list[tuple[Insight, Path, Task, Dataset, Dataset, ClosingClient]] = []
 
-    for evaluator_type in ("harbor_native", "harbor_evaluator"):
+    for evaluator_type in ("harbor-native", "harbor-runner"):
         results.append(
             await eval_author_run.run_eval_author(
                 insight="insight-remote-123",
@@ -354,7 +354,7 @@ async def test_run_eval_author_builds_equivalent_real_harbor_inputs_for_both_eva
     assert all(model_clients.closed for model_clients in model_client_sets)
 
 
-@pytest.mark.parametrize("evaluator_type", ["harbor_native", "harbor_evaluator"])
+@pytest.mark.parametrize("evaluator_type", ["harbor-native", "harbor-runner"])
 @pytest.mark.asyncio
 async def test_run_eval_author_hydrates_fileset_task_template(
     monkeypatch: pytest.MonkeyPatch,

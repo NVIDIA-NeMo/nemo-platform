@@ -17,8 +17,8 @@ from typing import Literal
 from harbor.job import DatasetConfig, Job, JobConfig
 from harbor.models.job.config import AgentConfig, ArtifactConfig, RetryConfig
 from nemo_experimentalist_plugin.entities import Dataset, Task, TrialResult
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    Evaluator,
     EvaluatorConfig,
     EvaluatorType,
 )
@@ -28,6 +28,7 @@ from nemo_experimentalist_plugin.experimentalist.components.evaluator.entrypoint
 )
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.harbor import (
     DEFAULT_TRACE_ARTIFACT_SOURCE,
+    HarborDataset,
     resolve_harbor_run_inputs,
     trials_from_job_dir,
 )
@@ -157,10 +158,14 @@ class HarborEvaluatorConfig(EvaluatorConfig):
     )
 
 
-class HarborEvaluator(Evaluator):
+class HarborNativeOutcomeEvaluator(roles.OutcomeEvaluator):
     """Run Harbor evaluations directly and return parsed reward payloads."""
 
-    evaluator_type: EvaluatorType = "harbor_native"
+    name = "harbor-native"
+    dataset_type = HarborDataset
+    config_type = HarborEvaluatorConfig
+
+    evaluator_type: EvaluatorType = "harbor-native"
 
     def __init__(self, options: HarborEvaluatorConfig | None = None, experiment_dir: Path | None = None) -> None:
         super().__init__(options or HarborEvaluatorConfig(), experiment_dir=experiment_dir)

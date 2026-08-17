@@ -100,6 +100,9 @@ dev = [
   "nvidia-nat-atif>=1.9.0a20260811,<1.10", # ATIF schema models for agentic-use trajectory validation
   "nemo-platform-sdk-tools",       # Include SDK/license tool migration target for testing
   "nmp-build-tools",               # Build hook helpers imported by package-local hatch_build.py files
+  # Out-of-tree Experimentalist strategy. Without it installed, the tests proving a third-party
+  # package can ship a component skip silently -- which is how a broken one went unnoticed.
+  "acme-strategies ; python_full_version < '3.14'",
   "nmp-dev-mcp",                   # Include MCP dev tools
   # These are the dev dependencies from `sdk/python/nemo-platform`.
   # Including here until we find a better way to include them.
@@ -369,6 +372,7 @@ models = { workspace = true }
 nemo-platform-sdk = { workspace = true }
 nemo-platform = { workspace = true }
 nemo-platform-ext = { workspace = true }
+acme-strategies = { workspace = true }
 nemo-platform-sdk-tools = { workspace = true }
 nmp-core-mcp = { workspace = true }
 nemo-nb = { workspace = true }
@@ -476,6 +480,9 @@ members = [
   "plugins/nemo-insights",
   "plugins/nemo-eval-author",
   "plugins/nemo-experimentalist",
+  # Not shipped. An out-of-tree component package, installed so the tests that prove the
+  # plugin mechanism actually run instead of being skipped by `importorskip`.
+  "plugins/nemo-experimentalist/examples/acme-strategies",
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-agents/examples/email-phishing-analyzer",
   "plugins/nemo-agents/examples/email-security-analyst",

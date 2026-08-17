@@ -17,6 +17,7 @@ supported-markers = [
 
 [manifest]
 members = [
+    "acme-strategies",
     "data-designer-nemo",
     "filesets",
     "garak-api",
@@ -175,6 +176,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/8d/75/94cd5d389649578ac
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/db/253133d7e7cb40d3af384bb2f5c0b4a2b7fdcffbc95c688cc67a20a3c103/accelerate-1.14.0-py3-none-any.whl", hash = "sha256:e94390c2863b873be18f623f9df48a0d8fe5eff13ea7f1a00092b0a7904888c6", size = 389246, upload-time = "2026-06-11T13:45:50.477Z" },
 ]
+
+[[package]]
+name = "acme-strategies"
+version = "0.1.0"
+source = { editable = "plugins/nemo-experimentalist/examples/acme-strategies" }
+dependencies = [
+    { name = "nemo-experimentalist-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "nemo-experimentalist-plugin" }]
 
 [[package]]
 name = "aioboto3"
@@ -6595,6 +6607,7 @@ cpu-tasks = [
     { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 dev = [
+    { name = "acme-strategies", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "aiohttp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "aioresponses", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "aiosqlite", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6816,6 +6829,7 @@ cpu-tasks = [
     { name = "nmp-platform", editable = "packages/nmp_platform" },
 ]
 dev = [
+    { name = "acme-strategies", marker = "python_full_version < '3.14'", editable = "plugins/nemo-experimentalist/examples/acme-strategies" },
     { name = "aiohttp", specifier = ">=3.14.1" },
     { name = "aioresponses", specifier = ">=0.7.8" },
     { name = "aiosqlite", specifier = ">=0.20.0" },

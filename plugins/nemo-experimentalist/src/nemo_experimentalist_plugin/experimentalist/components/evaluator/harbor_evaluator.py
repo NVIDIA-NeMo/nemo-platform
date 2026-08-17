@@ -38,8 +38,8 @@ from nemo_evaluator_sdk.agent_eval.runtimes.harbor_runtime import (
 )
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalTask
 from nemo_experimentalist_plugin.entities import Dataset, TrialResult, local_path_from_uri
+from nemo_experimentalist_plugin.experimentalist import roles
 from nemo_experimentalist_plugin.experimentalist.components.evaluator.base import (
-    Evaluator,
     EvaluatorConfig,
     EvaluatorType,
 )
@@ -122,10 +122,14 @@ class HarborRunnerConfig(EvaluatorConfig):
     )
 
 
-class HarborRunnerEvaluator(Evaluator):
+class HarborRunnerOutcomeEvaluator(roles.OutcomeEvaluator):
     """Run Harbor through the SDK's ``HarborAgentTaskRunner`` and parse the job dir."""
 
-    evaluator_type: EvaluatorType = "harbor_evaluator"
+    name = "harbor-runner"
+    dataset_type = HarborDataset
+    config_type = HarborRunnerConfig
+
+    evaluator_type: EvaluatorType = "harbor-runner"
 
     def __init__(
         self,

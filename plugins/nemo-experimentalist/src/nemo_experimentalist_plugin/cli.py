@@ -270,7 +270,7 @@ class ExperimentalistCLI(NemoCLI):
                         task_template=plan.task_template,
                         agent_source=plan.agent,
                         storage=plan.config.storage.model_dump(exclude_unset=True),
-                        evaluator=plan.config.evaluator,
+                        evaluator=plan.config.outcome_evaluator_config,
                         require_template=plan.insight is not None,
                         probes=_PREFLIGHT_PROBES,
                     )
@@ -316,6 +316,29 @@ class ExperimentalistCLI(NemoCLI):
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from None
             typer.echo(output_text)
+
+        @app.command("components")
+        def components(
+            role: str | None = typer.Option(None, "--role", help="Show only this role."),
+        ) -> None:
+            """List the components this install can resolve by name.
+
+            Includes anything a `pip install`ed package registered, which is how a
+            developer checks their own component was picked up.
+            """
+            from nemo_experimentalist_plugin.experimentalist.registry import Component, load_plugins
+
+            load_plugins()
+            rows = sorted(Component._registry.items())
+            if role is not None:
+                rows = [row for row in rows if row[0][0] == role]
+            if not rows:
+                typer.echo(f"No components registered{f' for role {role!r}' if role else ''}.")
+                raise typer.Exit(1)
+            width = max(len(registered_role) for (registered_role, _), _ in rows)
+            for (registered_role, registered_name), component in rows:
+                where = f"{component.__module__}.{component.__qualname__}"
+                typer.echo(f"{registered_role:<{width}}  {registered_name:<24}  {where}")
 
         @app.command("doctor")
         def doctor(
@@ -414,7 +437,7 @@ class ExperimentalistCLI(NemoCLI):
                         task_template=plan.task_template,
                         agent_source=plan.agent,
                         storage=plan.config.storage.model_dump(),
-                        evaluator=plan.config.evaluator,
+                        evaluator=plan.config.outcome_evaluator_config,
                         require_template=plan.insight is not None,
                         probes=_PREFLIGHT_PROBES,
                     )
