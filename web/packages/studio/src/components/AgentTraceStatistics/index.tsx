@@ -67,7 +67,7 @@ export const AgentTraceStatistics: FC<AgentTraceStatisticsProps> = ({
         <Text kind="title/md">Trace statistics</Text>
         <Flex gap="density-md" align="center">
           {onViewTraces && !isEmpty ? (
-            <Button kind="secondary" onClick={onViewTraces}>
+            <Button kind="tertiary" onClick={onViewTraces}>
               <ListTree size={16} aria-hidden />
               View traces
             </Button>

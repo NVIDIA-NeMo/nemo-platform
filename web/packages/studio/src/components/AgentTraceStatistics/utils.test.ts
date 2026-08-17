@@ -4,7 +4,6 @@
 import type { TraceStatisticsSample } from '@studio/components/AgentTraceStatistics/types';
 import {
   bucketTraceAverages,
-  formatCostUsd,
   summarizeTraces,
 } from '@studio/components/AgentTraceStatistics/utils';
 
@@ -92,13 +91,5 @@ describe('bucketTraceAverages', () => {
 
   it('returns no points for no traces', () => {
     expect(bucketTraceAverages([], 'month')).toEqual([]);
-  });
-});
-
-describe('formatCostUsd', () => {
-  it('keeps sub-cent averages readable', () => {
-    expect(formatCostUsd(0.0072)).toBe('$0.0072');
-    expect(formatCostUsd(1.5)).toBe('$1.50');
-    expect(formatCostUsd(0)).toBe('$0');
   });
 });

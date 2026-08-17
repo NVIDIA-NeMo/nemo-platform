@@ -145,16 +145,6 @@ export const formatMsPerToken = (value: number): string =>
     ? '0'
     : value.toLocaleString(undefined, { maximumFractionDigits: value < 10 ? 2 : 0 });
 
-/** Sub-cent averages are the common case, so keep enough precision to be non-zero. */
-export const formatCostUsd = (value: number): string => {
-  if (value === 0) return '$0';
-  const digits = value < 0.01 ? 4 : 2;
-  return `$${value.toLocaleString(undefined, {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })}`;
-};
-
 export const formatBucketTick = (timestamp: number, range: TraceStatisticsRange): string => {
   const date = new Date(timestamp);
   return range === 'day'

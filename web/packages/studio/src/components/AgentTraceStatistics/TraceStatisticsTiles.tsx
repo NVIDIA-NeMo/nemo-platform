@@ -4,11 +4,8 @@
 import { StatTile, type StatTileProps } from '@nemo/common/src/components/StatTile/index';
 import { Grid, Panel, Skeleton, Stack } from '@nvidia/foundations-react-core';
 import type { TraceStatisticsSummary } from '@studio/components/AgentTraceStatistics/types';
-import {
-  formatCostUsd,
-  formatMsPerToken,
-  formatTokens,
-} from '@studio/components/AgentTraceStatistics/utils';
+import { formatMsPerToken, formatTokens } from '@studio/components/AgentTraceStatistics/utils';
+import { formatCost } from '@studio/util/intakeTelemetry';
 import { type FC } from 'react';
 
 interface Props {
@@ -29,7 +26,7 @@ export const TraceStatisticsTiles: FC<Props> = ({ summary, isPending }) => {
       value: formatTokens(summary.avgTokensPerRun),
       hint: 'per run',
     },
-    { label: 'Avg cost', value: formatCostUsd(summary.avgCostUsd) },
+    { label: 'Avg cost', value: formatCost(summary.avgCostUsd) },
   ];
 
   return (

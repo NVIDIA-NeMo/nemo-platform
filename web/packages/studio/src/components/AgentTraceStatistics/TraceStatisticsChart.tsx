@@ -14,10 +14,10 @@ import type {
 import {
   bucketAdverbForRange,
   formatBucketTick,
-  formatCostUsd,
   formatLatencyMs,
   formatTokens,
 } from '@studio/components/AgentTraceStatistics/utils';
+import { formatCost } from '@studio/util/intakeTelemetry';
 import { type FC, useMemo } from 'react';
 
 interface Props {
@@ -41,7 +41,7 @@ const SERIES: SeriesSpec[] = [
     label: 'Cost',
     color: 'var(--text-color-accent-green)',
     select: (bucket) => bucket.costUsd,
-    format: formatCostUsd,
+    format: formatCost,
   },
   {
     id: 'tokens',
