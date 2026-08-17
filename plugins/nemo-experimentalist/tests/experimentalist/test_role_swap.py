@@ -273,7 +273,7 @@ async def test_an_out_of_tree_strategy_runs_and_produces_a_winner(tmp_path, isol
     # Strategy, not this package's class. The role declares no __init__, so the
     # constructor's arguments are the resolving strategy's contract, not the role's --
     # hence the cast to build it.
-    strategy_class = cast("Any", resolve("strategy", "random-search"))
+    strategy_class = cast(Any, resolve("strategy", "random-search"))
     strategy = cast("Strategy", strategy_class(config=config))
 
     winner = await strategy.run(ctx)
