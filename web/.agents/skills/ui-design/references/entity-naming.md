@@ -48,11 +48,15 @@ a **pattern to implement per form**, not a shared component to import. Do not in
    `onSubmit`/API call as `formData.name`. `watch()`/the field's own `value`
    always mirrors the user's literal keystrokes.
 
-3. **No error state before blur — and even after blur, only for
-   unsalvageable input.** Since the submitted value is always the _sanitized_
-   name (never the literal typed value), a cosmetic deviation (spaces,
-   casing, a stray invalid character) is never a form error — it's exactly
-   what the "will be created as" preview already resolves for the user. Use
+3. **No local schema error state before blur — and even after blur, only
+   for unsalvageable input.** This gating applies only to the field's own
+   `zod`/`superRefine` validation error — it never applies to the
+   uniqueness-conflict outcome from point 4 below, which must render
+   immediately once the debounced check resolves, blurred or not. Since
+   the submitted value is always the _sanitized_ name (never the literal
+   typed value), a cosmetic deviation (spaces, casing, a stray invalid
+   character) is never a local schema error — it's exactly what the "will
+   be created as" preview already resolves for the user. Use
    `mode: 'onBlur'` on `useForm` for this field's form (or, in a
    multi-field form where other fields need different timing, gate the
    rendered `slotError` on `formState.touchedFields.name`) so the schema's
@@ -144,9 +148,13 @@ const rawValue = watch('name');
 const [debouncedValue] = useDebounce(rawValue, DEFAULT_DEBOUNCE_MS);
 const sanitized = toValidEntityName(debouncedValue, '');
 
+type AvailabilityState =
+  | { candidate: string; status: 'checking' | 'available' | 'conflict' | 'failed' }
+  | undefined;
+
 // Tagged with the exact candidate it was checked against, so a resolve
 // that lands after the user kept typing never gets rendered as current.
-const [availability, setAvailability] = useState(undefined);
+const [availability, setAvailability] = useState<AvailabilityState>(undefined);
 
 useEffect(() => {
   if (!sanitized) {
@@ -166,7 +174,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [sanitized]);
+}, [checkAvailability, sanitized]);
 
 const preview = toValidEntityName(rawValue, '');
 // Discard a result that no longer matches what's on screen.
