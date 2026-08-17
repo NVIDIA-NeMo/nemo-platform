@@ -1,56 +1,37 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useUploadBenignSuiteFileset, useUploadHitlogFileset } from '@iron-swarm/api/filesets';
 import { BenignInterviewCard } from '@iron-swarm/components/BenignInterviewCard';
 import { BenignSuiteTable } from '@iron-swarm/components/BenignSuiteTable';
 import type { SuiteRow } from '@iron-swarm/components/hitlTypes';
 import { InterviewPanel } from '@iron-swarm/components/InterviewPanel';
-import { ModelGroupFields } from '@iron-swarm/components/ModelGroupFields';
 import { ReconChecklist } from '@iron-swarm/components/ReconChecklist';
 import { ReviewPanel } from '@iron-swarm/components/ReviewPanel';
+import {
+  RunWarGameDialog,
+  type RunConfig,
+  type RunLaunch,
+} from '@iron-swarm/components/RunWarGameDialog';
 import { TargetPanel } from '@iron-swarm/components/TargetPanel';
 import { useGenerateBenignSuite } from '@iron-swarm/components/useGenerateBenignSuite';
 import { useRunWarGame } from '@iron-swarm/components/useRunWarGame';
 import {
   getIronSwarmGetManifestQueryKey,
   useIronSwarmGetManifest,
-  useIronSwarmGetModelConfigDefaults,
-  useIronSwarmListRuns,
   useIronSwarmRefreshManifest,
   useIronSwarmUpdateManifest,
 } from '@iron-swarm/generated/api';
-import type { IronSwarmRun, WarGameModels } from '@iron-swarm/generated/schema';
 import { useBreadcrumbs, useNotify, useToast, useWorkspace } from '@iron-swarm/host';
 import { getIronSwarmManifestListRoute, getIronSwarmRunListRoute } from '@iron-swarm/paths';
-import {
-  BENIGN_SOURCE_LABEL,
-  INTENSITY_LABEL,
-  REPLAY_SOURCE_LABEL,
-} from '@iron-swarm/routes/IronSwarmManifestDetailRoute/constants';
-import type {
-  AttackIntensity,
-  BenignSource,
-  DefenderSelection,
-  ReplaySource,
-} from '@iron-swarm/routes/IronSwarmManifestDetailRoute/types';
 import { toRequestsCsv } from '@iron-swarm/routes/IronSwarmManifestDetailRoute/utils';
-import { FEEDBACK } from '@iron-swarm/theme';
-import { AccessibleTitle, AccordionSection, ConfirmationModal, FileUpload, FormModal, triggerDownload } from '@nemo/common';
+import { AccessibleTitle, AccordionSection, ConfirmationModal, FormModal, triggerDownload } from '@nemo/common';
 import {
   AccordionRoot,
   Button,
-  Checkbox,
   Flex,
   FormField,
   PageHeader,
   Panel,
-  SegmentedControl,
-  SelectContent,
-  SelectItem,
-  SelectListbox,
-  SelectRoot,
-  SelectTrigger,
   Stack,
   Text,
   TextInput,
@@ -81,25 +62,9 @@ export const IronSwarmManifestDetailRoute: FC = () => {
   // Seed the editable state once the manifest loads. The `seeded` ref below is what keeps this
   // one-shot — the query does get refetched, since saving the manifest invalidates its key.
   const [suite, setSuite] = useState<SuiteRow[]>([]);
-  const [port, setPort] = useState('');
-  const [defenders, setDefenders] = useState<DefenderSelection>({
-    guardrails: true,
-    openshell: true,
-  });
-  const [intensity, setIntensity] = useState<AttackIntensity>('standard');
-  const [rounds, setRounds] = useState('1');
-  const [models, setModels] = useState<WarGameModels>({});
-  const { data: modelDefaults } = useIronSwarmGetModelConfigDefaults(workspace, { query: {} });
   // The launch dialog holds per-run config + attack mode. Config seeds from the manifest default and is
   // sent as a per-run override on the spec — launching never rewrites the manifest ("Save as default" does).
   const [runDialogOpen, setRunDialogOpen] = useState(false);
-  const [mode, setMode] = useState<'live' | 'replay'>('live');
-  const [replaySource, setReplaySource] = useState<ReplaySource>('last');
-  const [hitlogFile, setHitlogFile] = useState<File | undefined>();
-  const [hitlogFileset, setHitlogFileset] = useState<string | undefined>();
-  const [benignSource, setBenignSource] = useState<BenignSource>('manifest');
-  const [benignFile, setBenignFile] = useState<File | undefined>();
-  const [benignFileset, setBenignFileset] = useState<string | undefined>();
   const seeded = useRef(false);
   useEffect(() => {
     if (!manifest || seeded.current) return;
@@ -132,46 +97,6 @@ export const IronSwarmManifestDetailRoute: FC = () => {
   const [confirmRefresh, setConfirmRefresh] = useState(false);
   const [envDialogOpen, setEnvDialogOpen] = useState(false);
   const [envDraft, setEnvDraft] = useState('');
-
-  // "Last run" replay source: the newest prior run of THIS manifest that saved a hitlog fileset.
-  const { data: runsData } = useIronSwarmListRuns(
-    workspace,
-    { sort: '-created_at', page_size: 20, filter: { manifest_id: ironSwarmManifestName } },
-    { query: { enabled: runDialogOpen && mode === 'replay' && replaySource === 'last' } }
-  );
-  const lastHitlogFileset = ((runsData?.data ?? []) as IronSwarmRun[]).find(
-    (r) => r.hitlog_fileset
-  )?.hitlog_fileset;
-
-  const uploadHitlog = useUploadHitlogFileset();
-  const onHitlogDrop = async (accepted: File[]): Promise<void> => {
-    const file = accepted[0];
-    if (!file) return;
-    setHitlogFile(file);
-    setHitlogFileset(undefined);
-    try {
-      setHitlogFileset(
-        await uploadHitlog.mutateAsync({ workspace, manifestName: ironSwarmManifestName, file })
-      );
-    } catch {
-      toast.error('Failed to upload the hitlog file.');
-    }
-  };
-
-  const uploadBenign = useUploadBenignSuiteFileset();
-  const onBenignDrop = async (accepted: File[]): Promise<void> => {
-    const file = accepted[0];
-    if (!file) return;
-    setBenignFile(file);
-    setBenignFileset(undefined);
-    try {
-      setBenignFileset(
-        await uploadBenign.mutateAsync({ workspace, manifestName: ironSwarmManifestName, file })
-      );
-    } catch {
-      toast.error('Failed to upload the benign suite file.');
-    }
-  };
 
   // Generation runs on the manifest (the suite is a manifest asset). On completion, re-seed the editor + csv
   // view from the freshly saved suite.
@@ -273,72 +198,17 @@ export const IronSwarmManifestDetailRoute: FC = () => {
   };
 
   // The per-run config the dialog collects — sent as spec overrides, or saved to the manifest as defaults.
-  const buildRunConfig = () => {
-    const keys = (['guardrails', 'openshell'] as const).filter((k) => defenders[k]);
-    return {
-      defenders: keys,
-      attack_intensity: intensity,
-      rounds: Number(rounds) || 1,
-      models,
-      ...(port ? { port: Number(port) } : {}),
-    };
-  };
-
   const openRunDialog = () => {
     // Attacking replays the benign suite, so require one — the Generate action is how you make it.
     if (suite.length === 0) {
       toast.error('No benign suite yet — generate it first, then run the war-game.');
       return;
     }
-    // Seed the dialog's config from the manifest default here rather than in an effect: keying off
-    // `manifest` meant any refetch while the dialog was open (e.g. "Save as default" invalidating
-    // the query) wiped whatever the user had typed. Per-run tweaks stay ephemeral either way.
-    setPort(manifest?.port ? String(manifest.port) : '');
-    // Empty stored list means iron-swarm defaults (all defenders) — reflect that as both checked.
-    const saved = manifest?.defenders ?? [];
-    setDefenders(
-      saved.length
-        ? { guardrails: saved.includes('guardrails'), openshell: saved.includes('openshell') }
-        : { guardrails: true, openshell: true }
-    );
-    setIntensity((manifest?.attack_intensity as AttackIntensity | undefined) ?? 'standard');
-    setRounds(manifest?.rounds ? String(manifest.rounds) : '1');
-    setModels(manifest?.models ?? {});
-    setMode('live');
-    setReplaySource('last');
-    setHitlogFile(undefined);
-    setHitlogFileset(undefined);
-    setBenignSource('manifest');
-    setBenignFile(undefined);
-    setBenignFileset(undefined);
     setRunDialogOpen(true);
   };
 
-  // Dialog submit: launch with per-run config overrides. Never writes the manifest.
-  const start = () => {
-    const cfg = buildRunConfig();
-    if (cfg.defenders.length === 0) {
-      toast.error('Select at least one defender.');
-      return;
-    }
-    let replay_hitlog_fileset: string | undefined;
-    if (mode === 'replay') {
-      replay_hitlog_fileset = replaySource === 'upload' ? hitlogFileset : lastHitlogFileset;
-      if (!replay_hitlog_fileset) {
-        toast.error(
-          replaySource === 'upload'
-            ? 'Upload a hitlog file to replay first.'
-            : 'No previous run of this manifest has recorded hits — run a live attack once, or upload a hitlog.'
-        );
-        return;
-      }
-    }
-    // Uploaded benign suite (if chosen) overrides the manifest's suite for this run.
-    if (benignSource === 'upload' && !benignFileset) {
-      toast.error('Upload a benign suite CSV first.');
-      return;
-    }
-    const benign_suite_fileset = benignSource === 'upload' ? benignFileset : undefined;
+  // Launch with per-run overrides; never writes the manifest. The dialog has already validated.
+  const start = (launch: RunLaunch) => {
     runWarGame.mutate({
       workspace,
       data: {
@@ -346,23 +216,16 @@ export const IronSwarmManifestDetailRoute: FC = () => {
           manifest_id: ironSwarmManifestName,
           driver: 'service',
           stop_after_synth: false,
-          ...cfg,
-          ...(replay_hitlog_fileset ? { replay_hitlog_fileset } : {}),
-          ...(benign_suite_fileset ? { benign_suite_fileset } : {}),
+          ...launch,
         },
       },
     });
     setRunDialogOpen(false);
   };
 
-  // Persist the current dialog config as the manifest's default (no launch).
-  const saveAsDefault = () => {
-    const cfg = buildRunConfig();
-    if (cfg.defenders.length === 0) {
-      toast.error('Select at least one defender.');
-      return;
-    }
-    updateManifest.mutate({ workspace, name: ironSwarmManifestName, data: cfg });
+  // Persist the dialog's config as the manifest's default (no launch).
+  const saveAsDefault = (config: RunConfig) => {
+    updateManifest.mutate({ workspace, name: ironSwarmManifestName, data: config });
   };
 
   return (
@@ -542,235 +405,17 @@ export const IronSwarmManifestDetailRoute: FC = () => {
         onConfirm={refreshTarget}
       />
 
-      <FormModal
+      <RunWarGameDialog
         open={runDialogOpen}
-        title="Start war-game"
-        submitButtonText="Start"
-        loading={runWarGame.isPending}
-        submitDisabled={
-          (mode === 'replay' &&
-            (replaySource === 'upload'
-              ? !hitlogFileset || uploadHitlog.isPending
-              : !lastHitlogFileset)) ||
-          (benignSource === 'upload' && (!benignFileset || uploadBenign.isPending))
-        }
-        onSubmit={(e) => {
-          e.preventDefault();
-          start();
-        }}
         onClose={() => setRunDialogOpen(false)}
-      >
-        <Stack gap="density-md">
-          <Text kind="body/regular/sm" className="text-subtle">
-            Config applies to this run only. Use “Save as default” to make it the manifest baseline.
-          </Text>
-
-          <FormField
-            name="port"
-            slotLabel="Victim Port"
-            slotHelp="Port the war-game targets on the victim agent."
-          >
-            <TextInput
-              value={port}
-              onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ''))}
-            />
-          </FormField>
-
-          <Stack gap="density-sm">
-            <Text kind="body/semibold/sm" className="uppercase tracking-wide text-subtle">
-              Defenders
-            </Text>
-            <Flex align="center" gap="density-sm">
-              <Checkbox
-                checked={defenders.guardrails}
-                onCheckedChange={(c) => setDefenders((d) => ({ ...d, guardrails: c === true }))}
-                attributes={{ CheckboxInput: { 'aria-label': 'Guardrails defender' } }}
-              />
-              <Text kind="body/regular/sm">Guardrails defender</Text>
-            </Flex>
-            <Flex align="center" gap="density-sm">
-              <Checkbox
-                checked={defenders.openshell}
-                onCheckedChange={(c) => setDefenders((d) => ({ ...d, openshell: c === true }))}
-                attributes={{ CheckboxInput: { 'aria-label': 'OpenShell policy defender' } }}
-              />
-              <Text kind="body/regular/sm">OpenShell policy defender</Text>
-            </Flex>
-          </Stack>
-
-          <FormField
-            name="intensity"
-            slotLabel="Attack Intensity"
-            slotHelp="How hard the garak attacker probes the agent — more probes and generations at higher levels."
-          >
-            {/* The trigger echoes the raw value, so use capitalized values (== display) and lowercase for the API. */}
-            <SelectRoot
-              value={INTENSITY_LABEL[intensity]}
-              onValueChange={(v: string) => setIntensity(v.toLowerCase() as AttackIntensity)}
-            >
-              <SelectTrigger className="w-full" placeholder="Select intensity" />
-              <SelectContent className="w-(--radix-popper-anchor-width)">
-                <SelectListbox>
-                  <SelectItem value="Light">Light</SelectItem>
-                  <SelectItem value="Standard">Standard</SelectItem>
-                  <SelectItem value="Thorough">Thorough</SelectItem>
-                </SelectListbox>
-              </SelectContent>
-            </SelectRoot>
-          </FormField>
-
-          <FormField
-            name="rounds"
-            slotLabel="Rounds"
-            slotHelp="Iterative attack → defend → validate → redeploy cycles. More rounds go deeper but take longer."
-          >
-            <TextInput
-              value={rounds}
-              onChange={(e) => setRounds(e.target.value.replace(/[^0-9]/g, ''))}
-            />
-          </FormField>
-
-          <AccordionRoot>
-            <AccordionSection value="models" title="Models (optional)">
-              <ModelGroupFields
-                value={models}
-                onChange={setModels}
-                workspace={workspace}
-                defaults={modelDefaults}
-              />
-            </AccordionSection>
-          </AccordionRoot>
-
-          <FormField
-            name="benignSource"
-            slotLabel="Benign suite"
-            slotHelp="The benign requests replayed after hardening to confirm the agent still works. Defaults to the manifest's suite; upload a requests.csv to override it for this run."
-          >
-            <SelectRoot
-              value={BENIGN_SOURCE_LABEL[benignSource]}
-              onValueChange={(v: string) =>
-                setBenignSource(v === BENIGN_SOURCE_LABEL.upload ? 'upload' : 'manifest')
-              }
-            >
-              <SelectTrigger className="w-full" placeholder="Select benign suite" />
-              <SelectContent className="w-(--radix-popper-anchor-width)">
-                <SelectListbox>
-                  <SelectItem value={BENIGN_SOURCE_LABEL.manifest}>
-                    {BENIGN_SOURCE_LABEL.manifest}
-                  </SelectItem>
-                  <SelectItem value={BENIGN_SOURCE_LABEL.upload}>
-                    {BENIGN_SOURCE_LABEL.upload}
-                  </SelectItem>
-                </SelectListbox>
-              </SelectContent>
-            </SelectRoot>
-          </FormField>
-
-          {benignSource === 'upload' ? (
-            <FileUpload
-              label="Benign suite"
-              accept={{ 'text/csv': ['.csv'] }}
-              multiple={false}
-              files={benignFile ? [benignFile] : []}
-              onDropAccepted={(accepted) => void onBenignDrop(accepted)}
-              onRemoveFile={() => {
-                setBenignFile(undefined);
-                setBenignFileset(undefined);
-              }}
-              helperText={
-                uploadBenign.isPending
-                  ? 'Uploading…'
-                  : benignFileset
-                    ? 'Uploaded — will override the manifest suite for this run.'
-                    : 'A benign requests.csv (tool,payload,label,rationale,persona).'
-              }
-            />
-          ) : null}
-
-          <FormField
-            name="mode"
-            slotLabel="Attack mode"
-            slotHelp="Live runs a fresh garak attack; Replay skips it and replays recorded hits against the defended agent."
-          >
-            <SegmentedControl
-              className="w-full"
-              value={mode}
-              onValueChange={(v) => setMode(v as 'live' | 'replay')}
-              items={[
-                { value: 'live', children: 'Live attack' },
-                { value: 'replay', children: 'Replay recorded hits' },
-              ]}
-            />
-          </FormField>
-
-          {mode === 'replay' ? (
-            <>
-              <FormField name="replaySource" slotLabel="Hits to replay">
-                <SelectRoot
-                  value={REPLAY_SOURCE_LABEL[replaySource]}
-                  onValueChange={(v: string) =>
-                    setReplaySource(v === REPLAY_SOURCE_LABEL.upload ? 'upload' : 'last')
-                  }
-                >
-                  <SelectTrigger className="w-full" placeholder="Select hits to replay" />
-                  <SelectContent className="w-(--radix-popper-anchor-width)">
-                    <SelectListbox>
-                      <SelectItem value={REPLAY_SOURCE_LABEL.last}>
-                        {REPLAY_SOURCE_LABEL.last}
-                      </SelectItem>
-                      <SelectItem value={REPLAY_SOURCE_LABEL.upload}>
-                        {REPLAY_SOURCE_LABEL.upload}
-                      </SelectItem>
-                    </SelectListbox>
-                  </SelectContent>
-                </SelectRoot>
-              </FormField>
-
-              {replaySource === 'last' ? (
-                <Text
-                  kind="body/regular/sm"
-                  className={lastHitlogFileset ? 'text-subtle' : undefined}
-                  style={lastHitlogFileset ? undefined : { color: FEEDBACK.warning }}
-                >
-                  {lastHitlogFileset
-                    ? "Replays this manifest's most recent recorded hits."
-                    : 'No previous run of this manifest has recorded hits — run a live attack once, or upload a hitlog.'}
-                </Text>
-              ) : (
-                <FileUpload
-                  label="Hitlog"
-                  accept={{ 'application/jsonl': ['.jsonl', '.json'] }}
-                  multiple={false}
-                  files={hitlogFile ? [hitlogFile] : []}
-                  onDropAccepted={(accepted) => void onHitlogDrop(accepted)}
-                  onRemoveFile={() => {
-                    setHitlogFile(undefined);
-                    setHitlogFileset(undefined);
-                  }}
-                  helperText={
-                    uploadHitlog.isPending
-                      ? 'Uploading…'
-                      : hitlogFileset
-                        ? 'Uploaded — ready to replay.'
-                        : 'A garak hitlog (.jsonl) recording the attack hits to replay.'
-                  }
-                />
-              )}
-            </>
-          ) : null}
-
-          <Flex>
-            <Button
-              kind="tertiary"
-              type="button"
-              disabled={updateManifest.isPending}
-              onClick={saveAsDefault}
-            >
-              Save as default
-            </Button>
-          </Flex>
-        </Stack>
-      </FormModal>
+        workspace={workspace}
+        manifestName={ironSwarmManifestName}
+        manifest={manifest}
+        starting={runWarGame.isPending}
+        savingDefault={updateManifest.isPending}
+        onStart={start}
+        onSaveDefault={saveAsDefault}
+      />
     </AccessibleTitle>
   );
 };
