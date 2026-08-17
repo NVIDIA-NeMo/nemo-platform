@@ -128,10 +128,10 @@ def _flatten_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> list[
     return arguments
 
 
-def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> dict[str, Any]:
+def _redact_hydra_params(overrides: Mapping[str, Any], _prefix: str = "") -> dict[str, Any]:
     """Redact credential-looking values from overrides before they are recorded as provenance.
 
-    ``env_overrides`` is a free-form escape hatch forwarded to Gym, so nothing stops a caller passing
+    ``hydra_params`` is a free-form escape hatch forwarded to Gym, so nothing stops a caller passing
     ``{"model": {"api_key": "sk-..."}}``. ``RunnerInfo.config`` is persisted into the run bundle, so a
     value that looks like a credential must not be written there.
 
@@ -147,7 +147,7 @@ def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> di
     for key, value in overrides.items():
         path = f"{_prefix}{key}"
         if isinstance(value, Mapping):
-            redacted[key] = _redact_env_overrides(value, f"{path}.")
+            redacted[key] = _redact_hydra_params(value, f"{path}.")
         elif any(marker in path.casefold() for marker in _SECRET_KEY_MARKERS):
             redacted[key] = _REDACTED
         elif isinstance(value, (list, tuple)):
@@ -158,9 +158,9 @@ def _redact_env_overrides(overrides: Mapping[str, Any], _prefix: str = "") -> di
 
 
 def _redact_list_item(item: Any, path: str) -> Any:
-    """Redact inside one element of a list-valued override. See :func:`_redact_env_overrides`."""
+    """Redact inside one element of a list-valued override. See :func:`_redact_hydra_params`."""
     if isinstance(item, Mapping):
-        return _redact_env_overrides(item, f"{path}.")
+        return _redact_hydra_params(item, f"{path}.")
     if isinstance(item, (list, tuple)):
         return [_redact_list_item(nested, path) for nested in item]
     return item
@@ -186,11 +186,11 @@ def _selection_args(config: GymRuntimeConfig, work_dir: Path) -> list[str]:
         # env we're running. Assumes the agent config's top-level key equals the agent name (the
         # simple_agent convention) *and* that the resources-server is registered under the
         # environment's own name — not universally true, so self-contained or differently-named
-        # servers set bind_resources_server=False and bind themselves via env_overrides.
+        # servers set bind_resources_server=False and bind themselves via hydra_params.
         selection.append(
             f"+{config.agent}.responses_api_agents.{config.agent}.resources_server.name={config.resources_server}"
         )
-    selection.extend(_flatten_overrides(config.env_overrides))
+    selection.extend(_flatten_overrides(config.hydra_params))
     # Gym is a Hydra app, so each invocation writes a timestamped run directory — by default
     # `outputs/<date>/<time>/` under the *current* directory. Since the subprocesses inherit this
     # process's cwd (so Gym can find env.yaml), the default would litter whatever directory the
@@ -229,13 +229,23 @@ class GymRuntimeConfig(BaseModel):
         "(the composable/Pattern-A agent case, e.g. simple_agent whose config leaves it '???'). Set False for "
         "self-contained agents that already bind their own resources-server.",
     )
-    env_overrides: dict[str, Any] = Field(
+    hydra_params: dict[str, Any] = Field(
         default_factory=dict,
-        description="Nested config overrides merged into Gym's config, applied after the auto-derived "
+        description="Parameters merged into Gym's Hydra config, applied after the auto-derived "
         "resources-server binding. Structured rather than pre-serialized Hydra strings so the config "
         "travels as JSON — `{'a': {'b': 1}}` becomes `++a.b=1` at invocation. This is the escape "
         "hatch for what Gym does not standardize: an environment whose resources-server is registered "
-        "under a different name, or which references a model server no shipped config defines.",
+        "under a different name, or which references a model server no shipped config defines. "
+        "Distinct from `env_vars`: these configure the Gym *environment*, not the OS environment.",
+    )
+    env_vars: dict[str, str] = Field(
+        default_factory=dict,
+        description="Environment variables set on the `gym` invocation, merged over the ones this "
+        "process already has. Some Gym environments are configurable only this way — `wmt_translation` "
+        "reads `WMT_TRANSLATION_COMET_PY_CACHE` for its model-cache root, defaulting to a path that "
+        "exists only inside NVIDIA's container image — and requiring the caller to export those turns "
+        "a property of the environment into a property of whoever launched the run. Redacted from "
+        "recorded provenance on the same rules as `hydra_params`.",
     )
     num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
     concurrency: int = Field(

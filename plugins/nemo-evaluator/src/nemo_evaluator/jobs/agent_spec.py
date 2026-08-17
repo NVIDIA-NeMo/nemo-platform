@@ -173,11 +173,19 @@ class GymRunnerTarget(BaseModel):
         description="Auto-bind the agent's `resources_server.name` via a Hydra override. Set False for "
         "self-contained agents that already bind their own resources-server.",
     )
-    env_overrides: dict[str, Any] = Field(
+    hydra_params: dict[str, Any] = Field(
         default_factory=dict,
-        description="Extra config overrides for `gym env start`, as nested data — {'model': {'temperature': 0.7}} "
+        description="Parameters merged into Gym's Hydra config, as nested data — {'model': {'temperature': 0.7}} "
         "rather than pre-serialized Hydra strings — so a spec survives being sent as JSON. Flattened to "
-        "Hydra's grammar at invocation, after the auto-derived resources-server binding.",
+        "Hydra's grammar at invocation, after the auto-derived resources-server binding. Distinct from "
+        "`env_vars`: these configure the Gym environment, not the OS environment.",
+    )
+    env_vars: dict[str, str] = Field(
+        default_factory=dict,
+        description="Environment variables set on the `gym` invocation. Some Gym environments are "
+        "configurable only this way — `wmt_translation` reads `WMT_TRANSLATION_COMET_PY_CACHE` for its "
+        "model-cache root and defaults to a container-only path — and a job spec has no ambient "
+        "environment to inherit from, so whatever the environment needs has to travel in the spec.",
     )
     num_repeats: int = Field(default=1, ge=1, description="Attempts per row; each attempt becomes one trial.")
     concurrency: int = Field(
