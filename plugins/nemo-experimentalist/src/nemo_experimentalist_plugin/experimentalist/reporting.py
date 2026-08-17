@@ -17,7 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TextIO
 
-from nemo_experimentalist_plugin.config import MetricTarget
+from nemo_experimentalist_plugin.entities import MetricTarget
 
 _RULE = "═" * 62
 _THIN = "─" * 62
@@ -33,6 +33,11 @@ class Verbosity(str, Enum):
 
     QUIET = "quiet"
     NORMAL = "normal"
+
+
+def reward_scalar(aggregate_metrics: dict[str, float | int]) -> float:
+    """Extract the scalar reward from an evaluation's aggregate metrics."""
+    return float(aggregate_metrics.get("reward", 0.0))
 
 
 class RunReporter:

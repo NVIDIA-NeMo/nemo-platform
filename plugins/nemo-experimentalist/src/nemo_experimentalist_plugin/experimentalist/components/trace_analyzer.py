@@ -14,8 +14,8 @@ from urllib.parse import unquote, urlparse
 from nemo_experimentalist_plugin.entities import DependencyRuntime, MetricResult, Task, TrialResult
 from nemo_experimentalist_plugin.experimentalist.components import cache
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools, WorkspaceTool
+from nemo_experimentalist_plugin.experimentalist.seam import TraceLoader
 from nemo_insights_plugin.entities import Insight
-from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.nooa_model_client import get_default_model, get_fast_model
 from nooa import Agent, CodeActStrategy, strategy
 from nooa.agentdoc import doc, spec
@@ -97,7 +97,7 @@ def _outcome_from_eval_passed(eval_passed: bool | None) -> Literal["SUCCESS", "F
 class TraceAnalyzer(Agent):
     """Perform deep trace analysis for a single task.
 
-    Spawned by AgentAnalyzer.run in parallel — one instance per task.
+    Spawned by TraceRootCauseAnalyzer.run in parallel — one instance per task.
     Never call this sequentially; always use asyncio.gather.
 
     When using TraceExplorer return types, prefer attribute access. If you
@@ -304,8 +304,7 @@ class TraceAnalyzer(Agent):
         selection_reason: str = "",
         objective_metrics: list[dict[str, Any]] | None = None,
         regression_metrics: list[dict[str, Any]] | None = None,
-        client: AsyncNeMoPlatform | None = None,
-        workspace: str | None = None,
+        load_trace: TraceLoader | None = None,
     ) -> Diagnostic:
         """Run the full trace analysis pipeline for one agent trial.
 
@@ -320,8 +319,8 @@ class TraceAnalyzer(Agent):
             objective_metrics: Evaluator metric dimensions the optimization run
                 aims to improve.
             regression_metrics: Evaluator metric dimensions that must not worsen.
-            client: Existing NeMo Platform client for Intake trace identifiers.
-            workspace: NMP workspace request context for Intake trace identifiers.
+            load_trace: Resolves a trace reference to a TraceExplorer, wherever the
+                trace is stored. Supplied by the context; ``None`` skips trace analysis.
 
         Returns:
             Diagnostic: outcome, summary, failure point span index, and root cause.
@@ -338,7 +337,9 @@ class TraceAnalyzer(Agent):
             )
 
         try:
-            trace = await TraceExplorer.from_ref(trial.trace, client, workspace)
+            if load_trace is None:
+                raise ValueError("no trace loader was supplied")
+            trace = await load_trace(trial.trace)
         except Exception as exc:
             logger.warning("Skipping unloadable trace %s for trial %s: %s", trial.trace.uri, trial.id, exc)
             return Diagnostic(
@@ -352,7 +353,7 @@ class TraceAnalyzer(Agent):
             )
 
         # The cache key intentionally omits the insight lens. Within the optimization
-        # loop the Eval Author (insight-conditioned) and the AgentAnalyzer (no insight)
+        # loop the Eval Author (insight-conditioned) and the TraceRootCauseAnalyzer (no insight)
         # analyze disjoint trace sets in a single experiment_dir, so a given trace is
         # only ever diagnosed through one lens and cannot collide here. If a future
         # caller analyzes the same trace under different insights in one experiment_dir,

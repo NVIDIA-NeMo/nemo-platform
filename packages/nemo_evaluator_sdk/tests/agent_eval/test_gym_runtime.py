@@ -19,30 +19,37 @@ from collections import Counter, deque
 from pathlib import Path
 
 import pytest
-from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import (
-    _LOG_TAIL_LINES,
-    NG_ROLLOUT_INDEX,
-    NG_TASK_INDEX,
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import (
     GymAgentTaskRunner,
     GymRewardMetric,
     GymRuntimeConfig,
-    _aggregate_metrics_path_for,
+    discover_gym_tasks,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.config import _flatten_overrides, _hydra_scalar, _selection_args
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.dataset import (
     _canonical_row_hash,
     _content_text,
-    _drain_pumps,
-    _ensure_fresh_output,
-    _flatten_overrides,
-    _gym_executable,
-    _hydra_scalar,
     _materialize_dataset,
-    _pump_stream,
-    _read_run_aggregations,
     _render_instruction,
-    _require_full_coverage,
-    _selection_args,
     _source_datasets,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.process import (
+    _LOG_TAIL_LINES,
+    _drain_pumps,
+    _gym_executable,
+    _pending_servers,
+    _pump_stream,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.records import NG_ROLLOUT_INDEX, NG_TASK_INDEX
+from nemo_evaluator_sdk.agent_eval.runtimes.gym.results import (
+    _INPUT_TOKEN_KEYS,
+    _TOKEN_USAGE_KEYS,
+    _agent_never_ran,
+    _aggregate_metrics_path_for,
+    _ensure_fresh_output,
+    _read_run_aggregations,
+    _require_full_coverage,
     _trials_from_rollouts,
-    discover_gym_tasks,
 )
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrialStatus
 from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
@@ -490,7 +497,7 @@ async def test_pump_stream_writes_file_and_mirrors_to_logger(tmp_path: Path, cap
     stream.feed_eof()
     log_path = tmp_path / "gym_eval.stdout.log"
     tails: dict[str, deque] = {}
-    with caplog.at_level(logging.DEBUG, logger="nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime"):
+    with caplog.at_level(logging.DEBUG, logger="nemo_evaluator_sdk.agent_eval.runtimes.gym.process"):
         await _pump_stream(stream, log_path, label="gym eval", tails=tails, key="stdout")
     assert log_path.read_text(encoding="utf-8") == "first line\nsecond line\nno trailing newline"
     assert list(tails["stdout"]) == ["first line", "second line", "no trailing newline"]
@@ -772,11 +779,31 @@ def test_selection_omits_the_binding_when_the_caller_binds_it_themselves(tmp_pat
     assert "++simple_agent.responses_api_agents.simple_agent.resources_server.name='other'" in selection
 
 
+@pytest.mark.parametrize(
+    "awkward",
+    [
+        pytest.param("run with spaces", id="spaces"),
+        pytest.param("run,with,commas", id="commas"),
+        pytest.param("run[1]", id="brackets"),
+    ],
+)
+def test_selection_quotes_a_work_dir_containing_hydra_grammar(tmp_path: Path, awkward: str) -> None:
+    # Raised by review on #1295. `hydra.run.dir` is a path, and Hydra's grammar reads `,` as a sweep
+    # separator and `[` as a list opener. Checked against Hydra's own parser: unquoted, `/tmp/a,b`
+    # comes back as a ChoiceSweep and `/tmp/x[1]` raises OverrideParseException. Quoting round-trips
+    # all three, so the value has to go through _hydra_scalar like every other override.
+    work_dir = tmp_path / awkward
+    arg = next(a for a in _selection_args(_config(), work_dir) if a.startswith("hydra.run.dir="))
+    value = arg.removeprefix("hydra.run.dir=")
+    assert value == _hydra_scalar(str(work_dir / "gym_hydra"))
+    assert value.startswith("'") and value.endswith("'")
+
+
 def test_selection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
     # Gym writes `outputs/<date>/<time>/` relative to cwd, and the subprocesses inherit ours so Gym
     # can find env.yaml — so without this every run litters the caller's directory.
     selection = _selection_args(_config(), tmp_path)
-    assert f"hydra.run.dir={tmp_path / 'gym_hydra'}" in selection
+    assert f"hydra.run.dir={_hydra_scalar(str(tmp_path / 'gym_hydra'))}" in selection
 
 
 def _stub_gym(tmp_path: Path, *, exit_code: int, message: str) -> str:
@@ -825,3 +852,360 @@ def test_gym_executable_reports_how_to_install_when_absent(monkeypatch: pytest.M
     monkeypatch.setattr(shutil, "which", lambda _: None)
     with pytest.raises(RuntimeError, match="own environment"):
         _gym_executable()
+
+
+#: Verbatim from a real `legal_agent_bench` startup timeout (AALGO-485 coverage sweep). Gym polls
+#: repeatedly, so the *last* line is the live one — earlier lines name servers that have since come
+#: up, and reporting those would send the reader after servers that are fine.
+_REAL_ENV_LOG = """\
+Waiting for servers to spin up
+Checking for HTTP server statuses.
+0 / 4 servers ready. Waiting for servers to spin up: ['simple_agent', 'legal_agent_bench', \
+'legal_agent_bench_harbor_agent', 'policy_model']
+2 / 4 servers ready. Waiting for servers to spin up: ['legal_agent_bench', 'policy_model']
+3 / 4 servers ready. Waiting for servers to spin up: ['legal_agent_bench']
+"""
+
+
+#: Verbatim shape of a `legal_agent_bench` rollout whose Harbor agent died before running: Gym
+#: recorded a normal-looking rollout with reward 0.0 and wrote nothing to the failures sidecar.
+_EMPTY_RESPONSE = {
+    "id": "resp_f63c4c78",
+    "model": "stub-model",
+    "object": "response",
+    "output": [],
+    "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+}
+#: The same field for a rollout where the model really answered (mcqa).
+_REAL_RESPONSE = {
+    "id": "resp_aaa",
+    "object": "response",
+    "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "\\boxed{B}"}]}],
+    "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+}
+
+
+def _two_tasks_and_map(tmp_path: Path):
+    dataset = tmp_path / "ds.jsonl"
+    dataset.write_text(
+        json.dumps({"responses_create_params": {"input": "first question"}})
+        + "\n"
+        + json.dumps({"responses_create_params": {"input": "second question"}})
+        + "\n",
+        encoding="utf-8",
+    )
+    tasks = discover_gym_tasks(dataset)
+    return tasks, _materialize_dataset(tasks, tmp_path / "gym_input.jsonl")
+
+
+def test_token_usage_keys_match_the_openai_schemas_they_mirror() -> None:
+    """The keys are *wire-format* field names, cross-checked here against their source of truth.
+
+    Raised in review of #1295: could these come from Gym directly? No — this runtime never imports
+    `nemo_gym` (it shells out to the CLI, and nemo-platform excludes Ray by constraint), and the
+    names are not Gym's anyway. They are OpenAI's, and `openai` *is* a dependency here.
+
+    Deliberately a test rather than deriving the tuple at import time. What we match is the JSON a
+    Gym rollout record carries, which is stable regardless of how the `openai` package organises its
+    Python classes — importing `openai.types.responses.response_usage` into the runtime to obtain
+    five string literals would trade a stable thing for a fragile one, and break the whole runner if
+    that module ever moves. This way a genuinely new token field fails one test instead.
+    """
+    from openai.types.completion_usage import CompletionUsage
+    from openai.types.responses.response_usage import ResponseUsage
+
+    upstream = {field for field in CompletionUsage.model_fields if field.endswith("_tokens")} | {
+        field for field in ResponseUsage.model_fields if field.endswith("_tokens")
+    }
+    assert set(_TOKEN_USAGE_KEYS) == upstream, (
+        "the token-count keys have drifted from the OpenAI usage schemas they mirror; a field added "
+        "upstream means a real model call could be reported in a key this runtime does not read"
+    )
+    # The input-side subset is a semantic judgement neither schema encodes: these are the counts a
+    # call cannot avoid spending, because it always sends a prompt.
+    assert set(_INPUT_TOKEN_KEYS) < set(_TOKEN_USAGE_KEYS)
+    assert set(_INPUT_TOKEN_KEYS) == {"total_tokens", "input_tokens", "prompt_tokens"}
+
+
+def test_agent_never_ran_detects_the_empty_zero_token_rollout() -> None:
+    assert _agent_never_ran({"response": _EMPTY_RESPONSE, "reward": 0.0}) is True
+
+
+def test_agent_never_ran_is_false_when_the_model_actually_answered() -> None:
+    assert _agent_never_ran({"response": _REAL_RESPONSE, "reward": 1.0}) is False
+
+
+def test_agent_never_ran_is_false_for_a_legitimately_empty_answer() -> None:
+    # A model may answer with nothing and earn 0.0. Tokens were still spent, so it ran — treating
+    # this as a failure would reclassify real (bad) results as broken ones.
+    spent = {"output": [], "usage": {"input_tokens": 120, "output_tokens": 0, "total_tokens": 120}}
+    assert _agent_never_ran({"response": spent, "reward": 0.0}) is False
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        pytest.param("the agent answered in plain text", id="string"),
+        pytest.param({"text": "the agent answered"}, id="mapping"),
+        pytest.param([{"type": "message"}], id="list"),
+    ],
+)
+def test_agent_never_ran_is_false_for_any_non_empty_output_shape(output: object) -> None:
+    # `output` is not contractually a list. An earlier version special-cased lists, so a plain-string
+    # or single-mapping answer with zero reported tokens was misread as "the agent never ran" — which
+    # fails a trial that ran fine, and fails the whole run when every trial looks like that.
+    zero = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    assert _agent_never_ran({"response": {"output": output, "usage": zero}}) is False
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        # Chat Completions vocabulary: 12 prompt tokens prove the model was called, even though the
+        # Responses-API key names are absent. Reading only one vocabulary made this read as zero.
+        pytest.param({"prompt_tokens": 12, "completion_tokens": 0}, False, id="chat-vocab-nonzero"),
+        pytest.param({"prompt_tokens": 0, "completion_tokens": 0}, True, id="chat-vocab-zero"),
+        pytest.param({"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}, True, id="responses-vocab-zero"),
+        # Naming none of the recognized keys proves nothing either way, so do not reclassify.
+        pytest.param({}, False, id="empty-usage-proves-nothing"),
+        pytest.param({"cost_usd": 0.0}, False, id="unrecognized-keys-only"),
+        # Output-side counts alone prove nothing: zero output tokens is what an empty answer looks
+        # like. Only an input-side count can show the model was never reached, because a call always
+        # sends a prompt. These three shapes each used to be misread as "never ran".
+        pytest.param({"output_tokens": 0}, False, id="output-side-only"),
+        pytest.param({"completion_tokens": 0}, False, id="completion-only"),
+        pytest.param({"prompt_tokens": 12, "completion_tokens": 0}, False, id="real-call-empty-answer"),
+    ],
+)
+def test_agent_never_ran_requires_stated_zero_usage(usage: dict, expected: bool) -> None:
+    assert _agent_never_ran({"response": {"output": [], "usage": usage}}) is expected
+
+
+def test_agent_never_ran_is_false_without_usage_to_corroborate() -> None:
+    # No usage block means we cannot tell "never called" from "answered with nothing"; other runners
+    # populate `response` differently and must not be reclassified on a guess.
+    assert _agent_never_ran({"response": {"output": []}, "reward": 0.0}) is False
+    assert _agent_never_ran({"response": "Lyon", "reward": 0.0}) is False
+
+
+def test_missing_results_file_names_the_logs_instead_of_raising_filenotfound(tmp_path: Path) -> None:
+    # Raised by review on #1295. `_ensure_fresh_output` deletes any stale file before the run and
+    # `_collect_rollouts` already raised on a non-zero exit, so an absent file here means Gym
+    # reported success and wrote nothing. Opening it regardless gives a bare FileNotFoundError
+    # naming a path the reader has no reason to recognise.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    missing = tmp_path / "rollouts.jsonl"
+    assert not missing.exists()
+
+    with pytest.raises(RuntimeError) as excinfo:
+        _trials_from_rollouts(missing, tasks, index_map)
+
+    message = str(excinfo.value)
+    assert "wrote no results" in message
+    assert "gym_eval.stdout.log" in message
+    assert "gym_env.log" in message
+
+
+def test_all_rollouts_empty_fails_the_run_instead_of_reporting_zeros(tmp_path: Path) -> None:
+    # The legal_agent_bench case: "completed" trials scoring 0.0 that measured nothing at all.
+    # Two attempts per task, so trial and task counts differ and the message has to state both —
+    # "4 trials" alone reads as four tasks to anyone reasoning in tasks.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        "\n".join(
+            json.dumps({NG_TASK_INDEX: task, NG_ROLLOUT_INDEX: attempt, "response": _EMPTY_RESPONSE, "reward": 0.0})
+            for task in (0, 1)
+            for attempt in (0, 1)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        _trials_from_rollouts(bundle, tasks, index_map)
+
+    message = str(excinfo.value)
+    assert "never called" in message
+    # Counted in both units: 4 attempts across 2 tasks. Reporting only trials invites reading the
+    # run as four times bigger than it was.
+    assert "4 trial(s)" in message
+    assert "2 task(s)" in message
+    # Points at the log that carries the environment's own traceback, not just the results file.
+    assert "gym_env.log" in message
+    # Evaluator's vocabulary in the prose: "rollout" is Gym's word for an attempt, and this message
+    # is read by people working in trials and tasks. Paths are exempt — `rollouts.jsonl` is the real
+    # filename and has to be quotable verbatim to be useful.
+    prose = " ".join(word for word in message.split() if "/" not in word)
+    assert "rollout" not in prose.lower()
+
+
+def test_an_unattributed_failure_prevents_the_all_empty_raise(tmp_path: Path) -> None:
+    # Raised in review of #1295: the guard covered unattributed *successes* but not unattributed
+    # *failures*. Both are invisible to len(trials) for the same reason — neither becomes a trial —
+    # and a failure record is a diagnosis in its own right (an OOM-killed agent here). Claiming
+    # "nothing was measured" while the environment recorded one is false.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "response": _EMPTY_RESPONSE, "reward": 0.0}) + "\n",
+        encoding="utf-8",
+    )
+    # No NG_TASK_INDEX, so it is counted but never attributed to a task.
+    (tmp_path / "rollouts_failures.jsonl").write_text(
+        json.dumps({"error": "agent OOM-killed mid-episode"}) + "\n", encoding="utf-8"
+    )
+
+    trials = _trials_from_rollouts(bundle, tasks, index_map)
+
+    assert [trial.status for trial in trials] == [AgentEvalTrialStatus.FAILED]
+
+
+def test_an_unattributed_rollout_prevents_the_all_empty_raise(tmp_path: Path) -> None:
+    # A record Gym collected but that carried no usable _ng_task_index never becomes a trial, so it
+    # is invisible to len(trials). It is still a rollout, and it may have run perfectly well —
+    # raising "nothing was measured" while one exists would be false.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "response": _EMPTY_RESPONSE, "reward": 0.0})
+        + "\n"
+        # no NG_TASK_INDEX: unattributable, but a real rollout with real token usage
+        + json.dumps({NG_ROLLOUT_INDEX: 0, "response": _REAL_RESPONSE, "reward": 1.0})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    trials = _trials_from_rollouts(bundle, tasks, index_map)
+
+    assert [trial.status for trial in trials] == [AgentEvalTrialStatus.FAILED]
+
+
+def test_startup_timeout_does_not_claim_an_unknown_server_when_gym_named_none(tmp_path: Path) -> None:
+    # Gym can print a readiness line with an empty list. Reporting "waiting on: unknown" contradicts
+    # the counts in the same sentence; say only what is known.
+    message = GymAgentTaskRunner(config=_config())._startup_timeout_message(
+        "0 / 4 servers ready. Waiting for servers to spin up: []", tmp_path / "gym_env.log"
+    )
+    assert "unknown" not in message
+    assert "did not name which remained outstanding" in message
+
+
+def test_empty_rollouts_alongside_a_sidecar_failure_do_not_raise(tmp_path: Path) -> None:
+    # A run that also recorded a real failure is not "nothing ran": that trial carries its own
+    # diagnosis (here a verifier timeout, from an attempt that may well have reached the model), and
+    # raising would discard it in favour of a vaguer message — while also miscounting the run as
+    # "All 1 rollout(s)" when two attempts happened.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "response": _EMPTY_RESPONSE, "reward": 0.0}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "rollouts_failures.jsonl").write_text(
+        json.dumps({NG_TASK_INDEX: 1, NG_ROLLOUT_INDEX: 0, "error": "verifier timeout"}) + "\n",
+        encoding="utf-8",
+    )
+
+    trials = _trials_from_rollouts(bundle, tasks, index_map)
+
+    assert {trial.task_id for trial in trials} == {tasks[0].id, tasks[1].id}
+    assert all(trial.status is AgentEvalTrialStatus.FAILED for trial in trials)
+    # The sidecar's own diagnosis survives rather than being replaced by the empty-rollout message.
+    sidecar = next(trial for trial in trials if trial.task_id == tasks[1].id)
+    assert sidecar.metadata["gym_failure"] == "verifier timeout"
+
+
+def test_some_rollouts_empty_fails_only_those_trials(tmp_path: Path) -> None:
+    # A partially broken run still measured something; the trials that ran are worth keeping.
+    tasks, index_map = _two_tasks_and_map(tmp_path)
+    bundle = tmp_path / "rollouts.jsonl"
+    bundle.write_text(
+        json.dumps({NG_TASK_INDEX: 0, NG_ROLLOUT_INDEX: 0, "response": _EMPTY_RESPONSE, "reward": 0.0})
+        + "\n"
+        + json.dumps({NG_TASK_INDEX: 1, NG_ROLLOUT_INDEX: 0, "response": _REAL_RESPONSE, "reward": 1.0})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    trials = _trials_from_rollouts(bundle, tasks, index_map)
+
+    by_task = {trial.task_id: trial for trial in trials}
+    empty = by_task[tasks[0].id]
+    real = by_task[tasks[1].id]
+    assert empty.status is AgentEvalTrialStatus.FAILED
+    # The reward Gym reported is withheld so it cannot be averaged in as a real 0.0...
+    assert empty.metadata["reward"] is None
+    # ...but the reason is recorded.
+    assert "never called" in empty.metadata["gym_failure"]
+    assert real.status is AgentEvalTrialStatus.COMPLETED
+    assert real.metadata["reward"] == 1.0
+
+
+def test_pending_servers_reports_the_last_poll_not_the_first() -> None:
+    assert _pending_servers(_REAL_ENV_LOG) == (3, 4, ("legal_agent_bench",))
+
+
+def test_pending_servers_is_none_when_gym_never_reported_readiness() -> None:
+    # Gym died during composition or dependency install; there is no pending set to report, which
+    # must not be confused with "nothing pending".
+    assert _pending_servers("NeMo Gym is starting a new Ray cluster...\nerror: No solution found\n") is None
+
+
+def test_startup_timeout_names_the_server_that_did_not_come_up(tmp_path: Path) -> None:
+    # The bare "servers not ready" message sent the reader to a log dominated by the three servers
+    # that started fine. Gym knew which one was outstanding the whole time.
+    runner = GymAgentTaskRunner(
+        config=GymRuntimeConfig(
+            agent="simple_agent",
+            agent_config="cfg.yaml",
+            resources_server="legal_agent_bench",
+            startup_timeout_s=240.0,
+        )
+    )
+
+    message = runner._startup_timeout_message(_REAL_ENV_LOG, tmp_path / "gym_env.log")
+
+    assert "legal_agent_bench" in message
+    assert "3 of 4" in message
+    # The knob to change, not just the fact that a limit was hit.
+    assert "startup_timeout_s" in message
+    assert str(tmp_path / "gym_env.log") in message
+
+
+def test_startup_timeout_says_so_when_gym_never_reported_readiness(tmp_path: Path) -> None:
+    message = GymAgentTaskRunner(config=_config())._startup_timeout_message(
+        "NeMo Gym is starting a new Ray cluster...\n", tmp_path / "gym_env.log"
+    )
+    assert "never reported server readiness" in message
+    # Still names the environment, which is the one thing the reader always needs.
+    assert "mcqa" in message
+
+
+@pytest.mark.asyncio
+async def test_collection_failure_points_at_the_server_log_too(tmp_path: Path) -> None:
+    # Observed on wmt_translation: `gym eval run` reports a bare HTTP 500 from the resources-server
+    # while the traceback explaining it (PermissionError on a hardcoded /opt/Gym path) is only in
+    # gym_env.log. Naming just the two eval logs sends the reader to the one place the cause is not.
+    runner = GymAgentTaskRunner(config=_config())
+    gym = _stub_gym(tmp_path, exit_code=1, message="ClientResponseError: 500, Internal Server Error")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await runner._collect_rollouts(gym, tmp_path / "in.jsonl", tmp_path / "out.jsonl", tmp_path, {})
+
+    message = str(excinfo.value)
+    assert str(tmp_path / "gym_env.log") in message
+    assert str(tmp_path / "gym_eval.stdout.log") in message
+
+
+@pytest.mark.asyncio
+async def test_collection_redirects_hydra_output_under_the_run_work_dir(tmp_path: Path) -> None:
+    # `gym eval run` does not go through _selection_args, so it needs its own redirect — without it
+    # every collection drops an `outputs/<date>/<time>/` into the caller's cwd.
+    runner = GymAgentTaskRunner(config=_config())
+    gym = _stub_gym(tmp_path, exit_code=0, message="done")
+
+    await runner._collect_rollouts(gym, tmp_path / "in.jsonl", tmp_path / "out.jsonl", tmp_path, {})
+
+    argv = (tmp_path / "argv.txt").read_text().splitlines()
+    assert f"hydra.run.dir={_hydra_scalar(str(tmp_path / 'gym_hydra'))}" in argv

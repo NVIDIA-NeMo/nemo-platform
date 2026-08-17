@@ -19,7 +19,7 @@
 #   1b. bitsandbytes — compiled from source against the NGC base CUDA (same pattern
 #       as docker/automodel/Dockerfile.nmp-automodel-base). PyPI wheels only ship through
 #       cuda130; source build replaces the wheel from step 1.
-#   1c. mamba-ssm + causal-conv1d — prebuilt cu13.2 / cp312 wheels (shared with
+#   1c. mamba-ssm + causal-conv1d — prebuilt cu13.3 / cp312 wheels (shared with
 #       docker/automodel/Dockerfile.nmp-automodel-base).
 #   1d. flash-attn — optional for unsloth and currently NOT installed (see the
 #       commented TODO below). Without it Unsloth falls back when xformers is
@@ -127,12 +127,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip uninstall --python ${VIRTUAL_ENV}/bin/python scikit-build-core && \
     rm -rf /tmp/bitsandbytes
 
-# Step 1c: mamba-ssm + causal-conv1d — cu13.2 / cp312 wheels shared with automodel base.
+# Step 1c: mamba-ssm + causal-conv1d — cu13.3 / cp312 wheels shared with automodel base.
 RUN --mount=from=causal-conv1d-wheel-src,target=/tmp/causal-conv1d-wheel-src,readonly \
     --mount=from=mamba-ssm-wheel-src,target=/tmp/mamba-ssm-wheel-src,readonly \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --no-deps \
-    /tmp/causal-conv1d-wheel-src/wheels/cu13.2/causal_conv1d-*cp312*.whl \
-    /tmp/mamba-ssm-wheel-src/wheels/cu13.2/mamba_ssm-2.3.0-cp312*.whl
+    /tmp/causal-conv1d-wheel-src/wheels/cu13.3/causal_conv1d-*cp312*.whl \
+    /tmp/mamba-ssm-wheel-src/wheels/cu13.3/mamba_ssm-2.3.0-cp312*.whl
 
 # TODO: Step 1d: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
 # /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
@@ -190,6 +190,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "mistune>=3.3.3,<4" \
     "pillow>=12.3.0,<13" \
     "soupsieve>=2.8.4,<3" \
+    "GitPython>=3.1.58,<4" \
     "mlflow-skinny>=3.11.1,<3.12.0"
 
 # Stale NGC system site-packages (verified on nvcr.io/nvidia/pytorch:26.07-py3).
@@ -232,6 +233,8 @@ RUN rm -rf \
     /usr/local/lib/python3.12/dist-packages/soupsieve-*.dist-info \
     /usr/local/lib/python3.12/dist-packages/jupyter_server \
     /usr/local/lib/python3.12/dist-packages/jupyter_server-*.dist-info \
+    /usr/local/lib/python3.12/dist-packages/jupyterlab \
+    /usr/local/lib/python3.12/dist-packages/jupyterlab-*.dist-info \
     /usr/local/cuda/NsightSystems-cli-*  \
     /usr/local/bin/nsys \
     /usr/local/cuda/bin/nsys
