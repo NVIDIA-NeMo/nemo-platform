@@ -36,8 +36,8 @@ class SpanAttributeField(StrEnum):
     AGENT_VERSION = "agent_version"
     TOOL_NAME = "tool_name"
     PROJECT = "project"
-    EVALUATION_NAME = "evaluation_id"
-    TEST_CASE_ID = "test_case_id"
+    EVALUATION_NAME = "evaluation_name"
+    TEST_CASE_NAME = "test_case_name"
     ERROR_TYPE = "error_type"
     ERROR_MESSAGE = "error_message"
     INPUT_TOKENS = "input_tokens"
@@ -158,7 +158,7 @@ ATTRIBUTE_SPECS = (
         source_keys=("nemo.evaluation.name", "nemo.experiment.id"),
     ),
     AttributeSpec(
-        field=SpanAttributeField.TEST_CASE_ID,
+        field=SpanAttributeField.TEST_CASE_NAME,
         bag=AttributeBag.STRING,
         bag_key="nemo.test_case.id",
         source_keys=("nemo.test_case.id",),

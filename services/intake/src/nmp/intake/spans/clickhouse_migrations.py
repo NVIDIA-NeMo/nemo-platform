@@ -253,7 +253,7 @@ def _create_trace_index_schema(client, settings: ClickHouseMigrationSettings) ->
     client.command(f"DROP TABLE IF EXISTS {table}")
 
     project_key = spec_for_field(SpanAttributeField.PROJECT).bag_key
-    test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key
+    test_case_key = spec_for_field(SpanAttributeField.TEST_CASE_NAME).bag_key
 
     # Resolve evaluation_id by coalescing the canonical bag key with any legacy aliases. Ingest always
     # re-keys new spans to the canonical key, so this only matters for the backfill INSERT: spans stored

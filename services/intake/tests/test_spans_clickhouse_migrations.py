@@ -79,4 +79,4 @@ def test_trace_index_mv_keys_match_attribute_catalog():
     assert evaluation_spec.bag_key == "nemo.evaluation.name"
     # The legacy key is still accepted on ingest so pre-rename producers keep associating.
     assert "nemo.experiment.id" in evaluation_spec.source_keys
-    assert spec_for_field(SpanAttributeField.TEST_CASE_ID).bag_key == "nemo.test_case.id"
+    assert spec_for_field(SpanAttributeField.TEST_CASE_NAME).bag_key == "nemo.test_case.id"

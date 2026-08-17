@@ -221,8 +221,14 @@ def test_trace_response_maps_core_trace_fields():
     assert response.span_count == 2
     assert response.error_count == 1
     assert response.evaluation_context is not None
-    assert response.evaluation_context.evaluation_id == "experiment-a"
-    assert response.evaluation_context.test_case_id == "case-a"
+    assert response.evaluation_context.evaluation_name == "experiment-a"
+    assert response.evaluation_context.test_case_name == "case-a"
+    assert response.evaluation_context.model_dump() == {
+        "evaluation_name": "experiment-a",
+        "test_case_name": "case-a",
+        "evaluation_id": "experiment-a",
+        "test_case_id": "case-a",
+    }
 
 
 def test_trace_response_applies_payload_mode_at_api_boundary():

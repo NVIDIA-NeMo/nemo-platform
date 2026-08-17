@@ -16,15 +16,14 @@ INGEST_URL = "/apis/intake/v2/workspaces/default/ingest/chat-completions"
 SPANS_URL = "/apis/intake/v2/workspaces/default/spans"
 TRACES_URL = "/apis/intake/v2/workspaces/default/traces"
 EVALUATION_CONTEXT: dict[str, Any] = {
-    "evaluation_id": "chat-eval",
-    "evaluation_sha": "chat-eval-sha",
-    "evaluation_run_id": "evalrun-chat-001",
-    "test_case_id": "chat-case-001",
-    "metadata": {"source": "chat-completions-test"},
+    "evaluation_name": "chat-eval",
+    "test_case_name": "chat-case-001",
 }
 EXPECTED_EVALUATION_CONTEXT: dict[str, Any] = {
-    "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
-    "test_case_id": EVALUATION_CONTEXT["test_case_id"],
+    "evaluation_name": EVALUATION_CONTEXT["evaluation_name"],
+    "test_case_name": EVALUATION_CONTEXT["test_case_name"],
+    "evaluation_id": EVALUATION_CONTEXT["evaluation_name"],
+    "test_case_id": EVALUATION_CONTEXT["test_case_name"],
 }
 
 
@@ -74,12 +73,12 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
 
 
 def test_chat_completions_ingest_happy_path(client: TestClient):
-    evaluation_id = _create_experiment(client, EVALUATION_CONTEXT["evaluation_id"])
+    evaluation_name = _create_experiment(client, EVALUATION_CONTEXT["evaluation_name"])
     body = {
         "request": _openai_request(),
         "response": _openai_response(),
         "session_id": "session-happy",
-        "evaluation_context": {**EVALUATION_CONTEXT, "evaluation_id": evaluation_id},
+        "evaluation_context": {**EVALUATION_CONTEXT, "evaluation_name": evaluation_name},
         "provider": "openai",
     }
     response = client.post(INGEST_URL, json=body)
@@ -129,7 +128,7 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
 
     filtered = client.get(
         SPANS_URL,
-        params={"filter[evaluation_id]": EVALUATION_CONTEXT["evaluation_id"], "page_size": 10},
+        params={"filter[evaluation_name]": EVALUATION_CONTEXT["evaluation_name"], "page_size": 10},
     )
     assert filtered.status_code == 200, filtered.text
     filtered_spans = filtered.json()["data"]
@@ -238,12 +237,19 @@ def test_chat_completions_ingest_handles_missing_usage(client: TestClient):
 
 
 def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: TestClient):
-    _create_experiment(client, EVALUATION_CONTEXT["evaluation_id"])
+    _create_experiment(client, EVALUATION_CONTEXT["evaluation_name"])
+    deprecated_context = {
+        "evaluation_id": EVALUATION_CONTEXT["evaluation_name"],
+        "test_case_id": EVALUATION_CONTEXT["test_case_name"],
+        "evaluation_sha": "chat-eval-sha",
+        "evaluation_run_id": "evalrun-chat-001",
+        "metadata": {"source": "chat-completions-test"},
+    }
     body = {
         "request": _openai_request(),
         "response": _openai_response(id="chatcmpl-run-id-only"),
         "session_id": "session-run-id-only",
-        "evaluation_context": EVALUATION_CONTEXT,
+        "evaluation_context": deprecated_context,
     }
     response = client.post(INGEST_URL, json=body)
     assert response.status_code == 201, response.text
@@ -251,12 +257,9 @@ def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: T
     listed = client.get(SPANS_URL, params={"filter[session_id]": "session-run-id-only"})
     assert listed.status_code == 200, listed.text
     span = listed.json()["data"][0]
-    # The retired keys (evaluation_sha, evaluation_run_id, metadata) are accepted but ignored, so only
-    # evaluation_id and test_case_id survive onto the span.
-    assert span["evaluation_context"] == {
-        "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
-        "test_case_id": EVALUATION_CONTEXT["test_case_id"],
-    }
+    # Deprecated identifier fields remain accepted and are returned alongside their canonical names;
+    # retired fields (evaluation_sha, evaluation_run_id, metadata) are still ignored.
+    assert span["evaluation_context"] == EXPECTED_EVALUATION_CONTEXT
 
 
 def test_chat_completions_ingest_rejects_unknown_deprecated_evaluation_context(client: TestClient):
