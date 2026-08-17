@@ -500,8 +500,10 @@ Usage:
 {{- end }}
 
 {{- range $key, $val := $merged }}
+{{- if not (kindIs "invalid" $val) }}
 - name: {{ $key }}
   value: {{ $val | quote }}
+{{- end }}
 {{- end }}
 {{- end -}}
 
