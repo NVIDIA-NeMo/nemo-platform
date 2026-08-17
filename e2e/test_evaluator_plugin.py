@@ -39,7 +39,7 @@ from nemo_evaluator_sdk import (
     RunConfig,
     RunConfigOnlineModel,
 )
-from nemo_evaluator_sdk.agent_eval.runtimes.gym_runtime import GymRewardMetric, discover_gym_tasks
+from nemo_evaluator_sdk.agent_eval.runtimes.gym import GymRewardMetric, discover_gym_tasks
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
