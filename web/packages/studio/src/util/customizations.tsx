@@ -1,16 +1,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { StatTileProps } from '@nemo/common/src/components/StatTile';
+import { formatTimeInSeconds, utcToLocalDate } from '@nemo/common/src/utils/date';
 import { formatFinetuningType } from '@nemo/common/src/utils/formatters';
 import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import { Badge } from '@nvidia/foundations-react-core';
-import type { CustomizationTrainingTelemetry } from '@studio/types/customization';
+import type {
+  CustomizationMetricValue,
+  CustomizationStatusDetailsWithMetrics,
+  CustomizationTrainingTelemetry,
+} from '@studio/types/customization';
 import {
   isAutomodelJob,
   isUnslothJob,
   type CustomizationJob,
   type CustomizationJobStatusDetails,
 } from '@studio/util/customizationBackend';
+import { formatElapsedTime } from '@studio/util/date';
 import { getTextWithCount } from '@studio/util/strings';
 import { Circle /* TODO: replace with a proper icon (was Circle) */, Gpu } from 'lucide-react';
 import { ReactNode } from 'react';
@@ -83,6 +90,19 @@ export const getBaseModel = (customizationJob?: CustomizationJob): string => {
   }
   if (isAutomodelJob(customizationJob)) {
     return customizationJob.spec.model ?? '';
+  }
+  return '';
+};
+
+export const getFinetuningType = (customizationJob?: CustomizationJob): string => {
+  if (!customizationJob) {
+    return '';
+  }
+  if (isAutomodelJob(customizationJob)) {
+    return customizationJob.spec.training?.finetuning_type ?? '';
+  }
+  if (isUnslothJob(customizationJob)) {
+    return customizationJob.spec.training?.finetuning_type ?? '';
   }
   return '';
 };
@@ -188,6 +208,78 @@ export const getTrainingTelemetry = (
   };
 };
 
+interface MetricSummary {
+  final: number;
+  deltaFromStart?: number;
+}
+
+const summarizeMetric = (series?: CustomizationMetricValue[]): MetricSummary | undefined => {
+  if (!series?.length) return undefined;
+  const final = series[series.length - 1].value;
+  const deltaFromStart = series.length > 1 ? final - series[0].value : undefined;
+  return { final, deltaFromStart };
+};
+
+const formatDeltaHint = (delta: number, decimals: number): string =>
+  `${delta >= 0 ? '+' : ''}${delta.toFixed(decimals)} from start`;
+
+const NOT_AVAILABLE = '—';
+
+const lossTile = (label: string, summary?: MetricSummary): StatTileProps => {
+  if (!summary) {
+    return { label, value: NOT_AVAILABLE };
+  }
+  return {
+    label,
+    value: summary.final.toFixed(4),
+    hint:
+      summary.deltaFromStart !== undefined ? formatDeltaHint(summary.deltaFromStart, 4) : undefined,
+    hintStatus:
+      summary.deltaFromStart !== undefined
+        ? summary.deltaFromStart < 0
+          ? 'success'
+          : 'error'
+        : undefined,
+  };
+};
+
+export const getTrainingProgressTiles = (
+  telemetry: CustomizationTrainingTelemetry
+): StatTileProps[] => [
+  {
+    label: 'Steps Completed',
+    value:
+      telemetry.step === undefined
+        ? NOT_AVAILABLE
+        : telemetry.maxSteps
+          ? `${telemetry.step.toLocaleString()} / ${telemetry.maxSteps.toLocaleString()}`
+          : telemetry.step.toLocaleString(),
+  },
+  {
+    label: 'Epochs Completed',
+    value:
+      telemetry.epoch === undefined
+        ? NOT_AVAILABLE
+        : telemetry.numEpochs
+          ? `${telemetry.epoch} / ${telemetry.numEpochs}`
+          : String(telemetry.epoch),
+  },
+];
+
+export const getLossTiles = (
+  statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
+  isTerminal = false
+): StatTileProps[] => [
+  lossTile(
+    `${isTerminal ? 'Final' : 'Latest'} Training Loss`,
+    summarizeMetric(statusDetails?.metrics?.train_loss)
+  ),
+  lossTile(
+    `${isTerminal ? 'Final' : 'Latest'} Validation Loss`,
+    summarizeMetric(statusDetails?.metrics?.val_loss)
+  ),
+];
+
 const TRAINING_PHASE_LABELS: Record<string, string> = {
   compiling_config: 'Compiling Config',
   automodel_recipe_setup: 'Recipe Setup',
@@ -205,6 +297,74 @@ export const formatTrainingPhase = (phase: string): string =>
     .split('_')
     .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
     .join(' ');
+
+export interface JobDurationStep {
+  created_at: string;
+  updated_at: string;
+}
+
+export const getJobStartDate = (steps: readonly JobDurationStep[] | undefined): Date | undefined =>
+  steps?.length ? utcToLocalDate(steps[0].created_at) : undefined;
+
+export const getJobDuration = (
+  steps: readonly JobDurationStep[] | undefined,
+  isTerminal: boolean,
+  liveSeconds?: number
+): string => {
+  if (!isTerminal) {
+    return formatTimeInSeconds(liveSeconds) || NOT_AVAILABLE;
+  }
+
+  if (!steps?.length) {
+    return NOT_AVAILABLE;
+  }
+
+  const start = utcToLocalDate(steps[0].created_at);
+  const end = utcToLocalDate(steps[steps.length - 1].updated_at);
+  if (!start || !end || end.getTime() - start.getTime() < 1000) {
+    return NOT_AVAILABLE;
+  }
+  return formatElapsedTime(start, end);
+};
+
+interface TrainingDiagnosticsContext {
+  isTerminal: boolean;
+  duration: string;
+}
+
+export const getTrainingDiagnosticsTiles = (
+  telemetry: CustomizationTrainingTelemetry,
+  statusDetails: CustomizationStatusDetailsWithMetrics | undefined,
+  { isTerminal, duration }: TrainingDiagnosticsContext
+): StatTileProps[] => {
+  const trainLoss = summarizeMetric(statusDetails?.metrics?.train_loss);
+  const valLoss = summarizeMetric(statusDetails?.metrics?.val_loss);
+
+  return [
+    {
+      label: 'Learning Rate',
+      value: telemetry.learningRate?.toExponential(2) ?? NOT_AVAILABLE,
+      hint: 'at latest step',
+    },
+    {
+      label: 'Gradient Norm',
+      value: telemetry.gradNorm?.toFixed(4) ?? NOT_AVAILABLE,
+      hint: 'at latest step',
+    },
+    {
+      label: 'Train/Val Gap',
+      value: trainLoss && valLoss ? (valLoss.final - trainLoss.final).toFixed(4) : NOT_AVAILABLE,
+      hint: 'validation - training',
+    },
+    isTerminal
+      ? { label: 'Duration', value: duration, hint: 'total run time' }
+      : {
+          label: 'Phase',
+          value: telemetry.phase ? formatTrainingPhase(telemetry.phase) : NOT_AVAILABLE,
+          hint: 'current stage',
+        },
+  ];
+};
 
 const badge = (key: string, icon: ReactNode, label: string): ReactNode => (
   <Badge key={key} color="gray" kind="solid">

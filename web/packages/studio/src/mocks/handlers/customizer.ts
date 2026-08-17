@@ -20,6 +20,22 @@ export const customizerHandlers = [
       return job ? HttpResponse.json(job) : undefined;
     }
   ),
+  http.get(
+    `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/:backend/jobs/:name/status`,
+    async ({ params }) => {
+      const { customizationJobSteps } = await import('@studio/mocks/customizer/customization-jobs');
+      return HttpResponse.json({
+        id: 'job-status',
+        name: params.name,
+        status: 'completed',
+        status_details: {},
+        error_details: {},
+        steps: customizationJobSteps,
+        created_at: '2025-06-25T21:41:02.067430',
+        updated_at: '2025-06-25T21:41:02.147000',
+      });
+    }
+  ),
   // Per-backend cancel.
   http.post(
     `${PLATFORM_BASE_URL}/apis/customization/v2/workspaces/:workspace/:backend/jobs/:name/cancel`,

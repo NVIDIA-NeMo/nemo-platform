@@ -205,3 +205,46 @@ export const customizationJob3: UnslothJob = {
 };
 
 export const customizationJobs = [customizationJob1, customizationJob2, customizationJob3];
+
+export const customizationJobSteps = [
+  {
+    id: 'step-download',
+    name: 'model-and-dataset-download',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:41:02.100000',
+    updated_at: '2025-06-25T21:41:12.100000',
+  },
+  {
+    id: 'step-training',
+    name: 'training',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:41:12.100000',
+    updated_at: '2025-06-25T21:42:02.100000',
+  },
+  {
+    id: 'step-upload',
+    name: 'model-upload',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:42:02.100000',
+    updated_at: '2025-06-25T21:42:10.100000',
+  },
+  {
+    id: 'step-entity',
+    name: 'model-entity-creation',
+    status: 'completed',
+    status_details: { message: 'completed' },
+    error_details: {},
+    tasks: [],
+    created_at: '2025-06-25T21:42:10.100000',
+    updated_at: '2025-06-25T21:42:14.242833',
+  },
+];

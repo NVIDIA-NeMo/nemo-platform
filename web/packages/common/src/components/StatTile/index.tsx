@@ -15,6 +15,7 @@ export interface StatTileProps {
   hint?: string;
   hintStatus?: StatTileStatus;
   className?: string;
+  bordered?: boolean;
 }
 
 const MUTED_CLASS_NAME = 'text-placeholder';
@@ -34,8 +35,9 @@ export const StatTile: FC<StatTileProps> = ({
   hint,
   hintStatus,
   className,
-}) => (
-  <Panel className={cn('max-w-sm', className)}>
+  bordered = true,
+}) => {
+  const content = (
     <Stack gap="density-sm">
       <Text kind="body/regular/sm" className={MUTED_CLASS_NAME}>
         {label}
@@ -57,5 +59,15 @@ export const StatTile: FC<StatTileProps> = ({
         </Text>
       ) : null}
     </Stack>
-  </Panel>
-);
+  );
+
+  if (!bordered) {
+    return content;
+  }
+
+  return (
+    <Panel className={cn('max-w-sm', className)} elevation="high" data-testid="stat-tile-surface">
+      {content}
+    </Panel>
+  );
+};
