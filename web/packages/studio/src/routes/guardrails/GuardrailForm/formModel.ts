@@ -9,13 +9,20 @@ import {
 import { z } from 'zod';
 
 /**
- * The editable form model — a curated, flat subset of the guardrail config.
- * Fields are added here as they become editable; everything else in the config
- * rides along untouched (see {@link applyFormToConfig}).
+ * The editable form model.
+ *
+ * `config` is the whole working copy of the guardrail document. Rails edit it wholesale —
+ * switching one on writes a flow, a prompt, and sometimes a task model together — so a
+ * flat field per setting cannot represent them. The two string fields stay flat because
+ * they map to single values a text box can own.
+ *
+ * Anything neither the rails nor those fields touch rides along untouched, which is what
+ * lets a config authored elsewhere survive a round trip (see {@link applyFormToConfig}).
  */
 export const guardrailFormSchema = z.object({
   generalInstruction: z.string(),
   sampleConversation: z.string(),
+  config: z.custom<RailsConfig>(() => true),
 });
 
 export type GuardrailFormValues = z.infer<typeof guardrailFormSchema>;
@@ -27,22 +34,31 @@ export interface StoredDraft {
   values: GuardrailFormValues;
 }
 
-/** Extract the form model from the API config. */
+/**
+ * Extract the form model from the API config.
+ *
+ * The working copy is deep-cloned: react-query hands out the cached object, and rails edit
+ * the config in place, so sharing the reference would mutate the cache and leave the form
+ * comparing a value against itself.
+ */
 export const mapConfigToForm = (data: RailsConfig | undefined): GuardrailFormValues => ({
   generalInstruction: getGeneralInstruction(data?.instructions),
   sampleConversation: data?.sample_conversation ?? '',
+  config: data ? structuredClone(data) : {},
 });
 
 /**
- * Merge form values back onto the original server `data`, preserving every field
- * we don't expose (models, detectors, custom_data, …). This is the inverse of
- * {@link mapConfigToForm} and the single place each editable field is written back.
+ * Merge form values back onto the config, preserving every field we don't expose (models,
+ * detectors, custom_data, …). This is the inverse of {@link mapConfigToForm} and the
+ * single place the working copy becomes the payload.
  */
 export const applyFormToConfig = (
   data: RailsConfig | undefined,
   values: GuardrailFormValues
 ): RailsConfig => {
-  const base = data ?? {};
+  // Fall back to the server config so callers that only supply the flat fields — the
+  // tests, and any caller predating the rails editor — keep working.
+  const base = values.config ?? data ?? {};
   return {
     ...base,
     // Use the computed list directly: an empty result means the user cleared the

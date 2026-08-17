@@ -235,7 +235,7 @@ describe('GuardrailChecksTab', () => {
       await user.type(
         await screen.findByRole(
           'textbox',
-          { name: 'General instruction' },
+          { name: 'General Instructions' },
           { timeout: XL_SELECTOR_TIMEOUT }
         ),
         'Be extremely cautious.'
