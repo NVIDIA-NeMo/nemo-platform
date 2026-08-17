@@ -101,6 +101,18 @@ RESPONSE_HEADERS_TO_DROP = frozenset(
         "date",  # fastapi adds its own date response header
     }
 )
+# On the error path, FastAPI builds a brand-new JSON body for the HTTPException; it does
+# not reuse the upstream response body. Framing headers describe *that* upstream body, not
+# the one FastAPI is about to generate, so forwarding them verbatim would be wrong: Starlette
+# will not recompute Content-Length if one is already present in the headers we pass in, so a
+# stale value here would misdescribe the actual response sent to the client.
+ERROR_RESPONSE_HEADERS_TO_DROP = RESPONSE_HEADERS_TO_DROP | {
+    "content-length",
+    "content-type",
+    "content-encoding",
+    "transfer-encoding",
+    "connection",
+}
 
 
 def normalize_proxy_url(host_url: str, trailing_uri: str) -> str:
@@ -302,6 +314,17 @@ def _filter_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDict[str]
     return CIMultiDict((k, v) for k, v in headers.items() if k.lower() not in RESPONSE_HEADERS_TO_DROP)
 
 
+def _filter_error_response_headers(headers: CIMultiDictProxy[str]) -> CIMultiDict[str]:
+    """Filter response headers for forwarding onto a synthesized error body.
+
+    Unlike :func:`_filter_response_headers`, this also drops headers that describe
+    the framing of the upstream response body (Content-Length, Content-Type, etc.),
+    since the error path raises a new HTTPException with its own body rather than
+    forwarding the upstream body byte-for-byte.
+    """
+    return CIMultiDict((k, v) for k, v in headers.items() if k.lower() not in ERROR_RESPONSE_HEADERS_TO_DROP)
+
+
 def _close_response(response: aiohttp.ClientResponse | None):
     """Close an aiohttp response if it's open."""
     if response and not response.closed:
@@ -355,6 +378,7 @@ async def proxy_request(http_client: ClientSession, next_request_info: NextReque
 
         if response.status >= 400:
             error_body = await _read_error_body(response)
+            error_headers = dict(_filter_error_response_headers(response.headers))
             _close_response(response)
             logger.warning(
                 "Backend error %d from %s: %s",
@@ -368,10 +392,10 @@ async def proxy_request(http_client: ClientSession, next_request_info: NextReque
                     if error_body
                     else f"Backend returned {response.status}"
                 )
-                raise HTTPException(status_code=502, detail=detail)
+                raise HTTPException(status_code=502, detail=detail, headers=error_headers)
             else:
                 detail = error_body if error_body else str(response.status)
-                raise HTTPException(status_code=response.status, detail=detail)
+                raise HTTPException(status_code=response.status, detail=detail, headers=error_headers)
 
         response_headers = _filter_response_headers(response.headers)
 
@@ -494,6 +518,7 @@ async def fetch_proxy_response(
 
         if response.status >= 400:
             error_body = await _read_error_body(response)
+            error_headers = dict(_filter_error_response_headers(response.headers))
             _close_response(response)
             logger.warning(
                 "Backend error %d from %s: %s",
@@ -507,10 +532,10 @@ async def fetch_proxy_response(
                     if error_body
                     else f"Backend returned {response.status}"
                 )
-                raise HTTPException(status_code=502, detail=detail)
+                raise HTTPException(status_code=502, detail=detail, headers=error_headers)
             else:
                 detail = error_body if error_body else str(response.status)
-                raise HTTPException(status_code=response.status, detail=detail)
+                raise HTTPException(status_code=response.status, detail=detail, headers=error_headers)
 
         response_headers = _filter_response_headers(response.headers)
         status_code = response.status
