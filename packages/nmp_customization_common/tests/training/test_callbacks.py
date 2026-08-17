@@ -13,6 +13,7 @@ full or leaves the key out, and states a scalar only when it observed one.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, ClassVar, cast
 
 import pytest
@@ -1114,3 +1115,131 @@ def test_a_budget_below_one_is_rejected(reporter: _RecordingReporter, max_points
     """A curve with no points on it reads downstream as a run that never reported."""
     with pytest.raises(ValueError, match="max_points"):
         _make_callback(reporter, max_points=max_points)
+
+
+# --------------------------------------------------------------------------- #
+# Which metrics get a curve
+#
+# The other bound on the payload, and on most backends the larger one: what is
+# stored is `curves x max_points`.
+# --------------------------------------------------------------------------- #
+
+
+def test_every_metric_is_charted_by_default(reporter: _RecordingReporter) -> None:
+    """Narrowing is opt-in. Landing the mechanism changed nobody's curves."""
+    _make_callback(reporter).report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
+
+    assert set(reporter.reports[-1]["metrics"]) == {"train_loss", "train_tps", "val_loss"}
+
+
+def test_only_the_named_metrics_get_a_series(reporter: _RecordingReporter) -> None:
+    callback = _make_callback(reporter, curves=["loss", "lr"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "lr": 1e-5, "tps": 4821.0, "mem": 12.5})
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert metrics["train_loss"] == [{"step": 1, "epoch": 1, "value": 0.5}]
+    assert metrics["train_lr"] == [{"step": 1, "epoch": 1, "value": 1e-5}]
+    assert "train_tps" not in metrics
+    assert "train_mem" not in metrics
+
+
+def test_an_excluded_metric_still_reports_its_current_value(reporter: _RecordingReporter) -> None:
+    """The distinction that makes this safe where a report-time allow-list was not.
+
+    That one dropped metrics outright, and DPO's `accuracy`, `sft_loss` and
+    `rewards_chosen_mean` went missing for a release because nobody had added
+    them to it. Excluding a metric here costs its history, never its visibility.
+    """
+    callback = _make_callback(reporter, curves=["loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
+
+    report = reporter.reports[-1]
+    assert report["train_tps"] == 4821.0, "still a current value"
+    assert "train_tps" not in report["metrics"], "just not a curve"
+
+
+def test_a_name_is_matched_unqualified_so_it_covers_both_phases(reporter: _RecordingReporter) -> None:
+    """`loss` means the training and validation curves both, not one of them."""
+    callback = _make_callback(reporter, curves=["loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "accuracy": 0.1})
+    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4, "accuracy": 0.9})
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert metrics["train_loss"] and metrics["val_loss"]
+    assert "train_accuracy" not in metrics and "val_accuracy" not in metrics
+
+
+def test_a_report_with_no_charted_metric_omits_the_series(reporter: _RecordingReporter) -> None:
+    """Nothing was added, so the stored copy already matches and is left standing.
+
+    Resending it would pay the full payload to say nothing, which is the same
+    rule an all-unchartable report already follows.
+    """
+    callback = _make_callback(reporter, curves=["loss"])
+    callback.report_train_step(step=1, epoch=1, metrics={"tps": 4821.0})
+
+    report = reporter.reports[-1]
+    assert report["train_tps"] == 4821.0
+    assert "metrics" not in report
+
+
+def test_a_name_that_never_arrives_is_harmless(reporter: _RecordingReporter) -> None:
+    """A shared default set has to survive backends that produce different metrics."""
+    callback = _make_callback(reporter, curves=["loss", "rewards_chosen_mean"])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    assert set(reporter.reports[-1]["metrics"]) == {"train_loss", "val_loss"}
+
+
+def test_an_empty_curve_set_charts_nothing_but_still_reports(reporter: _RecordingReporter) -> None:
+    """Distinct from None, and a legitimate way to ask for values without history."""
+    callback = _make_callback(reporter, curves=[])
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    report = reporter.reports[-1]
+    assert report["train_loss"] == 0.5
+    assert report["step"] == 1
+    assert "metrics" not in report
+
+
+def test_the_excluded_names_are_logged_once(reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture) -> None:
+    """ "Why is there no train_tps curve" needs an answer in the job log.
+
+    Once per name rather than once per step: this fires from the report path, and
+    a 20,000-step run would otherwise say it 20,000 times.
+    """
+    callback = _make_callback(reporter, curves=["loss"])
+    with caplog.at_level(logging.INFO):
+        for step in range(1, 4):
+            callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
+
+    excluded = [record for record in caplog.records if "no stored curve" in record.getMessage()]
+    assert len(excluded) == 1
+    assert "tps" in excluded[0].getMessage()
+
+
+def test_a_metric_that_appears_later_is_logged_when_it_does(
+    reporter: _RecordingReporter, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Backends omit metrics on some steps, so the full set is not known at the first."""
+    callback = _make_callback(reporter, curves=["loss"])
+    with caplog.at_level(logging.INFO):
+        callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5, "tps": 4821.0})
+        callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.5, "grad_norm": 1.2})
+
+    logged = " ".join(r.getMessage() for r in caplog.records if "no stored curve" in r.getMessage())
+    assert "tps" in logged
+    assert "grad_norm" in logged
+
+
+def test_curves_and_max_points_multiply(reporter: _RecordingReporter) -> None:
+    """The two bounds are independent, and the stored blob is their product."""
+    callback = _make_callback(reporter, max_points=10, curves=["loss"])
+    callback.report_training_start(max_steps=1_000, num_epochs=1)
+    for step in range(1, 1_001):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5, "lr": 1e-5, "tps": 4821.0})
+    callback.close()
+
+    metrics = reporter.reports[-1]["metrics"]
+    assert set(metrics) == {"train_loss", "val_loss"}
+    assert len(metrics["train_loss"]) <= 11

@@ -116,13 +116,14 @@ def test_the_reporting_budget_reaches_the_training_step_config() -> None:
     job_output = CustomizationJobOutput(
         model="default/test-target",
         dataset="default/my-dataset",
-        training=SFTTraining(progress_reporting=ProgressReportingConfig(max_points=25)),
+        training=SFTTraining(progress_reporting=ProgressReportingConfig(max_points=25, curves=["loss"])),
         output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
     )
     step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
     cfg = step.config if hasattr(step, "config") else step["config"]
 
     assert cfg["schedule"]["progress_reporting"]["max_points"] == 25
+    assert cfg["schedule"]["progress_reporting"]["curves"] == ["loss"]
 
 
 def test_the_reporting_budget_survives_the_plugin_adapter() -> None:
@@ -133,11 +134,13 @@ def test_the_reporting_budget_survives_the_plugin_adapter() -> None:
         "model": "default/test-target",
         "dataset": {"training": "default/my-dataset"},
         "training": {"training_type": "sft", "finetuning_type": "lora"},
-        "schedule": {"epochs": 1, "progress_reporting": {"max_points": 25}},
+        "schedule": {"epochs": 1, "progress_reporting": {"max_points": 25, "curves": ["loss"]}},
         "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
     }
+    reporting = automodel_spec_to_compiler_output(spec).training.progress_reporting
 
-    assert automodel_spec_to_compiler_output(spec).training.progress_reporting.max_points == 25
+    assert reporting.max_points == 25
+    assert reporting.curves == ["loss"]
 
 
 def test_a_plugin_spec_without_a_schedule_block_still_compiles() -> None:
@@ -151,8 +154,10 @@ def test_a_plugin_spec_without_a_schedule_block_still_compiles() -> None:
         "training": {"training_type": "sft", "finetuning_type": "lora"},
         "output": {"name": "out", "type": "adapter", "fileset": "out-fs"},
     }
+    reporting = automodel_spec_to_compiler_output(spec).training.progress_reporting
 
-    assert automodel_spec_to_compiler_output(spec).training.progress_reporting.max_points == DEFAULT_MAX_POINTS
+    assert reporting.max_points == DEFAULT_MAX_POINTS
+    assert reporting.curves is None
 
 
 @pytest.mark.asyncio

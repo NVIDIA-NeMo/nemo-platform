@@ -120,7 +120,7 @@ Callers may also pass ``backend`` per call (e.g. unsloth's HF trainer callback).
 import logging
 import math
 import numbers
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, cast
 
@@ -286,7 +286,13 @@ class TrainingProgressCallback:
     #: ``None`` means no ``backend`` field is added.
     _default_backend: ClassVar[str | None] = None
 
-    def __init__(self, reporter: JobsServiceProgressReporter, *, max_points: int = DEFAULT_MAX_POINTS):
+    def __init__(
+        self,
+        reporter: JobsServiceProgressReporter,
+        *,
+        max_points: int = DEFAULT_MAX_POINTS,
+        curves: Collection[str] | None = None,
+    ):
         """Build the callback over ``reporter``.
 
         Args:
@@ -294,12 +300,21 @@ class TrainingProgressCallback:
             max_points: Points kept on each metric curve, per path. Rejected
                 below 1 up front rather than producing a curve with no points on
                 it, which reads downstream as a run that never reported.
+            curves: Metric names to accumulate, unqualified by phase, or None to
+                accumulate every metric that arrives. The two bounds multiply --
+                the stored blob is ``curves x max_points`` -- so this is the
+                larger lever of the two on a backend that reports many metrics.
         """
         if max_points < 1:
             raise ValueError(f"max_points must be >= 1, got {max_points}")
 
         self._reporter = reporter
         self._max_points = max_points
+        #: None means "everything"; a frozenset means exactly these names.
+        self._curves: frozenset[str] | None = None if curves is None else frozenset(curves)
+        #: Names already reported as current-value-only, so the explanation is
+        #: logged once per name rather than once per step.
+        self._excluded_seen: set[str] = set()
         self._closed = False
 
         seeded = reporter.fetch_current_metrics()
@@ -463,6 +478,7 @@ class TrainingProgressCallback:
         did not send had grown.
         """
         qualified = _qualify_metric_names(phase, metrics)
+        recorded = self._curve_subset(phase, qualified)
         gate = self._gates[phase]
         if not gate.admit(step):
             gate.pending = {
@@ -471,10 +487,54 @@ class TrainingProgressCallback:
                 "step": step,
                 "epoch": epoch,
                 "qualified": qualified,
+                "recorded": recorded,
                 "backend": backend,
             }
             return
-        self._record_and_send(phase, report_phase, step, epoch, qualified, backend)
+        self._record_and_send(phase, report_phase, step, epoch, qualified, recorded, backend)
+
+    def _curve_subset(self, phase: str, qualified: dict[str, float | int]) -> dict[str, float | int]:
+        """The entries of ``qualified`` that get a stored series, not just a value.
+
+        The other bound on the payload, and on most backends the larger one: it
+        is ``curves x max_points`` that is stored, and a backend reporting twenty
+        metrics spends most of that on curves nobody reads. Throughput and
+        accounting counters -- ``tps``, ``mem``, ``num_label_tokens``,
+        ``global_valid_toks`` -- are worth a number on a status page and not two
+        hundred stored points each.
+
+        Excluding a metric costs its history, never its visibility: every
+        chartable metric is still reported as a current value on every admitted
+        report. That is the distinction that makes this safe where the old
+        report-time allow-list was not -- that one dropped metrics outright, and
+        DPO's ``accuracy``, ``sft_loss`` and ``rewards_chosen_mean`` went missing
+        for a release because nobody had added them to it. Here the same omission
+        costs a chart, and says so in the log.
+
+        Names are matched unqualified, so ``loss`` covers ``train_loss`` and
+        ``val_loss`` both. One consequence worth knowing: NeMo-RL's logger folds
+        the dataloader name into the metric names of every validation set past
+        the first, so a second validation set's ``loss`` arrives as
+        ``<dataset>_loss`` and needs that spelling in ``curves`` to be charted.
+        The first set -- the only one any config we compile produces -- keeps the
+        bare names.
+        """
+        if self._curves is None:
+            return qualified
+
+        bare = len(phase) + 1
+        keep = {name: value for name, value in qualified.items() if name[bare:] in self._curves}
+
+        dropped = sorted({name[bare:] for name in qualified} - self._curves - self._excluded_seen)
+        if dropped:
+            self._excluded_seen.update(dropped)
+            logger.info(
+                "Reporting as current values only, with no stored curve: %s. Charting: %s. "
+                "Add a name to progress_reporting.curves to chart it too.",
+                ", ".join(dropped),
+                ", ".join(sorted(self._curves)) or "(nothing)",
+            )
+        return keep
 
     def _record_and_send(
         self,
@@ -483,10 +543,15 @@ class TrainingProgressCallback:
         step: int,
         epoch: int,
         qualified: dict[str, float | int],
+        recorded: dict[str, float | int],
         backend: str | None,
         decimate: bool = True,
     ) -> None:
         """Append an admitted report's points and put it on the wire.
+
+        ``qualified`` is every chartable metric and becomes the current values;
+        ``recorded`` is the subset that also gets a stored point. They are the
+        same dict unless ``curves`` narrows it.
 
         ``decimate`` is False only for the tail flushed by ``close()``. A run
         whose length divides evenly lands exactly ``max_points`` admissions and
@@ -497,9 +562,9 @@ class TrainingProgressCallback:
         point over budget costs a single point and keeps the resolution that was
         asked for.
         """
-        for name, value in qualified.items():
+        for name, value in recorded.items():
             self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
-        if qualified and decimate:
+        if recorded and decimate:
             self._decimate(phase)
 
         details: dict[str, object] = {
@@ -509,8 +574,9 @@ class TrainingProgressCallback:
         }
         # Sent in full or not at all, so a report that added no point has nothing
         # to say about the curves: the stored copy already matches, and the merge
-        # leaves a key that is not mentioned standing.
-        if not self._seed_unavailable and qualified:
+        # leaves a key that is not mentioned standing. A report whose metrics are
+        # all current-value-only lands here too, and correctly says nothing.
+        if not self._seed_unavailable and recorded:
             details["metrics"] = self._build_metrics_summary()
         # Both retired here rather than by the caller, so that a flushed report
         # leaves the same state an admitted one does: anything the gate was
@@ -695,6 +761,7 @@ class TrainingProgressCallback:
                     report["step"],
                     report["epoch"],
                     report["qualified"],
+                    report["recorded"],
                     report["backend"],
                     decimate=False,
                 )

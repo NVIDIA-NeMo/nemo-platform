@@ -9,6 +9,7 @@
 # its affiliates is strictly prohibited.
 
 import logging
+from collections.abc import Collection
 from typing import Any, Mapping, Optional, Self
 
 from nemo_rl.utils.logger import LoggerInterface
@@ -77,6 +78,7 @@ class NemoRLLogger(LoggerInterface):
         max_steps: int | None = None,
         num_epochs: int | None = None,
         max_points: int | None = None,
+        curves: Collection[str] | None = None,
     ):
         """Initialize the NemoRL logger.
 
@@ -88,6 +90,10 @@ class NemoRLLogger(LoggerInterface):
             max_points: Points kept on each metric curve. None takes the shared
                 default, which is what a config compiled before this knob existed
                 resolves to.
+            curves: Metric names to accumulate, or None for every metric NeMo-RL
+                reports. Passed through unchanged -- absent and "everything" are
+                the same thing here, so unlike max_points there is no default to
+                substitute.
 
         Raises:
             ValueError: If ``steps_per_epoch`` is < 1. It divides in
@@ -106,6 +112,7 @@ class NemoRLLogger(LoggerInterface):
         self._callback = TrainingProgressCallback(
             JobsServiceProgressReporter(self._job_ctx),
             max_points=DEFAULT_MAX_POINTS if max_points is None else max_points,
+            curves=curves,
         )
 
         self._closed = False
@@ -127,6 +134,7 @@ class NemoRLLogger(LoggerInterface):
         val_period: int | None = None,
         steps_per_epoch: int | None = None,
         max_points: int | None = None,
+        curves: Collection[str] | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
@@ -136,6 +144,8 @@ class NemoRLLogger(LoggerInterface):
                 one (DPO does); otherwise derived from max_steps and num_epochs.
             max_points: Points kept on each metric curve, from the job config.
                 None takes the shared default.
+            curves: Metric names to accumulate, from the job config. None charts
+                everything.
             val_period: Accepted and unused. It used to set the validation report
                 cadence, and before that the training one; both now follow from
                 run length in the shared callback. Kept in the signature so the
@@ -148,6 +158,7 @@ class NemoRLLogger(LoggerInterface):
             max_steps=max_steps,
             num_epochs=num_epochs,
             max_points=max_points,
+            curves=curves,
         )
 
     def log_metrics(

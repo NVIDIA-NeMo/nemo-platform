@@ -145,3 +145,47 @@ def test_an_unusable_budget_falls_back_rather_than_failing(finetune: ModuleType,
     in the wrapper's constructor, outside any try, so raising here kills training.
     """
     assert finetune._resolve_max_points(_Recipe(cfg)) == finetune.DEFAULT_MAX_POINTS
+
+
+def test_the_compiled_curve_list_is_used(finetune: ModuleType) -> None:
+    recipe = _Recipe({"_progress_reporting": {"curves": ["loss", "lr"]}})
+
+    assert finetune._resolve_curves(recipe) == ["loss", "lr"]
+
+
+def test_an_empty_curve_list_is_kept_rather_than_read_as_absent(finetune: ModuleType) -> None:
+    """`[]` charts nothing and `None` charts everything; they must not collapse."""
+    assert finetune._resolve_curves(_Recipe({"_progress_reporting": {"curves": []}})) == []
+
+
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        {},  # a config compiled before the knob existed
+        {"_progress_reporting": {}},
+        {"_progress_reporting": {"curves": None}},  # the default, stated explicitly
+        None,
+    ],
+)
+def test_an_absent_curve_list_charts_everything(finetune: ModuleType, cfg: object) -> None:
+    """None is a real configuration here, not only a fallback -- it is the default."""
+    assert finetune._resolve_curves(_Recipe(cfg)) is None
+
+
+@pytest.mark.parametrize(
+    "curves",
+    ["loss", {"loss": True}, ["loss", 3], [None], 7],
+)
+def test_an_unusable_curve_list_charts_everything_and_says_so(
+    finetune: ModuleType, caplog: pytest.LogCaptureFixture, curves: object
+) -> None:
+    """Discarded whole: charting some of a malformed list is stranger than charting all.
+
+    A bare string is the trap worth naming -- `curves: loss` in YAML is iterable,
+    and taken as a list it would chart the metrics `l`, `o` and `s`.
+    """
+    recipe = _Recipe({"_progress_reporting": {"curves": curves}})
+    with caplog.at_level(logging.WARNING):
+        assert finetune._resolve_curves(recipe) is None
+
+    assert "curves" in caplog.text

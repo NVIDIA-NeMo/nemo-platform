@@ -26,6 +26,7 @@ from typing import Any, Literal
 
 from nemo_platform_plugin.job_context import JobContext
 from nmp.customization_common.service.context import NMPJobContext
+from nmp.customization_common.training.reporting import ProgressReportingConfig
 from nmp.unsloth.integrations.hf_bridge import apply_integrations_to_sft_config
 from nmp.unsloth.schemas import UnslothJobOutput
 from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
@@ -335,7 +336,7 @@ def train_sft(
 
     args = SFTConfig(**args_kwargs)
 
-    progress = progress_callback or _create_progress_callback(spec.schedule.progress_reporting.max_points)
+    progress = progress_callback or _create_progress_callback(spec.schedule.progress_reporting)
     from nmp.unsloth.tasks.training.backends.hf_trainer_callback import (
         create_hf_trainer_progress_callback,
     )
@@ -369,11 +370,12 @@ def train_sft(
     }
 
 
-def _create_progress_callback(max_points: int) -> TrainingProgressCallback:
+def _create_progress_callback(reporting: ProgressReportingConfig) -> TrainingProgressCallback:
     """Build a Jobs-service progress callback from platform env vars."""
     return TrainingProgressCallback(
         JobsServiceProgressReporter(NMPJobContext.from_env()),
-        max_points=max_points,
+        max_points=reporting.max_points,
+        curves=reporting.curves,
     )
 
 

@@ -113,20 +113,44 @@ def strip_val_prefix(metrics: Mapping[str, Any]) -> dict[str, Any]:
     return stripped
 
 
-def _resolve_max_points(recipe: AutomodelRecipe) -> int:
-    """Points per metric curve, from the ``_progress_reporting`` block we compiled in.
+def _reporting_block(recipe: AutomodelRecipe) -> Any:
+    """The ``_progress_reporting`` block config.py compiled in, if it is there.
 
-    Ours rather than the recipe's, which is why it is read defensively: the
-    recipe config is also loadable from a hand-written YAML, and a run whose
-    config predates this block should report at the shared default rather than
-    fail to start over a reporting knob.
+    Ours rather than the recipe's, which is why every read of it is defensive:
+    the recipe config is also loadable from a hand-written YAML, and a run whose
+    config predates this block should report at the shared defaults rather than
+    fail to start over a reporting knob. This runs from the wrapper's
+    constructor, outside any try, so raising here kills the training process.
     """
-    block = getattr(recipe, "cfg", None)
-    block = block.get("_progress_reporting") if hasattr(block, "get") else None
+    cfg = getattr(recipe, "cfg", None)
+    return cfg.get("_progress_reporting") if hasattr(cfg, "get") else None
+
+
+def _resolve_max_points(recipe: AutomodelRecipe) -> int:
+    """Points per metric curve, falling back to the shared default."""
+    block = _reporting_block(recipe)
     max_points = block.get("max_points") if hasattr(block, "get") else None
     if isinstance(max_points, int) and not isinstance(max_points, bool) and max_points > 0:
         return max_points
     return DEFAULT_MAX_POINTS
+
+
+def _resolve_curves(recipe: AutomodelRecipe) -> list[str] | None:
+    """Metric names to accumulate, or None for all of them.
+
+    None is a real configuration here rather than only a fallback -- it is the
+    default -- so an absent block and an explicit null mean the same thing, and
+    neither is worth a warning. A non-list, or a list with anything but strings
+    in it, is discarded whole: charting some of a malformed list would be a
+    stranger outcome than charting everything.
+    """
+    block = _reporting_block(recipe)
+    curves = block.get("curves") if hasattr(block, "get") else None
+    if isinstance(curves, (list, tuple)) and all(isinstance(name, str) for name in curves):
+        return list(curves)
+    if curves is not None:
+        logger.warning(f"Ignoring an unusable progress_reporting.curves ({curves!r}); charting every metric.")
+    return None
 
 
 class AutomodelRecipeWrapper:
@@ -151,7 +175,11 @@ class AutomodelRecipeWrapper:
         self.max_steps = self._recipe.step_scheduler.max_steps
         self.num_epochs = getattr(self._recipe.step_scheduler, "num_epochs", None) or 1
 
-        self.callback = TrainingProgressCallback(self._reporter, max_points=_resolve_max_points(recipe))
+        self.callback = TrainingProgressCallback(
+            self._reporter,
+            max_points=_resolve_max_points(recipe),
+            curves=_resolve_curves(recipe),
+        )
         logger.info(f"Automodel recipe wrapper initialized: max_steps={self.max_steps}, num_epochs={self.num_epochs}")
 
         # Store original methods before patching

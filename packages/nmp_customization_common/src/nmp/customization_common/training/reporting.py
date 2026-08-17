@@ -29,7 +29,12 @@ DEFAULT_MAX_POINTS = 200
 
 
 class ProgressReportingConfig(BaseModel):
-    """How much detail training progress is reported to the Jobs service with."""
+    """How much detail training progress is reported to the Jobs service with.
+
+    Two knobs, and they multiply: the stored blob is ``curves x max_points``.
+    ``max_points`` bounds how finely each curve is sampled, ``curves`` bounds how
+    many curves there are.
+    """
 
     max_points: int = Field(
         default=DEFAULT_MAX_POINTS,
@@ -41,5 +46,16 @@ class ProgressReportingConfig(BaseModel):
             "spent reporting rather than training. This can only thin what the training framework "
             "produces, never add to it: a run that logs 40 times reports 40 points whatever this "
             "is set to."
+        ),
+    )
+    curves: list[str] | None = Field(
+        default=None,
+        description=(
+            "Metric names to record as charted curves, given unqualified by phase -- 'loss' "
+            "covers both the training and validation curves. Omit for every metric the backend "
+            "produces, which is the most detail and the most cost. A metric left out is still "
+            "reported as a current value on every report; only its history is dropped, so a "
+            "throughput counter like 'tps' costs one number rather than several hundred. Which "
+            "names a backend produces is listed in the job log the first time one is excluded."
         ),
     )

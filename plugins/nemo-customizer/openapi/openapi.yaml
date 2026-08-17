@@ -2060,10 +2060,30 @@ components:
             This can only thin what the training framework produces, never add to
             it: a run that logs 40 times reports 40 points whatever this is set to.'
           default: 200
+        curves:
+          title: Curves
+          description: Metric names to record as charted curves, given unqualified
+            by phase -- 'loss' covers both the training and validation curves. Omit
+            for every metric the backend produces, which is the most detail and the
+            most cost. A metric left out is still reported as a current value on every
+            report; only its history is dropped, so a throughput counter like 'tps'
+            costs one number rather than several hundred. Which names a backend produces
+            is listed in the job log the first time one is excluded.
+          items:
+            type: string
+          type: array
       type: object
       title: ProgressReportingConfig
-      description: How much detail training progress is reported to the Jobs service
+      description: 'How much detail training progress is reported to the Jobs service
         with.
+
+
+        Two knobs, and they multiply: the stored blob is ``curves x max_points``.
+
+        ``max_points`` bounds how finely each curve is sampled, ``curves`` bounds
+        how
+
+        many curves there are.'
     RlDPOTraining:
       properties:
         optimizer_type:
