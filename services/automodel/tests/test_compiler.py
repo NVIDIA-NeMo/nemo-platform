@@ -126,6 +126,35 @@ def test_the_reporting_budget_reaches_the_training_step_config() -> None:
     assert cfg["schedule"]["progress_reporting"]["curves"] == ["loss"]
 
 
+def test_a_spec_still_carrying_log_every_n_steps_compiles() -> None:
+    """The removed field was inert, and removing it has to stay invisible.
+
+    It described itself as controlling how often training metrics are logged and
+    controlled nothing: nothing read it, it never reached the recipe config, and
+    it was in neither the submitter-facing plugin schema nor any generated spec.
+    What makes deleting it safe rather than breaking is that this model ignores
+    extras -- so a stored spec that still carries the key parses as it always
+    did. Pinned because a later `extra="forbid"` here would turn that silent
+    tolerance into a hard failure for exactly those specs.
+    """
+    from nmp.automodel.app.jobs.training.compiler import compile_training_step
+    from nmp.customization_common.training.reporting import DEFAULT_MAX_POINTS
+
+    training = SFTTraining.model_validate({"learning_rate": 1e-4, "log_every_n_steps": 10})
+    assert not hasattr(training, "log_every_n_steps")
+
+    job_output = CustomizationJobOutput(
+        model="default/test-target",
+        dataset="default/my-dataset",
+        training=training,
+        output=OutputResponse(name="out", type="adapter", fileset="out-fs"),
+    )
+    step = compile_training_step(job_output, base_env=[], me=_make_mock_model_entity())
+    cfg = step.config if hasattr(step, "config") else step["config"]
+
+    assert cfg["schedule"]["progress_reporting"]["max_points"] == DEFAULT_MAX_POINTS
+
+
 def test_the_reporting_budget_survives_the_plugin_adapter() -> None:
     """The adapter flattens the plugin's schedule block and is easy to drop a field from."""
     from nmp.automodel.adapter import automodel_spec_to_compiler_output
