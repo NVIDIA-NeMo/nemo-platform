@@ -751,7 +751,39 @@ def _resolve_targets(paths: list[Path], include: list[str] | None = None) -> tup
         return _collect_files_from_dir(root, include=include), root
 
     files = [str(p.resolve()) for p in paths if p.is_file() and _is_supported_file(str(p.resolve()))]
+    files = _filter_copyright_excluded(files, include=include)
     return files, None
+
+
+def _filter_copyright_excluded(files: list[str], include: list[str] | None = None) -> list[str]:
+    """Drop files matched by .copyrightignore, unless explicitly --include'd.
+
+    Mirrors the exclusion applied by ``_collect_files_from_dir`` for
+    directory scans, but for an explicit file list (e.g. filenames passed
+    by pre-commit).
+    """
+    if not files:
+        return files
+
+    repo = _get_repo(files[0])
+    if repo is None:
+        return files
+
+    repo_root = str(repo.working_tree_dir)
+    copyright_excludes = _load_copyright_excludes(repo_root)
+    if not copyright_excludes:
+        return files
+
+    include = include or []
+    kept = []
+    for filepath in files:
+        relpath = os.path.relpath(filepath, repo_root)
+        if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
+            relpath, relpath, include
+        ):
+            continue
+        kept.append(filepath)
+    return kept
 
 
 # --- CLI ---
