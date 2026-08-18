@@ -402,6 +402,23 @@ def _wrapper(finetune: ModuleType, monkeypatch: pytest.MonkeyPatch, recipe: _Fak
     return finetune.AutomodelRecipeWrapper(recipe), reports
 
 
+def test_the_wrapper_reports_nothing_while_it_builds(finetune: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Construction is not an event; the first report is the first real one.
+
+    The runner reports `training` before it spawns this subprocess, and
+    `report_training_start` reports `training` again once setup finishes. Anything
+    sent from the constructor lands between the two, so the phase visibly goes
+    backwards -- Studio renders Training, then Recipe Setup, then Training. An
+    `automodel_recipe_setup` report used to sit here and did exactly that.
+
+    Covering the model-load window is a real want, but it needs a heartbeat across
+    `setup()`; a one-shot marker cannot tell a hang at second 30 from one an hour in.
+    """
+    _, reports = _wrapper(finetune, monkeypatch, _FakeRecipe())
+
+    assert reports == [], f"reported {[phase for phase, _ in reports]} before training started"
+
+
 def test_the_wrapper_reports_a_train_step_one_based(finetune: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     """The recipe counts steps from 0; status_details is 1-based throughout."""
     recipe = _FakeRecipe()

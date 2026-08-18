@@ -194,8 +194,6 @@ class AutomodelRecipeWrapper:
                      defaults to environment variables).
         """
         self._job_ctx = job_ctx or NMPJobContext.from_env()
-        self._reporter = JobsServiceProgressReporter(self._job_ctx)
-        self._reporter.report_running("automodel_recipe_setup")
 
         self._recipe = recipe
         self._recipe.setup()
@@ -206,8 +204,20 @@ class AutomodelRecipeWrapper:
         #: Keeps a second validation dataset's metrics out of the first's series.
         self._val_datasets = DatasetQualifier()
 
+        # A local, not an attribute: the callback owns the reporter from here on,
+        # including closing it in run_train_validation_loop. Nothing else in this
+        # class reports directly.
+        #
+        # This used to be built above `setup()` so it could report an
+        # `automodel_recipe_setup` phase before the model loaded. That report is
+        # gone: the runner already reports `training` before it spawns this
+        # subprocess, so the phase went Training -> Recipe Setup -> Training, and a
+        # phase that regresses reads worse than no phase. It was also a one-shot
+        # with no heartbeat, so a hang early in setup looked exactly like a hang an
+        # hour in. Covering that window wants a heartbeat, not a marker.
+        reporter = JobsServiceProgressReporter(self._job_ctx)
         self.callback = TrainingProgressCallback(
-            self._reporter,
+            reporter,
             time_series_metrics=_resolve_time_series_metrics(recipe),
             min_report_interval_seconds=_resolve_min_report_interval(recipe),
         )
