@@ -42,6 +42,7 @@ jobs:
   changes:
     name: Detect Path Changes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       openapi: ${{ steps.changes.outputs.openapi }}
       test: ${{ steps.changes.outputs.test }}
@@ -69,6 +70,7 @@ jobs:
   actionlint:
     name: Run actionlint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -92,6 +94,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.ngc-metadata == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -158,6 +161,7 @@ jobs:
         needs.changes.outputs.docker == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -589,6 +593,7 @@ jobs:
         needs.changes.outputs.helm == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     env:
@@ -628,6 +633,7 @@ jobs:
         needs.changes.outputs.helm == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
@@ -756,6 +762,7 @@ jobs:
   lint:
     name: Lint all
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -810,6 +817,7 @@ jobs:
   policy-wasm:
     name: Build OPA policy WASM
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -831,6 +839,7 @@ jobs:
         needs.changes.outputs.tools == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -859,6 +868,7 @@ jobs:
     name: Python unit tests
     needs: [policy-wasm]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -1036,6 +1046,7 @@ jobs:
     name: Python integration tests
     needs: [policy-wasm]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -1110,6 +1121,7 @@ jobs:
         needs.changes.outputs.auth-idp == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -1565,6 +1577,7 @@ jobs:
         needs.changes.outputs.openapi == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -1598,6 +1611,7 @@ jobs:
         needs.changes.outputs.web-studio == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: web
@@ -1631,6 +1645,7 @@ jobs:
         needs.changes.outputs.web-studio == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -1658,6 +1673,7 @@ jobs:
         needs.changes.outputs.web-studio == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -1686,6 +1702,7 @@ jobs:
         needs.changes.outputs.web-studio == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
@@ -1749,6 +1766,7 @@ jobs:
         needs.changes.outputs.web-studio == 'true'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -1771,6 +1789,7 @@ jobs:
     name: Studio UI E2E tests
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: web
@@ -1961,6 +1980,7 @@ jobs:
         needs.python-integration-test.result == 'failure'
       )
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       pull-requests: write
       contents: read
@@ -2012,6 +2032,7 @@ jobs:
   opa-policy-test:
     name: Test OPA Policy
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -2030,6 +2051,7 @@ jobs:
 
   require-nvskills:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
       - name: Require trusted NVSkills signature for skills changes
@@ -2118,6 +2140,7 @@ jobs:
       - guardrails-benchmark-analyze
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
