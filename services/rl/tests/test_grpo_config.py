@@ -37,7 +37,7 @@ def job_ctx(tmp_path: Path) -> NMPJobContext:
     )
 
 
-def _write_gym_dataset(root: Path) -> None:
+def _write_gym_dataset(root: Path, filename: str = "training.jsonl") -> None:
     row = {
         "task_idx": 0,
         "vf_env_id": "ascii-tree",
@@ -47,7 +47,7 @@ def _write_gym_dataset(root: Path) -> None:
         "example_id": "ex-0",
         "info": {},
     }
-    (root / "training.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    (root / filename).write_text(json.dumps(row) + "\n", encoding="utf-8")
 
 
 def _make_grpo_step(
@@ -201,6 +201,48 @@ def test_compile_grpo_config_disables_validation_without_val_split(
     assert cfg["grpo"]["val_at_start"] is False
     assert cfg["checkpointing"]["metric_name"] is None
     assert cfg["checkpointing"]["save_period"] > 0
+
+
+def test_compile_grpo_config_emits_val_at_start_when_requested(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """val_at_start gives the uplift baseline: step-0 validation on the same data."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, dataset_pvc = _prepared_step(tmp_path)
+    _write_gym_dataset(dataset_pvc, filename="validation.jsonl")
+    step.schedule.val_at_start = True
+
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert cfg["grpo"]["val_at_start"] is True
+    assert cfg["grpo"]["val_period"] > 0
+
+
+def test_compile_grpo_config_val_at_start_defaults_off(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A GRPO baseline pass costs a full rollout, so it must be opt-in."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, dataset_pvc = _prepared_step(tmp_path)
+    _write_gym_dataset(dataset_pvc, filename="validation.jsonl")
+
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert cfg["grpo"]["val_at_start"] is False
+
+
+def test_compile_grpo_config_ignores_val_at_start_without_val_split(
+    tmp_path: Path, job_ctx: NMPJobContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NeMo-RL asserts on a missing val dataloader whenever val_at_start is set."""
+    monkeypatch.setenv("NMP_JOB_STORAGE_PVC_CLAIM", "nmp-job-storage")
+    step, _ = _prepared_step(tmp_path)
+    step.schedule.val_at_start = True
+
+    cfg = compile_grpo_config(step, job_ctx)
+
+    assert cfg["grpo"]["val_at_start"] is False
+    assert cfg["grpo"]["val_period"] == 0
 
 
 def test_compiled_config_selects_only_prefetched_actors(

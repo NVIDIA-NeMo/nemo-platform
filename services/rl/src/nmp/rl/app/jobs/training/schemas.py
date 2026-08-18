@@ -136,6 +136,7 @@ class TrainingStepConfig(BaseModel):
         epochs: int = 1
         max_steps: int | None = None
         val_check_interval: float | None = None
+        val_at_start: bool = False
         val_at_end: bool = True
         keep_top_k: int = 1
         progress_reporting: ProgressReportingConfig = Field(default_factory=ProgressReportingConfig)

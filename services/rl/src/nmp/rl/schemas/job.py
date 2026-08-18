@@ -160,6 +160,15 @@ class GRPOTraining(_TrainingBase):
         default=None,
         description="LoRA hyperparameters. Defaults applied when finetuning_type is lora.",
     )
+    val_at_start: bool = Field(
+        default=False,
+        description="Run a validation pass before the first training step. Enable it to measure "
+        "uplift: the baseline and the trained result then come from one job, on the same data with "
+        "the same generation settings, instead of a separate baseline run that has to be kept in "
+        "sync. Off by default because a GRPO baseline costs a full rollout pass. Ignored when the "
+        "dataset ships no validation.jsonl. DPO always validates at step 0 and has no such knob, "
+        "since its validation needs no generation.",
+    )
     num_generations_per_prompt: int = Field(
         default=8, gt=0, description="Group size: rollouts sampled per prompt, used for relative advantages."
     )
