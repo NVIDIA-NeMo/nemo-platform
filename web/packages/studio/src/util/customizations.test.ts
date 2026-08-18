@@ -253,6 +253,39 @@ describe('getTrainingTelemetry', () => {
     });
   });
 
+  it('reads the unqualified names jobs used before the phase prefix', () => {
+    // Those jobs are already in the database and never change. Without the
+    // fallback their Learning Rate and Gradient Norm render blank forever.
+    expect(
+      getTrainingTelemetry(
+        jobWithDetails({
+          train_loss: 0.42,
+          lr: 0.000005,
+          grad_norm: 1.25,
+        })
+      )
+    ).toEqual({
+      trainLoss: 0.42,
+      learningRate: 0.000005,
+      gradNorm: 1.25,
+      phase: undefined,
+      step: undefined,
+      maxSteps: undefined,
+      numEpochs: undefined,
+      epoch: undefined,
+      valLoss: undefined,
+      checkpointPath: undefined,
+    });
+  });
+
+  it('prefers the qualified name when a job carries both', () => {
+    expect(
+      getTrainingTelemetry(
+        jobWithDetails({ train_lr: 0.000009, lr: 0.000005 })
+      ).learningRate
+    ).toBe(0.000009);
+  });
+
   it('drops non-finite numbers, empty strings, and wrong types', () => {
     expect(
       getTrainingTelemetry(
