@@ -219,8 +219,8 @@ class TasksetRef(RootModel[str]):
 class TaskInputs(BaseModel):
     """Inputs supplied to a task.
 
-    ``instruction`` is the agent's prompt. Additional task- or runtime-specific inputs are accepted
-    and preserved as arbitrary JSON-compatible values.
+    ``instruction`` is the agent's prompt; the runtime falls back to the task ``intent`` when it is unset.
+    Additional task- or runtime-specific inputs, such as `gym_row` for Gym tasks, are also accepted fields.
     """
 
     model_config = ConfigDict(extra="allow")
