@@ -17,6 +17,14 @@ from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.job import NemoJob
 from pydantic import BaseModel
 from typer.testing import CliRunner
+import re
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
 
 runner = CliRunner()
 
@@ -165,7 +173,7 @@ class TestUpdateJobCli:
         app = _app_with_jobs(_GreetJob, cli=_CLI())
         help_result = runner.invoke(app, ["greet", "submit", "--help"])
         assert help_result.exit_code == 0
-        assert "--name" in help_result.output
+        assert "--name" in _plain(help_result.output)
 
         result = runner.invoke(app, ["greet", "submit", "--name", "Wrapped"])
         assert result.exit_code == 0
@@ -258,7 +266,7 @@ class TestUpdateFunctionCli:
         app = _app_with_functions(_GreetFunction, cli=_CLI())
         help_result = runner.invoke(app, ["greet", "submit", "--help"])
         assert help_result.exit_code == 0
-        assert "--nickname" in help_result.output
+        assert "--nickname" in _plain(help_result.output)
 
         result = runner.invoke(app, ["greet", "submit", "--nickname", "Wrapped"])
         assert result.exit_code == 0

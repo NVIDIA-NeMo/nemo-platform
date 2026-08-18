@@ -37,7 +37,7 @@ Read **only** the workflow file that matches the selected mode, then follow it:
 # Rules
 
 - Prefer CLI surfaces. Generate YAML specs and run `nemo anonymizer ...` commands unless the user explicitly asks for Python.
-- Always iterate via `nemo anonymizer preview submit` or `nemo anonymizer preview submit` before running the full job. Previews are cheap and stream a small sample (default 10 records) with full detection traces.
+- Always iterate via `nemo anonymizer preview submit` before running the full job with `nemo anonymizer run submit`. Previews are cheap and stream a small sample (default 10 records) with full detection traces.
 - When you include `config`, pick exactly one of `replace` (Annotate/Hash/Redact/Substitute) or `rewrite` on the `AnonymizerConfig`. Not both. Do not claim `config` is required for every flow; the Anonymizer library owns default config behavior and strategy semantics. See `references/replace-strategies.md` for plugin request formatting and the [library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) for semantics.
 - The input must be a single CSV or Parquet file. `text_column` defaults to `text`; set it explicitly when the free-text column has another name. If the dataset has a stable record id, also set `id_column`. See `references/inputs.md`.
 - The current plugin-service / Jobs paths (`preview submit`, `run submit`) require `model_configs` so requests route through the NeMo Platform Inference Gateway. See `references/model-configs.md`.

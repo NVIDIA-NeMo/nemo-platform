@@ -6,9 +6,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from types import SimpleNamespace
 from typing import AsyncIterator
 
+import httpx
 import pytest
 import typer
 from nemo_platform_plugin import commands
@@ -18,6 +21,12 @@ from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.job import NemoJob
 from pydantic import BaseModel
 from typer.testing import CliRunner
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 @pytest.fixture(autouse=True)
@@ -274,3 +283,72 @@ def test_function_submit_rejects_removed_run_verb() -> None:
 
     assert result.exit_code != 0
     assert "No such command" in result.output
+
+
+def test_submit_help_lists_options_flags() -> None:
+    app = _app_with_jobs(_GreetJob)
+    result = runner.invoke(app, ["greet", "submit", "--help"])
+
+    assert result.exit_code == 0
+    output = _plain(result.output)
+    assert "-o" in output
+    assert "--options-file" in output
+    assert "--spec-file" in output
+    assert "--profile" in output
+
+
+def test_submit_malformed_dash_o_exits_cleanly() -> None:
+    app = _app_with_jobs(_GreetJob)
+    result = runner.invoke(
+        app,
+        ["greet", "submit", "--profile", "research", "-o", "slurm.partition"],
+    )
+
+    assert result.exit_code != 0
+    combined = (result.output or "") + (result.stderr or "")
+    assert "KEY=VALUE" in combined or "invalid -o entry" in combined
+
+
+def test_submit_returns_exit_code_2_on_connect_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    request = httpx.Request("POST", "http://test/apis/plugin/v2/workspaces/default/jobs/greet")
+
+    def _raise_connect(*_args, **_kwargs) -> dict:
+        raise httpx.ConnectError("Connection refused", request=request)
+
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", _raise_connect)
+    app = _app_with_jobs(_GreetJob)
+    result = runner.invoke(app, ["greet", "submit", "--base-url", "http://test", "--name", "X"])
+
+    assert result.exit_code == 2
+    combined = (result.output or "") + (result.stderr or "")
+    assert "Connection refused" in combined
+    assert "Traceback" not in combined
+
+
+def test_submit_passes_cli_auth_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _capture(_self, _job_cls, _spec, headers=None, **_kwargs) -> dict:
+        captured["headers"] = headers
+        return {"id": "job-123"}
+
+    class _State:
+        def get_sdk_context(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                user=SimpleNamespace(
+                    get_client_config=lambda: {
+                        "default_headers": {"Authorization": "Bearer test-token"},
+                    }
+                )
+            )
+
+    monkeypatch.setattr(commands.NemoJobScheduler, "submit_remote", _capture)
+    app = _app_with_jobs(_GreetJob)
+    result = runner.invoke(
+        app,
+        ["greet", "submit", "--base-url", "http://127.0.0.1:8080", "--name", "X"],
+        obj=_State(),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"Authorization": "Bearer test-token"}

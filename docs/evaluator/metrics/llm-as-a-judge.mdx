@@ -17,11 +17,11 @@ LLM-as-a-Judge evaluation sends each dataset row to a judge LLM and parses the j
 - **Pre-generated data**: Score existing question-answer pairs or conversations.
 - **Custom criteria**: Define range scores, rubric scores, prompt templates, and parser behavior.
 
-NeMo Evaluator supports two execution modes through the Evaluator plugin SDK:
+Use the Evaluator plugin SDK to submit durable platform jobs:
 
 | Mode | Use Case | SDK Call |
 |------|----------|----------|
-| **Durable remote job** | Production workloads that should run as platform jobs | `evaluator.submit(metric=metric, dataset=dataset)` |
+| **Platform job** | Durable platform execution with polling and result retrieval | `evaluator.submit(metric=metric, dataset=dataset)` |
 
 ## Prerequisites
 
@@ -127,8 +127,6 @@ result = LocalEvaluator().run_sync(
         },
     ],
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean:.2f}, count={score.count}")
@@ -234,8 +232,6 @@ result = LocalEvaluator().run_sync(
     ],
     aggregate_fields=("rubric_distribution", "mode_category"),
 )
-job.wait_until_done()
-result = job.get_result()
 
 print(result.aggregate_scores.model_dump(exclude_none=True))
 ```
@@ -255,8 +251,6 @@ result = LocalEvaluator().run_sync(
     ],
     aggregate_fields=("std_dev", "variance"),
 )
-job.wait_until_done()
-result = job.get_result()
 
 for score in result.aggregate_scores.scores:
     print(f"{score.name}:")
