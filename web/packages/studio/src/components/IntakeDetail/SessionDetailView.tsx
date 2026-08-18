@@ -65,11 +65,11 @@ export const SessionDetailView: FC<SessionDetailViewProps> = ({
     isTracesLoading,
     trajectories,
     explorer,
-    testCaseId,
+    testCaseName,
   } = useSessionTrajectories(workspace, sessionId);
   const title =
-    routeContext?.kind === 'evaluation' && testCaseId
-      ? `Test case: ${testCaseId}`
+    routeContext?.kind === 'evaluation' && testCaseName
+      ? `Test case: ${testCaseName}`
       : `Session ${sessionId}`;
   const sessionHref = getSessionHref(sessionId);
   const baseBreadcrumbs = useMemo(

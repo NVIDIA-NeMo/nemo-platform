@@ -63,15 +63,16 @@ def test_trace_index_schema_is_root_span_projection():
     assert "WHERE external_parent_span_id = ''" in ddl
     # Both identifiers resolve via canonical keys plus historical aliases, so the backfill keeps older
     # spans associated.
-    assert "{evaluation_id_expr} AS evaluation_id" in ddl
-    assert "{test_case_id_expr} AS test_case_id" in ddl
+    assert "{evaluation_name_expr} AS evaluation_name" in ddl
+    assert "{test_case_name_expr} AS test_case_name" in ddl
     assert "_coalesced_string_attribute(SpanAttributeField.EVALUATION_NAME)" in ddl
     assert "_coalesced_string_attribute(SpanAttributeField.TEST_CASE_NAME)" in ddl
     assert "root_status LowCardinality(String)" in ddl
     assert "root_input String" in ddl
     assert "PRIMARY KEY (workspace, root_started_at)" in ddl
     assert "ORDER BY (workspace, root_started_at, trace_id, root_span_id)" in ddl
-    assert "INDEX idx_evaluation_id evaluation_id" in ddl
+    assert "INDEX idx_evaluation_name evaluation_name" in ddl
+    assert "INDEX idx_test_case_name test_case_name" in ddl
     assert "index_granularity = 256" in ddl
 
 

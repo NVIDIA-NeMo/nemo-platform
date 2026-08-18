@@ -53,7 +53,7 @@ describe('traceKeyValues', () => {
 
     const entries = buildEvaluationContextEntries(trace!.evaluation_context);
 
-    expect(entries.map((entry) => entry.label)).toEqual(['Evaluation ID', 'Test Case ID']);
+    expect(entries.map((entry) => entry.label)).toEqual(['Evaluation Name', 'Test Case Name']);
   });
 
   it('returns no evaluation context entries when context is absent', () => {

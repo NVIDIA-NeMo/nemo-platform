@@ -33,10 +33,10 @@ TRACE_INDEX_FILTER_FIELDS = frozenset(
     }
 )
 TRACE_INDEX_FILTER_ALIASES = {
-    "evaluation_name": "evaluation_id",
-    "evaluation_id": "evaluation_id",
-    "test_case_name": "test_case_id",
-    "test_case_id": "test_case_id",
+    "evaluation_name": "evaluation_name",
+    "evaluation_id": "evaluation_name",
+    "test_case_name": "test_case_name",
+    "test_case_id": "test_case_name",
 }
 
 

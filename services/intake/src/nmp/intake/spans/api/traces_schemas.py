@@ -111,9 +111,9 @@ class Trace(BaseModel):
 
 
 def _evaluation_context(trace: IntakeTrace) -> EvaluationContext | None:
-    if trace.evaluation_id is None:
+    if trace.evaluation_name is None:
         return None
     return EvaluationContext(
-        evaluation_name=trace.evaluation_id,
-        test_case_name=trace.test_case_id,
+        evaluation_name=trace.evaluation_name,
+        test_case_name=trace.test_case_name,
     )

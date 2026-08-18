@@ -36,8 +36,8 @@ def test_trace_filter_maps_public_fields_to_repository_filter():
     assert filters.session_id == "session-a"
     assert filters.status == SpanStatus.ERROR
     assert filters.started_at_gte == started_at
-    assert filters.evaluation_id == "experiment-a"
-    assert filters.test_case_id == "case-a"
+    assert filters.evaluation_name == "experiment-a"
+    assert filters.test_case_name == "case-a"
 
 
 def test_trace_filter_accepts_deprecated_identifier_aliases():
@@ -53,8 +53,8 @@ def test_trace_filter_accepts_deprecated_identifier_aliases():
         ),
     )
 
-    assert filters.evaluation_id == "experiment-a"
-    assert filters.test_case_id == "case-a"
+    assert filters.evaluation_name == "experiment-a"
+    assert filters.test_case_name == "case-a"
 
 
 def test_trace_filter_rejects_conflicting_identifier_aliases():
@@ -65,7 +65,7 @@ def test_trace_filter_rejects_conflicting_identifier_aliases():
         )
 
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "Conflicting trace filters for evaluation_id"
+    assert exc_info.value.detail == "Conflicting trace filters for evaluation_name"
 
 
 def test_trace_filter_schema_exposes_canonical_names_and_deprecated_aliases():
