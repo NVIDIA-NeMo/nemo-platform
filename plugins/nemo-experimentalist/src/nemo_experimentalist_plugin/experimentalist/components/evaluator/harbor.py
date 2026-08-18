@@ -870,14 +870,19 @@ class HarborDataset(Dataset):
     A run whose baseline emits no metric this way is refused outright, because
     there is then no measurement to optimize toward.
 
-    So create the directory and write the file unconditionally, on every exit
-    path — including the ones where the agent failed::
+    So score **every agent outcome**, failures included: an agent that did
+    nothing scores ``0``, and that is a real measurement.  What must never
+    happen is a *task* that emits no number at all.
 
-        mkdir -p /logs/verifier
-        echo 0 > /logs/verifier/reward.txt   # replaced below once the score is known
-
-    Under ``set -e`` a failing check aborts the script, so a reward written only
-    at the end is never written on the path that matters most.
+    **Do not seed a placeholder reward to keep a trial alive.** Harbor ignores
+    ``test.sh``'s exit code and looks only for a reward file, so a pre-written
+    ``echo 0 > /logs/verifier/reward.txt`` turns a verifier that crashed
+    half-way into a confident score of ``0.0`` — indistinguishable from an agent
+    that genuinely earned zero, and comparable enough that nothing downstream
+    questions it.  That is the one distinction this contract exists to keep.
+    A verifier that could not finish should fail the trial; under ``set -e`` a
+    crashing check aborts before the merge step below, which is the intended
+    outcome and is reported as a failed trial naming the error.
 
     **To add a new metric** — write it as an additional key in ``reward.json``::
 
@@ -919,9 +924,6 @@ class HarborDataset(Dataset):
         #!/usr/bin/env bash
         set -euo pipefail
         mkdir -p /logs/verifier
-        # Seed a reward before anything can fail. Under `set -e` a failing check
-        # aborts the script, and reward.json below wins whenever it is written.
-        echo 0 > /logs/verifier/reward.txt
         SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
         # Run each metric script and collect its output.
