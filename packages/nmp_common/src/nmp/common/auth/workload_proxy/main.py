@@ -159,6 +159,19 @@ def build_app(*, base_url: str, principal: str, on_behalf_of: str | None = None)
     return app
 
 
+_UVICORN_JOIN_TIMEOUT_SECONDS = 10.0
+
+
+def _join_uvicorn_thread(server: uvicorn.Server, thread: threading.Thread, *, context: str) -> bool:
+    """Signal the uvicorn server to stop and join its thread. Returns whether it's still alive."""
+    server.should_exit = True
+    thread.join(timeout=_UVICORN_JOIN_TIMEOUT_SECONDS)
+    still_alive = thread.is_alive()
+    if still_alive:
+        logger.warning("auth-proxy uvicorn thread did not finish %s", context)
+    return still_alive
+
+
 class _ServerThreadController(Controller):
     """Reports unhealthy if the auth-proxy's uvicorn thread has died."""
 
@@ -174,7 +187,72 @@ class _ServerThreadController(Controller):
 
 
 def run(parent_stop_signal: threading.Event | None = None) -> None:
-    """Sidecar entrypoint. Serves the loopback auth-proxy until stopped."""
+    """Sidecar entrypoint. Serves the loopback auth-proxy until stopped.
+
+    Sidecars aren't fed into ControllerManager by the generic runner thread
+    wrapper, so a setup failure here (missing env var, bad upstream URL, ...)
+    would otherwise be logged and silently dropped, invisible to readiness —
+    the auth-proxy self-registers (and self-associates via
+    ``controller_registration_context``, in case it's invoked outside the
+    generic wrapper too) to avoid that gap.
+    """
+    if parent_stop_signal is None:
+        _run_untracked()
+        return
+
+    manager = ControllerManager.get_instance()
+    with manager.controller_registration_context("auth-proxy"):
+        manager.await_controller_registration("auth-proxy")
+        try:
+            base_url, principal, on_behalf_of, host, port, server = _build_server()
+        except Exception:
+            manager.mark_controller_failed("auth-proxy")
+            raise
+        _log_startup(host=host, port=port, base_url=base_url, principal=principal, on_behalf_of=on_behalf_of)
+
+        thread = threading.Thread(target=server.run, name="auth-proxy-uvicorn", daemon=True)
+        thread.start()
+
+        health_loop = Loop(
+            waiter=TimedLoopWaiter(sleep_secs=1.0, stop_signal=parent_stop_signal),
+            controller=_ServerThreadController(thread),
+            stop_signal=parent_stop_signal,
+        )
+        health_loop.name = "auth-proxy"
+        health_loop_registered = False
+        try:
+            manager.register(health_loop.name, health_loop)
+            health_loop_registered = True
+            health_loop.start()
+        except Exception:
+            _join_uvicorn_thread(server, thread, context="after startup failed")
+            if health_loop_registered:
+                manager.unregister(health_loop.name)
+            manager.mark_controller_failed("auth-proxy")
+            raise
+
+        try:
+            while not parent_stop_signal.is_set():
+                parent_stop_signal.wait(timeout=1)
+        finally:
+            # health_loop stops as soon as parent_stop_signal is set, regardless of
+            # whether the uvicorn thread it monitors is still alive — so its own
+            # liveness can't be used to tell whether the uvicorn thread hung. Track
+            # that separately here rather than relying solely on
+            # stop_tracking_controller's generic "is the registered loop still
+            # alive" check, which only sees health_loop's thread, not uvicorn's.
+            uvicorn_still_alive = _join_uvicorn_thread(server, thread, context="in time")
+            health_loop.join(timeout=5)
+            if uvicorn_still_alive:
+                logger.warning(
+                    "Leaving health tracking in place for %r; its uvicorn thread did not finish in time", "auth-proxy"
+                )
+            else:
+                manager.stop_tracking_controller("auth-proxy")
+            logger.info("auth-proxy sidecar stopped")
+
+
+def _build_server() -> tuple[str, str, str | None, str, int, uvicorn.Server]:
     base_url = _upstream_base_url()
     principal = os.environ.get(AUTH_PROXY_PRINCIPAL_ENVVAR)
     if not principal:
@@ -183,10 +261,11 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
     host = os.environ.get(AUTH_PROXY_HOST_ENVVAR, DEFAULT_AUTH_PROXY_HOST)
     port = int(os.environ.get(AUTH_PROXY_PORT_ENVVAR, str(DEFAULT_AUTH_PROXY_PORT)))
     app = build_app(base_url=base_url, principal=principal, on_behalf_of=on_behalf_of)
-
     config = uvicorn.Config(app, host=host, port=port, log_level="info", access_log=False)
-    server = uvicorn.Server(config)
+    return base_url, principal, on_behalf_of, host, port, uvicorn.Server(config)
 
+
+def _log_startup(*, host: str, port: int, base_url: str, principal: str, on_behalf_of: str | None) -> None:
     logger.info(
         "Starting auth-proxy sidecar on %s:%s -> %s (principal=service:%s, delegated=%s)",
         host,
@@ -195,30 +274,12 @@ def run(parent_stop_signal: threading.Event | None = None) -> None:
         principal,
         on_behalf_of is not None,
     )
-    if parent_stop_signal is None:
-        server.run()
-        return
 
-    thread = threading.Thread(target=server.run, name="auth-proxy-uvicorn", daemon=True)
-    thread.start()
 
-    health_loop = Loop(
-        waiter=TimedLoopWaiter(sleep_secs=1.0, stop_signal=parent_stop_signal),
-        controller=_ServerThreadController(thread),
-        stop_signal=parent_stop_signal,
-    )
-    health_loop.name = "auth-proxy"
-    health_loop.start()
-    ControllerManager.get_instance().register(health_loop.name, health_loop)
-
-    try:
-        while not parent_stop_signal.is_set():
-            parent_stop_signal.wait(timeout=1)
-    finally:
-        server.should_exit = True
-        thread.join(timeout=10)
-        health_loop.join(timeout=5)
-        logger.info("auth-proxy sidecar stopped")
+def _run_untracked() -> None:
+    base_url, principal, on_behalf_of, host, port, server = _build_server()
+    _log_startup(host=host, port=port, base_url=base_url, principal=principal, on_behalf_of=on_behalf_of)
+    server.run()
 
 
 if __name__ == "__main__":

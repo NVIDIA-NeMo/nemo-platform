@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from nmp.common.config import AuthConfig
 from nmp.common.config.base import OIDCConfig
+from nmp.common.controller import Controller, ControllerManager, Loop, TimedLoopWaiter
 from nmp.common.service import Service
 from nmp.platform_runner import config as runner_config
 from nmp.platform_runner import server
@@ -109,7 +110,7 @@ def test_create_app_starts_and_stops_dummy_sidecar_with_lifespan() -> None:
         platform_config.return_value.redirect_root_to_studio = False
         app = server.create_app(
             services=[],
-            controller_run_funcs={"adapters": _sidecar_with_events(started, stopped)},
+            sidecar_run_funcs={"adapters": _sidecar_with_events(started, stopped)},
         )
         from fastapi.testclient import TestClient
 
@@ -118,6 +119,139 @@ def test_create_app_starts_and_stops_dummy_sidecar_with_lifespan() -> None:
             assert client.get("/").status_code == 200
 
     assert stopped.wait(timeout=1.0)
+
+
+def test_registered_sidecar_loop_is_removed_after_each_lifespan() -> None:
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    registered = threading.Event()
+
+    def run(stop_signal: threading.Event) -> None:
+        loop = MagicMock(is_healthy=True, unhealthy_reason=None)
+        manager.register("adapters_controller", loop)
+        registered.set()
+        stop_signal.wait(timeout=5.0)
+
+    try:
+        with (
+            patch("nmp.platform_runner.server.get_platform_config") as platform_config,
+            patch("nmp.platform_runner.server.get_auth_config", return_value=_auth_config(False)),
+            patch("nmp.common.auth.middleware.get_auth_config", return_value=_auth_config(False)),
+        ):
+            platform_config.return_value.seed_on_startup = False
+            platform_config.return_value.redirect_root_to_studio = False
+
+            for _ in range(2):
+                registered.clear()
+                app = server.create_app(services=[], sidecar_run_funcs={"adapters": run})
+
+                from fastapi.testclient import TestClient
+
+                with TestClient(app) as client:
+                    assert registered.wait(timeout=1.0)
+                    assert client.get("/health/ready").status_code == 200
+
+                assert manager.validate_all_healthy() == (True, {})
+    finally:
+        manager.clear()
+
+
+def test_self_tracking_sidecar_survives_generic_shutdown_untracking() -> None:
+    """A self-tracking sidecar's still-running resource must not be untracked by
+    the generic runner shutdown path, even after its own wrapper thread (and its
+    registered loop) has exited.
+
+    Regression test: mirrors auth-proxy's real shape, where the *registered*
+    loop (health_loop) exits promptly once the shared stop_signal is set,
+    independent of whether the *separate* resource thread it monitors (the
+    uvicorn thread) is still alive. A naive "is the registered loop's thread
+    still alive" check can't see that gap, so the generic
+    join_and_untrack_runner_threads must not call stop_tracking_controller at
+    all for a self-tracking sidecar (see registry.SELF_TRACKING_SIDECARS) —
+    that decision belongs entirely to the sidecar itself.
+    """
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    registered = threading.Event()
+    # Deliberately never set: models a resource thread that outlives the
+    # sidecar's wrapper thread, the way auth-proxy's uvicorn thread can.
+    hang_forever = threading.Event()
+    resource_thread = threading.Thread(target=lambda: hang_forever.wait(timeout=5), daemon=True)
+
+    class _ResourceController(Controller):
+        def step(self) -> None:
+            pass
+
+        @property
+        def is_healthy(self) -> bool:
+            return resource_thread.is_alive()
+
+    def run(stop_signal: threading.Event) -> None:
+        resource_thread.start()
+        # health_loop stand-in: shares the sidecar's own stop_signal, so it
+        # exits promptly once shutdown starts, regardless of resource_thread.
+        health_loop = Loop(
+            waiter=TimedLoopWaiter(sleep_secs=0.01, stop_signal=stop_signal),
+            controller=_ResourceController(),
+            stop_signal=stop_signal,
+        )
+        health_loop.name = "auth-proxy"
+        manager.register(health_loop.name, health_loop)
+        health_loop.start()
+        registered.set()
+        stop_signal.wait(timeout=5.0)
+        health_loop.join(timeout=2.0)
+        # Deliberately not calling stop_tracking_controller: resource_thread
+        # may still be alive even though health_loop has already stopped.
+
+    try:
+        with (
+            patch("nmp.platform_runner.server.get_platform_config") as platform_config,
+            patch("nmp.platform_runner.server.get_auth_config", return_value=_auth_config(False)),
+            patch("nmp.common.auth.middleware.get_auth_config", return_value=_auth_config(False)),
+        ):
+            platform_config.return_value.seed_on_startup = False
+            platform_config.return_value.redirect_root_to_studio = False
+            app = server.create_app(services=[], sidecar_run_funcs={"auth-proxy": run})
+
+            from fastapi.testclient import TestClient
+
+            with TestClient(app) as client:
+                assert registered.wait(timeout=1.0)
+                assert client.get("/health/ready").status_code == 200
+
+            assert "auth-proxy" in manager.get_all_loops()
+    finally:
+        hang_forever.set()
+        manager.clear()
+
+
+def test_crashed_sidecar_does_not_block_readiness() -> None:
+    crashed = threading.Event()
+
+    def crash(_stop_signal: threading.Event) -> None:
+        crashed.set()
+        raise ValueError("optional configuration is missing")
+
+    manager = ControllerManager.get_instance()
+    manager.clear()
+    try:
+        with (
+            patch("nmp.platform_runner.server.get_platform_config") as platform_config,
+            patch("nmp.platform_runner.server.get_auth_config", return_value=_auth_config(False)),
+            patch("nmp.common.auth.middleware.get_auth_config", return_value=_auth_config(False)),
+        ):
+            platform_config.return_value.seed_on_startup = False
+            platform_config.return_value.redirect_root_to_studio = False
+            app = server.create_app(services=[], sidecar_run_funcs={"adapters": crash})
+
+            from fastapi.testclient import TestClient
+
+            with TestClient(app) as client:
+                assert crashed.wait(timeout=1.0)
+                assert client.get("/health/ready").status_code == 200
+    finally:
+        manager.clear()
 
 
 def test_build_platform_app_loads_dependent_sidecar_into_lifespan(monkeypatch: pytest.MonkeyPatch) -> None:

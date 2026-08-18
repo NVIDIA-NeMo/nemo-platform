@@ -22,14 +22,18 @@ from fastapi.responses import JSONResponse
 from nmp.common.api.utils import install_query_param_schema_openapi_hook
 from nmp.common.auth import AuthorizationMiddleware
 from nmp.common.config import get_auth_config, get_platform_config
-from nmp.common.controller import ControllerManager
 from nmp.common.http_clients import close_shared_http_clients
 from nmp.common.observability import initialize_obs, setup_fastapi_instrumentations, setup_global_instrumentations
 from nmp.common.observability.context import create_app_context_dependency
 from nmp.common.pyleak import detect_blocking
 from nmp.common.service import Service
 from nmp.platform_runner.config import DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_SECONDS, PlatformAppConfig
-from nmp.platform_runner.controller_threads import start_controller_threads
+from nmp.platform_runner.controller_threads import (
+    RUNNER_JOIN_TIMEOUT_SECONDS,
+    join_and_untrack_runner_threads,
+    start_controller_threads,
+    start_sidecar_threads,
+)
 from nmp.platform_runner.health import ReadinessCheck, create_platform_health_router, get_platform_resource_attributes
 from nmp.platform_runner.loader import (
     ControllerRunFunc,
@@ -39,6 +43,8 @@ from nmp.platform_runner.loader import (
 )
 from nmp.platform_runner.registry import (
     AVAILABLE_SIDECARS,
+    SELF_TRACKING_SIDECARS,
+    check_no_controller_sidecar_collision,
     get_available_controllers,
     get_available_services,
     get_openapi_service_names,
@@ -143,10 +149,13 @@ def create_app(
     controller_run_funcs: dict[str, ControllerRunFunc] | None = None,
     http_client: httpx.AsyncClient | None = None,
     access_key_lifecycle_http_client: httpx.AsyncClient | None = None,
+    sidecar_run_funcs: dict[str, ControllerRunFunc] | None = None,
 ) -> FastAPI:
     """Create the FastAPI app from service instances."""
     services = services or []
     controller_run_funcs = controller_run_funcs or {}
+    sidecar_run_funcs = sidecar_run_funcs or {}
+    check_no_controller_sidecar_collision(controller_run_funcs.keys(), sidecar_run_funcs.keys())
     controller_stop_signal = threading.Event()
     platform_config = get_platform_config()
     platform_config.services = ",".join(sorted(service.name for service in services))
@@ -166,10 +175,18 @@ def create_app(
     async def lifespan(app: FastAPI):
         logger.info("Starting Nemo Platform server")
         controller_threads = []
+        thread_by_name: dict[str, threading.Thread] = {}
         platform_seed_task: asyncio.Task[None] | None = None
         if controller_run_funcs:
             logger.info("Starting controllers in lifespan: %s", list(controller_run_funcs))
-            controller_threads.extend(start_controller_threads(controller_run_funcs, controller_stop_signal))
+            started = start_controller_threads(controller_run_funcs, controller_stop_signal)
+            thread_by_name.update(zip(controller_run_funcs, started))
+            controller_threads.extend(started)
+        if sidecar_run_funcs:
+            logger.info("Starting sidecars in lifespan: %s", list(sidecar_run_funcs))
+            started = start_sidecar_threads(sidecar_run_funcs, controller_stop_signal)
+            thread_by_name.update(zip(sidecar_run_funcs, started))
+            controller_threads.extend(started)
 
         if platform_seed_state is not None:
             try:
@@ -208,11 +225,12 @@ def create_app(
                 pass
 
         controller_stop_signal.set()
-        for thread in controller_threads:
-            thread.join(timeout=5)
-        manager = ControllerManager.get_instance()
-        for name in controller_run_funcs:
-            manager.stop_expecting_controller(name)
+        join_and_untrack_runner_threads(
+            controller_threads,
+            thread_by_name,
+            controller_run_funcs.keys() | (sidecar_run_funcs.keys() - SELF_TRACKING_SIDECARS),
+            join_timeout=RUNNER_JOIN_TIMEOUT_SECONDS,
+        )
 
         await close_shared_http_clients()
         logger.info("Shutting down Nemo Platform API server")
@@ -328,17 +346,15 @@ def build_platform_app(
         )
     service_instances = order_services_by_dependencies(service_instances)
 
-    collisions = resolved.controllers & resolved.sidecars
-    if collisions:
-        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
-
+    # create_app() below performs the same collision check on the loaded run
+    # funcs, which cover exactly resolved.controllers/resolved.sidecars.
     controller_run_funcs = _load_run_functions(sorted(resolved.controllers), resolved.available_controllers)
     sidecar_run_funcs = _load_run_functions(sorted(resolved.sidecars), AVAILABLE_SIDECARS)
-    controller_run_funcs.update(sidecar_run_funcs)
 
     return create_app(
         service_instances,
         controller_run_funcs=controller_run_funcs,
+        sidecar_run_funcs=sidecar_run_funcs,
         http_client=http_client,
         access_key_lifecycle_http_client=access_key_lifecycle_http_client,
     )

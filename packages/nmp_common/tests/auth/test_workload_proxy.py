@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Iterator
 from unittest.mock import patch
@@ -183,7 +184,7 @@ def _reset_controller_manager() -> Iterator[None]:
     ControllerManager._instance = None
 
 
-def test_run_registers_healthy_loop_for_health_reporting(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_registers_and_unregisters_healthy_loop_for_health_reporting(monkeypatch: pytest.MonkeyPatch) -> None:
     """A running auth-proxy must be visible to ControllerManager, not merely absent.
 
     Regression test for the sidecar being silently exempt from the crash-before-
@@ -205,22 +206,123 @@ def test_run_registers_healthy_loop_for_health_reporting(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _FakeServer)
 
+    manager = ControllerManager.get_instance()
+    for _ in range(2):
+        server_started.clear()
+        stop_signal = threading.Event()
+        run_thread = threading.Thread(target=workload_proxy_main.run, args=(stop_signal,), daemon=True)
+        run_thread.start()
+        try:
+            assert server_started.wait(timeout=2)
+
+            def _registered() -> bool:
+                return "auth-proxy" in manager.get_all_loops()
+
+            assert _wait_until(_registered)
+            assert _wait_until(lambda: manager.validate_all_healthy() == (True, {"auth-proxy": True}))
+        finally:
+            stop_signal.set()
+            run_thread.join(timeout=5)
+        assert not run_thread.is_alive()
+        assert manager.validate_all_healthy() == (True, {})
+
+
+def test_run_leaves_controller_tracked_when_uvicorn_thread_outlives_shutdown(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A hung uvicorn thread must not be silently untracked at shutdown.
+
+    Regression test: health_loop stops as soon as the stop signal is set,
+    regardless of whether the uvicorn thread it monitors is still alive, so
+    health_loop's own liveness can't be used to decide whether it's safe to
+    call stop_tracking_controller.
+    """
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    monkeypatch.setattr(workload_proxy_main, "_UVICORN_JOIN_TIMEOUT_SECONDS", 0.05)
+
+    server_started = threading.Event()
+    hang_forever = threading.Event()
+
+    class _HangingFakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            server_started.set()
+            hang_forever.wait(timeout=5)
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _HangingFakeServer)
+
+    manager = ControllerManager.get_instance()
     stop_signal = threading.Event()
     run_thread = threading.Thread(target=workload_proxy_main.run, args=(stop_signal,), daemon=True)
     run_thread.start()
-
     try:
         assert server_started.wait(timeout=2)
-        manager = ControllerManager.get_instance()
+        assert _wait_until(lambda: "auth-proxy" in manager.get_all_loops())
 
-        def _registered() -> bool:
-            return "auth-proxy" in manager.get_all_loops()
+        with caplog.at_level(logging.WARNING, logger="nmp.common.controller.controller_manager"):
+            stop_signal.set()
+            run_thread.join(timeout=5)
+        assert not run_thread.is_alive()
 
-        assert _wait_until(_registered)
-        assert manager.validate_all_healthy() == (True, {"auth-proxy": True})
+        assert "auth-proxy" in manager.get_all_loops()
+        assert "Leaving health tracking in place for 'auth-proxy'" in caplog.text
     finally:
-        stop_signal.set()
-        run_thread.join(timeout=5)
+        hang_forever.set()
+
+
+def test_run_setup_failure_before_server_start_is_visible_as_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A crash before the sidecar even starts its server must not be silently dropped.
+
+    Regression test: sidecars are run with track_controller_health=False in the
+    generic runner wrapper, so without the auth-proxy's own registration, a setup
+    failure here (e.g. a missing required env var) would be logged and discarded,
+    invisible to readiness checks.
+    """
+    monkeypatch.delenv("NMP_AUTH_PROXY_PRINCIPAL", raising=False)
+
+    manager = ControllerManager.get_instance()
+    stop_signal = threading.Event()
+
+    with pytest.raises(RuntimeError, match="NMP_AUTH_PROXY_PRINCIPAL"):
+        workload_proxy_main.run(stop_signal)
+
+    all_healthy, status = manager.validate_all_healthy()
+    assert all_healthy is False
+    assert status.get("auth-proxy") is False
+
+
+def test_run_registration_failure_stops_started_server_and_remains_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NMP_AUTH_PROXY_PRINCIPAL", "agents")
+    monkeypatch.setenv("NEMO_BASE_URL", "http://nemo-platform-api:8080")
+    server_stopped = threading.Event()
+
+    class _FakeServer:
+        def __init__(self, config: object) -> None:
+            self.should_exit = False
+
+        def run(self) -> None:
+            while not self.should_exit:
+                threading.Event().wait(timeout=0.01)
+            server_stopped.set()
+
+    monkeypatch.setattr(workload_proxy_main.uvicorn, "Server", _FakeServer)
+    manager = ControllerManager.get_instance()
+
+    def _fail_registration(_name: str, _loop: object) -> None:
+        raise ValueError("duplicate")
+
+    monkeypatch.setattr(manager, "register", _fail_registration)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        workload_proxy_main.run(threading.Event())
+
+    assert server_stopped.wait(timeout=2)
+    assert manager.validate_all_healthy() == (False, {"auth-proxy": False})
 
 
 def _wait_until(predicate, timeout: float = 2.0, interval: float = 0.02) -> bool:

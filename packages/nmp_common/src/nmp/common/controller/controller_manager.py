@@ -3,6 +3,7 @@
 
 """Controller manager for registering and managing control loops."""
 
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from logging import getLogger
@@ -28,6 +29,7 @@ class ControllerManager:
     """
 
     _instance: Optional[Self] = None
+    _instance_lock = RLock()
 
     def __init__(self):
         """Private constructor. Use get_instance() to get the singleton instance."""
@@ -35,9 +37,8 @@ class ControllerManager:
             raise RuntimeError("Use ControllerManager.get_instance() to get the singleton instance")
         self._loops: Dict[str, Loop] = {}
         self._reported_health: Dict[str, bool] = {}
-        self._expected_controllers: set[str] = set()
+        self._controllers_awaiting_registration: set[str] = set()
         self._registered_controllers: set[str] = set()
-        self._failed_controllers: set[str] = set()
         self._controller_loops: Dict[str, set[str]] = {}
         self._loop_controllers: Dict[str, str] = {}
         self._controller_context = local()
@@ -50,39 +51,59 @@ class ControllerManager:
         Returns:
             The singleton ControllerManager instance.
         """
-        if cls._instance is None:
-            cls._instance = cls.__new__(cls)
-            cls._instance._loops = {}
-            cls._instance._reported_health = {}
-            cls._instance._expected_controllers = set()
-            cls._instance._registered_controllers = set()
-            cls._instance._failed_controllers = set()
-            cls._instance._controller_loops = {}
-            cls._instance._loop_controllers = {}
-            cls._instance._controller_context = local()
-            cls._instance._lock = RLock()
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls.__new__(cls)
+                cls._instance._loops = {}
+                cls._instance._reported_health = {}
+                cls._instance._controllers_awaiting_registration = set()
+                cls._instance._registered_controllers = set()
+                cls._instance._controller_loops = {}
+                cls._instance._loop_controllers = {}
+                cls._instance._controller_context = local()
+                cls._instance._lock = RLock()
         return cls._instance
 
-    def expect_controller(self, name: str) -> None:
-        """Declare a runner-owned controller that must register at least one loop."""
+    def await_controller_registration(self, name: str) -> None:
+        """Track a runner-owned controller until it registers at least one loop."""
         with self._lock:
-            self._expected_controllers.add(name)
+            self._controllers_awaiting_registration.add(name)
             self._registered_controllers.discard(name)
-            self._failed_controllers.discard(name)
 
     def mark_controller_failed(self, name: str) -> None:
-        """Record that a runner-owned controller exited unexpectedly."""
-        with self._lock:
-            self._expected_controllers.add(name)
-            self._registered_controllers.discard(name)
-            self._failed_controllers.add(name)
+        """Record that a runner-owned controller exited unexpectedly.
 
-    def stop_expecting_controller(self, name: str) -> None:
-        """Remove runner-owned controller state during platform shutdown."""
+        Currently identical to await_controller_registration: a failed
+        controller is simply missing again until it (re-)registers. Kept as
+        a separate method so the two call sites (startup vs. failure) stay
+        independently named and can diverge again without a call-site edit.
+        """
+        self.await_controller_registration(name)
+
+    def stop_tracking_controller(self, name: str) -> None:
+        """Remove runner-owned controller state during platform shutdown.
+
+        A registered loop backed by a still-running thread (e.g. a sidecar's
+        internal health-tracking loop that outlives its wrapper thread) is
+        left tracked rather than dropped, so a controller whose own thread
+        never finished doesn't silently disappear from health checks.
+        """
         with self._lock:
-            self._expected_controllers.discard(name)
+            still_running = {
+                loop_name
+                for loop_name in self._controller_loops.get(name, set())
+                if isinstance((loop := self._loops.get(loop_name)), threading.Thread) and loop.is_alive()
+            }
+            if still_running:
+                logger.warning(
+                    "Leaving health tracking in place for %r; loop(s) %s still running",
+                    name,
+                    sorted(still_running),
+                )
+                return
+
+            self._controllers_awaiting_registration.discard(name)
             self._registered_controllers.discard(name)
-            self._failed_controllers.discard(name)
             self._reported_health.pop(name, None)
             for loop_name in self._controller_loops.pop(name, set()):
                 self._loop_controllers.pop(loop_name, None)
@@ -118,10 +139,11 @@ class ControllerManager:
             loop.name = name
             self._loops[name] = loop
             controller_name = getattr(self._controller_context, "name", None)
-            if controller_name in self._expected_controllers:
-                self._registered_controllers.add(controller_name)
+            if controller_name is not None:
                 self._controller_loops.setdefault(controller_name, set()).add(name)
                 self._loop_controllers[name] = controller_name
+                if controller_name in self._controllers_awaiting_registration:
+                    self._registered_controllers.add(controller_name)
         logger.debug(f"Registered loop: {name}")
 
     def unregister(self, name: str) -> None:
@@ -191,8 +213,14 @@ class ControllerManager:
         """
         with self._lock:
             loops = self._loops.copy()
-            missing_controllers = self._expected_controllers - self._registered_controllers
-            missing_controllers.update(self._failed_controllers)
+            missing_controllers = self._controllers_awaiting_registration - self._registered_controllers
+            # A controller can land in missing_controllers either because it never
+            # registered a loop, or because it registered fine and later exited
+            # unexpectedly (mark_controller_failed() re-adds it here without
+            # touching _controller_loops). Distinguish the two for logging so the
+            # reason doesn't claim a controller "never registered" when it ran
+            # successfully first.
+            previously_registered = {name for name in missing_controllers if self._controller_loops.get(name)}
 
         if not loops and not missing_controllers:
             logger.debug("No loops registered for health validation")
@@ -202,7 +230,12 @@ class ControllerManager:
         all_healthy = not missing_controllers
 
         for name in missing_controllers:
-            self._log_health_transition(name, False, "controller has not registered a control loop")
+            reason = (
+                "controller exited unexpectedly after registering a control loop"
+                if name in previously_registered
+                else "controller has not registered a control loop"
+            )
+            self._log_health_transition(name, False, reason)
 
         for name, loop in loops.items():
             # Runner-level startup/exit failure takes precedence when a
@@ -247,11 +280,11 @@ class ControllerManager:
                 return
             self._reported_health[name] = is_healthy
 
-        if is_healthy:
-            if previous is not None:
-                logger.info(f"Control loop '{name}' is healthy again")
-        else:
-            logger.warning(f"Control loop '{name}' is unhealthy: {reason or 'reason unavailable'}")
+            if is_healthy:
+                if previous is not None:
+                    logger.info(f"Control loop '{name}' is healthy again")
+            else:
+                logger.warning(f"Control loop '{name}' is unhealthy: {reason or 'reason unavailable'}")
 
     def clear(self) -> None:
         """Clear all registered loops.
@@ -262,9 +295,8 @@ class ControllerManager:
             count = len(self._loops)
             self._loops.clear()
             self._reported_health.clear()
-            self._expected_controllers.clear()
+            self._controllers_awaiting_registration.clear()
             self._registered_controllers.clear()
-            self._failed_controllers.clear()
             self._controller_loops.clear()
             self._loop_controllers.clear()
         logger.info(f"Cleared {count} registered loop(s)")

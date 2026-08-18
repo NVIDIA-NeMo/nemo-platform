@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from functools import cache
 
 from nemo_platform_plugin.discovery import discover_controllers, discover_services
@@ -40,9 +41,29 @@ AVAILABLE_SIDECARS: dict[str, str] = {
     "auth-proxy": "nmp.common.auth.workload_proxy.main:run",
 }
 
+# Sidecars that register with ControllerManager and untrack themselves end-to-end
+# (see workload_proxy/main.py). The generic runner shutdown path must not also
+# call stop_tracking_controller for these: its "is the wrapper thread still
+# alive" check can't see a sidecar's own sub-thread (e.g. auth-proxy's uvicorn
+# thread), so a redundant call there could silently undo the sidecar's own,
+# more accurate decision to leave a still-running sub-thread tracked.
+SELF_TRACKING_SIDECARS: frozenset[str] = frozenset({"auth-proxy"})
+
 SERVICE_SIDECAR_DEPENDENCIES: dict[str, set[str]] = {
     "models": {"adapters"},
 }
+
+
+def check_no_controller_sidecar_collision(controller_names: Iterable[str], sidecar_names: Iterable[str]) -> None:
+    """Raise if a controller and a sidecar share a name.
+
+    ``ControllerManager`` tracks controllers and sidecars by name; a collision
+    would make their health tracking indistinguishable.
+    """
+    collisions = set(controller_names) & set(sidecar_names)
+    if collisions:
+        raise ValueError(f"Controller/sidecar name collision: {', '.join(sorted(collisions))}")
+
 
 CORE_SERVICES = [
     "auth",

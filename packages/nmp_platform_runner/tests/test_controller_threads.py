@@ -12,7 +12,7 @@ from typing import cast
 
 import pytest
 from nmp.common.controller import ControllerManager, Loop
-from nmp.platform_runner.controller_threads import start_controller_threads
+from nmp.platform_runner.controller_threads import start_controller_threads, start_sidecar_threads
 
 
 class _HealthyLoop:
@@ -63,4 +63,66 @@ def test_controller_that_exits_without_shutdown_is_unhealthy(caplog: pytest.LogC
             thread.join(timeout=2)
 
     assert manager.validate_all_healthy() == (False, {"models": False})
-    assert "Controller models exited unexpectedly" in caplog.text
+    assert "Controller 'models' exited unexpectedly" in caplog.text
+
+
+def test_controller_thread_name_does_not_duplicate_prefix() -> None:
+    stop_signal = threading.Event()
+
+    threads = start_controller_threads({"controller-models": lambda _stop_signal: None}, stop_signal)
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert threads[0].name == "controller-models"
+
+
+def test_sidecar_failure_is_logged_without_affecting_controller_health(caplog: pytest.LogCaptureFixture) -> None:
+    manager = ControllerManager.get_instance()
+    stop_signal = threading.Event()
+
+    def crash(_stop_signal: threading.Event) -> None:
+        raise ValueError("optional configuration is missing")
+
+    with caplog.at_level(logging.ERROR, logger="nmp.platform_runner.controller_threads"):
+        threads = start_sidecar_threads({"adapters": crash}, stop_signal)
+        for thread in threads:
+            thread.join(timeout=2)
+
+    assert manager.validate_all_healthy() == (True, {})
+    assert "Sidecar 'adapters' crashed" in caplog.text
+    assert threads[0].name == "sidecar-adapters"
+
+
+def test_self_tracking_sidecar_is_pending_before_its_thread_runs_any_code() -> None:
+    """A self-tracking sidecar must be visible as pending the instant its thread
+    is started, not only once that thread gets scheduled and runs its own
+    await_controller_registration call.
+
+    Regression test: unlike controllers (pre-registered synchronously on the
+    parent thread before thread.start()), a self-tracking sidecar's own
+    await_controller_registration call used to run only inside its spawned
+    thread — leaving a window between thread creation and that line executing
+    where a crash (or a readiness probe) would see no trace of it at all.
+    """
+    manager = ControllerManager.get_instance()
+    stop_signal = threading.Event()
+    thread_may_proceed = threading.Event()
+
+    def run(stop_signal: threading.Event) -> None:
+        # Blocks before doing anything else, including auth-proxy's own
+        # await_controller_registration call — simulates the gap between
+        # thread creation and the thread's first line of code executing.
+        thread_may_proceed.wait(timeout=2)
+        stop_signal.wait(timeout=2)
+
+    threads = start_sidecar_threads({"auth-proxy": run}, stop_signal)
+    try:
+        all_healthy, status = manager.validate_all_healthy()
+        assert all_healthy is False
+        assert status.get("auth-proxy") is False
+    finally:
+        thread_may_proceed.set()
+        stop_signal.set()
+        for thread in threads:
+            thread.join(timeout=2)
+        manager.stop_tracking_controller("auth-proxy")

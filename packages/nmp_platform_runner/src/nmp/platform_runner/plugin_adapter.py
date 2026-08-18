@@ -216,7 +216,15 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
             stop_signal=stop_signal,
         )
         loop.name = f"controller-plugin-{controller.name}"
-        ControllerManager.get_instance().register(loop.name, loop)
+        try:
+            ControllerManager.get_instance().register(loop.name, loop)
+        except Exception:
+            logger.exception(
+                "Plugin controller %r failed to register its control loop — controller will not run.",
+                controller.name,
+            )
+            adapter.shutdown()
+            return
         loop.start()
         loop.join()
 

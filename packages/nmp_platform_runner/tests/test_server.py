@@ -285,11 +285,13 @@ def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
     def fake_create_app(
         services,
         controller_run_funcs=None,
+        sidecar_run_funcs=None,
         http_client=None,
         access_key_lifecycle_http_client=None,
     ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
+        captured["sidecar_run_funcs"] = sidecar_run_funcs
         captured["http_client"] = http_client
         captured["access_key_lifecycle_http_client"] = access_key_lifecycle_http_client
         return FastAPI()
@@ -306,6 +308,7 @@ def test_build_platform_app_returns_app_without_running_uvicorn(monkeypatch):
     assert isinstance(app, FastAPI)
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {}
+    assert captured["sidecar_run_funcs"] == {}
     assert captured["http_client"] is None
     assert captured["access_key_lifecycle_http_client"] is lifecycle_http_client
 
@@ -322,11 +325,13 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
     def fake_create_app(
         services,
         controller_run_funcs=None,
+        sidecar_run_funcs=None,
         http_client=None,
         access_key_lifecycle_http_client=None,
     ):
         captured["services"] = services
         captured["controller_run_funcs"] = controller_run_funcs
+        captured["sidecar_run_funcs"] = sidecar_run_funcs
         captured["http_client"] = http_client
         captured["access_key_lifecycle_http_client"] = access_key_lifecycle_http_client
         return FastAPI()
@@ -341,6 +346,7 @@ def test_build_platform_app_accepts_platform_app_config(monkeypatch):
     assert isinstance(app, FastAPI)
     assert captured["services"] == [plugin_service]
     assert captured["controller_run_funcs"] == {}
+    assert captured["sidecar_run_funcs"] == {}
     assert captured["http_client"] is None
     assert captured["access_key_lifecycle_http_client"] is None
 
@@ -530,6 +536,17 @@ def test_create_app_without_seed_on_startup_keeps_health_ready_unchanged(monkeyp
     assert all(item["name"] != "platform-seed" for item in status["services"]["not_ready"])
 
 
+def test_create_app_rejects_controller_sidecar_name_collision(monkeypatch):
+    _patch_platform_app_config(monkeypatch, seed_on_startup=False)
+
+    with pytest.raises(ValueError, match="Controller/sidecar name collision: shared"):
+        server.create_app(
+            services=[],
+            controller_run_funcs={"shared": lambda _stop_signal: None},
+            sidecar_run_funcs={"shared": lambda _stop_signal: None},
+        )
+
+
 def test_create_app_reports_controller_that_crashes_before_registration(monkeypatch, caplog):
     _patch_platform_app_config(monkeypatch, seed_on_startup=False)
     crashed = threading.Event()
@@ -542,16 +559,20 @@ def test_create_app_reports_controller_that_crashes_before_registration(monkeypa
 
     manager = ControllerManager.get_instance()
     manager.clear()
-    with caplog.at_level(logging.ERROR, logger="nmp.platform_runner.controller_threads"):
-        with TestClient(server.create_app(services=[], controller_run_funcs={"models": crashing_controller})) as client:
-            assert crashed.wait(timeout=2)
-            response = client.get("/health/ready")
-            status = client.get("/status").json()
+    try:
+        with caplog.at_level(logging.ERROR, logger="nmp.platform_runner.controller_threads"):
+            with TestClient(
+                server.create_app(services=[], controller_run_funcs={"models": crashing_controller})
+            ) as client:
+                assert crashed.wait(timeout=2)
+                response = client.get("/health/ready")
+                status = client.get("/status").json()
 
-    assert response.status_code == 503
-    assert status["controllers"] == {"healthy": False, "status": {"models": False}}
-    assert "Controller models crashed" in caplog.text
-    manager.clear()
+        assert response.status_code == 503
+        assert status["controllers"] == {"healthy": False, "status": {"models": False}}
+        assert "Controller 'models' crashed" in caplog.text
+    finally:
+        manager.clear()
 
 
 def test_create_app_with_seed_on_startup_blocks_readiness_until_seed_completes(monkeypatch):

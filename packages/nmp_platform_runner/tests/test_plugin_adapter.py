@@ -219,6 +219,35 @@ def test_controller_skips_wait_when_no_dependencies(monkeypatch: pytest.MonkeyPa
     assert _list_objects_calls
 
 
+def test_registration_name_collision_still_runs_shutdown_and_reports_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A loop-name collision during registration must not leak the adapter's event loop.
+
+    Regression test: register() raising previously skipped straight past
+    loop.start()/loop.join(), so on_shutdown() never ran and the adapter's
+    asyncio event loop (already primed by on_startup()) was never closed.
+    """
+    manager = ControllerManager.get_instance()
+    manager.register("controller-plugin-test-controller", MagicMock(is_healthy=True, unhealthy_reason=None))
+
+    shutdown_calls: list[float] = []
+
+    class _CollidingController(_StubController):
+        async def on_shutdown(self) -> None:
+            shutdown_calls.append(time.monotonic())
+
+    run_func = make_controller_run_func(_CollidingController)
+    thread = threading.Thread(target=run_func, args=(threading.Event(),), daemon=True)
+    with caplog.at_level("ERROR"):
+        thread.start()
+        thread.join(timeout=_WAIT_DEADLINE_SECONDS)
+
+    assert not thread.is_alive()
+    assert shutdown_calls
+    assert "failed to register its control loop" in caplog.text
+
+
 def test_plugin_controller_registers_loop_for_health_reporting() -> None:
     stop_signal = threading.Event()
     thread = _run_controller_until_list_objects(_StubController, stop_signal)
