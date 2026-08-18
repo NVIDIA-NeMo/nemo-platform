@@ -20,6 +20,8 @@ import {
   getJobStartDate,
   getFormattedTrainingType,
   getProgressLogs,
+  formatMetricValue,
+  formatStepCount,
   getLossTiles,
   getTrainingProgressTiles,
   getTrainingBatchSize,
@@ -561,5 +563,37 @@ describe('getFinetuningType', () => {
     expect(getFinetuningType(unslothJob({ training: { finetuning_type: 'all_weights' } }))).toBe(
       'all_weights'
     );
+  });
+});
+
+describe('formatMetricValue', () => {
+  it('uses fixed notation for values a training run normally produces', () => {
+    expect(formatMetricValue(0.6964)).toBe('0.6964');
+    expect(formatMetricValue(-0.46)).toBe('-0.4600');
+    expect(formatMetricValue(0)).toBe('0.0000');
+  });
+
+  it('switches to exponential past the magnitude that would distort the tile grid', () => {
+    // toFixed(4) here would be "12000000000.0000" — 16 characters.
+    expect(formatMetricValue(1.2e10)).toBe('1.20e+10');
+    expect(formatMetricValue(-1.2e10)).toBe('-1.20e+10');
+  });
+
+  it('keeps fixed notation right below the threshold', () => {
+    expect(formatMetricValue(999_999)).toBe('999999.0000');
+    expect(formatMetricValue(1e6)).toBe('1.00e+6');
+  });
+});
+
+describe('formatStepCount', () => {
+  it('leaves ordinary step counts alone', () => {
+    expect(formatStepCount(0)).toBe('0');
+    expect(formatStepCount(210)).toBe('210');
+    expect(formatStepCount(9_999)).toBe('9,999');
+  });
+
+  it('compacts counts long enough to widen the column', () => {
+    expect(formatStepCount(1_234_567)).toBe('1.2M');
+    expect(formatStepCount(10_000)).toBe('10K');
   });
 });

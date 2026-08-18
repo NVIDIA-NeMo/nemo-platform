@@ -220,8 +220,35 @@ const summarizeMetric = (series?: CustomizationMetricValue[]): MetricSummary | u
   return { final, deltaFromStart };
 };
 
+/**
+ * Past this magnitude `toFixed` produces a string long enough to distort the tile grid, so the
+ * value switches to exponential. Diverged runs are exactly when these numbers get large.
+ */
+const EXPONENTIAL_ABOVE = 1e6;
+
+/**
+ * Longest phase label rendered before truncating. Known phases top out at "Processing
+ * Checkpoint" (21 chars); this only bites on phases the backend adds later, which are
+ * title-cased verbatim and otherwise unbounded.
+ */
+const MAX_PHASE_LENGTH = 22;
+
+const truncatePhase = (phase: string): string =>
+  phase.length > MAX_PHASE_LENGTH ? `${phase.slice(0, MAX_PHASE_LENGTH - 1)}…` : phase;
+
+export const formatMetricValue = (value: number, decimals = 4): string =>
+  Math.abs(value) >= EXPONENTIAL_ABOVE ? value.toExponential(2) : value.toFixed(decimals);
+
+/** Compact past four digits so a long run's step count cannot widen the column. */
+export const formatStepCount = (value: number): string =>
+  Math.abs(value) >= 10_000
+    ? new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
+        value
+      )
+    : value.toLocaleString();
+
 const formatDeltaHint = (delta: number, decimals: number): string =>
-  `${delta >= 0 ? '+' : ''}${delta.toFixed(decimals)} from start`;
+  `${delta >= 0 ? '+' : ''}${formatMetricValue(delta, decimals)} from start`;
 
 const NOT_AVAILABLE = '—';
 
@@ -231,7 +258,7 @@ const lossTile = (label: string, summary?: MetricSummary): StatTileProps => {
   }
   return {
     label,
-    value: summary.final.toFixed(4),
+    value: formatMetricValue(summary.final),
     hint:
       summary.deltaFromStart !== undefined ? formatDeltaHint(summary.deltaFromStart, 4) : undefined,
     hintStatus:
@@ -252,8 +279,8 @@ export const getTrainingProgressTiles = (
       telemetry.step === undefined
         ? NOT_AVAILABLE
         : telemetry.maxSteps
-          ? `${telemetry.step.toLocaleString()} / ${telemetry.maxSteps.toLocaleString()}`
-          : telemetry.step.toLocaleString(),
+          ? `${formatStepCount(telemetry.step)} / ${formatStepCount(telemetry.maxSteps)}`
+          : formatStepCount(telemetry.step),
   },
   {
     label: 'Epochs Completed',
@@ -348,19 +375,23 @@ export const getTrainingDiagnosticsTiles = (
     },
     {
       label: 'Gradient Norm',
-      value: telemetry.gradNorm?.toFixed(4) ?? NOT_AVAILABLE,
+      value:
+        telemetry.gradNorm !== undefined ? formatMetricValue(telemetry.gradNorm) : NOT_AVAILABLE,
       hint: 'at latest step',
     },
     {
       label: 'Train/Val Gap',
-      value: trainLoss && valLoss ? (valLoss.final - trainLoss.final).toFixed(4) : NOT_AVAILABLE,
+      value:
+        trainLoss && valLoss ? formatMetricValue(valLoss.final - trainLoss.final) : NOT_AVAILABLE,
       hint: 'validation - training',
     },
     isTerminal
       ? { label: 'Duration', value: duration, hint: 'total run time' }
       : {
           label: 'Phase',
-          value: telemetry.phase ? formatTrainingPhase(telemetry.phase) : NOT_AVAILABLE,
+          value: telemetry.phase
+            ? truncatePhase(formatTrainingPhase(telemetry.phase))
+            : NOT_AVAILABLE,
           hint: 'current stage',
         },
   ];

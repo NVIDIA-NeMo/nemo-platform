@@ -26,7 +26,7 @@ export const TrainingLossPanel: FC<Props> = ({
     <Stack gap="density-xl">
       <Flex gap="density-5xl" align="start" wrap="wrap">
         {metrics.length > 0 && (
-          <Grid cols={2} gap="density-5xl" className="w-full m-auto max-w-sm shrink-0 lg:w-auto">
+          <Grid cols={2} gap="density-5xl" className="m-auto w-full min-w-0 shrink-0 lg:w-[22rem]">
             {metrics.map((tile) => (
               <StatTile key={tile.label} {...tile} bordered={false} />
             ))}

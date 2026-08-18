@@ -43,7 +43,9 @@ export const StatTile: FC<StatTileProps> = ({
         {label}
       </Text>
       <Flex align="baseline" gap="density-sm" wrap="wrap">
-        <Text kind="label/bold/2xl">{value}</Text>
+        <Text kind="label/bold/2xl" className="tabular-nums">
+          {value}
+        </Text>
         {trailingLabel ? (
           <Text
             kind="body/regular/sm"
