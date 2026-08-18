@@ -217,13 +217,13 @@ class TasksetRef(RootModel[str]):
 
 
 class TaskInputs(BaseModel):
-    """A task's recognized input fields.
+    """Inputs supplied to a task.
 
-    ``extra="forbid"``: only the field below is accepted. ``instruction`` is the agent's prompt; the
-    runtime falls back to the task ``intent`` when it is unset.
+    ``instruction`` is the agent's prompt. Additional task- or runtime-specific inputs are accepted
+    and preserved as arbitrary JSON-compatible values.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     instruction: str | None = Field(
         default=None, description="The agent's instruction (its prompt). Falls back to the task `intent` when unset."

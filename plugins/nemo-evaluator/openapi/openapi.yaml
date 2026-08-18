@@ -2337,7 +2337,7 @@ components:
         inputs:
           allOf:
           - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
+          description: Inputs supplied to the task.
         reference:
           additionalProperties: true
           type: object
@@ -2389,7 +2389,7 @@ components:
         inputs:
           allOf:
           - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
+          description: Inputs supplied to the task.
         reference:
           additionalProperties: true
           type: object
@@ -3490,7 +3490,7 @@ components:
         inputs:
           allOf:
           - $ref: '#/components/schemas/TaskInputs'
-          description: The task's recognized input fields.
+          description: Inputs supplied to the task.
         metrics:
           items:
             anyOf:
@@ -5434,16 +5434,16 @@ components:
           description: The agent's instruction (its prompt). Falls back to the task
             `intent` when unset.
           type: string
-      additionalProperties: false
+      additionalProperties: true
       type: object
       title: TaskInputs
-      description: 'A task''s recognized input fields.
+      description: 'Inputs supplied to a task.
 
 
-        ``extra="forbid"``: only the field below is accepted. ``instruction`` is the
-        agent''s prompt; the
+        ``instruction`` is the agent''s prompt. Additional task- or runtime-specific
+        inputs are accepted
 
-        runtime falls back to the task ``intent`` when it is unset.'
+        and preserved as arbitrary JSON-compatible values.'
     TaskRef:
       type: string
       pattern: ^[\w\-.]+(/[\w\-.]+)?(#[\w\-.]+)?$

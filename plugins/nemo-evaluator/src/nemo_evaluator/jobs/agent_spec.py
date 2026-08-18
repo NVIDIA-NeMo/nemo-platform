@@ -261,7 +261,7 @@ class _AgentEvalTaskCommon(BaseModel):
 
     id: str = Field(description="Stable task identifier, unique within the task collection.")
     intent: str = Field(description="Human-readable description of the desired agent behavior.")
-    inputs: TaskInputs = Field(default_factory=TaskInputs, description="The task's recognized input fields.")
+    inputs: TaskInputs = Field(default_factory=TaskInputs, description="Inputs supplied to the task.")
     reference: dict[str, Any] = Field(
         default_factory=dict,
         description="Grader-only ground truth (held-out tests, expected outputs, rubric data). Surfaced to "

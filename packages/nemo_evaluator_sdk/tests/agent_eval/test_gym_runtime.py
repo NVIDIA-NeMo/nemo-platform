@@ -127,7 +127,7 @@ def test_discover_gym_tasks_ingests_rows_with_no_prompt(name: str, row: dict, tm
     with pytest.raises(ValueError, match="has no instruction"):
         task.agent_prompt()
     # ...but everything the Gym path actually needs survives: the row round-trips whole.
-    assert task.metadata["gym_row"] == row["responses_create_params"]
+    assert task.inputs["gym_row"] == row["responses_create_params"]
     assert task.metadata["gym_row_extras"] == {k: v for k, v in row.items() if k != "responses_create_params"}
 
 
@@ -300,7 +300,7 @@ def test_materialize_dataset_requires_source_rows(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="gym_row_extras"):
         _materialize_dataset([no_extras], tmp_path / "gym_input.jsonl")
     # the other half of the split is equally required
-    no_params = tasks[0].model_copy(update={"metadata": {k: v for k, v in tasks[0].metadata.items() if k != "gym_row"}})
+    no_params = tasks[0].model_copy(update={"inputs": {k: v for k, v in tasks[0].inputs.items() if k != "gym_row"}})
     with pytest.raises(ValueError, match="gym_row"):
         _materialize_dataset([no_params], tmp_path / "gym_input.jsonl")
 
@@ -396,7 +396,7 @@ def test_source_datasets_is_provenance_only_and_never_raises() -> None:
 
 
 def test_materialize_dataset_reassembles_row_without_storing_params_twice(tmp_path: Path) -> None:
-    # The task already carries responses_create_params under metadata['gym_row']; gym_row_extras must
+    # The task already carries responses_create_params under inputs['gym_row']; gym_row_extras must
     # hold only the *rest* of the row so the run bundle does not persist the same payload twice per task.
     tasks = discover_gym_tasks(EXAMPLE)
     extras = tasks[0].metadata["gym_row_extras"]

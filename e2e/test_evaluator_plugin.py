@@ -764,7 +764,6 @@ def _gym_task_payloads(limit: int) -> list[dict[str, object]]:
         {
             "id": task.id,
             "intent": task.intent,
-            # gym_row travels via metadata, not inputs (see `discover_gym_tasks`).
             "inputs": task.inputs or {},
             "reference": task.reference or {},
             "metrics": [bundled_reward],

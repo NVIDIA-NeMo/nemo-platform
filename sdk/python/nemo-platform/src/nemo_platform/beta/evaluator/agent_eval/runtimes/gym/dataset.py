@@ -10,16 +10,20 @@ two directions of one translation: what breaks one silently breaks the other.
 
 from __future__ import annotations
 
-import hashlib
 import json
+import hashlib
 import logging
-from collections.abc import Mapping, Sequence
-from pathlib import Path
 from typing import Any
+from pathlib import Path
+from collections.abc import Mapping, Sequence
 
-from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.records import _RUNTIME_KEYS, NG_TASK_INDEX, _read_jsonl
-from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.results import GymRewardMetric
 from nemo_platform.beta.evaluator.agent_eval.tasks import AgentEvalTask
+from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.records import (
+    _RUNTIME_KEYS,
+    NG_TASK_INDEX,
+    _read_jsonl,
+)
+from nemo_platform.beta.evaluator.agent_eval.runtimes.gym.results import GymRewardMetric
 
 logger = logging.getLogger(__name__)
 
@@ -95,17 +99,12 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
 
     Each task's id is the content hash of the row; its ``instruction`` is rendered
     from ``responses_create_params.input`` *when the row carries one*; the raw params
-    are stashed under ``metadata['gym_row']`` for provenance; and it is scored by a
+    are stashed under ``inputs['gym_row']`` for provenance; and it is scored by a
     :class:`GymRewardMetric`. The dataset path is stamped on
     ``metadata['gym_dataset_path']``, and every *other* row key (the verifier's
     ground-truth fields, ``agent_ref``, and so on) on ``metadata['gym_row_extras']``.
-    Together with ``metadata['gym_row']`` those reconstruct the complete source row,
+    Together with ``inputs['gym_row']`` those reconstruct the complete source row,
     which :class:`GymAgentTaskRunner` re-materializes into the dataset it hands to Gym.
-    ``gym_row`` lives in metadata rather than ``inputs`` deliberately: the wire-facing
-    ``TaskInputs`` DTO (``extra="forbid"``) only recognizes ``instruction``, so an
-    arbitrary dataset row has nowhere to travel through a submitted job spec except
-    metadata — the same reason ``HarborRunnerTarget`` recovers its dataset via
-    ``harbor_dataset_path`` metadata rather than ``inputs``.
 
     **One distinct row is one task.** Duplicate rows collapse (identity is row content,
     so they are by definition the same task) and are reported as a warning: repeated
@@ -119,7 +118,7 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
     :func:`_render_instruction`). Such a row yields a task with **no** ``inputs['instruction']``
     key rather than a fabricated one, and is counted in a summary log line. This costs the
     Gym path nothing: the runner never reads ``instruction`` — it re-materializes the source
-    row from ``metadata['gym_row']`` + ``metadata['gym_row_extras']`` and hands *that* to Gym,
+    row from ``inputs['gym_row']`` + ``metadata['gym_row_extras']`` and hands *that* to Gym,
     and ``intent`` is a dataset label either way. It stays absent (not ``""``) so that
     :meth:`AgentEvalTask.agent_prompt` still fails loudly for the runners that *do* need a
     prompt — an instruction-less task must not reach an agent as an empty one.
@@ -155,12 +154,12 @@ def discover_gym_tasks(dataset: str | Path, *, metrics: Sequence[Any] | None = N
                 inputs={
                     # Absent, not empty, when the row carries no prompt — see the docstring.
                     **({"instruction": instruction} if instruction else {}),
+                    "gym_row": params,
                 },
                 metrics=list(metrics) if metrics is not None else [GymRewardMetric()],
                 metadata={
                     "gym_dataset_path": str(dataset),
-                    "gym_row": row.get("responses_create_params"),
-                    # Everything except responses_create_params, which already lives in metadata['gym_row'].
+                    # Everything except responses_create_params, which already lives in inputs['gym_row'].
                     "gym_row_extras": {
                         key: value
                         for key, value in row.items()
@@ -210,12 +209,11 @@ def _source_datasets(tasks: Sequence[AgentEvalTask]) -> str:
 
 
 def _coerce_gym_metadata_mapping(value: Any) -> Mapping[str, Any] | None:
-    """Normalize a ``gym_row``/``gym_row_extras`` metadata value to a mapping, or ``None``.
+    """Normalize a ``gym_row_extras`` metadata value to a mapping, or ``None``.
 
     In-process (:func:`discover_gym_tasks`) writes these as plain dicts. A task that has
     round-tripped through a submitted job spec carries them as JSON strings instead — wire
-    metadata values are typed as ``str`` (``TaskInputs`` has no field for arbitrary dataset
-    content, so metadata is the only channel that survives submission).
+    metadata values are typed as ``str``.
     """
     if isinstance(value, Mapping):
         return value
@@ -232,24 +230,24 @@ def _materialize_dataset(tasks: Sequence[AgentEvalTask], dest: Path) -> dict[int
     stamped ``_ng_task_index``. Gym honors a pre-supplied index instead of deriving one, so this makes
     the rollout→task join total and order-independent, and confines the run to the tasks we asked for.
 
-    The row is reassembled from ``metadata['gym_row']`` (``responses_create_params``) and
+    The row is reassembled from ``inputs['gym_row']`` (``responses_create_params``) and
     ``metadata['gym_row_extras']`` (everything else), which :func:`discover_gym_tasks` writes as
-    plain dicts in-process. A task that has round-tripped through a submitted job spec carries
-    both as JSON-encoded strings instead (metadata values are wire-typed as ``str``), so both
-    shapes are accepted here. Any pre-existing ``_ng_*`` fields are stripped: ours is
+    plain dicts in-process. A task that has round-tripped through a submitted job spec carries the
+    metadata value as a JSON-encoded string, so both shapes are accepted for the extras. Any
+    pre-existing ``_ng_*`` fields are stripped: ours is
     authoritative, and Gym assigns ``_ng_rollout_index`` itself per attempt.
     """
     index_to_task_id: dict[int, str] = {}
     seen_task_ids: set[str] = set()
     lines: list[str] = []
     for index, task in enumerate(tasks):
-        # The source row is stored split across two metadata keys so the run bundle doesn't persist
+        # The source row is split across inputs and metadata so the run bundle doesn't persist
         # responses_create_params twice; reassemble it here.
         extras = _coerce_gym_metadata_mapping(task.metadata.get("gym_row_extras"))
-        params = _coerce_gym_metadata_mapping(task.metadata.get("gym_row"))
-        if extras is None or params is None:
+        params = task.inputs.get("gym_row")
+        if extras is None or not isinstance(params, Mapping):
             raise ValueError(
-                f"task {task.id!r} is missing metadata['gym_row'] and/or metadata['gym_row_extras']; build tasks "
+                f"task {task.id!r} is missing inputs['gym_row'] and/or metadata['gym_row_extras']; build tasks "
                 "with discover_gym_tasks so the Gym dataset can be re-materialized for the run"
             )
         if task.id in seen_task_ids:
