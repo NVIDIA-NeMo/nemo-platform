@@ -27,10 +27,14 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
 import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
-import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
+import {
+  VirtualModelDetailsSidePanel,
+  type VirtualModelPanelTab,
+} from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { Waypoints } from 'lucide-react';
-import { type ComponentProps, type FC, useCallback, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router';
 
 export interface VirtualModelsDataViewProps {
   workspace: string;
@@ -52,6 +56,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
 }) => {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const {
     isOpen: isDetailsPanelOpen,
@@ -65,6 +70,15 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
   });
 
   const [modalVirtualModel, setModalVirtualModel] = useState<VirtualModel>();
+  const [detailsPanelTab, setDetailsPanelTab] = useState<VirtualModelPanelTab>('details');
+
+  const openVirtualModelPanel = useCallback(
+    (virtualModel: VirtualModelWithId, tab: VirtualModelPanelTab) => {
+      setDetailsPanelTab(tab);
+      openDetailsPanel(virtualModel);
+    },
+    [openDetailsPanel]
+  );
 
   const sortState = dataViewState.sorting.state[0];
   const sortParam = sortState
@@ -132,6 +146,27 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
       })),
     [virtualModels]
   );
+
+  useEffect(() => {
+    const linkedName = searchParams.get('virtualModel');
+    if (!linkedName || vmForDetails?.name === linkedName) return;
+    const linkedVirtualModel = virtualModelsWithId.find((vm) => vm.name === linkedName);
+    if (!linkedVirtualModel) return;
+    openVirtualModelPanel(
+      linkedVirtualModel,
+      searchParams.get('tab') === 'chat' ? 'chat' : 'details'
+    );
+  }, [openVirtualModelPanel, searchParams, virtualModelsWithId, vmForDetails?.name]);
+
+  const closeVirtualModelPanel = useCallback(() => {
+    if (searchParams.has('virtualModel') || searchParams.has('tab')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('virtualModel');
+      nextParams.delete('tab');
+      setSearchParams(nextParams, { replace: true });
+    }
+    closeDetailsPanel();
+  }, [closeDetailsPanel, searchParams, setSearchParams]);
 
   const handleDeleteVirtualModel = async () => {
     if (!modalVirtualModel?.name) return false;
@@ -224,7 +259,11 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           rowActions: (vm: VirtualModelWithId) => [
             {
               children: 'View',
-              onSelect: () => openDetailsPanel(vm),
+              onSelect: () => openVirtualModelPanel(vm, 'details'),
+            },
+            {
+              children: 'Chat',
+              onSelect: () => openVirtualModelPanel(vm, 'chat'),
             },
             {
               children: 'Delete',
@@ -234,7 +273,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
           ],
         }),
       ],
-      [openDetailsPanel, workspace]
+      [openVirtualModelPanel, workspace]
     );
 
   const hasSearchOrFilters =
@@ -264,7 +303,7 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         dataViewState={dataViewState}
         searchField="name"
         makeColumns={makeColumns}
-        onRowClick={(row: VirtualModelWithId) => openDetailsPanel(row)}
+        onRowClick={(row: VirtualModelWithId) => openVirtualModelPanel(row, 'details')}
         attributes={{
           DataViewSearchBar: {
             placeholder: 'Search by name...',
@@ -314,7 +353,8 @@ export const VirtualModelsDataView: FC<VirtualModelsDataViewProps> = ({
         <VirtualModelDetailsSidePanel
           open={isDetailsPanelOpen}
           virtualModel={vmForDetails}
-          onClose={closeDetailsPanel}
+          defaultTab={detailsPanelTab}
+          onClose={closeVirtualModelPanel}
         />
       )}
     </Stack>

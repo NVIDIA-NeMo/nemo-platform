@@ -4,6 +4,7 @@
 import { VirtualModel } from '@nemo/sdk/generated/platform/schema';
 import { VirtualModelDetailsSidePanel } from '@studio/routes/VirtualModelsListRoute/VirtualModelDetailsSidePanel';
 import { renderRoute, screen } from '@studio/tests/util/render';
+import userEvent from '@testing-library/user-event';
 
 const vm: VirtualModel = {
   id: 'default/my-vm',
@@ -44,5 +45,26 @@ describe('VirtualModelDetailsSidePanel', () => {
 
     expect(screen.getByText('Post-response')).toBeInTheDocument();
     expect(screen.getAllByText('None').length).toBeGreaterThan(0);
+  });
+
+  it('chats with the virtual model from the Chat tab', async () => {
+    const user = userEvent.setup();
+    renderRoute(<VirtualModelDetailsSidePanel open virtualModel={vm} onClose={() => {}} />);
+
+    await user.click(screen.getByRole('radio', { name: 'Chat' }));
+
+    expect(screen.getByRole('textbox', { name: 'Task prompt' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Inference parameters' }));
+    expect(screen.getByRole('spinbutton', { name: 'Max tokens value' })).toHaveValue(4096);
+  });
+
+  it('can open directly on the Chat tab', () => {
+    renderRoute(
+      <VirtualModelDetailsSidePanel open virtualModel={vm} defaultTab="chat" onClose={() => {}} />
+    );
+
+    expect(screen.getByRole('radio', { name: 'Chat' })).toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'Task prompt' })).toBeInTheDocument();
   });
 });

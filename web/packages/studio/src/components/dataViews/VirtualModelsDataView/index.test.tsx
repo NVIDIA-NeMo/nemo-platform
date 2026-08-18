@@ -127,4 +127,27 @@ describe('VirtualModelsDataView', () => {
 
     await waitFor(() => expect(deleted).toBe(true));
   });
+
+  it('opens chat for a virtual model through the row action', async () => {
+    const user = userEvent.setup();
+    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
+    renderDataView();
+
+    await screen.findByText('my-vm');
+
+    await user.click(screen.getByRole('button', { name: 'Row Actions' }));
+    await user.click(await screen.findByText('Chat'));
+
+    expect(screen.getByRole('radio', { name: 'Chat' })).toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'Task prompt' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
+  });
+
+  it('opens a linked virtual model directly on its chat tab', async () => {
+    server.use(http.get(VMS_URL, () => HttpResponse.json(page([sampleVm]))));
+    renderDataViewAt('/workspaces/default/virtual-models?virtualModel=my-vm&tab=chat');
+
+    expect(await screen.findByRole('radio', { name: 'Chat' })).toBeChecked();
+    expect(screen.getByPlaceholderText('Message my-vm')).toBeInTheDocument();
+  });
 });

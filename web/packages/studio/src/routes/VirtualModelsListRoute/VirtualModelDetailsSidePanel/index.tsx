@@ -4,8 +4,18 @@
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import type { MiddlewareCall, VirtualModel } from '@nemo/sdk/generated/platform/schema';
-import { Block, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
-import type { FC } from 'react';
+import {
+  Block,
+  Flex,
+  SegmentedControl,
+  SidePanel,
+  Stack,
+  Text,
+} from '@nvidia/foundations-react-core';
+import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
+import { ParamsPopover } from '@studio/components/chat/ParamsPopover';
+import { ModelChat } from '@studio/components/ModelChat';
+import { type FC, useEffect, useMemo, useState } from 'react';
 
 const MiddlewareCallView: FC<{ call: MiddlewareCall }> = ({ call }) => (
   <Block className="rounded-lg border border-base bg-surface-raised p-density-md">
@@ -55,18 +65,40 @@ export interface VirtualModelDetailsSidePanelProps {
   open: boolean;
   onClose: () => void;
   virtualModel: VirtualModel;
+  defaultTab?: VirtualModelPanelTab;
 }
+
+export type VirtualModelPanelTab = 'details' | 'chat';
 
 export const VirtualModelDetailsSidePanel: FC<VirtualModelDetailsSidePanelProps> = ({
   open,
   onClose,
   virtualModel,
+  defaultTab = 'details',
 }) => {
   const models = virtualModel.models ?? [];
+  const virtualModelName = virtualModel.name ?? '';
+  const virtualModelWorkspace = virtualModel.workspace ?? '';
+  const [selectedTab, setSelectedTab] = useState<VirtualModelPanelTab>(defaultTab);
+  const [inferenceParams, setInferenceParams] = useState<InferenceParams>({
+    ...DEFAULT_INFERENCE_PARAMS,
+    max_tokens: 4096,
+  });
+  const tabItems = useMemo(
+    () => [
+      { value: 'details', children: 'Details' },
+      { value: 'chat', children: 'Chat' },
+    ],
+    []
+  );
+
+  useEffect(() => {
+    setSelectedTab(defaultTab);
+  }, [defaultTab, virtualModel.name, virtualModel.workspace]);
 
   return (
     <SidePanel
-      className="w-[600px]"
+      className="[&.nv-side-panel-content]:w-[600px] [&_.nv-side-panel-main]:gap-4 [&_.nv-side-panel-main]:p-0"
       bordered
       modal
       open={open}
@@ -81,65 +113,95 @@ export const VirtualModelDetailsSidePanel: FC<VirtualModelDetailsSidePanelProps>
         }
       }}
     >
-      <Stack className="min-h-0 flex-1 gap-density-lg overflow-auto">
-        <Stack className="gap-density-md">
-          <KVPair
-            label="Created"
-            orientation="horizontal"
-            size="medium"
-            value={
-              virtualModel.created_at ? (
-                <RelativeTime datetime={virtualModel.created_at} focusableForTooltip={false} />
-              ) : (
-                '—'
-              )
-            }
-          />
-          <KVPair
-            label="Default model"
-            orientation="horizontal"
-            size="medium"
-            truncate={false}
-            value={virtualModel.default_model_entity || '—'}
-          />
-          <KVPair
-            label="Autoprovisioned"
-            orientation="horizontal"
-            size="medium"
-            value={virtualModel.autoprovisioned ? 'Yes' : 'No'}
-          />
-          {virtualModel.override_proxy ? (
+      <Block className="w-full px-4">
+        <SegmentedControl
+          className="[&.nv-segmented-control-root]:mt-4 w-full!"
+          value={selectedTab}
+          items={tabItems}
+          onValueChange={(value) => setSelectedTab(value as VirtualModelPanelTab)}
+        />
+      </Block>
+
+      {selectedTab === 'details' ? (
+        <Stack className="min-h-0 flex-1 gap-density-lg overflow-auto px-4 pb-4">
+          <Stack className="gap-density-md">
             <KVPair
-              label="Override proxy"
+              label="Created"
+              orientation="horizontal"
+              size="medium"
+              value={
+                virtualModel.created_at ? (
+                  <RelativeTime datetime={virtualModel.created_at} focusableForTooltip={false} />
+                ) : (
+                  '—'
+                )
+              }
+            />
+            <KVPair
+              label="Default model"
               orientation="horizontal"
               size="medium"
               truncate={false}
-              value={virtualModel.override_proxy}
+              value={virtualModel.default_model_entity || '—'}
             />
-          ) : null}
-          <KVPair
-            attributes={{ value: { className: 'whitespace-pre-wrap' } }}
-            label="Models"
-            orientation="horizontal"
-            size="medium"
-            truncate={false}
-            value={
-              models.length > 0
-                ? models
-                    .map((m) => (m.backend_format ? `${m.model} (${m.backend_format})` : m.model))
-                    .join('\n')
-                : '—'
-            }
-          />
-        </Stack>
+            <KVPair
+              label="Autoprovisioned"
+              orientation="horizontal"
+              size="medium"
+              value={virtualModel.autoprovisioned ? 'Yes' : 'No'}
+            />
+            {virtualModel.override_proxy ? (
+              <KVPair
+                label="Override proxy"
+                orientation="horizontal"
+                size="medium"
+                truncate={false}
+                value={virtualModel.override_proxy}
+              />
+            ) : null}
+            <KVPair
+              attributes={{ value: { className: 'whitespace-pre-wrap' } }}
+              label="Models"
+              orientation="horizontal"
+              size="medium"
+              truncate={false}
+              value={
+                models.length > 0
+                  ? models
+                      .map((m) => (m.backend_format ? `${m.model} (${m.backend_format})` : m.model))
+                      .join('\n')
+                  : '—'
+              }
+            />
+          </Stack>
 
-        <Stack className="gap-density-md">
-          <Text kind="label/bold/md">Middleware</Text>
-          <MiddlewarePipeline label="Request" calls={virtualModel.request_middleware} />
-          <MiddlewarePipeline label="Response" calls={virtualModel.response_middleware} />
-          <MiddlewarePipeline label="Post-response" calls={virtualModel.post_response_middleware} />
+          <Stack className="gap-density-md">
+            <Text kind="label/bold/md">Middleware</Text>
+            <MiddlewarePipeline label="Request" calls={virtualModel.request_middleware} />
+            <MiddlewarePipeline label="Response" calls={virtualModel.response_middleware} />
+            <MiddlewarePipeline
+              label="Post-response"
+              calls={virtualModel.post_response_middleware}
+            />
+          </Stack>
         </Stack>
-      </Stack>
+      ) : (
+        <Stack className="min-h-0 flex-1">
+          <Flex align="center" justify="end" className="shrink-0 border-b border-base px-4 pb-3">
+            <ParamsPopover value={inferenceParams} onChange={setInferenceParams} />
+          </Flex>
+          <Block className="h-full min-h-0" padding="4">
+            <ModelChat
+              key={`${virtualModelWorkspace}/${virtualModelName}`}
+              model={virtualModelName}
+              workspace={virtualModelWorkspace}
+              assistantName={virtualModelName}
+              disabled={!virtualModelName || !virtualModelWorkspace}
+              promptData={{ inference_params: inferenceParams }}
+            />
+          </Block>
+        </Stack>
+      )}
     </SidePanel>
   );
 };
