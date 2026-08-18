@@ -31,7 +31,7 @@ export interface RailDefinition {
   /** Name shown in the rail list. */
   label: string;
   /** Stages this rail can run at, in pipeline order. Shown whether or not it is on. */
-  scopes: RailScope[];
+  scopes: readonly RailScope[];
   /** True when the rail is currently running, i.e. any of its flows are present. */
   isEnabled: (data: RailsConfig) => boolean;
   /**
@@ -42,7 +42,11 @@ export interface RailDefinition {
    * {@link clearSettings} to discard those too.
    */
   setEnabled: (data: RailsConfig, enabled: boolean) => RailsConfig;
-  /** True when the rail is off but still holds settings that could be discarded. */
+  /**
+   * True when the config holds settings this rail owns — regardless of whether it is
+   * running. Callers decide when discarding is appropriate; the list only offers it for a
+   * rail that is switched off, since {@link clearSettings} would otherwise stop a live one.
+   */
   hasStoredSettings: (data: RailsConfig) => boolean;
   /** Remove everything this rail owns, including anything {@link setEnabled} kept. */
   clearSettings: (data: RailsConfig) => RailsConfig;

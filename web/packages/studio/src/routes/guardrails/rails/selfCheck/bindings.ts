@@ -31,7 +31,7 @@ export interface SelfCheckBinding {
   task: string;
   defaultPrompt: string;
   /** Template variables available to this stage's prompt. */
-  variables: string[];
+  variables: readonly string[];
 }
 
 export const SELF_CHECK_SCOPES: Record<SelfCheckScope, SelfCheckBinding> = {

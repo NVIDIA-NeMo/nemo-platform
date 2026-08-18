@@ -42,7 +42,7 @@ export interface PromptScopeSectionProps {
   prompt: string;
   onPromptChange: (prompt: string) => void;
   /** Template variables this stage can reference, e.g. `{{ user_input }}`. */
-  variables: string[];
+  variables: readonly string[];
 }
 
 export const PromptScopeSection: FC<PromptScopeSectionProps> = ({

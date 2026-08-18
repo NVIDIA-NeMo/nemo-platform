@@ -20,9 +20,13 @@ export const RawConfigSection: FC<{ data: RailsConfig }> = ({ data }) => (
       <Text kind="body/regular/sm" className="text-text-secondary">
         The full configuration, including any settings this page does not surface. Read-only.
       </Text>
-      {/* Grows with the document between bounds, matching other editors in Studio. */}
+      {/*
+        A definite height, not min/max: CodeMirror sizes itself to the container, and with
+        only a max-height the editor grows to the full document (3000px+ for a real config)
+        and spills out of the panel instead of scrolling.
+      */}
       <CodeEditor
-        className="min-h-[200px] max-h-[560px]"
+        className="h-[420px]"
         content={JSON.stringify(data, null, 2)}
         readOnly
         contentType={ContentType.JSON}
