@@ -2356,10 +2356,14 @@ def _run_auto_mode(
         headers=_platform_request_headers(cli_context),
     )
 
-    if _verify_platform_health(base_url):
+    if not _verify_platform_health(base_url):
+        raise typer.Exit(1)
+
+    if default_model:
         console.print(f"\n{CHECK} [green]Setup complete![/green]")
     else:
-        raise typer.Exit(1)
+        console.print(f"\n{WARN} [yellow]Setup complete with warnings.[/yellow]")
+        console.print("  No default model was set; review the warnings above before using the platform.")
 
 
 def _run_interactive_mode(

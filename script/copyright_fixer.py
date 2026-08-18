@@ -114,8 +114,10 @@ _JINJA_HEADER = (
 )
 
 _HELM_TEMPLATE_HEADER = (
-    f"{{{{/* SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}}}}\n"
-    "{{/* SPDX-License-Identifier: Apache-2.0 */}}\n"
+    "{{/*\n"
+    f"SPDX-FileCopyrightText: Copyright (c) 2025-{_CURRENT_YEAR} NVIDIA CORPORATION & AFFILIATES. All rights reserved.\n"
+    "SPDX-License-Identifier: Apache-2.0\n"
+    "*/}}\n"
 )
 
 # Cheap substring checks — no regex needed
@@ -180,8 +182,10 @@ _CORRECT_SPDX_JINJA_RE = re.compile(
     rf"{{# SPDX-License-Identifier: {_APACHE_2} #}}\n"
 )
 _CORRECT_SPDX_HELM_RE = re.compile(
-    rf"{{{{/\* SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT} \*/}}}}\n"
-    rf"{{{{/\* SPDX-License-Identifier: {_APACHE_2} \*/}}}}\n"
+    rf"{{{{/\*\n"
+    rf"\s*SPDX-FileCopyrightText: {_NVIDIA_COPYRIGHT}\n"
+    rf"\s*SPDX-License-Identifier: {_APACHE_2}\n"
+    rf"\s*\*/}}}}\n"
 )
 
 _CORRECT_SPDX_PATTERNS = (
@@ -233,8 +237,10 @@ _ANY_SPDX_JINJA_RE = re.compile(
     r"{# SPDX-License-Identifier:[^\n]* #}\n"
 )
 _ANY_SPDX_HELM_RE = re.compile(
-    r"{{/\* SPDX-FileCopyrightText:[^\n]* \*/}}\n"
-    r"{{/\* SPDX-License-Identifier:[^\n]* \*/}}\n"
+    r"{{/\*\n"
+    r"\s*SPDX-FileCopyrightText:[^\n]*\n"
+    r"\s*SPDX-License-Identifier:[^\n]*\n"
+    r"\s*\*/}}\n"
 )
 
 # -- legacy / proprietary patterns (not SPDX at all) --
@@ -462,9 +468,21 @@ def _has_frontmatter(content: str) -> bool:
     return content.startswith("---\n") or content.startswith("---\r\n")
 
 
-def _is_helm_template_file(path: Path) -> bool:
+def _is_helm_template_yaml(path: Path) -> bool:
+    """Return True for YAML files under a Helm chart templates directory."""
+    if path.suffix not in {".yaml", ".yml"}:
+        return False
+
     parts = path.parts
-    return path.suffix in {".yaml", ".yml"} and "helm" in parts and "templates" in parts
+    for index, part in enumerate(parts):
+        if part != "templates":
+            continue
+
+        chart_dir = Path(*parts[:index])
+        if (chart_dir / "Chart.yaml").is_file():
+            return True
+
+    return False
 
 
 def _get_header_for_ext(ext: str) -> str:
@@ -492,9 +510,6 @@ def _get_header_for_file(filepath: str, content: str) -> str:
     name = path.name
     ext = path.suffix
 
-    if _is_helm_template_file(path):
-        return _HELM_TEMPLATE_HEADER + "\n"
-
     if name in _HTML_FILENAMES:
         return _HTML_HEADER + "\n"
 
@@ -503,6 +518,9 @@ def _get_header_for_file(filepath: str, content: str) -> str:
 
     if ext in {".md", ".mdx"} and _has_frontmatter(content):
         return _HASH_HEADER
+
+    if _is_helm_template_yaml(path):
+        return _HELM_TEMPLATE_HEADER + "\n"
 
     # Check shebang for tsx/node — these files need // style comments
     if content.startswith("#!"):
@@ -733,7 +751,39 @@ def _resolve_targets(paths: list[Path], include: list[str] | None = None) -> tup
         return _collect_files_from_dir(root, include=include), root
 
     files = [str(p.resolve()) for p in paths if p.is_file() and _is_supported_file(str(p.resolve()))]
+    files = _filter_copyright_excluded(files, include=include)
     return files, None
+
+
+def _filter_copyright_excluded(files: list[str], include: list[str] | None = None) -> list[str]:
+    """Drop files matched by .copyrightignore, unless explicitly --include'd.
+
+    Mirrors the exclusion applied by ``_collect_files_from_dir`` for
+    directory scans, but for an explicit file list (e.g. filenames passed
+    by pre-commit).
+    """
+    if not files:
+        return files
+
+    repo = _get_repo(files[0])
+    if repo is None:
+        return files
+
+    repo_root = str(repo.working_tree_dir)
+    copyright_excludes = _load_copyright_excludes(repo_root)
+    if not copyright_excludes:
+        return files
+
+    include = include or []
+    kept = []
+    for filepath in files:
+        relpath = os.path.relpath(filepath, repo_root)
+        if _is_copyright_excluded(relpath, copyright_excludes) and not _is_explicitly_included(
+            relpath, relpath, include
+        ):
+            continue
+        kept.append(filepath)
+    return kept
 
 
 # --- CLI ---

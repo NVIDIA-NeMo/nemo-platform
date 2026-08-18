@@ -1,0 +1,101 @@
+{
+  "traces": [
+    {
+      "info": {
+        "trace_id": "tr-mlflow-example",
+        "trace_location": {"type": "MLFLOW_EXPERIMENT", "mlflow_experiment": {"experiment_id": "1"}},
+        "request_time": "2026-08-14T06:25:32.664Z",
+        "state": "OK",
+        "trace_metadata": {
+          "mlflow.trace.sizeBytes": "2076",
+          "mlflow.trace_schema.version": "3",
+          "mlflow.trace.sizeStats": "{\"total_size_bytes\": 2076, \"num_spans\": 2}",
+          "mlflow.source.git.repoURL": "https://example.com/example/repository.git",
+          "mlflow.source.type": "LOCAL",
+          "mlflow.source.git.branch": "main",
+          "mlflow.source.name": "generate_mlflow_import_fixture.py",
+          "mlflow.traceOutputs": "{\"answer\": \"Paris\"}",
+          "mlflow.traceInputs": "{\"question\": \"What is the capital of France?\"}",
+          "mlflow.source.git.commit": "0000000000000000000000000000000000000000",
+          "mlflow.user": "fixture-user"
+        },
+        "assessments": [
+          {
+            "assessment_id": "a-mlflow-correctness",
+            "assessment_name": "correctness",
+            "trace_id": "tr-mlflow-example",
+            "span_id": "c1db39004862bb12",
+            "source": {"source_type": "LLM_JUDGE", "source_id": "fixture-judge"},
+            "create_time": "2026-08-14T06:25:32.880Z",
+            "last_update_time": "2026-08-14T06:25:32.880Z",
+            "feedback": {"value": 1.0},
+            "rationale": "The answer matches the reference.",
+            "metadata": {"rubric": "exact-answer"},
+            "valid": true
+          },
+          {
+            "assessment_id": "a-mlflow-expected",
+            "assessment_name": "expected_response",
+            "trace_id": "tr-mlflow-example",
+            "span_id": "c1db39004862bb12",
+            "source": {"source_type": "HUMAN", "source_id": "fixture-author"},
+            "create_time": "2026-08-14T06:25:32.881Z",
+            "last_update_time": "2026-08-14T06:25:32.881Z",
+            "expectation": {
+              "serialized_value": {"serialization_format": "JSON_FORMAT", "value": "{\"answer\": \"Paris\"}"}
+            },
+            "valid": true
+          }
+        ],
+        "tags": {
+          "mlflow.trace.spansLocation": "TRACKING_STORE",
+          "mlflow.traceName": "answer",
+          "mlflow.artifactLocation": "file:///fixture/mlruns/1/traces/tr-mlflow-example/artifacts"
+        },
+        "request_preview": "{\"question\": \"What is the capital of France?\"}",
+        "response_preview": "{\"answer\": \"Paris\"}",
+        "execution_duration_ms": 204
+      },
+      "data": {
+        "spans": [
+          {
+            "trace_id": "rhm0l/9M5PuW/JB1Dh9dkg==",
+            "span_id": "wds5AEhiuxI=",
+            "parent_span_id": null,
+            "name": "answer",
+            "start_time_unix_nano": 1786688732664124000,
+            "end_time_unix_nano": 1786688732868391000,
+            "events": [],
+            "status": {"code": "STATUS_CODE_OK", "message": ""},
+            "attributes": {
+              "mlflow.traceRequestId": "\"tr-mlflow-example\"",
+              "mlflow.spanType": "\"CHAIN\"",
+              "fixture.unmapped": "{\"unicode\": \"café\", \"null\": null}",
+              "mlflow.spanFunctionName": "\"answer\"",
+              "mlflow.spanInputs": "{\"question\": \"What is the capital of France?\"}",
+              "mlflow.spanOutputs": "{\"answer\": \"Paris\"}"
+            },
+            "links": []
+          },
+          {
+            "trace_id": "rhm0l/9M5PuW/JB1Dh9dkg==",
+            "span_id": "ucoOMGF1zTs=",
+            "parent_span_id": "wds5AEhiuxI=",
+            "name": "lookup",
+            "start_time_unix_nano": 1786688732862782000,
+            "end_time_unix_nano": 1786688732862841000,
+            "events": [],
+            "status": {"code": "STATUS_CODE_OK", "message": ""},
+            "attributes": {
+              "mlflow.traceRequestId": "\"tr-mlflow-example\"",
+              "mlflow.spanType": "\"RETRIEVER\"",
+              "mlflow.spanInputs": "{\"query\": \"What is the capital of France?\"}",
+              "mlflow.spanOutputs": "{\"documents\": [\"Paris is the capital of France.\"]}"
+            },
+            "links": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 
 from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult, AgentEvalSummary, RunMetadata
 from nemo_evaluator_sdk.agent_eval.scores import (
@@ -31,6 +34,8 @@ from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialS
 from nemo_evaluator_sdk.values.dataset_schemas import _KNOWN_BINDING_FIELDS
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult, RowScore
+
+logger = logging.getLogger(__name__)
 
 #: Key ``sample`` carries when generation itself failed, rather than the metric.
 _INFERENCE_ERROR = "inference_error"
@@ -78,6 +83,61 @@ def _output(row: RowScore) -> AgentOutput | None:
     if output_text is None and response is None:
         return None
     return AgentOutput(output_text=output_text, response=response)
+
+
+def _first_int(usage: Mapping[str, Any], *keys: str) -> int | None:
+    """First key in ``keys`` holding a token count, or ``None``.
+
+    A count is a non-negative int that is not a bool. Negatives are rejected because they are used
+    as an unknown-value sentinel rather than a measurement, and nothing downstream would catch one:
+    Intake's ``total_prompt_tokens`` is an unconstrained ``int | None``, so a negative would be
+    summed into the evaluation rollup and shown as a real total.
+    """
+    for key in keys:
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
+def _token_metadata(row: RowScore) -> dict[str, int]:
+    """Project the generation response's ``usage`` block onto the trial-metadata token keys.
+
+    A row's generation response is the only place its token usage survives: ``row.requests`` mixes
+    the generation call with each metric's judge calls, so summing that would credit judge tokens to
+    the agent. ``total_tokens`` is left unset — Intake recomputes it from the parts.
+
+    Both usage schemas a target can return are read, OpenAI's first: a ``GenericAgent`` points at an
+    arbitrary URL, so the response is whatever that endpoint emits, and an Anthropic-shaped block
+    would otherwise be dropped whole. Note the two disagree on whether cache reads are already
+    counted in the prompt total (OpenAI includes them, Anthropic does not); the values are recorded
+    as reported rather than reconciled, since nothing downstream adds them together.
+
+    No key list covers every provider, and a renamed key would fail the same silent way this
+    function exists to fix, so a usage block that yields nothing is logged with the keys it actually
+    carried. An unrecognized schema is then a log line naming what to add, not an unexplained blank.
+    """
+    response = row.sample.get("response")
+    usage = response.get("usage") if isinstance(response, Mapping) else None
+    if not isinstance(usage, Mapping):
+        return {}
+    details = usage.get("prompt_tokens_details")
+    cache_read = _first_int(details, "cached_tokens") if isinstance(details, Mapping) else None
+    if cache_read is None:
+        cache_read = _first_int(usage, "cache_read_input_tokens")
+    captured = {
+        "prompt_tokens": _first_int(usage, "prompt_tokens", "input_tokens"),
+        "completion_tokens": _first_int(usage, "completion_tokens", "output_tokens"),
+        "cache_read_tokens": cache_read,
+        "cache_creation_tokens": _first_int(usage, "cache_creation_input_tokens"),
+    }
+    recorded = {key: value for key, value in captured.items() if value is not None}
+    if not recorded:
+        logger.warning(
+            "No token counts recognized in the generation response's usage block; keys present: %s",
+            sorted(str(key) for key in usage),
+        )
+    return recorded
 
 
 def _scores(row: RowScore, *, run_id: str, task_id: str, trial_id: str) -> list[AgentEvalTaskScore]:
@@ -152,6 +212,7 @@ def row_result_to_agent_eval_result(
                 task_id=task_id,
                 status=AgentEvalTrialStatus.COMPLETED if output is not None else AgentEvalTrialStatus.FAILED,
                 output=output,
+                metadata=_token_metadata(row),
             )
         )
         scores.extend(_scores(row, run_id=run_id, task_id=task_id, trial_id=trial_id))

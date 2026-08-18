@@ -1,16 +1,30 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 from pathlib import Path
 from typing import cast
 
+import pytest
 from nemo_experimentalist_plugin.experimentalist.components.coder import CodeEditBuilder, CodeEditBuilderConfig
 from nemo_experimentalist_plugin.experimentalist.components.holdout_utils import BLOCKED_MESSAGE
 from nemo_experimentalist_plugin.experimentalist.components.tools import GuardedShellTools
 from nemo_platform_plugin.nooa_model_client import ConfiguredModelClients, ConfiguredModelRefs, activate_model_clients
 from nooa.agentdoc import pformat
+from nooa.errors import GenerationError
 from nooa.tools import ShellResult
-from nooa.unifiedllm import CompletionClient, FakeLLMClient
+from nooa.unifiedllm import CompletionClient, FakeLLMClient, LLMResponse, ToolCall
+
+
+def _exec_response(code: str) -> LLMResponse:
+    """A scripted LLM turn that drives CodeAct's ``execute_python`` tool with ``code``."""
+    return LLMResponse(
+        raw_response=None,
+        content="",
+        finish_reason="tool_calls",
+        assistant_message={"role": "assistant", "content": ""},
+        tool_calls=[ToolCall(id="call_exec", name="execute_python", arguments=json.dumps({"code": code}))],
+    )
 
 
 async def test_guarded_shell_tools_runs_allowed_commands(tmp_path):
@@ -63,6 +77,20 @@ def test_coder_uses_default_model_for_architecture_docs(tmp_path: Path) -> None:
         coder = CodeEditBuilder(workspace=tmp_path)
 
     assert coder._architecture_model is default
+
+
+async def test_architecture_doc_stops_at_the_configured_iteration_limit(tmp_path: Path) -> None:
+    """The configured limit, not the one fixed on the @strategy decorator, must bound the run."""
+    assert CodeEditBuilderConfig().max_architecture_doc_iterations == 100, "the documented default"
+
+    # Each scripted turn runs a no-op cell instead of returning a result, so the only way
+    # out is exhausting the limit. A turn past the limit would report a larger count.
+    never_finishes = FakeLLMClient(scripted_responses=[_exec_response("x = 1") for _ in range(4)])
+    builder = CodeEditBuilder(workspace=tmp_path, config=CodeEditBuilderConfig(max_architecture_doc_iterations=3))
+    builder._architecture_model = never_finishes
+
+    with pytest.raises(GenerationError, match=r"after 3 iterations \(max_iterations=3\)"):
+        await builder.create_architecture_doc(tmp_path)
 
 
 async def test_coder_lists_agent_mutation_models_from_catalog(tmp_path: Path) -> None:

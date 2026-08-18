@@ -12,6 +12,7 @@ from nemo_experimentalist_plugin.entities import DatasetRef
 from nemo_experimentalist_plugin.experimentalist.strategies.evolutionary import EvolutionaryOptimizerConfig
 from nemo_experimentalist_plugin.preflight import Probes
 from nemo_platform import AsyncNeMoPlatform
+from nooa import GenerationError
 from typer.testing import CliRunner
 
 
@@ -303,6 +304,29 @@ def test_experiment_cli_exits_nonzero_when_evaluation_has_no_scores(
 
     assert result.exit_code == 1
     assert "produced no scoreable metrics from 3 trial(s)" in result.output
+    assert platform_client.closed
+
+
+def test_experiment_cli_reports_a_failed_generation_without_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    platform_client: FakePlatformClient,
+) -> None:
+    """A step the model cannot finish exits 1 and repeats what the harness reported."""
+
+    async def fail_generation(**_: object) -> str:
+        raise GenerationError(
+            "return_result validation failed after 3 attempts.\nExpected: list[TrialSelection]\nGot: str"
+        )
+
+    paths = _make_paths(tmp_path)
+    monkeypatch.setattr(cli, "run_experimentalist", fail_generation)
+
+    result = _run_experiment(paths.args())
+
+    assert result.exit_code == 1
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert "Expected: list[TrialSelection]" in result.output
     assert platform_client.closed
 
 

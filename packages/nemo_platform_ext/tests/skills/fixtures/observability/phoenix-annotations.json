@@ -1,0 +1,16 @@
+{
+  "annotations": [
+    {
+      "span_id": "67f6740bbe1ddc3f",
+      "name": "correctness",
+      "annotator_kind": "HUMAN",
+      "result": {
+        "label": "correct",
+        "score": 0.85,
+        "explanation": "The response answered the question I asked"
+      },
+      "metadata": {"model": "gpt-4", "threshold_ms": 500, "confidence": "high"},
+      "identifier": "user-123"
+    }
+  ]
+}

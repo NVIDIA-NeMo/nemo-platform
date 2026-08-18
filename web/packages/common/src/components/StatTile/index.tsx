@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
+import cn from 'classnames';
 import type { FC } from 'react';
 
 export type StatTileStatus = 'success' | 'warning' | 'error' | 'neutral';
@@ -13,6 +14,7 @@ export interface StatTileProps {
   trailingLabelStatus?: StatTileStatus;
   hint?: string;
   hintStatus?: StatTileStatus;
+  className?: string;
 }
 
 const MUTED_CLASS_NAME = 'text-placeholder';
@@ -31,8 +33,9 @@ export const StatTile: FC<StatTileProps> = ({
   trailingLabelStatus,
   hint,
   hintStatus,
+  className,
 }) => (
-  <Panel className="max-w-sm">
+  <Panel className={cn('max-w-sm', className)}>
     <Stack gap="density-sm">
       <Text kind="body/regular/sm" className={MUTED_CLASS_NAME}>
         {label}

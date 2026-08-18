@@ -24,6 +24,8 @@ from nmp.intake.spans.span_attribute_catalog import (
     to_bag,
 )
 
+DIRECT_INGEST_RAW_ATTRIBUTES_KEY = "nemo.intake.direct.raw"
+
 
 @dataclass
 class SpanAttributeBags:
@@ -101,18 +103,23 @@ class SpanAttributeBags:
 
     def raw_attributes_json(self) -> str | None:
         raw: dict[str, Any] = {}
-        atif_raw = self.string.get("atif.raw")
-        if atif_raw:
-            parsed_atif_raw = json.loads(atif_raw)
-            if not isinstance(parsed_atif_raw, dict):
-                raise TypeError("Expected atif.raw to contain a JSON object")
+        for raw_key in ("atif.raw", DIRECT_INGEST_RAW_ATTRIBUTES_KEY):
+            raw_json = self.string.get(raw_key)
+            if not raw_json:
+                continue
+            parsed_raw = json.loads(raw_json)
+            if not isinstance(parsed_raw, dict):
+                raise TypeError(f"Expected {raw_key} to contain a JSON object")
             # nemo.experiment.metadata is a retired key no longer in KNOWN_BAG_KEYS; keep excluding it so
             # legacy rows that still carry it don't leak it into raw_attributes.
-            parsed_atif_raw.pop("nemo.experiment.metadata", None)
-            raw.update(parsed_atif_raw)
+            parsed_raw.pop("nemo.experiment.metadata", None)
+            raw.update(parsed_raw)
 
         for key, value in self.string.items():
-            if key not in {"atif.raw", "nemo.experiment.metadata"} and key not in KNOWN_BAG_KEYS:
+            if (
+                key not in {"atif.raw", DIRECT_INGEST_RAW_ATTRIBUTES_KEY, "nemo.experiment.metadata"}
+                and key not in KNOWN_BAG_KEYS
+            ):
                 raw[key] = value
         for key, value in self.number.items():
             if key not in KNOWN_BAG_KEYS:

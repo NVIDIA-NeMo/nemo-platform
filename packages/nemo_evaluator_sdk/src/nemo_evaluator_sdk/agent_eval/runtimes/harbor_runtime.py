@@ -52,10 +52,12 @@ from nemo_evaluator_sdk.agent_eval.results import AgentEvalResult
 from nemo_evaluator_sdk.agent_eval.scores import AgentEvalScoreStatus
 from nemo_evaluator_sdk.agent_eval.tasks import AgentEvalRunConfig, AgentEvalTask, AgentEvalTaskset
 from nemo_evaluator_sdk.agent_eval.trials import (
+    UNKNOWN_ERROR_TYPE,
     AgentEvalTrial,
     AgentEvalTrialStatus,
     AgentOutput,
     RunnerInfo,
+    TrialError,
     standard_evidence_descriptors,
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
@@ -112,6 +114,8 @@ _SPDX_HTML_COMMENT_RE = re.compile(r"<!--\s*SPDX-(?:FileCopyrightText|License-Id
 # deliverable — the Harbor wrapper does not upload them into the task container.
 _DIGEST_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", ".uv", ".mypy_cache", ".pytest_cache"})
 _DIGEST_CHUNK_BYTES = 1 << 20
+
+_MAX_TRACEBACK_CHARS = 8192
 
 RunJob = Callable[[], Awaitable[None]]
 
@@ -326,10 +330,15 @@ class HarborAgentTaskRunner:
                 stale = _cache_is_stale(job_dir, stamp)
 
             if stale or not _all_tasks_cached(job_dir, tasks, n_attempts=self._config.n_attempts):
+                # Harbor's DatasetConfig matches local folder names, while SDK task ids
+                # come from `[task] name`. Prefer folder names derived from the tasks
+                # actually being scored so a filter like `harbor/hello-world` still
+                # selects the `hello-world/` directory.
+                harbor_task_names = _harbor_folder_names(tasks) or self._task_names
                 job_dir, run_job = _build_native_job(
                     self._config,
                     dataset_path,
-                    self._task_names,
+                    harbor_task_names,
                     job_name=job_name,
                     # Discard only when the inputs changed. Otherwise leave it off so
                     # Harbor resumes per trial and keeps completed work — including
@@ -345,7 +354,7 @@ class HarborAgentTaskRunner:
                 # ran: with no task_names filter that is the whole dataset, and
                 # recording only the requested subset would make the next full-set
                 # run look stale and re-run a complete job dir.
-                coverage = _stamp_coverage(dataset_path, tasks, self._task_names)
+                coverage = _stamp_coverage(dataset_path, tasks, harbor_task_names)
                 before = _cache_stamp(self._config, dataset_path, coverage)
                 await run_job()
                 if self._config.job_name is not None:
@@ -379,6 +388,25 @@ def _dataset_path_from_tasks(tasks: Sequence[AgentEvalTask]) -> Path:
         "native Harbor run needs a dataset path: pass dataset_path, or build tasks with "
         "discover_harbor_tasks/HarborTasksetLoader (which stamp metadata['harbor_dataset_path'])"
     )
+
+
+def _harbor_folder_names(tasks: Sequence[AgentEvalTask]) -> list[str] | None:
+    """Return Harbor local-dataset folder names for ``tasks``, or ``None`` if incomplete.
+
+    Harbor's ``DatasetConfig.task_names`` matches directory names
+    (``LocalTaskId.get_name()`` → ``path.name``), while SDK task ids come from
+    ``[task] name``. When every task carries ``metadata['harbor_task_dir']``,
+    derive the folder list so a filter like ``harbor/hello-world`` still selects
+    the ``hello-world/`` directory. Return ``None`` when any task is missing that
+    stamp so callers can fall back to an explicit filter.
+    """
+    names: list[str] = []
+    for task in tasks:
+        stamped = task.metadata.get("harbor_task_dir")
+        if not isinstance(stamped, str) or not stamped:
+            return None
+        names.append(Path(stamped).name)
+    return names or None
 
 
 def _all_tasks_cached(job_dir: Path, tasks: Sequence[AgentEvalTask], *, n_attempts: int) -> bool:
@@ -1122,24 +1150,18 @@ def _trial_from_harbor_result(trial_dir: Path, data: Mapping[str, Any], *, rewar
     trial_id = str(data.get("trial_name") or trial_dir.name)
     rewards = _rewards_mapping(data)
     reward = _primary_reward(rewards, reward_key)
-    exception_type = _exception_type(data.get("exception_info"))
+    error = _trial_error(data.get("exception_info"))
 
     metadata: dict[str, Any] = {
         "reward": reward,
         "reward_details": dict(rewards),
         "harbor_trial_dir": str(trial_dir),
     }
-    if exception_type is not None:
-        metadata["exception_type"] = exception_type
     metadata.update(_token_measurements(data.get("agent_result")))
 
     # An errored trial (or one with no reward) stays PARTIAL so it is still scored
     # as 0 and counted in the summary; FAILED would exclude it from scoring.
-    status = (
-        AgentEvalTrialStatus.COMPLETED
-        if exception_type is None and reward is not None
-        else AgentEvalTrialStatus.PARTIAL
-    )
+    status = AgentEvalTrialStatus.COMPLETED if error is None and reward is not None else AgentEvalTrialStatus.PARTIAL
 
     trace_path = trial_dir / "agent" / "trajectory.json"
     descriptors = standard_evidence_descriptors(
@@ -1155,6 +1177,7 @@ def _trial_from_harbor_result(trial_dir: Path, data: Mapping[str, Any], *, rewar
         status=status,
         output=AgentOutput(metadata={"harbor_trial_dir": str(trial_dir)}),
         evidence=CandidateEvidence(descriptors=descriptors),
+        error=error,
         metadata=metadata,
     )
 
@@ -1196,16 +1219,64 @@ def _primary_reward(rewards: Mapping[str, float], reward_key: str) -> float | No
     return None
 
 
-def _exception_type(exception_info: Any) -> str | None:
+def _trial_error(exception_info: Any) -> TrialError | None:
+    """Harbor's ``exception_info`` as a :class:`TrialError`, for any shape it can arrive in.
+
+    **Total by construction.** :func:`_trial_from_harbor_result` is called outside the only
+    ``try``/``except`` in :func:`build_trials_from_job_dir` (which guards ``json.loads`` alone), so a
+    ``ValidationError`` raised here would abort adaptation of the *whole job dir* over one malformed
+    trial. Every field is therefore normalised rather than trusted:
+
+    - ``type`` -- first non-empty string of ``exception_type``/``type``/``name``/``class``; for a
+      non-mapping, ``str(value)``; anything left empty becomes :data:`UNKNOWN_ERROR_TYPE`
+    - ``message``/``traceback`` -- kept only when actually strings; the traceback is truncated
+    - ``occurred_at`` -- kept only when it parses; never raises
+
+    Returns ``None`` only for a genuinely absent ``exception_info``, which is what marks a trial as
+    not having errored.
+    """
     if exception_info is None:
         return None
-    if isinstance(exception_info, Mapping):
-        for key in ("exception_type", "type", "name", "class"):
-            value = exception_info.get(key)
-            if isinstance(value, str) and value:
-                return value
-        return "UnknownException"
-    return str(exception_info)
+    if not isinstance(exception_info, Mapping):
+        return TrialError(type=str(exception_info).strip() or UNKNOWN_ERROR_TYPE)
+
+    error_type = ""
+    for key in ("exception_type", "type", "name", "class"):
+        value = exception_info.get(key)
+        if isinstance(value, str) and value.strip():
+            error_type = value
+            break
+
+    traceback = _first_string(exception_info, ("exception_traceback", "traceback"))
+    return TrialError(
+        type=error_type or UNKNOWN_ERROR_TYPE,
+        message=_first_string(exception_info, ("exception_message", "message")),
+        traceback=traceback[:_MAX_TRACEBACK_CHARS] if traceback is not None else None,
+        occurred_at=_error_timestamp(exception_info.get("occurred_at")),
+    )
+
+
+def _first_string(payload: Mapping[str, Any], keys: tuple[str, ...]) -> str | None:
+    """The first value under ``keys`` that is actually a string. Harbor's spelling is tried first."""
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def _error_timestamp(value: Any) -> datetime | None:
+    """``value`` as a datetime when it plausibly is one, else ``None`` -- never raising.
+
+    Deliberately not normalized to UTC: Harbor writes a naive local wall-clock time here while
+    stamping trial start/finish in UTC, and inventing an offset would fabricate precision.
+    """
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        with contextlib.suppress(ValueError):
+            return datetime.fromisoformat(value)
+    return None
 
 
 def _token_measurements(agent_result: Any) -> dict[str, int | float]:
@@ -1368,8 +1439,12 @@ def reward_payload_from_result(
     * ``reward`` — mean of each metric output, keyed ``"<metric_type>.<output>"``.
     * ``reward_details`` — ``{output: {value_str: [task_id, ...]}}`` grouped from
       per-trial scores (Harbor's ``reward_stats`` analogue).
-    * ``exceptions`` — ``{exception_type: [task_id, ...]}`` from trial metadata
-      (Harbor's ``exception_stats`` analogue).
+    * ``exceptions`` — ``{error type: [task_id, ...]}`` from ``AgentEvalTrial.error``
+      (Harbor's ``exception_stats`` analogue, keyed by task rather than by trial).
+
+    Harbor keys ``exception_stats`` by *trial*, which is what
+    :attr:`AgentEvalSummary.error_trial_ids` now reproduces exactly. This payload keeps its
+    task-keyed shape for existing consumers; switching it over is AALGO-441.
     """
     reward = {score.name: score.mean for score in result.summary.scores.scores if score.mean is not None}
 
@@ -1386,9 +1461,8 @@ def reward_payload_from_result(
 
     exceptions: dict[str, list[str]] = {}
     for trial in result.trials:
-        exc = trial.metadata.get("exception_type")
-        if isinstance(exc, str) and exc:
-            exceptions.setdefault(exc, []).append(trial.task_id)
+        if trial.error is not None:
+            exceptions.setdefault(trial.error.type, []).append(trial.task_id)
 
     return {
         "reward": reward,
