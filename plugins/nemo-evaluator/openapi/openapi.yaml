@@ -5440,10 +5440,11 @@ components:
       description: 'Inputs supplied to a task.
 
 
-        ``instruction`` is the agent''s prompt. Additional task- or runtime-specific
-        inputs are accepted
+        ``instruction`` is the agent''s prompt; the runtime falls back to the task
+        ``intent`` when it is unset.
 
-        and preserved as arbitrary JSON-compatible values.'
+        Additional task- or runtime-specific inputs, such as `gym_row` for Gym tasks,
+        are also accepted fields.'
     TaskRef:
       type: string
       pattern: ^[\w\-.]+(/[\w\-.]+)?(#[\w\-.]+)?$
