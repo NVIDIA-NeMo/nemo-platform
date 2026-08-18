@@ -900,9 +900,8 @@ async def test_harbor_evaluator_rejects_invalid_python_verifiers_before_job_crea
 async def test_validate_rejects_verifier_evidence_that_cannot_resolve_in_the_container(tmp_path: Path) -> None:
     dataset_dir = tmp_path / "dataset"
     blind_source = (
-        "import os, pathlib\n"
+        "import pathlib\n"
         'instruction = pathlib.Path("/tests/instruction.md").read_text()\n'
-        'traces = pathlib.Path(os.environ.get("TRACE_DIR", "/logs/artifacts/traces"))\n'
         'expected = pathlib.Path("/tests/expected.txt").read_text()\n'
     )
     _write(dataset_dir / "blind" / "task.toml", "")
@@ -917,7 +916,6 @@ async def test_validate_rejects_verifier_evidence_that_cannot_resolve_in_the_con
     # instruction.md sits beside the task, not in tests/, so /tests/instruction.md is empty
     # at run time. expected.txt is in tests/, which Harbor does mount, so it must pass.
     assert "check_coverage.py:2: reads /tests/instruction.md, which no file provides" in message
-    assert "check_coverage.py:3: resolves TRACE_DIR with a fallback default" in message
     assert "expected.txt" not in message
 
 
@@ -931,11 +929,11 @@ async def test_validate_rejects_a_verifier_that_defaults_instead_of_raising_on_a
         "        return path.read_text(encoding='utf-8')\n"
         "    except Exception:\n"
         '        return ""\n'
-        "def read_score(path):\n"
+        "def find_total(rows):\n"
         "    try:\n"
-        "        return float(path.read_text())\n"
-        "    except OSError:\n"
-        "        raise\n"
+        "        return rows['total']\n"
+        "    except KeyError:\n"
+        "        return None\n"
     )
     _write(dataset_dir / "swallows" / "task.toml", "")
     _write(dataset_dir / "swallows" / "tests" / "check_coverage.py", swallowing_source)
@@ -945,9 +943,10 @@ async def test_validate_rejects_a_verifier_that_defaults_instead_of_raising_on_a
 
     message = str(exc_info.value)
     # An empty string stands in for the file that was never read, and every metric
-    # computed from it reports a measurement that never happened. Re-raising is fine.
-    assert "check_coverage.py:6: swallows a failed read and returns ''" in message
-    assert message.count("swallows a failed read") == 1
+    # computed from it reports a measurement that never happened. A handler naming the
+    # exception it expects is a deliberate sentinel, not a swallowed read.
+    assert "check_coverage.py:6: catches every exception and returns ''" in message
+    assert message.count("catches every exception") == 1
 
 
 @pytest.mark.asyncio

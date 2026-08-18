@@ -190,8 +190,7 @@ class HarborNativeOutcomeEvaluator(roles.OutcomeEvaluator):
         trace_dir: str = options_dict.pop("trace_dir", DEFAULT_TRACE_ARTIFACT_SOURCE)
         trace_format: str = options_dict.pop("trace_format", "otlp")
         options_dict["artifacts"] = _with_trace_artifact(options_dict.get("artifacts") or [], trace_dir)
-        # Verifiers resolve traces from TRACE_DIR. Nothing else publishes the container-side
-        # path to them, so an unset value leaves every trace-reading metric blind.
+        # Nothing else tells a verifier where the traces are.
         options_dict["verifier"] = VerifierConfig(env={"TRACE_DIR": trace_dir})
         force_rerun: bool = options_dict.pop("force_rerun", False)
 

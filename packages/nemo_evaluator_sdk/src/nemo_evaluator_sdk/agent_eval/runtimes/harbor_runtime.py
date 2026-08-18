@@ -825,8 +825,7 @@ def _build_native_job(
         verifier_kwargs: dict[str, Any] = {}
         if config.trace_dir is not None:
             artifacts = [ArtifactConfig(source=config.trace_dir, destination="traces"), *artifacts]
-            # Verifiers resolve traces from TRACE_DIR. Nothing else publishes the container-side
-            # path to them, so an unset value leaves every trace-reading metric blind.
+            # Nothing else tells a verifier where the traces are.
             verifier_kwargs["verifier"] = VerifierConfig(env={"TRACE_DIR": config.trace_dir})
 
         timeout_kwargs = {

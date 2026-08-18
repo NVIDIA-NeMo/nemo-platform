@@ -1137,8 +1137,8 @@ def _stub_harbor(
     Only the names ``_build_native_job``'s ``run_job`` imports are provided.
     ``job_create`` becomes ``Job.create``; every config class is a permissive stub,
     since what is under test is the control flow around Harbor, not the payload.
-    Pass ``verifier_calls`` to record the ``VerifierConfig`` kwargs, the one part of
-    the payload a caller cannot read back off the ``JobConfig`` stand-in.
+    ``verifier_calls`` records ``VerifierConfig`` kwargs, which no caller can read back
+    off the permissive ``JobConfig`` stub.
     """
 
     def _module(name: str, **attrs: object) -> None:
@@ -1226,9 +1226,7 @@ async def test_harbor_refusing_to_resume_discards_and_reruns(
 async def test_trace_dir_is_published_to_the_verifier_as_trace_dir_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Verifiers resolve the trace directory from TRACE_DIR, and nothing else tells them
-    # where it is. Drop this and every trace-reading metric reads an empty directory,
-    # which scores like a measured failure instead of raising.
+    # Drop this and every trace-reading metric reads an empty directory instead of raising.
     verifier_calls: list[dict[str, object]] = []
 
     async def create(_config: object) -> _FakeJob:

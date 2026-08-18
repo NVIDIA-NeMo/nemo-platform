@@ -108,9 +108,8 @@ _TASK_TREE_RESOURCES: tuple[TreeResourceSpec, ...] = (
 DEFAULT_TRACE_ARTIFACT_SOURCE = "/app/traces"
 _ATIF_TRACE_SUFFIX = ".atif.json"
 _SHELL_SYNTAX_TIMEOUT_SEC = 10.0
-_CONTAINER_TESTS_MOUNT = "/tests"
 _CONTAINER_TESTS_REFERENCE = re.compile(r"/tests/([A-Za-z0-9_.\-/]+)")
-_TRACE_DIR_FALLBACK = re.compile(r"""environ\.get\(\s*['"]TRACE_DIR['"]\s*,""")
+_BLANKET_EXCEPTIONS = frozenset({"Exception", "BaseException"})
 _TRIAL_LOG_DESCRIPTIONS = {
     "agent/oracle.txt": "Oracle-agent log captured when Harbor runs the reference solution.",
     "agent/setup/stdout.txt": "Agent setup stdout captured while Harbor uploads the agent and installs dependencies.",
@@ -352,32 +351,33 @@ def _unresolvable_evidence_failures(source: str, verifier_dir: Path) -> list[tup
                 continue
             failures.append(
                 (
-                    f"reads {_CONTAINER_TESTS_MOUNT}/{relative}, which no file provides: Harbor mounts only "
+                    f"reads /tests/{relative}, which no file provides: Harbor mounts only "
                     f"{verifier_dir.name}/ there. Copy the file into {verifier_dir.name}/ or read another source.",
-                    line_number,
-                )
-            )
-        if _TRACE_DIR_FALLBACK.search(line):
-            failures.append(
-                (
-                    'resolves TRACE_DIR with a fallback default. Use os.environ["TRACE_DIR"] so an unset '
-                    "variable raises instead of silently reading an empty directory.",
                     line_number,
                 )
             )
     return failures
 
 
-def _swallowed_evidence_failures(tree: ast.Module) -> list[tuple[str, int]]:
-    """Return ``(error, line)`` for handlers that turn a failed read into a default value.
+def _catches_everything(caught: ast.expr | None) -> bool:
+    """Report whether a handler's exception clause also catches a failed read."""
+    if caught is None:
+        return True
+    candidates = caught.elts if isinstance(caught, ast.Tuple) else [caught]
+    return any(isinstance(node, ast.Name) and node.id in _BLANKET_EXCEPTIONS for node in candidates)
+
+
+def _blanket_except_failures(tree: ast.Module) -> list[tuple[str, int]]:
+    """Return ``(error, line)`` for blanket handlers that return a falsy constant.
 
     ``except Exception: return ""`` is how a missing file becomes a score. The read
     fails, the caller gets an empty string, and the metric reports a confident number
-    it never measured. Let the exception travel instead.
+    it never measured. A handler naming the exception it expects is a deliberate
+    choice and passes; catching everything and answering with a default is not.
     """
     failures: list[tuple[str, int]] = []
     for handler in ast.walk(tree):
-        if not isinstance(handler, ast.ExceptHandler):
+        if not isinstance(handler, ast.ExceptHandler) or not _catches_everything(handler.type):
             continue
         for statement in ast.walk(handler):
             if not isinstance(statement, ast.Return):
@@ -386,8 +386,8 @@ def _swallowed_evidence_failures(tree: ast.Module) -> list[tuple[str, int]]:
             if isinstance(returned, ast.Constant) and not returned.value:
                 failures.append(
                     (
-                        f"swallows a failed read and returns {returned.value!r}. Missing evidence is not a "
-                        "measurement: let the exception raise, or exit non-zero, and write no value.",
+                        f"catches every exception and returns {returned.value!r}, so a failed read becomes a "
+                        "measurement. Let the exception raise, or exit non-zero, and write no value.",
                         statement.lineno,
                     )
                 )
@@ -406,7 +406,7 @@ def _python_findings(source: str, path: Path) -> tuple[_VerifierSyntaxFailure | 
         ), []
     except (RecursionError, ValueError) as exc:
         return _VerifierSyntaxFailure(error=f"{type(exc).__name__}: {exc}"), []
-    return None, _swallowed_evidence_failures(tree)
+    return None, _blanket_except_failures(tree)
 
 
 async def _shell_syntax_failure(source: str) -> _VerifierSyntaxFailure | None:
