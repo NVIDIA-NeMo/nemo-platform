@@ -54,6 +54,8 @@ fi
 
 case "${CLEANUP_SCOPE:-ci}" in
   ci)
+    # CI-only packages have no NGC metadata file, so include them explicitly.
+    package_ids+=("nmp-gym-tasks")
     tag_filter="select(((.metadata.container.tags // []) | any(test(\"${nightly_tag_pattern}\"))) | not)"
     ;;
   nightly-release)

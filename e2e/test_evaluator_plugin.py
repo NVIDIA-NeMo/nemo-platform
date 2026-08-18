@@ -747,8 +747,8 @@ def test_missing_fileset_reaches_terminal_error(evaluator_sdk: NeMoPlatform) -> 
 #
 # GymAgentTaskRunner runs inside the CPU-task job, not this test process, so this is the only place
 # exercising the real `gym env start`/`gym eval run` subprocess path (the SDK's unit tests use
-# synthetic data). A dedicated Kind CI job runs the platform with a CI-only -gym-e2e image tag
-# set. See docker/Dockerfile.nmp-cpu-tasks-gym-e2e.
+# synthetic data). A dedicated Kind CI job runs the platform with the CI-only
+# nmp-gym-tasks image. See docker/Dockerfile.nmp-gym-tasks.
 #
 # Checked-in copy of mcqa's example.jsonl: discover_gym_tasks runs client-side here, where
 # nemo-gym isn't installed (only the CI task image has it).

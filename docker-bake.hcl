@@ -329,13 +329,14 @@ group "docker-cpu" {
   ]
 }
 
-# CI-only extension of docker-cpu. The Gym image is SHA-tagged in GHCR for Kind E2E and is not
-# included in any release target.
+# CI-only extension of docker-cpu. The Gym image is published by CPU image CI but remains excluded
+# from docker-cpu and every release target until the Ray security blocker is resolved.
 group "docker-cpu-ci" {
   targets = [
     "nmp-api-docker",
     "nmp-cpu-tasks-docker",
-    "nmp-cpu-tasks-gym-e2e",
+    "nmp-gym-tasks-docker",
+    "nmp-gym-tasks-smoke-test",
   ]
 }
 
@@ -695,17 +696,32 @@ target "nmp-cpu-tasks-docker" {
   platforms  = get_platforms()
 }
 
-# CI-only nmp-cpu-tasks derivative with NeMo Gym and Ray. A dedicated Kind job uses the
-# -gym-e2e tag set, leaving the regular E2E cluster on the production image.
-target "nmp-cpu-tasks-gym-e2e" {
+# Production-shaped Gym task image, built for CI only while Ray remains blocked from release.
+target "nmp-gym-tasks-docker" {
+  target     = "runtime"
   context    = "."
-  dockerfile = "docker/Dockerfile.nmp-cpu-tasks-gym-e2e"
+  dockerfile = "docker/Dockerfile.nmp-gym-tasks"
   contexts = {
     nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
   }
-  tags      = ["${IMAGE_REGISTRY}/nmp-cpu-tasks:${BAKE_TAG}-gym-e2e"]
-  output    = image_output()
-  platforms = get_platforms()
+  cache-to   = maybe_registry_cache_to("nmp-gym-tasks")
+  cache-from = maybe_registry_cache_from("nmp-gym-tasks")
+  tags       = ["${IMAGE_REGISTRY}/nmp-gym-tasks:${BAKE_TAG}"]
+  output     = image_output()
+  platforms  = get_platforms()
+}
+
+# Cheap import/CLI validation for the isolated Gym environment. Built in docker-cpu-ci before publication.
+target "nmp-gym-tasks-smoke-test" {
+  target     = "smoke-test"
+  context    = "."
+  dockerfile = "docker/Dockerfile.nmp-gym-tasks"
+  contexts = {
+    nmp-cpu-tasks = "target:nmp-cpu-tasks-docker"
+  }
+  cache-from = maybe_registry_cache_from("nmp-gym-tasks")
+  output     = ["type=cacheonly"]
+  platforms  = get_platforms()
 }
 
 # Python wheel builders (causal-conv1d, mamba-ssm, av, opencv-python-headless).

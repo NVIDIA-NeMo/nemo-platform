@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [project]
-name = "nmp-cpu-tasks-gym-e2e"
+name = "nmp-gym-tasks"
 version = "0.0.0"
 requires-python = ">=3.13.14,<3.14"
 dependencies = [

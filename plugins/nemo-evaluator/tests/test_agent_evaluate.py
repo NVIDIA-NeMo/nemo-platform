@@ -504,9 +504,11 @@ async def test_to_spec_requires_platform_to_resolve_a_metric_reference() -> None
 # --- compile: the submit/service-side path ----------------------------------
 
 
-def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec) -> None:
+def _assert_agent_eval_step_entrypoint(job_spec: PlatformJobSpec, *, expected_image: str | None = None) -> None:
     step = job_spec.steps[0]
     container = cast(Any, step.executor).container
+    if expected_image is not None:
+        assert container.image == expected_image
     assert container.entrypoint == ["python", "-m"]
     assert container.command == ["nemo_evaluator.tasks.agent_evaluate"]
 
@@ -565,13 +567,24 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
 
 
 @pytest.mark.parametrize(
-    ("target", "expected_kind", "expected_endpoint_name"),
+    ("target", "expected_kind", "expected_endpoint_name", "expected_image_name"),
     [
-        (CodexRunnerTarget(model="gpt-5.5"), "codex", None),
+        (CodexRunnerTarget(model="gpt-5.5"), "codex", None, "nmp-cpu-tasks"),
         (
             FabricRunnerTarget(config={"metadata": {"name": "a"}, "harness": {"adapter_id": "nvidia.fabric.codex"}}),
             "fabric",
             None,
+            "nmp-cpu-tasks",
+        ),
+        (
+            GymRunnerTarget(
+                agent="simple_agent",
+                agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+                resources_server="mcqa",
+            ),
+            "gym",
+            None,
+            "nmp-gym-tasks",
         ),
         (
             ModelTarget(
@@ -580,15 +593,23 @@ async def _compile_harbor(*, async_sdk: AsyncNeMoPlatform | None, profile: str |
             ),
             "model",
             "test-model",
+            "nmp-cpu-tasks",
         ),
-        (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent"),
+        (AgentTarget(agent=_agent(), params=RunConfigOnline()), "agent", "test-agent", "nmp-cpu-tasks"),
     ],
 )
 async def test_compile_produces_cpu_task_step_carrying_each_target(
+    mocker: MockerFixture,
     target: Target,
     expected_kind: str,
     expected_endpoint_name: str | None,
+    expected_image_name: str,
 ) -> None:
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", None)
+    mocker.patch(
+        "nemo_evaluator.jobs.agent_compiler.get_qualified_image",
+        side_effect=lambda name: f"registry.example/{name}:test",
+    )
     spec = AgentEvalSpec(tasks=[_task_spec()], target=target)
 
     compiled = await AgentEvalJob.compile(
@@ -599,13 +620,35 @@ async def test_compile_produces_cpu_task_step_carrying_each_target(
     assert len(job_spec.steps) == 1
     step = job_spec.steps[0]
     assert step.name == "agent-evaluate"
-    _assert_agent_eval_step_entrypoint(job_spec)
+    _assert_agent_eval_step_entrypoint(job_spec, expected_image=f"registry.example/{expected_image_name}:test")
     config = cast(dict[str, Any], step.config)
     assert len(config["tasks"]) == 1
     assert config["target"]["kind"] == expected_kind
     if expected_endpoint_name is not None:
         endpoint = config["target"].get("model") or config["target"].get("agent")
         assert endpoint["name"] == expected_endpoint_name
+
+
+async def test_compile_gym_target_honors_configured_image_override(mocker: MockerFixture) -> None:
+    image = "ghcr.io/nvidia-nemo/nemo-platform/nmp-gym-tasks:internal-test"
+    mocker.patch("nemo_evaluator.jobs.agent_compiler.config.gym_tasks_image", image)
+    qualify = mocker.patch("nemo_evaluator.jobs.agent_compiler.get_qualified_image")
+    spec = AgentEvalSpec(
+        tasks=[_task_spec()],
+        target=GymRunnerTarget(
+            agent="simple_agent",
+            agent_config="responses_api_agents/simple_agent/configs/simple_agent.yaml",
+            resources_server="mcqa",
+        ),
+    )
+
+    compiled = await AgentEvalJob.compile(
+        workspace="default", spec=spec, entity_client=object(), job_name=None, async_sdk=None
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    _assert_agent_eval_step_entrypoint(job_spec, expected_image=image)
+    qualify.assert_not_called()
 
 
 async def test_compile_rejects_harbor_target_for_docker_profile(mocker: MockerFixture) -> None:

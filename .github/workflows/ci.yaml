@@ -127,6 +127,24 @@ jobs:
       - name: Check lock with platform uv
         run: bash script/uv-lock.sh --check
 
+      - name: Check Gym task image lock
+        run: |
+          uv python install 3.13.14
+          uv lock \
+            --check \
+            --project docker/locks/nmp-gym-tasks \
+            --python 3.13.14
+          for platform in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            uv sync \
+              --project docker/locks/nmp-gym-tasks \
+              --locked \
+              --no-dev \
+              --no-install-project \
+              --dry-run \
+              --python 3.13.14 \
+              --python-platform "${platform}"
+          done
+
   uv-compatibility:
     name: Check configured uv compatibility
     runs-on: ubuntu-latest
@@ -331,13 +349,16 @@ jobs:
         shell: bash
         run: make docker-push TARGET=docker-cpu-ci
 
-      - name: Publish Gym e2e API tag
+      - name: Publish Gym e2e image tags
         if: env.PUBLISH_IMAGES == 'true'
         shell: bash
         run: |
           docker buildx imagetools create \
             --tag "${IMAGE_REGISTRY}/nmp-api:${BAKE_TAG}-gym-e2e" \
             "${IMAGE_REGISTRY}/nmp-api:${BAKE_TAG}"
+          docker buildx imagetools create \
+            --tag "${IMAGE_REGISTRY}/nmp-gym-tasks:${BAKE_TAG}-gym-e2e" \
+            "${IMAGE_REGISTRY}/nmp-gym-tasks:${BAKE_TAG}"
 
       - name: Save fastembed model cache
         if: steps.fastembed-cache.outputs.cache-hit != 'true'
