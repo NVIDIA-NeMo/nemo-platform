@@ -190,6 +190,7 @@ class AgentDeploymentController(NemoController):
                 image=dep.image or None,
                 deployment_mode=dep.deployment_mode,
                 created_by=dep.created_by,
+                resources=dep.compute.resources if dep.compute is not None else None,
             )
         except Exception as exc:
             logger.exception("Failed to start agent for deployment '%s'", dep.name)

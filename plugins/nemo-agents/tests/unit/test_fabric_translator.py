@@ -224,6 +224,41 @@ class TestTranslateAgentConfig:
         with pytest.raises(FabricTranslationError, match="Top-level prompts are not translated yet"):
             translate_agent_config(config)
 
+    def test_environment_spec_env_forwarded_platform_values_win(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Simulates a config after an EnvironmentSpec merge: environment.env holds
+        # the spec's plaintext vars. Platform-injected runtime values win on key
+        # collision.
+        monkeypatch.setenv("NMP_WORKSPACE", "runtime-ws")
+        monkeypatch.delenv("NEMO_BASE_URL", raising=False)
+        monkeypatch.delenv("NMP_BASE_URL", raising=False)
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["environment"]["env"] = {"CUSTOM": "from-spec", "NMP_WORKSPACE": "spec-should-lose"}
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config, harness_name="codex")
+
+        assert fabric_config.environment.env["CUSTOM"] == "from-spec"
+        assert fabric_config.environment.env["NMP_WORKSPACE"] == "runtime-ws"
+
+    def test_environment_mirror_fields_forwarded(self) -> None:
+        payload = copy.deepcopy(_example_yaml_config())
+        payload["environment"].update(
+            {
+                "control_location": "in_env_control",
+                "ownership": "fabric_owned",
+                "connection": {"url": "http://sandbox"},
+                "metadata": {"team": "platform"},
+            }
+        )
+        config = AgentConfig.model_validate(payload)
+
+        fabric_config = translate_agent_config(config, harness_name="codex")
+
+        assert fabric_config.environment.control_location == "in_env_control"
+        assert fabric_config.environment.ownership == "fabric_owned"
+        assert fabric_config.environment.connection == {"url": "http://sandbox"}
+        assert fabric_config.environment.metadata == {"team": "platform"}
+
     @pytest.mark.parametrize(
         ("kind", "adapter_id"),
         [

@@ -27,6 +27,7 @@ from nemo_agents_plugin.entities import (
     AGENT_CONFIG_FILENAME,
     CONTAINER_DEPLOYMENT_MODES,
     NEMO_AGENTS_SPEC_CONFIG_FORMAT,
+    ComputeResources,
     DeploymentMode,
     DeploymentStatus,
     Endpoint,
@@ -48,6 +49,7 @@ from nemo_deployments_plugin.entities import (
     EnvVar,
     HTTPGetAction,
     Probe,
+    ResourceRequirements,
     VolumeMount,
 )
 from nemo_platform_plugin.auth import platform_auth_enabled
@@ -230,6 +232,22 @@ def _is_fabric_agent_config(agent_config: dict[str, Any]) -> bool:
     return agent_config.get("config_format") == NEMO_AGENTS_SPEC_CONFIG_FORMAT
 
 
+def build_container_resources(resources: ComputeResources | None, *, mode: DeploymentMode) -> ResourceRequirements:
+    """Compile a snapshotted compute spec into the container's k8s resources.
+
+    k8s passes both requests and limits through. Docker has no notion of
+    scheduling requests, so requests are consolidated into limits (limits win on
+    key collision). Returns an empty ``ResourceRequirements`` when no compute
+    spec was snapshotted (platform default).
+    """
+    if resources is None:
+        return ResourceRequirements()
+    if mode == "docker":
+        consolidated = {**resources.requests, **resources.limits}
+        return ResourceRequirements(limits=consolidated, requests={})
+    return ResourceRequirements(limits=dict(resources.limits), requests=dict(resources.requests))
+
+
 def _fabric_config_mount_path(config_mount_path: str) -> str:
     parent = str(PurePosixPath(config_mount_path).parent)
     if parent in ("", "."):
@@ -299,6 +317,7 @@ def build_deployment_config(
     auth_proxy_identity: str | None = None,
     auth_proxy_on_behalf_of: str | None = None,
     config_files: list[ConfigFile] | None = None,
+    resources: ComputeResources | None = None,
 ) -> DeploymentConfig:
     """Compile an agent into a long-running ``DeploymentConfig`` (Always).
 
@@ -390,6 +409,7 @@ def build_deployment_config(
     ).model_copy(
         update={
             "volume_mounts": volume_mounts,
+            "resources": build_container_resources(resources, mode=mode),
             "readiness_probe": Probe(
                 httpGet=HTTPGetAction(path="/health", port=port),
                 initialDelaySeconds=2,
@@ -442,6 +462,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
         image: str | None = None,
         deployment_mode: DeploymentMode = "docker",
         created_by: str | None = None,
+        resources: ComputeResources | None = None,
     ) -> DeploymentInfo:
         """Create DeploymentConfig + Deployment entities for the agent container."""
         del port  # Host port is allocated by the deployments executor, not agents.
@@ -545,6 +566,7 @@ class DeploymentsRunnerBackend(RunnerBackend):
             auth_proxy_identity=auth_proxy_identity,
             auth_proxy_on_behalf_of=auth_proxy_on_behalf_of,
             config_files=staged_config_files,
+            resources=resources,
         )
         await entities.create(deployment_config)
         try:

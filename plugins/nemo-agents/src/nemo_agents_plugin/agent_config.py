@@ -50,6 +50,14 @@ class EnvironmentConfig(BaseModel):
     workspace: str = "./workspace"
     artifacts: str = "./artifacts"
     settings: dict[str, Any] = Field(default_factory=dict)
+    # Fabric environment mirror fields (RFC-122). Additive with backward-compatible
+    # defaults; populated when an AgentEnvironmentSpec is merged at deploy time and
+    # forwarded into FabricConfig.environment by the translator.
+    env: dict[str, str] = Field(default_factory=dict)
+    control_location: str | None = None
+    ownership: str | None = None
+    connection: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TelemetryConfig(BaseModel):
