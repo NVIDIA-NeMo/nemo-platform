@@ -94,10 +94,10 @@ export const getEvaluationContextSummary = (
 export const hasEvaluationContext = (context: SpanEvaluationContext | null | undefined): boolean =>
   Boolean(
     context &&
-      (context.evaluation_name ||
-        context.test_case_name ||
-        context.evaluation_id ||
-        context.test_case_id)
+    (context.evaluation_name ||
+      context.test_case_name ||
+      context.evaluation_id ||
+      context.test_case_id)
   );
 
 export const compareSpansByStartedAt = (a: Span, b: Span): number => {
