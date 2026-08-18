@@ -347,7 +347,7 @@ class ReportRateLimiter:
         self._clock = clock
         self._last_sent: float | None = None
 
-    def allows_now(self) -> bool:
+    def allow_request(self) -> bool:
         """Whether to send now, recording the send if so.
 
         The first call always allows: a curve should start at the beginning of
@@ -499,7 +499,7 @@ class TrainingProgressCallback:
             self._unsent_points = True
 
         pending = (report_phase, step, epoch, qualified, backend)
-        if self._limiter.allows_now():
+        if self._limiter.allow_request():
             self._send_metrics(pending)
         else:
             # Superseded wholesale, and safely: the only thing a dropped pending
