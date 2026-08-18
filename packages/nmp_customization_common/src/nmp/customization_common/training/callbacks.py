@@ -3,135 +3,58 @@
 
 """Training progress callback shared by the customization backends.
 
-Composes a :class:`nmp.customization_common.training.progress.JobsServiceProgressReporter`
-and provides training-specific methods. Every numeric metric a backend reports is
-accumulated as a time series and sent under a ``metrics`` key on the train and
-validation reports, so any of them can be charted from job status alone.
+Wraps a :class:`~nmp.customization_common.training.progress.JobsServiceProgressReporter`
+and turns a backend's metric dict into job status. Every chartable metric is
+reported as a current value; the ones matching ``time_series_metrics`` also
+accumulate a history under a ``metrics`` key.
 
-The Jobs service merges ``status_details`` key-wise, so the stored series
-survives every report that does not mention it: checkpoint, epoch-end and
-training-start reports state only what they observed. The merge is shallow,
-though -- a key that is sent replaces the stored value wholesale -- so a report
-carrying ``metrics`` sends every series in full rather than a delta, and a report
-with nothing new to say about the curves omits the key rather than sending a
-partial copy.
-
-Series naming
--------------
+Naming
+------
 One rule, no exceptions: a metric is stored and reported as ``<phase>_<name>``,
-where the backend supplies its framework's own ``<name>`` (``loss``, ``lr``,
-``accuracy``) and the phase that produced it supplies the prefix. The same
-qualified name is used for the accumulated series and for the current-step
-value in ``status_details``.
+the backend supplying its framework's ``<name>`` (``loss``, ``lr``, ``accuracy``)
+and the phase supplying the prefix. ``train_loss`` and ``val_loss`` are what that
+produces for ``loss``, not special cases.
 
-The prefix is load-bearing rather than cosmetic -- DPO reports ``accuracy`` in
-both its train and validation dicts, so bare names would interleave two
-different quantities into one series. It also makes the payload collision-proof:
-nothing a ``<phase>_`` name can spell reaches ``phase``, ``step``, ``epoch`` or
-``metrics``.
+The prefix is load-bearing. DPO reports ``accuracy`` on both train and
+validation, so bare names would interleave two different quantities into one
+series. It also keeps metrics clear of the keys this class owns -- ``phase``,
+``step``, ``epoch``, ``metrics``.
 
-``train_loss`` and ``val_loss``, the two series Studio charts, are what this rule
-produces for a metric named ``loss``. They are not special cases, and there are
-none.
+What a report costs
+-------------------
+The Jobs service merges ``status_details`` key-wise but shallowly: a key that is
+sent replaces the stored value wholesale, and one left out is left standing. So a
+report either resends a series in full or omits the key entirely.
 
-Payload size, and whose problem it is
--------------------------------------
-Every series is resent in full on every train and validation report, so the
-stored blob grows as ``series x reports`` and the cost as the square of it.
+One report is three writes -- client, task, job attempt -- and the two
+server-side ones PUT the whole entity blob whether or not the report mentioned
+the series. Measured at ~43 bytes a point and 46ms + 0.31ms/KB a report, and that
+latency lands on the training thread between optimizer steps.
 
-One report costs three writes, not one. The client sends it; ``JobDispatcher``
-persists it to the task (``dispatcher.py:1217-1224``) and propagates a copy to the
-job attempt (``:1240-1242`` -> ``:1018-1019``). Both of those go through
-``EntityClient.update``, which PUTs the entity's whole ``data`` blob -- so the two
-server-side writes carry the entire accumulated ``metrics`` **whether or not the
-report mentioned it**. A report that omits the series is therefore not a cheap
-report; it is a report that saves only its own share of one leg out of three.
+This class does not thin or cap what it records, deliberately. The quadratic is a
+property of ``status_details`` being a blob that is replaced wholesale, and
+capping points here only made that cheaper to leave unfixed; a point cap was
+tried and removed. The limiter below bounds how *often* a report goes, not how
+much it carries, and nothing here bounds a long run -- that ceiling belongs to
+the transport. See the AALGO-497 design note for the measurements and the
+argument.
 
-Measured against a live platform, driving this callback with each backend's real
-metric dict. A point serialises to ~43 bytes:
+Seeding
+-------
+The accumulator lives in this process, so it seeds itself from the server.
+Without that, a process taking over a task would report from empty and -- the
+merge being wholesale per key -- erase the curves already stored.
 
-                     series   blob/report   latency/report
-    NeMo-RL DPO        20      0.86 KB x R    46ms + 0.31ms/KB
-    Automodel          12      0.52 KB x R    46ms + 0.31ms/KB
-    unsloth             4      0.17 KB x R    46ms + 0.31ms/KB
+Known issue, left alone deliberately: when a pod is replaced mid-task the new
+process seeds from the old one's points and appends its own, so one series can
+carry two runs. Consumers see the last value written at a given step plus a tail
+from the abandoned attempt. Fixing it means telling two restart shapes apart --
+a from-scratch restart, whose earlier points are a real history worth keeping,
+and a resume-from-checkpoint, whose replayed range is work that was rolled back
+-- which is more than a passing change.
 
-That latency is the third cost and the one a user feels: ``update_task`` is a
-synchronous call made from the backend's logging hook, on the training thread,
-between one optimizer step and the next. It grows with the blob, so an unbounded
-run does not merely upload quadratically -- it *stalls training* quadratically.
-Measured: 600 unthrottled reports at 11 series spent 52 seconds blocked inside
-the loop, the last fifty averaging 2.4x the latency of the first fifty.
-
-**This class does not throttle, deliberately.** It records and sends whatever
-the training library hands it, at whatever cadence the library logs. An earlier
-version bounded the stored points per curve, thinning older points to stay
-inside a budget; it was removed. The reasons are worth keeping, because the
-temptation to put it back will recur:
-
-- It bought less than it looked like. Every real customization job measured ran
-  between 12 and 594 steps, and every Automodel contract fixture caps at 50. At
-  that scale the cap never binds, and what it did bind it thinned.
-- It cost full-resolution curves -- the thing a user actually wants -- to save
-  a fraction of a megabyte.
-- It was a workaround for someone else's design. The quadratic is entirely a
-  property of ``status_details`` being a blob that is replaced wholesale and
-  written three times. Capping points here made that cheaper to leave unfixed.
-- The complexity was where the bugs were. Four data-loss defects were found in
-  the throttling machinery and none in accumulation or reporting.
-
-What remains true is the cost model above, and it is the Jobs service's to
-solve: the curves want to live somewhere that appends rather than replaces.
-Until they do, a long run is expensive, and that expense is now visible instead
-of hidden behind a cap. Verified against a live platform: a 20,000-step run at
-14 series stores an 11.9 MB blob and writes it in ~2s, well inside what the
-entity store accepts.
-
-Seeding, and what it inherits
-----------------------------
-The accumulator lives in this process, so a new process taking over a task
-would report from empty and -- the merge being wholesale per key -- replace
-whatever the task had already stored. It therefore seeds itself from the
-server, which is behaviour that predates the per-metric series: the reporter
-has always read back the stored curves.
-
-Known issue: a series can end up holding points from more than one run, which
-contradict each other. If a task's pod is replaced -- the Jobs service can
-suspend and resume a Kubernetes Job, and the Volcano backend restarts on
-``PodFailed`` when an execution profile raises ``maxRetry`` above its default
-of zero -- the new process seeds itself from the old one's points and then
-appends its own. It takes one of two shapes, according to whether the backend
-resumes from a checkpoint.
-
-Automodel and unsloth never do, and neither does a NeMo-RL run that has not
-written a checkpoint yet to return to: ``save_period`` is ``val_period``, which
-is ``steps_per_epoch``, so a single-epoch run saves only on its last step.
-Training restarts at step one and the series carries both runs end to end.
-
-NeMo-RL otherwise does resume. ``dpo.setup()`` loads the latest checkpoint
-unconditionally and the loop continues from the step recorded in it. Reporting
-runs ahead of checkpointing -- the train cadence is set by run length, the save
-cadence by ``val_period`` -- so the steps between that checkpoint and the
-interruption had already been recorded, and the replayed points are appended
-after the ones they supersede. The curve doubles back on itself across that
-range rather than restarting.
-
-Either way, consumers see the last value written at a given step, and a tail
-from the abandoned attempt beyond wherever the new run has reached.
-
-Left alone deliberately, and the two shapes are why. The clean fix is to
-identify which run a point came from so both can be kept and told apart, but
-Studio's loss chart keys a Map by step, so it would need to filter or overlay
-by run before any of it were visible. Detecting the restart here and dropping
-the superseded points is the other option, and it is right for one shape and
-not the other: a replayed range is work that was rolled back and is no loss,
-while a from-scratch restart's points are a failed attempt's entire history,
-gone permanently to keep one series single-valued. Telling those two apart is
-the work, and not a trade to make in passing.
-
-Backends subclass this and set :attr:`_default_backend`: unsloth stamps a
-``backend`` field on each report (``"unsloth"``); automodel and NeMo-RL leave it
-``None`` so no ``backend`` key is added (preserving their status-detail shape).
-Callers may also pass ``backend`` per call (e.g. unsloth's HF trainer callback).
+Backends subclass this and set :attr:`_default_backend`; callers may also pass
+``backend`` per call.
 """
 
 import logging
@@ -154,18 +77,14 @@ __all__ = ["DatasetQualifier", "ReportRateLimiter", "TrainingProgressCallback", 
 def is_chartable(value: Any) -> bool:
     """Whether ``value`` is a finite scalar that can enter a metric series.
 
-    Backends hand us whatever their framework produced, which is not always a
-    number: NeMo-RL's metric dicts interleave ``Histogram`` objects, tables and
-    nested dicts with the scalars, and ``math.isfinite`` raises ``TypeError`` on
-    all of those rather than returning False.
+    Backends hand over whatever their framework produced, which is not always a
+    number -- NeMo-RL's dicts interleave ``Histogram`` objects, tables and nested
+    dicts with the scalars, and ``math.isfinite`` raises on those rather than
+    returning False.
 
-    NaN and both infinities are rejected: neither is a value a chart can place on
-    an axis, and a single infinity flattens every real point in the series
-    against it. The SDK coerces both to ``null`` on the wire, so letting one
-    through costs a hole in the curve rather than a malformed blob.
-
-    ``bool`` is rejected despite being an ``int`` subclass: no metric here is a
-    flag, and silently charting one as 0/1 is worse than dropping it.
+    NaN and the infinities are rejected: one infinity flattens every real point
+    in the series against it. ``bool`` is rejected despite being an ``int``: no
+    metric here is a flag, and charting one as 0/1 is worse than dropping it.
     """
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return False
@@ -181,21 +100,14 @@ def is_chartable(value: Any) -> bool:
 def _qualify_metric_names(phase: str, metrics: Mapping[str, object]) -> dict[str, float | int]:
     """The chartable subset of ``metrics``, keyed by ``<phase>_<name>``.
 
-    The single naming rule. A backend passes its framework's own metric names --
-    ``loss``, ``lr``, ``accuracy`` -- and the phase that produced them supplies
-    the prefix, so the train and validation copies of one name cannot collide.
-    ``train_loss`` and ``val_loss`` are what the rule produces for ``loss``, not
-    exceptions carved out of it.
+    The naming rule, applied in one place. See the module docstring for why the
+    prefix matters.
 
-    Prefixing is also what makes the payload collision-proof: ``report_running``
-    owns ``phase``, and this callback owns ``step``, ``epoch`` and ``metrics``,
-    none of which a ``<phase>_`` name can reach.
-
-    Values :func:`is_chartable` rejects are dropped silently, and dropped from
-    the report as well as the series -- one bad metric should cost its own curve,
-    never the whole report. A ``Histogram`` left in ``status_details`` makes the
-    update fail to serialize, and ``update_task`` swallows that error, so every
-    metric in the report is lost while the job goes on looking healthy.
+    Unchartable values are dropped from the report as well as the series, so one
+    bad metric costs its own curve rather than the whole report: a ``Histogram``
+    left in ``status_details`` makes the update fail to serialize, and
+    ``update_task`` swallows that, losing every metric while the job goes on
+    looking healthy.
     """
     return {f"{phase}_{name}": _coerce(value) for name, value in metrics.items() if is_chartable(value)}
 
@@ -213,9 +125,8 @@ def _coerce(value: object) -> float | int:
 def _point_step(point: object) -> float | int | None:
     """The step a stored series point records, or ``None`` if it records none.
 
-    Defensive because the accumulator is seeded from whatever the server had
-    stored: a malformed blob must cost the points it corrupted, never raise out
-    of a report and into the training loop.
+    Defensive because the seed is whatever the server had stored: a malformed
+    blob should cost the points it corrupted, not raise into the training loop.
     """
     if not isinstance(point, dict):
         return None
@@ -227,23 +138,15 @@ class DatasetQualifier:
     """Fold a dataset's name into its metric names, past the first dataset seen.
 
     Both LLM backends validate over a *dict* of dataloaders and log once per
-    entry, every call at the same step: NeMo-RL over ``val_dataloader.items()``,
-    automodel over ``val_dataloaders``. Forwarded as-is, two datasets' ``loss``
-    become two points at one step in a single ``val_loss`` series -- the
-    collision the ``<phase>_`` rule exists to prevent, one level further down,
-    and an invisible one because Studio keys its chart by step so one silently
-    wins.
+    entry, all at the same step. Forwarded as-is, two datasets' ``loss`` become
+    two points at one step in a single ``val_loss`` series -- the collision the
+    ``<phase>_`` rule prevents, one level further down, and invisible because
+    Studio keys its chart by step, so one silently wins.
 
-    The first dataset seen keeps the bare names, so ``val_loss`` stays
-    ``val_loss`` on the ordinary single-dataset run; both frameworks name that
-    dataloader too, so keying on "did a name arrive" would rename the common case
-    and take Studio's curve with it. Iteration order over a dict is stable within
-    a run and across a resume of the same config, so a dataset keeps whichever
-    naming it started with.
-
-    Shared because it was implemented for one backend and not the other, and the
-    absence was silent: automodel's wrapper discarded the ``val_name`` its recipe
-    passes, so every dataloader reported as ``val_loss``.
+    The first dataset seen keeps the bare names, so the ordinary single-dataset
+    run still reports ``val_loss``. Both frameworks name that dataloader too, so
+    keying on "did a name arrive" would rename the common case and take Studio's
+    curve with it.
     """
 
     def __init__(self) -> None:
@@ -252,10 +155,9 @@ class DatasetQualifier:
     def qualify(self, key: str, label: str, metrics: Mapping[str, Any]) -> dict[str, Any]:
         """Qualify ``metrics`` for the dataset identified by ``key``.
 
-        ``key`` identifies the dataset (whatever the backend has to hand -- a
-        prefix, a name); ``label`` is what gets folded into the metric names.
-        They differ for NeMo-RL, whose key is the whole ``validation-<name>``
-        prefix while only ``<name>`` belongs in the series.
+        ``key`` identifies the dataset, ``label`` is what gets folded into the
+        names. They differ for NeMo-RL, whose key is the whole
+        ``validation-<name>`` prefix while only ``<name>`` belongs in the series.
         """
         if self._primary is None:
             self._primary = key
@@ -267,25 +169,20 @@ class DatasetQualifier:
 def _clean_patterns(patterns: Collection[str] | None) -> tuple[str, ...]:
     """Normalise a configured pattern list into something safe to match against.
 
-    Every value here has come off a config file, and on the NeMo-RL path it
-    reaches us straight out of a YAML with no schema in between. Matching runs
-    inline in a training step, so anything unusable has to be handled now rather
-    than raise from inside :func:`fnmatch.fnmatchcase` and take the run with it:
-    a ``None`` in the list used to surface as ``TypeError: object of type
-    'NoneType' has no len()`` out of ``report_train_step``.
+    These come off a config file, on the NeMo-RL path straight out of YAML with
+    no schema in between, and matching runs inline in a training step. So
+    anything unusable is handled here rather than raising out of
+    ``report_train_step`` and taking the run with it.
 
-    A bare string is the other trap, and the quieter one. ``str`` satisfies
-    ``Collection[str]`` as a collection of its *characters*, so
-    ``time_series_metrics: train_loss`` in YAML became the ten patterns ``t``,
-    ``r``, ``a``, ... which match nothing at all -- a run that records no history
-    and reports no error. There is only one thing it can have meant, so it is
-    read as a single pattern.
+    A bare string is the quiet trap: ``str`` satisfies ``Collection[str]`` as a
+    collection of its *characters*, so ``time_series_metrics: train_loss`` in
+    YAML became ten single-letter patterns matching nothing, with no error. It
+    can only have meant one pattern, so it is read as one.
 
-    An empty result from a non-empty input means every entry was unusable, which
-    is a broken config rather than a request for no history; that falls back to
-    recording everything, on the principle that a misconfiguration should cost
-    noise rather than data. An input that was *already* empty is left alone --
-    ``[]`` legitimately means "no series at all".
+    A non-empty input that yields nothing usable is a broken config, and falls
+    back to recording everything -- a misconfiguration should cost noise, not
+    data. An input that was *already* empty is left alone: ``[]`` legitimately
+    means "no series at all".
     """
     if patterns is None:
         return ALL_METRICS
@@ -314,24 +211,17 @@ def _clean_patterns(patterns: Collection[str] | None) -> tuple[str, ...]:
 class ReportRateLimiter:
     """Decides when a metric report may go on the wire.
 
-    Points are never at stake here. Every metric a backend reports is recorded
-    into the accumulator the moment it arrives; this only decides how often that
-    accumulator is *sent*, and a report it withholds loses nothing because its
-    points ship with the next one. That is the whole difference from the
-    point-capping this replaced, which discarded data to stay inside a budget and
-    needed decimation, seed reconstruction and per-dataloader bookkeeping to do
-    it.
+    Points are never at stake: every metric is recorded the moment it arrives,
+    and this only decides how often the accumulated state is *sent*. A withheld
+    report loses nothing, because what it would have carried goes out with the
+    next one.
 
-    What it buys is real but bounded, and worth stating so nobody expects more:
-    on a 594-step run over half an hour it takes 594 requests down to 180 and the
-    time blocked inside the training loop from 36s to 11s. It does *not* bound a
-    long run. The cost of one request grows with the accumulated blob, so an
-    11-hour run still spends tens of minutes reporting however this is tuned --
-    and no rate limit can fix that, because the payload is what is growing. That
-    ceiling belongs to the transport; see the payload note in the module
-    docstring.
+    What it buys is bounded, and worth stating so nobody expects more. On a
+    594-step run over half an hour it takes 594 requests down to 180 and the time
+    blocked inside the training loop from 36s to 11s. It does not bound a long
+    run: the cost of one request grows with the blob, which no rate limit can fix.
 
-    ``monotonic`` rather than wall-clock time: a training process outlives NTP
+    ``monotonic`` rather than wall-clock: a training process outlives NTP
     corrections, and a clock stepping backwards would stall reporting until it
     caught up.
     """
@@ -351,9 +241,8 @@ class ReportRateLimiter:
     def allow_request(self) -> bool:
         """Whether to send now, recording the send if so.
 
-        The first call always allows: a curve should start at the beginning of
-        the run rather than one interval into it, and the progress bar should
-        move as soon as there is something to say.
+        The first call always allows, so a curve starts at the beginning of the
+        run rather than one interval into it.
         """
         now = self._clock()
         if self._last_sent is not None and now - self._last_sent < self._min_interval:
@@ -366,10 +255,9 @@ class ReportRateLimiter:
 class _Progress:
     """Where training was when a metric was last observed.
 
-    The part of a report that is not a metric. Metrics accumulate by name in
-    ``_metrics``; this is the envelope they are sent under, and unlike them it is
-    genuinely replaced rather than merged -- there is one current step, and a
-    newer observation supersedes an older one outright.
+    The part of a report that is not a metric. Unlike the metrics, which merge by
+    name, this is genuinely replaced: there is one current step, and a newer
+    observation supersedes an older one outright.
     """
 
     phase: str
@@ -406,40 +294,34 @@ class TrainingProgressCallback:
         """
         self._reporter = reporter
         self._limiter = ReportRateLimiter(min_report_interval_seconds, clock)
-        #: Where training was when a metric was last observed, or None once that
-        #: observation has been sent. Doubles as the "something is owed" flag that
-        #: ``close()`` reads, so a run ends on its real final values rather than on
-        #: whenever the limiter last let a report through.
+        #: Where training was when a metric was last observed, cleared once sent.
+        #: Doubles as the "a report is owed" flag ``close()`` reads.
         self._current_progress: _Progress | None = None
-        #: Whether any point has been appended since the last send, which is what
-        #: decides whether the next report needs to carry the series at all. Only
-        #: the series are gated this way: they are the expensive part of the
-        #: payload, and the scalars are a handful of numbers.
+        #: Whether a point has been appended since the last send, which decides
+        #: whether the next report carries the series at all. Only the series are
+        #: gated: they are the expensive part, the scalars are a few numbers.
         self._series_dirty = False
-        #: Normalised to patterns so there is one code path: None becomes "*",
-        #: which is what it already meant. An empty list stays empty and records
-        #: nothing, which is a different and equally legitimate request. See
-        #: :func:`_clean_patterns` for what else has to be normalised out.
+        #: None becomes "*", which is what it already meant, so there is one code
+        #: path. ``[]`` stays empty -- a different and equally valid request.
         self._time_series_metrics: tuple[str, ...] = _clean_patterns(time_series_metrics)
-        #: Every qualified name this run has reported, matched or not. Not the
-        #: same as ``_metrics``, which also holds names seeded from a previous
-        #: process and never seen again: "did any metric arrive *this run*" is
-        #: what decides whether an unmatched pattern is worth warning about.
+        #: Qualified names seen *this run*. Not the same as ``_metrics``, which
+        #: also holds seeded names never seen again, and the difference is what
+        #: makes an unmatched pattern worth warning about.
         self._metrics_seen: set[str] = set()
-        #: Patterns that have selected at least one metric, so close() can name
-        #: the ones that never did.
+        #: Patterns that selected at least one metric, so close() can name the
+        #: ones that never did.
         self._patterns_matched: set[str] = set()
         self._closed = False
 
         seeded = reporter.fetch_current_metrics()
 
-        #: True when the seed read failed outright, as opposed to finding nothing
-        #: stored. The accumulator is then known to be incomplete, and because
-        #: the server replaces a sent key wholesale, reporting it would overwrite
-        #: the very history that could not be read. So the ``metrics`` key is
-        #: withheld for the life of the process: this run's curves stall, which
-        #: is recoverable, rather than every previous run's being destroyed,
-        #: which is not. Current values and progress still report normally.
+        #: The seed *read failed*, as opposed to finding nothing stored. The
+        #: accumulator is then known to be incomplete, and since a sent key
+        #: replaces the stored one wholesale, reporting it would overwrite the
+        #: history that could not be read. So ``metrics`` is withheld for the life
+        #: of the process: this run's curves stall, which is recoverable, rather
+        #: than destroying previous ones, which is not. Values and progress still
+        #: report normally.
         self._seed_unavailable = seeded is None
         if self._seed_unavailable:
             logger.warning(
@@ -447,25 +329,20 @@ class TrainingProgressCallback:
                 "values but will not update the accumulated curves, to avoid overwriting them."
             )
 
-        #: Qualified metric name -> what the server should hold for it. The one
-        #: store, and the shape of the payload rather than a log of events: a
-        #: send transmits this state, it does not replay what happened since the
-        #: last one. That is what makes a lost report self-healing, and what makes
-        #: it impossible for a validation report to erase a train metric.
+        #: Qualified metric name -> what the server should hold for it. State,
+        #: not a log of events: a send transmits this, it does not replay what
+        #: happened since the last one.
         #:
-        #: The **type is the discriminator**. A list is a series and a new value is
-        #: appended to it; a bare number is a scalar and a new value replaces it.
-        #: Which one a name is gets decided once, the first time it arrives, by
-        #: :meth:`_records_history` -- and never re-checked, so the patterns are
-        #: matched once per name rather than once per name per step.
+        #: **The type is the discriminator.** A list is a series and appends; a
+        #: bare number is a scalar and is replaced. Which one a name is gets
+        #: decided once, on first arrival, by :meth:`_records_history`, and is
+        #: never re-checked.
         #:
-        #: Seeded from the server so a process taking over a task continues its
-        #: curves instead of replacing them, which is what an empty accumulator
-        #: would do. Everything seeded arrives as a list and therefore stays a
-        #: series, including a name the current patterns would not select: its
-        #: history exists, and freezing it half-written serves nobody. A seeded
-        #: point that records no step is dropped -- nothing can place it on a
-        #: curve, so carrying it only defers the problem to whoever reads it.
+        #: Seeded from the server (see the module docstring). Everything seeded
+        #: arrives as a list and so stays a series, including a name the current
+        #: patterns would not select -- its history exists, and freezing it
+        #: half-written serves nobody. A seeded point recording no step is
+        #: dropped: nothing can place it on a curve.
         self._metrics: dict[str, float | int | list[dict[str, float | int]]] = {
             name: [point for point in points if _point_step(point) is not None]
             for name, points in (seeded or {}).items()
@@ -485,10 +362,9 @@ class TrainingProgressCallback:
     def _send(self, phase: str, details: dict[str, object], backend: str | None) -> None:
         """Stamp the backend field, if there is one, and hand the report over.
 
-        The tail every report shares, in one place because a change to it that
-        missed a copy would be close to invisible: ``_default_backend`` is
-        ``None`` for two of the three backends, so only unsloth's payload would
-        have shown the difference.
+        In one place because a change that missed a copy would be near-invisible:
+        ``_default_backend`` is ``None`` for two of the three backends, so only
+        unsloth's payload would show the difference.
         """
         resolved = self._resolve_backend(backend)
         if resolved is not None:
@@ -506,22 +382,16 @@ class TrainingProgressCallback:
     ) -> None:
         """Fold every metric into the store, then send it if the limiter allows.
 
-        The one path both ``report_train_step`` and ``report_validation`` take,
-        for all three backends. ``phase`` qualifies the metric names
-        (``train``/``val``); ``report_phase`` is what the Jobs service records as
-        the task's phase.
+        The one path both ``report_train_step`` and ``report_validation`` take.
+        ``phase`` qualifies the metric names (``train``/``val``);
+        ``report_phase`` is what the Jobs service records as the task's phase.
 
-        Every report a backend makes is *recorded*; the limiter decides only which
-        of them are *sent*. Nothing is discarded either way, because recording
-        merges by metric name -- a withheld report's values are already in the
-        store and go out with the next send.
-
-        That merge is the whole point. This used to hold one withheld report in a
-        single slot, so a second withheld report replaced the first wholesale and
-        its scalars were never sent at all. The ordinary end-of-run sequence hit
-        it: a final train step withheld, then a validation pass withheld, and the
-        validation report -- carrying ``val_`` names, a disjoint key set -- took
-        the slot. Keyed by name, that cannot happen.
+        Every report is *recorded*; the limiter decides only which are *sent*.
+        Merging by name is what makes that safe -- a withheld report's values are
+        already in the store. Holding withheld reports whole instead loses them:
+        a train step and then a validation pass, both withheld, and the
+        validation report's disjoint ``val_`` keys displace the train scalars
+        entirely. That is the ordinary end-of-run sequence.
         """
         qualified = _qualify_metric_names(phase, metrics)
         self._metrics_seen.update(qualified)
@@ -544,16 +414,11 @@ class TrainingProgressCallback:
     def _flush(self) -> None:
         """Send the store as it stands, under the latest progress.
 
-        Declarative rather than a replay: this transmits the state the server
-        should hold, not the events since the last send. A report the transport
-        drops -- and ``update_task`` swallows its failures -- therefore costs
-        nothing permanently, because the next send restates everything.
-
-        Scalars ride on every report. There are a handful of them and they are
-        single numbers, so restating them is what buys the self-healing above for
-        a cost too small to measure. The series are the expensive term, so they
-        ship only when a point has actually been added: the merge leaves a key
-        that is not mentioned standing, so an unchanged blob need not be resent.
+        Scalars ride on every report rather than only when observed. They are a
+        few single numbers, and restating them makes a dropped report cost
+        nothing -- ``update_task`` swallows its failures, so the next send is
+        what repairs it. The series are the expensive term and ship only when a
+        point was added, since a key left unmentioned is left standing.
         """
         progress = self._current_progress
         if progress is None:
@@ -563,9 +428,9 @@ class TrainingProgressCallback:
         series: dict[str, list[dict[str, float | int]]] = {}
         for name, value in self._metrics.items():
             if isinstance(value, list):
-                # A series reports *both*: the history under `metrics`, and its
-                # newest point as a top-level current value like any other metric.
-                # Being a series adds a history; it does not cost the value.
+                # A series reports both: the history under `metrics`, and its
+                # newest point as a current value like any other metric. Being a
+                # series adds a history; it does not cost the value.
                 series[name] = list(value)
                 if value and (latest := value[-1].get("value")) is not None:
                     details[name] = latest
@@ -586,45 +451,35 @@ class TrainingProgressCallback:
         """The ``metrics`` blob: every series, with the two Studio charts present.
 
         ``train_loss``/``val_loss`` are always keys, even when empty, so the shape
-        stays stable for consumers that index them directly. The lists are already
-        copies by the time they arrive here -- the payload must not mutate after
-        it is handed over.
+        stays stable for consumers that index them directly. The lists arrive
+        already copied -- the payload must not mutate after it is handed over.
         """
         return {"train_loss": [], "val_loss": [], **series}
 
     def _records_history(self, name: str) -> bool:
         """Whether *name* gets a stored series rather than only a current value.
 
-        Asked once, the first time a metric arrives; the answer is then carried by
-        the metric's type in ``_metrics`` and never recomputed. That is why the
-        log below needs no seen-set to keep it to one line per name -- it is
-        reached once per name by construction.
+        Asked once, on a metric's first arrival; the answer is then carried by its
+        type in ``_metrics``. That is why the log below needs no seen-set to stay
+        at one line per name -- it is reached once per name by construction.
 
-        The one bound on the payload this class still applies, and the one that is
-        a data-modelling choice rather than a workaround: a backend reporting
-        twenty metrics spends most of the blob on histories nobody reads.
-        Throughput and accounting counters -- ``tps``, ``mem``,
-        ``num_label_tokens``, ``global_valid_toks`` -- are worth a number on a
-        status page and not two hundred stored points each.
+        The one bound on the payload this class still applies, and a
+        data-modelling choice rather than a workaround: throughput and accounting
+        counters (``tps``, ``mem``, ``num_label_tokens``) are worth a number on a
+        status page, not two hundred stored points each.
 
-        Answering no costs a metric its history, never its visibility: every
-        chartable metric is still reported as a current value on every report.
-        That is the distinction that makes this safe where the old report-time
-        allow-list was not -- that one dropped metrics outright, and DPO's
-        ``accuracy``, ``sft_loss`` and ``rewards_chosen_mean`` went missing for a
-        release because nobody had added them to it. Here the same omission costs
-        a chart, and says so in the log.
+        Answering no costs a metric its history, never its visibility -- every
+        chartable metric is still reported as a current value. That is what makes
+        this safe where the old report-time allow-list was not: that one dropped
+        metrics outright, and DPO's ``accuracy``, ``sft_loss`` and
+        ``rewards_chosen_mean`` went missing for a release.
 
-        Patterns match the **qualified** name, the one that appears in
-        ``status_details``, so what a user writes is what they read back. Globs
-        via :func:`fnmatch.fnmatchcase` -- ``fnmatchcase`` and not ``fnmatch``,
-        which applies ``os.path.normcase`` and would therefore match
-        case-insensitively on some platforms and not others.
-
-        Matching the qualified name is what makes NeMo-RL's second validation set
-        expressible: its logger folds the dataloader name in, so that set's loss
-        arrives as ``val_heldout_loss``, which no unqualified spelling could reach
-        and which ``*_loss`` covers without knowing the dataset's name.
+        Patterns match the **qualified** name, so what a user writes is what they
+        read back, and NeMo-RL's second validation set is reachable at all --
+        its loss arrives as ``val_heldout_loss``, which ``*_loss`` covers without
+        knowing the dataset name. ``fnmatchcase`` and not ``fnmatch``: the latter
+        applies ``os.path.normcase``, so it would match case-insensitively on
+        some platforms and not others.
         """
         matched = [p for p in self._time_series_metrics if fnmatchcase(name, p)]
         if matched:
@@ -642,20 +497,17 @@ class TrainingProgressCallback:
     def _warn_on_patterns_that_matched_nothing(self) -> None:
         """Say so when a configured pattern never matched a metric that arrived.
 
-        The failure this catches is a misspelling, and the likeliest one is an
-        unqualified name: ``loss`` selects nothing, because the metric is
-        ``train_loss``. Without this the run reports no history for it and looks
-        exactly like a run that was configured not to.
+        Catches a misspelling, most often an unqualified name: ``loss`` selects
+        nothing, because the metric is ``train_loss``. Without this the run
+        reports no history and looks exactly like one configured not to.
 
-        Left to ``close()`` rather than checked up front, because a name that has
-        not arrived yet is not yet wrong -- backends omit metrics on some steps,
-        and validation names do not appear until the first pass.
+        Left to ``close()`` because a name that has not arrived *yet* is not yet
+        wrong -- backends omit metrics on some steps, and validation names do not
+        appear until the first pass.
 
-        Gated on whether *any* metric arrived, not on whether any was excluded.
-        Those differ precisely when every metric that arrived matched something,
-        which is the ordinary case and therefore the one a typo has to be caught
-        in: ``["*_loss", "val_accuarcy"]`` against a run that reports only a loss
-        has nothing excluded, and the misspelling used to pass in silence.
+        Gated on whether any metric arrived, not on whether any was *excluded*.
+        Those differ exactly when everything that arrived matched something,
+        which is the ordinary case a typo has to be caught in.
         """
         unmatched = [p for p in self._time_series_metrics if p not in self._patterns_matched]
         if not unmatched or not self._metrics_seen:
@@ -673,17 +525,12 @@ class TrainingProgressCallback:
     def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str | None = None) -> None:
         """Report that training has started with schedule information.
 
-        Carries no ``metrics``: it fires before the first step, so it has nothing
-        to add to the curves, and sending the empty accumulator would replace the
-        stored series with two empty lists.
-
-        Carries no ``step`` either, for the same reason one level along.
-        ``report_running`` turns a stated step into ``percentage_done``, and the
-        merge is wholesale per key, so a literal 0 here overwrites whatever
-        progress the task had stored -- in a field harder to spot than the series,
-        because the epoch beside it is not restated and goes on reading
-        correctly. Nothing has happened yet that this could truthfully report, so
-        it says nothing and lets the first train step state the position.
+        States neither ``metrics`` nor ``step``, and for the same reason: this
+        fires before the first step, and the merge is wholesale per key. An empty
+        accumulator would replace the stored series with empty lists, and a
+        literal step 0 would overwrite the stored ``percentage_done`` -- the
+        harder one to spot, since the epoch beside it goes on reading correctly.
+        The first train step states the position instead.
         """
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
         details: dict[str, object] = {
@@ -697,19 +544,15 @@ class TrainingProgressCallback:
     ) -> None:
         """Report one training step.
 
-        Hand over the framework's metric dict as-is, under its own names --
-        ``loss``, ``lr``, ``grad_norm``, ``preference_loss``, whatever it
-        produces. Each chartable entry becomes a ``train_<name>`` series *and* a
-        ``train_<name>`` current value, so a consumer can read either the curve or
-        the latest point.
+        Hand over the framework's metric dict as-is, under its own names. Each
+        chartable entry becomes a ``train_<name>`` current value, and a
+        ``train_<name>`` series if it is configured for one.
 
-        No metric is required and none is privileged: a step that produces no
-        loss reports no ``train_loss``, and a name is stated only when it was
-        observed, because a null charts as a real zero.
+        No metric is required and none is privileged: a step producing no loss
+        reports no ``train_loss``, rather than a null that charts as a real zero.
 
-        Taken as a dict rather than ``**kwargs`` so that the metric names and this
-        method's own parameters cannot collide. Backends forward whatever their
-        framework emits, and a framework is free to call something ``step``.
+        A dict rather than ``**kwargs`` so metric names cannot collide with this
+        method's own parameters -- a framework is free to call something ``step``.
         """
         self._report_metrics("train", "training", step, epoch, metrics, backend)
 
@@ -719,8 +562,7 @@ class TrainingProgressCallback:
         """Report one validation pass.
 
         The same rule under the ``val_`` prefix. An algorithm that validates on
-        task metrics alone and reports no ``loss`` simply leaves ``val_loss``
-        empty, which is why nothing here is required either.
+        task metrics alone and reports no ``loss`` just leaves ``val_loss`` empty.
         """
         self._report_metrics("val", "validation", step, epoch, metrics, backend)
 
@@ -734,11 +576,9 @@ class TrainingProgressCallback:
     ) -> None:
         """Report that a checkpoint was saved.
 
-        The ``checkpoint_path`` key is omitted when the backend has no path to
-        state -- both automodel and unsloth pass ``None`` when their framework
-        doesn't hand one back. Sending it as null would not merely say nothing:
-        the server merges key-wise, so an explicit null overwrites the last known
-        checkpoint, while omitting the key leaves it standing.
+        ``checkpoint_path`` is omitted rather than sent as null when the backend
+        has none to state: the merge is key-wise, so an explicit null overwrites
+        the last known checkpoint while omitting the key leaves it standing.
         """
         details: dict[str, object] = {
             "step": step,
@@ -757,18 +597,17 @@ class TrainingProgressCallback:
         self._send("epoch_end", details, backend)
 
     def close(self) -> None:
-        """Flush whatever the gates withheld, then clean up resources.
+        """Flush whatever the limiter withheld, then clean up resources.
 
         Idempotent: NeMo-RL reaches this from a driver ``finally``, from the
-        composite logger's ``finish()`` and from ``__del__``, and a second flush
-        would append the final step twice.
+        composite logger's ``finish()`` and from ``__del__``.
         """
         if self._closed:
             return
         self._closed = True
         if self._current_progress is not None:
-            # Load-bearing for data, not only for freshness: the points recorded
-            # since the last send exist nowhere but this process until something
+            # Load-bearing for data, not just freshness: points recorded since
+            # the last send exist nowhere but this process until something
             # carries them.
             try:
                 self._flush()
