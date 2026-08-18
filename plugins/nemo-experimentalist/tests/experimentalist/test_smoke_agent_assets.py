@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Keep the smoke agent's task image, its NOOA pin, and its verifier honest.
+"""Keep the smoke agent's task image, its NOOA version range, and its verifier honest.
 
 No Docker here on purpose: the image tag is a content hash, so a forgotten
 rebuild is a string comparison rather than something only a container run can
@@ -24,12 +24,18 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _EXAMPLE_DIR = Path(__file__).resolve().parents[2] / "examples" / "smoke-agent"
 _SHARED = _EXAMPLE_DIR / "dataset" / "_shared"
 _HASHED = ("Dockerfile", "records.json")
-_RENDERED_TASK_TREE_SHA256 = "d8d4face3d4aa0f5697faaea2bd6146a73573290910c216146a3753ced4b7906"
+_RENDERED_TASK_TREE_SHA256 = "246b50d218d80fec7b030f93347cebe2f9b2563bb4d4d71103cf5f282e80d41a"
 
 
-def _root_nooa_rev() -> str:
-    data = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return data["tool"]["uv"]["sources"]["nooa"]["rev"]
+def _plugin_nooa_specifier() -> str:
+    """Return the version specifier the plugin declares for nooa, e.g. ">=0.0.9"."""
+    plugin_pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    data = tomllib.loads(plugin_pyproject.read_text(encoding="utf-8"))
+    for dep in data["project"]["dependencies"]:
+        found = re.fullmatch(r"nooa(?:\[[^\]]*\])?\s*(?P<spec>.+)", dep.strip())
+        if found:
+            return found.group("spec").strip()
+    raise AssertionError("the plugin must declare a versioned nooa dependency")
 
 
 def _expected_tag() -> str:
@@ -180,14 +186,18 @@ def test_verifier_does_not_echo_answers() -> None:
         assert forbidden not in code, f"{forbidden} publishes ground truth to the trial log"
 
 
-def test_dockerfile_nooa_rev_matches_workspace() -> None:
-    """Check that the task image uses the workspace's NOOA revision."""
+def test_dockerfile_nooa_version_matches_the_plugin() -> None:
+    """Check that the task image resolves the same NOOA range as the plugin.
+
+    The agent under test runs inside this image, so a floor that drifts from the
+    plugin's own lets the two pick up different NOOA releases.
+    """
     dockerfile_path = _SHARED / "Dockerfile"
     if not dockerfile_path.is_file():
         return  # Task 4 creates it.
-    found = re.search(r"labs-OO-Agents\.git@([0-9a-f]{40})", dockerfile_path.read_text(encoding="utf-8"))
-    assert found is not None, "Dockerfile must pin NOOA to an explicit revision"
-    assert found.group(1) == _root_nooa_rev()
+    found = re.search(r"nooa\[[^\]]*\]\s*(?P<spec>[<>=!~][^\"']+)", dockerfile_path.read_text(encoding="utf-8"))
+    assert found is not None, "Dockerfile must constrain NOOA to a version range"
+    assert found.group("spec").strip() == _plugin_nooa_specifier()
 
 
 def test_task_image_runs_as_a_non_root_user() -> None:
