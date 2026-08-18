@@ -137,16 +137,17 @@ Callers may also pass ``backend`` per call (e.g. unsloth's HF trainer callback).
 import logging
 import math
 import numbers
-from collections.abc import Collection, Mapping
+import time
+from collections.abc import Callable, Collection, Mapping
 from fnmatch import fnmatchcase
 from typing import Any, ClassVar, cast
 
 from nmp.customization_common.training.progress import JobsServiceProgressReporter
-from nmp.customization_common.training.reporting import ALL_METRICS
+from nmp.customization_common.training.reporting import ALL_METRICS, DEFAULT_MIN_REPORT_INTERVAL_SECONDS
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DatasetQualifier", "TrainingProgressCallback", "is_chartable"]
+__all__ = ["DatasetQualifier", "ReportRateLimiter", "TrainingProgressCallback", "is_chartable"]
 
 
 def is_chartable(value: Any) -> bool:
@@ -309,6 +310,57 @@ def _clean_patterns(patterns: Collection[str] | None) -> tuple[str, ...]:
     return usable
 
 
+class ReportRateLimiter:
+    """Decides when a metric report may go on the wire.
+
+    Points are never at stake here. Every metric a backend reports is recorded
+    into the accumulator the moment it arrives; this only decides how often that
+    accumulator is *sent*, and a report it withholds loses nothing because its
+    points ship with the next one. That is the whole difference from the
+    point-capping this replaced, which discarded data to stay inside a budget and
+    needed decimation, seed reconstruction and per-dataloader bookkeeping to do
+    it.
+
+    What it buys is real but bounded, and worth stating so nobody expects more:
+    on a 594-step run over half an hour it takes 594 requests down to 180 and the
+    time blocked inside the training loop from 36s to 11s. It does *not* bound a
+    long run. The cost of one request grows with the accumulated blob, so an
+    11-hour run still spends tens of minutes reporting however this is tuned --
+    and no rate limit can fix that, because the payload is what is growing. That
+    ceiling belongs to the transport; see the payload note in the module
+    docstring.
+
+    ``monotonic`` rather than wall-clock time: a training process outlives NTP
+    corrections, and a clock stepping backwards would stall reporting until it
+    caught up.
+    """
+
+    def __init__(
+        self,
+        min_interval_seconds: float,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        #: Negative is meaningless and would make every check pass; clamp rather
+        #: than raise, since this arrives from a job config and a reporting knob
+        #: must not be able to stop a run from starting.
+        self._min_interval = max(float(min_interval_seconds), 0.0)
+        self._clock = clock
+        self._last_sent: float | None = None
+
+    def allows_now(self) -> bool:
+        """Whether to send now, recording the send if so.
+
+        The first call always allows: a curve should start at the beginning of
+        the run rather than one interval into it, and the progress bar should
+        move as soon as there is something to say.
+        """
+        now = self._clock()
+        if self._last_sent is not None and now - self._last_sent < self._min_interval:
+            return False
+        self._last_sent = now
+        return True
+
+
 class TrainingProgressCallback:
     """Report training progress to the Jobs service."""
 
@@ -321,6 +373,8 @@ class TrainingProgressCallback:
         reporter: JobsServiceProgressReporter,
         *,
         time_series_metrics: Collection[str] | None = None,
+        min_report_interval_seconds: float = DEFAULT_MIN_REPORT_INTERVAL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
     ):
         """Build the callback over ``reporter``.
 
@@ -328,8 +382,20 @@ class TrainingProgressCallback:
             reporter: Transport to the Jobs service.
             time_series_metrics: Qualified metric names or glob patterns to
                 accumulate, or None for all of them.
+            min_report_interval_seconds: Least time between metric reports going
+                on the wire. 0 sends every one. Points are recorded regardless.
+            clock: Monotonic time source, injectable so the limiter can be tested
+                without sleeping.
         """
         self._reporter = reporter
+        self._limiter = ReportRateLimiter(min_report_interval_seconds, clock)
+        #: The most recent report the limiter withheld, replayed by ``close()``
+        #: so a run ends on its real final values rather than on whenever the
+        #: limiter last let one through.
+        self._pending_metrics: tuple[str, int, int, dict[str, float | int], str | None] | None = None
+        #: Whether any point has been recorded since the last send, which is what
+        #: decides whether the next report needs to carry the series at all.
+        self._unsent_points = False
         #: Normalised to patterns so there is one code path: None becomes "*",
         #: which is what it already meant. An empty list stays empty and records
         #: nothing, which is a different and equally legitimate request. See
@@ -416,31 +482,52 @@ class TrainingProgressCallback:
         (``train``/``val``); ``report_phase`` is what the Jobs service records as
         the task's phase.
 
-        Every report a backend makes is recorded and sent. There is no cadence of
-        our own: the training library decides how often it logs, and this reports
-        what it is given. That is a deliberate reversal -- an earlier version
-        bounded the stored points per curve and thinned older ones to stay inside
-        the budget, which cost full-resolution curves and a good deal of machinery
-        to work around a limitation that belongs to the transport rather than to
-        this class. See the payload note in the module docstring for what that
-        costs and why it is the Jobs service's problem to solve.
+        Every report a backend makes is *recorded*; the rate limiter decides only
+        which of them are *sent*. Nothing is discarded either way -- a withheld
+        report's points are already on their curves and ship with the next
+        request -- which is what separates this from the point cap it replaced.
+
+        The payload is built at send time rather than at record time, so a
+        withheld report costs a dict of scalars rather than a copy of every
+        series. On a long run most reports are withheld.
         """
         qualified = _qualify_metric_names(phase, metrics)
         recorded = self._time_series_subset(qualified)
         for name, value in recorded.items():
             self._series.setdefault(name, []).append({"step": step, "epoch": epoch, "value": value})
+        if recorded:
+            self._unsent_points = True
 
+        pending = (report_phase, step, epoch, qualified, backend)
+        if self._limiter.allows_now():
+            self._send_metrics(pending)
+        else:
+            # Superseded wholesale, and safely: the only thing a dropped pending
+            # report loses is its own scalars, and the newer one that replaced it
+            # carries fresher ones. The points it recorded are not in here.
+            self._pending_metrics = pending
+
+    def _send_metrics(self, pending: tuple[str, int, int, dict[str, float | int], str | None]) -> None:
+        """Build and send one metric report, clearing what it supersedes."""
+        report_phase, step, epoch, qualified, backend = pending
         details: dict[str, object] = {
             "step": step,
             "epoch": epoch,
             **qualified,
         }
-        # Sent in full or not at all, so a report that added no point has nothing
+        # Sent in full or not at all, so a report with no new point has nothing
         # to say about the curves: the stored copy already matches, and the merge
-        # leaves a key that is not mentioned standing. A report whose metrics are
-        # all current-value-only lands here too, and correctly says nothing.
-        if not self._seed_unavailable and recorded:
+        # leaves a key that is not mentioned standing.
+        #
+        # Keyed on whether anything has been recorded *since the last send*, not
+        # on what this particular report added. Under a rate limit those differ:
+        # the report that happens to pass the limiter may itself be all
+        # current-value-only while several withheld before it added points, and
+        # asking only about this one would strand them until the next.
+        if not self._seed_unavailable and self._unsent_points:
             details["metrics"] = self._build_metrics_summary()
+        self._pending_metrics = None
+        self._unsent_points = False
         self._send(report_phase, details, backend)
 
     def _time_series_subset(self, qualified: dict[str, float | int]) -> dict[str, float | int]:
@@ -633,5 +720,13 @@ class TrainingProgressCallback:
         if self._closed:
             return
         self._closed = True
+        if self._pending_metrics is not None:
+            # Load-bearing for data, not only for freshness: the points recorded
+            # since the last send exist nowhere but this process until something
+            # carries them.
+            try:
+                self._send_metrics(self._pending_metrics)
+            except Exception as exc:  # pragma: no cover - defensive, shutdown path
+                logger.warning(f"Failed to send the final metric report: {exc}")
         self._warn_on_patterns_that_matched_nothing()
         self._reporter.close()

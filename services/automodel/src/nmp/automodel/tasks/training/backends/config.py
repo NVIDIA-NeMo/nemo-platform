@@ -242,6 +242,7 @@ def compile_automodel_config(
     # AutomodelRecipeWrapper reads it back off `recipe.cfg`.
     cfg["_progress_reporting"] = {
         "time_series_metrics": customizer_config.schedule.progress_reporting.time_series_metrics,
+        "min_report_interval_seconds": customizer_config.schedule.progress_reporting.min_report_interval_seconds,
     }
 
     val_every_steps = compute_val_check_interval(

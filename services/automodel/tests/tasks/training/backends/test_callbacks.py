@@ -17,7 +17,7 @@ class TestTrainingProgressCallback:
             "train_loss": [],
             "val_loss": [],
         }
-        callback = TrainingProgressCallback(mock_reporter)
+        callback = TrainingProgressCallback(mock_reporter, min_report_interval_seconds=0)
         return callback, mock_reporter
 
     def _last_report_kwargs(self, mock_reporter: MagicMock) -> dict:

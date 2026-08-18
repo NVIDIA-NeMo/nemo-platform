@@ -56,7 +56,15 @@ def reporter() -> _RecordingReporter:
 
 
 def _make_callback(reporter: _RecordingReporter, **kwargs: Any) -> TrainingProgressCallback:
-    """Build the callback over a duck-typed reporter, narrowing the type once here."""
+    """Build the callback over a duck-typed reporter, narrowing the type once here.
+
+    Rate limiting is off unless a test asks for it. Almost everything in this
+    file is about what a report *contains* -- the naming rule, the payload shape,
+    what the seed does -- and those tests report several steps in the same
+    instant, which the default interval would withhold. The limiter has its own
+    section, with a clock it controls.
+    """
+    kwargs.setdefault("min_report_interval_seconds", 0)
     return TrainingProgressCallback(cast(JobsServiceProgressReporter, reporter), **kwargs)
 
 
@@ -957,3 +965,161 @@ def test_a_typo_is_reported_even_when_every_metric_matched(
     assert len(warned) == 1
     assert "val_accuarcy" in warned[0].getMessage()
     assert "train_loss" in warned[0].getMessage(), "names what did arrive, so the fix is obvious"
+
+
+# --------------------------------------------------------------------------- #
+# Rate limiting
+#
+# What it bounds is how often the accumulator goes on the wire. What it must
+# never touch is what the accumulator holds: a withheld report's points are
+# already recorded, and ship with the next request that does go.
+# --------------------------------------------------------------------------- #
+
+
+class _FakeClock:
+    """A monotonic clock the test advances by hand."""
+
+    def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def test_reports_inside_the_interval_are_withheld(reporter: _RecordingReporter) -> None:
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+
+    for step in range(1, 6):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1], "the first always goes; the rest are inside the interval"
+
+
+def test_a_report_goes_once_the_interval_has_passed(reporter: _RecordingReporter) -> None:
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+
+    for step in range(1, 61):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+        clock.advance(1)
+
+    assert _train_steps(reporter) == [1, 11, 21, 31, 41, 51]
+
+
+def test_a_withheld_report_loses_no_points(reporter: _RecordingReporter) -> None:
+    """The whole difference from the point cap this replaced.
+
+    Steps 2 through 5 are never sent as reports of their own, but their points
+    are on the curve by the time a report does go.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+
+    for step in range(1, 6):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": float(step)})
+    clock.advance(10)
+    callback.report_train_step(step=6, epoch=1, metrics={"loss": 6.0})
+
+    stored = reporter.reports[-1]["metrics"]["train_loss"]
+    assert [p["step"] for p in stored] == [1, 2, 3, 4, 5, 6]
+    assert [p["value"] for p in stored] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+
+def test_close_sends_what_the_limiter_withheld(reporter: _RecordingReporter) -> None:
+    """Load-bearing for data, not only for freshness.
+
+    Points recorded since the last send exist nowhere but this process until
+    something carries them, so a run that ends mid-interval must not simply stop.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+    for step in range(1, 6):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": float(step)})
+
+    assert _train_steps(reporter) == [1]
+
+    callback.close()
+
+    assert _train_steps(reporter) == [1, 5]
+    assert [p["step"] for p in reporter.reports[-1]["metrics"]["train_loss"]] == [1, 2, 3, 4, 5]
+
+
+def test_close_sends_nothing_when_the_last_report_already_went(reporter: _RecordingReporter) -> None:
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+
+    callback.close()
+
+    assert _train_steps(reporter) == [1], "no duplicate of a report that already went"
+
+
+def test_a_send_carries_points_recorded_by_reports_that_did_not(reporter: _RecordingReporter) -> None:
+    """The report that passes the limiter may itself add nothing chartable.
+
+    Asking whether *this* report recorded a point would strand everything the
+    withheld ones recorded until some later report happened to add one of its
+    own. The question is whether anything is unsent.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.6})
+    clock.advance(10)
+    callback.report_train_step(step=3, epoch=1, metrics={"grad_norm": float("nan")})
+
+    assert [p["step"] for p in reporter.reports[-1]["metrics"]["train_loss"]] == [1, 2]
+
+
+def test_the_two_paths_share_one_interval(reporter: _RecordingReporter) -> None:
+    """The cost being limited is a request, and both paths send the same blob.
+
+    A per-path limit would let a validating run send twice as often for the same
+    reason a single-path one sends once.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_validation(step=1, epoch=1, metrics={"loss": 0.4})
+
+    assert len(reporter.reports) == 1
+
+
+def test_events_are_never_withheld(reporter: _RecordingReporter) -> None:
+    """Checkpoints and epoch ends are events, not samples.
+
+    A checkpoint report carries the only record of where the checkpoint landed,
+    so dropping one loses it rather than delaying it.
+    """
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=10, clock=clock)
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    for step in (2, 3, 4):
+        callback.report_checkpoint_saved(step=step, epoch=1, checkpoint_path=f"/ckpt/{step}")
+        callback.report_epoch_end(step=step, epoch=1)
+
+    assert len([r for r in reporter.reports if r["phase"] == "checkpoint_saved"]) == 3
+    assert len([r for r in reporter.reports if r["phase"] == "epoch_end"]) == 3
+
+
+def test_zero_sends_every_report(reporter: _RecordingReporter) -> None:
+    clock = _FakeClock()
+    callback = _make_callback(reporter, min_report_interval_seconds=0, clock=clock)
+
+    for step in range(1, 6):
+        callback.report_train_step(step=step, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 2, 3, 4, 5]
+
+
+def test_a_negative_interval_is_clamped_rather_than_raising(reporter: _RecordingReporter) -> None:
+    """This arrives from a job config; a reporting knob must not stop a run."""
+    callback = _make_callback(reporter, min_report_interval_seconds=-5, clock=_FakeClock())
+    callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
+    callback.report_train_step(step=2, epoch=1, metrics={"loss": 0.5})
+
+    assert _train_steps(reporter) == [1, 2]

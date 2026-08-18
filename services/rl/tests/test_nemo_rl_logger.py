@@ -76,8 +76,8 @@ class _RecordingCallback:
         self.closes = 0
         #: The reporting config the logger built us with, so the plumbing from
         #: the job config down to the gate is assertable from this side.
-        self.max_points: int | None = None
         self.time_series_metrics: Any = None
+        self.min_report_interval_seconds: Any = None
 
     def report_training_start(self, max_steps: int, num_epochs: int) -> None:
         self.training_starts.append({"max_steps": max_steps, "num_epochs": num_epochs})
@@ -103,11 +103,11 @@ def callback(monkeypatch: pytest.MonkeyPatch) -> _RecordingCallback:
     def _build(
         _reporter: Any,
         *,
-        max_points: int | None = None,
         time_series_metrics: Any = None,
+        min_report_interval_seconds: Any = None,
     ) -> _RecordingCallback:
-        recorder.max_points = max_points
         recorder.time_series_metrics = time_series_metrics
+        recorder.min_report_interval_seconds = min_report_interval_seconds
         return recorder
 
     monkeypatch.setattr(nemo_rl_logger, "JobsServiceProgressReporter", lambda *a, **k: object())
@@ -347,6 +347,23 @@ def test_the_charted_metric_names_reach_the_callback(callback: _RecordingCallbac
     )
 
     assert callback.time_series_metrics == ["*_loss", "*_accuracy"]
+
+
+def test_the_report_interval_reaches_the_callback(callback: _RecordingCallback) -> None:
+    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100, min_report_interval_seconds=30)
+
+    assert callback.min_report_interval_seconds == 30
+
+
+def test_an_absent_report_interval_takes_the_shared_default(callback: _RecordingCallback) -> None:
+    """The DPO block carries it as an undeclared extra, so it can be absent.
+
+    A config compiled before the knob existed omits it, and a run must start and
+    report rather than fail on a missing reporting field.
+    """
+    NemoRLLogger.for_schedule(max_steps=20_000, num_epochs=1, val_period=100)
+
+    assert callback.min_report_interval_seconds == nemo_rl_logger.DEFAULT_MIN_REPORT_INTERVAL_SECONDS
 
 
 def test_an_absent_list_takes_the_backend_default(callback: _RecordingCallback) -> None:

@@ -272,3 +272,34 @@ def test_a_recipe_that_passes_no_dataset_name_is_unchanged(finetune: ModuleType)
     wrapper._log_val_metrics(_LogData(step=99, epoch=0, metrics={"val_loss": 0.4, "val_acc1": 0.8}))
 
     assert callback.validations[0]["metrics"] == {"loss": 0.4, "acc1": 0.8}
+
+
+def test_the_compiled_report_interval_is_used(finetune: ModuleType) -> None:
+    recipe = _Recipe({"_progress_reporting": {"min_report_interval_seconds": 30}})
+
+    assert finetune._resolve_min_report_interval(recipe) == 30.0
+
+
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        {},  # a config compiled before the knob existed
+        {"_progress_reporting": {}},
+        {"_progress_reporting": {"min_report_interval_seconds": None}},
+        {"_progress_reporting": {"min_report_interval_seconds": "soon"}},
+        {"_progress_reporting": {"min_report_interval_seconds": True}},  # bool is an int subclass
+        None,
+    ],
+)
+def test_an_unusable_report_interval_falls_back(finetune: ModuleType, cfg: object) -> None:
+    """Read as defensively as its neighbour: this runs in the wrapper's
+    constructor, outside any try, so raising would kill the training process."""
+    assert finetune._resolve_min_report_interval(_Recipe(cfg)) == finetune.DEFAULT_MIN_REPORT_INTERVAL_SECONDS
+
+
+def test_a_zero_report_interval_is_kept_rather_than_read_as_absent(finetune: ModuleType) -> None:
+    """0 means "send every report" and is a legitimate request, not a missing value."""
+    assert (
+        finetune._resolve_min_report_interval(_Recipe({"_progress_reporting": {"min_report_interval_seconds": 0}}))
+        == 0.0
+    )

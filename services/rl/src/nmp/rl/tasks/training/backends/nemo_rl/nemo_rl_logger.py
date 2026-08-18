@@ -15,7 +15,10 @@ from typing import Any, Mapping, Optional, Self
 from nemo_rl.utils.logger import LoggerInterface
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import TrainingProgressCallback, is_chartable
-from nmp.customization_common.training.reporting import DIAGNOSTIC_TIME_SERIES
+from nmp.customization_common.training.reporting import (
+    DEFAULT_MIN_REPORT_INTERVAL_SECONDS,
+    DIAGNOSTIC_TIME_SERIES,
+)
 from nmp.rl.tasks.training.progress import JobsServiceProgressReporter
 
 _logger = logging.getLogger(__name__)
@@ -95,6 +98,7 @@ class NemoRLLogger(LoggerInterface):
         max_steps: int | None = None,
         num_epochs: int | None = None,
         time_series_metrics: Collection[str] | None = None,
+        min_report_interval_seconds: float | None = None,
     ):
         """Initialize the NemoRL logger.
 
@@ -127,6 +131,11 @@ class NemoRLLogger(LoggerInterface):
         self._callback = TrainingProgressCallback(
             JobsServiceProgressReporter(self._job_ctx),
             time_series_metrics=(DEFAULT_TIME_SERIES_METRICS if time_series_metrics is None else time_series_metrics),
+            min_report_interval_seconds=(
+                DEFAULT_MIN_REPORT_INTERVAL_SECONDS
+                if min_report_interval_seconds is None
+                else min_report_interval_seconds
+            ),
         )
 
         self._closed = False
@@ -148,6 +157,7 @@ class NemoRLLogger(LoggerInterface):
         val_period: int | None = None,
         steps_per_epoch: int | None = None,
         time_series_metrics: Collection[str] | None = None,
+        min_report_interval_seconds: float | None = None,
         job_ctx: NMPJobContext | None = None,
     ) -> Self:
         """Build a logger from a NeMo-RL training schedule.
@@ -169,6 +179,7 @@ class NemoRLLogger(LoggerInterface):
             max_steps=max_steps,
             num_epochs=num_epochs,
             time_series_metrics=time_series_metrics,
+            min_report_interval_seconds=min_report_interval_seconds,
         )
 
     def log_metrics(

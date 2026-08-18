@@ -123,6 +123,7 @@ def main():
             # steps_per_epoch, and the shared default for the reporting budget.
             steps_per_epoch=getattr(config.dpo, "steps_per_epoch", None),
             time_series_metrics=getattr(config.dpo, "progress_time_series_metrics", None),
+            min_report_interval_seconds=getattr(config.dpo, "progress_min_report_interval_seconds", None),
         )
         # The setup() logger is a composite with a `.loggers` list; guard in case
         # that internal shape changes.

@@ -389,6 +389,7 @@ def _create_progress_callback(reporting: ProgressReportingConfig) -> TrainingPro
         time_series_metrics=(
             DIAGNOSTIC_TIME_SERIES if reporting.time_series_metrics is None else reporting.time_series_metrics
         ),
+        min_report_interval_seconds=reporting.min_report_interval_seconds,
     )
 
 

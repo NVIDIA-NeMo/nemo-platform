@@ -2049,6 +2049,18 @@ components:
       title: PlatformJobTaskStatusResponse
     ProgressReportingConfig:
       properties:
+        min_report_interval_seconds:
+          type: number
+          minimum: 0.0
+          title: Min Report Interval Seconds
+          description: Least number of seconds between progress reports reaching the
+            Jobs service. Every metric the training library logs is still recorded
+            at full resolution -- this only buffers them in memory and decides how
+            often the accumulated set is sent, which is what the reporting actually
+            costs. 0 sends a report for every step the library logs. Raising it reduces
+            the time training spends blocked on reporting, at the cost of a progress
+            bar and charts that update less often.
+          default: 10.0
         time_series_metrics:
           title: Time Series Metrics
           description: 'Which metrics are recorded as a time series, named exactly

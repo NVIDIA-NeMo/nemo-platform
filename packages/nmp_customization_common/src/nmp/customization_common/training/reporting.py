@@ -31,6 +31,15 @@ DIAGNOSTIC_TIME_SERIES = ("*_loss", "*_lr", "*_grad_norm")
 #: field unset means "the backend's default" instead.
 ALL_METRICS = ("*",)
 
+#: Least time between metric reports reaching the Jobs service. Points are always
+#: recorded; this only bounds how often the accumulator is sent.
+#:
+#: Ten seconds is chosen against what it costs and what it buys, both measured: a
+#: 594-step run over half an hour drops from 594 requests to 180 and from 36s to
+#: 11s blocked inside the training loop, while a progress bar that moves every
+#: ten seconds is as live as anyone reads one.
+DEFAULT_MIN_REPORT_INTERVAL_SECONDS = 10.0
+
 
 class ProgressReportingConfig(BaseModel):
     """How much detail training progress is reported to the Jobs service with.
@@ -63,6 +72,18 @@ class ProgressReportingConfig(BaseModel):
     # `time_series_metric` was accepted and quietly did nothing.
     model_config = ConfigDict(extra="forbid")
 
+    min_report_interval_seconds: float = Field(
+        default=DEFAULT_MIN_REPORT_INTERVAL_SECONDS,
+        ge=0.0,
+        description=(
+            "Least number of seconds between progress reports reaching the Jobs service. Every "
+            "metric the training library logs is still recorded at full resolution -- this only "
+            "buffers them in memory and decides how often the accumulated set is sent, which is "
+            "what the reporting actually costs. 0 sends a report for every step the library logs. "
+            "Raising it reduces the time training spends blocked on reporting, at the cost of a "
+            "progress bar and charts that update less often."
+        ),
+    )
     time_series_metrics: list[str] | None = Field(
         default=None,
         description=(

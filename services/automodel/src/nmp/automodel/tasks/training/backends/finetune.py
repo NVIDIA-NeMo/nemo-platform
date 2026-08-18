@@ -22,7 +22,10 @@ from nemo_automodel.recipes.retrieval.train_bi_encoder import TrainBiEncoderReci
 from nmp.automodel.tasks.training.progress import JobsServiceProgressReporter
 from nmp.customization_common.service.context import NMPJobContext
 from nmp.customization_common.training.callbacks import DatasetQualifier, TrainingProgressCallback
-from nmp.customization_common.training.reporting import DIAGNOSTIC_TIME_SERIES
+from nmp.customization_common.training.reporting import (
+    DEFAULT_MIN_REPORT_INTERVAL_SECONDS,
+    DIAGNOSTIC_TIME_SERIES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +159,27 @@ def _resolve_time_series_metrics(recipe: AutomodelRecipe) -> tuple[str, ...] | l
     return DIAGNOSTIC_TIME_SERIES
 
 
+def _resolve_min_report_interval(recipe: AutomodelRecipe) -> float:
+    """Least seconds between reports, defaulting to the shared value.
+
+    Read as defensively as its neighbour and for the same reason: this comes off
+    a config file that a person can hand-write, and it is consumed in the
+    wrapper's constructor with nothing catching underneath. A negative value is
+    left to the limiter, which clamps rather than raises -- a reporting knob must
+    not be able to stop a run from starting.
+    """
+    block = _reporting_block(recipe)
+    interval = block.get("min_report_interval_seconds") if hasattr(block, "get") else None
+    if isinstance(interval, (int, float)) and not isinstance(interval, bool):
+        return float(interval)
+    if interval is not None:
+        logger.warning(
+            f"Ignoring an unusable progress_reporting.min_report_interval_seconds ({interval!r}); "
+            f"reporting at most every {DEFAULT_MIN_REPORT_INTERVAL_SECONDS}s."
+        )
+    return DEFAULT_MIN_REPORT_INTERVAL_SECONDS
+
+
 class AutomodelRecipeWrapper:
     """Wraps an Automodel recipe with Jobs-service progress reporting."""
 
@@ -184,6 +208,7 @@ class AutomodelRecipeWrapper:
         self.callback = TrainingProgressCallback(
             self._reporter,
             time_series_metrics=_resolve_time_series_metrics(recipe),
+            min_report_interval_seconds=_resolve_min_report_interval(recipe),
         )
         logger.info(f"Automodel recipe wrapper initialized: max_steps={self.max_steps}, num_epochs={self.num_epochs}")
 
