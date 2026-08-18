@@ -8,12 +8,14 @@ description = "Eval Author agent for NeMo Platform (hard-depends on Experimental
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2",
-    "harbor>=0.16",
+    # Harbor 0.18 provides the discovery APIs used by this plugin.
+    "harbor>=0.18",
     "nooa",
     "nemo-experimentalist-plugin",
     "nemo-insights-plugin",
     "nemo-platform",
     "nemo-platform-plugin",
+    "pyyaml>=6.0.3",
     "tomlkit>=0.13.3",
 ]
 

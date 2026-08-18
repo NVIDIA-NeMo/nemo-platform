@@ -4358,18 +4358,20 @@ dependencies = [
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nooa", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "tomlkit", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "harbor", specifier = ">=0.16" },
+    { name = "harbor", specifier = ">=0.18" },
     { name = "nemo-experimentalist-plugin", editable = "plugins/nemo-experimentalist" },
     { name = "nemo-insights-plugin", editable = "plugins/nemo-insights" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nooa", git = "https://github.com/NVIDIA-NeMo/labs-OO-Agents.git?rev=6e0274dd03f883254a084cfb9f871ea580e03434" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "tomlkit", specifier = ">=0.13.3" },
 ]
 
