@@ -3,7 +3,10 @@
 
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { TraceFilter } from '@nemo/sdk/generated/platform/schema';
-import type { TraceStatisticsRange } from '@studio/components/AgentTraceStatistics/types';
+import type {
+  TraceStatisticsRange,
+  TraceStatisticsSample,
+} from '@studio/components/AgentTraceStatistics/types';
 import { keepPreviousData } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
@@ -30,6 +33,11 @@ interface UseOverviewTracesParams {
   enabled: boolean;
 }
 
+interface UseOverviewTracesResult {
+  traces: TraceStatisticsSample[];
+  isPending: boolean;
+}
+
 /**
  * Traces backing the overview statistics.
  *
@@ -37,7 +45,11 @@ interface UseOverviewTracesParams {
  * (`TraceFilter` exposes id/session/status/started_at/evaluation only), so there is nothing to
  * narrow on yet. Swap in an `agent` filter here once the ingest path records it.
  */
-export const useOverviewTraces = ({ workspace, range, enabled }: UseOverviewTracesParams) => {
+export const useOverviewTraces = ({
+  workspace,
+  range,
+  enabled,
+}: UseOverviewTracesParams): UseOverviewTracesResult => {
   const since = useMemo(() => {
     const now = Date.now();
     const minute = 60 * 1000;

@@ -27,20 +27,26 @@ export const OverviewTab: FC<OverviewTabProps> = ({ workspace, agent, modelNames
   const [range, setRange] = useState<TraceStatisticsRange>('week');
   const { traces, isPending } = useOverviewTraces({ workspace, range, enabled: INTAKE_ENABLED });
 
+  if (!INTAKE_ENABLED) {
+    return (
+      <div className="w-full pb-6">
+        <AgentSummaryPanel agent={agent} modelNames={modelNames} />
+      </div>
+    );
+  }
+
   return (
     <Flex gap="density-2xl" align="start" wrap="wrap" className="w-full pb-6">
       <Stack gap="density-2xl" className="min-w-0 flex-1 basis-[32rem]">
-        {INTAKE_ENABLED && (
-          <AgentTraceStatistics
-            traces={traces}
-            range={range}
-            onRangeChange={setRange}
-            onViewTraces={() => navigate(getIntakeTracesRoute(workspace))}
-            onRunAgent={onRunAgent}
-            isPending={isPending}
-            caption={`${bucketAdverbForRange(range)}`}
-          />
-        )}
+        <AgentTraceStatistics
+          traces={traces}
+          range={range}
+          onRangeChange={setRange}
+          onViewTraces={() => navigate(getIntakeTracesRoute(workspace))}
+          onRunAgent={onRunAgent}
+          isPending={isPending}
+          caption={`${bucketAdverbForRange(range)} · Workspace-wide`}
+        />
       </Stack>
       <div className="w-full shrink-0 lg:w-80">
         <AgentSummaryPanel agent={agent} modelNames={modelNames} />
