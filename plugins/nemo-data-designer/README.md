@@ -27,8 +27,8 @@ The exit code is `0` only when every requested context validates cleanly. JSON o
 
 ### Local vs. remote
 
-- **Local** checks library-level compatibility: the engine compiles the config and resolves model providers. Providers can be defined locally **or** referenced by name from the Inference Gateway — both are first-class.
-- **Remote** mirrors what `nemo data-designer <preview|create> submit` accepts: unsupported seed types and `tool_configs` are rejected, IGW providers are resolved against the platform, Files-service seeds are looked up, and Nemotron Personas filesets are checked. The remote pass is a client-side simulation of those checks; it does not contact the data-designer service.
+- **Local** (`--execution-context local`) checks open-source library compatibility: the engine compiles the config and resolves model providers the library understands (including locally defined providers). This is a library/config check, not a platform execution path — there is no `nemo data-designer … run` verb.
+- **Remote** (`--execution-context remote`) mirrors what `nemo data-designer <preview|create> submit` accepts on the platform: local seed types and `tool_configs` are rejected, **only Inference Gateway providers** are accepted, Files-service seeds are looked up, and Nemotron Personas filesets are checked. The remote pass is a client-side simulation of those checks; it does not contact the data-designer service.
 
 ### Programmatic use
 

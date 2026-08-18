@@ -11,15 +11,16 @@ This tutorial demonstrates how to use external datasets as seed data for synthet
 
 For more detail about seed dataset behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/tutorials/seeding-with-an-external-dataset) of this tutorial.
 
-## Seed Sources by Execution Mode
+## Seed Sources on the Platform
 
-Seed source support depends on platform resource availability:
+This tutorial covers platform execution (`nemo data-designer … submit` and the SDK). Seed support there is narrower than the open-source Data Designer library:
 
-| Seed source | CLI `submit` / SDK today | Use case |
-|-------------|--------------------------|----------|
-| **Local files or DataFrames** | Not supported | Upload local files to Filesets first. |
-| **HuggingFace** | Supported | Publicly available datasets or private HuggingFace datasets. |
+| Seed source | Platform (`submit` / SDK) | Notes |
+|-------------|---------------------------|-------|
+| **Local files or DataFrames** | Not supported on the platform path | Still valid in the [open-source library](https://docs.nvidia.com/nemo/datadesigner/v0.9.1/tutorials/seeding-with-an-external-dataset). For platform jobs, upload files to a Fileset first (see Step 1 below). |
+| **HuggingFace** | Supported | Public or private HuggingFace datasets (private needs a Secrets API token). |
 | **Files API Filesets** | Supported | Shared seed data stored through the Files API. |
+
 ### HuggingFace Datasets
 
 Use `HuggingFaceSeedSource` to load data from HuggingFace:
