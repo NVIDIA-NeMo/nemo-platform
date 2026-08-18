@@ -344,13 +344,13 @@ check-licenses: ## Check that license files are up to date
 	diff third_party/licenses.jsonl "$${LICENSE_DIR}/$${LICENSE_NAME}" && \
 	$(UV) run --frozen nemo-platform-sdk-tools license find-missing
 
-CMD_COPYRIGHT_HEADER_FIXER := $(UV) run tools/lint/copyright_fixer.py
+CMD_COPYRIGHT_HEADER_FIXER := $(UV) run python tools/lint/copyright_fixer.py
 .PHONY: update-copyright-headers
-update-copyright-headers:
+update-copyright-headers: ## Updates copyright headers across all files
 	$(CMD_COPYRIGHT_HEADER_FIXER)
 
 .PHONY: check-copyright-headers
-check-copyright-headers:
+check-copyright-headers: ## Checks to see if all copyright headers are appropriate
 	$(CMD_COPYRIGHT_HEADER_FIXER) --check
 
 .PHONY: lint

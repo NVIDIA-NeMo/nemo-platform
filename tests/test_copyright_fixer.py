@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from types import ModuleType
 
@@ -19,6 +20,14 @@ def _load_copyright_fixer() -> ModuleType:
 
 
 copyright_fixer = _load_copyright_fixer()
+
+
+def _git_init(repo: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _git_add(repo: Path, paths: list[str]) -> None:
+    subprocess.run(["git", "add", *paths], cwd=repo, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def test_supported_file_includes_missing_osrb_file_types(tmp_path: Path) -> None:
@@ -119,12 +128,12 @@ def test_inline_helm_template_header_is_not_accepted() -> None:
 
 
 def test_include_can_target_files_under_copyrightignore_excluded_directories(tmp_path: Path) -> None:
-    repo = copyright_fixer.Repo.init(tmp_path)
+    _git_init(tmp_path)
     ignored_file = tmp_path / "generated" / "conftest.py"
     ignored_file.parent.mkdir()
     ignored_file.write_text('print("ok")\n', encoding="utf-8")
     (tmp_path / ".copyrightignore").write_text("generated/\n", encoding="utf-8")
-    repo.index.add([".copyrightignore", "generated/conftest.py"])
+    _git_add(tmp_path, [".copyrightignore", "generated/conftest.py"])
 
     default_files = copyright_fixer._collect_files_from_dir(str(tmp_path))
     included_files = copyright_fixer._collect_files_from_dir(str(tmp_path), include=["generated/conftest.py"])
@@ -134,14 +143,14 @@ def test_include_can_target_files_under_copyrightignore_excluded_directories(tmp
 
 
 def test_resolve_targets_scans_current_repo_root(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    repo = copyright_fixer.Repo.init(tmp_path)
+    _git_init(tmp_path)
     nested = tmp_path / "nested"
     nested.mkdir()
     root_file = tmp_path / "root.md"
     nested_file = nested / "child.md"
     root_file.write_text("# Root\n", encoding="utf-8")
     nested_file.write_text("# Child\n", encoding="utf-8")
-    repo.index.add(["root.md", "nested/child.md"])
+    _git_add(tmp_path, ["root.md", "nested/child.md"])
 
     monkeypatch.chdir(nested)
 
