@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,8 +12,9 @@ from kubernetes.client.rest import ApiException
 from nemo_deployments_plugin.backends.k8s import jobs as job_ops
 from nemo_deployments_plugin.backends.k8s.client import KubernetesClients
 from nemo_deployments_plugin.backends.k8s.jobs import job_backoff_limit, trim_log_text, validate_config_for_job
-from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY
+from nemo_deployments_plugin.backends.labels import MANAGED_BY_KEY, k8s_deployment_secret_name
 from nemo_deployments_plugin.constants import MANAGED_BY_LABEL
+from nemo_deployments_plugin.entities import EnvVar, SecretRef
 from nemo_deployments_plugin.types import RestartPolicy
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
@@ -208,6 +210,67 @@ async def test_delete_job_rejects_foreign(job_ops_clients: MagicMock, mock_k8s_c
 
     assert update.status == "FAILED"
     mock_k8s_clients.batch_v1.delete_namespaced_job.assert_not_called()
+
+
+def _job_config_with_secret_env():
+    config = sample_config(restart_policy="Never")
+    config.containers[0].env = [EnvVar(name="APP_TOKEN", secretRef=SecretRef(workspace="default", name="app-token"))]
+    return config
+
+
+@pytest.mark.asyncio
+async def test_create_job_creates_managed_secret(job_ops_clients: MagicMock, mock_k8s_clients: MagicMock) -> None:
+    config = _job_config_with_secret_env()
+    mock_k8s_clients.batch_v1.create_namespaced_job.return_value = mock_job(active=1)
+
+    await job_ops.create_job(
+        job_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        config_name="config1",
+        labels={},
+        backend_config={},
+        config=config,
+        secret_env={"APP_TOKEN": "app-token-value"},
+    )
+
+    mock_k8s_clients.core_v1.create_namespaced_secret.assert_called_once()
+    secret_body = mock_k8s_clients.core_v1.create_namespaced_secret.call_args.kwargs["body"]
+    assert secret_body.metadata.name == k8s_deployment_secret_name("default", "task")
+    assert secret_body.string_data == {"APP_TOKEN": "app-token-value"}
+    container = mock_k8s_clients.batch_v1.create_namespaced_job.call_args.kwargs["body"].spec.template.spec.containers[
+        0
+    ]
+    assert container.env_from[0].secret_ref.name == k8s_deployment_secret_name("default", "task")
+
+
+@pytest.mark.asyncio
+async def test_delete_job_removes_managed_secret(job_ops_clients: MagicMock, mock_k8s_clients: MagicMock) -> None:
+    identity_labels = job_identity_labels()
+    mock_k8s_clients.batch_v1.read_namespaced_job.return_value = mock_job(complete=True)
+    mock_k8s_clients.core_v1.read_namespaced_config_map.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+    mock_k8s_clients.core_v1.read_namespaced_secret.return_value = SimpleNamespace(
+        metadata=SimpleNamespace(labels=identity_labels),
+    )
+
+    update = await job_ops.delete_job(
+        job_ops_clients,
+        default_namespace="default",
+        workspace="default",
+        name="task",
+        backend_config={},
+        expected_labels=identity_labels,
+    )
+
+    assert update.status == "SUCCEEDED"
+    mock_k8s_clients.core_v1.delete_namespaced_secret.assert_called_once_with(
+        name=k8s_deployment_secret_name("default", "task"),
+        namespace="default",
+        _request_timeout=mock_k8s_clients.request_timeout,
+    )
 
 
 @pytest.mark.asyncio

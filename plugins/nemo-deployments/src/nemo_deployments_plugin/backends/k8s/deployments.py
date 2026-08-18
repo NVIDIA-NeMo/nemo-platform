@@ -22,8 +22,11 @@ from nemo_deployments_plugin.backends.k8s.compiler import (
     DeploymentConfigError,
     compile_workload,
     create_configmap,
+    create_secret,
     delete_configmap,
     delete_configmap_best_effort,
+    delete_secret,
+    delete_secret_best_effort,
     validate_config_for_deployment,
 )
 from nemo_deployments_plugin.backends.k8s.jobs import (
@@ -45,6 +48,7 @@ from nemo_deployments_plugin.backends.labels import (
     deployment_identity_labels,
     k8s_deployment_configmap_name,
     k8s_deployment_resource_name,
+    k8s_deployment_secret_name,
     managed_by_label_selector,
 )
 from nemo_deployments_plugin.entities import Container, DeploymentConfig, K8sDeploymentConfig
@@ -78,6 +82,7 @@ def build_deployment_body(
     deployment_name: str,
     k8s_config: K8sDeploymentConfig | None,
     executor_image_pull_secrets: list | None = None,
+    secret_env: dict[str, str] | None = None,
 ) -> BuiltDeployment:
     """Build an ``apps/v1.Deployment`` for create and its compiled workload."""
     k8s = k8s_client_module()
@@ -91,6 +96,7 @@ def build_deployment_body(
         k8s_config=k8s_config,
         pod_restart_policy="Always",
         executor_image_pull_secrets=executor_image_pull_secrets,
+        secret_env=secret_env,
     )
     deployment = k8s.client.V1Deployment(
         api_version="apps/v1",
@@ -227,6 +233,7 @@ async def create_deployment(
     backend_config: dict[str, Any],
     config: DeploymentConfig,
     executor_image_pull_secrets: list | None = None,
+    secret_env: dict[str, str] | None = None,
 ) -> BackendStatusUpdate:
     resource_name = k8s_deployment_resource_name(workspace, name)
     try:
@@ -249,6 +256,7 @@ async def create_deployment(
             deployment_name=name,
             k8s_config=k8s_config,
             executor_image_pull_secrets=executor_image_pull_secrets,
+            secret_env=secret_env,
         )
         deployment_body = built.deployment
         compiled = built.compiled
@@ -261,7 +269,7 @@ async def create_deployment(
         apps_v1 = clients.apps_v1
         core_v1 = clients.core_v1
 
-        def _rollback_partial_create(*, deployment_created: bool, delete_configmap: bool) -> None:
+        def _rollback_partial_create(*, deployment_created: bool, delete_configmap: bool, delete_secret_: bool) -> None:
             if deployment_created:
                 try:
                     apps_v1.delete_namespaced_deployment(
@@ -280,18 +288,46 @@ async def create_deployment(
                     expected_labels=identity_labels,
                     timeout=timeout,
                 )
-
-        def _create() -> Any:
-            deployment_created = False
-            configmap_written = compiled.configmap_body is not None
-            if configmap_written:
-                create_configmap(
+            if delete_secret_:
+                delete_secret_best_effort(
                     core_v1,
                     namespace=namespace,
-                    body=compiled.configmap_body,
+                    name=compiled.secret_name,
                     expected_labels=identity_labels,
                     timeout=timeout,
                 )
+
+        def _create() -> Any:
+            deployment_created = False
+            secret_written = compiled.secret_body is not None
+            if secret_written:
+                create_secret(
+                    core_v1,
+                    namespace=namespace,
+                    body=compiled.secret_body,
+                    expected_labels=identity_labels,
+                    timeout=timeout,
+                )
+            configmap_written = compiled.configmap_body is not None
+            if configmap_written:
+                try:
+                    create_configmap(
+                        core_v1,
+                        namespace=namespace,
+                        body=compiled.configmap_body,
+                        expected_labels=identity_labels,
+                        timeout=timeout,
+                    )
+                except Exception:
+                    if secret_written:
+                        delete_secret_best_effort(
+                            core_v1,
+                            namespace=namespace,
+                            name=compiled.secret_name,
+                            expected_labels=identity_labels,
+                            timeout=timeout,
+                        )
+                    raise
             try:
                 apps_v1.create_namespaced_deployment(
                     namespace=namespace,
@@ -309,6 +345,14 @@ async def create_deployment(
                             expected_labels=identity_labels,
                             timeout=timeout,
                         )
+                    if secret_written:
+                        delete_secret_best_effort(
+                            core_v1,
+                            namespace=namespace,
+                            name=compiled.secret_name,
+                            expected_labels=identity_labels,
+                            timeout=timeout,
+                        )
                     raise
 
             deployment = apps_v1.read_namespaced_deployment(
@@ -317,10 +361,15 @@ async def create_deployment(
                 _request_timeout=timeout,
             )
             if not resource_labels_match(deployment, identity_labels):
-                _rollback_partial_create(deployment_created=deployment_created, delete_configmap=configmap_written)
+                _rollback_partial_create(
+                    deployment_created=deployment_created,
+                    delete_configmap=configmap_written,
+                    delete_secret_=secret_written,
+                )
                 return deployment
 
             delete_configmap_on_service_failure = deployment_created and configmap_written
+            delete_secret_on_service_failure = deployment_created and secret_written
             try:
                 core_v1.create_namespaced_service(
                     namespace=namespace,
@@ -338,12 +387,14 @@ async def create_deployment(
                         _rollback_partial_create(
                             deployment_created=deployment_created,
                             delete_configmap=delete_configmap_on_service_failure,
+                            delete_secret_=delete_secret_on_service_failure,
                         )
                         raise
                     return deployment
                 _rollback_partial_create(
                     deployment_created=deployment_created,
                     delete_configmap=delete_configmap_on_service_failure,
+                    delete_secret_=delete_secret_on_service_failure,
                 )
                 raise
             return deployment
@@ -441,12 +492,30 @@ async def delete_deployment(
 ) -> BackendStatusUpdate:
     resource_name = k8s_deployment_resource_name(workspace, name)
     configmap_name = k8s_deployment_configmap_name(workspace, name)
+    secret_name = k8s_deployment_secret_name(workspace, name)
     try:
         k8s_config = resolve_k8s_deployment_config(backend_config)
         namespace = resolve_deployment_namespace(default_namespace=default_namespace, k8s_config=k8s_config)
         timeout = clients.request_timeout
         apps_v1 = clients.apps_v1
         core_v1 = clients.core_v1
+
+        def _delete_config_resources() -> None:
+            """Delete the ConfigMap and managed Secret for this deployment."""
+            delete_configmap(
+                core_v1,
+                namespace=namespace,
+                name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
+            delete_secret(
+                core_v1,
+                namespace=namespace,
+                name=secret_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
 
         def _delete() -> str | None:
             try:
@@ -466,13 +535,7 @@ async def delete_deployment(
                     except ApiException as service_read_exc:
                         if service_read_exc.status != 404:
                             raise
-                        delete_configmap(
-                            core_v1,
-                            namespace=namespace,
-                            name=configmap_name,
-                            expected_labels=expected_labels,
-                            timeout=timeout,
-                        )
+                        _delete_config_resources()
                         return None
                     if resource_labels_match(service, expected_labels):
                         try:
@@ -484,13 +547,7 @@ async def delete_deployment(
                         except ApiException as service_exc:
                             if service_exc.status != 404:
                                 raise
-                    delete_configmap(
-                        core_v1,
-                        namespace=namespace,
-                        name=configmap_name,
-                        expected_labels=expected_labels,
-                        timeout=timeout,
-                    )
+                    _delete_config_resources()
                     return None
                 raise
             if not resource_labels_match(deployment, expected_labels):
@@ -510,13 +567,7 @@ async def delete_deployment(
             except ApiException as exc:
                 if exc.status != 404:
                     raise
-            delete_configmap(
-                core_v1,
-                namespace=namespace,
-                name=configmap_name,
-                expected_labels=expected_labels,
-                timeout=timeout,
-            )
+            _delete_config_resources()
             return "deleted"
 
         result = await asyncio.to_thread(_delete)
@@ -525,6 +576,13 @@ async def delete_deployment(
                 core_v1,
                 namespace=namespace,
                 name=configmap_name,
+                expected_labels=expected_labels,
+                timeout=timeout,
+            )
+            delete_secret_best_effort(
+                core_v1,
+                namespace=namespace,
+                name=secret_name,
                 expected_labels=expected_labels,
                 timeout=timeout,
             )
