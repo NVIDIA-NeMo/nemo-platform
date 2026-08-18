@@ -26,9 +26,7 @@ export interface RailsListProps {
  * click rather than a hunt — and the switch performs every edit the engine needs at once
  * (flow, prompt, and task model), which is what makes the coupling invisible here.
  *
- * The row owns only what every rail shares — the switch, the name, the stages it runs at —
- * because that column is what the eye scans down the list. Everything past it is the
- * rail's own; this file knows nothing about panels, modals, or what a rail configures.
+ * The row owns only what every rail shares; everything past it is the rail's own.
  */
 export const RailsList: FC<RailsListProps> = ({ data, onChange }) => (
   <Stack gap="0" role="list">

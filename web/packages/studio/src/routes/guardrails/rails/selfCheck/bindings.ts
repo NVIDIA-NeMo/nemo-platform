@@ -13,6 +13,7 @@ import {
   SELF_CHECK_INPUT_PROMPT,
   SELF_CHECK_OUTPUT_PROMPT,
 } from '@studio/routes/guardrails/rails/selfCheck/prompts';
+import type { RailScope } from '@studio/routes/guardrails/rails/types';
 
 /**
  * What the self-check rail owns in the config, per stage, and the pure operations over it.
@@ -21,7 +22,7 @@ import {
  * the definition that renders the panel.
  */
 
-export type SelfCheckScope = 'input' | 'output';
+export type SelfCheckScope = Extract<RailScope, 'input' | 'output'>;
 
 export interface SelfCheckBinding {
   /** Colang flow added to `rails.<scope>.flows`. */

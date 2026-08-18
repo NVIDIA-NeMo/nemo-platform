@@ -23,8 +23,6 @@ import type { RailDefinition } from '@studio/routes/guardrails/rails/types';
 export const selfCheckRail: RailDefinition = {
   id: 'self-check',
   label: 'Self Checks',
-  description:
-    'Asks the model answering the request to judge whether a message should be blocked. Needs no separate safety model.',
   scopes: SELF_CHECK_SCOPE_ORDER,
 
   isEnabled: (data) => SELF_CHECK_SCOPE_ORDER.some((scope) => isSelfCheckScopeEnabled(data, scope)),

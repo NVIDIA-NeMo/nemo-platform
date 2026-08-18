@@ -30,13 +30,7 @@ export interface RailDefinition {
   id: string;
   /** Name shown in the rail list. */
   label: string;
-  /** One-line explanation shown in the settings panel. */
-  description: string;
-  /**
-   * Stages this rail is capable of running at, in pipeline order. Rendered as badges on
-   * the list row — these describe what the rail *can* do, not what is currently on, which
-   * is why they stay visible when the rail is switched off.
-   */
+  /** Stages this rail can run at, in pipeline order. Shown whether or not it is on. */
   scopes: RailScope[];
   /** True when the rail is currently running, i.e. any of its flows are present. */
   isEnabled: (data: RailsConfig) => boolean;
@@ -52,13 +46,6 @@ export interface RailDefinition {
   hasStoredSettings: (data: RailsConfig) => boolean;
   /** Remove everything this rail owns, including anything {@link setEnabled} kept. */
   clearSettings: (data: RailsConfig) => RailsConfig;
-  /**
-   * The rail's own settings affordance, rendered at the end of its row.
-   *
-   * Deliberately not standardised: a rail owns its trigger *and* whatever that trigger
-   * opens — a modal side panel, a popover, an inline expander, or nothing at all. What
-   * each rail needs to configure differs too much for a shared shell to fit, and a rail
-   * with no settings simply omits this.
-   */
+  /** The rail's own trigger and whatever it opens. Omitted when a rail has no settings. */
   renderSettings?: (props: RailSettingsProps) => ReactNode;
 }
