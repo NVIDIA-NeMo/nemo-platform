@@ -12,6 +12,7 @@ else, and the only read the reporter makes is the one-shot resume seeding.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
@@ -90,12 +91,16 @@ class _Jobs:
         self.fetches = 0
         #: Raised by the read instead of answering, for the failure cases.
         self.fetch_error: Exception | None = None
+        #: Raised by the *write* instead of accepting, likewise.
+        self.send_error: Exception | None = None
 
     def client(self) -> Any:
         harness = self
 
         class _Client:
             def update_job_step_task(self, **kwargs: Any) -> None:
+                if harness.send_error is not None:
+                    raise harness.send_error
                 harness.sent.append(kwargs)
 
             def get_job_step_task(self, **kwargs: Any) -> _Task:
@@ -308,3 +313,65 @@ def test_non_main_rank_sends_nothing(jobs: _Jobs) -> None:
     reporter.report_completed("Training completed")
 
     assert jobs.sent == []
+
+
+# --------------------------------------------------------------------------- #
+# A failed write must not reach the training loop
+#
+# The single most load-bearing safety property here. `update_task` is called
+# synchronously from a backend's logging hook, between one optimizer step and the
+# next, with nothing catching underneath -- so an exception escaping it ends the
+# run. The chartable-value filter in the callback exists because of what happens
+# when a write fails *silently*; this is the other half of that story, and it had
+# no test at all.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionError("jobs service unreachable"),
+        TimeoutError("read timed out"),
+        RuntimeError("500 Internal Server Error"),
+        ValueError("Object of type Histogram is not JSON serializable"),
+    ],
+)
+def test_a_failed_write_does_not_raise_into_the_training_loop(jobs: _Jobs, error: Exception) -> None:
+    """Every failure mode a real transport produces, including the serialisation
+    error that a non-scalar metric slipping past the filter would cause."""
+    reporter = _reporter(jobs)
+    jobs.send_error = error
+
+    reporter.report_running(phase="training", step=1, train_loss=0.5)
+
+
+def test_a_failed_write_is_logged_rather_than_swallowed_silently(jobs: _Jobs, caplog: pytest.LogCaptureFixture) -> None:
+    """Swallowing is right; swallowing quietly is not.
+
+    A run whose reporting stopped an hour ago looks exactly like a run that is
+    reporting fine, unless the log says otherwise.
+    """
+    reporter = _reporter(jobs)
+    jobs.send_error = ConnectionError("jobs service unreachable")
+
+    with caplog.at_level(logging.WARNING):
+        reporter.report_running(phase="training", step=1)
+
+    assert "jobs service unreachable" in caplog.text
+
+
+def test_reporting_survives_a_failure_and_resumes(jobs: _Jobs) -> None:
+    """One failed write must not poison the reporter for the rest of the run.
+
+    Transport failures are usually transient -- a restarting pod, a brief network
+    partition -- and a reporter that gave up on the first one would lose the whole
+    remaining history for a blip.
+    """
+    reporter = _reporter(jobs)
+    jobs.send_error = ConnectionError("brief blip")
+    reporter.report_running(phase="training", step=1)
+
+    jobs.send_error = None
+    reporter.report_running(phase="training", step=2)
+
+    assert [sent["body"].status_details["step"] for sent in jobs.sent] == [2]

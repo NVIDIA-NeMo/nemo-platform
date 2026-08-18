@@ -28,8 +28,20 @@ class TestEpochFromValue:
         assert _epoch_from_value(0.01314, 1) == 1
 
     def test_completed_epoch_capped_at_num_epochs(self):
+        """The cap is load-bearing, and `ceil` alone satisfied the old cases.
+
+        HuggingFace reports a fractional epoch that drifts above
+        `num_train_epochs` -- 1.0000001 on the last step of a one-epoch run is
+        routine -- so without `min` the reported epoch runs past the total and
+        Studio renders `2/1`. Both original assertions held under `ceil` alone,
+        so removing the cap left them green.
+        """
         assert _epoch_from_value(1.0, 1) == 1
         assert _epoch_from_value(2.0, 2) == 2
+        # The cases that need the cap: a value at or past the total.
+        assert _epoch_from_value(1.0000001, 1) == 1
+        assert _epoch_from_value(2.0, 1) == 1
+        assert _epoch_from_value(7.0, 3) == 3
 
 
 class TestHfTrainerProgressCallback:

@@ -385,43 +385,72 @@ def test_an_empty_list_is_honoured_rather_than_defaulted(callback: _RecordingCal
 
 
 def test_the_default_set_covers_dpos_diagnostics_and_drops_its_counters() -> None:
-    """Pinned against DPO's real metric names, read out of NeMo-RL.
+    """Pinned against DPO's real metric names by running the real callback.
 
     Train comes from `dpo.py` plus the dtensor worker's `loss_metrics`;
-    validation from `DPOValMetrics`. If NeMo-RL adds a metric, this says whether
-    it lands in the default set.
+    validation from `DPOValMetrics`. An earlier version reimplemented
+    `fnmatchcase` over the same hardcoded list and asserted against the module
+    constant, executing no production code at all.
     """
-    from fnmatch import fnmatchcase
+    from typing import cast
 
-    train = (
-        "loss",
-        "grad_norm",
-        "lr",
-        "sft_loss",
-        "preference_loss",
-        "accuracy",
-        "rewards_chosen_mean",
-        "rewards_rejected_mean",
-        "num_valid_samples",
-        "global_valid_seqs",
-        "global_valid_toks",
+    from nmp.customization_common.training.callbacks import TrainingProgressCallback
+    from nmp.customization_common.training.progress import JobsServiceProgressReporter
+
+    class _Reporter:
+        def __init__(self) -> None:
+            self.reports: list[dict[str, Any]] = []
+
+        def fetch_current_metrics(self) -> dict[str, list[dict[str, float]]]:
+            return {}
+
+        def configure_progress_tracking(self, max_steps: int, num_epochs: int) -> None:
+            pass
+
+        def report_running(self, phase: str, **details: Any) -> None:
+            self.reports.append(details)
+
+        def close(self) -> None:
+            pass
+
+    train = {
+        "loss": 0.69,
+        "grad_norm": 1.2,
+        "lr": 5e-7,
+        "sft_loss": 0.0,
+        "preference_loss": 0.69,
+        "accuracy": 0.5,
+        "rewards_chosen_mean": 0.01,
+        "rewards_rejected_mean": -0.01,
+        "num_valid_samples": 64.0,
+        "global_valid_seqs": 64.0,
+        "global_valid_toks": 16384.0,
+    }
+    val = {k: v for k, v in train.items() if k not in ("grad_norm", "lr")}
+
+    reporter = _Reporter()
+    callback = TrainingProgressCallback(
+        cast(JobsServiceProgressReporter, reporter),
+        time_series_metrics=nemo_rl_logger.DEFAULT_TIME_SERIES_METRICS,
+        min_report_interval_seconds=0,
     )
-    val = tuple(name for name in train if name not in ("grad_norm", "lr"))
-    qualified = [f"train_{n}" for n in train] + [f"val_{n}" for n in val]
+    callback.report_train_step(step=1, epoch=1, metrics=train)
+    callback.report_validation(step=1, epoch=1, metrics=val)
 
-    kept = [name for name in qualified if any(fnmatchcase(name, p) for p in nemo_rl_logger.DEFAULT_TIME_SERIES_METRICS)]
-    dropped = sorted(set(qualified) - set(kept))
+    recorded = {name for name, points in reporter.reports[-1]["metrics"].items() if points}
+    dropped = {f"train_{n}" for n in train} | {f"val_{n}" for n in val}
+    dropped -= recorded
 
-    assert len(qualified) == 20, "the measured series count"
-    assert len(kept) == 14
-    assert dropped == [
+    assert len(recorded) == 14, "twenty series become fourteen"
+    assert dropped == {
         "train_global_valid_seqs",
         "train_global_valid_toks",
         "train_num_valid_samples",
         "val_global_valid_seqs",
         "val_global_valid_toks",
         "val_num_valid_samples",
-    ]
+    }
+    assert reporter.reports[0]["train_global_valid_toks"] == 16384.0, "still a latest value"
 
 
 def test_the_run_length_reaches_the_callback_that_gates_on_it(callback: _RecordingCallback) -> None:

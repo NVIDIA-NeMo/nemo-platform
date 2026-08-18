@@ -25,7 +25,13 @@ class _RecordingReporter:
     """Stands in for JobsServiceProgressReporter, capturing each report payload."""
 
     def __init__(self, prior: dict[str, list[dict[str, Any]]] | None = None) -> None:
-        self._prior = prior or {"train_loss": [], "val_loss": []}
+        #: `{}` is what the real `fetch_current_metrics` returns for a task with
+        #: nothing stored. Defaulting to `{"train_loss": [], "val_loss": []}` --
+        #: which is what `_build_metrics_summary` is supposed to guarantee --
+        #: meant the stub supplied the property under test, and removing the
+        #: seeding from the callback left every `metrics["train_loss"] == []`
+        #: assertion still passing.
+        self._prior = {} if prior is None else prior
         self.reports: list[dict[str, Any]] = []
         self.tracking: tuple[int, int] | None = None
         self.closed = False
@@ -738,12 +744,29 @@ def test_a_star_records_everything(reporter: _RecordingReporter) -> None:
     assert {"train_loss", "train_tps"} <= set(reporter.reports[-1]["metrics"])
 
 
-def test_matching_is_case_sensitive(reporter: _RecordingReporter) -> None:
-    """fnmatchcase, not fnmatch: the latter normalises case per platform.
+def test_the_matcher_is_fnmatchcase_and_not_fnmatch() -> None:
+    """An identity assertion, because on this platform nothing else can be.
 
-    A pattern that matched on Linux and not on macOS would be a genuinely
-    horrible bug to chase.
+    `fnmatch` applies `os.path.normcase`, which is the identity on POSIX and
+    lowercases on Windows. So the two functions are *behaviourally
+    indistinguishable* on Linux: swapping one for the other in the source changes
+    no observable behaviour here, and every behavioural test of the swap passes.
+    Verified by mutation -- `from fnmatch import fnmatch as fnmatchcase` left the
+    whole suite green, including a test asserting case-sensitive matching.
+
+    The bug it guards against is therefore invisible on the machine most likely
+    to run this: a pattern that matches on Linux and not on macOS. Since no
+    behaviour distinguishes them, the dependency itself is what gets pinned.
     """
+    import fnmatch
+
+    from nmp.customization_common.training import callbacks as under_test
+
+    assert under_test.fnmatchcase is fnmatch.fnmatchcase
+
+
+def test_a_pattern_of_the_wrong_case_matches_nothing(reporter: _RecordingReporter) -> None:
+    """The behaviour that follows, which does hold on every platform."""
     callback = _make_callback(reporter, time_series_metrics=["TRAIN_LOSS"])
     callback.report_train_step(step=1, epoch=1, metrics={"loss": 0.5})
 
