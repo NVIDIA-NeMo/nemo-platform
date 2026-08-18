@@ -40,7 +40,7 @@ Every series is resent in full on every train and validation report, so the
 stored blob grows as ``series x reports`` and the cost as the square of it.
 
 One report costs three writes, not one. The client sends it; ``JobDispatcher``
-persists it to the task (``dispatcher.py:1217-1223``) and propagates a copy to the
+persists it to the task (``dispatcher.py:1217-1224``) and propagates a copy to the
 job attempt (``:1240-1242`` -> ``:1018-1019``). Both of those go through
 ``EntityClient.update``, which PUTs the entity's whole ``data`` blob -- so the two
 server-side writes carry the entire accumulated ``metrics`` **whether or not the

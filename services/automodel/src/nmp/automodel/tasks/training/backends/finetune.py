@@ -133,11 +133,12 @@ def _resolve_time_series_metrics(recipe: AutomodelRecipe) -> tuple[str, ...] | l
     """Which metrics get a stored series, defaulting to the diagnostic set.
 
     Automodel is the backend this matters most for. Its recipes report eight
-    metrics on the train path and four on validation, and five of those twelve
-    are throughput and accounting counters -- ``mem``, ``tps``, ``tps_per_gpu``,
-    ``num_tokens_per_step``, ``num_label_tokens`` -- whose current value is all
-    anyone reads. Keeping the loss, learning rate and gradient norm takes the
-    stored blob from twelve series to five.
+    metrics on the train path and four on validation, and seven of those twelve
+    series are throughput and accounting counters, whose current value is all
+    anyone reads: ``mem``, ``tps``, ``tps_per_gpu``, ``num_tokens_per_step`` and
+    ``num_label_tokens`` on train, then ``mem`` and ``num_label_tokens`` a second
+    time on validation. Keeping the loss, learning rate and gradient norm takes
+    the stored blob from twelve series to five.
 
     An absent or null list means "the default", not "everything": ``["*"]`` is
     how a user asks for every metric. An empty list means no series at all and is

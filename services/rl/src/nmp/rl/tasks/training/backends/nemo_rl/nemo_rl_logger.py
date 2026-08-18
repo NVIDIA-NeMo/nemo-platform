@@ -67,8 +67,14 @@ DEFAULT_TIME_SERIES_METRICS = DIAGNOSTIC_TIME_SERIES + (
 def _val_dataset_name(prefix: str) -> str:
     """The dataloader name NeMo-RL suffixed onto a validation prefix.
 
-    ``validation`` carries none; ``validation-0`` and ``validation/nemo_gym``
-    name their dataloader, the separator depending on the caller.
+    Most algorithms log a bare ``validation``. DPO and RM iterate a dict of
+    validation dataloaders and log ``f"validation-{name}"`` per entry, keyed by
+    dataset -- ``validation-default``, ``validation-HelpSteer3``. Those two forms
+    are all any current call site emits.
+
+    ``/`` is stripped as well because it is NeMo-RL's other prefix separator
+    (``timing/validation``). Nothing composes a validation prefix with it today;
+    stripping it costs nothing if something starts.
     """
     return prefix[len("validation") :].lstrip("-/")
 

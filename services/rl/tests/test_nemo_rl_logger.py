@@ -607,9 +607,17 @@ def test_every_validation_pass_reaches_the_callback(callback: _RecordingCallback
     assert [v["step"] for v in callback.validations] == list(_driver_steps(1_000))
 
 
-@pytest.mark.parametrize("prefix", ["validation", "validation-0", "validation/nemo_gym"])
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "validation",  # sft, grpo, ppo, distillation: one val set, bare prefix
+        "validation-default",  # dpo/rm, single val set -- the dict is keyed "default"
+        "validation-HelpSteer3",  # dpo/rm, keyed by dataset name
+        "validation/nemo_gym",  # no caller emits this; lstrip("-/") covers it anyway
+    ],
+)
 def test_all_validation_prefixes_are_handled(callback: _RecordingCallback, prefix: str) -> None:
-    """NeMo-RL suffixes the prefix per dataloader; all must route to validation."""
+    """DPO and RM suffix the prefix per dataloader; every form must route to validation."""
     _make_logger().log_metrics(VALIDATION_METRICS, step=9, prefix=prefix)
 
     assert len(callback.validations) == 1
