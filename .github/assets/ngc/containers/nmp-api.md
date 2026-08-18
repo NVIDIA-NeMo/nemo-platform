@@ -6,7 +6,7 @@ description: API component of NeMo Platform
 ---
 ## NeMo Platform API Container
 
-This container image provides the NeMo Platform REST API for inference, models, files, jobs, evaluations, guardrails, and observability. It supports agent development and operations through the NeMo Platform CLI, Python SDK, and NeMo Studio. It is designed to run as part of a NeMo Platform deployment on Kubernetes.
+This container image provides the NeMo Platform REST API for inference, models, files, jobs, evaluations, guardrails, and observability. It supports agent development and operations through the NeMo Platform CLI, Python SDK, and NeMo Studio. It is designed for both local and deployed NeMo Platform environments.
 
 ### Resources
 
