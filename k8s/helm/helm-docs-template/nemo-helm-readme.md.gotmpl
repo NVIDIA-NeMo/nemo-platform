@@ -1,7 +1,5 @@
-{{/*
-SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-SPDX-License-Identifier: Apache-2.0
-*/}}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 # {{ template "chart.description" . }}
 
@@ -121,4 +119,60 @@ See the upstream
 and
 [OSS operational recommendations](https://clickhouse.com/docs/guides/oss/best-practices/tips).
 
-{{ template "chart.valuesSection" . }}
+{{ define "nemo.valueDescriptionColumnRenderMd" -}}
+{{- if .Description -}}
+{{- .Description | replace "\n" " " | replace "|" "\\|" -}}
+{{- else -}}
+{{- .AutoDescription | replace "\n" " " | replace "|" "\\|" -}}
+{{- end -}}
+{{- end -}}
+
+{{ define "nemo.valueDefaultColumnRenderMd" -}}
+{{- $default := or .Default .AutoDefault -}}
+{{- $isCodeSpanDefault := and (hasPrefix "`" $default) (hasSuffix "`" $default) -}}
+{{- if not $default -}}
+{{- else if or (gt (len $default) 50) (not $isCodeSpanDefault) -}}
+{{- if .LineNumber -}}
+[See values.yaml](values.yaml#L{{ .LineNumber }})
+{{- else -}}
+See values.yaml
+{{- end -}}
+{{- else -}}
+{{- $default | replace "\n" " " | replace "|" "\\|" -}}
+{{- end -}}
+{{- end -}}
+
+{{ define "chart.valuesTable" }}
+For the complete default values, see [values.yaml](values.yaml).
+
+{{ if .Sections.Sections }}
+{{ range .Sections.Sections }}
+
+### {{ .SectionName }}
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+  {{- range .SectionItems }}
+| {{ .Key }} | {{ .Type }} | {{ template "nemo.valueDefaultColumnRenderMd" . }} | {{ template "nemo.valueDescriptionColumnRenderMd" . }} |
+  {{- end }}
+{{- end }}
+{{ if .Sections.DefaultSection.SectionItems}}
+
+### {{ .Sections.DefaultSection.SectionName }}
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+  {{- range .Sections.DefaultSection.SectionItems }}
+| {{ .Key }} | {{ .Type }} | {{ template "nemo.valueDefaultColumnRenderMd" . }} | {{ template "nemo.valueDescriptionColumnRenderMd" . }} |
+  {{- end }}
+{{ end }}
+{{ else }}
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+  {{- range .Values }}
+| {{ .Key }} | {{ .Type }} | {{ template "nemo.valueDefaultColumnRenderMd" . }} | {{ template "nemo.valueDescriptionColumnRenderMd" . }} |
+  {{- end }}
+{{ end }}
+{{- end -}}
+
+{{- template "chart.valuesSection" . -}}
