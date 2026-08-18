@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
-import type { FC } from 'react';
+import type { ReactNode } from 'react';
 
 /** A pipeline stage a rail can run at. */
 export type RailScope = 'input' | 'output' | 'retrieval';
 
-export interface RailPanelProps {
-  /** The working copy being edited. Panels are pure: they never touch the form directly. */
+export interface RailSettingsProps {
+  /** The working copy being edited. Rails are pure: they never touch the form directly. */
   data: RailsConfig;
   /** Replace the working copy. */
   onChange: (next: RailsConfig) => void;
@@ -52,6 +52,13 @@ export interface RailDefinition {
   hasStoredSettings: (data: RailsConfig) => boolean;
   /** Remove everything this rail owns, including anything {@link setEnabled} kept. */
   clearSettings: (data: RailsConfig) => RailsConfig;
-  /** Body of the settings side panel. */
-  Panel: FC<RailPanelProps>;
+  /**
+   * The rail's own settings affordance, rendered at the end of its row.
+   *
+   * Deliberately not standardised: a rail owns its trigger *and* whatever that trigger
+   * opens — a modal side panel, a popover, an inline expander, or nothing at all. What
+   * each rail needs to configure differs too much for a shared shell to fit, and a rail
+   * with no settings simply omits this.
+   */
+  renderSettings?: (props: RailSettingsProps) => ReactNode;
 }

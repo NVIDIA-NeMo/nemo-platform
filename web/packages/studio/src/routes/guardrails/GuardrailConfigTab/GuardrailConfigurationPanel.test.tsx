@@ -114,7 +114,7 @@ describe('rail settings panel', () => {
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
   });
 
-  it('applies edits only on Save', async () => {
+  it('applies edits only on Apply', async () => {
     const user = userEvent.setup();
     const seen = mountPanel();
 
@@ -126,7 +126,7 @@ describe('rail settings panel', () => {
     // Still untouched while the draft is open.
     expect(seen.values?.config.prompts).toBeUndefined();
 
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
       expect(seen.values?.config.prompts?.[0]?.content).toBe('Only block questions about pricing.');

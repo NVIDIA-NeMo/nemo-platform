@@ -5,7 +5,7 @@ import type { RailsConfig } from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button, Flex, Stack, Switch, Text, Tooltip } from '@nvidia/foundations-react-core';
 import { RAIL_DEFINITIONS } from '@studio/routes/guardrails/rails/registry';
 import type { RailDefinition, RailScope } from '@studio/routes/guardrails/rails/types';
-import { Settings, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import type { FC } from 'react';
 
 const SCOPE_LABELS: Record<RailScope, string> = {
@@ -17,7 +17,6 @@ const SCOPE_LABELS: Record<RailScope, string> = {
 export interface RailsListProps {
   data: RailsConfig;
   onChange: (next: RailsConfig) => void;
-  onConfigure: (rail: RailDefinition) => void;
 }
 
 /**
@@ -26,17 +25,15 @@ export interface RailsListProps {
  * Rails are listed whether or not the config uses them, so turning one on is a single
  * click rather than a hunt — and the switch performs every edit the engine needs at once
  * (flow, prompt, and task model), which is what makes the coupling invisible here.
+ *
+ * The row owns only what every rail shares — the switch, the name, the stages it runs at —
+ * because that column is what the eye scans down the list. Everything past it is the
+ * rail's own; this file knows nothing about panels, modals, or what a rail configures.
  */
-export const RailsList: FC<RailsListProps> = ({ data, onChange, onConfigure }) => (
+export const RailsList: FC<RailsListProps> = ({ data, onChange }) => (
   <Stack gap="0" role="list">
     {RAIL_DEFINITIONS.map((rail) => (
-      <RailRow
-        key={rail.id}
-        rail={rail}
-        data={data}
-        onChange={onChange}
-        onConfigure={onConfigure}
-      />
+      <RailRow key={rail.id} rail={rail} data={data} onChange={onChange} />
     ))}
   </Stack>
 );
@@ -45,7 +42,7 @@ interface RailRowProps extends RailsListProps {
   rail: RailDefinition;
 }
 
-const RailRow: FC<RailRowProps> = ({ rail, data, onChange, onConfigure }) => {
+const RailRow: FC<RailRowProps> = ({ rail, data, onChange }) => {
   const enabled = rail.isEnabled(data);
   // Offered only when switching off left settings behind, so the row stays quiet in the
   // common case and the action appears exactly when there is something to discard.
@@ -91,16 +88,7 @@ const RailRow: FC<RailRowProps> = ({ rail, data, onChange, onConfigure }) => {
         </Tooltip>
       ) : null}
 
-      <Tooltip slotContent={`Configure ${rail.label}`}>
-        <Button
-          kind="tertiary"
-          color="neutral"
-          onClick={() => onConfigure(rail)}
-          aria-label={`Configure ${rail.label}`}
-        >
-          <Settings size={16} />
-        </Button>
-      </Tooltip>
+      {rail.renderSettings?.({ data, onChange })}
     </Flex>
   );
 };

@@ -8,7 +8,7 @@ import {
   isSelfCheckScopeEnabled,
   setSelfCheckScopeEnabled,
 } from '@studio/routes/guardrails/rails/selfCheck/bindings';
-import { SelfCheckPanel } from '@studio/routes/guardrails/rails/selfCheck/SelfCheckPanel';
+import { SelfCheckSettings } from '@studio/routes/guardrails/rails/selfCheck/SelfCheckSettings';
 import type { RailDefinition } from '@studio/routes/guardrails/rails/types';
 
 /**
@@ -46,5 +46,5 @@ export const selfCheckRail: RailDefinition = {
       return withoutPrompt(withoutFlow(next, scope, binding.flow), binding.task);
     }, data),
 
-  Panel: SelfCheckPanel,
+  renderSettings: (props) => <SelfCheckSettings {...props} />,
 };
