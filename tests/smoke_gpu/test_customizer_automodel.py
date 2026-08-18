@@ -16,7 +16,11 @@ Two failure classes are caught at .so load time, before any GPU device is touche
                          the one installed (ABI mismatch)
 """
 
+from glob import glob
+
 import pytest
+
+SOUNDFILE_LIBSNDFILE_PATTERN = "/opt/venv/lib/python3.*/site-packages/_soundfile_data/libsndfile_*.so"
 
 
 @pytest.mark.smoke_nmp_automodel_training
@@ -48,3 +52,9 @@ def test_bitsandbytes_importable():
 def test_nmp_automodel_training_importable():
     import nemo_automodel  # noqa: F401
     from nmp.automodel.tasks.training import __main__ as training_main  # noqa: F401
+
+
+@pytest.mark.smoke_nmp_automodel_training
+def test_soundfile_libsndfile_removed():
+    remaining = sorted(glob(SOUNDFILE_LIBSNDFILE_PATTERN))
+    assert remaining == [], f"codec cleanup left scanner-visible libsndfile files: {remaining}"

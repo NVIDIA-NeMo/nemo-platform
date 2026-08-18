@@ -32,16 +32,23 @@ while IFS= read -r path || [ -n "${path}" ]; do
             ;;
     esac
 
-    if ! rm -f -- "${path}"; then
-        echo "failed to remove listed file: ${path}" >&2
-        failed=1
-        continue
-    fi
+    targets=()
+    while IFS= read -r target; do
+        targets+=("${target}")
+    done < <(compgen -G "${path}" || true)
 
-    if [ -e "${path}" ] || [ -L "${path}" ]; then
-        echo "listed file remains after cleanup: ${path}" >&2
-        failed=1
-    fi
+    for target in "${targets[@]}"; do
+        if ! rm -f -- "${target}"; then
+            echo "failed to remove listed file: ${target}" >&2
+            failed=1
+            continue
+        fi
+
+        if [ -e "${target}" ] || [ -L "${target}" ]; then
+            echo "listed file remains after cleanup: ${target}" >&2
+            failed=1
+        fi
+    done
 done < "${filelist}"
 
 exit "${failed}"
