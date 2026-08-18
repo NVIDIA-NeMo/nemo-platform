@@ -7143,12 +7143,14 @@ nemo intake traces list [OPTIONS]
 JSON-only fields:
   started_at: \{gte: str, lte: str}
 
-Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_id, and test_case_id.
+Filter root-span-backed traces by id, session_id, root status, root span started_at, evaluation_name, and test_case_name.
 * `--filter.id`
 * `--filter.evaluation-id`
+* `--filter.evaluation-name`
 * `--filter.session-id`
 * `--filter.status`
 * `--filter.test-case-id`
+* `--filter.test-case-name`
 
 **Help:**
 
