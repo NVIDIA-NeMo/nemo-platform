@@ -937,19 +937,7 @@ class HarborDataset(Dataset):
     or empty — no trace files, no log file, no expected artifact — exit non-zero
     and write no value for that metric.  Writing ``0.0`` instead turns a broken
     read into a confident failing measurement that nobody can tell apart from a
-    real one.  A trial that exits without a value is marked failed and drops out
-    of the aggregate, which is the outcome you want: a shrunken sample beats a
-    fabricated one.
-
-    **A task your metric cannot measure still needs a number.**  The evaluator
-    averages each metric over the trials that succeed, and it raises when those
-    trials disagree about which keys they report.  A metric covering a mixed task
-    set therefore emits a value for every task it scores.  Decide that a task is
-    out of scope from evidence you read — a file the task ships, a span in the
-    trace — never from a read that returned nothing.  Neutral credit dilutes the
-    aggregate: a metric that hands ``1.0`` to every task it skips reports the
-    suite as solved.  Keep that branch narrow and name the tasks it covers in a
-    comment.
+    real one.
 
     Correct format::
 

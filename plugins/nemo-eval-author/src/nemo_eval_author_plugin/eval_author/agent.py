@@ -264,12 +264,6 @@ class EvalAuthor(Agent):
         missing or empty, exit non-zero rather than writing a value: a ``0.0`` for absent
         evidence is indistinguishable from a measured failure.
 
-        A task the metric cannot measure still needs a number, because the evaluator
-        rejects a round whose successful trials report different metric keys. Decide that
-        a task is out of scope from evidence you read, never from a read that returned
-        nothing, and keep that branch narrow: a metric that hands ``1.0`` to every task it
-        skips reports the suite as solved.
-
         Only the verifier directory reaches the evaluation container, mounted at ``/tests``.
         The task instruction is not there: it reaches the agent as a prompt, so no file for it
         exists at scoring time. Read reference text from a file the task ships in its verifier
