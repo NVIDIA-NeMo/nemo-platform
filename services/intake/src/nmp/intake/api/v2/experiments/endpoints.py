@@ -1508,7 +1508,7 @@ def _enqueue_stale_denormalization(
             or entity.agent_versions != rollup.agent_versions
             or entity.model_names != rollup.model_names
         ):
-            denormalizer.mark_dirty(workspace=workspace, evaluation_id=entity.name)
+            denormalizer.mark_dirty(workspace=workspace, evaluation_name=entity.name)
 
 
 async def _evaluation_response_with_rollup(

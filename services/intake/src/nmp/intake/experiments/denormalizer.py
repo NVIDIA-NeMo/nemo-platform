@@ -3,7 +3,7 @@
 
 """Denormalizes agent/model name fields from ClickHouse onto Evaluation entities.
 
-Ingest marks ``(workspace, evaluation_id)`` dirty; a background loop recomputes each touched
+Ingest marks ``(workspace, evaluation_name)`` dirty; a background loop recomputes each touched
 evaluation's rollup and writes the distinct ``agent_names``/``agent_versions``/``model_names`` sets onto
 the (system-managed) fields of its Evaluation entity. That lets the Evaluations list filter by
 agent/model name against the entity store (``$contains``) instead of scanning the ClickHouse session
@@ -35,7 +35,7 @@ _STOP_DRAIN_PASSES = 3
 
 
 class EvaluationDenormalizer(BackgroundWorker):
-    """Coalesces dirty evaluation ids and refreshes their denormalized name fields on a fixed cadence.
+    """Coalesces dirty evaluation names and refreshes their denormalized name fields on a fixed cadence.
 
     A burst of :meth:`mark_dirty` calls for one evaluation within an interval collapses to a single
     refresh, and marking is a plain, non-blocking set add — so the ingest and read hot paths are never
@@ -55,12 +55,12 @@ class EvaluationDenormalizer(BackgroundWorker):
         self._interval_seconds = interval_seconds
         self._dirty: set[tuple[str, str]] = set()
 
-    def mark_dirty(self, *, workspace: str, evaluation_id: str) -> None:
+    def mark_dirty(self, *, workspace: str, evaluation_name: str) -> None:
         """Queue an evaluation for refresh. Cheap and non-blocking; safe to call from the ingest path."""
-        self._dirty.add((workspace, evaluation_id))
+        self._dirty.add((workspace, evaluation_name))
 
     def pending(self) -> set[tuple[str, str]]:
-        """Return a copy of the currently-queued ``(workspace, evaluation_id)`` pairs (observability/tests)."""
+        """Return a copy of the currently-queued ``(workspace, evaluation_name)`` pairs (observability/tests)."""
         return set(self._dirty)
 
     async def _run(self) -> None:
@@ -99,28 +99,28 @@ class EvaluationDenormalizer(BackgroundWorker):
         batch = self._dirty
         self._dirty = set()
         by_workspace: dict[str, list[str]] = {}
-        for workspace, evaluation_id in batch:
-            by_workspace.setdefault(workspace, []).append(evaluation_id)
-        for workspace, evaluation_ids in by_workspace.items():
+        for workspace, evaluation_name in batch:
+            by_workspace.setdefault(workspace, []).append(evaluation_name)
+        for workspace, evaluation_names in by_workspace.items():
             try:
-                await self._refresh_workspace(workspace, evaluation_ids)
+                await self._refresh_workspace(workspace, evaluation_names)
             except Exception:
                 # Re-queue the whole workspace batch for the next cycle (e.g. ClickHouse unavailable).
                 logger.exception("Failed to refresh evaluation names for workspace %s; re-queuing", workspace)
-                for evaluation_id in evaluation_ids:
-                    self.mark_dirty(workspace=workspace, evaluation_id=evaluation_id)
+                for evaluation_name in evaluation_names:
+                    self.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)
 
-    async def _refresh_workspace(self, workspace: str, evaluation_ids: list[str]) -> None:
-        rollups = await self._rollup_repository.get_rollups(workspace=workspace, evaluation_ids=evaluation_ids)
-        for evaluation_id in evaluation_ids:
-            rollup = rollups.get(evaluation_id)
+    async def _refresh_workspace(self, workspace: str, evaluation_names: list[str]) -> None:
+        rollups = await self._rollup_repository.get_rollups(workspace=workspace, evaluation_ids=evaluation_names)
+        for evaluation_name in evaluation_names:
+            rollup = rollups.get(evaluation_name)
             if rollup is None:
                 continue
-            await self._write_names(workspace, evaluation_id, rollup)
+            await self._write_names(workspace, evaluation_name, rollup)
 
-    async def _write_names(self, workspace: str, evaluation_id: str, rollup: EvaluationRollup) -> None:
+    async def _write_names(self, workspace: str, evaluation_name: str, rollup: EvaluationRollup) -> None:
         try:
-            evaluation = await self._entity_client.get(Experiment, name=evaluation_id, workspace=workspace)
+            evaluation = await self._entity_client.get(Experiment, name=evaluation_name, workspace=workspace)
         except EntityNotFoundError:
             # Deleted between ingest and refresh; nothing to update.
             return
@@ -139,4 +139,4 @@ class EvaluationDenormalizer(BackgroundWorker):
             await self._entity_client.update(evaluation)
         except EntityConflictError:
             # A concurrent user edit won the optimistic lock; re-queue for the next cycle.
-            self.mark_dirty(workspace=workspace, evaluation_id=evaluation_id)
+            self.mark_dirty(workspace=workspace, evaluation_name=evaluation_name)

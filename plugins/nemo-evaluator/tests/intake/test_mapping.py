@@ -90,7 +90,7 @@ def test_trial_to_atif_ingest_shape() -> None:
     body = trial_to_atif_ingest(
         _trial(trial_id="t-1", task_id="task-1", output_text="final answer"),
         run_id="run-1",
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         agent_name="my-agent",
         started_at=STARTED_AT,
         model_name="gpt-4o",
@@ -104,14 +104,16 @@ def test_trial_to_atif_ingest_shape() -> None:
 
 
 def test_trial_to_atif_ingest_defaults_version_and_omits_model_name() -> None:
-    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
+    body = trial_to_atif_ingest(
+        _trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
+    )
     assert body["agent"] == {"name": "a", "version": "unknown"}
     assert "model_name" not in body["agent"]
 
 
 def test_trial_to_atif_ingest_handles_missing_output() -> None:
     body = trial_to_atif_ingest(
-        _trial(output_text=None), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT
+        _trial(output_text=None), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
     )
     assert body["steps"] == [{"source": "agent", "step_id": 1, "message": "", "timestamp": STARTED_AT}]
 
@@ -120,7 +122,7 @@ def test_trial_to_atif_ingest_includes_final_metrics_when_given() -> None:
     body = trial_to_atif_ingest(
         _trial(),
         run_id="run-1",
-        experiment_id="exp-1",
+        evaluation_name="exp-1",
         agent_name="a",
         started_at=STARTED_AT,
         final_metrics={"total_prompt_tokens": 10},
@@ -133,7 +135,7 @@ def test_trial_to_atif_ingest_adds_invocation_window_when_ended_at_given() -> No
     # root-span latency is the trial's runtime instead of 0.
     ended = STARTED_AT + timedelta(seconds=12.5)
     body = trial_to_atif_ingest(
-        _trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT, ended_at=ended
+        _trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT, ended_at=ended
     )
     (step,) = body["steps"]
     assert step["extra"] == {
@@ -142,7 +144,9 @@ def test_trial_to_atif_ingest_adds_invocation_window_when_ended_at_given() -> No
 
 
 def test_trial_to_atif_ingest_omits_invocation_window_without_ended_at() -> None:
-    body = trial_to_atif_ingest(_trial(), run_id="run-1", experiment_id="exp-1", agent_name="a", started_at=STARTED_AT)
+    body = trial_to_atif_ingest(
+        _trial(), run_id="run-1", evaluation_name="exp-1", agent_name="a", started_at=STARTED_AT
+    )
     assert "extra" not in body["steps"][0]
 
 

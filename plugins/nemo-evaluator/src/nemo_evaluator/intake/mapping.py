@@ -84,7 +84,7 @@ def trial_to_atif_ingest(
     trial: AgentEvalTrial,
     *,
     run_id: str,
-    experiment_id: str,
+    evaluation_name: str,
     agent_name: str,
     started_at: datetime,
     agent_version: str = DEFAULT_AGENT_VERSION,
@@ -132,7 +132,7 @@ def trial_to_atif_ingest(
         "session_id": session_id_for(run_id, trial.id),
         "agent": agent,
         "steps": [step],
-        "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=experiment_id),
+        "evaluation_context": run_task_to_evaluation_context(trial, evaluation_name=evaluation_name),
     }
     if final_metrics is not None:
         body["final_metrics"] = final_metrics

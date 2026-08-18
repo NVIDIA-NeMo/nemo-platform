@@ -23,8 +23,8 @@ class _CapturingRefresher:
     def __init__(self) -> None:
         self.marked: list[tuple[str, str]] = []
 
-    def mark_dirty(self, *, workspace: str, evaluation_id: str) -> None:
-        self.marked.append((workspace, evaluation_id))
+    def mark_dirty(self, *, workspace: str, evaluation_name: str) -> None:
+        self.marked.append((workspace, evaluation_name))
 
 
 def _entity(

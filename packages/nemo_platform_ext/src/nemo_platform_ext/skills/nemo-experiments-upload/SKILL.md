@@ -194,8 +194,6 @@ If `run_count` is 0 after ingesting, the traces didn't associate — almost alwa
 ## Gotchas
 
 - **Create before you log.** The Evaluation entity must exist before any ingest referencing it — otherwise `400`.
-- **Evaluation and Experiment references use different fields.** `evaluation_name` associates telemetry with an Evaluation, while `experiment_ids` assigns that Evaluation to its parent Experiments.
-- **OTLP evaluation context:** set `nemo.evaluation.name` and, when applicable, `nemo.test_case.name` as root-span attributes. These correspond to `evaluation_name` and `test_case_name` in the JSON `evaluation_context` used by other ingest endpoints.
 - **The parent lives at `/experiments`; `/experiment-groups` is a deprecated hidden alias.** Prefer `/experiments`. Evaluations are created and logged under `/evaluations`.
 - **`metadata` is `dict[str, str]`** — stringify non-string values or you'll get a `422`.
 - **ATIF and chat-completions are `extra="forbid"`** (unknown keys → 422); `evaluation_context` itself is lenient (`extra="ignore"`).

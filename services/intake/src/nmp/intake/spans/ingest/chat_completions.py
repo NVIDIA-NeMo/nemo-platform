@@ -163,7 +163,7 @@ async def ingest_chat_completion(
     await service.ingest_batch(TraceBatch(spans=[span]))
     context = body.evaluation_context
     if denormalizer is not None and context is not None and context.evaluation_name:
-        denormalizer.mark_dirty(workspace=workspace, evaluation_id=context.evaluation_name)
+        denormalizer.mark_dirty(workspace=workspace, evaluation_name=context.evaluation_name)
     return ChatCompletionsIngestResponse(
         session_id=span.session_id,
         span_id=span.external_span_id,

@@ -21,10 +21,6 @@ Full request schemas for the three intake ingest endpoints. All are under
 - `test_case_name` is optional and identifies which task or test case the run covers.
 - The referenced Evaluation **must already exist** (create it first) or the request is rejected with
   `400 "…must be created before it can be logged."`
-- The model is lenient (`extra="ignore"`): retired keys (`evaluation_sha`, `evaluation_run_id`,
-  `metadata`) are accepted but dropped.
-- A deprecated `experiment_context` `{experiment_id, test_case_id}` shape is still accepted;
-  `evaluation_context` wins if both are present. Use `evaluation_context`.
 
 ---
 
